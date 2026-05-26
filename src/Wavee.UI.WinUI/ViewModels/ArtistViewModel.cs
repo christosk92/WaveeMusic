@@ -163,7 +163,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 .Where(t => t.IsLoaded && t.Data is { } d && !string.IsNullOrEmpty(d.Title))
                 .Select(t => ((ITrackItem)t.Data!).Title!)
                 .Where(s => !string.IsNullOrEmpty(s))
-                .Take(5)
+                .Take(20)
                 .ToList());
 
         // ── Cross-child wiring ───────────────────────────────────────────────

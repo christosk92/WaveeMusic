@@ -19,6 +19,7 @@
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:avatarStack="using:Wavee.UI.WinUI.Controls.AvatarStack"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    xmlns:ai="using:Wavee.UI.WinUI.Controls.Ai"
     helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
     Background="Transparent">
@@ -108,7 +109,7 @@
                                 Grid.Column="0"
                                 HorizontalScrollMode="Disabled"
                                 VerticalScrollMode="Auto"
-                                VerticalScrollBarVisibility="Auto"
+                                VerticalScrollBarVisibility="Hidden"
                                 ZoomMode="Disabled"
                                 ContentOrientation="Vertical">
                     <Grid x:Name="LeftColumnHost" VerticalAlignment="Top">
@@ -776,6 +777,25 @@
                                     Padding="0,32,0,32"
                                     Opacity="0">
 
+                            <!--  ════════════════════════════════════════════════════════
+                                  ABOUT THIS ALBUM (on-device AI)
+                                  Renders only on Copilot+ PCs with AI enabled in settings.
+                                  IsAvailable evaporates the card on incompatible machines.
+                                  ════════════════════════════════════════════════════════ -->
+                            <ai:AiTextCard x:Name="AboutAlbumSection"
+                                           Title="ABOUT THIS ALBUM"
+                                           IsAvailable="{x:Bind ViewModel.IsAiAlbumCardVisible, Mode=OneWay}"
+                                           IsGenerating="{x:Bind ViewModel.IsAlbumAiSummaryGenerating, Mode=OneWay}"
+                                           Text="{x:Bind ViewModel.AlbumAiSummaryText, Mode=OneWay}"
+                                           EmptyText="{x:Bind ViewModel.AlbumAiSummaryUnavailableText, Mode=OneWay}"
+                                           IsStreaming="{x:Bind ViewModel.IsAlbumAiSummaryStreaming, Mode=OneWay}"
+                                           IsTextFromCache="{x:Bind ViewModel.WasLastAlbumAiSummaryFromCache, Mode=OneWay}"
+                                           BodyMaxLines="0"
+                                           BodyTextTrimming="None"
+                                           WordIntervalMs="90"
+                                           Margin="0,0,16,0"
+                                           RevealCompleted="OnAlbumBioRevealCompleted"/>
+
                             <!-- Music-video strip — only realised for short releases (≤ 2
                                  tracks) with a videoAssociations.totalCount > 0 on the
                                  lead track. 280×159 cover thumb with a 56 px accent play
@@ -877,6 +897,8 @@
                                 ArtistName="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
                                 ArtistImageUrl="{x:Bind ViewModel.ArtistAvatarImageUrl, Mode=OneWay}"
                                 BioExcerpt="{x:Bind ViewModel.ArtistBioExcerpt, Mode=OneWay}"
+                                SummaryMonthlyListenersDisplay="{x:Bind ViewModel.ArtistMonthlyListenersDisplay, Mode=OneWay}"
+                                SummaryTopTrackNames="{x:Bind ViewModel.ArtistSummaryTopTrackNames, Mode=OneWay}"
                                 IsVerified="{x:Bind ViewModel.IsArtistVerified, Mode=OneWay}"
                                 AccentBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
                                 IsFollowing="{x:Bind ViewModel.IsArtistFollowing, Mode=TwoWay}"

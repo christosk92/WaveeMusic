@@ -25,5 +25,15 @@ namespace Wavee.Controls.Lyrics.Helper
             }
             catch (OperationCanceledException) { }
         }
+
+        public void Cancel()
+        {
+            lock (_lock)
+            {
+                _cts?.Cancel();
+                _cts?.Dispose();
+                _cts = null;
+            }
+        }
     }
 }

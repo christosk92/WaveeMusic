@@ -2192,7 +2192,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     /// <summary>
     /// Builds a <see cref="QueueTrack"/> from a UI-supplied <see cref="PageTrack"/>,
     /// hydrating typed fields (Title, Artist, Album, AlbumUri, ArtistUri, ImageUrl,
-    /// DurationMs, IsExplicit) from the <c>wavee.*</c> metadata keys that
+    /// DurationMs, IsExplicit, HasVideo) from the <c>wavee.*</c> metadata keys that
     /// <c>ConnectCommandExecutor</c> attaches per-track. This lets the orchestrator
     /// carry Spotify identity even on paths that short-circuit Pathfinder metadata
     /// resolution (e.g. the linked-local-video play).
@@ -2219,6 +2219,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
         bool isExplicit = md.TryGetValue("wavee.is_explicit", out var ex)
                           && string.Equals(ex, "true", System.StringComparison.OrdinalIgnoreCase);
+        bool hasVideo = md.TryGetValue("wavee.has_video", out var hv)
+                        && string.Equals(hv, "true", System.StringComparison.OrdinalIgnoreCase);
 
         return new QueueTrack(
             Uri: t.Uri,
@@ -2232,7 +2234,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             IsExplicit: isExplicit,
             IsUserQueued: t.Provider == "queue",
             Provider: t.Provider,
-            ImageUrl: Get("wavee.image_url"))
+            ImageUrl: Get("wavee.image_url"),
+            HasVideo: hasVideo)
         { Metadata = md };
     }
 

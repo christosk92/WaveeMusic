@@ -559,7 +559,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
             // Inline per-track Spotify identity under wavee.* metadata keys so the
             // orchestrator can hydrate QueueTrack.AlbumUri / ArtistUri / Album /
-            // Title / IsExplicit even when the linked-local-video path short-circuits
+            // Title / IsExplicit / HasVideo even when the linked-local-video path short-circuits
             // Pathfinder metadata resolution. Without these keys the player bar's
             // artist / title clicks for a Spotify track playing through a local
             // video file would carry the local-file's "Unknown" URIs.
@@ -578,6 +578,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                 if (!string.IsNullOrEmpty(rt.ArtistName)){ mergedMd ??= new(); mergedMd["wavee.artist_name"] = rt.ArtistName;  }
                 if (!string.IsNullOrEmpty(rt.Title))     { mergedMd ??= new(); mergedMd["wavee.title"]       = rt.Title;       }
                 if (rt.IsExplicit)                        { mergedMd ??= new(); mergedMd["wavee.is_explicit"] = "true";        }
+                if (rt.HasVideo)                          { mergedMd ??= new(); mergedMd["wavee.has_video"]   = "true";        }
                 if (rt.DurationMs > 0)                    { mergedMd ??= new(); mergedMd["wavee.duration_ms"] = ((long)rt.DurationMs).ToString(System.Globalization.CultureInfo.InvariantCulture); }
                 if (!string.IsNullOrEmpty(rt.AlbumArt))   { mergedMd ??= new(); mergedMd["wavee.image_url"]   = rt.AlbumArt!;   }
             }

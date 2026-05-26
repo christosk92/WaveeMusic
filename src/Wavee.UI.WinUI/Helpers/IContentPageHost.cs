@@ -19,15 +19,16 @@ public interface IContentPageHost
     FrameworkElement? ShimmerContainer { get; }
 
     /// <summary>
-    /// The named content root. Always realised — the page's constructor sets its composition
-    /// opacity to 0 so the crossfade can fade it in.
+    /// The named content root. Always realised — the page's constructor sets its
+    /// opacity to 0 on the same layer returned by <see cref="CrossfadeLayer"/> so
+    /// the crossfade can fade it in.
     /// </summary>
     FrameworkElement ContentContainer { get; }
 
     /// <summary>
-    /// Layer the crossfade animation runs on. AlbumPage / PlaylistPage use Composition;
-    /// ShowPage / EpisodePage need Xaml because their shimmer subtree drives layout that
-    /// composition-only opacity won't capture.
+    /// Layer the crossfade animation runs on. Use Xaml for trees that contain
+    /// WinUI Scale transitions; taking a composition visual lease on those roots
+    /// can conflict with UIElement.Scale.
     /// </summary>
     FrameworkLayer CrossfadeLayer { get; }
 

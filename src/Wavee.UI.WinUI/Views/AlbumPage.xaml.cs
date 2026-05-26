@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
@@ -8,13 +9,17 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls;
+using Wavee.UI.WinUI.Controls.Ai;
 using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -997,4 +1002,138 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             _ = ViewModel.OpenMerchItemCommand.ExecuteAsync(merch.ShopUrl);
         }
     }
+
+    // ── "About this album" AI text-card linkifier ──────────────────────────
+    // Post-process the streamed Phi Silica paragraph: scan for any title from
+    // the album's loaded tracklist and replace those plain runs with clickable
+    // Hyperlink runs that start playback. Mirrors ArtistPage's bio linkifier
+    // but scopes its token set to the current album's tracks only.
+
+    private void OnAlbumBioRevealCompleted(object sender, RevealCompletedEventArgs e)
+    {
+        if (sender is not AiTextCard card)
+            return;
+
+        card.BodyInlines.Clear();
+        var text = (e.Text ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        AppendAlbumBioRuns(card.BodyInlines, text, BuildAlbumBioTokens());
+    }
+
+    private IReadOnlyList<AlbumBioInlineToken> BuildAlbumBioTokens()
+    {
+        var tokens = new List<AlbumBioInlineToken>(32);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var lazy in ViewModel.FilteredTracks)
+        {
+            if (lazy is { IsLoaded: true, Data: AlbumTrackDto t } && !string.IsNullOrWhiteSpace(t.Title))
+            {
+                var title = t.Title!.Trim();
+                if (title.Length < 2 || !seen.Add(title))
+                    continue;
+
+                tokens.Add(new AlbumBioInlineToken(title, t.Uri));
+                if (tokens.Count >= 50)
+                    break;
+            }
+        }
+
+        // Longest-first so multi-word titles like "Track Two" win over "Track".
+        tokens.Sort((a, b) => b.Text.Length.CompareTo(a.Text.Length));
+        return tokens;
+    }
+
+    private void AppendAlbumBioRuns(InlineCollection target, string text, IReadOnlyList<AlbumBioInlineToken> tokens)
+    {
+        var i = 0;
+        while (i < text.Length)
+        {
+            var matchStart = -1;
+            AlbumBioInlineToken? matchValue = null;
+            foreach (var token in tokens)
+            {
+                if (token.Text.Length == 0) continue;
+                var idx = text.IndexOf(token.Text, i, StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0 && (matchStart < 0 || idx < matchStart))
+                {
+                    matchStart = idx;
+                    matchValue = token;
+                }
+            }
+
+            if (matchStart < 0 || matchValue is null)
+            {
+                if (i < text.Length)
+                    target.Add(new Run { Text = text[i..] });
+                break;
+            }
+
+            if (matchStart > i)
+                target.Add(new Run { Text = text[i..matchStart] });
+
+            var matchedText = text.Substring(matchStart, matchValue.Text.Length);
+            target.Add(CreateAlbumBioInline(matchValue, matchedText));
+            i = matchStart + matchValue.Text.Length;
+        }
+    }
+
+    private Inline CreateAlbumBioInline(AlbumBioInlineToken token, string text)
+    {
+        var accentBrush = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+        if (string.IsNullOrWhiteSpace(token.Uri))
+        {
+            return new Run
+            {
+                Text = text,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = accentBrush,
+            };
+        }
+
+        var link = new Hyperlink
+        {
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = accentBrush,
+        };
+        link.Inlines.Add(new Run { Text = text });
+        link.Click += async (_, _) => await PlayAlbumBioTrackAsync(token);
+        return link;
+    }
+
+    private async Task PlayAlbumBioTrackAsync(AlbumBioInlineToken token)
+    {
+        if (string.IsNullOrWhiteSpace(token.Uri))
+            return;
+
+        var playback = Ioc.Default.GetService<IPlaybackService>();
+        if (playback is null)
+            return;
+
+        var albumId = ViewModel.AlbumId;
+        var albumName = ViewModel.AlbumName;
+        var albumImage = ViewModel.AlbumImageUrl;
+
+        var result = !string.IsNullOrWhiteSpace(albumId)
+            ? await playback.PlayTrackInContextAsync(
+                token.Uri!,
+                albumId!,
+                new PlayContextOptions { PlayOriginFeature = "album_ai_bio" })
+            : await playback.PlayTracksAsync(
+                [token.Uri!],
+                context: new PlaybackContextInfo
+                {
+                    ContextUri = token.Uri!,
+                    Type = PlaybackContextType.Album,
+                    Name = albumName ?? "Album AI",
+                    ImageUrl = albumImage,
+                });
+
+        if (!result.IsSuccess)
+            _logger?.LogWarning("Album AI bio track play failed: {Error}", result.ErrorMessage);
+    }
+
+    private sealed record AlbumBioInlineToken(string Text, string? Uri);
 }

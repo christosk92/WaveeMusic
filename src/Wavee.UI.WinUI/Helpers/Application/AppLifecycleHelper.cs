@@ -504,11 +504,21 @@ public static class AppLifecycleHelper
                 .AddSingleton<Wavee.AI.IAiFeatureSettings, Services.Ai.WinUiAiFeatureSettings>()
                 .AddSingleton<Wavee.AI.Generation.ILanguageModelClient, Wavee.AI.Generation.PhiSilicaLanguageModelClient>()
                 .AddSingleton<Wavee.AI.Artists.IArtistAiToolProvider, Services.Ai.WinUiArtistAiToolProvider>()
-                .AddSingleton<Wavee.AI.Tools.IWebSearchToolProvider, Services.Ai.ConfigurableWebSearchToolProvider>()
+                // Web grounding: a shared LRU cache underlies a composite provider that
+                // routes to the user's custom endpoint when configured, else to the
+                // baked-in DuckDuckGo lite scrape so grounding works on a fresh install.
+                .AddSingleton<Services.Ai.WebSearchCache>()
+                .AddSingleton<Services.Ai.ConfigurableWebSearchToolProvider>()
+                .AddSingleton<Services.Ai.DuckDuckGoLiteWebSearchProvider>()
+                .AddSingleton<Wavee.AI.Tools.IWebSearchToolProvider>(sp => new Services.Ai.CompositeWebSearchToolProvider(
+                    sp.GetRequiredService<Services.Ai.ConfigurableWebSearchToolProvider>(),
+                    sp.GetRequiredService<Services.Ai.DuckDuckGoLiteWebSearchProvider>()))
+                .AddSingleton<Wavee.AI.Tools.IWikipediaLookup, Services.Ai.WikipediaArticleLookup>()
                 .AddSingleton<Wavee.AI.Artists.ArtistAiQuestionService>()
                 .AddSingleton<AiCapabilities>()
                 .AddSingleton<LyricsAiService>()
                 .AddSingleton<ArtistBioSummarizer>()
+                .AddSingleton<AlbumBioSummarizer>()
                 .AddSingleton<AiNotificationService>()
 
                 .AddSingleton<IShellSessionService, ShellSessionService>()

@@ -747,7 +747,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
                 && !string.IsNullOrWhiteSpace(item.Title))
             {
                 AddBioToken(tokens, seen, item.Title!, BioInlineTokenKind.Track, item.Uri, item.AlbumId);
-                if (tokens.Count(t => t.Kind == BioInlineTokenKind.Track) >= 16)
+                if (tokens.Count(t => t.Kind == BioInlineTokenKind.Track) >= 50)
                     break;
             }
         }

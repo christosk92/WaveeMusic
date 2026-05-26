@@ -1157,6 +1157,8 @@ public sealed partial class ShowViewModel : ObservableObject, ITabBarItemContent
             IsUserQueued = false,
             AlbumName = ShowName,
             AlbumUri = string.IsNullOrEmpty(ShowUri) ? null : ShowUri,
+            IsExplicit = e.IsExplicit,
+            HasVideo = e.IsVideo,
         }).ToList();
 
         var context = new PlaybackContextInfo

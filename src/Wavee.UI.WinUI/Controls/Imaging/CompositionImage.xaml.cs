@@ -303,20 +303,13 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
         EnsureCompositionResources();
         ImageLoadingSuspension.Changed += OnSuspensionChanged;
 
-        // Re-attach the SpriteVisual eagerly. If LoadCompleted fired while we
-        // were unloaded (subscription kept alive across OnUnloaded — see the
-        // comment there), the handler will have assigned cached.Surface to
-        // _surfaceBrush but the visual is still detached. TryLoadCurrent's
-        // same-url bail-out below short-circuits before AttachVisualToHost,
-        // so without this explicit attach the cached surface never paints
-        // and the row stays on placeholder. SetElementChildVisual is
-        // idempotent — duplicate logs are accepted as the cost of
-        // correctness.
+        // Re-attach the SpriteVisual eagerly. Unload/nav-cache release detaches
+        // it, and TryLoadCurrent's same-url path can return without doing a
+        // fresh attach. SetElementChildVisual is idempotent.
         AttachVisualToHost();
 
-        // If the LoadCompleted handler ran during unload and the cached
-        // image is now loaded, refresh the brush.Surface (OnUnloaded
-        // cleared it to surface-null for the placeholder pass-through).
+        // Defensive path for any retained cached image whose surface completed
+        // before the visual was re-attached.
         if (_currentCachedImage is { IsLoaded: true, Surface: not null } cached
             && _surfaceBrush is not null
             && _surfaceBrush.Surface is null)
@@ -344,35 +337,11 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
         _isAttached = false;
         ImageLoadingSuspension.Changed -= OnSuspensionChanged;
 
-        // Drop the cache pin (release memory pressure on the LRU) and detach
-        // the SpriteVisual so the placeholder shows through while we're not
-        // visible. But DO NOT unsubscribe from CachedImage.LoadCompleted and
-        // DO NOT clear _currentCachedImage / _loadCompletedHandler.
-        //
-        // Why: WinRT's LoadedImageSurface.LoadCompleted is a ONE-SHOT event.
-        // When a TrackItem row is recycled while its image is still loading
-        // (very common for artist top-tracks under nav-cache trim + extended-
-        // tracks fetch), if we unsubscribe in OnUnloaded the in-flight load
-        // completes with zero subscribers — surface is loaded in the cache,
-        // but our handler never assigns it to _surfaceBrush. When the row
-        // re-loads, TryLoadCurrent's same-url bail-out short-circuits and
-        // the visual stays blank forever. Keeping the subscription alive
-        // means the handler runs on completion, assigns the surface to the
-        // brush, and the next OnLoaded sees the surface ready.
-        if (!string.IsNullOrEmpty(_pinnedUrl))
-        {
-            try { _cache?.Unpin(_pinnedUrl, _pinnedDecode); } catch { }
-        }
-        _pinnedUrl = null;
-        _pinnedDecode = 0;
-
-        if (_surfaceBrush is not null)
-        {
-            try { _surfaceBrush.Surface = null; } catch { }
-        }
-        DetachVisualFromHost();
-        ResetPlaceholderOpacity();
-        IsImageLoaded = false;
+        // Treat Unloaded as out-of-view. Drop our reference to the cached
+        // surface and evict the cache entry if no other visible control still
+        // pins it. On the next Loaded pass the placeholder paints first and the
+        // image reloads through the normal OS/disk-backed image path.
+        ReleaseSurfaceReference(resetResolvedUrl: true, evictIfUnpinned: true);
 
         _releasedForNavigationCache = false;
         DiagLog("OnUnloaded:exit");
@@ -382,9 +351,8 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
     //
     // Driven by the NavCacheSurfaces tree-walk when this control's hosting page
     // goes off-screen / comes back. Replaces the reverted indiscriminate
-    // surface tree-walk: scoped to dormant pages only (the prime back-target
-    // keeps its surfaces), and restore is a deterministic clean reload rather
-    // than a fragile peek that broke when the LRU evicted the entry.
+    // surface tree-walk: scoped to dormant pages only, and restore is a
+    // deterministic clean reload through the normal placeholder path.
 
     /// <summary>
     /// Sheds the GPU surface for an off-screen cached page. Unpins the LRU
@@ -406,7 +374,7 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
             && _spriteVisual is null)
             return false;
 
-        ReleaseSurfaceReference(resetResolvedUrl: true);
+        ReleaseSurfaceReference(resetResolvedUrl: true, evictIfUnpinned: true);
         ReleaseCompositionResources();
         _releasedForNavigationCache = true;
         DiagLog("ReleaseForNavCache");
@@ -415,9 +383,8 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
 
     /// <summary>
     /// Re-hydrates after <see cref="ReleaseForNavCache"/>. Runs a clean
-    /// <see cref="TryLoadCurrent"/> from a fully-reset state: peek-hit (instant)
-    /// if the surface is still warm in the cache, cold re-decode otherwise —
-    /// both deterministic, the standard first-realization path.
+    /// <see cref="TryLoadCurrent"/> from a fully-reset state: placeholder first,
+    /// then a cache/OS-backed reload through the standard first-realization path.
     /// </summary>
     public bool RestoreForNavCache()
     {
@@ -602,7 +569,7 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
         if (string.IsNullOrEmpty(url))
         {
             DiagLog("TryLoad:noUrl:clear");
-            ReleasePin();
+            ReleasePin(evictIfUnpinned: true);
             ClearVisualsForBlank();
             _resolvedUrl = null;
             return;
@@ -656,7 +623,7 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
         if (peek is { IsLoaded: true, Surface: not null })
         {
             DiagLog("TryLoad:peekHit:fastPath");
-            ReleasePin();
+            ReleasePin(evictIfUnpinned: true);
             _cache.Pin(url, decode);
             _resolvedUrl = url;
             _pinnedUrl = url;
@@ -680,7 +647,7 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
 
         // Drop the OLD pin only after we've successfully pinned the NEW one.
         // ReleasePin doesn't touch any visuals.
-        ReleasePin();
+        ReleasePin(evictIfUnpinned: true);
         _resolvedUrl = url;
         _pinnedUrl = url;
         _pinnedDecode = decode;
@@ -785,16 +752,18 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
     }
 
     /// <summary>
-    /// Drops the cache pin and unsubscribes the LoadCompleted handler. Does
-    /// NOT touch the brush surface or the placeholder â€” those decisions
-    /// belong to the caller. Used from:
+    /// Drops the cache pin and unsubscribes the LoadCompleted handler. When
+    /// <paramref name="evictIfUnpinned"/> is true, the shared cache disposes
+    /// the entry immediately if this was the last visible pin. Does NOT touch
+    /// the brush surface or the placeholder; those decisions belong to the
+    /// caller. Used from:
     /// <list type="bullet">
-    /// <item>OnUnloaded â€” keep visuals intact across nav-cache trim/restore.</item>
-    /// <item>TryLoadCurrent's URL-change paths â€” atomic surface swap, no clear.</item>
-    /// <item>OnCachedLoaded failure â€” paired with ClearVisualsForBlank.</item>
+    /// <item>OnUnloaded/nav-cache release - shed off-screen surfaces.</item>
+    /// <item>TryLoadCurrent's URL-change paths - atomic surface swap, no clear.</item>
+    /// <item>OnCachedLoaded failure - paired with ClearVisualsForBlank.</item>
     /// </list>
     /// </summary>
-    private void ReleasePin()
+    private void ReleasePin(bool evictIfUnpinned = false)
     {
         if (_currentCachedImage is not null && _loadCompletedHandler is not null)
         {
@@ -806,19 +775,15 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
 
         if (!string.IsNullOrEmpty(_pinnedUrl))
         {
-            try { _cache?.Unpin(_pinnedUrl, _pinnedDecode); } catch { }
+            try { _cache?.Unpin(_pinnedUrl, _pinnedDecode, evictIfUnpinned); } catch { }
             _pinnedUrl = null;
         }
         _pinnedDecode = 0;
         IsImageLoaded = false;
     }
 
-    private void ReleaseSurfaceReference(bool resetResolvedUrl)
+    private void ReleaseSurfaceReference(bool resetResolvedUrl, bool evictIfUnpinned = false)
     {
-        ReleasePin();
-        if (resetResolvedUrl)
-            _resolvedUrl = null;
-
         if (_surfaceBrush is not null)
         {
             try { _surfaceBrush.Surface = null; } catch { }
@@ -826,13 +791,16 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
 
         DetachVisualFromHost();
         ResetPlaceholderOpacity();
+        ReleasePin(evictIfUnpinned);
+        if (resetResolvedUrl)
+            _resolvedUrl = null;
     }
 
     /// <summary>
     /// Clears the brush surface and resets PlaceholderHost.Opacity so the
-    /// placeholder shows. Use ONLY when the control should be visually blank
-    /// (URLâ†’null or load-failure) â€” never on Unloaded, since nav-cache
-    /// trim/restore relies on the visual staying painted.
+    /// placeholder shows. Use when the control should be visually blank
+    /// (URL null or load-failure). Unload uses ReleaseSurfaceReference so it
+    /// can also reset the resolved URL and cache pin.
     /// </summary>
     private void ClearVisualsForBlank()
     {

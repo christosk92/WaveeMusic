@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Helpers;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -25,8 +26,10 @@ namespace Wavee.UI.WinUI.Controls.Artist;
 /// <see cref="EnableAiSummary"/>. Page-specific extras can be appended via
 /// <see cref="AdditionalContent"/>.
 /// </summary>
-public sealed partial class ArtistSummaryCard : UserControl
+public sealed partial class ArtistSummaryCard : UserControl, INavCacheSurfaceParticipant
 {
+    private bool _releasedForNavCache;
+
     // â”€â”€ Data DPs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public static readonly DependencyProperty ArtistUriProperty =
@@ -119,13 +122,21 @@ public sealed partial class ArtistSummaryCard : UserControl
         // default, so the Follow pill also shows the hand cursor (which is
         // the correct affordance â€” clicking does an action).
         ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.Hand);
+        Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (!_releasedForNavCache)
+            ApplyArtistImage(ArtistImageUrl);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _aiCts?.Cancel();
         _aiCts = null;
+        AvatarPicture.ProfilePicture = null;
     }
 
     // â”€â”€ DP callbacks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -145,8 +156,16 @@ public sealed partial class ArtistSummaryCard : UserControl
     private static void OnArtistImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not ArtistSummaryCard card) return;
-        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(e.NewValue as string);
-        card.AvatarPicture.ProfilePicture = string.IsNullOrEmpty(httpsUrl)
+        card.ApplyArtistImage(e.NewValue as string);
+    }
+
+    private void ApplyArtistImage(string? imageUrl)
+    {
+        if (_releasedForNavCache)
+            return;
+
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
+        AvatarPicture.ProfilePicture = string.IsNullOrEmpty(httpsUrl)
             ? null
             : new BitmapImage(new Uri(httpsUrl))
               {
@@ -154,6 +173,31 @@ public sealed partial class ArtistSummaryCard : UserControl
                   DecodePixelType = DecodePixelType.Logical,
               };
     }
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_releasedForNavCache)
+            return false;
+
+        _releasedForNavCache = true;
+        AvatarPicture.ProfilePicture = null;
+        return !string.IsNullOrEmpty(ArtistImageUrl);
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_releasedForNavCache)
+            return false;
+
+        _releasedForNavCache = false;
+        ApplyArtistImage(ArtistImageUrl);
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+        => !_releasedForNavCache && AvatarPicture.ProfilePicture is not null
+            ? 112L * 112 * 4
+            : 0;
 
     private static void OnBioExcerptChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -282,15 +326,32 @@ public sealed partial class ArtistSummaryCard : UserControl
         _aiCts?.Cancel();
         _aiCts = null;
 
-        if (!EnableAiSummary) return;
+        if (!EnableAiSummary)
+        {
+            ShowFallbackBioText();
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(BioExcerpt)) return;          // Spotify bio wins
-        if (string.IsNullOrEmpty(ArtistUri) || string.IsNullOrEmpty(ArtistName)) return;
+        if (string.IsNullOrEmpty(ArtistUri) || string.IsNullOrEmpty(ArtistName))
+        {
+            ShowFallbackBioText();
+            return;
+        }
 
         var caps = Ioc.Default.GetService<AiCapabilities>();
-        if (caps is null || !caps.IsArtistBioSummarizeEnabled) return;
+        if (caps is null || !caps.IsArtistBioSummarizeEnabled)
+        {
+            ShowFallbackBioText();
+            return;
+        }
 
         var summarizer = Ioc.Default.GetService<ArtistBioSummarizer>();
-        if (summarizer is null) return;
+        if (summarizer is null)
+        {
+            ShowFallbackBioText();
+            return;
+        }
 
         var cts = _aiCts = new CancellationTokenSource();
         var capturedUri = ArtistUri;
@@ -316,7 +377,10 @@ public sealed partial class ArtistSummaryCard : UserControl
                 // and clear the sparkle.
                 BioTextBlock.Text = result.Text;
                 AiSparkle.Visibility = Visibility.Visible;
+                return;
             }
+
+            ShowFallbackBioText();
         }
         catch (OperationCanceledException)
         {
@@ -324,9 +388,18 @@ public sealed partial class ArtistSummaryCard : UserControl
         }
         catch (Exception)
         {
-            // Empty bio + no sparkle is the graceful fallback. We don't surface
-            // an error chrome on this affordance â€” the rest of the page is the
-            // primary surface; the bio is supplementary.
+            ShowFallbackBioText();
         }
+    }
+
+    private void ShowFallbackBioText()
+    {
+        if (!string.IsNullOrWhiteSpace(BioExcerpt)) return;
+
+        var name = ArtistName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        BioTextBlock.Text = $"More from {name} and related releases.";
+        AiSparkle.Visibility = Visibility.Collapsed;
     }
 }

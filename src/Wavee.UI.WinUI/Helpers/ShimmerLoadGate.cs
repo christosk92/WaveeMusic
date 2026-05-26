@@ -100,7 +100,10 @@ public sealed class ShimmerLoadGate : DependencyObject
     /// so the loading-state defaults are applied as soon as the field references
     /// are wired up.
     /// </summary>
-    public void Reset(Func<FrameworkElement?> shimmerAccessor, Func<FrameworkElement?> contentAccessor)
+    public void Reset(
+        Func<FrameworkElement?> shimmerAccessor,
+        Func<FrameworkElement?> contentAccessor,
+        FrameworkLayer layer = FrameworkLayer.Composition)
     {
         IsLoaded = true;
 
@@ -114,7 +117,8 @@ public sealed class ShimmerLoadGate : DependencyObject
         if (content is not null)
         {
             content.Opacity = 0;
-            ElementCompositionPreview.GetElementVisual(content).Opacity = 0;
+            if (layer == FrameworkLayer.Composition)
+                ElementCompositionPreview.GetElementVisual(content).Opacity = 0;
         }
 
         // Shimmer is x:Load-gated — its accessor can return null when
@@ -126,7 +130,7 @@ public sealed class ShimmerLoadGate : DependencyObject
         var shimmer = shimmerAccessor();
         if (shimmer is not null)
         {
-            ApplyShimmerResetState(shimmer);
+            ApplyShimmerResetState(shimmer, layer);
             return;
         }
 
@@ -135,14 +139,15 @@ public sealed class ShimmerLoadGate : DependencyObject
         dq.TryEnqueue(() =>
         {
             var s = shimmerAccessor();
-            if (s is not null) ApplyShimmerResetState(s);
+            if (s is not null) ApplyShimmerResetState(s, layer);
         });
     }
 
-    private static void ApplyShimmerResetState(FrameworkElement shimmer)
+    private static void ApplyShimmerResetState(FrameworkElement shimmer, FrameworkLayer layer)
     {
         shimmer.Visibility = Visibility.Visible;
         shimmer.Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(shimmer).Opacity = 1;
+        if (layer == FrameworkLayer.Composition)
+            ElementCompositionPreview.GetElementVisual(shimmer).Opacity = 1;
     }
 }

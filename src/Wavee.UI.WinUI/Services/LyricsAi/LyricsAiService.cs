@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.AI.Generation;
+using Wavee.AI.Tools;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -33,6 +35,7 @@ public sealed class LyricsAiService
 {
     private readonly AiCapabilities _capabilities;
     private readonly ILanguageModelClient _model;
+    private readonly IWebSearchToolProvider? _webSearch;
     private readonly ILogger? _logger;
 
     private readonly ConcurrentDictionary<string, Lazy<Task<LyricsAiResult>>> _lyricsMeaningRequests =
@@ -41,10 +44,12 @@ public sealed class LyricsAiService
     public LyricsAiService(
         AiCapabilities capabilities,
         ILanguageModelClient model,
+        IWebSearchToolProvider? webSearch = null,
         ILogger<LyricsAiService>? logger = null)
     {
         _capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
         _model = model ?? throw new ArgumentNullException(nameof(model));
+        _webSearch = webSearch;
         _logger = logger;
     }
 
@@ -127,6 +132,12 @@ public sealed class LyricsAiService
         string? artistName,
         IProgress<string>? deltaProgress)
     {
+        // Kick off the web grounding search in parallel with the local prompt
+        // assembly + Phi Silica readiness check. The search runs whenever the
+        // provider thinks it can — failures or empty results collapse to no
+        // grounding rather than blocking the AI call.
+        var webResultsTask = FetchWebGroundingAsync(trackTitle, artistName);
+
         if (!await _capabilities.EnsureLanguageModelReadyAsync())
         {
             _logger?.LogWarning("GetLyricsMeaningAsync unavailable: EnsureLanguageModelReadyAsync returned false. {Diagnostics}",
@@ -141,11 +152,43 @@ public sealed class LyricsAiService
         var fallbackLyrics = LyricsAiPrompts.BuildNumberedLyricsContext(
             LyricsAiPrompts.TrimLyricsForFallback(fullLyric));
         var trackContext = LyricsAiPrompts.BuildTrackContext(trackTitle, artistName);
+        var webResults = await webResultsTask.ConfigureAwait(false);
 
         return await GeneratePlainTextLyricsMeaningAsync(
-            LyricsAiPrompts.BuildLyricsMeaningPlainTextPrompt(numberedLyrics.Text, trackContext),
-            LyricsAiPrompts.BuildLyricsMeaningPlainTextFallbackPrompt(fallbackLyrics.Text, trackContext),
+            LyricsAiPrompts.BuildLyricsMeaningPlainTextPrompt(numberedLyrics.Text, trackContext, webResults),
+            LyricsAiPrompts.BuildLyricsMeaningPlainTextFallbackPrompt(fallbackLyrics.Text, trackContext, webResults),
             deltaProgress);
+    }
+
+    private async Task<IReadOnlyList<WebSearchResult>> FetchWebGroundingAsync(
+        string? trackTitle,
+        string? artistName)
+    {
+        if (_webSearch is null || !_webSearch.IsAvailable)
+            return [];
+
+        var artist = (artistName ?? string.Empty).Trim();
+        var title = (trackTitle ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(artist) && string.IsNullOrEmpty(title))
+            return [];
+
+        var query = string.IsNullOrEmpty(artist)
+            ? $"\"{title}\" song meaning lyrics interpretation"
+            : string.IsNullOrEmpty(title)
+                ? $"{artist} song meaning lyrics interpretation"
+                : $"{artist} - \"{title}\" song meaning lyrics interpretation";
+
+        try
+        {
+            return await _webSearch
+                .SearchAsync(query, new WebSearchOptions(MaxResults: 5))
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Lyrics web grounding failed for query {Query}", query);
+            return [];
+        }
     }
 
     private async Task<LyricsAiResult> GeneratePlainTextLyricsMeaningAsync(

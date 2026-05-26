@@ -1,18 +1,19 @@
 ---
 guide: composition-image
 scope: WaveeMusic's composition-backed image control — GPU-resident cache, LoadedImageSurface lifecycle, and every place CompositionImage / CrossFadeImage are bound across the UI.
-last_verified: 2026-05-22
-verified_by: read+grep over src/Wavee.UI.WinUI/Controls/Imaging, src/Wavee.UI.WinUI/Services, ContentCard, BaselineHomeCard, and Home region layout while fixing fast-scroll image/section disappearance
+last_verified: 2026-05-26
+verified_by: read+grep over src/Wavee.UI.WinUI/Controls/Imaging and src/Wavee.UI.WinUI/Services while making off-screen CompositionImage surfaces disposable
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
 
 # Wavee CompositionImage Inventory
 
-`CompositionImage` is the single image primitive used by every card, row,
-hero, avatar, and player surface in the app. There is no `BitmapImage` in
-the live visual tree — `CompositionImage` hosts a `SpriteVisual` whose
-brush is the GPU-resident `LoadedImageSurface` owned by
-`ImageCacheService`. Decoded CPU pixels are released after the GPU upload.
+`CompositionImage` is the primary card/row image primitive used across the
+app. It hosts a `SpriteVisual` whose brush is the GPU-resident
+`LoadedImageSurface` owned by `ImageCacheService`; decoded CPU pixels are
+released after the GPU upload. Some WinUI-native `BitmapImage` /
+`PersonPicture` surfaces still exist outside this guide and need their own
+unload clearing.
 
 Use this guide when changing image loading, image caching, the placeholder /
 fade-in animation, or anything that touches the `OnLoaded` / `OnUnloaded`
@@ -124,11 +125,13 @@ inside `OnLoaded`. It builds `_spriteVisual`, `_surfaceBrush`,
 that tie clip + sprite size to the host visual. Subsequent `OnLoaded`
 calls (recycle / nav-cache restore) are no-ops for resource creation.
 
-`ReleaseCompositionResources()` is the **full** teardown — release pin,
-unsubscribe from `LoadCompleted`, dispose every composition object,
-detach the visual. Currently only the navigation-cache trim and explicit
-memory-pressure paths call it (`ReleaseSurfaceReference` + setting
-`_releasedForNavigationCache`).
+`ReleaseSurfaceReference(...)` is the surface teardown: clear the brush
+surface, detach the visual from XAML, reset the placeholder, unsubscribe
+from `LoadCompleted`, and release the cache pin. `ReleaseCompositionResources()`
+is the full composition-object teardown layered on top of that, disposing
+the brush/visual/clip objects after the surface reference has already been
+released. Currently only navigation-cache trim and explicit memory-pressure
+paths need that full object teardown.
 
 ## Lifecycle Invariants
 
@@ -136,55 +139,36 @@ This is the contract you must keep when changing `OnLoaded` / `OnUnloaded`
 or any of the helpers in `CompositionImage`. Violating it breaks
 virtualized rows that get recycled while their image load is in flight.
 
-### Invariant 1 — `LoadCompleted` subscription survives `OnUnloaded`
+### Invariant 1 — `OnUnloaded` is a real off-screen release
 
-`LoadedImageSurface.LoadCompleted` is **one-shot in WinRT**. Once the
-event fires, late subscribers do not get notified. `CachedImage` wraps it
-with `AddLoadCompletedHandler` which fires synchronously for handlers
-added after `IsLoaded == true`, so the late-subscribe race is closed for
-the FIRST load. But there is a second race that's NOT closed: if a row
-subscribes, then `OnUnloaded` fires before the load completes, and the
-load completes while detached, the in-flight surface load fires with zero
-subscribers. The surface IS in the cache and IS loaded, but our handler
-never assigned it to `_surfaceBrush`.
+`OnUnloaded` now treats the control as out of view: it clears
+`_surfaceBrush.Surface`, detaches the sprite visual, unsubscribes any
+`LoadCompleted` handler, drops `_currentCachedImage`, resets
+`_resolvedUrl`, and unpins the cache entry with `evictIfUnpinned: true`.
+If no other visible control still pins that `(url, decodeBucket)` entry,
+`ImageCacheService` disposes the `LoadedImageSurface` immediately.
 
-**The contract**: `OnUnloaded` MUST NOT unsubscribe `_loadCompletedHandler`
-and MUST keep `_currentCachedImage`, `_pinnedDecode`, `_resolvedUrl`,
-`_loadCompletedHandler` alive. It can:
+This intentionally means a re-realized row/page shows the placeholder first
+and reloads through the normal image path. The OS HTTP/disk cache can still
+serve the bytes quickly, but Wavee does not keep decoded GPU surfaces alive
+for detached controls.
 
-- Unpin the cache entry (drop memory pressure).
-- Clear `_surfaceBrush.Surface = null` so the placeholder shows through.
-- `DetachVisualFromHost()` so the sprite isn't rendered while detached.
-- Reset `PlaceholderHost.Opacity` so the next attach paints the
-  placeholder until the in-flight load (or peek hit) lights up.
-- Set `IsImageLoaded = false`.
-
-When the in-flight load completes, the handler dispatches to the UI
-thread, the `ReferenceEquals(_currentCachedImage, cached)` check
-succeeds, and `_surfaceBrush.Surface = cached.Surface` is assigned —
-ready for the next `OnLoaded` to re-attach the visual.
-
-After that one-shot completion fires, the handler unsubscribes itself from
-`CachedImage.LoadCompleted`. This preserves the recycle-mid-load fix without
-letting a loaded cache entry retain a dead `CompositionImage` until LRU
-eviction.
-
-`ReleasePin()` also unsubscribes. It is called from `TryLoadCurrent`
-when switching to a different URL and from `ReleaseSurfaceReference` on
-the explicit nav-cache / memory-pressure paths. Do not call
-`ReleasePin()` from `OnUnloaded`.
+The older mid-load recycle workaround kept `_currentCachedImage` and the
+handler alive across unload. Do not reintroduce that retention path unless
+you also prove it cannot keep off-screen `LoadedImageSurface` instances
+alive after LRU eviction.
 
 ### Invariant 2 — `OnLoaded` re-attaches the visual eagerly
 
 Because `OnUnloaded` detaches the sprite (`DetachVisualFromHost`),
 `OnLoaded` must call `AttachVisualToHost()` BEFORE the same-URL bail-out
 in `TryLoadCurrent`. The same-URL path returns without attaching, so
-without an eager attach the visual stays detached on re-realize and the
-row shows placeholder forever even though `_surfaceBrush.Surface` is
-non-null.
+without an eager attach a retained same-URL surface could stay detached.
+Most unloads now reset `_resolvedUrl`, but the eager attach remains the
+defensive rule for non-unload re-entry paths.
 
-`OnLoaded` also re-applies the brush surface if the in-flight handler ran
-during unload:
+`OnLoaded` also re-applies the brush surface for non-unload re-entry paths
+where a retained cache reference is already loaded but the brush is empty:
 
 ```csharp
 if (_currentCachedImage is { IsLoaded: true, Surface: not null } cached
@@ -198,8 +182,7 @@ if (_currentCachedImage is { IsLoaded: true, Surface: not null } cached
 ```
 
 The `[CompImg:NNNN] OnLoaded:reAssignSurfaceFromInFlightLoad` diagnostic
-fires when this path is exercised — useful for verifying the fix is
-intact after future refactors.
+fires when this defensive path is exercised.
 
 ### Invariant 3 — Two layers of dedup, both required
 
@@ -330,19 +313,24 @@ When a tab is trimmed for the navigation cache (see
 commit), `CompositionImage.ReleaseSurfacesForNavigationCache(root)` walks
 the cached page tree and calls `ReleaseForNavigationCache` on every image:
 
-- Calls `ReleaseSurfaceReference(resetResolvedUrl: true)` (full release —
-  this path DOES unsubscribe via `ReleasePin`).
+- Calls `ReleaseSurfaceReference(resetResolvedUrl: true, evictIfUnpinned: true)`
+  so the brush drops its surface, the pin is released, and the cache entry
+  is immediately disposed if no visible control still owns it.
+- Calls `ReleaseCompositionResources()` to dispose the visual/brush/clip
+  graph for the dormant cached page.
 - Sets `_releasedForNavigationCache = true`.
 
 On `Wake`, `RestoreSurfacesAfterNavigationCache(activePage)` walks the
 tree and calls `RestoreAfterNavigationCache` which clears the released
-flag and runs `TryLoadCurrent`. Composition resources stay built (the
-sprite visual and surface brush were not disposed — only the surface
-reference was released), so the fast-path peek can re-hit the cache if
-the entry survived the trim.
+flag and runs `TryLoadCurrent`. Composition resources are rebuilt on the
+next `OnLoaded`; the normal placeholder-first load path runs, with the
+fast-path peek still available if another visible image kept the cache
+entry alive.
 
-This is the only "official" full-release path. `OnUnloaded` is the
-"transient" path that must keep the subscription alive (Invariant 1).
+This remains the full composition-object teardown path. `OnUnloaded` is a
+lighter off-screen release: it drops the surface, unpins, unsubscribes, and
+detaches the visual, but keeps the reusable composition objects around for
+the next realization.
 
 ## Change Guidance
 
@@ -373,9 +361,11 @@ When investigating a "stuck on placeholder" bug:
 1. Build with `WAVEE_IMAGE_DIAGNOSTICS` to enable the `[CompImg:NNNN]`
    trace output (the `DiagLog` is `[Conditional("WAVEE_IMAGE_DIAGNOSTICS")]`
    so it's no-op in normal builds).
-2. Look for `[CachedImg] LoadCompleted status=Success subscribers=0` —
-   that's the smoking gun for an in-flight load that completed while the
-   consumer was unloaded. The fix path runs through Invariant 1.
+2. Look for `[CachedImg] LoadCompleted status=Success subscribers=0`.
+   With the current unload contract this should not leave a control stuck:
+   the detached consumer unsubscribes and reloads on the next `OnLoaded`.
+   If it still sticks, check that the retry path uses
+   `AddLoadCompletedHandler` and that `OnLoaded` is actually firing.
 3. Look for `TryLoad:bail:notAttached` followed by no later `TryLoad:enter`
    — that means the URL was set on a detached control and `OnLoaded`
    never fired (likely the parent was never added to the live tree).

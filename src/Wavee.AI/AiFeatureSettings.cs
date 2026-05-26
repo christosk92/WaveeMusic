@@ -5,5 +5,5 @@ public interface IAiFeatureSettings
     bool AiFeaturesEnabled { get; }
     bool AiLyricsSummarizeEnabled { get; }
     bool AiBioSummarizeEnabled { get; }
-    bool AiOnlineToolsEnabled { get; }
+    bool AiAlbumSummarizeEnabled { get; }
 }

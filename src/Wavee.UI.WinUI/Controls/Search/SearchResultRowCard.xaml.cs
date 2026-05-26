@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Foundation;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.Helpers;
@@ -22,7 +23,7 @@ using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Search;
 
-public sealed partial class SearchResultRowCard : UserControl
+public sealed partial class SearchResultRowCard : UserControl, INavCacheSurfaceParticipant
 {
     private static readonly InputCursor HandCursor = InputSystemCursor.Create(InputSystemCursorShape.Hand);
 
@@ -57,6 +58,7 @@ public sealed partial class SearchResultRowCard : UserControl
     // recycled row showing a different album fires once for the new URI).
     private bool _albumPrefetchKicked;
     private bool _playlistPrefetchKicked;
+    private bool _releasedForNavCache;
     private const double AlbumPrefetchTriggerDistance = 500;
     private const string AlbumUriPrefix = "spotify:album:";
     private const string PlaylistUriPrefix = "spotify:playlist:";
@@ -195,6 +197,9 @@ public sealed partial class SearchResultRowCard : UserControl
         ThumbnailImage.Source = null;
         ArtistAvatar.ProfilePicture = null;
 
+        if (_releasedForNavCache)
+            return;
+
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
         {
@@ -232,6 +237,9 @@ public sealed partial class SearchResultRowCard : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (!_releasedForNavCache && Item is { } item)
+            ApplyThumbnail(item.ImageUrl, item.Type == SearchResultType.Artist);
+
         // Subscribe on attach so the handler doesn't accumulate in the WinRT
         // EventSource table across ItemsRepeater container recycles.
         EffectiveViewportChanged += OnEffectiveViewportChanged;
@@ -266,11 +274,43 @@ public sealed partial class SearchResultRowCard : UserControl
 
         // Drop the native decoded surface so the WinUI compositor releases it.
         if (ThumbnailImage != null) ThumbnailImage.Source = null;
+        if (ArtistAvatar != null) ArtistAvatar.ProfilePicture = null;
 
         // Re-arm album / playlist prefetch on re-realization.
         _albumPrefetchKicked = false;
         _playlistPrefetchKicked = false;
     }
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_releasedForNavCache)
+            return false;
+
+        _releasedForNavCache = true;
+        if (ThumbnailImage != null) ThumbnailImage.Source = null;
+        if (ArtistAvatar != null) ArtistAvatar.ProfilePicture = null;
+        return Item?.ImageUrl is not null;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_releasedForNavCache)
+            return false;
+
+        _releasedForNavCache = false;
+        if (Item is { } item)
+        {
+            var isArtist = item.Type == SearchResultType.Artist;
+            ApplyThumbnail(item.ImageUrl, isArtist);
+        }
+
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+        => !_releasedForNavCache && (ThumbnailImage?.Source is not null || ArtistAvatar?.ProfilePicture is not null)
+            ? 64L * 64 * 4
+            : 0;
 
     private void OnPlaybackStateChanged()
     {

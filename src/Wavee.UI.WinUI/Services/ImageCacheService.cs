@@ -264,9 +264,10 @@ public sealed class ImageCacheService
     }
 
     /// <summary>
-    /// Decrements the pin count. When it hits zero the entry becomes evictable.
+    /// Decrements the pin count. When it hits zero the entry becomes evictable;
+    /// pass <paramref name="evictIfUnpinned"/> to dispose the entry immediately.
     /// </summary>
-    public void Unpin(string? uri, int decodePixelSize = 0)
+    public void Unpin(string? uri, int decodePixelSize = 0, bool evictIfUnpinned = false)
     {
         if (string.IsNullOrEmpty(uri)) return;
         var key = new CacheKey(uri, SnapToBucket(decodePixelSize));
@@ -277,6 +278,14 @@ public sealed class ImageCacheService
             {
                 if (count <= 1) _pinCounts.Remove(key);
                 else _pinCounts[key] = count - 1;
+            }
+
+            if (evictIfUnpinned
+                && !_pinCounts.ContainsKey(key)
+                && _cache.TryGetValue(key, out var node))
+            {
+                EvictNodeNoLock(node);
+                return;
             }
 
             TrimToCapacityNoLock();

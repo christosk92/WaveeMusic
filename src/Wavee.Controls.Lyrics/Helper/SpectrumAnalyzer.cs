@@ -5,6 +5,7 @@ using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Dsp;
 using NAudio.Wave;
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
@@ -17,10 +18,12 @@ namespace Wavee.Controls.Lyrics.Helper
         private WasapiLoopbackCapture? _capture;
         private MMDeviceEnumerator? _deviceEnumerator;
         private readonly LatestOnlyTaskRunner _deviceChangedTaskRunner;
+        private static readonly long MinAnalysisIntervalTicks = Math.Max(1, Stopwatch.Frequency / 30);
 
         private int _sampleRate = 48000;
         private readonly int _fftLength = 2048;
         private readonly int _m; // FFT Log2 n
+        private long _lastAnalysisTimestamp;
 
         // Buffers
         private readonly float[] _fftLeftBuffer;
@@ -124,6 +127,7 @@ namespace Wavee.Controls.Lyrics.Helper
 
                 _capture.DataAvailable += OnDataAvailable;
                 _capture.RecordingStopped += OnRecordingStopped;
+                _lastAnalysisTimestamp = 0;
                 _capture.StartRecording();
 
                 IsCapturing = true;
@@ -136,7 +140,13 @@ namespace Wavee.Controls.Lyrics.Helper
         }
 
         public void StopCapture()
+            => StopCapture(cancelPendingDeviceRestart: true);
+
+        private void StopCapture(bool cancelPendingDeviceRestart)
         {
+            if (cancelPendingDeviceRestart)
+                _deviceChangedTaskRunner.Cancel();
+
             if (_capture != null)
             {
                 _capture?.DataAvailable -= OnDataAvailable;
@@ -146,6 +156,7 @@ namespace Wavee.Controls.Lyrics.Helper
                 _capture = null;
             }
             IsCapturing = false;
+            _lastAnalysisTimestamp = 0;
         }
 
         private static float CalculateCompensationFactor(float freq)
@@ -207,13 +218,18 @@ namespace Wavee.Controls.Lyrics.Helper
             {
                 _logger.LogInformation("System audio device is changing, ready to capture...");
 
+                var shouldRestart = IsCapturing;
                 _ = _deviceChangedTaskRunner.RunAsync(async (token) =>
                 {
+                    if (!shouldRestart) return;
+
                     await Task.Delay(1000, token);
 
-                    StopCapture();
+                    StopCapture(cancelPendingDeviceRestart: false);
                     await Task.Delay(500, token);
-                    StartCapture();
+                    token.ThrowIfCancellationRequested();
+                    if (!_disposed)
+                        StartCapture();
                 });
             }
         }
@@ -238,6 +254,7 @@ namespace Wavee.Controls.Lyrics.Helper
         private void OnDataAvailable(object? sender, WaveInEventArgs e)
         {
             if (_disposed || e.BytesRecorded == 0) return;
+            if (ShouldSkipAnalysisFrame()) return;
 
             var bufferSpan = e.Buffer.AsSpan(0, e.BytesRecorded);
             var floatSpan = MemoryMarshal.Cast<byte, float>(bufferSpan);
@@ -357,6 +374,17 @@ namespace Wavee.Controls.Lyrics.Helper
             }
         }
 
+        private bool ShouldSkipAnalysisFrame()
+        {
+            var now = Stopwatch.GetTimestamp();
+            var last = _lastAnalysisTimestamp;
+            if (last != 0 && now - last < MinAnalysisIntervalTicks)
+                return true;
+
+            _lastAnalysisTimestamp = now;
+            return false;
+        }
+
         private void PrecomputeCompensation(int effectiveLength)
         {
             _compensationMap = new float[effectiveLength];
@@ -372,6 +400,7 @@ namespace Wavee.Controls.Lyrics.Helper
         private void OnRecordingStopped(object? sender, StoppedEventArgs e)
         {
             IsCapturing = false;
+            _lastAnalysisTimestamp = 0;
         }
     }
 }

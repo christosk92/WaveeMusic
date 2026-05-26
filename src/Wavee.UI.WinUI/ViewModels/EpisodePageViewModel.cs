@@ -835,6 +835,8 @@ public sealed partial class EpisodePageViewModel : ObservableObject, ITabBarItem
             IsUserQueued = false,
             AlbumName = _parentShowTitle,
             AlbumUri = string.IsNullOrEmpty(_parentShowUri) ? null : _parentShowUri,
+            IsExplicit = _episode?.IsExplicit ?? false,
+            HasVideo = _episode?.IsVideo ?? false,
         };
 
         var context = new PlaybackContextInfo

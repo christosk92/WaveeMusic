@@ -412,6 +412,8 @@ public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDispos
                 metadata["album_title"] = item.AlbumName;
             if (!string.IsNullOrEmpty(item.Title))
                 metadata["title"] = item.Title;
+            if (item.HasVideo)
+                metadata["wavee.has_video"] = "true";
             metadata["track_player"] = "audio";
 
             queueItems.Add(new QueueItem
@@ -432,6 +434,7 @@ public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDispos
                 AlbumUri = !string.IsNullOrEmpty(item.AlbumId) ? $"spotify:album:{item.AlbumId}" : null,
                 ArtistUri = !string.IsNullOrEmpty(item.ArtistId) ? $"spotify:artist:{item.ArtistId}" : null,
                 IsExplicit = item.IsExplicit,
+                HasVideo = item.HasVideo,
             });
         }
 

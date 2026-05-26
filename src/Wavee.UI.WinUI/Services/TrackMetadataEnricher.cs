@@ -32,6 +32,7 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
     private readonly ICacheService _cacheService;
     private readonly ISpClient _spClient;
     private readonly IMessenger _messenger;
+    private readonly IMusicVideoMetadataService? _musicVideoMetadata;
     private readonly ILogger? _logger;
     private CancellationTokenSource? _enrichmentCts;
     private readonly object _extendedTopTracksGate = new();
@@ -45,12 +46,14 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         ICacheService cacheService,
         ISpClient spClient,
         IMessenger messenger,
+        IMusicVideoMetadataService? musicVideoMetadata = null,
         ILogger<TrackMetadataEnricher>? logger = null)
     {
         _metadataClient = metadataClient;
         _cacheService = cacheService;
         _spClient = spClient;
         _messenger = messenger;
+        _musicVideoMetadata = musicVideoMetadata;
         _logger = logger;
 
         messenger.Register<TrackEnrichmentRequestMessage>(this);
@@ -351,6 +354,23 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
 
             if (trackOnlyUris.Count > 0)
             {
+                IReadOnlyDictionary<string, bool> videoAvailability =
+                    new Dictionary<string, bool>(StringComparer.Ordinal);
+                if (_musicVideoMetadata is not null)
+                {
+                    try
+                    {
+                        videoAvailability = await _musicVideoMetadata
+                            .EnsureAvailabilityAsync(trackOnlyUris, CancellationToken.None)
+                            .ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogDebug(ex, "Queue enrichment video availability failed for {Count} tracks",
+                            trackOnlyUris.Count);
+                    }
+                }
+
                 // Check cache first. Treat an entry with no ImageUrl as incomplete —
                 // it was likely populated by a path that stored only title/artist
                 // (bare playback, TrackReference) without running the TrackV4
@@ -390,7 +410,9 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
                         Title: entry.Title ?? "",
                         ArtistName: entry.Artist ?? "",
                         AlbumArt: entry.ImageUrl,
-                        DurationMs: entry.DurationMs ?? 0);
+                        DurationMs: entry.DurationMs ?? 0,
+                        IsExplicit: entry.IsExplicit,
+                        HasVideo: videoAvailability.TryGetValue(uri, out var hasVideo) && hasVideo);
                 }
             }
 
@@ -570,7 +592,9 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
                 AlbumArt: GetEpisodeImageUrl(episode, Image.Types.Size.Default)
                           ?? GetEpisodeImageUrl(episode, Image.Types.Size.Large)
                           ?? GetEpisodeImageUrl(episode, Image.Types.Size.Xlarge),
-                DurationMs: episode.Duration);
+                DurationMs: episode.Duration,
+                IsExplicit: episode.Explicit,
+                HasVideo: episode.Video.Count > 0);
         }
         catch (Exception ex)
         {

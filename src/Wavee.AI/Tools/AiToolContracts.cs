@@ -75,3 +75,22 @@ public interface IWebSearchToolProvider
         WebSearchOptions? options = null,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record WikipediaSummary(
+    string Title,
+    string Extract,
+    string? Url = null,
+    string? Lang = null,
+    string? Description = null);
+
+public interface IWikipediaLookup
+{
+    Task<WikipediaSummary?> LookupArtistAsync(
+        string artistName,
+        CancellationToken cancellationToken = default);
+
+    Task<WikipediaSummary?> LookupAlbumAsync(
+        string albumTitle,
+        string? artistName,
+        CancellationToken cancellationToken = default);
+}

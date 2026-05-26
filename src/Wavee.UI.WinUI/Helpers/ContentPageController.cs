@@ -126,7 +126,7 @@ public sealed class ContentPageController
         _isNavigatingAway = false;
         _showingContent = false;
         _crossfadeScheduled = false;
-        ShimmerGate.Reset(() => _host.ShimmerContainer, () => _host.ContentContainer);
+        ShimmerGate.Reset(() => _host.ShimmerContainer, () => _host.ContentContainer, _host.CrossfadeLayer);
 
         _logger?.LogDebug(
             "[xfade][{Page}] reset showing={Showing} scheduled={Scheduled} navAway={NavAway}",
@@ -149,7 +149,8 @@ public sealed class ContentPageController
 
         var content = _host.ContentContainer;
         content.Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(content).Opacity = 1;
+        if (_host.CrossfadeLayer == CommunityToolkit.WinUI.Animations.FrameworkLayer.Composition)
+            ElementCompositionPreview.GetElementVisual(content).Opacity = 1;
     }
 
     private async Task CrossfadeToContentAsync()
@@ -163,11 +164,20 @@ public sealed class ContentPageController
 
         if (shimmer is not null)
         {
-            var shimmerVisualOpacity = ElementCompositionPreview.GetElementVisual(shimmer).Opacity;
-            var contentVisualOpacity = ElementCompositionPreview.GetElementVisual(content).Opacity;
-            _logger?.LogDebug(
-                "[xfade][{Page}] xfade.start shimmerXaml={ShimmerXaml} shimmerVisual={ShimmerVisual} contentVisual={ContentVisual} shimmerVisible={ShimmerVisible}",
-                _host.PageIdForLogging, shimmer.Opacity, shimmerVisualOpacity, contentVisualOpacity, shimmer.Visibility);
+            if (_host.CrossfadeLayer == CommunityToolkit.WinUI.Animations.FrameworkLayer.Composition)
+            {
+                var shimmerVisualOpacity = ElementCompositionPreview.GetElementVisual(shimmer).Opacity;
+                var contentVisualOpacity = ElementCompositionPreview.GetElementVisual(content).Opacity;
+                _logger?.LogDebug(
+                    "[xfade][{Page}] xfade.start shimmerXaml={ShimmerXaml} shimmerVisual={ShimmerVisual} contentVisual={ContentVisual} shimmerVisible={ShimmerVisible}",
+                    _host.PageIdForLogging, shimmer.Opacity, shimmerVisualOpacity, contentVisualOpacity, shimmer.Visibility);
+            }
+            else
+            {
+                _logger?.LogDebug(
+                    "[xfade][{Page}] xfade.start shimmerXaml={ShimmerXaml} contentXaml={ContentXaml} shimmerVisible={ShimmerVisible}",
+                    _host.PageIdForLogging, shimmer.Opacity, content.Opacity, shimmer.Visibility);
+            }
         }
         else
         {
@@ -179,9 +189,18 @@ public sealed class ContentPageController
 
         if (_showingContent)
         {
-            _logger?.LogDebug(
-                "[xfade][{Page}] xfade.shimmerCollapsed contentVisual={ContentVisual}",
-                _host.PageIdForLogging, ElementCompositionPreview.GetElementVisual(content).Opacity);
+            if (_host.CrossfadeLayer == CommunityToolkit.WinUI.Animations.FrameworkLayer.Composition)
+            {
+                _logger?.LogDebug(
+                    "[xfade][{Page}] xfade.shimmerCollapsed contentVisual={ContentVisual}",
+                    _host.PageIdForLogging, ElementCompositionPreview.GetElementVisual(content).Opacity);
+            }
+            else
+            {
+                _logger?.LogDebug(
+                    "[xfade][{Page}] xfade.shimmerCollapsed contentXaml={ContentXaml}",
+                    _host.PageIdForLogging, content.Opacity);
+            }
         }
     }
 }

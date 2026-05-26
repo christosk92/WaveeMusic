@@ -12,21 +12,14 @@ using Wavee.AI.Tools;
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
-/// Generates a short on-device biography for an artist page. Mirrors
-/// <see cref="LyricsAiService"/>'s
-/// Phi Silica bridging pattern: gates through <see cref="AiCapabilities"/>,
-/// uses the plain-text Phi Silica path so token progress can be streamed into
-/// the artist page, and reuses <see cref="LyricsAiResult"/> as the typed result
-/// envelope.
-///
-/// The prompt is intentionally conservative — it gets the artist name, optional
-/// known signals (genres, monthly listeners, top track names), and asks for one
-/// neutral ~100-word paragraph. No quotes, no markdown, no bullets. We do NOT
-/// claim biographical facts we can't ground in the input signals; the model is
-/// instructed to characterise the artist's sound and prominence, not invent
-/// label history or member counts.
+/// Generates a short on-device "About this album" paragraph for the album page.
+/// Mirrors the <see cref="ArtistBioSummarizer"/> pattern: gates through
+/// <see cref="AiCapabilities"/>, uses plain-text Phi Silica streaming, caches
+/// per album URI, and grounds output with Wikipedia (album lookup) + a single
+/// DuckDuckGo lite web search alongside the supplied Spotify metadata
+/// (tracklist, release year, label, total duration).
 /// </summary>
-public sealed class ArtistBioSummarizer
+public sealed class AlbumBioSummarizer
 {
     private readonly AiCapabilities _capabilities;
     private readonly ILanguageModelClient _model;
@@ -37,22 +30,18 @@ public sealed class ArtistBioSummarizer
     private readonly ConcurrentDictionary<string, Lazy<Task<LyricsAiResult>>> _requests =
         new(StringComparer.Ordinal);
 
-    // Per-session cache of artist URIs that previously returned BlockedByPolicy
-    // from Phi Silica. Next call for the same URI short-circuits — skips the
-    // prompt build and the Phi Silica round-trip entirely. byte value is arbitrary;
-    // ConcurrentDictionary doesn't have a Set primitive. Cleared by ClearCache.
     private readonly ConcurrentDictionary<string, byte> _knownBlocked =
         new(StringComparer.Ordinal);
 
     /// <summary>~90–140 words plus punctuation/headroom.</summary>
-    private const int MaxBioCharacters = 1300;
+    private const int MaxAlbumBioCharacters = 1300;
 
-    public ArtistBioSummarizer(
+    public AlbumBioSummarizer(
         AiCapabilities capabilities,
         ILanguageModelClient model,
         IWebSearchToolProvider? webSearch = null,
         IWikipediaLookup? wikipedia = null,
-        ILogger<ArtistBioSummarizer>? logger = null)
+        ILogger<AlbumBioSummarizer>? logger = null)
     {
         _capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
         _model = model ?? throw new ArgumentNullException(nameof(model));
@@ -62,34 +51,34 @@ public sealed class ArtistBioSummarizer
     }
 
     /// <summary>
-    /// Asks Phi Silica for a fuller neutral biography of the artist. Cached
-    /// in-memory per <paramref name="artistUri"/>; concurrent callers share the
-    /// same in-flight Lazy task. Grounded with the Spotify biography (when
-    /// available), a Wikipedia summary, and a web-search pass — the model is
-    /// told to treat these as primary truth.
+    /// Asks Phi Silica for a short editorial paragraph about the album. Cached
+    /// in-memory per <paramref name="albumUri"/>; concurrent callers share one
+    /// in-flight Lazy task. Web search + Wikipedia run in parallel and feed
+    /// the prompt as supporting evidence behind the supplied tracklist + label.
     /// </summary>
-    public Task<LyricsAiResult> SummarizeBioAsync(
-        string artistUri,
-        string artistName,
-        IReadOnlyList<string>? genres = null,
-        string? monthlyListenersDisplay = null,
-        IReadOnlyList<string>? topTrackNames = null,
-        string? spotifyBiography = null,
+    public Task<LyricsAiResult> SummarizeAlbumAsync(
+        string albumUri,
+        string albumTitle,
+        string? artistName = null,
+        int? releaseYear = null,
+        IReadOnlyList<string>? trackTitles = null,
+        string? label = null,
+        string? totalDurationDisplay = null,
         IProgress<string>? deltaProgress = null,
         CancellationToken ct = default)
     {
-        if (!_capabilities.IsArtistBioSummarizeEnabled)
+        if (!_capabilities.IsAlbumBioSummarizeEnabled)
         {
-            _logger?.LogDebug("SummarizeBioAsync gated off. {Diagnostics}",
+            _logger?.LogDebug("SummarizeAlbumAsync gated off. {Diagnostics}",
                 _capabilities.DescribeDiagnosticState());
             return Task.FromResult(LyricsAiResult.Unavailable);
         }
-        if (string.IsNullOrWhiteSpace(artistName))
+        if (string.IsNullOrWhiteSpace(albumTitle))
             return Task.FromResult(LyricsAiResult.Empty);
 
-        var key = NormalizeArtistUri(artistUri);
+        var key = NormalizeAlbumUri(albumUri);
         var created = new Lazy<Task<LyricsAiResult>>(
-            () => SummarizeBioCoreAsync(key, artistName, genres, monthlyListenersDisplay, topTrackNames, spotifyBiography, deltaProgress),
+            () => SummarizeAlbumCoreAsync(key, albumTitle, artistName, releaseYear, trackTitles, label, totalDurationDisplay, deltaProgress),
             LazyThreadSafetyMode.ExecutionAndPublication);
         var request = _requests.GetOrAdd(key, created);
         var fromExistingRequest = !ReferenceEquals(request, created);
@@ -97,10 +86,10 @@ public sealed class ArtistBioSummarizer
         return AwaitRequestAsync(request, key, fromExistingRequest, ct);
     }
 
-    public bool TryGetCached(string artistUri, out LyricsAiResult result)
+    public bool TryGetCached(string albumUri, out LyricsAiResult result)
     {
         result = default;
-        var key = NormalizeArtistUri(artistUri);
+        var key = NormalizeAlbumUri(albumUri);
         if (!_requests.TryGetValue(key, out var req)
             || !req.IsValueCreated
             || !req.Value.IsCompletedSuccessfully)
@@ -128,39 +117,34 @@ public sealed class ArtistBioSummarizer
             request,
             fromExistingRequest,
             () => _requests.TryRemove(key, out _),
-            "SummarizeBioAsync",
+            "SummarizeAlbumAsync",
             _logger,
             ct);
 
-    private async Task<LyricsAiResult> SummarizeBioCoreAsync(
-        string artistUri,
-        string artistName,
-        IReadOnlyList<string>? genres,
-        string? monthlyListenersDisplay,
-        IReadOnlyList<string>? topTrackNames,
-        string? spotifyBiography,
+    private async Task<LyricsAiResult> SummarizeAlbumCoreAsync(
+        string albumUri,
+        string albumTitle,
+        string? artistName,
+        int? releaseYear,
+        IReadOnlyList<string>? trackTitles,
+        string? label,
+        string? totalDurationDisplay,
         IProgress<string>? deltaProgress)
     {
-        // Short-circuit: if a previous call for this artist URI came back
-        // BlockedByPolicy from Phi Silica, skip the entire prompt-build +
-        // Phi Silica round-trip on subsequent calls.
-        if (_knownBlocked.ContainsKey(artistUri))
+        if (_knownBlocked.ContainsKey(albumUri))
         {
             _logger?.LogDebug(
-                "SummarizeBioAsync short-circuited: {ArtistUri} previously BlockedByPolicy.",
-                artistUri);
+                "SummarizeAlbumAsync short-circuited: {AlbumUri} previously BlockedByPolicy.",
+                albumUri);
             return LyricsAiResult.Unavailable;
         }
 
-        // Kick off external grounding in parallel with the Phi Silica readiness
-        // check. Both calls catch their own failures and degrade to null/empty
-        // rather than blocking the AI surface.
-        var webResultsTask = FetchWebGroundingAsync(artistName);
-        var wikipediaTask = FetchWikipediaAsync(artistName);
+        var webResultsTask = FetchWebGroundingAsync(albumTitle, artistName);
+        var wikipediaTask = FetchWikipediaAsync(albumTitle, artistName);
 
         if (!await _capabilities.EnsureLanguageModelReadyAsync())
         {
-            _logger?.LogDebug("SummarizeBioAsync unavailable: EnsureLanguageModelReadyAsync returned false. {Diagnostics}",
+            _logger?.LogDebug("SummarizeAlbumAsync unavailable: EnsureLanguageModelReadyAsync returned false. {Diagnostics}",
                 _capabilities.DescribeDiagnosticState());
             return LyricsAiResult.Unavailable;
         }
@@ -168,19 +152,22 @@ public sealed class ArtistBioSummarizer
         var webResults = await webResultsTask.ConfigureAwait(false);
         var wikipedia = await wikipediaTask.ConfigureAwait(false);
 
-        return await GeneratePlainTextBioAsync(
-            artistUri,
-            BuildBioPrompt(artistName, genres, monthlyListenersDisplay, topTrackNames, spotifyBiography, wikipedia, webResults),
-            BuildBioFallbackPrompt(artistName, spotifyBiography, wikipedia, webResults),
+        return await GeneratePlainTextAlbumBioAsync(
+            albumUri,
+            BuildAlbumBioPrompt(albumTitle, artistName, releaseYear, trackTitles, label, totalDurationDisplay, wikipedia, webResults),
+            BuildAlbumBioFallbackPrompt(albumTitle, artistName, releaseYear, wikipedia, webResults),
             deltaProgress);
     }
 
-    private async Task<IReadOnlyList<WebSearchResult>> FetchWebGroundingAsync(string artistName)
+    private async Task<IReadOnlyList<WebSearchResult>> FetchWebGroundingAsync(string albumTitle, string? artistName)
     {
         if (_webSearch is null || !_webSearch.IsAvailable)
             return [];
 
-        var query = $"{artistName} musician biography career";
+        var query = string.IsNullOrWhiteSpace(artistName)
+            ? $"\"{albumTitle}\" album review music"
+            : $"{artistName} \"{albumTitle}\" album review music";
+
         try
         {
             return await _webSearch
@@ -189,35 +176,35 @@ public sealed class ArtistBioSummarizer
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug(ex, "Artist bio web grounding failed for query {Query}", query);
+            _logger?.LogDebug(ex, "Album bio web grounding failed for query {Query}", query);
             return [];
         }
     }
 
-    private async Task<WikipediaSummary?> FetchWikipediaAsync(string artistName)
+    private async Task<WikipediaSummary?> FetchWikipediaAsync(string albumTitle, string? artistName)
     {
         if (_wikipedia is null)
             return null;
 
         try
         {
-            return await _wikipedia.LookupArtistAsync(artistName).ConfigureAwait(false);
+            return await _wikipedia.LookupAlbumAsync(albumTitle, artistName).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug(ex, "Wikipedia lookup failed for {Artist}", artistName);
+            _logger?.LogDebug(ex, "Wikipedia lookup failed for album {Album}", albumTitle);
             return null;
         }
     }
 
-    private async Task<LyricsAiResult> GeneratePlainTextBioAsync(
-        string artistUri,
+    private async Task<LyricsAiResult> GeneratePlainTextAlbumBioAsync(
+        string albumUri,
         string prompt,
         string fallbackPrompt,
         IProgress<string>? deltaProgress)
     {
         var response = await _model.GenerateTextAsync(
-            new AiTextGenerationRequest(prompt, 0.35f, "SummarizeArtistBio"),
+            new AiTextGenerationRequest(prompt, 0.35f, "SummarizeAlbumBio"),
             deltaProgress,
             CancellationToken.None);
         var usedFallback = false;
@@ -226,43 +213,41 @@ public sealed class ArtistBioSummarizer
             && ShouldRetryPlainTextWithFallback(response.Status))
         {
             response = await _model.GenerateTextAsync(
-                new AiTextGenerationRequest(fallbackPrompt, 0.3f, "SummarizeArtistBioFallback"),
+                new AiTextGenerationRequest(fallbackPrompt, 0.3f, "SummarizeAlbumBioFallback"),
                 deltaProgress,
                 CancellationToken.None);
             usedFallback = true;
         }
 
         if (response.Status != AiGenerationStatus.Complete)
-            return ToPlainTextFailureResult(artistUri, response);
+            return ToPlainTextFailureResult(albumUri, response);
 
         var text = CleanBio(response.Text);
         if (string.IsNullOrWhiteSpace(text) && !usedFallback)
         {
             response = await _model.GenerateTextAsync(
-                new AiTextGenerationRequest(fallbackPrompt, 0.3f, "SummarizeArtistBioFallbackEmpty"),
+                new AiTextGenerationRequest(fallbackPrompt, 0.3f, "SummarizeAlbumBioFallbackEmpty"),
                 deltaProgress,
                 CancellationToken.None);
 
             if (response.Status != AiGenerationStatus.Complete)
-                return ToPlainTextFailureResult(artistUri, response);
+                return ToPlainTextFailureResult(albumUri, response);
 
             text = CleanBio(response.Text);
         }
 
         return string.IsNullOrWhiteSpace(text)
-            ? LyricsAiResult.Error("Phi Silica returned an empty biography.")
+            ? LyricsAiResult.Error("Phi Silica returned an empty album summary.")
             : LyricsAiResult.Ok(text, fromCache: false);
     }
 
-    private LyricsAiResult ToPlainTextFailureResult(
-        string artistUri,
-        AiGenerationResult generated)
+    private LyricsAiResult ToPlainTextFailureResult(string albumUri, AiGenerationResult generated)
     {
         if (generated.Status == AiGenerationStatus.BlockedByPolicy)
-            _knownBlocked.TryAdd(artistUri, 1);
+            _knownBlocked.TryAdd(albumUri, 1);
 
         _logger?.LogWarning(
-            "SummarizeBioAsync plaintext returned Phi Silica status {Status}. error={ErrorMessage}; diagnostics={Diagnostics}",
+            "SummarizeAlbumAsync plaintext returned Phi Silica status {Status}. error={ErrorMessage}; diagnostics={Diagnostics}",
             generated.Status,
             string.IsNullOrWhiteSpace(generated.ErrorMessage) ? "<no extended error>" : generated.ErrorMessage,
             string.IsNullOrWhiteSpace(generated.DiagnosticMessage) ? "<none>" : generated.DiagnosticMessage);
@@ -289,53 +274,53 @@ public sealed class ArtistBioSummarizer
     private static string CleanBio(string text)
         => PhiSilicaStructuredTextPipeline.ClampLength(
             StripBulletsAndHeadings(text),
-            MaxBioCharacters);
+            MaxAlbumBioCharacters);
 
     // ── Prompt construction ────────────────────────────────────────────────
 
-    private static string BuildBioPrompt(
-        string artistName,
-        IReadOnlyList<string>? genres,
-        string? monthlyListenersDisplay,
-        IReadOnlyList<string>? topTrackNames,
-        string? spotifyBiography,
+    private static string BuildAlbumBioPrompt(
+        string albumTitle,
+        string? artistName,
+        int? releaseYear,
+        IReadOnlyList<string>? trackTitles,
+        string? label,
+        string? totalDurationDisplay,
         WikipediaSummary? wikipedia,
         IReadOnlyList<WebSearchResult> webResults)
     {
         var sb = new StringBuilder();
         sb.Append("Write one rich editorial paragraph (3 to 5 sentences, around 90 to 140 words) ");
-        sb.Append("for an artist page. Treat the supplied evidence hierarchically: ");
-        sb.Append("SPOTIFY_BIOGRAPHY is authoritative — paraphrase its verifiable facts. ");
-        sb.Append("WIKIPEDIA is reliable secondary context for era, scene, and catalogue. ");
+        sb.Append("for an album page. Treat the supplied evidence hierarchically: ");
+        sb.Append("ALBUM_FACTS (title, artist, year, tracklist, label) are authoritative. ");
+        sb.Append("WIKIPEDIA is reliable secondary context for the recording, era, and reception. ");
         sb.Append("WEB_RESULTS are supporting background — use them only when consistent with the above. ");
         sb.Append("Trained music-domain knowledge is last and only when broadly known. ");
-        sb.Append("Do not invent specific biographical facts (debut dates, label history, member counts, awards, hometown) ");
-        sb.Append("unless they appear in the supplied evidence. Be concrete about sound, era, scene, signature appeal, ");
-        sb.Append("or why listeners know the artist. Avoid stock phrases such as \"resonates deeply\", \"dedicated fanbase\", ");
-        sb.Append("\"captivates listeners\", \"showcases\", \"unique blend\", and \"musical journey\". ");
-        sb.Append("When naming songs, EPs, or albums, prefer titles from the supplied POPULAR_TRACKS list or the SPOTIFY_BIOGRAPHY text — those are the artist's actual catalog. ");
-        sb.Append("Mention three to five such titles by name to anchor the description, written in straight double quotes (e.g. \"Track Name\") so they can be cross-referenced. ");
-        sb.Append("Do not invent track or album names that don't appear in the supplied evidence. ");
+        sb.Append("Do not invent producers, recording dates, chart positions, sales numbers, or critical-reception claims that don't appear in the supplied evidence. ");
+        sb.Append("Be concrete about sound, mood, era, and any standout tracks. ");
+        sb.Append("Avoid stock phrases such as \"resonates deeply\", \"captivates listeners\", \"unique blend\", and \"musical journey\". ");
+        sb.Append("When naming songs from the album, prefer titles from the TRACKLIST below — those are the album's actual tracks. ");
+        sb.Append("Mention two to four track titles by name in straight double quotes (e.g. \"Track Name\") so they can be cross-referenced. ");
+        sb.Append("Do not invent track names that don't appear in the supplied tracklist. ");
         sb.Append("Do not use bullets, headings, or markdown. Plain prose only.\n\n");
 
-        sb.Append("ARTIST: ").Append(artistName).Append('\n');
+        sb.Append("ALBUM_FACTS:\n");
+        sb.Append("Title: ").AppendLine(albumTitle);
+        if (!string.IsNullOrWhiteSpace(artistName))
+            sb.Append("Artist: ").AppendLine(artistName);
+        if (releaseYear is { } year && year > 0)
+            sb.Append("Year: ").Append(year).AppendLine();
+        if (!string.IsNullOrWhiteSpace(label))
+            sb.Append("Label: ").AppendLine(label);
+        if (!string.IsNullOrWhiteSpace(totalDurationDisplay))
+            sb.Append("Total duration: ").AppendLine(totalDurationDisplay);
+        sb.AppendLine();
 
-        if (!string.IsNullOrWhiteSpace(spotifyBiography))
+        if (trackTitles is { Count: > 0 })
         {
-            sb.Append("SPOTIFY_BIOGRAPHY:\n");
-            sb.AppendLine(TrimForPrompt(spotifyBiography!, 1400));
-        }
-
-        if (genres is { Count: > 0 })
-        {
-            sb.Append("GENRES: ");
-            sb.Append(string.Join(", ", genres.Take(5)));
-            sb.Append('\n');
-        }
-
-        if (!string.IsNullOrWhiteSpace(monthlyListenersDisplay))
-        {
-            sb.Append("MONTHLY LISTENERS: ").Append(monthlyListenersDisplay).Append('\n');
+            sb.AppendLine("TRACKLIST (album's actual tracks — quote these by name):");
+            foreach (var title in trackTitles.Take(30))
+                sb.Append("- \"").Append(title).Append("\"\n");
+            sb.AppendLine();
         }
 
         if (wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract))
@@ -344,13 +329,7 @@ public sealed class ArtistBioSummarizer
             if (!string.IsNullOrWhiteSpace(wiki.Description))
                 sb.Append("Summary: ").AppendLine(wiki.Description);
             sb.AppendLine(TrimForPrompt(wiki.Extract, 1200));
-        }
-
-        if (topTrackNames is { Count: > 0 })
-        {
-            sb.Append("POPULAR_TRACKS (artist's actual catalog — quote these by name):\n");
-            foreach (var title in topTrackNames.Take(20))
-                sb.Append("- \"").Append(title).Append("\"\n");
+            sb.AppendLine();
         }
 
         AppendWebResultsBlock(sb, webResults);
@@ -358,24 +337,23 @@ public sealed class ArtistBioSummarizer
         return sb.ToString();
     }
 
-    private static string BuildBioFallbackPrompt(
-        string artistName,
-        string? spotifyBiography,
+    private static string BuildAlbumBioFallbackPrompt(
+        string albumTitle,
+        string? artistName,
+        int? releaseYear,
         WikipediaSummary? wikipedia,
         IReadOnlyList<WebSearchResult> webResults)
     {
         var sb = new StringBuilder();
-        sb.Append("Write one rich editorial paragraph (3 to 4 sentences, around 80 to 120 words) introducing the artist named \"");
-        sb.Append(artistName);
-        sb.Append("\". Use the supplied evidence first (Spotify > Wikipedia > web), then trained knowledge for broad context. ");
-        sb.Append("Be specific about sound, era, scene, or listener appeal where possible, avoid stock promo language, and do not invent detailed biographical facts. ");
+        sb.Append("Write one rich editorial paragraph (3 to 4 sentences, around 80 to 120 words) introducing the album \"");
+        sb.Append(albumTitle);
+        if (!string.IsNullOrWhiteSpace(artistName))
+            sb.Append("\" by ").Append(artistName);
+        if (releaseYear is { } year && year > 0)
+            sb.Append(" (").Append(year).Append(")");
+        sb.Append(". Use the supplied evidence first (album facts > Wikipedia > web), then trained knowledge for broad context. ");
+        sb.Append("Be specific about sound, mood, era, or notable tracks where possible, avoid stock promo language, and do not invent biographical facts. ");
         sb.Append("Plain prose, no markdown, no bullets.\n\n");
-
-        if (!string.IsNullOrWhiteSpace(spotifyBiography))
-        {
-            sb.Append("SPOTIFY_BIOGRAPHY:\n");
-            sb.AppendLine(TrimForPrompt(spotifyBiography!, 1200));
-        }
 
         if (wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract))
         {
@@ -433,8 +411,8 @@ public sealed class ArtistBioSummarizer
         return trimmed.TrimEnd() + "...";
     }
 
-    private static string NormalizeArtistUri(string artistUri)
-        => string.IsNullOrWhiteSpace(artistUri) ? "spotify:artist:unknown" : artistUri.Trim();
+    private static string NormalizeAlbumUri(string albumUri)
+        => string.IsNullOrWhiteSpace(albumUri) ? "spotify:album:unknown" : albumUri.Trim();
 
     private static string StripBulletsAndHeadings(string s)
     {
@@ -446,7 +424,6 @@ public sealed class ArtistBioSummarizer
         for (var i = 0; i < lines.Length; i++)
         {
             var trimmed = lines[i].TrimStart();
-            // Drop markdown-ish artefacts.
             if (trimmed.StartsWith("#", StringComparison.Ordinal)) continue;
             if (trimmed.StartsWith("- ", StringComparison.Ordinal)) trimmed = trimmed[2..];
             else if (trimmed.StartsWith("* ", StringComparison.Ordinal)) trimmed = trimmed[2..];
@@ -457,5 +434,4 @@ public sealed class ArtistBioSummarizer
 
         return sb.ToString().Trim();
     }
-
 }

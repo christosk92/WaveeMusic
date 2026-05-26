@@ -133,6 +133,24 @@ public static class PlaybackStateHelpers
         return null;
     }
 
+    private static bool MetadataFlag(
+        IEnumerable<KeyValuePair<string, string>>? metadata,
+        params string[] keys)
+    {
+        var value = FirstMetadataValue(metadata, keys);
+        return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(value, "1", StringComparison.Ordinal);
+    }
+
+    private static bool MetadataHasVideo(IEnumerable<KeyValuePair<string, string>>? metadata)
+    {
+        if (MetadataFlag(metadata, "wavee.has_video", "has_video"))
+            return true;
+
+        var player = FirstMetadataValue(metadata, "track_player");
+        return string.Equals(player, "video", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string? AlbumOrShowUriFor(ProvidedTrack track)
     {
         var metadata = track.Metadata;
@@ -300,9 +318,11 @@ public static class PlaybackStateHelpers
                 AlbumUri: AlbumOrShowUriFor(pt),
                 ArtistUri: ArtistUriFor(pt),
                 DurationMs: durationMs > 0 ? durationMs : null,
+                IsExplicit: MetadataFlag(metadata, "wavee.is_explicit", "is_explicit", "explicit"),
                 ImageUrl: imageUrl,
                 IsUserQueued: provider == "queue",
-                Provider: provider
+                Provider: provider,
+                HasVideo: MetadataHasVideo(metadata)
             ));
         }
         return result;
@@ -1074,6 +1094,8 @@ public static class PlaybackStateHelpers
         if (track.Album != null) meta["album_title"] = track.Album;
         if (!string.IsNullOrEmpty(track.AlbumUri)) meta["album_uri"] = track.AlbumUri;
         if (!string.IsNullOrEmpty(track.ArtistUri) && !IsSpotifyEpisodeUri(track.Uri)) meta["artist_uri"] = track.ArtistUri;
+        if (track.IsExplicit) meta["wavee.is_explicit"] = "true";
+        if (track.HasVideo) meta["wavee.has_video"] = "true";
         // Queue-wide context URI is written only if the track's per-track
         // Metadata doesn't already carry one. This preserves the original
         // context URI on prev_tracks after an autoplay switchover (played
@@ -1151,8 +1173,10 @@ public static class PlaybackStateHelpers
             AlbumUri: AlbumOrShowUriFor(pt),
             ArtistUri: ArtistUriFor(pt),
             ImageUrl: imageUrl,
+            IsExplicit: MetadataFlag(metadata, "wavee.is_explicit", "is_explicit", "explicit"),
             IsUserQueued: provider == "queue",
-            Provider: provider
+            Provider: provider,
+            HasVideo: MetadataHasVideo(metadata)
         );
     }
 

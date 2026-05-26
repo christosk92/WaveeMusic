@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Helpers;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Controls.AvatarStack;
@@ -30,12 +31,13 @@ public sealed record AvatarStackItem(string DisplayName, string? ImageUrl);
 /// the same halo + a tinted inner disc so the cluster reads as a homogeneous
 /// row of circles.
 /// </summary>
-public sealed partial class AvatarStack : UserControl
+public sealed partial class AvatarStack : UserControl, INavCacheSurfaceParticipant
 {
     private const int AvatarSize = 28;
     private const int RingThickness = 2;
     private const int OuterSize = AvatarSize + 2 * RingThickness;
     private const int Overlap = 12;
+    private bool _releasedForNavCache;
 
     public AvatarStack()
     {
@@ -115,6 +117,9 @@ public sealed partial class AvatarStack : UserControl
 
     private void Rebuild()
     {
+        if (_releasedForNavCache)
+            return;
+
         HostStack.Children.Clear();
 
         var items = Items?.ToList() ?? new List<AvatarStackItem>();
@@ -199,5 +204,38 @@ public sealed partial class AvatarStack : UserControl
                 }
             },
         };
+    }
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_releasedForNavCache)
+            return false;
+
+        var hadChildren = HostStack.Children.Count > 0;
+        _releasedForNavCache = true;
+        HostStack.Children.Clear();
+        return hadChildren;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_releasedForNavCache)
+            return false;
+
+        _releasedForNavCache = false;
+        Rebuild();
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    {
+        get
+        {
+            if (_releasedForNavCache)
+                return 0;
+
+            var visibleCount = Math.Min(Items?.Count() ?? 0, Math.Max(0, MaxVisible));
+            return visibleCount * (long)(AvatarSize * 2) * (AvatarSize * 2) * 4;
+        }
     }
 }

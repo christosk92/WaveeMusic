@@ -82,6 +82,7 @@ public sealed partial class DetailsTabHost : UserControl
     private const float AlbumArtBlurAmount = 20f;
     private const float AlbumArtSaturationAmount = 0.88f;
     private const float CanvasSaturationAmount = 0.82f;
+    private const int MaxCanvasFrameDimension = 960;
     private const int PodcastChapterPreviewCount = 4;
 
     // Details lyrics snippet sync timing
@@ -342,6 +343,11 @@ public sealed partial class DetailsTabHost : UserControl
         TeardownDetailsLyricsSnippet();
         CancelDetailsAiMeaningRequest();
 
+        DetailsArtistAvatar.ProfilePicture = null;
+        DetailsPodcastArtwork.Source = null;
+        DetailsPodcastChaptersList.ItemsSource = null;
+        DetailsPodcastComments.Comments = null;
+
         _canvasDevice?.Dispose();
         _canvasDevice = null;
         _initialized = false;
@@ -359,10 +365,7 @@ public sealed partial class DetailsTabHost : UserControl
 
         if (!IsDetailsTabActive)
         {
-            DetachDetailsLyricsRenderLoop();
-            CanvasLyricsOverlay.Visibility = Visibility.Collapsed;
-            _canvasLyricsActive = false;
-            ClearCanvasLyricOverlay();
+            TeardownDetailsLyricsSnippet();
         }
         else
         {
@@ -1518,6 +1521,10 @@ public sealed partial class DetailsTabHost : UserControl
         _lastSnippetLineIndex = -1;
         DetachDetailsLyricsRenderLoop();
         ClearCanvasLyricOverlay();
+        TeardownDetailsLyricsComposition();
+        DetailsLyricsPrev.Text = "";
+        DetailsLyricsCurrent.Text = "";
+        DetailsLyricsNext.Text = "";
         CanvasLyricsOverlay.Visibility = Visibility.Collapsed;
         _canvasLyricsActive = false;
     }
@@ -1536,7 +1543,7 @@ public sealed partial class DetailsTabHost : UserControl
         }
         else
         {
-            ClearCanvasLyricOverlay();
+            TeardownDetailsLyricsComposition();
         }
 
         UpdateDetailsLyricsUpdateMode();
@@ -2831,8 +2838,7 @@ public sealed partial class DetailsTabHost : UserControl
 
         var naturalW = (int)(_canvasMediaPlayer.PlaybackSession?.NaturalVideoWidth ?? 0u);
         var naturalH = (int)(_canvasMediaPlayer.PlaybackSession?.NaturalVideoHeight ?? 0u);
-        var sourceW = Math.Max(1, naturalW > 0 ? naturalW : w);
-        var sourceH = Math.Max(1, naturalH > 0 ? naturalH : h);
+        var (sourceW, sourceH) = ComputeCanvasFrameTargetSize(w, h, naturalW, naturalH);
 
         try
         {
@@ -2895,6 +2901,26 @@ public sealed partial class DetailsTabHost : UserControl
             if (!string.IsNullOrEmpty(url))
                 SetupCanvasBackground(url);
         }
+    }
+
+    private static (int Width, int Height) ComputeCanvasFrameTargetSize(
+        int displayWidth,
+        int displayHeight,
+        int naturalWidth,
+        int naturalHeight)
+    {
+        var aspectW = Math.Max(1, naturalWidth > 0 ? naturalWidth : displayWidth);
+        var aspectH = Math.Max(1, naturalHeight > 0 ? naturalHeight : displayHeight);
+        var longEdge = Math.Clamp(Math.Max(displayWidth, displayHeight), 1, MaxCanvasFrameDimension);
+
+        if (aspectW >= aspectH)
+        {
+            var height = Math.Max(1, (int)Math.Round(longEdge * (aspectH / (double)aspectW)));
+            return (longEdge, height);
+        }
+
+        var width = Math.Max(1, (int)Math.Round(longEdge * (aspectW / (double)aspectH)));
+        return (width, longEdge);
     }
 
     private void ResetCanvasFrameScheduling()

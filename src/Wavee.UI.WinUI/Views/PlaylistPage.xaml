@@ -279,7 +279,7 @@
                         Grid.Column="0"
                         HorizontalScrollMode="Disabled"
                         VerticalScrollMode="Auto"
-                        VerticalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Hidden"
                         ZoomMode="Disabled"
                         ContentOrientation="Vertical">
             <StackPanel x:Name="LeftColumnHost"
@@ -689,27 +689,38 @@
                 Width="12"
                 ResizeCompleted="PlaylistSplitter_ResizeCompleted"/>
 
-            <!-- Track grid in column 2. IsLoading is driven by IsLoadingTracks so
-                 the grid can show lightweight skeleton rows while playlist tracks
-                 lazy-load independently of metadata. Rewrite swapped
-                 TrackListView for TrackDataGrid — filter/sort/columns live inside the
-                 grid's toolbar now; the page-level hero + narrow-mode header that used
-                 to nest inside TrackListView.HeaderContent still render above the grid. -->
-            <tdg:TrackDataGrid
-                x:Name="TrackGrid"
-                Grid.Row="1" Grid.Column="2"
-                VerticalAlignment="Stretch"
-                Margin="0,0,0,0"
-                PageKey="playlist"
-                FooterPlacement="InRowsScroll"
-                IsLoading="{x:Bind ViewModel.TrackList.IsLoadingTracks, Mode=OneWay}"
-                LoadingRowCount="{x:Bind ViewModel.TrackList.TotalTracks, Mode=OneWay}"
-                AddedByVisible="{x:Bind ViewModel.Header.ShouldShowAddedByColumn, Mode=OneWay}"
-                ContextUri="{x:Bind ViewModel.PlaylistId, Mode=OneWay}"
-                CanReorder="{x:Bind ViewModel.TrackList.CanReorderTracks, Mode=OneWay}"
-                TracksReorderRequested="TrackGrid_TracksReorderRequested"
-                ItemsSource="{x:Bind ViewModel.TrackList.FilteredTracks, Mode=OneWay}"
-                PlayCommand="{x:Bind ViewModel.TrackList.PlayTrackCommand}">
+            <!-- Track column scroll owner. Cover playlists keep TrackDataGrid's
+                 internal virtualized row scroller; banner playlists flip this
+                 wrapper to the content scroller so the banner, toolbar, and
+                 rows move as one page surface. -->
+            <ScrollView x:Name="ContentScrollView"
+                        Grid.Row="1"
+                        Grid.Column="2"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollMode="Disabled"
+                        VerticalScrollBarVisibility="Hidden"
+                        ZoomMode="Disabled"
+                        ContentOrientation="Vertical">
+                <!-- Track grid in column 2. IsLoading is driven by IsLoadingTracks so
+                     the grid can show lightweight skeleton rows while playlist tracks
+                     lazy-load independently of metadata. Rewrite swapped
+                     TrackListView for TrackDataGrid — filter/sort/columns live inside the
+                     grid's toolbar now; the page-level hero + narrow-mode header that used
+                     to nest inside TrackListView.HeaderContent still render above the grid. -->
+                <tdg:TrackDataGrid
+                    x:Name="TrackGrid"
+                    VerticalAlignment="Stretch"
+                    Margin="0,0,0,0"
+                    PageKey="playlist"
+                    FooterPlacement="InRowsScroll"
+                    IsLoading="{x:Bind ViewModel.TrackList.IsLoadingTracks, Mode=OneWay}"
+                    LoadingRowCount="{x:Bind ViewModel.TrackList.TotalTracks, Mode=OneWay}"
+                    AddedByVisible="{x:Bind ViewModel.Header.ShouldShowAddedByColumn, Mode=OneWay}"
+                    ContextUri="{x:Bind ViewModel.PlaylistId, Mode=OneWay}"
+                    CanReorder="{x:Bind ViewModel.TrackList.CanReorderTracks, Mode=OneWay}"
+                    TracksReorderRequested="TrackGrid_TracksReorderRequested"
+                    ItemsSource="{x:Bind ViewModel.TrackList.FilteredTracks, Mode=OneWay}"
+                    PlayCommand="{x:Bind ViewModel.TrackList.PlayTrackCommand}">
                 <tdg:TrackDataGrid.FilterBarContent>
                     <ToggleButton
                         MinHeight="32"
@@ -899,8 +910,9 @@
                             </StackPanel>
                         </Grid>
                     </StackPanel>
-                </tdg:TrackDataGrid.FooterContent>
-            </tdg:TrackDataGrid>
+                    </tdg:TrackDataGrid.FooterContent>
+                </tdg:TrackDataGrid>
+            </ScrollView>
 
             <Grid
                 x:Name="EmptyPlaylistState"

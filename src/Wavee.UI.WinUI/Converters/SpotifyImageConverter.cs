@@ -27,6 +27,8 @@ namespace Wavee.UI.WinUI.Converters;
 /// </summary>
 public sealed class SpotifyImageConverter : IValueConverter
 {
+    private const int MaxDecodePixelWidth = 1024;
+
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
         if (value is not string uri) return null;
@@ -40,6 +42,7 @@ public sealed class SpotifyImageConverter : IValueConverter
         }
 
         var decodeSize = parameter is string s && int.TryParse(s, out var d) ? d : 200;
+        decodeSize = Math.Clamp(decodeSize, 1, MaxDecodePixelWidth);
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out var imageUri))
             return null;

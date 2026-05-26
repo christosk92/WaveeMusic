@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
+using Wavee.AI.Tools;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -7,85 +9,71 @@ internal static class LyricsAiPrompts
 {
     internal const int MaxFallbackLyricsCharacters = 3200;
 
-    // The prompt treats lyrics as primary evidence and track/background knowledge
-    // as context only. Citations still point to lyric line numbers, never model
-    // memory. The paragraph is emitted as the concatenation of segments[].text —
-    // there is no separate top-level paragraph field, so the model never emits the
-    // same text twice. citationLine on each segment is the startLine value of
-    // the citation it references (or 0 for uncited bridge text).
-    //
-    // Output budget is tight on purpose: Phi Silica has no MaxGeneratedTokens cap,
-    // so generation time scales with output length. 40-60 words + 3-4 segments +
-    // 2 citations roughly halves the generated-token count vs the earlier 80-120
-    // word / 4-8 segment / 2-3 citation budget.
-    internal static string BuildLyricsMeaningPrompt(string numberedLyrics, string trackContext)
-    {
-        return
-            "Interpret song lyrics using only the numbered lyrics as primary " +
-            "evidence. Track context may disambiguate, never override. Do not " +
-            "invent facts.\n\n" +
-            "Write one paragraph: 2 to 3 sentences, 40 to 60 words, naming who " +
-            "speaks, to whom, what they feel, what they want. No bullets, lists, " +
-            "headings, markdown, or line breaks. Interpret non-English lyrics in " +
-            "English. Paraphrase — never quote lyric text.\n\n" +
-            "Split the paragraph into 3 to 4 segments. Concatenating segment.text " +
-            "in order, joined by single spaces where needed, must equal the full " +
-            "paragraph.\n\n" +
-            "Emit exactly 2 citations. Use 1-based startLine and endLine; endLine " +
-            "minus startLine must be 2 or less (1 to 3 consecutive lines). summary " +
-            "is a 4-to-6-word phrase paraphrasing the cited lines without quoting.\n\n" +
-            "Each cited segment sets citationLine to the matching citation's " +
-            "startLine. Uncited bridge segments set citationLine to 0.\n\n" +
-            trackContext +
-            "LYRICS WITH LINE NUMBERS:\n" +
-            numberedLyrics;
-    }
-
-    internal static string BuildLyricsMeaningFallbackPrompt(string numberedLyrics, string trackContext)
-    {
-        return
-            "Interpret these numbered lyrics in English in one short paragraph " +
-            "(2 to 3 sentences, 40 to 60 words). Lyrics are the primary evidence; " +
-            "track context may disambiguate only. Do not invent facts. Paraphrase " +
-            "only — never quote, copy, or romanize lyric text. If there is not " +
-            "enough understandable context, say so plainly.\n\n" +
-            "Split the paragraph into 3 to 4 segments; concatenating segment.text " +
-            "in order (joined by single spaces where needed) must equal the full " +
-            "paragraph. Emit exactly 2 citations with 1-based startLine and endLine " +
-            "where endLine minus startLine is 2 or less (1 to 3 consecutive lines). " +
-            "summary is a 4-to-6-word phrase. Each cited segment sets citationLine " +
-            "to the matching citation's startLine; uncited bridge segments set " +
-            "citationLine to 0.\n\n" +
-            trackContext +
-            "LYRICS WITH LINE NUMBERS:\n" +
-            numberedLyrics;
-    }
-
-    internal static string BuildLyricsMeaningPlainTextPrompt(string numberedLyrics, string trackContext)
+    internal static string BuildLyricsMeaningPlainTextPrompt(
+        string numberedLyrics,
+        string trackContext,
+        IReadOnlyList<WebSearchResult>? webResults)
     {
         return
             "Interpret song lyrics with the numbered lyrics as primary evidence. " +
             "Use trained music-domain knowledge about the artist, genre, song, idioms, " +
             "references, and cultural context when it helps, but never override the lyrics. " +
+            "External web context is provided as supporting background to ground references, " +
+            "idioms, and cultural context — repeat web facts only when they're clearly about the same song. " +
             "Do not invent facts.\n\n" +
             "Write one tight paragraph in English: 2 sentences, 35 to 55 words, naming " +
             "who speaks, to whom, what they feel, and what they want. No bullets, lists, " +
             "headings, markdown, line breaks, citations, or quoted lyric text. Paraphrase only.\n\n" +
             trackContext +
+            BuildWebResultsBlock(webResults) +
             "LYRICS WITH LINE NUMBERS:\n" +
             numberedLyrics;
     }
 
-    internal static string BuildLyricsMeaningPlainTextFallbackPrompt(string numberedLyrics, string trackContext)
+    internal static string BuildLyricsMeaningPlainTextFallbackPrompt(
+        string numberedLyrics,
+        string trackContext,
+        IReadOnlyList<WebSearchResult>? webResults)
     {
         return
             "Interpret these numbered lyrics in English in one concise paragraph " +
             "(2 sentences, 35 to 50 words). Lyrics are the primary evidence; trained " +
-            "music-domain knowledge and track context may disambiguate only. Do not invent facts, quote lyrics, use " +
-            "markdown, or add line breaks. If context is too thin, say so plainly.\n\n" +
+            "music-domain knowledge, track context, and web background may disambiguate only. " +
+            "Do not invent facts, quote lyrics, use markdown, or add line breaks. " +
+            "If context is too thin, say so plainly.\n\n" +
             trackContext +
+            BuildWebResultsBlock(webResults) +
             "LYRICS WITH LINE NUMBERS:\n" +
             numberedLyrics;
+    }
+
+    internal static string BuildWebResultsBlock(IReadOnlyList<WebSearchResult>? webResults)
+    {
+        if (webResults is null || webResults.Count == 0)
+            return string.Empty;
+
+        var sb = new StringBuilder("WEB_RESULTS:\n");
+        var emitted = 0;
+        foreach (var result in webResults)
+        {
+            if (emitted >= 5) break;
+            if (string.IsNullOrWhiteSpace(result.Title)) continue;
+
+            var snippet = (result.Snippet ?? string.Empty).Trim();
+            if (snippet.Length > 280) snippet = snippet[..280];
+
+            sb.Append("- ").Append(result.Title.Trim());
+            if (!string.IsNullOrWhiteSpace(snippet))
+                sb.Append(" — ").Append(snippet);
+            if (!string.IsNullOrWhiteSpace(result.Source))
+                sb.Append(" (").Append(result.Source).Append(')');
+            sb.AppendLine();
+            emitted++;
+        }
+
+        if (emitted == 0) return string.Empty;
+        sb.AppendLine();
+        return sb.ToString();
     }
 
     internal static string BuildTrackContext(string? trackTitle, string? artistName)

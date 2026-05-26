@@ -12,6 +12,36 @@
 
     <UserControl.Resources>
         <converters:SpotifyImageConverter x:Key="SpotifyImageConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+
+        <Style x:Key="QueueVideoAvailabilityBadgeIconStyle" TargetType="FontIcon">
+            <Setter Property="Glyph" Value="&#xE714;"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}"/>
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="QueueExplicitContentBadgeStyle" TargetType="Border">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{ThemeResource TextFillColorTertiaryBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="MinWidth" Value="13"/>
+            <Setter Property="Height" Value="13"/>
+            <Setter Property="Padding" Value="2,0"/>
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="QueueExplicitContentBadgeTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
 
         <!-- Queue rows are ListViewItems; strip the default padding / min-height
              so they match the 52px row template, and keep content stretched. -->
@@ -108,18 +138,41 @@
                                    MaxLines="1"
                                    TextTrimming="CharacterEllipsis"/>
                     </HyperlinkButton>
-                    <HyperlinkButton Tag="{x:Bind Mode=OneTime}"
-                                     Click="ArtistLink_Click"
-                                     Padding="0" MinWidth="0" MinHeight="0"
-                                     Background="Transparent" BorderThickness="0"
-                                     HorizontalAlignment="Stretch"
-                                     HorizontalContentAlignment="Left">
-                        <TextBlock Text="{x:Bind Subtitle, Mode=OneTime}"
-                                   FontSize="11"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   MaxLines="1"
-                                   TextTrimming="CharacterEllipsis"/>
-                    </HyperlinkButton>
+                    <Grid ColumnSpacing="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Margin="0,0,4,0"
+                                Style="{StaticResource QueueExplicitContentBadgeStyle}"
+                                Visibility="{x:Bind IsExplicit, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"
+                                ToolTipService.ToolTip="Explicit">
+                            <TextBlock Text="E" Style="{StaticResource QueueExplicitContentBadgeTextStyle}"/>
+                        </Border>
+
+                        <FontIcon Grid.Column="1"
+                                  Margin="0,0,4,0"
+                                  Style="{StaticResource QueueVideoAvailabilityBadgeIconStyle}"
+                                  Visibility="{x:Bind HasVideo, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  ToolTipService.ToolTip="Music video available"/>
+
+                        <HyperlinkButton Grid.Column="2"
+                                         Tag="{x:Bind Mode=OneTime}"
+                                         Click="ArtistLink_Click"
+                                         Padding="0" MinWidth="0" MinHeight="0"
+                                         Background="Transparent" BorderThickness="0"
+                                         HorizontalAlignment="Stretch"
+                                         HorizontalContentAlignment="Left">
+                            <TextBlock Text="{x:Bind Subtitle, Mode=OneTime}"
+                                       FontSize="11"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       MaxLines="1"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </HyperlinkButton>
+                    </Grid>
                 </StackPanel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4"
                             Visibility="{x:Bind IsShimmer, Mode=OneTime}">

@@ -127,30 +127,36 @@ public sealed class PageHost : ContentControl
     }
 
     /// <summary>
-    /// Evicts every collapsed cached page, preserving only the active page.
-    /// Returns the number of page trees dropped.
+    /// Evicts collapsed pages from oldest to newest while preserving the active
+    /// page and the requested number of newest collapsed pages.
     /// </summary>
-    public int EvictAllCollapsed()
+    public int EvictCollapsedPages(int keepNewestCollapsed = 0)
     {
-        var removed = 0;
-        foreach (var type in _lru.ToArray())
+        keepNewestCollapsed = Math.Max(0, keepNewestCollapsed);
+
+        var collapsed = new List<Type>();
+        foreach (var type in _lru)
         {
-            if (type == _currentPageType)
-                continue;
+            if (type != _currentPageType && _cache.ContainsKey(type))
+                collapsed.Add(type);
+        }
 
-            if (!_cache.TryGetValue(type, out var victim))
-                continue;
-
-            _cache.Remove(type);
-            _lru.Remove(type);
-            _container.Children.Remove(victim);
-            if (victim is IDisposable d)
-                d.Dispose();
-            removed++;
+        var evictCount = Math.Max(0, collapsed.Count - keepNewestCollapsed);
+        var removed = 0;
+        for (var i = 0; i < evictCount; i++)
+        {
+            if (EvictPage(collapsed[i]))
+                removed++;
         }
 
         return removed;
     }
+
+    /// <summary>
+    /// Evicts every collapsed cached page, preserving only the active page.
+    /// Returns the number of page trees dropped.
+    /// </summary>
+    public int EvictAllCollapsed() => EvictCollapsedPages(keepNewestCollapsed: 0);
 
     public event EventHandler<PageHostNavigatingEventArgs>? Navigating;
     public event EventHandler<PageHostNavigatedEventArgs>? Navigated;
@@ -375,12 +381,20 @@ public sealed class PageHost : ContentControl
                 _lru.RemoveFirst();
             }
 
-            if (_cache.TryGetValue(victimType, out var victim))
-            {
-                _cache.Remove(victimType);
-                _container.Children.Remove(victim);
-                if (victim is IDisposable d) d.Dispose();
-            }
+            EvictPage(victimType);
         }
+    }
+
+    private bool EvictPage(Type pageType)
+    {
+        if (!_cache.TryGetValue(pageType, out var victim))
+            return false;
+
+        _cache.Remove(pageType);
+        _lru.Remove(pageType);
+        _container.Children.Remove(victim);
+        if (victim is IDisposable d)
+            d.Dispose();
+        return true;
     }
 }

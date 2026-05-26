@@ -1135,6 +1135,15 @@ public sealed partial class ExpandedPlayerView : UserControl
             return;
         }
 
+        if (!IsLyricsModeActive)
+        {
+            _surfaceTintTimer?.Stop();
+            _lyricsCanvasClearColor = target;
+            FullscreenLyricsCanvas.SetClearColor(target);
+            UpdateLyricsRenderState();
+            return;
+        }
+
         // Capture starting color from current state — picks up an in-flight
         // value if a previous fade is still running, so back-to-back track
         // changes don't snap mid-animation.
@@ -1159,6 +1168,15 @@ public sealed partial class ExpandedPlayerView : UserControl
         if (!_lyricsCanvasInitialized || FullscreenLyricsCanvas == null)
         {
             sender.Stop();
+            return;
+        }
+
+        if (!IsLyricsModeActive)
+        {
+            sender.Stop();
+            _lyricsCanvasClearColor = _surfaceTintTo;
+            FullscreenLyricsCanvas.SetClearColor(_surfaceTintTo);
+            UpdateLyricsRenderState();
             return;
         }
 
@@ -1193,6 +1211,12 @@ public sealed partial class ExpandedPlayerView : UserControl
     {
         if (!_lyricsCanvasInitialized || FullscreenLyricsCanvas == null || DispatcherQueue == null)
             return;
+
+        if (!IsLyricsModeActive)
+        {
+            UpdateLyricsRenderState();
+            return;
+        }
 
         FullscreenLyricsCanvas.SetRenderingActive(true);
 

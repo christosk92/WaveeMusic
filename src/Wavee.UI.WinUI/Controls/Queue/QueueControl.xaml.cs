@@ -53,6 +53,8 @@ public sealed partial class QueueDisplayItem : ObservableObject
     public string? AlbumName { get; init; }
     /// <summary>Formatted track duration (e.g. "3:24"); empty when unknown.</summary>
     public string? Duration { get; init; }
+    public bool IsExplicit { get; init; }
+    public bool HasVideo { get; init; }
     /// <summary>The track's own Spotify URI — used to build the drag payload
     /// when a queue row is dragged onto a playlist / other drop target.</summary>
     public string? TrackUri { get; init; }
@@ -404,8 +406,38 @@ public sealed partial class QueueControl : UserControl
         ArtistUri = t.ArtistUri,
         AlbumName = t.Album,
         Duration = FormatDuration(t.DurationMs),
+        IsExplicit = t.IsExplicit || MetadataFlag(t.Metadata, "wavee.is_explicit", "is_explicit", "explicit"),
+        HasVideo = t.HasVideo || MetadataHasVideo(t.Metadata),
         TrackUri = t.Uri,
     };
+
+    private static bool MetadataFlag(IReadOnlyDictionary<string, string>? metadata, params string[] keys)
+    {
+        if (metadata is null) return false;
+
+        foreach (var key in keys)
+        {
+            if (metadata.TryGetValue(key, out var value)
+                && (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(value, "1", StringComparison.Ordinal)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool MetadataHasVideo(IReadOnlyDictionary<string, string>? metadata)
+    {
+        if (metadata is null) return false;
+
+        if (MetadataFlag(metadata, "wavee.has_video", "has_video"))
+            return true;
+
+        return metadata.TryGetValue("track_player", out var player)
+               && string.Equals(player, "video", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string FormatDuration(int? ms)
     {
@@ -919,7 +951,8 @@ public sealed partial class QueueControl : UserControl
         public string AlbumId => LastSegment(_src.AlbumUri);
         public string? ImageUrl => _src.ImageUrl;
         public TimeSpan Duration => TimeSpan.Zero;
-        public bool IsExplicit => false;
+        public bool IsExplicit => _src.IsExplicit;
+        public bool HasVideo => _src.HasVideo;
         public string DurationFormatted => _src.Duration ?? "";
         public int OriginalIndex => _src.QueueIndex;
         public bool IsLoaded => true;

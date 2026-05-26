@@ -39,7 +39,7 @@ using Wavee.UI.WinUI.ViewModels.Playlist;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
+public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryParticipant, INavCacheSurfaceParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────
     string IInPageFilterable.FilterQuery
@@ -85,6 +85,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     private CompositionColorGradientStop? _heroScrimBottomStop;
     private LoadedImageSurface? _heroImageSurface;
     private string? _appliedHeroUrl;
+    private bool _headerSurfaceReleasedForNavCache;
     private string? _retriedCoverImageUrl;
 
     public PlaylistViewModel ViewModel { get; }
@@ -96,7 +97,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     // ── IContentPageHost ─────────────────────────────────────────────────────
     FrameworkElement? IContentPageHost.ShimmerContainer => ShimmerContainer;
     FrameworkElement IContentPageHost.ContentContainer => LeftColumnHost;
-    FrameworkLayer IContentPageHost.CrossfadeLayer => FrameworkLayer.Composition;
+    FrameworkLayer IContentPageHost.CrossfadeLayer => FrameworkLayer.Xaml;
     string IContentPageHost.PageIdForLogging => $"playlist:{XfadeLog.Tag(ViewModel.PlaylistId)}";
     bool IContentPageHost.IsLoading => ViewModel.IsLoading;
     bool IContentPageHost.HasContent => !string.IsNullOrEmpty(ViewModel.Header.PlaylistName);
@@ -169,11 +170,14 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             e.Handled = true;
         };
 
-        // Start the wide content panel invisible at composition level so the
-        // shimmer→content swap is a smooth crossfade. The previous BoolToVisibility
-        // hard cut snapped distractingly when IsLoading flipped false.
-        ElementCompositionPreview.GetElementVisual(LeftColumnHost).Opacity = 0;
-        TrackGrid.RowsScrollViewChanged += TrackGrid_RowsScrollViewChanged;
+        // Start the wide content panel invisible without taking a composition
+        // visual lease on LeftColumnHost. Banner-mode transition leaves and
+        // row hover states use WinUI Scale; mixing that API with
+        // ElementCompositionPreview.GetElementVisual on the same tree can
+        // throw "Calling Scale API is not allowed on this object".
+        LeftColumnHost.Opacity = 0;
+        ContentScrollView.SizeChanged += ContentScrollView_SizeChanged;
+        ApplyContentScrollMode();
         Loaded += PlaylistPage_Loaded;
         Unloaded += PlaylistPage_Unloaded;
         _logger?.LogDebug("[xfade][playlist:{Id}] ctor.enter", XfadeLog.Tag(ViewModel.PlaylistId));
@@ -222,8 +226,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         _loadedViewWorkGeneration++;
         PageController.IsNavigatingAway = true;
         DetachShyHeader();
-        _heroImageSurface?.Dispose();
-        _heroImageSurface = null;
+        ReleaseHeaderBackgroundSurface();
     }
 
     private void QueueInitialBindingDerivedUiSync()
@@ -271,23 +274,14 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
 
     private void AttachLoadedViewWork()
     {
-        AttachShyHeader();
-    }
-
-    private void TrackGrid_RowsScrollViewChanged(object? sender, EventArgs e)
-    {
-        if (_isDisposed)
-            return;
-
-        DetachShyHeader();
+        ApplyContentScrollMode();
         AttachShyHeader();
     }
 
     // ── Shy-header (banner → pinned PlaylistShyPill morph) ──────────────────
     //
-    // Banner-mode playlists keep the compact shy pill, but it is driven by
-    // TrackDataGrid's row scroller instead of a page-level ScrollView so the
-    // rows stay virtualized.
+    // Banner-mode playlists keep the compact shy pill, driven by the right
+    // content ScrollView so the banner, toolbar, and rows move as one surface.
     //
     // PlaylistPage's banner is built from custom composition visuals (image
     // + scrim) plus a XAML procedural-gradient fallback, so it doesn't expose
@@ -307,7 +301,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             return;
         }
 
-        if (TrackGrid.RowsScrollView is not { } rowsScrollView ||
+        if (ContentScrollView is null ||
             HeroBannerRow is null ||
             BannerOverlayPanel is null ||
             PlaylistShyPill is null)
@@ -319,7 +313,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         if (transition is null) return;
 
         _shyHeader = new ShyHeaderController(
-            rowsScrollView,
+            ContentScrollView,
             HeroBannerRow,
             BannerOverlayPanel,
             PlaylistShyPill,
@@ -330,6 +324,34 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             logger: _logger);
         _shyHeader.Attach();
         _shyHeader.Reset();
+    }
+
+    private void ContentScrollView_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyContentScrollMode();
+    }
+
+    private void ApplyContentScrollMode()
+    {
+        if (ContentScrollView is null || TrackGrid is null)
+            return;
+
+        var isBanner = ViewModel.Header.LayoutMode == PlaylistLayoutMode.Banner;
+        Grid.SetRow(ContentScrollView, isBanner ? 0 : 1);
+        Grid.SetRowSpan(ContentScrollView, isBanner ? 2 : 1);
+
+        ContentScrollView.VerticalScrollMode = isBanner
+            ? ScrollingScrollMode.Auto
+            : ScrollingScrollMode.Disabled;
+        ContentScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
+
+        TrackGrid.IsParentScrolling = isBanner;
+        TrackGrid.Margin = isBanner
+            ? new Thickness(0, PlaylistCoverDecodeSize, 0, 0)
+            : new Thickness(0);
+        TrackGrid.Height = isBanner
+            ? double.NaN
+            : Math.Max(0, ContentScrollView.ActualHeight);
     }
 
     private void DetachShyHeader()
@@ -561,12 +583,11 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         HeaderBackgroundHost.Loaded -= HeaderBackgroundHost_Loaded;
         HeaderBackgroundHost.Unloaded -= HeaderBackgroundHost_Unloaded;
         ActualThemeChanged -= PlaylistPage_ActualThemeChanged;
-        TrackGrid.RowsScrollViewChanged -= TrackGrid_RowsScrollViewChanged;
+        ContentScrollView.SizeChanged -= ContentScrollView_SizeChanged;
         DetachShyHeader();
         SelectionBar.Detach();
         TrackGrid.Dispose();
-        _heroImageSurface?.Dispose();
-        _heroImageSurface = null;
+        ReleaseHeaderBackgroundSurface();
         _heroSurfaceBrush = null;
         _heroSprite = null;
         _heroScrimSprite = null;
@@ -712,6 +733,9 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         try
         {
             LeftColumnScrollView?.ScrollTo(
+                0, 0,
+                new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+            ContentScrollView?.ScrollTo(
                 0, 0,
                 new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
             TrackGrid?.ScrollRowsToTop();
@@ -943,6 +967,40 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         // two FilteredTracks.ReplaceWith resets, two waves of TrackItem materialization.
     }
 
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_headerSurfaceReleasedForNavCache)
+            return false;
+
+        var hadSurface = _heroImageSurface is not null || _heroSurfaceBrush?.Surface is not null;
+        ReleaseHeaderBackgroundSurface();
+        _headerSurfaceReleasedForNavCache = true;
+        return hadSurface;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_headerSurfaceReleasedForNavCache)
+            return false;
+
+        _headerSurfaceReleasedForNavCache = false;
+        ApplyHeaderBackground();
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    {
+        get
+        {
+            if (_headerSurfaceReleasedForNavCache || _heroImageSurface is null)
+                return 0;
+
+            var width = HeaderBackgroundHost?.ActualWidth > 0 ? HeaderBackgroundHost.ActualWidth : 1600;
+            var height = HeaderBackgroundHost?.ActualHeight > 0 ? HeaderBackgroundHost.ActualHeight : 280;
+            return (long)Math.Ceiling(width) * (long)Math.Ceiling(height) * 4;
+        }
+    }
+
     private void RestorePlaylistPanelWidth(string playlistId)
     {
         const double defaultWidth = 200;
@@ -983,6 +1041,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         if (_isDisposed) return;
 
         DetachShyHeader();
+        ApplyContentScrollMode();
         AttachShyHeader();
 
         FrameworkElement? target = ViewModel.Header.LayoutMode switch
@@ -1144,8 +1203,12 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
 
     private void ReleaseHeaderBackgroundSurface()
     {
-        _heroImageSurface?.Dispose();
-        _heroImageSurface = null;
+        if (_heroImageSurface is not null)
+        {
+            _heroImageSurface.LoadCompleted -= OnHeroImageLoadCompleted;
+            _heroImageSurface.Dispose();
+            _heroImageSurface = null;
+        }
         _appliedHeroUrl = null;
 
         if (_heroSurfaceBrush != null)
@@ -1155,6 +1218,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     private void ApplyHeaderBackground()
     {
         if (_heroSurfaceBrush == null || _heroCompositor == null) return;
+        if (_headerSurfaceReleasedForNavCache) return;
 
         var url = ViewModel.Header.HeaderImageUrl;
 
@@ -1163,8 +1227,12 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         if (string.Equals(_appliedHeroUrl, url, StringComparison.Ordinal))
             return;
 
-        _heroImageSurface?.Dispose();
-        _heroImageSurface = null;
+        if (_heroImageSurface is not null)
+        {
+            _heroImageSurface.LoadCompleted -= OnHeroImageLoadCompleted;
+            _heroImageSurface.Dispose();
+            _heroImageSurface = null;
+        }
 
         var httpsUrl = string.IsNullOrEmpty(url) ? null : SpotifyImageHelper.ToHttpsUrl(url);
 

@@ -48,12 +48,12 @@
                        TextWrapping="Wrap"
                        Margin="0,0,0,8"
                        Tag="availability">
-                <Run Text="Powered by Phi Silica running on your PC's neural processor (NPU). Nothing is sent off-device. Available only on Copilot+ PCs (Snapdragon X, Intel Core Ultra Series 2, AMD Ryzen AI 300+) running Windows 11 24H2."/>
+                <Run Text="Powered by Phi Silica running on your PC's neural processor (NPU). Inference is on-device. To reduce hallucinations, the app also fetches a short anonymous web search (and Wikipedia for artists) and feeds it as supporting context for each answer. Available only on Copilot+ PCs (Snapdragon X, Intel Core Ultra Series 2, AMD Ryzen AI 300+) running Windows 11 24H2."/>
             </TextBlock>
 
             <!-- ── Master toggle ── -->
             <controls:SettingsCard Header="Enable on-device AI features"
-                                   Description="Off by default. When on, the model is downloaded the first time you use a feature."
+                                   Description="Off by default. When on, the model is downloaded the first time you use a feature. Each AI response is grounded with a single anonymous web search."
                                    IsEnabled="{x:Bind ViewModel.CanUseAi, Mode=OneWay}"
                                    Tag="availability">
                 <controls:SettingsCard.HeaderIcon>
@@ -148,26 +148,32 @@
                               OnContent="" OffContent="" />
             </controls:SettingsCard>
 
-            <!-- ── Online tools ── -->
-            <TextBlock Text="Tools"
+            <!-- ── Album ── -->
+            <TextBlock Text="Album"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       Margin="0,24,0,8"
+                       Tag="album" />
+
+            <controls:SettingsCard Header="About this album"
+                                   Description="On the album page, generate an on-device summary grounded by the tracklist plus a web search."
+                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
+                                   Tag="album">
+                <controls:SettingsCard.HeaderIcon>
+                    <ic:SymbolIcon Symbol="Sparkle" IconVariant="Filled" />
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AiAlbumSummarizeEnabled, Mode=TwoWay}"
+                              OnContent="" OffContent="" />
+            </controls:SettingsCard>
+
+            <!-- ── Web grounding ── -->
+            <TextBlock Text="Web grounding"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        Margin="0,24,0,8"
                        Tag="tools" />
 
-            <controls:SettingsCard Header="Allow online AI tools"
-                                   Description="Lets AI features call configured online tools such as web search when a question needs current information."
-                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
-                                   Tag="tools">
-                <controls:SettingsCard.HeaderIcon>
-                    <ic:SymbolIcon Symbol="Sparkle" IconVariant="Filled" />
-                </controls:SettingsCard.HeaderIcon>
-                <ToggleSwitch IsOn="{x:Bind ViewModel.AiOnlineToolsEnabled, Mode=TwoWay}"
-                              OnContent="" OffContent="" />
-            </controls:SettingsCard>
-
-            <controls:SettingsCard Header="Web search endpoint"
-                                   Description="Optional JSON search endpoint. Use {query} in the URL or expose a q= parameter."
-                                   IsEnabled="{x:Bind ViewModel.IsOnlineToolConfigurationEnabled, Mode=OneWay}"
+            <controls:SettingsCard Header="Custom web search endpoint"
+                                   Description="Optional. Override the built-in DuckDuckGo grounding with your own JSON endpoint (Brave, Bing, etc.). Use {query} in the URL or expose a q= parameter."
+                                   IsEnabled="{x:Bind ViewModel.IsCustomEndpointConfigurationEnabled, Mode=OneWay}"
                                    Tag="tools">
                 <controls:SettingsCard.HeaderIcon>
                     <ic:SymbolIcon Symbol="Search" />

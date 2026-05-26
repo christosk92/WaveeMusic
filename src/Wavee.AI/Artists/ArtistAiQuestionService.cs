@@ -135,6 +135,7 @@ public sealed class ArtistAiQuestionService
     private readonly IArtistAiToolProvider _artistTools;
     private readonly IAiFeatureSettings _settings;
     private readonly IWebSearchToolProvider? _webSearch;
+    private readonly IWikipediaLookup? _wikipedia;
     private readonly ILogger? _logger;
 
     public ArtistAiQuestionService(
@@ -142,12 +143,14 @@ public sealed class ArtistAiQuestionService
         IArtistAiToolProvider artistTools,
         IAiFeatureSettings settings,
         IWebSearchToolProvider? webSearch = null,
+        IWikipediaLookup? wikipedia = null,
         ILogger<ArtistAiQuestionService>? logger = null)
     {
         _model = model ?? throw new ArgumentNullException(nameof(model));
         _artistTools = artistTools ?? throw new ArgumentNullException(nameof(artistTools));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _webSearch = webSearch;
+        _wikipedia = wikipedia;
         _logger = logger;
     }
 
@@ -325,6 +328,7 @@ public sealed class ArtistAiQuestionService
         IReadOnlyList<ArtistReleaseFact> releases = [];
         IReadOnlyList<ArtistTrackFact> releaseTracks = [];
         IReadOnlyList<WebSearchResult> webResults = [];
+        WikipediaSummary? wikipedia = null;
 
         if (plan.UseProfile)
         {
@@ -338,6 +342,31 @@ public sealed class ArtistAiQuestionService
                 "Read artist profile",
                 ToolName: "artist.profile",
                 Detail: profile.MonthlyListeners > 0 ? $"{profile.MonthlyListeners:N0} monthly listeners" : null));
+
+            if (_wikipedia is not null)
+            {
+                activity.Report(new AiActivityEvent(
+                    AiActivityKind.ToolStarted,
+                    "Looking up Wikipedia",
+                    ToolName: "wikipedia.lookup"));
+                try
+                {
+                    wikipedia = await _wikipedia.LookupArtistAsync(request.ArtistName, cancellationToken).ConfigureAwait(false);
+                    activity.Report(new AiActivityEvent(
+                        AiActivityKind.ToolCompleted,
+                        wikipedia is null ? "No Wikipedia article found" : $"Loaded Wikipedia summary for {wikipedia.Title}",
+                        ToolName: "wikipedia.lookup"));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger?.LogDebug(ex, "Wikipedia lookup failed for {Artist}", request.ArtistName);
+                    activity.Report(new AiActivityEvent(
+                        AiActivityKind.Warning,
+                        "Wikipedia lookup failed",
+                        ToolName: "wikipedia.lookup",
+                        Detail: ex.Message));
+                }
+            }
         }
 
         if (plan.UseTopTracks)
@@ -389,18 +418,11 @@ public sealed class ArtistAiQuestionService
 
         if (plan.UseWebSearch)
         {
-            if (!_settings.AiOnlineToolsEnabled)
+            if (_webSearch?.IsAvailable != true)
             {
                 activity.Report(new AiActivityEvent(
                     AiActivityKind.ToolSkipped,
-                    "Web search is disabled in settings",
-                    ToolName: "web.search"));
-            }
-            else if (_webSearch?.IsAvailable != true)
-            {
-                activity.Report(new AiActivityEvent(
-                    AiActivityKind.ToolSkipped,
-                    "Web search provider is not configured yet",
+                    "Web search provider is not available",
                     ToolName: "web.search"));
             }
             else
@@ -409,18 +431,30 @@ public sealed class ArtistAiQuestionService
                     AiActivityKind.ToolStarted,
                     "Searching the web",
                     ToolName: "web.search"));
-                webResults = await _webSearch.SearchAsync(
-                    $"{request.ArtistName} {request.Question}",
-                    new WebSearchOptions(MaxResults: 5),
-                    cancellationToken).ConfigureAwait(false);
-                activity.Report(new AiActivityEvent(
-                    AiActivityKind.ToolCompleted,
-                    $"Found {webResults.Count} web results",
-                    ToolName: "web.search"));
+                try
+                {
+                    webResults = await _webSearch.SearchAsync(
+                        $"{request.ArtistName} {request.Question}",
+                        new WebSearchOptions(MaxResults: 5),
+                        cancellationToken).ConfigureAwait(false);
+                    activity.Report(new AiActivityEvent(
+                        AiActivityKind.ToolCompleted,
+                        $"Found {webResults.Count} web result{(webResults.Count == 1 ? "" : "s")}",
+                        ToolName: "web.search"));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger?.LogDebug(ex, "Web search failed for {Artist}/{Question}", request.ArtistName, request.Question);
+                    activity.Report(new AiActivityEvent(
+                        AiActivityKind.Warning,
+                        "Web search failed",
+                        ToolName: "web.search",
+                        Detail: ex.Message));
+                }
             }
         }
 
-        return new ArtistQuestionContext(profile, topTracks, releases, releaseTracks, webResults);
+        return new ArtistQuestionContext(profile, topTracks, releases, releaseTracks, webResults, wikipedia);
     }
 
     private static string BuildAnswerPrompt(
@@ -431,7 +465,7 @@ public sealed class ArtistAiQuestionService
         var sb = new StringBuilder();
         sb.AppendLine("You are Wavee's artist assistant inside a Spotify desktop client.");
         sb.AppendLine("Answer the user's artist question directly and concisely.");
-        sb.AppendLine("Use the provided Spotify catalog signals as primary evidence.");
+        sb.AppendLine("Treat evidence hierarchically: SPOTIFY_BIOGRAPHY and the artist catalog signals (POPULAR_TRACKS, RELEASES, TRACKS_FETCHED_FROM_RELEASES, PROFILE_SIGNALS) are primary evidence. WIKIPEDIA is reliable secondary context. WEB_RESULTS are supporting background — use them only when consistent with the above.");
         sb.AppendLine("You may use trained music-domain knowledge for broad, well-known context, but do not invent precise facts not supported by the supplied signals.");
         sb.AppendLine("If the question asks for 'best', distinguish popularity, historical importance, and personal taste when helpful.");
         sb.AppendLine("If the question asks for lesser-known songs, avoid only naming the most popular tracks unless you explain why catalog data is limited.");
@@ -450,6 +484,15 @@ public sealed class ArtistAiQuestionService
         {
             sb.AppendLine("SPOTIFY_BIOGRAPHY:");
             sb.AppendLine(TrimForPrompt(request.Biography!, 1400));
+            sb.AppendLine();
+        }
+
+        if (context.Wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract))
+        {
+            sb.AppendLine("WIKIPEDIA:");
+            if (!string.IsNullOrWhiteSpace(wiki.Description))
+                sb.Append("Summary: ").AppendLine(wiki.Description);
+            sb.AppendLine(TrimForPrompt(wiki.Extract, 1200));
             sb.AppendLine();
         }
 
@@ -793,8 +836,7 @@ public sealed class ArtistAiQuestionService
 
     private static string BuildPlannerPrompt(ArtistAiQuestionRequest request)
         => "Choose tools for an artist-question assistant.\n" +
-           "Available tools: artist.profile, artist.top_tracks, artist.discography, artist.release_tracks, web.search.\n" +
-           "Use web.search only for current, recent, news, tour, controversy, or post-release questions.\n" +
+           "Available tools: artist.profile, artist.top_tracks, artist.discography, artist.release_tracks.\n" +
            "Use artist.discography for oldest, early, albums, releases, lesser-known, deep cuts, or catalog questions.\n" +
            "Use artist.release_tracks for oldest songs, lesser-known songs, deep cuts, or questions that need tracks inside releases.\n" +
            "Use artist.top_tracks for best, biggest, most popular, hit, or recommendation questions.\n\n" +
@@ -855,12 +897,12 @@ public sealed class ArtistAiQuestionService
                     useTopTracks |= string.Equals(tool, "artist.top_tracks", StringComparison.OrdinalIgnoreCase);
                     useDiscography |= string.Equals(tool, "artist.discography", StringComparison.OrdinalIgnoreCase);
                     useReleaseTracks |= string.Equals(tool, "artist.release_tracks", StringComparison.OrdinalIgnoreCase);
-                    useWebSearch |= string.Equals(tool, "web.search", StringComparison.OrdinalIgnoreCase);
                 }
             }
 
             useReleaseTracks |= intent is ArtistQuestionIntent.OldestSongs or ArtistQuestionIntent.LesserKnownSongs;
             useDiscography |= useReleaseTracks;
+            useWebSearch = true; // Always ground artist answers with at least one web search.
 
             plan = new ArtistQuestionPlan(intent, useProfile, useTopTracks, useDiscography, useReleaseTracks, useWebSearch);
             return true;
@@ -972,8 +1014,7 @@ public sealed class ArtistAiQuestionService
               "artist.profile",
               "artist.top_tracks",
               "artist.discography",
-              "artist.release_tracks",
-              "web.search"
+              "artist.release_tracks"
             ]
           }
         }
@@ -1004,7 +1045,8 @@ public sealed class ArtistAiQuestionService
         IReadOnlyList<ArtistTrackFact> TopTracks,
         IReadOnlyList<ArtistReleaseFact> Releases,
         IReadOnlyList<ArtistTrackFact> ReleaseTracks,
-        IReadOnlyList<WebSearchResult> WebResults);
+        IReadOnlyList<WebSearchResult> WebResults,
+        WikipediaSummary? Wikipedia);
 
     private sealed record ArtistQuestionPlan(
         ArtistQuestionIntent Intent,
@@ -1015,17 +1057,17 @@ public sealed class ArtistAiQuestionService
         bool UseWebSearch)
     {
         public static ArtistQuestionPlan Default { get; } =
-            new(ArtistQuestionIntent.General, UseProfile: true, UseTopTracks: true, UseDiscography: false, UseReleaseTracks: false, UseWebSearch: false);
+            new(ArtistQuestionIntent.General, UseProfile: true, UseTopTracks: true, UseDiscography: false, UseReleaseTracks: false, UseWebSearch: true);
 
         public static ArtistQuestionPlan FromQuestion(string question)
         {
             var q = question.Trim().ToLowerInvariant();
             if (ContainsAny(q, "oldest", "earliest", "first song", "first songs", "early songs", "debut"))
-                return new(ArtistQuestionIntent.OldestSongs, true, true, true, true, false);
+                return new(ArtistQuestionIntent.OldestSongs, true, true, true, true, true);
             if (ContainsAny(q, "lesser known", "lesser-known", "deep cut", "deep cuts", "underrated", "hidden gem", "hidden gems", "obscure"))
-                return new(ArtistQuestionIntent.LesserKnownSongs, true, true, true, true, false);
+                return new(ArtistQuestionIntent.LesserKnownSongs, true, true, true, true, true);
             if (ContainsAny(q, "best song", "best songs", "best track", "best tracks", "biggest", "most popular", "hit", "hits", "classic"))
-                return new(ArtistQuestionIntent.BestKnownSongs, true, true, true, false, false);
+                return new(ArtistQuestionIntent.BestKnownSongs, true, true, true, false, true);
             if (ContainsAny(q, "latest", "recent", "newest", "news", "tour", "concert", "2026", "2025"))
                 return new(ArtistQuestionIntent.RecentOrCurrent, true, true, false, false, true);
 

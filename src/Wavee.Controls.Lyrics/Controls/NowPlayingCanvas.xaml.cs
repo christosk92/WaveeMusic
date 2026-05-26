@@ -203,13 +203,16 @@ namespace Wavee.Controls.Lyrics.Controls
 
         public void SetRenderingActive(bool isActive)
         {
-            if (Canvas == null) return;
-            Canvas.Paused = !isActive;
-            _engine.SetIsActive(isActive);
+            var canRender = isActive && Canvas != null;
+            if (Canvas != null)
+                Canvas.Paused = !canRender;
+            _engine.SetIsActive(canRender);
         }
 
         private void UserControl_Unloaded(object sender, RoutedEventArgs e)
         {
+            _engine.SetIsActive(false);
+
             Canvas.Draw -= Canvas_Draw;
             Canvas.Update -= Canvas_Update;
             Canvas.CreateResources -= Canvas_CreateResources;

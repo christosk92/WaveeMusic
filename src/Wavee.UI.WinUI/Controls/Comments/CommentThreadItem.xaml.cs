@@ -76,6 +76,7 @@ public sealed partial class CommentThreadItem : UserControl
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         DetachComment();
+        ClearVisuals();
     }
 
     private void ApplyCompactMode()
@@ -123,6 +124,8 @@ public sealed partial class CommentThreadItem : UserControl
 
     private void ClearVisuals()
     {
+        AvatarPicture.ProfilePicture = null;
+        AvatarPicture.DisplayName = "";
         BodyText.Text = "";
         HeaderText.Inlines.Clear();
         ReactionsChipButton.Visibility = Visibility.Collapsed;
@@ -130,6 +133,7 @@ public sealed partial class CommentThreadItem : UserControl
         ReplyComposerPanel.Visibility = Visibility.Collapsed;
         ReplyStatusText.Visibility = Visibility.Collapsed;
         RepliesExpander.Visibility = Visibility.Collapsed;
+        ReplyAvatarStack.ItemsSource = null;
         RepliesRepeater.ItemsSource = null;
     }
 

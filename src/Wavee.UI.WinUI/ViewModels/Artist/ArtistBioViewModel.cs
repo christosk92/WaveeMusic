@@ -314,6 +314,7 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
                 genres: null, // Not on overview today; passed when available
                 monthlyListenersDisplay: monthlyDisplay,
                 topTrackNames: topTrackNames,
+                spotifyBiography: _biographyProvider(),
                 deltaProgress: progress,
                 ct: cts.Token);
 

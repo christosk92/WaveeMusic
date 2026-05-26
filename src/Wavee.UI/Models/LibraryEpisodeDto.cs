@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using Wavee.UI.Contracts;
 
 namespace Wavee.UI.Models;
@@ -28,6 +29,9 @@ public sealed record LibraryEpisodeDto : ITrackItem
     public TimeSpan Duration { get; init; }
     public DateTime AddedAt { get; init; }
     public bool IsExplicit { get; init; }
+    public bool HasVideo => MediaTypes.Any(static type =>
+        string.Equals(type, "video", StringComparison.OrdinalIgnoreCase));
+    public bool IsVideoTrack => HasVideo;
     public bool IsPlayable { get; init; } = true;
     public TimeSpan PlayedPosition { get; private set; }
     public string? PlayedState { get; private set; }

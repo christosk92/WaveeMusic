@@ -157,7 +157,7 @@ public sealed partial class LyricsCanvasHost : UserControl
         _lyricsVm.PropertyChanged += OnLyricsVmPropertyChanged;
         _lyricsVm.PlaybackState.PropertyChanged += OnPlaybackStateChanged;
 
-        // Position timer — 50ms (~20fps) is enough for readable lyric progression
+        // Position timer - 250ms is enough for readable lyric progression
         // and keeps dispatcher pressure lower during playback.
         _positionTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _positionTimer.Interval = TimeSpan.FromMilliseconds(LyricsSyncTimerIntervalMs);
@@ -201,6 +201,7 @@ public sealed partial class LyricsCanvasHost : UserControl
             _canvas.SetRenderingActive(false);
             if (!_lyricsCanvasDataCleared)
                 _canvas.SetLyricsData(null);
+            _canvas.SetSongInfo(new SongInfo { Title = "", Artist = "", Album = "" });
             _canvas.Visibility = IsPanelVisible ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -379,15 +380,16 @@ public sealed partial class LyricsCanvasHost : UserControl
         {
             // No lyrics and not loading — clear stale engine data so a subsequent
             // successful load doesn't accidentally composite on top of an old frame.
+            _canvas.SetIsPlaying(false);
+            _canvas.SetRenderingActive(false);
             if (!_lyricsCanvasDataCleared)
             {
                 _canvas.SetLyricsData(null);
+                _canvas.SetSongInfo(new SongInfo { Title = "", Artist = "", Album = "" });
                 _appliedLyricsData = null;
                 _appliedSongInfo = null;
                 _lyricsCanvasDataCleared = true;
             }
-
-            _canvas.SetIsPlaying(false);
         }
 
         UpdateTimerState();

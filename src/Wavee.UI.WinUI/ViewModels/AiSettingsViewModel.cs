@@ -53,7 +53,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
         _aiFeaturesEnabled = _settings.Settings.AiFeaturesEnabled;
         _aiLyricsSummarizeEnabled = _settings.Settings.AiLyricsSummarizeEnabled;
         _aiBioSummarizeEnabled = _settings.Settings.AiBioSummarizeEnabled;
-        _aiOnlineToolsEnabled = _settings.Settings.AiOnlineToolsEnabled;
+        _aiAlbumSummarizeEnabled = _settings.Settings.AiAlbumSummarizeEnabled;
         _aiWebSearchEndpoint = _settings.Settings.AiWebSearchEndpoint ?? string.Empty;
 
         // If the user already opted in on a previous session, reflect the
@@ -75,8 +75,8 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     public bool ArePerFeatureTogglesEnabled =>
         CanUseAi && AiFeaturesEnabled && !IsModelPreparing;
 
-    public bool IsOnlineToolConfigurationEnabled =>
-        ArePerFeatureTogglesEnabled && AiOnlineToolsEnabled;
+    public bool IsCustomEndpointConfigurationEnabled =>
+        ArePerFeatureTogglesEnabled;
 
     [ObservableProperty]
     private bool _aiFeaturesEnabled;
@@ -85,7 +85,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     {
         _settings.Update(s => s.AiFeaturesEnabled = value);
         OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
-        OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
+        OnPropertyChanged(nameof(IsCustomEndpointConfigurationEnabled));
 
         if (value)
         {
@@ -121,13 +121,11 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsOnlineToolConfigurationEnabled))]
-    private bool _aiOnlineToolsEnabled;
+    private bool _aiAlbumSummarizeEnabled;
 
-    partial void OnAiOnlineToolsEnabledChanged(bool value)
+    partial void OnAiAlbumSummarizeEnabledChanged(bool value)
     {
-        _settings.Update(s => s.AiOnlineToolsEnabled = value);
-        OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
+        _settings.Update(s => s.AiAlbumSummarizeEnabled = value);
     }
 
     [ObservableProperty]
@@ -198,7 +196,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
         ModelPreparationProgress = -1;
         ModelPreparationStatus = "Preparing on-device AI…";
         OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
-        OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
+        OnPropertyChanged(nameof(IsCustomEndpointConfigurationEnabled));
 
         // Post the system toast so the user can see download progress from the
         // Action Center even after they navigate away from this Settings page.
@@ -252,7 +250,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
                     _notifications?.ShowModelErrorNotification();
                 }
                 OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
-                OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
+                OnPropertyChanged(nameof(IsCustomEndpointConfigurationEnabled));
             });
         }
         catch (OperationCanceledException)
@@ -270,7 +268,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
                 ModelPreparationStatus = $"Couldn't prepare the on-device model: {ex.Message}";
                 _notifications?.ShowModelErrorNotification(ex.Message);
                 OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
-                OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
+                OnPropertyChanged(nameof(IsCustomEndpointConfigurationEnabled));
             });
         }
     }
@@ -295,7 +293,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
         ModelPreparationProgress = -1;
         ModelPreparationStatus = string.Empty;
         OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
-        OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
+        OnPropertyChanged(nameof(IsCustomEndpointConfigurationEnabled));
     }
 
     private void PostToUi(Action action)

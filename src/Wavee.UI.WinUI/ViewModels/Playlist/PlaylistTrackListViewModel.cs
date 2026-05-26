@@ -1012,6 +1012,7 @@ public sealed partial class PlaylistTrackListViewModel
             AlbumUri = t is PlaylistTrackDto p2 && !string.IsNullOrEmpty(p2.AlbumId) ? p2.AlbumId : null,
             ArtistUri = string.IsNullOrEmpty(t.ArtistId) ? null : t.ArtistId,
             IsExplicit = t.IsExplicit,
+            HasVideo = t.HasVideo,
         }).ToList();
 
         if (shuffle)

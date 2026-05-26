@@ -151,6 +151,8 @@ public sealed class RepeatModeToSymbolConverter : IValueConverter
 /// </summary>
 public sealed class StringToImageSourceConverter : IValueConverter
 {
+    private const int MaxDecodePixelWidth = 1024;
+
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
         if (value is not string rawUri || string.IsNullOrWhiteSpace(rawUri))
@@ -158,8 +160,12 @@ public sealed class StringToImageSourceConverter : IValueConverter
 
         var uri = SpotifyImageHelper.ToHttpsUrl(rawUri) ?? rawUri;
         var decodeSize = int.TryParse(parameter?.ToString(), out var parsed) ? parsed : 200;
+        decodeSize = Math.Clamp(decodeSize, 1, MaxDecodePixelWidth);
 
-        return new BitmapImage(new Uri(uri))
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var imageUri))
+            return null;
+
+        return new BitmapImage(imageUri)
         {
             DecodePixelWidth = decodeSize,
             DecodePixelType = DecodePixelType.Logical

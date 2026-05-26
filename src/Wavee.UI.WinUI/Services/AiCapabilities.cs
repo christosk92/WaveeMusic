@@ -136,6 +136,13 @@ public sealed class AiCapabilities
         IsAiAvailableAndEnabled && _settings.Settings.AiBioSummarizeEnabled;
 
     /// <summary>
+    /// Per-feature gate: album-page "About this album" excerpt synthesised
+    /// on-device. Same composition pattern as the artist bio gate.
+    /// </summary>
+    public bool IsAlbumBioSummarizeEnabled =>
+        IsAiAvailableAndEnabled && _settings.Settings.AiAlbumSummarizeEnabled;
+
+    /// <summary>
     /// Triggers the Phi Silica model download/init if not already ready. Called
     /// on the first opt-in click. Returns true if the model is ready to serve
     /// requests; false if the user is on incompatible hardware or the install

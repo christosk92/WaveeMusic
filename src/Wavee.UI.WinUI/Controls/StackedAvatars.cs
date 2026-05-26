@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Text;
 using Wavee.UI.Helpers;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Controls;
@@ -20,10 +21,11 @@ namespace Wavee.UI.WinUI.Controls;
 /// inline in PlaylistPage.RebuildCollaboratorStack so contributors and podcast
 /// reply-author previews share one implementation.
 /// </summary>
-public sealed class StackedAvatars : UserControl
+public sealed class StackedAvatars : UserControl, INavCacheSurfaceParticipant
 {
     private readonly StackPanel _host;
     private INotifyCollectionChanged? _observed;
+    private bool _releasedForNavCache;
 
     public StackedAvatars()
     {
@@ -123,6 +125,9 @@ public sealed class StackedAvatars : UserControl
 
     private void Rebuild()
     {
+        if (_releasedForNavCache)
+            return;
+
         _host.Children.Clear();
 
         if (ItemsSource is null) return;
@@ -205,6 +210,40 @@ public sealed class StackedAvatars : UserControl
                 Child = inner
             };
             _host.Children.Add(more);
+        }
+    }
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_releasedForNavCache)
+            return false;
+
+        var hadChildren = _host.Children.Count > 0;
+        _releasedForNavCache = true;
+        _host.Children.Clear();
+        return hadChildren;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_releasedForNavCache)
+            return false;
+
+        _releasedForNavCache = false;
+        Rebuild();
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    {
+        get
+        {
+            if (_releasedForNavCache || ItemsSource is null)
+                return 0;
+
+            var visibleCount = Math.Min(Materialize(ItemsSource).Count, Math.Max(0, MaxVisible));
+            var decode = (long)Math.Ceiling(Math.Max(1, AvatarSize * 2));
+            return visibleCount * decode * decode * 4;
         }
     }
 

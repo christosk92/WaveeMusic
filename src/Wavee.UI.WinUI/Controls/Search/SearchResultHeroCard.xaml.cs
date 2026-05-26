@@ -19,13 +19,14 @@ using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Stores;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Search;
 
-public sealed partial class SearchResultHeroCard : UserControl
+public sealed partial class SearchResultHeroCard : UserControl, INavCacheSurfaceParticipant
 {
     private static readonly InputCursor HandCursor = InputSystemCursor.Create(InputSystemCursorShape.Hand);
 
@@ -80,6 +81,8 @@ public sealed partial class SearchResultHeroCard : UserControl
     private SpriteVisual? _bleedVisual;
     private CompositionSurfaceBrush? _bleedBrush;
     private LoadedImageSurface? _bleedSurface;
+    private string? _releasedBleedImageUrl;
+    private bool _releasedForNavCache;
 
     // Artist-only: when the item is an artist, subscribe to ArtistStore to fetch the
     // artist's HeaderImageUrl (reactive, shares cache with ArtistPage so clicking through
@@ -383,6 +386,12 @@ public sealed partial class SearchResultHeroCard : UserControl
     /// </summary>
     private void LoadBleedImage(string? imageUrl)
     {
+        if (_releasedForNavCache)
+        {
+            _releasedBleedImageUrl = imageUrl;
+            return;
+        }
+
         if (string.Equals(_currentBleedImageUrl, imageUrl, StringComparison.Ordinal))
             return;
         _currentBleedImageUrl = imageUrl;
@@ -475,6 +484,9 @@ public sealed partial class SearchResultHeroCard : UserControl
         ArtworkImage.Source = null;
         ArtistAvatar.ProfilePicture = null;
 
+        if (_releasedForNavCache)
+            return;
+
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
         {
@@ -512,6 +524,14 @@ public sealed partial class SearchResultHeroCard : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (!_releasedForNavCache && Item is { } item)
+        {
+            var isArtist = item.Type == SearchResultType.Artist;
+            ApplyArtwork(item.ImageUrl, isArtist);
+            if (isArtist)
+                SubscribeArtist(ExtractId(item.Uri));
+        }
+
         if (!_subscribedToPlayback)
         {
             TrackStateBehavior.EnsurePlaybackSubscription();
@@ -553,6 +573,58 @@ public sealed partial class SearchResultHeroCard : UserControl
         // Drop the XAML Image native decoded surface (the bleed visual above
         // is composition; this is the foreground artwork).
         if (ArtworkImage != null) ArtworkImage.Source = null;
+        if (ArtistAvatar != null) ArtistAvatar.ProfilePicture = null;
+    }
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_releasedForNavCache)
+            return false;
+
+        _releasedForNavCache = true;
+        _releasedBleedImageUrl = _currentBleedImageUrl;
+        ClearBleedSurface();
+        _currentBleedImageUrl = null;
+
+        if (ArtworkImage != null) ArtworkImage.Source = null;
+        if (ArtistAvatar != null) ArtistAvatar.ProfilePicture = null;
+        return _releasedBleedImageUrl is not null || Item?.ImageUrl is not null;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_releasedForNavCache)
+            return false;
+
+        _releasedForNavCache = false;
+        if (Item is { } item)
+        {
+            var isArtist = item.Type == SearchResultType.Artist;
+            ApplyArtwork(item.ImageUrl, isArtist);
+        }
+
+        var bleed = _releasedBleedImageUrl;
+        _releasedBleedImageUrl = null;
+        if (!string.IsNullOrEmpty(bleed))
+            LoadBleedImage(bleed);
+
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    {
+        get
+        {
+            if (_releasedForNavCache)
+                return 0;
+
+            var total = 0L;
+            if (_bleedSurface is not null)
+                total += 640L * 640 * 4;
+            if (ArtworkImage?.Source is not null || ArtistAvatar?.ProfilePicture is not null)
+                total += 160L * 160 * 4;
+            return total;
+        }
     }
 
     private void OnPlaybackStateChanged()

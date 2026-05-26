@@ -263,16 +263,16 @@ public sealed class AppSettings
     public bool AiBioSummarizeEnabled { get; set; } = true;
 
     /// <summary>
-    /// Allows AI features to invoke online tools such as web search. Default false:
-    /// the on-device model can still use local catalog tools, but no network-backed
-    /// tool is called unless a provider is registered and this switch is enabled.
+    /// Per-feature toggle: album-page "About this album" excerpt synthesised
+    /// on-device. Only effective when <see cref="AiFeaturesEnabled"/> is true.
+    /// Default true so a user who opts in to AI sees the affordance on album pages.
     /// </summary>
-    public bool AiOnlineToolsEnabled { get; set; } = false;
+    public bool AiAlbumSummarizeEnabled { get; set; } = true;
 
     /// <summary>
-    /// Optional web-search endpoint used by AI online tools. Supports either a
+    /// Optional custom web-search endpoint used by AI grounding. When empty,
+    /// the app uses its baked-in default (DuckDuckGo lite). Supports either a
     /// "{query}" placeholder or a normal endpoint that accepts a q= query string.
-    /// Empty means no web-search provider is configured.
     /// </summary>
     public string? AiWebSearchEndpoint { get; set; }
 

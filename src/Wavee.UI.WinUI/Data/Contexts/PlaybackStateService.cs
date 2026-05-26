@@ -998,7 +998,6 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             foreach (var item in _rawNextQueue)
             {
                 if (item is Wavee.Audio.Queue.QueueTrack qt
-                    && NeedsQueueTrackEnrichment(qt)
                     && tracks.TryGetValue(qt.Uri, out var meta))
                 {
                     updated.Add(qt with
@@ -1006,7 +1005,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                         Title = string.IsNullOrEmpty(meta.Title) ? qt.Title : meta.Title,
                         Artist = string.IsNullOrEmpty(meta.ArtistName) ? qt.Artist : meta.ArtistName,
                         ImageUrl = string.IsNullOrEmpty(meta.AlbumArt) ? qt.ImageUrl : meta.AlbumArt,
-                        DurationMs = meta.DurationMs > 0 ? (int)meta.DurationMs : qt.DurationMs
+                        DurationMs = meta.DurationMs > 0 ? (int)meta.DurationMs : qt.DurationMs,
+                        IsExplicit = qt.IsExplicit || meta.IsExplicit,
+                        HasVideo = qt.HasVideo || meta.HasVideo
                     });
                 }
                 else

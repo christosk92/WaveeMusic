@@ -20,6 +20,7 @@ namespace Wavee.Audio.Queue;
 /// <param name="Provider">Track source: "context", "queue", or "autoplay".</param>
 /// <param name="ImageUrl">Album art image URL for display (format: "spotify:image:{id}").</param>
 /// <param name="IsPostContext">True if added via "Add to Queue" (plays AFTER the entire context exhausts; local-only distinction).</param>
+/// <param name="HasVideo">Whether this track has a linked video or is itself a video item.</param>
 public record QueueTrack(
     string Uri,
     string? Uid = null,
@@ -35,7 +36,8 @@ public record QueueTrack(
     bool IsUserQueued = false,
     string Provider = "context",
     string? ImageUrl = null,
-    bool IsPostContext = false
+    bool IsPostContext = false,
+    bool HasVideo = false
 ) : IQueueItem
 {
     /// <summary>Always true for playable tracks.</summary>

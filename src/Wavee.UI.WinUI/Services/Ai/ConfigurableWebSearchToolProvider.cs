@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -12,23 +11,35 @@ using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Services.Ai;
 
-public sealed class ConfigurableWebSearchToolProvider : IWebSearchToolProvider, IDisposable
+/// <summary>
+/// JSON-shape web search backend driven by user-configured Settings — the
+/// "bring your own Brave/Bing/Google endpoint" path. Stays as a fallback for
+/// power users who want better quality than the default DuckDuckGo lite
+/// scrape. The composite provider routes here whenever
+/// <see cref="AppSettings.AiWebSearchEndpoint"/> is non-empty.
+/// </summary>
+public sealed class ConfigurableWebSearchToolProvider : IWebSearchToolProvider
 {
+    private const string ProviderTag = "configurable";
+
     private readonly ISettingsService _settings;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly WebSearchCache _cache;
     private readonly ILogger? _logger;
-    private readonly HttpClient _http = new();
 
     public ConfigurableWebSearchToolProvider(
         ISettingsService settings,
+        IHttpClientFactory httpClientFactory,
+        WebSearchCache cache,
         ILogger<ConfigurableWebSearchToolProvider>? logger = null)
     {
-        _settings = settings;
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger;
     }
 
-    public bool IsAvailable =>
-        _settings.Settings.AiOnlineToolsEnabled
-        && !string.IsNullOrWhiteSpace(_settings.Settings.AiWebSearchEndpoint);
+    public bool IsAvailable => !string.IsNullOrWhiteSpace(_settings.Settings.AiWebSearchEndpoint);
 
     public async Task<IReadOnlyList<WebSearchResult>> SearchAsync(
         string query,
@@ -39,20 +50,36 @@ public sealed class ConfigurableWebSearchToolProvider : IWebSearchToolProvider, 
             return [];
 
         options ??= new WebSearchOptions();
-        var endpoint = BuildEndpoint(_settings.Settings.AiWebSearchEndpoint!, query, options);
+        var max = Math.Max(1, options.MaxResults);
+        var normalized = query.Trim();
+        if (_cache.TryGet<IReadOnlyList<WebSearchResult>>(ProviderTag, normalized, out var hit))
+            return TrimResults(hit, max);
+
+        var endpoint = BuildEndpoint(_settings.Settings.AiWebSearchEndpoint!, normalized, options);
         using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
 
         var apiKey = _settings.Settings.AiWebSearchApiKey;
         if (!string.IsNullOrWhiteSpace(apiKey))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+
         try
         {
-            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            var http = _httpClientFactory.CreateClient("Wavee");
+            using var response = await http.SendAsync(request, timeout.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-            return ParseSearchResults(document.RootElement, options.MaxResults);
+            await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token).ConfigureAwait(false);
+            var parsed = ParseSearchResults(document.RootElement, options.MaxResults);
+            _cache.Set(ProviderTag, normalized, parsed);
+            return TrimResults(parsed, max);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger?.LogDebug("Configurable web search timed out for endpoint {Endpoint}", endpoint);
+            return [];
         }
         catch (OperationCanceledException)
         {
@@ -156,5 +183,11 @@ public sealed class ConfigurableWebSearchToolProvider : IWebSearchToolProvider, 
     private static DateTimeOffset? TryParseDate(string? value)
         => DateTimeOffset.TryParse(value, out var parsed) ? parsed : null;
 
-    public void Dispose() => _http.Dispose();
+    private static IReadOnlyList<WebSearchResult> TrimResults(IReadOnlyList<WebSearchResult> source, int max)
+    {
+        if (source.Count <= max) return source;
+        var trimmed = new WebSearchResult[max];
+        for (var i = 0; i < max; i++) trimmed[i] = source[i];
+        return trimmed;
+    }
 }

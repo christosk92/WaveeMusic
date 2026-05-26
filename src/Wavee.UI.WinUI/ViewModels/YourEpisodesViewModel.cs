@@ -1424,6 +1424,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             AlbumName = e.AlbumName,
             AlbumUri = string.IsNullOrEmpty(e.AlbumId) ? null : e.AlbumId,
             IsExplicit = e.IsExplicit,
+            HasVideo = e.HasVideo,
         }).ToList();
 
         if (shuffle)

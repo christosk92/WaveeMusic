@@ -13,6 +13,9 @@ namespace Wavee.UI.WinUI.Services;
 /// </summary>
 public sealed class PageHostCacheCleanupAdapter : ICleanableCache
 {
+    private const int WarmCollapsedPagesToKeepPerTab = 1;
+    private int _lastKnownCount;
+
     public string CacheName => "PageHostCache";
 
     public int CurrentCount
@@ -23,32 +26,42 @@ public sealed class PageHostCacheCleanupAdapter : ICleanableCache
             {
                 var dispatcher = MainWindow.Instance.DispatcherQueue;
                 if (dispatcher is null || !dispatcher.HasThreadAccess)
-                    return 0;
+                    return Volatile.Read(ref _lastKnownCount);
 
-                return ShellViewModel.TabInstances.Sum(tab => tab.ContentHost.CachedPageCount);
+                var count = CountCachedPages();
+                Volatile.Write(ref _lastKnownCount, count);
+                return count;
             }
             catch
             {
-                return 0;
+                return Volatile.Read(ref _lastKnownCount);
             }
         }
     }
 
     public Task<int> CleanupStaleEntriesAsync(TimeSpan maxAge, CancellationToken ct = default)
     {
-        // PageHost entries are LRU, not timestamped. Avoid treating normal
-        // pressure cleanup as permission to destroy warm navigation state; the
-        // heavier ClearAsync path and manual diagnostics button can still drop
-        // collapsed trees when the user explicitly asks or memory escalates.
         _ = maxAge;
-        _ = ct;
-        return Task.FromResult(0);
+        return RunOnUiThreadAsync(DropOlderCollapsedPageCaches, ct);
     }
 
     public Task<int> ClearAsync(CancellationToken ct = default)
         => RunOnUiThreadAsync(DropCollapsedPageCaches, ct);
 
+    private static int CountCachedPages()
+        => ShellViewModel.TabInstances.Sum(tab => tab.ContentHost.CachedPageCount);
+
+    private int DropOlderCollapsedPageCaches()
+    {
+        var dropped = DropCollapsedPageCaches(keepNewestCollapsed: WarmCollapsedPagesToKeepPerTab);
+        Volatile.Write(ref _lastKnownCount, CountCachedPages());
+        return dropped;
+    }
+
     private static int DropCollapsedPageCaches()
+        => DropCollapsedPageCaches(keepNewestCollapsed: 0);
+
+    private static int DropCollapsedPageCaches(int keepNewestCollapsed)
     {
         var dropped = 0;
         foreach (var tab in ShellViewModel.TabInstances.ToArray())
@@ -58,7 +71,7 @@ public sealed class PageHostCacheCleanupAdapter : ICleanableCache
                 if (tab.IsSleeping)
                     continue;
 
-                dropped += tab.ContentHost.EvictAllCollapsed();
+                dropped += tab.ContentHost.EvictCollapsedPages(keepNewestCollapsed);
             }
             catch
             {

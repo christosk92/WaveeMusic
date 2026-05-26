@@ -40,6 +40,11 @@ public sealed record QueueItem
     public bool IsExplicit { get; init; }
 
     /// <summary>
+    /// Whether the track has a linked video or is itself a video item.
+    /// </summary>
+    public bool HasVideo { get; init; }
+
+    /// <summary>
     /// True if the user manually added this to the queue (vs. auto-queued from context).
     /// </summary>
     public bool IsUserQueued { get; init; }
@@ -86,5 +91,6 @@ public sealed record QueueItem
         AlbumUri = t.AlbumUri,
         ArtistUri = t.ArtistUri,
         IsExplicit = t.IsExplicit,
+        HasVideo = t.HasVideo,
     };
 }

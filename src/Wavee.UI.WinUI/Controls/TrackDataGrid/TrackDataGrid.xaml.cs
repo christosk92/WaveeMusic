@@ -958,7 +958,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         else
         {
             itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Auto;
-            itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
+            itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
         }
     }
 

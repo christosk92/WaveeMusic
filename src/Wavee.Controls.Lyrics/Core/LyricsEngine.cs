@@ -195,6 +195,7 @@ namespace Wavee.Controls.Lyrics.Core
             _lyricsWindowStatus = settings;
             Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout);
             UpdatePalette();
+            UpdateSpectrumCaptureState();
         }
 
         public void SetAlbumArtRect(Rect rect) => _albumArtRect = rect;
@@ -277,6 +278,17 @@ namespace Wavee.Controls.Lyrics.Core
         {
             _lyricsData = lyricsData;
             _synchronizer.Reset();
+            _primaryPlayingLineIndex = -1;
+            _mouseHoverLineIndex = -1;
+            _visibleRange = default;
+            _canvasTargetScrollOffset = 0;
+
+            if (lyricsData == null)
+            {
+                DisposeRenderLyricsLines();
+                _renderContextReady = false;
+            }
+
             Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout);
             System.Diagnostics.Debug.WriteLine(
                 $"[LyricsEngine] SetLyricsData lines={lyricsData?.LyricsLines.Count ?? 0} " +
@@ -784,7 +796,13 @@ namespace Wavee.Controls.Lyrics.Core
 
         private void UpdateSpectrumCaptureState()
         {
-            if (_lyricsWindowStatus == null || _spectrumAnalyzer == null) return;
+            if (_spectrumAnalyzer == null) return;
+            if (_lyricsWindowStatus == null)
+            {
+                if (_spectrumAnalyzer.IsCapturing)
+                    _spectrumAnalyzer.StopCapture();
+                return;
+            }
 
             bool shouldCapture = _isRenderingActive && _lyricsWindowStatus.LyricsBackgroundSettings.IsSpectrumOverlayEnabled;
             if (shouldCapture)

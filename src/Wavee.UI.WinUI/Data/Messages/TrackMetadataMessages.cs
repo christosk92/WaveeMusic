@@ -54,7 +54,9 @@ public sealed record QueueTrackMetadata(
     string Title,
     string ArtistName,
     string? AlbumArt,
-    double DurationMs);
+    double DurationMs,
+    bool IsExplicit = false,
+    bool HasVideo = false);
 
 /// <summary>
 /// Request from ArtistService for extended top tracks.

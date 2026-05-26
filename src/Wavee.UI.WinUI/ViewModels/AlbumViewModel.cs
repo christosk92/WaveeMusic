@@ -56,9 +56,19 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ITrackLikeService? _likeService;
+    private readonly AlbumBioSummarizer? _albumBioSummarizer;
+    private readonly AiCapabilities? _aiCapabilities;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
     private bool _disposed;
+
+    // ── On-device "About this album" AI state ──────────────────────────────
+    private CancellationTokenSource? _albumAiSummaryCts;
+    private string? _albumAiSummaryText;
+    private bool _isAlbumAiSummaryStreaming;
+    private bool _isAlbumAiSummaryLoading;
+    private bool _wasLastAlbumAiSummaryFromCache;
+    private string? _albumAiSummaryUnavailableText;
 
     /// <summary>All loaded tracks (unfiltered). Null until loaded.</summary>
     private List<LazyTrackItem> _allTracks = [];
@@ -416,6 +426,66 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         private set => SetProperty(ref _totalDuration, value);
     }
 
+    // ── On-device "About this album" AI surface ────────────────────────────
+
+    /// <summary>True when the AI card should render (hardware + region + opt-in
+    /// + per-feature toggle all open). The page x:Load binds to this so the
+    /// section evaporates entirely on non-AI machines.</summary>
+    public bool IsAiAlbumCardVisible =>
+        _aiCapabilities?.IsAlbumBioSummarizeEnabled == true;
+
+    /// <summary>True while the load runs (model warmup + grounding fetch +
+    /// streaming generation). Drives the card's shimmer / "generating" chrome.</summary>
+    public bool IsAlbumAiSummaryGenerating => _isAlbumAiSummaryLoading || _isAlbumAiSummaryStreaming;
+
+    /// <summary>The streamed-then-final AI paragraph. Null until first token lands.</summary>
+    public string? AlbumAiSummaryText
+    {
+        get => _albumAiSummaryText;
+        private set => SetProperty(ref _albumAiSummaryText, value);
+    }
+
+    /// <summary>True while tokens are still arriving from Phi Silica. Used by
+    /// the card to flash a caret / typewriter effect.</summary>
+    public bool IsAlbumAiSummaryStreaming
+    {
+        get => _isAlbumAiSummaryStreaming;
+        private set
+        {
+            if (SetProperty(ref _isAlbumAiSummaryStreaming, value))
+                OnPropertyChanged(nameof(IsAlbumAiSummaryGenerating));
+        }
+    }
+
+    /// <summary>True between the call kicking off and the first streamed token
+    /// (or, when the result is cached, between kickoff and the cached-result
+    /// flip). The card uses this to render its initial shimmer.</summary>
+    public bool IsAlbumAiSummaryLoading
+    {
+        get => _isAlbumAiSummaryLoading;
+        private set
+        {
+            if (SetProperty(ref _isAlbumAiSummaryLoading, value))
+                OnPropertyChanged(nameof(IsAlbumAiSummaryGenerating));
+        }
+    }
+
+    /// <summary>True when the bound text was served from the per-album cache
+    /// (no fresh model run). The card uses this to skip the reveal animation.</summary>
+    public bool WasLastAlbumAiSummaryFromCache
+    {
+        get => _wasLastAlbumAiSummaryFromCache;
+        private set => SetProperty(ref _wasLastAlbumAiSummaryFromCache, value);
+    }
+
+    /// <summary>One-line "why no AI text" message bound to the empty-state
+    /// placeholder. Null while a run is in flight or successful.</summary>
+    public string? AlbumAiSummaryUnavailableText
+    {
+        get => _albumAiSummaryUnavailableText;
+        private set => SetProperty(ref _albumAiSummaryUnavailableText, value);
+    }
+
     /// <summary>
     /// Refresh selection-driven command CanExecute flags when SelectedItems
     /// changes. The base class hooks the partial method on SelectedItems and
@@ -508,6 +578,18 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
     public bool HasArtistBioExcerpt => !string.IsNullOrWhiteSpace(_artistBioExcerpt);
 
+    public string? ArtistMonthlyListenersDisplay =>
+        ArtistMonthlyListeners > 0
+            ? $"{ArtistMonthlyListeners:N0} monthly listeners"
+            : null;
+
+    public IReadOnlyList<string> ArtistSummaryTopTrackNames => _allTracks
+        .Where(t => t.IsLoaded && t.Data is AlbumTrackDto)
+        .Select(t => ((AlbumTrackDto)t.Data!).Title)
+        .Where(title => !string.IsNullOrWhiteSpace(title))
+        .Take(5)
+        .ToArray();
+
     // ── "About the artist" card (NPV-sourced) ────────────────────────────
     //
     // Populated by LoadArtistNpvAsync on every album open. Avatar / verified /
@@ -534,7 +616,11 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     public long ArtistMonthlyListeners
     {
         get => _artistMonthlyListeners;
-        private set => SetProperty(ref _artistMonthlyListeners, value);
+        private set
+        {
+            if (SetProperty(ref _artistMonthlyListeners, value))
+                OnPropertyChanged(nameof(ArtistMonthlyListenersDisplay));
+        }
     }
 
     /// <summary>True when the local <c>ITrackLikeService</c> reports this
@@ -698,7 +784,9 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         ITrackLikeService? likeService = null,
         IMusicVideoMetadataService? musicVideoMetadata = null,
         ILogger<AlbumViewModel>? logger = null,
-        Services.IPlaylistMetadataPrefetcher? playlistMetadataPrefetcher = null)
+        Services.IPlaylistMetadataPrefetcher? playlistMetadataPrefetcher = null,
+        AlbumBioSummarizer? albumBioSummarizer = null,
+        AiCapabilities? aiCapabilities = null)
     {
         _albumService = albumService;
         _albumStore = albumStore;
@@ -708,6 +796,8 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         _likeService = likeService;
         _musicVideoMetadata = musicVideoMetadata;
         _playlistMetadataPrefetcher = playlistMetadataPrefetcher;
+        _albumBioSummarizer = albumBioSummarizer;
+        _aiCapabilities = aiCapabilities;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _logger = logger;
 
@@ -894,6 +984,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             IsLoading = !preserveHeaderPrefill || string.IsNullOrEmpty(AlbumImageUrl);
             IsLoadingTracks = true;
             _allTracks = [];
+            OnPropertyChanged(nameof(ArtistSummaryTopTrackNames));
             // Mirror Album.TotalTracks onto the property so TrackDataGrid's
             // LoadingRowCount binding sees the right value. With prefill the
             // envelope holds the nav-supplied count; without prefill the freshly
@@ -962,6 +1053,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
         _filteredTracks.Clear();
         _allTracks = [];
+        OnPropertyChanged(nameof(ArtistSummaryTopTrackNames));
         RebuildDiscMetadata();
         _popularTrackIds.Clear();
         ClearSecondaryAlbumSections();
@@ -969,21 +1061,21 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
     private void ClearSecondaryAlbumSections()
     {
-        _alternateReleases.Clear();
+        _alternateReleases.ClearWithoutNotify();
         OnPropertyChanged(nameof(AlternateReleases));
         HasAlternateReleases = false;
 
-        _moreByArtist.Clear();
+        _moreByArtist.ClearWithoutNotify();
         HasMoreByArtist = false;
         HasNoRelatedAlbums = false;
 
-        _merchItems.Clear();
+        _merchItems.ClearWithoutNotify();
         OnPropertyChanged(nameof(HasMerch));
 
-        _similarAlbums.Clear();
+        _similarAlbums.ClearWithoutNotify();
         HasSimilarAlbums = false;
 
-        _similarArtists.Clear();
+        _similarArtists.ClearWithoutNotify();
         HasSimilarArtists = false;
         ArtistBioExcerpt = null;
         ArtistAvatarImageUrl = null;
@@ -991,11 +1083,22 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         ArtistMonthlyListeners = 0;
         IsArtistFollowing = false;
 
-        _recommendedPlaylists.Clear();
+        _recommendedPlaylists.ClearWithoutNotify();
         HasRecommendedPlaylists = false;
 
         HasMusicVideo = false;
         MusicVideoUri = null;
+
+        // Clear AI summary state for the new album so the page doesn't briefly
+        // paint stale text from the previous album while the new generation
+        // spins up.
+        try { _albumAiSummaryCts?.Cancel(); } catch { /* already disposed */ }
+        _albumAiSummaryCts = null;
+        AlbumAiSummaryText = null;
+        WasLastAlbumAiSummaryFromCache = false;
+        IsAlbumAiSummaryStreaming = false;
+        IsAlbumAiSummaryLoading = false;
+        AlbumAiSummaryUnavailableText = null;
     }
 
     private void ApplyDetailState(EntityState<AlbumDetailResult> state, string expectedAlbumId)
@@ -1482,6 +1585,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             await RunCurrentAlbumUiAsync(albumId, () =>
             {
                 _allTracks = prep.Tracks;
+                OnPropertyChanged(nameof(ArtistSummaryTopTrackNames));
                 RebuildDiscMetadata();
                 _popularTrackIds = prep.PopularTrackIds;
 
@@ -1565,6 +1669,130 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         }
     }
 
+    /// <summary>
+    /// Kicks off the on-device "About this album" Phi Silica generation. Cancels
+    /// any prior run so a fast album-to-album nav doesn't leak an in-flight
+    /// model call into the new page. Streams tokens into <see cref="AlbumAiSummaryText"/>;
+    /// failures collapse the card to an unavailable empty-state.
+    /// </summary>
+    private async Task LoadAlbumAiSummaryAsync(string albumId)
+    {
+        if (_albumBioSummarizer is null || _aiCapabilities is null)
+            return;
+        if (!_aiCapabilities.IsAlbumBioSummarizeEnabled)
+            return;
+        if (string.IsNullOrEmpty(albumId))
+            return;
+
+        var albumTitle = Album?.Name;
+        if (string.IsNullOrWhiteSpace(albumTitle))
+            return;
+
+        _albumAiSummaryCts?.Cancel();
+        var cts = _albumAiSummaryCts = new CancellationTokenSource();
+
+        var trackTitles = _allTracks
+            .Where(t => t is { IsLoaded: true, Data: AlbumTrackDto d } && !string.IsNullOrWhiteSpace(d.Title))
+            .Select(t => ((AlbumTrackDto)t.Data!).Title!)
+            .Take(30)
+            .ToList();
+
+        try
+        {
+            IsAlbumAiSummaryLoading = true;
+            AlbumAiSummaryText = null;
+            WasLastAlbumAiSummaryFromCache = false;
+            IsAlbumAiSummaryStreaming = false;
+            AlbumAiSummaryUnavailableText = null;
+            OnPropertyChanged(nameof(IsAiAlbumCardVisible));
+
+            var streamedText = string.Empty;
+            var streamCompleted = 0;
+            var progress = new Progress<string>(delta =>
+            {
+                if (cts.IsCancellationRequested
+                    || Interlocked.CompareExchange(ref streamCompleted, 0, 0) != 0)
+                {
+                    return;
+                }
+
+                streamedText += delta;
+                var preview = streamedText.TrimStart();
+                if (string.IsNullOrWhiteSpace(preview))
+                    return;
+
+                RunOnUiThreadAsync(() =>
+                {
+                    if (cts.IsCancellationRequested
+                        || Interlocked.CompareExchange(ref streamCompleted, 0, 0) != 0)
+                    {
+                        return;
+                    }
+
+                    IsAlbumAiSummaryStreaming = true;
+                    AlbumAiSummaryText = preview;
+                });
+            });
+
+            var artistName = Album?.ArtistName;
+            var year = Album?.Year is int yr && yr > 0 ? yr : (int?)null;
+            var label = Album?.Label;
+            var totalDurationDisplay = string.IsNullOrWhiteSpace(TotalDuration) ? null : TotalDuration;
+
+            var result = await _albumBioSummarizer.SummarizeAlbumAsync(
+                albumId,
+                albumTitle!,
+                artistName: artistName,
+                releaseYear: year,
+                trackTitles: trackTitles,
+                label: label,
+                totalDurationDisplay: totalDurationDisplay,
+                deltaProgress: progress,
+                ct: cts.Token).ConfigureAwait(false);
+
+            if (cts.IsCancellationRequested || !IsCurrentAlbum(albumId)) return;
+            Interlocked.Exchange(ref streamCompleted, 1);
+
+            await RunOnUiThreadAsync(() =>
+            {
+                if (cts.IsCancellationRequested || !IsCurrentAlbum(albumId)) return;
+
+                IsAlbumAiSummaryLoading = false;
+                if (result.Kind == LyricsAiResultKind.Ok)
+                {
+                    WasLastAlbumAiSummaryFromCache = result.FromCache;
+                    AlbumAiSummaryText = result.Text;
+                    IsAlbumAiSummaryStreaming = false;
+                }
+                else
+                {
+                    IsAlbumAiSummaryStreaming = false;
+                    AlbumAiSummaryUnavailableText = result.Kind switch
+                    {
+                        LyricsAiResultKind.Filtered => "The on-device model could not describe this album safely.",
+                        LyricsAiResultKind.Unavailable => "On-device AI is not available for this album right now.",
+                        LyricsAiResultKind.Empty => "There is not enough album context to generate a description yet.",
+                        _ => "The on-device model could not describe this album right now.",
+                    };
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { /* album switched */ }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "LoadAlbumAiSummaryAsync failed for {AlbumId}", albumId);
+            if (!cts.IsCancellationRequested)
+            {
+                await RunOnUiThreadAsync(() =>
+                {
+                    IsAlbumAiSummaryLoading = false;
+                    IsAlbumAiSummaryStreaming = false;
+                    AlbumAiSummaryUnavailableText = "The on-device model could not describe this album right now.";
+                }).ConfigureAwait(false);
+            }
+        }
+    }
+
     private async Task ApplySecondaryAlbumSectionsAsync(AlbumDetailResult detail, string albumId)
     {
         try
@@ -1623,6 +1851,11 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
                 RefreshArtistFollowState();
                 _ = LoadRecommendedPlaylistsAsync(albumId);
+
+                // Kick the on-device "About this album" excerpt. Gated through
+                // AiCapabilities inside the summarizer so non-Copilot+ PCs or
+                // disabled AI stay a cheap no-op.
+                _ = LoadAlbumAiSummaryAsync(albumId);
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -1771,6 +2004,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             AlbumUri = AlbumId,
             ArtistUri = string.IsNullOrEmpty(t.ArtistId) ? null : t.ArtistId,
             IsExplicit = t.IsExplicit,
+            HasVideo = t.HasVideo,
         }).ToList();
 
         if (shuffle)
@@ -2151,6 +2385,9 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
         Deactivate();
         DetachLongLivedServices();
+
+        try { _albumAiSummaryCts?.Cancel(); } catch { /* already disposed */ }
+        _albumAiSummaryCts = null;
 
         _allTracks.Clear();
         _popularTrackIds.Clear();
