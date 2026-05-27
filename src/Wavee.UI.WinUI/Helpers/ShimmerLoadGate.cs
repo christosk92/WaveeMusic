@@ -77,15 +77,13 @@ public sealed class ShimmerLoadGate : DependencyObject
 
         if (continuePredicate is not null && !continuePredicate()) return;
         if (shimmer is not null) shimmer.Visibility = Visibility.Collapsed;
-        // Note: we deliberately do NOT set IsLoaded = false here. Unrealizing
-        // the shimmer subtree was nice for heap pressure but caused a
-        // realization race on the next nav — Reset's accessor returned null
-        // because x:Load=true → element-assigned is async, ApplyResetState
-        // got skipped, and content.Opacity stayed at 1 from this crossfade's
-        // end. The next nav's crossfade then animated 0→1 against an already-
-        // visible content layer, producing no visible swap and a stuck hero.
-        // Keeping the ~5-rectangle shimmer subtree realized is a trivial
-        // memory cost compared to that bug.
+        // Unrealize the skeleton subtree: x:Load=false drops every framework
+        // element underneath, which fires CommunityToolkit Shimmer's Unloaded
+        // → tears down its CompositionLinearGradientBrush + Vector2KeyFrameAnimation
+        // peers. On the next load Reset() flips IsLoaded back true; the prior
+        // "stuck hero on next nav" race is plugged by the unconditional
+        // content.Opacity = 0 reset in Reset() (see comments below).
+        IsLoaded = false;
     }
 
     /// <summary>

@@ -53,6 +53,30 @@ public interface ILibraryDataService
     /// </summary>
     Task<IReadOnlyList<PlaylistSummaryDto>?> TryGetUserPlaylistsFromCacheAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Returns the user's rootlist as a tree (folders nested with their children).
+    /// Same source-of-truth the sidebar reads — folders rendered here match what
+    /// the user sees in the left rail one-for-one. Returns <c>null</c> on cold
+    /// cache (signed-out / never synced) so callers can degrade to a flat menu.
+    /// </summary>
+    Task<UserPlaylistTree?> GetUserPlaylistTreeAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Synchronous, snapshot-backed check: is the given playlist owned by the
+    /// signed-in user? Returns <c>false</c> before the rootlist snapshot has
+    /// been built (cold start). Used by menu builders to decide whether to
+    /// offer owner-only actions (Edit Details, Delete).
+    /// </summary>
+    bool IsOwnedByCurrentUser(string playlistUri);
+
+    /// <summary>
+    /// Synchronous, snapshot-backed check: is the given playlist currently on
+    /// the user's rootlist (i.e. saved / followed)? Returns <c>false</c> before
+    /// the snapshot has been built. Used to flip Save ↔ Saved labels on
+    /// playlist context menus without a round-trip.
+    /// </summary>
+    bool IsInUserRootlist(string playlistUri);
+
     // Pin / Unpin / GetPinnedItems / IsPinned moved to IPinService (Phase 2 carve-out).
 
     /// <summary>

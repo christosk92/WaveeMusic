@@ -58,9 +58,12 @@ public static class AlbumContextMenuBuilder
 
         items.Add(new ContextMenuItemModel
         {
+            // Short labels for the 4-column primary row — full
+            // "Save to library / Remove from library" overflows. Matches the
+            // track menu's TrackMenu_SaveShort / SavedShort precedent.
             Text = AppLocalization.GetString(ctx.IsSaved
-                ? "CardMenu_RemoveFromLibrary"
-                : "CardMenu_SaveToLibrary"),
+                ? "TrackMenu_SavedShort"
+                : "TrackMenu_SaveShort"),
             Glyph = ctx.IsSaved ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
             AccentIconStyleKey = ctx.IsSaved ? "App.AccentIcons.Media.Saved" : "App.AccentIcons.Media.Save",
             Command = ctx.ToggleSaveCommand,
@@ -70,7 +73,7 @@ public static class AlbumContextMenuBuilder
 
         items.Add(new ContextMenuItemModel
         {
-            Text = AppLocalization.GetString(ctx.IsPinned ? "SidebarMenu_UnpinFolder" : "SidebarMenu_PinFolder"),
+            Text = AppLocalization.GetString(ctx.IsPinned ? "CardMenu_Pinned" : "CardMenu_Pin"),
             Glyph = ctx.IsPinned ? FluentGlyphs.Unpin : FluentGlyphs.Pin,
             Command = ctx.TogglePinCommand,
             Invoke = ctx.TogglePinCommand is null ? () => TogglePinDefault(uri, ctx.IsPinned) : null,

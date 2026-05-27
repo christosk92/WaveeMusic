@@ -51,6 +51,15 @@ public sealed class LibraryDataService : ILibraryDataService
     private string? _likedSongFiltersEtag;
     private readonly IPodcastEpisodeService _podcastEpisodeService;
 
+    // ── Sync rootlist snapshot ────────────────────────────────────────────
+    // BuildPlaylistSummariesAsync refreshes this every time it runs (sidebar
+    // load, cache hit, GetUserPlaylistsAsync). IsOwnedByCurrentUser /
+    // IsInUserRootlist read it without waiting on the cache — menus that fire
+    // on right-click need an answer in the same frame. Cold-start (snapshot
+    // still null) returns false; safe default for owner-gated actions.
+    private readonly object _ownershipSnapshotLock = new();
+    private Dictionary<string, PlaylistSummaryDto>? _ownershipSnapshot;
+
     // Sync complete fans out across messenger + playlist-cache subjects +
     // like-service save events in tight succession. Coalescing now lives in
     // IChangeBus — publish freely; subscribers see one emission per scope per
@@ -219,7 +228,94 @@ public sealed class LibraryDataService : ILibraryDataService
             });
         }
 
+        // Refresh the sync ownership snapshot so right-click menus can answer
+        // IsOwnedByCurrentUser / IsInUserRootlist without re-awaiting the cache.
+        var lookup = new Dictionary<string, PlaylistSummaryDto>(results.Count, StringComparer.Ordinal);
+        foreach (var summary in results)
+            lookup[summary.Id] = summary;
+        lock (_ownershipSnapshotLock)
+            _ownershipSnapshot = lookup;
+
         return results;
+    }
+
+    public async Task<UserPlaylistTree?> GetUserPlaylistTreeAsync(CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_session.GetUserData()?.Username))
+            return null;
+
+        // Prefer the in-memory cache: right-click should not stall on a server
+        // round-trip. If the cache has hydrated (it does on every signed-in
+        // launch once the sidebar resolves), this returns in microseconds.
+        var snapshot = await _playlistCache.TryGetRootlistFromCacheAsync(ct).ConfigureAwait(false);
+        if (snapshot is null)
+        {
+            // Cold start fallback: pull the rootlist proper. Worst case the
+            // submenu spinner shows for a heartbeat while we wait.
+            snapshot = await _playlistCache.GetRootlistAsync(ct: ct).ConfigureAwait(false);
+        }
+        if (snapshot is null)
+            return null;
+
+        // Build the decoration map once (same projection BuildPlaylistSummariesAsync
+        // uses for sidebar rows). Walking the rootlist tree then zips each
+        // playlist URI against this dictionary.
+        var summaries = await BuildPlaylistSummariesAsync(snapshot, ct).ConfigureAwait(false);
+        var summariesByUri = new Dictionary<string, PlaylistSummaryDto>(summaries.Count, StringComparer.Ordinal);
+        foreach (var s in summaries)
+            summariesByUri[s.Id] = s;
+
+        var tree = RootlistTreeBuilder.Build(snapshot.Items, _logger);
+        var rootChildren = ConvertChildren(tree.Root.Children, summariesByUri);
+        return new UserPlaylistTree(rootChildren);
+    }
+
+    private static IReadOnlyList<UserPlaylistTreeNode> ConvertChildren(
+        IReadOnlyList<RootlistChild> children,
+        IReadOnlyDictionary<string, PlaylistSummaryDto> summariesByUri)
+    {
+        var converted = new List<UserPlaylistTreeNode>(children.Count);
+        foreach (var child in children)
+        {
+            switch (child)
+            {
+                case RootlistChildFolder folder:
+                    converted.Add(new UserPlaylistFolderNode(
+                        Id: folder.Folder.Id ?? string.Empty,
+                        Name: folder.Folder.Name ?? "Folder",
+                        Children: ConvertChildren(folder.Folder.Children, summariesByUri)));
+                    break;
+                case RootlistChildPlaylist playlist:
+                    // Drop playlists that haven't been hydrated by the
+                    // summary builder (rare — corrupted snapshot). Keeping
+                    // them in would surface a "Playlist" placeholder with no
+                    // id / owner / image.
+                    if (summariesByUri.TryGetValue(playlist.Uri, out var dto))
+                        converted.Add(new UserPlaylistLeafNode(dto));
+                    break;
+            }
+        }
+        return converted;
+    }
+
+    public bool IsOwnedByCurrentUser(string playlistUri)
+    {
+        if (string.IsNullOrEmpty(playlistUri)) return false;
+        lock (_ownershipSnapshotLock)
+        {
+            return _ownershipSnapshot is { } map
+                   && map.TryGetValue(playlistUri, out var dto)
+                   && dto.IsOwner;
+        }
+    }
+
+    public bool IsInUserRootlist(string playlistUri)
+    {
+        if (string.IsNullOrEmpty(playlistUri)) return false;
+        lock (_ownershipSnapshotLock)
+        {
+            return _ownershipSnapshot is { } map && map.ContainsKey(playlistUri);
+        }
     }
 
     // Pin / Unpin / GetPinnedItems / IsPinned moved to PinService (Phase 2).

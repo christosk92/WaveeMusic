@@ -385,7 +385,12 @@ public static class AppLifecycleHelper
                 .AddSingleton<IPlaybackStateService, PlaybackStateService>()
                 .AddSingleton<Services.SystemMediaTransportControlsService>()
                 .AddSingleton<Wavee.UI.Services.Playback.SleepTimerService>()
-                .AddSingleton<Wavee.UI.Contracts.IContentFilterService, Wavee.UI.Services.Library.ContentFilterService>()
+                // Register the concrete ContentFilterService once and expose
+                // it under both interfaces so the orchestrator (Wavee.Audio)
+                // and UI consumers (Wavee.UI) share the same in-memory cache.
+                .AddSingleton<Wavee.UI.Services.Library.ContentFilterService>()
+                .AddSingleton<Wavee.UI.Contracts.IContentFilterService>(sp => sp.GetRequiredService<Wavee.UI.Services.Library.ContentFilterService>())
+                .AddSingleton<Wavee.Audio.IPlaybackContentFilter>(sp => sp.GetRequiredService<Wavee.UI.Services.Library.ContentFilterService>())
                 // Per-session in-memory cache for music-video metadata. Fed
                 // by GraphQL response handlers on artist / album / search
                 // surfaces; consumed by the discovery service to avoid
@@ -1314,7 +1319,8 @@ public static class AppLifecycleHelper
                 localLibrary: GetLocalLibraryService(),
                 localMediaPlayer: GetLocalMediaPlayer(),
                 spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>(),
-                localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled);
+                localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled,
+                contentFilter: Ioc.Default.GetService<Wavee.Audio.IPlaybackContentFilter>());
 
             // Honor the user's autoplay preference. Read fresh on each check so
             // a toggle in the Settings page takes effect immediately — no event
@@ -1322,6 +1328,11 @@ public static class AppLifecycleHelper
             var settingsForAutoplay = Ioc.Default.GetService<ISettingsService>();
             if (settingsForAutoplay is not null)
                 orchestrator.AutoplayEnabledProvider = () => settingsForAutoplay.Settings.AutoplayEnabled;
+
+            // Surface hidden-track filtering to the user via toast. The
+            // orchestrator emits an event whenever it drops at least one
+            // hidden track from a play path; phrasing differs per surface.
+            WireHiddenTrackFilterToasts(orchestrator);
 
             // Wire up orchestrator (not raw proxy) as the local engine
             var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
@@ -1492,9 +1503,11 @@ public static class AppLifecycleHelper
                         localLibrary: GetLocalLibraryService(),
                         localMediaPlayer: GetLocalMediaPlayer(),
                         spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>(),
-                        localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled);
+                        localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled,
+                        contentFilter: Ioc.Default.GetService<Wavee.Audio.IPlaybackContentFilter>());
                     if (settingsForAutoplay is not null)
                         newOrch.AutoplayEnabledProvider = () => settingsForAutoplay.Settings.AutoplayEnabled;
+                    WireHiddenTrackFilterToasts(newOrch);
                     var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
                     exec?.EnableLocalPlayback(newOrch);
                     exec?.EnableAudioPipelineControl(newProxy);
@@ -1526,6 +1539,48 @@ public static class AppLifecycleHelper
             // In-process fallback was removed — all audio goes through AudioHost
             logger?.LogError("Out-of-process audio failed. No fallback available.");
         }
+    }
+
+    /// <summary>
+    /// Subscribes the global <see cref="INotificationService"/> to the
+    /// orchestrator's hidden-track-filtered stream so the user sees a toast
+    /// whenever the filter drops a track from a play path. Phrasing depends
+    /// on which surface fired (manual play vs. PlayNext vs. Add-to-queue vs.
+    /// autoplay-all-hidden).
+    /// </summary>
+    private static void WireHiddenTrackFilterToasts(Wavee.Audio.PlaybackOrchestrator orchestrator)
+    {
+        var sub = orchestrator.HiddenTracksFiltered.Subscribe(evt =>
+        {
+            var dispatcher = _uiDispatcher;
+            dispatcher?.TryEnqueue(() =>
+            {
+                var notifications = Ioc.Default.GetService<Wavee.UI.WinUI.Data.Contracts.INotificationService>();
+                if (notifications is null) return;
+
+                var (text, severity) = evt.Surface switch
+                {
+                    Wavee.Audio.HiddenFilterSurface.PlayContext => (
+                        evt.DroppedCount == 1
+                            ? "Skipped 1 hidden track"
+                            : $"Skipped {evt.DroppedCount} hidden tracks",
+                        Wavee.UI.WinUI.Data.Models.NotificationSeverity.Informational),
+                    Wavee.Audio.HiddenFilterSurface.PlayNext => (
+                        "That track is hidden — not queued",
+                        Wavee.UI.WinUI.Data.Models.NotificationSeverity.Informational),
+                    Wavee.Audio.HiddenFilterSurface.AddToQueue => (
+                        "That track is hidden — not queued",
+                        Wavee.UI.WinUI.Data.Models.NotificationSeverity.Informational),
+                    Wavee.Audio.HiddenFilterSurface.Autoplay => (
+                        "Autoplay had no eligible tracks (all were hidden)",
+                        Wavee.UI.WinUI.Data.Models.NotificationSeverity.Warning),
+                    _ => ((string?)null, Wavee.UI.WinUI.Data.Models.NotificationSeverity.Informational),
+                };
+                if (text is not null)
+                    notifications.Show(text, severity, TimeSpan.FromSeconds(3));
+            });
+        });
+        _appSubscriptions.Add(sub);
     }
 
     private static async Task ApplyAudioPipelineSettingsAsync(

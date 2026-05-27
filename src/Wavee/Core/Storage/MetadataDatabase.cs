@@ -441,10 +441,18 @@ public sealed class MetadataDatabase : IMetadataDatabase
     }
 
     /// <summary>
-    /// Idempotently create the audio_keys and head_data tables on every DB open.
-    /// These were added after the initial schema shipped, so DBs at the current
-    /// schema version won't have them unless we create them additively — same
-    /// pattern as <see cref="EnsureLocalizedMetadataTables"/>.
+    /// Idempotently create the audio_keys and playplay_obfuscated_keys
+    /// tables on every DB open. These were added after the initial schema
+    /// shipped, so DBs at the current schema version won't have them unless
+    /// we create them additively — same pattern as
+    /// <see cref="EnsureLocalizedMetadataTables"/>.
+    ///
+    /// Note: <c>head_data</c> and <c>cdn_cache</c> used to live here, but
+    /// they're now owned by <c>AudioCacheDatabase</c> (separate SQLite file)
+    /// so the audio resolver never queues behind library/playlist writes.
+    /// The migration in <c>AudioCacheDatabase.MigrateFromMetadataAsync</c>
+    /// copies any pre-existing rows out and drops the source tables on first
+    /// run after the split.
     /// </summary>
     private static void EnsureAudioBlobTables(SqliteConnection connection)
     {
@@ -456,20 +464,10 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 key_bytes  BLOB NOT NULL,
                 cached_at  INTEGER NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS head_data (
-                file_id    TEXT PRIMARY KEY NOT NULL,
-                data       BLOB NOT NULL,
-                cached_at  INTEGER NOT NULL
-            );
             CREATE TABLE IF NOT EXISTS playplay_obfuscated_keys (
                 file_id        TEXT PRIMARY KEY NOT NULL,
                 obf_key_bytes  BLOB NOT NULL,
                 cached_at      INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS cdn_cache (
-                file_id    TEXT PRIMARY KEY NOT NULL,
-                url        TEXT NOT NULL,
-                expiry_ms  INTEGER NOT NULL
             );
             """;
         cmd.ExecuteNonQuery();
@@ -503,6 +501,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
             DROP TABLE IF EXISTS local_artwork;
             DROP TABLE IF EXISTS local_artwork_links;
             DROP TABLE IF EXISTS playlist_overlay_items;
+            DROP TABLE IF EXISTS head_data;
+            DROP TABLE IF EXISTS cdn_cache;
             """;
         cmd.ExecuteNonQuery();
     }
@@ -1137,39 +1137,12 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 cmd.ExecuteNonQuery();
             }
 
-            // Head data persistence — first ~128 KB of encrypted audio used for
-            // instant-start playback. File IDs never change their contents on
-            // Spotify's side, so this is also safe to keep across restarts.
-            using (var cmd = connection.CreateCommand())
-            {
-                cmd.Transaction = transaction;
-                cmd.CommandText = """
-                    CREATE TABLE IF NOT EXISTS head_data (
-                        file_id    TEXT PRIMARY KEY NOT NULL,
-                        data       BLOB NOT NULL,
-                        cached_at  INTEGER NOT NULL
-                    );
-                    """;
-                cmd.ExecuteNonQuery();
-            }
-
-            // CDN URL cache — Spotify hands out signed CDN URLs with short
-            // expiries (minutes to hours). Persisting them across launches
-            // lets cold-start playback skip a storage-resolve roundtrip when
-            // the URL is still valid.
-            using (var cmd = connection.CreateCommand())
-            {
-                cmd.Transaction = transaction;
-                cmd.CommandText = """
-                    CREATE TABLE IF NOT EXISTS cdn_cache (
-                        file_id    TEXT PRIMARY KEY NOT NULL,
-                        url        TEXT NOT NULL,
-                        expiry_ms  INTEGER NOT NULL
-                    );
-                    """;
-                cmd.ExecuteNonQuery();
-            }
-
+            // head_data and cdn_cache used to live here. They moved to
+            // AudioCacheDatabase (own SQLite file) so the audio resolver's
+            // hot-path writes don't queue behind library / playlist
+            // contention. New installs never see them in metadata.db;
+            // existing installs have them dropped on first launch by
+            // AudioCacheDatabase.MigrateFromMetadataAsync.
 
             using (var cmd = connection.CreateCommand())
             {
@@ -2473,32 +2446,25 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
 
         // Clean SQLite
-        await _writeLock.WaitAsync(cancellationToken);
-        try
+        using var __lease = await AcquireWriteLockAsync(nameof(CleanupExpiredExtensionsAsync), 0, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            DELETE FROM extension_cache WHERE expires_at <= $now;
+            DELETE FROM localized_extension_cache WHERE expires_at <= $now;
+            """;
+        cmd.Parameters.AddWithValue("$now", now);
+
+        var deleted = await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+        if (deleted > 0)
         {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
-
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                DELETE FROM extension_cache WHERE expires_at <= $now;
-                DELETE FROM localized_extension_cache WHERE expires_at <= $now;
-                """;
-            cmd.Parameters.AddWithValue("$now", now);
-
-            var deleted = await cmd.ExecuteNonQueryAsync(cancellationToken);
-
-            if (deleted > 0)
-            {
-                _logger?.LogDebug("Cleaned up {Count} expired extension cache entries", deleted);
-            }
-
-            return deleted;
+            _logger?.LogDebug("Cleaned up {Count} expired extension cache entries", deleted);
         }
-        finally
-        {
-            _writeLock.Release();
-        }
+
+        return deleted;
     }
 
     /// <summary>
@@ -2514,26 +2480,19 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
 
         // Remove from SQLite
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(InvalidateEntityAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                DELETE FROM extension_cache WHERE entity_uri = $entity_uri;
-                DELETE FROM localized_extension_cache WHERE entity_uri = $entity_uri;
-                """;
-            cmd.Parameters.AddWithValue("$entity_uri", entityUri);
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            DELETE FROM extension_cache WHERE entity_uri = $entity_uri;
+            DELETE FROM localized_extension_cache WHERE entity_uri = $entity_uri;
+            """;
+        cmd.Parameters.AddWithValue("$entity_uri", entityUri);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogDebug("Invalidated cache for {EntityUri}", entityUri);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogDebug("Invalidated cache for {EntityUri}", entityUri);
     }
 
     #endregion
@@ -2551,35 +2510,28 @@ public sealed class MetadataDatabase : IMetadataDatabase
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(AddToSpotifyLibraryAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO spotify_library (item_uri, item_type, added_at, synced_at)
-                VALUES ($item_uri, $item_type, $added_at, $synced_at)
-                ON CONFLICT(item_uri) DO UPDATE SET
-                    item_type = excluded.item_type,
-                    added_at = excluded.added_at,
-                    synced_at = excluded.synced_at;
-                """;
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO spotify_library (item_uri, item_type, added_at, synced_at)
+            VALUES ($item_uri, $item_type, $added_at, $synced_at)
+            ON CONFLICT(item_uri) DO UPDATE SET
+                item_type = excluded.item_type,
+                added_at = excluded.added_at,
+                synced_at = excluded.synced_at;
+            """;
 
-            cmd.Parameters.AddWithValue("$item_uri", itemUri);
-            cmd.Parameters.AddWithValue("$item_type", (int)itemType);
-            cmd.Parameters.AddWithValue("$added_at", addedAt);
-            cmd.Parameters.AddWithValue("$synced_at", now);
+        cmd.Parameters.AddWithValue("$item_uri", itemUri);
+        cmd.Parameters.AddWithValue("$item_type", (int)itemType);
+        cmd.Parameters.AddWithValue("$added_at", addedAt);
+        cmd.Parameters.AddWithValue("$synced_at", now);
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogTrace("Added {Uri} to Spotify library as {Type}", itemUri, itemType);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogTrace("Added {Uri} to Spotify library as {Type}", itemUri, itemType);
     }
 
     /// <summary>
@@ -2587,24 +2539,17 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// </summary>
     public async Task RemoveFromSpotifyLibraryAsync(string itemUri, CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(RemoveFromSpotifyLibraryAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM spotify_library WHERE item_uri = $item_uri;";
-            cmd.Parameters.AddWithValue("$item_uri", itemUri);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM spotify_library WHERE item_uri = $item_uri;";
+        cmd.Parameters.AddWithValue("$item_uri", itemUri);
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogTrace("Removed {Uri} from Spotify library", itemUri);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogTrace("Removed {Uri} from Spotify library", itemUri);
     }
 
     public async Task RemoveFromSpotifyLibraryAsync(
@@ -2612,25 +2557,18 @@ public sealed class MetadataDatabase : IMetadataDatabase
         SpotifyLibraryItemType itemType,
         CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync($"{nameof(RemoveFromSpotifyLibraryAsync)}(type)", 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM spotify_library WHERE item_uri = $item_uri AND item_type = $item_type;";
-            cmd.Parameters.AddWithValue("$item_uri", itemUri);
-            cmd.Parameters.AddWithValue("$item_type", (int)itemType);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM spotify_library WHERE item_uri = $item_uri AND item_type = $item_type;";
+        cmd.Parameters.AddWithValue("$item_uri", itemUri);
+        cmd.Parameters.AddWithValue("$item_type", (int)itemType);
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogTrace("Removed {Uri} (type {Type}) from Spotify library", itemUri, itemType);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogTrace("Removed {Uri} (type {Type}) from Spotify library", itemUri, itemType);
     }
 
     /// <summary>
@@ -2929,30 +2867,23 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// </summary>
     public async Task ClearSpotifyLibraryAsync(SpotifyLibraryItemType? itemType = null, CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(ClearSpotifyLibraryAsync), 0, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            if (itemType.HasValue)
-            {
-                cmd.CommandText = "DELETE FROM spotify_library WHERE item_type = $item_type;";
-                cmd.Parameters.AddWithValue("$item_type", (int)itemType.Value);
-            }
-            else
-            {
-                cmd.CommandText = "DELETE FROM spotify_library;";
-            }
-
-            var deleted = await cmd.ExecuteNonQueryAsync(cancellationToken);
-            _logger?.LogDebug("Cleared {Count} items from Spotify library", deleted);
-        }
-        finally
+        using var cmd = connection.CreateCommand();
+        if (itemType.HasValue)
         {
-            _writeLock.Release();
+            cmd.CommandText = "DELETE FROM spotify_library WHERE item_type = $item_type;";
+            cmd.Parameters.AddWithValue("$item_type", (int)itemType.Value);
         }
+        else
+        {
+            cmd.CommandText = "DELETE FROM spotify_library;";
+        }
+
+        var deleted = await cmd.ExecuteNonQueryAsync(cancellationToken);
+        _logger?.LogDebug("Cleared {Count} items from Spotify library", deleted);
     }
 
     #endregion
@@ -2965,23 +2896,19 @@ public sealed class MetadataDatabase : IMetadataDatabase
         ArgumentException.ThrowIfNullOrWhiteSpace(primaryUri);
 
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO outbox (op_kind, primary_uri, payload, created_at)
-                VALUES ($kind, $uri, $payload, $created);
-                """;
-            cmd.Parameters.AddWithValue("$kind", opKind);
-            cmd.Parameters.AddWithValue("$uri", primaryUri);
-            cmd.Parameters.AddWithValue("$payload", (object?)payloadJson ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$created", now);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally { _writeLock.Release(); }
+        using var __lease = await AcquireWriteLockAsync(nameof(EnqueueOutboxAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO outbox (op_kind, primary_uri, payload, created_at)
+            VALUES ($kind, $uri, $payload, $created);
+            """;
+        cmd.Parameters.AddWithValue("$kind", opKind);
+        cmd.Parameters.AddWithValue("$uri", primaryUri);
+        cmd.Parameters.AddWithValue("$payload", (object?)payloadJson ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$created", now);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task<List<OutboxEntry>> DequeueOutboxAsync(int limit = 50, CancellationToken ct = default)
@@ -3018,49 +2945,37 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     public async Task AdvanceOutboxProgressAsync(long id, int progressOffset, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "UPDATE outbox SET progress_offset = $offset WHERE id = $id;";
-            cmd.Parameters.AddWithValue("$id", id);
-            cmd.Parameters.AddWithValue("$offset", progressOffset);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally { _writeLock.Release(); }
+        using var __lease = await AcquireWriteLockAsync(nameof(AdvanceOutboxProgressAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE outbox SET progress_offset = $offset WHERE id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$offset", progressOffset);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task CompleteOutboxAsync(long id, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM outbox WHERE id = $id;";
-            cmd.Parameters.AddWithValue("$id", id);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally { _writeLock.Release(); }
+        using var __lease = await AcquireWriteLockAsync(nameof(CompleteOutboxAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM outbox WHERE id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task FailOutboxAsync(long id, string? error, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "UPDATE outbox SET retry_count = retry_count + 1, last_error = $error WHERE id = $id;";
-            cmd.Parameters.AddWithValue("$id", id);
-            cmd.Parameters.AddWithValue("$error", (object?)error ?? DBNull.Value);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally { _writeLock.Release(); }
+        using var __lease = await AcquireWriteLockAsync(nameof(FailOutboxAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE outbox SET retry_count = retry_count + 1, last_error = $error WHERE id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$error", (object?)error ?? DBNull.Value);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     #endregion
@@ -3071,43 +2986,39 @@ public sealed class MetadataDatabase : IMetadataDatabase
     {
         ArgumentNullException.ThrowIfNull(entry);
 
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO user_action_activity (
-                    id, category, title, message, icon_glyph, undo_label,
-                    action_kind, descriptor_json, created_at, is_undone)
-                VALUES (
-                    $id, $category, $title, $message, $iconGlyph, $undoLabel,
-                    $actionKind, $descriptorJson, $createdAt, $isUndone)
-                ON CONFLICT(id) DO UPDATE SET
-                    category = excluded.category,
-                    title = excluded.title,
-                    message = excluded.message,
-                    icon_glyph = excluded.icon_glyph,
-                    undo_label = excluded.undo_label,
-                    action_kind = excluded.action_kind,
-                    descriptor_json = excluded.descriptor_json,
-                    created_at = excluded.created_at,
-                    is_undone = excluded.is_undone;
-                """;
-            cmd.Parameters.AddWithValue("$id", entry.Id);
-            cmd.Parameters.AddWithValue("$category", entry.Category);
-            cmd.Parameters.AddWithValue("$title", entry.Title);
-            cmd.Parameters.AddWithValue("$message", (object?)entry.Message ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$iconGlyph", (object?)entry.IconGlyph ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$undoLabel", entry.UndoLabel);
-            cmd.Parameters.AddWithValue("$actionKind", entry.ActionKind);
-            cmd.Parameters.AddWithValue("$descriptorJson", entry.DescriptorJson);
-            cmd.Parameters.AddWithValue("$createdAt", entry.CreatedAt);
-            cmd.Parameters.AddWithValue("$isUndone", entry.IsUndone ? 1 : 0);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally { _writeLock.Release(); }
+        using var __lease = await AcquireWriteLockAsync(nameof(UpsertUserActionActivityAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO user_action_activity (
+                id, category, title, message, icon_glyph, undo_label,
+                action_kind, descriptor_json, created_at, is_undone)
+            VALUES (
+                $id, $category, $title, $message, $iconGlyph, $undoLabel,
+                $actionKind, $descriptorJson, $createdAt, $isUndone)
+            ON CONFLICT(id) DO UPDATE SET
+                category = excluded.category,
+                title = excluded.title,
+                message = excluded.message,
+                icon_glyph = excluded.icon_glyph,
+                undo_label = excluded.undo_label,
+                action_kind = excluded.action_kind,
+                descriptor_json = excluded.descriptor_json,
+                created_at = excluded.created_at,
+                is_undone = excluded.is_undone;
+            """;
+        cmd.Parameters.AddWithValue("$id", entry.Id);
+        cmd.Parameters.AddWithValue("$category", entry.Category);
+        cmd.Parameters.AddWithValue("$title", entry.Title);
+        cmd.Parameters.AddWithValue("$message", (object?)entry.Message ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$iconGlyph", (object?)entry.IconGlyph ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$undoLabel", entry.UndoLabel);
+        cmd.Parameters.AddWithValue("$actionKind", entry.ActionKind);
+        cmd.Parameters.AddWithValue("$descriptorJson", entry.DescriptorJson);
+        cmd.Parameters.AddWithValue("$createdAt", entry.CreatedAt);
+        cmd.Parameters.AddWithValue("$isUndone", entry.IsUndone ? 1 : 0);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task<List<UserActionActivityEntry>> GetUserActionActivitiesAsync(int limit = 50, CancellationToken ct = default)
@@ -3148,46 +3059,34 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     public async Task MarkUserActionActivityUndoneAsync(string id, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "UPDATE user_action_activity SET is_undone = 1 WHERE id = $id;";
-            cmd.Parameters.AddWithValue("$id", id);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally { _writeLock.Release(); }
+        using var __lease = await AcquireWriteLockAsync(nameof(MarkUserActionActivityUndoneAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE user_action_activity SET is_undone = 1 WHERE id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task DeleteUserActionActivityAsync(string id, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM user_action_activity WHERE id = $id;";
-            cmd.Parameters.AddWithValue("$id", id);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally { _writeLock.Release(); }
+        using var __lease = await AcquireWriteLockAsync(nameof(DeleteUserActionActivityAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM user_action_activity WHERE id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task ClearUserActionActivitiesAsync(CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM user_action_activity;";
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally { _writeLock.Release(); }
+        using var __lease = await AcquireWriteLockAsync(nameof(ClearUserActionActivitiesAsync), 0, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM user_action_activity;";
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     #endregion
@@ -3230,56 +3129,42 @@ public sealed class MetadataDatabase : IMetadataDatabase
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(SetSyncStateAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO sync_state (collection_type, revision, last_sync_at, item_count)
-                VALUES ($collection_type, $revision, $last_sync_at, $item_count)
-                ON CONFLICT(collection_type) DO UPDATE SET
-                    revision = excluded.revision,
-                    last_sync_at = excluded.last_sync_at,
-                    item_count = excluded.item_count;
-                """;
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO sync_state (collection_type, revision, last_sync_at, item_count)
+            VALUES ($collection_type, $revision, $last_sync_at, $item_count)
+            ON CONFLICT(collection_type) DO UPDATE SET
+                revision = excluded.revision,
+                last_sync_at = excluded.last_sync_at,
+                item_count = excluded.item_count;
+            """;
 
-            cmd.Parameters.AddWithValue("$collection_type", collectionType);
-            cmd.Parameters.AddWithValue("$revision", (object?)revision ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$last_sync_at", now);
-            cmd.Parameters.AddWithValue("$item_count", itemCount);
+        cmd.Parameters.AddWithValue("$collection_type", collectionType);
+        cmd.Parameters.AddWithValue("$revision", (object?)revision ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$last_sync_at", now);
+        cmd.Parameters.AddWithValue("$item_count", itemCount);
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogDebug("Updated sync state for {Collection}: revision={Revision}, count={Count}",
-                collectionType, revision, itemCount);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogDebug("Updated sync state for {Collection}: revision={Revision}, count={Count}",
+            collectionType, revision, itemCount);
     }
 
     public async Task ClearAllSyncStateAsync(CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(ClearAllSyncStateAsync), 0, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM sync_state;";
-            var affected = await cmd.ExecuteNonQueryAsync(cancellationToken);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM sync_state;";
+        var affected = await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogInformation("Cleared {Count} sync_state rows", affected);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogInformation("Cleared {Count} sync_state rows", affected);
     }
 
     #endregion
@@ -3298,33 +3183,26 @@ public sealed class MetadataDatabase : IMetadataDatabase
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(RecordPlayAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO play_history (item_uri, played_at, duration_played_ms, completed, source_context)
-                VALUES ($item_uri, $played_at, $duration_played_ms, $completed, $source_context);
-                """;
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO play_history (item_uri, played_at, duration_played_ms, completed, source_context)
+            VALUES ($item_uri, $played_at, $duration_played_ms, $completed, $source_context);
+            """;
 
-            cmd.Parameters.AddWithValue("$item_uri", itemUri);
-            cmd.Parameters.AddWithValue("$played_at", now);
-            cmd.Parameters.AddWithValue("$duration_played_ms", durationPlayedMs);
-            cmd.Parameters.AddWithValue("$completed", completed ? 1 : 0);
-            cmd.Parameters.AddWithValue("$source_context", (object?)sourceContext ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$item_uri", itemUri);
+        cmd.Parameters.AddWithValue("$played_at", now);
+        cmd.Parameters.AddWithValue("$duration_played_ms", durationPlayedMs);
+        cmd.Parameters.AddWithValue("$completed", completed ? 1 : 0);
+        cmd.Parameters.AddWithValue("$source_context", (object?)sourceContext ?? DBNull.Value);
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogTrace("Recorded play for {Uri}, duration={Duration}ms, completed={Completed}",
-                itemUri, durationPlayedMs, completed);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogTrace("Recorded play for {Uri}, duration={Duration}ms, completed={Completed}",
+            itemUri, durationPlayedMs, completed);
     }
 
     /// <summary>
@@ -3436,56 +3314,49 @@ public sealed class MetadataDatabase : IMetadataDatabase
     {
         ArgumentNullException.ThrowIfNull(playlist);
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(UpsertPlaylistAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO spotify_playlists (id, name, owner_id, owner_name, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist)
-                VALUES ($id, $name, $owner_id, $owner_name, $description, $image_url, $track_count, $is_public, $is_collaborative, $is_owned, $synced_at, $revision, $folder_path, $is_from_rootlist)
-                ON CONFLICT(id) DO UPDATE SET
-                    name = excluded.name,
-                    owner_id = excluded.owner_id,
-                    owner_name = excluded.owner_name,
-                    description = excluded.description,
-                    image_url = excluded.image_url,
-                    track_count = excluded.track_count,
-                    is_public = excluded.is_public,
-                    is_collaborative = excluded.is_collaborative,
-                    is_owned = excluded.is_owned,
-                    synced_at = excluded.synced_at,
-                    revision = excluded.revision,
-                    folder_path = excluded.folder_path,
-                    is_from_rootlist = excluded.is_from_rootlist;
-                """;
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO spotify_playlists (id, name, owner_id, owner_name, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist)
+            VALUES ($id, $name, $owner_id, $owner_name, $description, $image_url, $track_count, $is_public, $is_collaborative, $is_owned, $synced_at, $revision, $folder_path, $is_from_rootlist)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                owner_id = excluded.owner_id,
+                owner_name = excluded.owner_name,
+                description = excluded.description,
+                image_url = excluded.image_url,
+                track_count = excluded.track_count,
+                is_public = excluded.is_public,
+                is_collaborative = excluded.is_collaborative,
+                is_owned = excluded.is_owned,
+                synced_at = excluded.synced_at,
+                revision = excluded.revision,
+                folder_path = excluded.folder_path,
+                is_from_rootlist = excluded.is_from_rootlist;
+            """;
 
-            cmd.Parameters.AddWithValue("$id", playlist.Uri);
-            cmd.Parameters.AddWithValue("$name", playlist.Name);
-            cmd.Parameters.AddWithValue("$owner_id", (object?)playlist.OwnerId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$owner_name", (object?)playlist.OwnerName ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$description", (object?)playlist.Description ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$image_url", (object?)playlist.ImageUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$track_count", playlist.TrackCount);
-            cmd.Parameters.AddWithValue("$is_public", playlist.IsPublic ? 1 : 0);
-            cmd.Parameters.AddWithValue("$is_collaborative", playlist.IsCollaborative ? 1 : 0);
-            cmd.Parameters.AddWithValue("$is_owned", playlist.IsOwned ? 1 : 0);
-            cmd.Parameters.AddWithValue("$synced_at", playlist.SyncedAt);
-            cmd.Parameters.AddWithValue("$revision", (object?)playlist.Revision ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$folder_path", (object?)playlist.FolderPath ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$is_from_rootlist", playlist.IsFromRootlist ? 1 : 0);
+        cmd.Parameters.AddWithValue("$id", playlist.Uri);
+        cmd.Parameters.AddWithValue("$name", playlist.Name);
+        cmd.Parameters.AddWithValue("$owner_id", (object?)playlist.OwnerId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$owner_name", (object?)playlist.OwnerName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$description", (object?)playlist.Description ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$image_url", (object?)playlist.ImageUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$track_count", playlist.TrackCount);
+        cmd.Parameters.AddWithValue("$is_public", playlist.IsPublic ? 1 : 0);
+        cmd.Parameters.AddWithValue("$is_collaborative", playlist.IsCollaborative ? 1 : 0);
+        cmd.Parameters.AddWithValue("$is_owned", playlist.IsOwned ? 1 : 0);
+        cmd.Parameters.AddWithValue("$synced_at", playlist.SyncedAt);
+        cmd.Parameters.AddWithValue("$revision", (object?)playlist.Revision ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$folder_path", (object?)playlist.FolderPath ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$is_from_rootlist", playlist.IsFromRootlist ? 1 : 0);
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogTrace("Upserted playlist: {Uri} - {Name} (folder: {Folder})",
-                playlist.Uri, playlist.Name, playlist.FolderPath ?? "(root)");
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogTrace("Upserted playlist: {Uri} - {Name} (folder: {Folder})",
+            playlist.Uri, playlist.Name, playlist.FolderPath ?? "(root)");
     }
 
     /// <summary>
@@ -3548,24 +3419,17 @@ public sealed class MetadataDatabase : IMetadataDatabase
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(DeletePlaylistAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM spotify_playlists WHERE id = $id;";
-            cmd.Parameters.AddWithValue("$id", playlistUri);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM spotify_playlists WHERE id = $id;";
+        cmd.Parameters.AddWithValue("$id", playlistUri);
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogTrace("Deleted playlist: {Uri}", playlistUri);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogTrace("Deleted playlist: {Uri}", playlistUri);
     }
 
     /// <summary>
@@ -3573,110 +3437,96 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// </summary>
     public async Task ClearAllPlaylistsAsync(CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(ClearAllPlaylistsAsync), 0, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM spotify_playlists;";
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM spotify_playlists;";
 
-            var deleted = await cmd.ExecuteNonQueryAsync(cancellationToken);
-            _logger?.LogDebug("Cleared {Count} playlists from database", deleted);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        var deleted = await cmd.ExecuteNonQueryAsync(cancellationToken);
+        _logger?.LogDebug("Cleared {Count} playlists from database", deleted);
     }
 
     public async Task UpsertPlaylistCacheEntryAsync(PlaylistCacheEntry playlist, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(playlist);
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(UpsertPlaylistCacheEntryAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO spotify_playlists (
-                    id, name, owner_id, owner_name, description, image_url, header_image_url, track_count,
-                    is_public, is_collaborative, is_owned, synced_at, cache_revision,
-                    ordered_items_json, has_contents_snapshot, base_permission,
-                    capabilities_json, format_attributes_json, available_signals_json,
-                    deleted_by_owner, abuse_reporting_enabled,
-                    last_accessed_at, is_from_rootlist, cache_schema_version
-                )
-                VALUES (
-                    $id, $name, $owner_id, $owner_name, $description, $image_url, $header_image_url, $track_count,
-                    $is_public, $is_collaborative, $is_owned, $synced_at, $cache_revision,
-                    $ordered_items_json, $has_contents_snapshot, $base_permission,
-                    $capabilities_json, $format_attributes_json, $available_signals_json,
-                    $deleted_by_owner, $abuse_reporting_enabled,
-                    $last_accessed_at, 1, $cache_schema_version
-                )
-                ON CONFLICT(id) DO UPDATE SET
-                    name = excluded.name,
-                    owner_id = excluded.owner_id,
-                    owner_name = excluded.owner_name,
-                    description = excluded.description,
-                    image_url = excluded.image_url,
-                    header_image_url = excluded.header_image_url,
-                    track_count = excluded.track_count,
-                    is_public = excluded.is_public,
-                    is_collaborative = excluded.is_collaborative,
-                    is_owned = excluded.is_owned,
-                    synced_at = excluded.synced_at,
-                    cache_revision = excluded.cache_revision,
-                    ordered_items_json = COALESCE(excluded.ordered_items_json, spotify_playlists.ordered_items_json),
-                    has_contents_snapshot = excluded.has_contents_snapshot,
-                    base_permission = excluded.base_permission,
-                    capabilities_json = excluded.capabilities_json,
-                    format_attributes_json = excluded.format_attributes_json,
-                    available_signals_json = excluded.available_signals_json,
-                    deleted_by_owner = excluded.deleted_by_owner,
-                    abuse_reporting_enabled = excluded.abuse_reporting_enabled,
-                    last_accessed_at = excluded.last_accessed_at,
-                    is_from_rootlist = 1,
-                    cache_schema_version = excluded.cache_schema_version;
-                """;
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO spotify_playlists (
+                id, name, owner_id, owner_name, description, image_url, header_image_url, track_count,
+                is_public, is_collaborative, is_owned, synced_at, cache_revision,
+                ordered_items_json, has_contents_snapshot, base_permission,
+                capabilities_json, format_attributes_json, available_signals_json,
+                deleted_by_owner, abuse_reporting_enabled,
+                last_accessed_at, is_from_rootlist, cache_schema_version
+            )
+            VALUES (
+                $id, $name, $owner_id, $owner_name, $description, $image_url, $header_image_url, $track_count,
+                $is_public, $is_collaborative, $is_owned, $synced_at, $cache_revision,
+                $ordered_items_json, $has_contents_snapshot, $base_permission,
+                $capabilities_json, $format_attributes_json, $available_signals_json,
+                $deleted_by_owner, $abuse_reporting_enabled,
+                $last_accessed_at, 1, $cache_schema_version
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                owner_id = excluded.owner_id,
+                owner_name = excluded.owner_name,
+                description = excluded.description,
+                image_url = excluded.image_url,
+                header_image_url = excluded.header_image_url,
+                track_count = excluded.track_count,
+                is_public = excluded.is_public,
+                is_collaborative = excluded.is_collaborative,
+                is_owned = excluded.is_owned,
+                synced_at = excluded.synced_at,
+                cache_revision = excluded.cache_revision,
+                ordered_items_json = COALESCE(excluded.ordered_items_json, spotify_playlists.ordered_items_json),
+                has_contents_snapshot = excluded.has_contents_snapshot,
+                base_permission = excluded.base_permission,
+                capabilities_json = excluded.capabilities_json,
+                format_attributes_json = excluded.format_attributes_json,
+                available_signals_json = excluded.available_signals_json,
+                deleted_by_owner = excluded.deleted_by_owner,
+                abuse_reporting_enabled = excluded.abuse_reporting_enabled,
+                last_accessed_at = excluded.last_accessed_at,
+                is_from_rootlist = 1,
+                cache_schema_version = excluded.cache_schema_version;
+            """;
 
-            cmd.Parameters.AddWithValue("$id", playlist.Uri);
-            cmd.Parameters.AddWithValue("$name", playlist.Name ?? string.Empty);
-            cmd.Parameters.AddWithValue("$owner_id", (object?)playlist.OwnerUri ?? (object?)playlist.OwnerUsername ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$owner_name", (object?)playlist.OwnerName ?? (object?)playlist.OwnerUsername ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$description", (object?)playlist.Description ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$image_url", (object?)playlist.ImageUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$header_image_url", (object?)playlist.HeaderImageUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$track_count", playlist.TrackCount ?? 0);
-            cmd.Parameters.AddWithValue("$is_public", playlist.IsPublic ? 1 : 0);
-            cmd.Parameters.AddWithValue("$is_collaborative", playlist.IsCollaborative ? 1 : 0);
-            cmd.Parameters.AddWithValue("$is_owned", playlist.BasePermission == CachedPlaylistBasePermission.Owner ? 1 : 0);
-            cmd.Parameters.AddWithValue("$synced_at", playlist.CachedAt.ToUnixTimeSeconds());
-            cmd.Parameters.AddWithValue("$cache_revision", (object?)playlist.Revision ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$ordered_items_json", (object?)playlist.OrderedItemsJson ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$has_contents_snapshot", playlist.HasContentsSnapshot ? 1 : 0);
-            cmd.Parameters.AddWithValue("$base_permission", (int)playlist.BasePermission);
-            cmd.Parameters.AddWithValue("$capabilities_json", (object?)playlist.CapabilitiesJson ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$format_attributes_json", (object?)playlist.FormatAttributesJson ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$available_signals_json", (object?)playlist.AvailableSignalsJson ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$deleted_by_owner", playlist.DeletedByOwner ? 1 : 0);
-            cmd.Parameters.AddWithValue("$abuse_reporting_enabled", playlist.AbuseReportingEnabled ? 1 : 0);
-            cmd.Parameters.AddWithValue("$last_accessed_at", playlist.LastAccessedAt.HasValue
-                ? playlist.LastAccessedAt.Value.ToUnixTimeSeconds()
-                : DBNull.Value);
-            cmd.Parameters.AddWithValue("$cache_schema_version", playlist.CacheSchemaVersion);
+        cmd.Parameters.AddWithValue("$id", playlist.Uri);
+        cmd.Parameters.AddWithValue("$name", playlist.Name ?? string.Empty);
+        cmd.Parameters.AddWithValue("$owner_id", (object?)playlist.OwnerUri ?? (object?)playlist.OwnerUsername ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$owner_name", (object?)playlist.OwnerName ?? (object?)playlist.OwnerUsername ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$description", (object?)playlist.Description ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$image_url", (object?)playlist.ImageUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$header_image_url", (object?)playlist.HeaderImageUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$track_count", playlist.TrackCount ?? 0);
+        cmd.Parameters.AddWithValue("$is_public", playlist.IsPublic ? 1 : 0);
+        cmd.Parameters.AddWithValue("$is_collaborative", playlist.IsCollaborative ? 1 : 0);
+        cmd.Parameters.AddWithValue("$is_owned", playlist.BasePermission == CachedPlaylistBasePermission.Owner ? 1 : 0);
+        cmd.Parameters.AddWithValue("$synced_at", playlist.CachedAt.ToUnixTimeSeconds());
+        cmd.Parameters.AddWithValue("$cache_revision", (object?)playlist.Revision ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ordered_items_json", (object?)playlist.OrderedItemsJson ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$has_contents_snapshot", playlist.HasContentsSnapshot ? 1 : 0);
+        cmd.Parameters.AddWithValue("$base_permission", (int)playlist.BasePermission);
+        cmd.Parameters.AddWithValue("$capabilities_json", (object?)playlist.CapabilitiesJson ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$format_attributes_json", (object?)playlist.FormatAttributesJson ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$available_signals_json", (object?)playlist.AvailableSignalsJson ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$deleted_by_owner", playlist.DeletedByOwner ? 1 : 0);
+        cmd.Parameters.AddWithValue("$abuse_reporting_enabled", playlist.AbuseReportingEnabled ? 1 : 0);
+        cmd.Parameters.AddWithValue("$last_accessed_at", playlist.LastAccessedAt.HasValue
+            ? playlist.LastAccessedAt.Value.ToUnixTimeSeconds()
+            : DBNull.Value);
+        cmd.Parameters.AddWithValue("$cache_schema_version", playlist.CacheSchemaVersion);
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<PlaylistCacheEntry?> GetPlaylistCacheEntryAsync(
@@ -3758,36 +3608,29 @@ public sealed class MetadataDatabase : IMetadataDatabase
     {
         ArgumentNullException.ThrowIfNull(rootlist);
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(UpsertRootlistCacheEntryAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO rootlist_cache (id, revision, json_data, cached_at, last_accessed_at)
-                VALUES ($id, $revision, $json_data, $cached_at, $last_accessed_at)
-                ON CONFLICT(id) DO UPDATE SET
-                    revision = excluded.revision,
-                    json_data = excluded.json_data,
-                    cached_at = excluded.cached_at,
-                    last_accessed_at = excluded.last_accessed_at;
-                """;
-            cmd.Parameters.AddWithValue("$id", rootlist.Uri);
-            cmd.Parameters.AddWithValue("$revision", (object?)rootlist.Revision ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$json_data", rootlist.JsonData);
-            cmd.Parameters.AddWithValue("$cached_at", rootlist.CachedAt.ToUnixTimeSeconds());
-            cmd.Parameters.AddWithValue("$last_accessed_at", rootlist.LastAccessedAt.HasValue
-                ? rootlist.LastAccessedAt.Value.ToUnixTimeSeconds()
-                : DBNull.Value);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO rootlist_cache (id, revision, json_data, cached_at, last_accessed_at)
+            VALUES ($id, $revision, $json_data, $cached_at, $last_accessed_at)
+            ON CONFLICT(id) DO UPDATE SET
+                revision = excluded.revision,
+                json_data = excluded.json_data,
+                cached_at = excluded.cached_at,
+                last_accessed_at = excluded.last_accessed_at;
+            """;
+        cmd.Parameters.AddWithValue("$id", rootlist.Uri);
+        cmd.Parameters.AddWithValue("$revision", (object?)rootlist.Revision ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$json_data", rootlist.JsonData);
+        cmd.Parameters.AddWithValue("$cached_at", rootlist.CachedAt.ToUnixTimeSeconds());
+        cmd.Parameters.AddWithValue("$last_accessed_at", rootlist.LastAccessedAt.HasValue
+            ? rootlist.LastAccessedAt.Value.ToUnixTimeSeconds()
+            : DBNull.Value);
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<RootlistCacheEntry?> GetRootlistCacheEntryAsync(
@@ -3907,26 +3750,49 @@ public sealed class MetadataDatabase : IMetadataDatabase
         DateTimeOffset accessedAt,
         CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(TouchPlaylistCacheEntryAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                UPDATE spotify_playlists
-                SET last_accessed_at = $last_accessed_at
-                WHERE id = $id;
-                """;
-            cmd.Parameters.AddWithValue("$id", playlistUri);
-            cmd.Parameters.AddWithValue("$last_accessed_at", accessedAt.ToUnixTimeSeconds());
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            UPDATE spotify_playlists
+            SET last_accessed_at = $last_accessed_at
+            WHERE id = $id;
+            """;
+        cmd.Parameters.AddWithValue("$id", playlistUri);
+        cmd.Parameters.AddWithValue("$last_accessed_at", accessedAt.ToUnixTimeSeconds());
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task TouchPlaylistCacheEntriesAsync(
+        IReadOnlyList<(string PlaylistUri, DateTimeOffset AccessedAt)> entries,
+        CancellationToken cancellationToken = default)
+    {
+        if (entries is null || entries.Count == 0)
+            return;
+
+        using var __lease = await AcquireWriteLockAsync(nameof(TouchPlaylistCacheEntriesAsync), entries.Count, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var tx = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            UPDATE spotify_playlists
+            SET last_accessed_at = $last_accessed_at
+            WHERE id = $id;
+            """;
+        var idParam = cmd.Parameters.Add("$id", Microsoft.Data.Sqlite.SqliteType.Text);
+        var atParam = cmd.Parameters.Add("$last_accessed_at", Microsoft.Data.Sqlite.SqliteType.Integer);
+        foreach (var (uri, at) in entries)
+        {
+            idParam.Value = uri;
+            atParam.Value = at.ToUnixTimeSeconds();
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await tx.CommitAsync(cancellationToken);
     }
 
     public async Task TouchRootlistCacheEntryAsync(
@@ -3934,26 +3800,49 @@ public sealed class MetadataDatabase : IMetadataDatabase
         DateTimeOffset accessedAt,
         CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(TouchRootlistCacheEntryAsync), 1, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                UPDATE rootlist_cache
-                SET last_accessed_at = $last_accessed_at
-                WHERE id = $id;
-                """;
-            cmd.Parameters.AddWithValue("$id", rootlistUri);
-            cmd.Parameters.AddWithValue("$last_accessed_at", accessedAt.ToUnixTimeSeconds());
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            UPDATE rootlist_cache
+            SET last_accessed_at = $last_accessed_at
+            WHERE id = $id;
+            """;
+        cmd.Parameters.AddWithValue("$id", rootlistUri);
+        cmd.Parameters.AddWithValue("$last_accessed_at", accessedAt.ToUnixTimeSeconds());
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task TouchRootlistCacheEntriesAsync(
+        IReadOnlyList<(string RootlistUri, DateTimeOffset AccessedAt)> entries,
+        CancellationToken cancellationToken = default)
+    {
+        if (entries is null || entries.Count == 0)
+            return;
+
+        using var __lease = await AcquireWriteLockAsync(nameof(TouchRootlistCacheEntriesAsync), entries.Count, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var tx = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            UPDATE rootlist_cache
+            SET last_accessed_at = $last_accessed_at
+            WHERE id = $id;
+            """;
+        var idParam = cmd.Parameters.Add("$id", Microsoft.Data.Sqlite.SqliteType.Text);
+        var atParam = cmd.Parameters.Add("$last_accessed_at", Microsoft.Data.Sqlite.SqliteType.Integer);
+        foreach (var (uri, at) in entries)
+        {
+            idParam.Value = uri;
+            atParam.Value = at.ToUnixTimeSeconds();
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await tx.CommitAsync(cancellationToken);
     }
 
     #endregion
@@ -4027,22 +3916,15 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// </summary>
     public async Task VacuumAsync(CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(VacuumAsync), 0, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "VACUUM;";
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "VACUUM;";
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogInformation("Database vacuumed");
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogInformation("Database vacuumed");
     }
 
     /// <summary>
@@ -4052,64 +3934,50 @@ public sealed class MetadataDatabase : IMetadataDatabase
     {
         _hotCache.Clear();
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(ClearAllAsync), 0, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                DELETE FROM extension_cache;
-                DELETE FROM localized_extension_cache;
-                DELETE FROM entities;
-                DELETE FROM localized_entities;
-                DELETE FROM user_action_activity;
-                """;
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            DELETE FROM extension_cache;
+            DELETE FROM localized_extension_cache;
+            DELETE FROM entities;
+            DELETE FROM localized_entities;
+            DELETE FROM user_action_activity;
+            """;
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogInformation("Database cleared");
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogInformation("Database cleared");
     }
 
     public async Task WipeAllUserDataAsync(CancellationToken cancellationToken = default)
     {
         _hotCache.Clear();
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken);
+        using var __lease = await AcquireWriteLockAsync(nameof(WipeAllUserDataAsync), 0, cancellationToken);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
 
-            using var tx = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
-            using var cmd = connection.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = """
-                DELETE FROM extension_cache;
-                DELETE FROM localized_extension_cache;
-                DELETE FROM entities;
-                DELETE FROM localized_entities;
-                DELETE FROM spotify_library;
-                DELETE FROM sync_state;
-                DELETE FROM spotify_playlists;
-                DELETE FROM rootlist_cache;
-                DELETE FROM outbox;
-                DELETE FROM user_action_activity;
-                """;
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
-            await tx.CommitAsync(cancellationToken);
+        using var tx = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            DELETE FROM extension_cache;
+            DELETE FROM localized_extension_cache;
+            DELETE FROM entities;
+            DELETE FROM localized_entities;
+            DELETE FROM spotify_library;
+            DELETE FROM sync_state;
+            DELETE FROM spotify_playlists;
+            DELETE FROM rootlist_cache;
+            DELETE FROM outbox;
+            DELETE FROM user_action_activity;
+            """;
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await tx.CommitAsync(cancellationToken);
 
-            _logger?.LogInformation("Wiped all user-bound tables (entities, library, sync_state, playlists, rootlist, outbox, activity)");
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        _logger?.LogInformation("Wiped all user-bound tables (entities, library, sync_state, playlists, rootlist, outbox, activity)");
     }
 
     #endregion
@@ -4218,27 +4086,20 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// <inheritdoc />
     public async Task SetAlbumTracksCacheAsync(string albumUri, string jsonData, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
+        using var __lease = await AcquireWriteLockAsync(nameof(SetAlbumTracksCacheAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO album_tracks_cache (album_uri, json_data, cached_at)
-                VALUES (@uri, @json, @cached)
-                """;
-            cmd.Parameters.AddWithValue("@uri", albumUri);
-            cmd.Parameters.AddWithValue("@json", jsonData);
-            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO album_tracks_cache (album_uri, json_data, cached_at)
+            VALUES (@uri, @json, @cached)
+            """;
+        cmd.Parameters.AddWithValue("@uri", albumUri);
+        cmd.Parameters.AddWithValue("@json", jsonData);
+        cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     /// <inheritdoc />
@@ -4265,29 +4126,22 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// <inheritdoc />
     public async Task SetColorCacheAsync(string imageUrl, string? darkHex, string? lightHex, string? rawHex, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
+        using var __lease = await AcquireWriteLockAsync(nameof(SetColorCacheAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO color_cache (image_url, dark_hex, light_hex, raw_hex, cached_at)
-                VALUES (@url, @dark, @light, @raw, @cached)
-                """;
-            cmd.Parameters.AddWithValue("@url", imageUrl);
-            cmd.Parameters.AddWithValue("@dark", (object?)darkHex ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@light", (object?)lightHex ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@raw", (object?)rawHex ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO color_cache (image_url, dark_hex, light_hex, raw_hex, cached_at)
+            VALUES (@url, @dark, @light, @raw, @cached)
+            """;
+        cmd.Parameters.AddWithValue("@url", imageUrl);
+        cmd.Parameters.AddWithValue("@dark", (object?)darkHex ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@light", (object?)lightHex ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@raw", (object?)rawHex ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     /// <inheritdoc />
@@ -4334,28 +4188,21 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// <inheritdoc />
     public async Task SetPersistedAudioKeyAsync(string fileIdHex, string? trackUri, byte[] keyBytes, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
+        using var __lease = await AcquireWriteLockAsync(nameof(SetPersistedAudioKeyAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO audio_keys (file_id, track_uri, key_bytes, cached_at)
-                VALUES (@file_id, @track_uri, @key, @cached)
-                """;
-            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
-            cmd.Parameters.AddWithValue("@track_uri", (object?)trackUri ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@key", keyBytes);
-            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO audio_keys (file_id, track_uri, key_bytes, cached_at)
+            VALUES (@file_id, @track_uri, @key, @cached)
+            """;
+        cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+        cmd.Parameters.AddWithValue("@track_uri", (object?)trackUri ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@key", keyBytes);
+        cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     /// <inheritdoc />
@@ -4377,145 +4224,20 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// <inheritdoc />
     public async Task SetPersistedPlayPlayObfuscatedKeyAsync(string fileIdHex, byte[] obfuscatedKey, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO playplay_obfuscated_keys (file_id, obf_key_bytes, cached_at)
-                VALUES (@file_id, @key, @cached)
-                """;
-            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
-            cmd.Parameters.AddWithValue("@key", obfuscatedKey);
-            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<byte[]?> GetPersistedHeadDataAsync(string fileIdHex, CancellationToken ct = default)
-    {
+        using var __lease = await AcquireWriteLockAsync(nameof(SetPersistedPlayPlayObfuscatedKeyAsync), 1, ct);
         using var connection = CreateConnection();
         await connection.OpenAsync(ct);
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT data FROM head_data WHERE file_id = @file_id";
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO playplay_obfuscated_keys (file_id, obf_key_bytes, cached_at)
+            VALUES (@file_id, @key, @cached)
+            """;
         cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+        cmd.Parameters.AddWithValue("@key", obfuscatedKey);
+        cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
-        using var reader = await cmd.ExecuteReaderAsync(ct);
-        if (await reader.ReadAsync(ct) && !reader.IsDBNull(0))
-        {
-            return (byte[])reader.GetValue(0);
-        }
-        return null;
-    }
-
-    /// <inheritdoc />
-    public async Task SetPersistedHeadDataAsync(string fileIdHex, byte[] headData, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO head_data (file_id, data, cached_at)
-                VALUES (@file_id, @data, @cached)
-                """;
-            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
-            cmd.Parameters.AddWithValue("@data", headData);
-            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<(string Url, DateTimeOffset Expiry)?> GetPersistedCdnUrlAsync(string fileIdHex, CancellationToken ct = default)
-    {
-        using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
-
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT url, expiry_ms FROM cdn_cache WHERE file_id = @file_id";
-        cmd.Parameters.AddWithValue("@file_id", fileIdHex);
-
-        using var reader = await cmd.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct)) return null;
-        if (reader.IsDBNull(0) || reader.IsDBNull(1)) return null;
-
-        var url = reader.GetString(0);
-        var expiryMs = reader.GetInt64(1);
-        var expiry = DateTimeOffset.FromUnixTimeMilliseconds(expiryMs);
-        if (expiry <= DateTimeOffset.UtcNow)
-        {
-            // Stale row — sweep it opportunistically. Don't fail the read.
-            try
-            {
-                _ = DeletePersistedCdnUrlAsync(fileIdHex, CancellationToken.None);
-            }
-            catch { }
-            return null;
-        }
-        return (url, expiry);
-    }
-
-    /// <inheritdoc />
-    public async Task SetPersistedCdnUrlAsync(string fileIdHex, string url, DateTimeOffset expiry, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO cdn_cache (file_id, url, expiry_ms)
-                VALUES (@file_id, @url, @expiry_ms)
-                """;
-            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
-            cmd.Parameters.AddWithValue("@url", url);
-            cmd.Parameters.AddWithValue("@expiry_ms", expiry.ToUnixTimeMilliseconds());
-
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
-
-    private async Task DeletePersistedCdnUrlAsync(string fileIdHex, CancellationToken ct)
-    {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM cdn_cache WHERE file_id = @file_id";
-            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     #endregion
@@ -4547,50 +4269,36 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// <inheritdoc />
     public async Task SetLyricsCacheAsync(string trackUri, string? provider, string jsonData, bool hasSyllableSync, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
+        using var __lease = await AcquireWriteLockAsync(nameof(SetLyricsCacheAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO lyrics_cache (track_uri, provider, json_data, has_syllable_sync, cached_at)
-                VALUES (@uri, @provider, @json, @sync, @cached)
-                """;
-            cmd.Parameters.AddWithValue("@uri", trackUri);
-            cmd.Parameters.AddWithValue("@provider", (object?)provider ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@json", jsonData);
-            cmd.Parameters.AddWithValue("@sync", hasSyllableSync ? 1 : 0);
-            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO lyrics_cache (track_uri, provider, json_data, has_syllable_sync, cached_at)
+            VALUES (@uri, @provider, @json, @sync, @cached)
+            """;
+        cmd.Parameters.AddWithValue("@uri", trackUri);
+        cmd.Parameters.AddWithValue("@provider", (object?)provider ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@json", jsonData);
+        cmd.Parameters.AddWithValue("@sync", hasSyllableSync ? 1 : 0);
+        cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     /// <inheritdoc />
     public async Task DeleteLyricsCacheAsync(string trackUri, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
+        using var __lease = await AcquireWriteLockAsync(nameof(DeleteLyricsCacheAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM lyrics_cache WHERE track_uri = @uri";
-            cmd.Parameters.AddWithValue("@uri", trackUri);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM lyrics_cache WHERE track_uri = @uri";
+        cmd.Parameters.AddWithValue("@uri", trackUri);
 
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     #endregion
@@ -4642,51 +4350,44 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// <inheritdoc />
     public async Task SetMediaOverrideAsync(MediaOverrideEntry entry, CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
+        using var __lease = await AcquireWriteLockAsync(nameof(SetMediaOverrideAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO media_overrides (
-                    asset_type,
-                    entity_key,
-                    effective_asset_url,
-                    effective_source,
-                    last_seen_upstream_url,
-                    pending_asset_url,
-                    last_reviewed_upstream_url,
-                    created_at,
-                    updated_at)
-                VALUES (
-                    @assetType,
-                    @entityKey,
-                    @effectiveAssetUrl,
-                    @effectiveSource,
-                    @lastSeenUpstreamUrl,
-                    @pendingAssetUrl,
-                    @lastReviewedUpstreamUrl,
-                    @createdAt,
-                    @updatedAt)
-                """;
-            cmd.Parameters.AddWithValue("@assetType", (int)entry.AssetType);
-            cmd.Parameters.AddWithValue("@entityKey", entry.EntityKey);
-            cmd.Parameters.AddWithValue("@effectiveAssetUrl", (object?)entry.EffectiveAssetUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@effectiveSource", (int)entry.EffectiveSource);
-            cmd.Parameters.AddWithValue("@lastSeenUpstreamUrl", (object?)entry.LastSeenUpstreamUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@pendingAssetUrl", (object?)entry.PendingAssetUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@lastReviewedUpstreamUrl", (object?)entry.LastReviewedUpstreamUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@createdAt", entry.CreatedAt);
-            cmd.Parameters.AddWithValue("@updatedAt", entry.UpdatedAt);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO media_overrides (
+                asset_type,
+                entity_key,
+                effective_asset_url,
+                effective_source,
+                last_seen_upstream_url,
+                pending_asset_url,
+                last_reviewed_upstream_url,
+                created_at,
+                updated_at)
+            VALUES (
+                @assetType,
+                @entityKey,
+                @effectiveAssetUrl,
+                @effectiveSource,
+                @lastSeenUpstreamUrl,
+                @pendingAssetUrl,
+                @lastReviewedUpstreamUrl,
+                @createdAt,
+                @updatedAt)
+            """;
+        cmd.Parameters.AddWithValue("@assetType", (int)entry.AssetType);
+        cmd.Parameters.AddWithValue("@entityKey", entry.EntityKey);
+        cmd.Parameters.AddWithValue("@effectiveAssetUrl", (object?)entry.EffectiveAssetUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@effectiveSource", (int)entry.EffectiveSource);
+        cmd.Parameters.AddWithValue("@lastSeenUpstreamUrl", (object?)entry.LastSeenUpstreamUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@pendingAssetUrl", (object?)entry.PendingAssetUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@lastReviewedUpstreamUrl", (object?)entry.LastReviewedUpstreamUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@createdAt", entry.CreatedAt);
+        cmd.Parameters.AddWithValue("@updatedAt", entry.UpdatedAt);
 
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     /// <inheritdoc />
@@ -4695,26 +4396,19 @@ public sealed class MetadataDatabase : IMetadataDatabase
         string entityKey,
         CancellationToken ct = default)
     {
-        await _writeLock.WaitAsync(ct);
-        try
-        {
-            using var connection = CreateConnection();
-            await connection.OpenAsync(ct);
+        using var __lease = await AcquireWriteLockAsync(nameof(DeleteMediaOverrideAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                DELETE FROM media_overrides
-                WHERE asset_type = @assetType AND entity_key = @entityKey
-                """;
-            cmd.Parameters.AddWithValue("@assetType", (int)assetType);
-            cmd.Parameters.AddWithValue("@entityKey", entityKey);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            DELETE FROM media_overrides
+            WHERE asset_type = @assetType AND entity_key = @entityKey
+            """;
+        cmd.Parameters.AddWithValue("@assetType", (int)assetType);
+        cmd.Parameters.AddWithValue("@entityKey", entityKey);
 
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     #endregion

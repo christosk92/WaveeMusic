@@ -146,7 +146,13 @@ public static class TrackContextMenuBuilder
         {
             Text = AppLocalization.GetString("TrackMenu_AddToPlaylist"),
             Glyph = FluentGlyphs.Add,
-            LoadSubMenuAsync = () => LoadUserPlaylistsAsync(track)
+            // Shared folder-aware loader — the card menu uses the same helper,
+            // so any change to folder rendering / owner filter / toast wording
+            // lands here once and applies everywhere.
+            LoadSubMenuAsync = AddToPlaylistSubmenuBuilder.Loader(
+                sourceLabel: track.Title ?? "track",
+                trackUrisLoader: _ => Task.FromResult<IReadOnlyList<string>>(
+                    string.IsNullOrEmpty(track.Uri) ? Array.Empty<string>() : new[] { track.Uri }))
         });
 
         items.Add(new ContextMenuItemModel
@@ -392,80 +398,6 @@ public static class TrackContextMenuBuilder
 
         var isSaved = svc.IsSaved(SavedItemType.Track, uri);
         svc.ToggleSave(SavedItemType.Track, uri, isSaved);
-    }
-
-    private static async Task<IReadOnlyList<ContextMenuItemModel>> LoadUserPlaylistsAsync(ITrackItem track)
-    {
-        var library = Ioc.Default.GetService<ILibraryDataService>();
-        if (library is null)
-        {
-            return new[]
-            {
-                new ContextMenuItemModel
-                {
-                    Text = AppLocalization.GetString("TrackMenu_CreateNewPlaylist"),
-                    Glyph = FluentGlyphs.CreatePlaylist
-                }
-            };
-        }
-
-        var playlists = await library.GetUserPlaylistsAsync();
-        var items = new List<ContextMenuItemModel>
-        {
-            new()
-            {
-                Text = AppLocalization.GetString("TrackMenu_CreateNewPlaylist"),
-                Glyph = FluentGlyphs.CreatePlaylist,
-                Invoke = () => AddToNewPlaylist(track)
-            },
-            ContextMenuItemModel.Separator
-        };
-
-        foreach (var p in playlists)
-        {
-            if (!p.IsOwner) continue;
-            var pid = p.Id;
-            var pname = p.Name;
-            items.Add(new ContextMenuItemModel
-            {
-                Text = pname,
-                Glyph = FluentGlyphs.Playlist,
-                Invoke = () => AddToPlaylist(track, pid, pname)
-            });
-        }
-
-        return items;
-    }
-
-    private static async void AddToPlaylist(ITrackItem track, string playlistId, string playlistName)
-    {
-        if (string.IsNullOrEmpty(track.Uri) || string.IsNullOrEmpty(playlistId)) return;
-
-        var mutations = Ioc.Default.GetService<IPlaylistMutationService>();
-        var notifications = Ioc.Default.GetService<INotificationService>();
-        if (mutations is null) return;
-
-        try
-        {
-            await mutations.AddTracksToPlaylistAsync(playlistId, new[] { track.Uri }).ConfigureAwait(true);
-            notifications?.Show(
-                $"Added to {(string.IsNullOrEmpty(playlistName) ? "playlist" : playlistName)}",
-                NotificationSeverity.Success,
-                TimeSpan.FromSeconds(3));
-        }
-        catch
-        {
-            notifications?.Show(
-                "Couldn't add to the playlist",
-                NotificationSeverity.Error,
-                TimeSpan.FromSeconds(3));
-        }
-    }
-
-    private static void AddToNewPlaylist(ITrackItem track)
-    {
-        if (string.IsNullOrEmpty(track.Uri)) return;
-        NavigationHelpers.OpenCreatePlaylist(isFolder: false, trackIds: new[] { track.Uri });
     }
 
     private static KeyboardAccelerator Accelerator(VirtualKey key, VirtualKeyModifiers modifiers) =>

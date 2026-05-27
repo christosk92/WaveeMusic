@@ -394,18 +394,15 @@ public sealed partial class ShortsPill : UserControl
     {
         if (Item == null) return;
 
-        var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.Build(new Controls.ContextMenu.Builders.CardMenuContext
-        {
-            Uri = Item.Uri ?? string.Empty,
-            Title = Item.Title ?? string.Empty,
-            Subtitle = Item.Subtitle,
-            ImageUrl = Item.ImageUrl,
-            OpenAction = openInNewTab =>
+        var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.BuildForUri(
+            uri: Item.Uri ?? string.Empty,
+            title: Item.Title ?? string.Empty,
+            imageUrl: Item.ImageUrl,
+            openAction: openInNewTab =>
             {
                 ResetInteractionState();
                 HomeViewModel.NavigateToItem(Item, openInNewTab);
-            }
-        });
+            });
         Controls.ContextMenu.ContextMenuHost.Show(PillButton, items, e.GetPosition(PillButton));
     }
 

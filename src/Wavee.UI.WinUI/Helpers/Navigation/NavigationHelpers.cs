@@ -446,9 +446,15 @@ public static class NavigationHelpers
     }
 
     /// <summary>
-    /// Open create playlist/folder page - always opens in new tab
+    /// Open create playlist/folder page - always opens in new tab.
+    /// <paramref name="folderStartUri"/> places the newly-created playlist
+    /// inside the given sidebar folder (must be a <c>spotify:start-group:\u2026</c>
+    /// URI); ignored when <paramref name="isFolder"/> is true.
     /// </summary>
-    public static void OpenCreatePlaylist(bool isFolder = false, IReadOnlyList<string>? trackIds = null)
+    public static void OpenCreatePlaylist(
+        bool isFolder = false,
+        IReadOnlyList<string>? trackIds = null,
+        string? folderStartUri = null)
     {
         var header = isFolder ? "New Folder" : "New Playlist";
         var glyph = isFolder ? "\uE8F4" : "\uE93F";
@@ -463,7 +469,8 @@ public static class NavigationHelpers
         var parameter = new CreatePlaylistParameter
         {
             IsFolder = isFolder,
-            TrackIds = trackIds
+            TrackIds = trackIds,
+            FolderStartUri = isFolder ? null : folderStartUri
         };
 
         Navigate(typeof(CreatePlaylistPage), parameter, header, iconSource, openInNewTab: true);

@@ -55,6 +55,7 @@ public sealed class CacheService : ICacheService, ICleanableCache
 {
     private readonly IHotCache<TrackCacheEntry> _hotCache;
     private readonly IMetadataDatabase _database;
+    private readonly IAudioCacheDatabase _audioCache;
     private readonly ILogger? _logger;
     private bool _disposed;
 
@@ -72,13 +73,16 @@ public sealed class CacheService : ICacheService, ICleanableCache
     /// </summary>
     public CacheService(
         IMetadataDatabase database,
+        IAudioCacheDatabase audioCache,
         int hotCacheSize = 10_000,
         ILogger? logger = null,
         int maxAuxCacheSize = 1000)
     {
         ArgumentNullException.ThrowIfNull(database);
+        ArgumentNullException.ThrowIfNull(audioCache);
 
         _database = database;
+        _audioCache = audioCache;
         _hotCache = new HotCache<TrackCacheEntry>(hotCacheSize, logger);
         _logger = logger;
         _maxAuxCacheSize = maxAuxCacheSize;
@@ -93,14 +97,17 @@ public sealed class CacheService : ICacheService, ICleanableCache
     /// </summary>
     public CacheService(
         IMetadataDatabase database,
+        IAudioCacheDatabase audioCache,
         IHotCache<TrackCacheEntry> hotCache,
         ILogger? logger = null,
         int maxAuxCacheSize = 1000)
     {
         ArgumentNullException.ThrowIfNull(database);
+        ArgumentNullException.ThrowIfNull(audioCache);
         ArgumentNullException.ThrowIfNull(hotCache);
 
         _database = database;
+        _audioCache = audioCache;
         _hotCache = hotCache;
         _logger = logger;
         _maxAuxCacheSize = maxAuxCacheSize;
@@ -418,7 +425,7 @@ public sealed class CacheService : ICacheService, ICleanableCache
 
         // SQLite fallback. Persisted rows that are still within their expiry
         // window get promoted back into the in-memory cache for the next hit.
-        var persisted = await _database.GetPersistedCdnUrlAsync(key, ct);
+        var persisted = await _audioCache.GetPersistedCdnUrlAsync(key, ct);
         if (persisted is { } row)
         {
             var entry = new CdnCacheEntry(row.Url, row.Expiry);
@@ -471,7 +478,7 @@ public sealed class CacheService : ICacheService, ICleanableCache
         // the in-memory cache still serves this session.
         try
         {
-            await _database.SetPersistedCdnUrlAsync(key, url, expiry, ct);
+            await _audioCache.SetPersistedCdnUrlAsync(key, url, expiry, ct);
         }
         catch (Exception ex)
         {
@@ -501,7 +508,7 @@ public sealed class CacheService : ICacheService, ICleanableCache
 
         // SQLite fallback. Head data for a FileId is immutable (CDN serves
         // max-age=315360000), so a persisted hit is always valid.
-        var persisted = await _database.GetPersistedHeadDataAsync(key, ct);
+        var persisted = await _audioCache.GetPersistedHeadDataAsync(key, ct);
         if (persisted != null)
         {
             lock (_auxCacheLock)
@@ -542,7 +549,7 @@ public sealed class CacheService : ICacheService, ICleanableCache
         // hold permanently. Failure here is non-fatal — memory still has it.
         try
         {
-            await _database.SetPersistedHeadDataAsync(key, headData, ct);
+            await _audioCache.SetPersistedHeadDataAsync(key, headData, ct);
         }
         catch (Exception ex)
         {

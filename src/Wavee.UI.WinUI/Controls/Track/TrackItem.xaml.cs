@@ -560,6 +560,7 @@ public sealed partial class TrackItem : UserControl
     private bool _useCardRow;
     private readonly ThemeColorService? _themeColors = Ioc.Default.GetService<ThemeColorService>();
     private readonly ITrackLikeService? _likeService = Ioc.Default.GetService<ITrackLikeService>();
+    private readonly IContentFilterService? _contentFilter = Ioc.Default.GetService<IContentFilterService>();
     private readonly ILogger? _logger = Ioc.Default.GetService<ILogger<TrackItem>>();
     private readonly IPlaybackStateService? _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
     private readonly IMusicVideoMetadataService? _musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
@@ -576,6 +577,7 @@ public sealed partial class TrackItem : UserControl
     private ITrackItem? _observedTrack;
     private bool _isMessengerRegistered;
     private bool _isSaveStateSubscribed;
+    private bool _isContentFilterSubscribed;
     private string? _rowArtistsSignature;
 
     #endregion
@@ -737,6 +739,7 @@ public sealed partial class TrackItem : UserControl
         // pending set, so we need to repaint the glyph (+ vs check).
         item.UpdateAddToPlaylistAffordance();
         item.UpdateSelectionAffordance();
+        item.RefreshHiddenState();
         item.TrackChanged?.Invoke(item, EventArgs.Empty);
     }
 
@@ -1217,12 +1220,43 @@ public sealed partial class TrackItem : UserControl
             _isSaveStateSubscribed = true;
         }
 
+        if (_contentFilter != null && !_isContentFilterSubscribed)
+        {
+            _contentFilter.FilterChanged += OnContentFilterChanged;
+            _isContentFilterSubscribed = true;
+        }
+
+        RefreshHiddenState();
+
         HookAddToPlaylistSession();
     }
 
     private void OnSaveStateChanged()
     {
         DispatcherQueue?.TryEnqueue(RefreshLikedState);
+    }
+
+    private void OnContentFilterChanged()
+    {
+        DispatcherQueue?.TryEnqueue(RefreshHiddenState);
+    }
+
+    /// <summary>
+    /// Dims the whole row to 0.45 opacity when the bound track is on the
+    /// user's hidden (Spotify <c>ban</c>) list. The orchestrator still
+    /// refuses to play hidden tracks; this is the cheap visual feedback so
+    /// the user knows the row IS the hidden one (not that something else is
+    /// silently dropping it).
+    /// </summary>
+    public void RefreshHiddenState()
+    {
+        var track = Track;
+        if (track is null || _contentFilter is null || string.IsNullOrEmpty(track.Uri))
+        {
+            Opacity = 1.0;
+            return;
+        }
+        Opacity = _contentFilter.IsTrackHidden(track.Uri) ? 0.45 : 1.0;
     }
 
     /// <summary>
@@ -1308,6 +1342,12 @@ public sealed partial class TrackItem : UserControl
         {
             _likeService.SaveStateChanged -= OnSaveStateChanged;
             _isSaveStateSubscribed = false;
+        }
+
+        if (_contentFilter != null && _isContentFilterSubscribed)
+        {
+            _contentFilter.FilterChanged -= OnContentFilterChanged;
+            _isContentFilterSubscribed = false;
         }
 
         UnhookAddToPlaylistSession();

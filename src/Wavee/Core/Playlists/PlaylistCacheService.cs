@@ -52,8 +52,18 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
     // "Fetching playlist:" log line was running twice per URI at startup).
     private readonly ConcurrentDictionary<string, Lazy<Task<CachedPlaylist>>> _playlistRefreshes =
         new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, byte> _pendingAccessTouches =
+    // Pending access-touch buffers — playlist and rootlist URIs scheduled
+    // for a `last_accessed_at` update. Drained by _accessTouchFlushTimer
+    // every AccessTouchFlushInterval. Coalescing N concurrent touches into
+    // one batched UPDATE (one write-lock acquisition) keeps the playlist /
+    // rootlist write surface off the audio resolver's critical path.
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _pendingPlaylistTouches =
         new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _pendingRootlistTouches =
+        new(StringComparer.Ordinal);
+    private static readonly TimeSpan AccessTouchFlushInterval = TimeSpan.FromSeconds(1);
+    private readonly Timer _accessTouchFlushTimer;
+    private int _accessTouchFlushInFlight; // 0 = idle, 1 = a flush is running
     // Per-URI timestamp of the most recent dealer-driven refresh; consulted by
     // URIs of cache rows whose persisted JSON is at an older schema version than
     // the current build. Populated at warmup; entries are removed the first time
@@ -102,6 +112,12 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         _remoteStateRecorder = remoteStateRecorder;
         _hotCache = new HotCache<CachedPlaylist>(64);
 
+        _accessTouchFlushTimer = new Timer(
+            static state => _ = ((PlaylistCacheService)state!).FlushAccessTouchesAsync(),
+            this,
+            AccessTouchFlushInterval,
+            AccessTouchFlushInterval);
+
         _ = WarmupAsync();
     }
 
@@ -118,7 +134,8 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         }
 
         _playlistRefreshes.Clear();
-        _pendingAccessTouches.Clear();
+        _pendingPlaylistTouches.Clear();
+        _pendingRootlistTouches.Clear();
         _staleSchemaUris.Clear();
         _lastDealerRefreshAt.Clear();
         _negativeCache.Clear();
@@ -420,45 +437,80 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         }
     }
 
+    // Per-URI access touches go into in-memory buffers and are flushed by
+    // _accessTouchFlushTimer as a single batched UPDATE every
+    // AccessTouchFlushInterval — see field declarations above for the
+    // rationale (collapsing 9 concurrent prefetch touches into one
+    // write-lock acquisition).
     private void SchedulePlaylistAccessTouch(string playlistUri)
     {
-        ScheduleAccessTouch(
-            $"playlist:{playlistUri}",
-            static async (database, uri) => await database.TouchPlaylistCacheEntryAsync(uri, DateTimeOffset.UtcNow),
-            playlistUri);
+        if (string.IsNullOrWhiteSpace(playlistUri))
+            return;
+        _pendingPlaylistTouches[playlistUri] = DateTimeOffset.UtcNow;
     }
 
     private void ScheduleRootlistAccessTouch(string rootlistUri)
     {
-        ScheduleAccessTouch(
-            $"rootlist:{rootlistUri}",
-            static async (database, uri) => await database.TouchRootlistCacheEntryAsync(uri, DateTimeOffset.UtcNow),
-            rootlistUri);
+        if (string.IsNullOrWhiteSpace(rootlistUri))
+            return;
+        _pendingRootlistTouches[rootlistUri] = DateTimeOffset.UtcNow;
     }
 
-    private void ScheduleAccessTouch(
-        string dedupeKey,
-        Func<IMetadataDatabase, string, Task> touchOperation,
-        string uri)
+    private async Task FlushAccessTouchesAsync()
     {
-        if (!_pendingAccessTouches.TryAdd(dedupeKey, 0))
+        // Single-fire guard — if a previous tick is still draining, skip
+        // this tick and let the next interval pick up everything that
+        // accumulated in the meantime.
+        if (Interlocked.CompareExchange(ref _accessTouchFlushInFlight, 1, 0) != 0)
             return;
-
-        _ = Task.Run(async () =>
+        try
         {
-            try
+            if (!_pendingPlaylistTouches.IsEmpty)
             {
-                await touchOperation(_database, uri);
+                var playlistBatch = new List<(string, DateTimeOffset)>(_pendingPlaylistTouches.Count);
+                foreach (var kvp in _pendingPlaylistTouches)
+                {
+                    if (_pendingPlaylistTouches.TryRemove(kvp.Key, out var ts))
+                        playlistBatch.Add((kvp.Key, ts));
+                }
+                if (playlistBatch.Count > 0)
+                {
+                    try
+                    {
+                        await _database.TouchPlaylistCacheEntriesAsync(playlistBatch);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogDebug(ex, "Failed to flush {Count} playlist access touches", playlistBatch.Count);
+                    }
+                }
             }
-            catch (Exception ex)
+
+            if (!_pendingRootlistTouches.IsEmpty)
             {
-                _logger?.LogDebug(ex, "Failed to update playlist cache access time for {Uri}", uri);
+                var rootlistBatch = new List<(string, DateTimeOffset)>(_pendingRootlistTouches.Count);
+                foreach (var kvp in _pendingRootlistTouches)
+                {
+                    if (_pendingRootlistTouches.TryRemove(kvp.Key, out var ts))
+                        rootlistBatch.Add((kvp.Key, ts));
+                }
+                if (rootlistBatch.Count > 0)
+                {
+                    try
+                    {
+                        await _database.TouchRootlistCacheEntriesAsync(rootlistBatch);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogDebug(ex, "Failed to flush {Count} rootlist access touches", rootlistBatch.Count);
+                    }
+                }
             }
-            finally
-            {
-                _pendingAccessTouches.TryRemove(dedupeKey, out _);
-            }
-        });
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _accessTouchFlushInFlight, 0);
+        }
     }
 
     private Task<CachedPlaylist> GetOrCreatePlaylistRefreshTask(string playlistUri, bool emitChange)
@@ -1538,6 +1590,11 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             return;
 
         _disposed = true;
+        _accessTouchFlushTimer.Dispose();
+        // Drain anything still pending so we don't lose access-time
+        // updates on shutdown. Best-effort: a failure here is logged
+        // inside FlushAccessTouchesAsync.
+        try { FlushAccessTouchesAsync().GetAwaiter().GetResult(); } catch { }
         _dealerSubscription?.Dispose();
         _directApplySubscription?.Dispose();
         _libraryChangeManager?.DisposeAsync().AsTask().GetAwaiter().GetResult();

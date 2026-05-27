@@ -684,14 +684,11 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     {
         if (sender.DataContext is not HomeSectionItem item) return;
 
-        var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.Build(new Controls.ContextMenu.Builders.CardMenuContext
-        {
-            Uri = item.Uri ?? string.Empty,
-            Title = item.Title ?? string.Empty,
-            Subtitle = item.Subtitle,
-            ImageUrl = item.ImageUrl,
-            OpenAction = openInNewTab => HomeViewModel.NavigateToItem(item, openInNewTab)
-        });
+        var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.BuildForUri(
+            uri: item.Uri ?? string.Empty,
+            title: item.Title ?? string.Empty,
+            imageUrl: item.ImageUrl,
+            openAction: openInNewTab => HomeViewModel.NavigateToItem(item, openInNewTab));
         Controls.ContextMenu.ContextMenuHost.Show(sender, items, e.GetPosition(sender));
     }
 

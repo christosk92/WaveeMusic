@@ -1,158 +1,365 @@
 using System;
 using System.Collections.Generic;
-using System.Windows.Input;
+using System.Threading;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Wavee.UI.Contracts;
+using Wavee.UI.Models;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
 
 namespace Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 
-public enum CardEntityType
-{
-    Unknown,
-    Artist,
-    Album,
-    Playlist,
-    Show,
-    Episode,
-    LikedSongs
-}
-
 /// <summary>
-/// Input for the card-surface context menu. Callers provide either a <see cref="OpenAction"/>
-/// pair (Open / Open in new tab) for full control, or just the <see cref="Uri"/> + entity
-/// type and we derive navigation via <see cref="NavigationHelpers"/>.
+/// Entity-aware context menu dispatcher for any card surface (ContentCard /
+/// BaselineHomeCard / ShortsPill / HomePage shelves).
+///
+/// Parses the Spotify URI, hydrates state from the same DI services the rest
+/// of the app reads (<see cref="ITrackLikeService"/>, <see cref="IPinService"/>,
+/// <see cref="ILibraryDataService"/>), and delegates to the matching builder:
+/// album / artist / playlist / show / episode. An "Add to playlist" submenu is
+/// injected for every URI whose tracks can be resolved via
+/// <see cref="IPlaylistDragDropMediator"/> — the same resolver the drag-drop
+/// path uses, so the menu offers exactly the targets a drag would.
 /// </summary>
-public sealed class CardMenuContext
-{
-    public required string Uri { get; init; }
-    public required string Title { get; init; }
-    public string? Subtitle { get; init; }
-    public string? ImageUrl { get; init; }
-    public CardEntityType EntityType { get; init; } = CardEntityType.Unknown;
-
-    /// <summary>
-    /// Called when the user picks "Open". When null, the builder navigates via
-    /// <see cref="NavigationHelpers"/> based on the URI.
-    /// </summary>
-    public Action<bool>? OpenAction { get; init; }
-
-    public ICommand? PlayCommand { get; init; }
-    public ICommand? SaveToggleCommand { get; init; }
-    public bool IsSaved { get; init; }
-    public ICommand? ShareCommand { get; init; }
-}
-
 public static class CardContextMenuBuilder
 {
-    public static IReadOnlyList<ContextMenuItemModel> Build(CardMenuContext ctx)
+    /// <summary>
+    /// Builds the menu for any card-shaped UI element.
+    /// </summary>
+    /// <param name="uri">Spotify URI of the entity behind the card.</param>
+    /// <param name="title">Display name (for share toasts + Add-to-playlist labels).</param>
+    /// <param name="imageUrl">Cover image URL (unused by the entity menus today; retained for future surface tweaks).</param>
+    /// <param name="openAction">
+    /// Per-surface "Open" / "Open in new tab" routing. When non-null this
+    /// wins over the URI-parsing fallback (some hosts route via a
+    /// <c>HomeSectionItem</c> rather than the raw URI).
+    /// </param>
+    public static IReadOnlyList<ContextMenuItemModel> BuildForUri(
+        string uri,
+        string title,
+        string? imageUrl,
+        Action<bool>? openAction)
     {
-        var items = new List<ContextMenuItemModel>();
+        if (string.IsNullOrEmpty(uri))
+            return BuildMinimalMenu(openAction);
 
-        // Quick actions (top icon row)
-        items.Add(new ContextMenuItemModel
-        {
-            Text = AppLocalization.GetString("CardMenu_Open"),
-            Glyph = FluentGlyphs.Open,
-            IsPrimary = true,
-            Invoke = () => Open(ctx, openInNewTab: false)
-        });
+        var parts = uri.Split(':');
+        if (parts.Length < 2)
+            return BuildMinimalMenu(openAction);
 
-        items.Add(new ContextMenuItemModel
-        {
-            Text = AppLocalization.GetString("CardMenu_OpenInNewTab"),
-            Glyph = FluentGlyphs.OpenInNewTab,
-            IsPrimary = true,
-            Invoke = () => Open(ctx, openInNewTab: true)
-        });
+        var likeService = Ioc.Default.GetService<ITrackLikeService>();
+        var pinService = Ioc.Default.GetService<IPinService>();
+        var library = Ioc.Default.GetService<ILibraryDataService>();
+        var mediator = Ioc.Default.GetService<IPlaylistDragDropMediator>();
 
-        if (ctx.PlayCommand is not null)
+        switch (parts[1])
         {
-            items.Add(new ContextMenuItemModel
+            case "album":
             {
-                Text = AppLocalization.GetString("CardMenu_Play"),
+                var albumId = parts.Length >= 3 ? parts[2] : string.Empty;
+                var menu = AlbumContextMenuBuilder.Build(new AlbumMenuContext
+                {
+                    AlbumId = albumId,
+                    AlbumName = title,
+                    IsSaved = likeService?.IsSaved(SavedItemType.Album, uri) ?? false,
+                    IsPinned = pinService?.IsPinned(uri) ?? false,
+                });
+                return InjectContextEntries(
+                    menu,
+                    title,
+                    mediator is null
+                        ? null
+                        : ct => mediator.GetAlbumTrackUrisAsync(uri, ct));
+            }
+
+            case "artist":
+            {
+                var artistId = parts.Length >= 3 ? parts[2] : string.Empty;
+                var menu = ArtistContextMenuBuilder.Build(new ArtistMenuContext
+                {
+                    ArtistId = artistId,
+                    ArtistName = title,
+                    IsFollowing = likeService?.IsSaved(SavedItemType.Artist, uri) ?? false,
+                    IsPinned = pinService?.IsPinned(uri) ?? false,
+                });
+                return InjectContextEntries(
+                    menu,
+                    title,
+                    mediator is null
+                        ? null
+                        : ct => mediator.GetArtistTopTrackUrisAsync(uri, ct));
+            }
+
+            case "playlist":
+            {
+                var playlistId = parts.Length >= 3 ? parts[2] : string.Empty;
+                var menu = PlaylistContextMenuBuilder.Build(new PlaylistMenuContext
+                {
+                    PlaylistId = playlistId,
+                    PlaylistName = title,
+                    IsOwner = library?.IsOwnedByCurrentUser(uri) ?? false,
+                    IsSaved = library?.IsInUserRootlist(uri) ?? false,
+                    IsPinned = pinService?.IsPinned(uri) ?? false,
+                });
+                return InjectContextEntries(
+                    menu,
+                    title,
+                    mediator is null
+                        ? null
+                        : ct => mediator.GetPlaylistTrackUrisAsync(uri, ct));
+            }
+
+            case "show":
+            {
+                var showId = parts.Length >= 3 ? parts[2] : string.Empty;
+                var menu = ShowContextMenuBuilder.Build(new ShowMenuContext
+                {
+                    ShowId = showId,
+                    ShowName = title,
+                    IsSaved = likeService?.IsSaved(SavedItemType.Show, uri) ?? false,
+                    IsPinned = pinService?.IsPinned(uri) ?? false,
+                });
+                return InjectContextEntries(
+                    menu,
+                    title,
+                    mediator is null
+                        ? null
+                        : ct => mediator.GetShowEpisodeUrisAsync(uri, ct));
+            }
+
+            case "episode":
+            {
+                var episodeId = parts.Length >= 3 ? parts[2] : string.Empty;
+                return EpisodeContextMenuBuilder.Build(new EpisodeMenuContext
+                {
+                    EpisodeId = episodeId,
+                    EpisodeName = title,
+                    IsPinned = pinService?.IsPinned(uri) ?? false,
+                });
+            }
+
+            case "collection":
+                return BuildLikedSongsMenu(openAction, mediator);
+
+            case "user" when uri.Contains(":collection", StringComparison.OrdinalIgnoreCase):
+                return BuildLikedSongsMenu(openAction, mediator);
+
+            default:
+                // page / section / genre / user / unknown — minimal Open / Open in new tab.
+                return BuildMinimalMenu(openAction);
+        }
+    }
+
+    /// <summary>
+    /// Walks the entity menu and inserts two rows around the existing
+    /// "Add to queue" entry (matched by <see cref="FluentGlyphs.Queue"/>):
+    /// <list type="bullet">
+    ///   <item><b>Play next</b> — directly <i>before</i> Add to queue. Resolves
+    ///   the source URI to track URIs via the supplied loader, then calls
+    ///   <see cref="IPlaybackStateService.PlayNext(IEnumerable{string})"/>.</item>
+    ///   <item><b>Add to playlist▸</b> — directly <i>after</i> Add to queue.
+    ///   Opens a folder-aware submenu via <see cref="AddToPlaylistSubmenuBuilder"/>.</item>
+    /// </list>
+    /// Falls back to "before any trailing destructive separator (or at the
+    /// end)" when no Queue row exists. Mediator unavailable in tests / mock
+    /// contexts → both rows are omitted rather than shipped as no-ops.
+    /// </summary>
+    private static IReadOnlyList<ContextMenuItemModel> InjectContextEntries(
+        IReadOnlyList<ContextMenuItemModel> menu,
+        string sourceLabel,
+        Func<CancellationToken, Task<IReadOnlyList<string>>>? trackUrisLoader)
+    {
+        if (trackUrisLoader is null) return menu;
+
+        var playNext = new ContextMenuItemModel
+        {
+            Text = AppLocalization.GetString("TrackMenu_PlayNext"),
+            Glyph = FluentGlyphs.PlayNext,
+            Invoke = () => _ = PlayNextFromSource(sourceLabel, trackUrisLoader)
+        };
+
+        var addToPlaylist = new ContextMenuItemModel
+        {
+            Text = AppLocalization.GetString("TrackMenu_AddToPlaylist"),
+            Glyph = FluentGlyphs.Add,
+            LoadSubMenuAsync = AddToPlaylistSubmenuBuilder.Loader(sourceLabel, trackUrisLoader)
+        };
+
+        var copy = new List<ContextMenuItemModel>(menu.Count + 2);
+        copy.AddRange(menu);
+
+        // Find the AddToQueue row (first non-primary item with the Queue glyph).
+        var queueIndex = -1;
+        for (var i = 0; i < copy.Count; i++)
+        {
+            var item = copy[i];
+            if (item.ItemType == ContextMenuItemType.Item
+                && !item.IsPrimary
+                && string.Equals(item.Glyph, FluentGlyphs.Queue, StringComparison.Ordinal))
+            {
+                queueIndex = i;
+                break;
+            }
+        }
+
+        if (queueIndex < 0)
+        {
+            // No Queue row — insert before any trailing destructive separator
+            // (so Delete stays at the bottom). Order: PlayNext, then AddToPlaylist.
+            var insertIndex = copy.Count;
+            for (var i = copy.Count - 1; i >= 0; i--)
+            {
+                if (copy[i].ItemType == ContextMenuItemType.Separator)
+                {
+                    insertIndex = i;
+                    break;
+                }
+            }
+            copy.Insert(insertIndex, addToPlaylist);
+            copy.Insert(insertIndex, playNext);
+        }
+        else
+        {
+            // Insert AddToPlaylist after AddToQueue first, then PlayNext
+            // before AddToQueue. Order matters — inserting at queueIndex+1
+            // first keeps the index stable for the second insert.
+            copy.Insert(queueIndex + 1, addToPlaylist);
+            copy.Insert(queueIndex, playNext);
+        }
+
+        return copy;
+    }
+
+    private static async Task PlayNextFromSource(
+        string sourceLabel,
+        Func<CancellationToken, Task<IReadOnlyList<string>>> trackUrisLoader)
+    {
+        var playback = Ioc.Default.GetService<IPlaybackStateService>();
+        var notifications = Ioc.Default.GetService<INotificationService>();
+        if (playback is null) return;
+
+        IReadOnlyList<string> uris;
+        try
+        {
+            uris = await trackUrisLoader(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch
+        {
+            notifications?.Show(
+                $"Couldn't load tracks from {(string.IsNullOrEmpty(sourceLabel) ? "source" : sourceLabel)}",
+                NotificationSeverity.Error,
+                TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        if (uris.Count == 0)
+        {
+            notifications?.Show(
+                $"Nothing to play next from {(string.IsNullOrEmpty(sourceLabel) ? "source" : sourceLabel)}",
+                NotificationSeverity.Informational,
+                TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        playback.PlayNext(uris);
+        var noun = uris.Count == 1 ? "track" : "tracks";
+        notifications?.Show(
+            $"{uris.Count} {noun} will play next",
+            NotificationSeverity.Success,
+            TimeSpan.FromSeconds(3));
+    }
+
+    private static IReadOnlyList<ContextMenuItemModel> BuildLikedSongsMenu(
+        Action<bool>? openAction,
+        IPlaylistDragDropMediator? mediator)
+    {
+        var items = new List<ContextMenuItemModel>
+        {
+            new()
+            {
+                Text = AppLocalization.GetString("TrackMenu_Play"),
                 Glyph = FluentGlyphs.Play,
+                AccentIconStyleKey = "App.AccentIcons.Media.Play",
                 IsPrimary = true,
-                Command = ctx.PlayCommand,
-                CommandParameter = ctx.Uri
-            });
-        }
+                Invoke = () => PlayLikedSongsDefault(shuffle: false)
+            },
+            new()
+            {
+                Text = AppLocalization.GetString("PlaylistMenu_Shuffle"),
+                Glyph = FluentGlyphs.Shuffle,
+                AccentIconStyleKey = "App.AccentIcons.Media.Shuffle",
+                IsPrimary = true,
+                Invoke = () => PlayLikedSongsDefault(shuffle: true)
+            },
+            ContextMenuItemModel.Separator,
+            new()
+            {
+                Text = AppLocalization.GetString("CardMenu_Open"),
+                Glyph = FluentGlyphs.Open,
+                Invoke = () => OpenLikedSongs(openAction, openInNewTab: false)
+            },
+            new()
+            {
+                Text = AppLocalization.GetString("CardMenu_OpenInNewTab"),
+                Glyph = FluentGlyphs.OpenInNewTab,
+                Invoke = () => OpenLikedSongs(openAction, openInNewTab: true)
+            },
+        };
 
-        // Library state
-        if (ctx.SaveToggleCommand is not null)
+        if (mediator is not null)
         {
-            items.Add(ContextMenuItemModel.Separator);
             items.Add(new ContextMenuItemModel
             {
-                Text = AppLocalization.GetString(ctx.IsSaved
-                    ? "CardMenu_RemoveFromLibrary"
-                    : "CardMenu_SaveToLibrary"),
-                Glyph = ctx.IsSaved ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
-                Command = ctx.SaveToggleCommand,
-                CommandParameter = ctx.Uri
-            });
-        }
-
-        // Share
-        if (ctx.ShareCommand is not null)
-        {
-            items.Add(ContextMenuItemModel.Separator);
-            items.Add(new ContextMenuItemModel
-            {
-                Text = AppLocalization.GetString("CardMenu_Share"),
-                Glyph = FluentGlyphs.Share,
-                Command = ctx.ShareCommand,
-                CommandParameter = ctx.Uri
+                Text = AppLocalization.GetString("TrackMenu_AddToPlaylist"),
+                Glyph = FluentGlyphs.Add,
+                LoadSubMenuAsync = AddToPlaylistSubmenuBuilder.Loader(
+                    sourceLabel: "Liked Songs",
+                    trackUrisLoader: ct => mediator.GetLikedSongUrisAsync(ct))
             });
         }
 
         return items;
     }
 
-    private static void Open(CardMenuContext ctx, bool openInNewTab)
+    private static IReadOnlyList<ContextMenuItemModel> BuildMinimalMenu(Action<bool>? openAction)
     {
-        if (ctx.OpenAction is not null)
+        return new List<ContextMenuItemModel>
         {
-            ctx.OpenAction(openInNewTab);
-            return;
-        }
-
-        NavigateByUri(ctx.Uri, ctx.Title, ctx.EntityType, openInNewTab);
+            new()
+            {
+                Text = AppLocalization.GetString("CardMenu_Open"),
+                Glyph = FluentGlyphs.Open,
+                IsPrimary = true,
+                Invoke = () => openAction?.Invoke(false)
+            },
+            new()
+            {
+                Text = AppLocalization.GetString("CardMenu_OpenInNewTab"),
+                Glyph = FluentGlyphs.OpenInNewTab,
+                IsPrimary = true,
+                Invoke = () => openAction?.Invoke(true)
+            }
+        };
     }
 
-    private static void NavigateByUri(string uri, string title, CardEntityType type, bool openInNewTab)
+    private static void PlayLikedSongsDefault(bool shuffle)
     {
-        if (string.IsNullOrEmpty(uri)) return;
-
-        switch (type)
-        {
-            case CardEntityType.Artist:
-                NavigationHelpers.OpenArtist(ExtractId(uri, "spotify:artist:"), title, openInNewTab);
-                return;
-            case CardEntityType.Album:
-                NavigationHelpers.OpenAlbum(ExtractId(uri, "spotify:album:"), title, openInNewTab);
-                return;
-            case CardEntityType.Playlist:
-                NavigationHelpers.OpenPlaylist(ExtractId(uri, "spotify:playlist:"), title, openInNewTab);
-                return;
-            case CardEntityType.LikedSongs:
-                NavigationHelpers.OpenLikedSongs(openInNewTab);
-                return;
-        }
-
-        // Unknown: parse the URI prefix.
-        var parts = uri.Split(':');
-        if (parts.Length < 3) return;
-        switch (parts[1])
-        {
-            case "artist":   NavigationHelpers.OpenArtist(uri, title, openInNewTab); break;
-            case "album":    NavigationHelpers.OpenAlbum(uri, title, openInNewTab); break;
-            case "playlist": NavigationHelpers.OpenPlaylist(uri, title, openInNewTab); break;
-            case "user" when uri.Contains(":collection", StringComparison.OrdinalIgnoreCase):
-                NavigationHelpers.OpenLikedSongs(openInNewTab); break;
-        }
+        var playback = Ioc.Default.GetService<IPlaybackService>();
+        if (playback is null) return;
+        if (shuffle)
+            Ioc.Default.GetService<IPlaybackStateService>()?.SetShuffle(true);
+        // The collection URI Spotify uses for the user's Liked Songs context.
+        _ = playback.PlayContextAsync("spotify:collection:tracks");
     }
 
-    private static string ExtractId(string uri, string prefix) =>
-        uri.StartsWith(prefix, StringComparison.Ordinal) ? uri[prefix.Length..] : uri;
+    private static void OpenLikedSongs(Action<bool>? openAction, bool openInNewTab)
+    {
+        if (openAction is not null) openAction(openInNewTab);
+        else NavigationHelpers.OpenLikedSongs(openInNewTab);
+    }
 }

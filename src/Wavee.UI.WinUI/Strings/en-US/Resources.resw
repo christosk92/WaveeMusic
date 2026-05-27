@@ -1124,6 +1124,21 @@ the music you previously queued?</value>
   <data name="AlbumMenu_AlbumRadio" xml:space="preserve">
     <value>Go to album radio</value>
   </data>
+  <data name="CardMenu_Pin" xml:space="preserve">
+    <value>Pin</value>
+  </data>
+  <data name="CardMenu_Pinned" xml:space="preserve">
+    <value>Pinned</value>
+  </data>
+  <data name="ShowMenu_Follow" xml:space="preserve">
+    <value>Follow</value>
+  </data>
+  <data name="ShowMenu_Following" xml:space="preserve">
+    <value>Following</value>
+  </data>
+  <data name="EpisodeMenu_GoToPodcast" xml:space="preserve">
+    <value>Go to podcast</value>
+  </data>
   <data name="SidebarMenu_Rename" xml:space="preserve">
     <value>Rename</value>
   </data>

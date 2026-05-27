@@ -31,6 +31,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     private readonly BehaviorSubject<LocalPlaybackState> _stateSubject = new(LocalPlaybackState.Empty);
     private readonly Subject<PlaybackError> _errorSubject = new();
     private readonly Subject<EndOfContextEvent> _endOfContextSubject = new();
+    private readonly Subject<HiddenTracksFilteredEvent> _hiddenTracksFilteredSubject = new();
 
     private bool _repeatContext;
     private bool _repeatTrack;
@@ -127,6 +128,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     private string? _currentVideoManifestId;
     private SpotifyVideoPlaybackTarget? _currentVideoPlaybackTarget;
     private string? _currentLocalVideoAssociationUri;
+    private readonly IPlaybackContentFilter? _contentFilter;
 
     public PlaybackOrchestrator(
         AudioPipelineProxy proxy,
@@ -139,7 +141,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         Wavee.Local.ILocalLibraryService? localLibrary = null,
         Wavee.Audio.ILocalMediaPlayer? localMediaPlayer = null,
         Wavee.Audio.ISpotifyVideoPlayback? spotifyVideoPlayback = null,
-        bool localSpotifyPlaybackEnabled = true)
+        bool localSpotifyPlaybackEnabled = true,
+        IPlaybackContentFilter? contentFilter = null)
     {
         _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         _trackResolver = trackResolver ?? throw new ArgumentNullException(nameof(trackResolver));
@@ -151,6 +154,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         _localMediaPlayer = localMediaPlayer;
         _spotifyVideoPlayback = spotifyVideoPlayback;
         _localSpotifyPlaybackEnabled = localSpotifyPlaybackEnabled;
+        _contentFilter = contentFilter;
         _queue = new PlaybackQueue(logger);
 
         // Forward proxy state enriched with queue info
@@ -198,7 +202,79 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     /// the end" notification with whatever phrasing fits the event.
     /// </summary>
     public IObservable<EndOfContextEvent> EndOfContext => _endOfContextSubject.AsObservable();
+
+    /// <summary>
+    /// Fires whenever the orchestrator dropped one or more tracks from a play
+    /// path because they are on the user's hidden-track list. UI subscribes
+    /// and surfaces a "Skipped N hidden tracks" / "Track is hidden" toast.
+    /// </summary>
+    public IObservable<HiddenTracksFilteredEvent> HiddenTracksFiltered => _hiddenTracksFilteredSubject.AsObservable();
     public LocalPlaybackState CurrentState => _stateSubject.Value;
+
+    /// <summary>
+    /// Drops tracks the user has hidden via <see cref="IPlaybackContentFilter"/>.
+    /// Used by every "load a batch of tracks" path (autoplay rollover,
+    /// remote-context resolve, next-page pagination). Local URIs and
+    /// non-Spotify URIs always pass through — the ban set only knows about
+    /// <c>spotify:track:</c>.
+    /// </summary>
+    private List<QueueTrack> FilterHidden(IReadOnlyList<QueueTrack> input)
+    {
+        if (_contentFilter is null)
+            return new List<QueueTrack>(input);
+
+        var filtered = new List<QueueTrack>(input.Count);
+        var dropped = 0;
+        foreach (var t in input)
+        {
+            if (!string.IsNullOrEmpty(t.Uri) && _contentFilter.IsTrackHidden(t.Uri))
+            {
+                dropped++;
+                continue;
+            }
+            filtered.Add(t);
+        }
+        if (dropped > 0)
+            _logger?.LogDebug("Filter: dropped {Dropped} hidden track(s) from {Total}-item batch", dropped, input.Count);
+        return filtered;
+    }
+
+    /// <summary>
+    /// Variant of <see cref="FilterHidden"/> for paths that also need to re-
+    /// index <c>SkipToIndex</c>: if the user-selected track was hidden, fall
+    /// back to whichever non-hidden track now sits at that position (typically
+    /// the next track that was below it). Returns the filtered list + the
+    /// remapped skip index.
+    /// </summary>
+    private (List<QueueTrack> Tracks, int SkipIndex) ApplyHiddenFilter(
+        IReadOnlyList<QueueTrack> input, int requestedSkip)
+    {
+        if (_contentFilter is null)
+            return (new List<QueueTrack>(input), requestedSkip);
+
+        var filtered = new List<QueueTrack>(input.Count);
+        var droppedBeforeSkip = 0;
+        var requestedHidden = false;
+        for (var i = 0; i < input.Count; i++)
+        {
+            var t = input[i];
+            var hidden = !string.IsNullOrEmpty(t.Uri) && _contentFilter.IsTrackHidden(t.Uri);
+            if (hidden)
+            {
+                if (i < requestedSkip) droppedBeforeSkip++;
+                else if (i == requestedSkip) requestedHidden = true;
+                continue;
+            }
+            filtered.Add(t);
+        }
+
+        var newSkip = requestedSkip - droppedBeforeSkip;
+        if (newSkip < 0) newSkip = 0;
+        if (newSkip > filtered.Count - 1) newSkip = Math.Max(0, filtered.Count - 1);
+        if (requestedHidden)
+            _logger?.LogDebug("Filter: user-selected track was hidden; skipping to index {Idx} instead", newSkip);
+        return (filtered, newSkip);
+    }
 
     private bool RejectIfSpotifyAudioPlaybackDisabled(string? uri, string operation)
     {
@@ -275,12 +351,16 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             {
                 // UI-initiated play with a known context. Use the provided tracks
                 // (caller may have filtered/shuffled) but publish the real context URI.
-                var tracks = command.PageTracks!
+                var tracksRaw = command.PageTracks!
                     .Select(BuildQueueTrackFromPageTrack)
                     .ToList();
+                var (tracks, skip) = ApplyHiddenFilter(tracksRaw, command.SkipToIndex ?? 0);
+                var droppedHere = tracksRaw.Count - tracks.Count;
+                if (droppedHere > 0)
+                    _hiddenTracksFilteredSubject.OnNext(new HiddenTracksFilteredEvent(HiddenFilterSurface.PlayContext, droppedHere));
                 _queue.Clear();
                 _queue.SetContext(command.ContextUri!, isInfinite: false, totalTracks: tracks.Count);
-                _queue.SetTracks(tracks, command.SkipToIndex ?? 0);
+                _queue.SetTracks(tracks, skip);
 
                 // UI-supplied PageTracks for a local context arrive with only Uri/Uid +
                 // forwarded Metadata. Back-fill title / artist / album / poster art from
@@ -342,8 +422,12 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             {
                 // Remote transfer / deep-link: resolve the full context from Spotify.
                 var context = await _contextResolver.LoadContextAsync(command.ContextUri!, ct: ct);
+                var filteredContextTracks = FilterHidden(context.Tracks);
+                var droppedHere = context.Tracks.Count - filteredContextTracks.Count;
+                if (droppedHere > 0)
+                    _hiddenTracksFilteredSubject.OnNext(new HiddenTracksFilteredEvent(HiddenFilterSurface.PlayContext, droppedHere));
                 _queue.SetContext(command.ContextUri!, context.IsInfinite, context.TotalCount);
-                _queue.SetTracks(context.Tracks);
+                _queue.SetTracks(filteredContextTracks);
 
                 // /context-resolve/v1/ returns rich context-level metadata
                 // (format_list_type, tag, request_id, image_url, header_image_url_desktop,
@@ -372,18 +456,22 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 _currentContextPageCount = context.PageCount;
 
                 var startIndex = ContextResolver.FindTrackIndex(
-                    context.Tracks, command.TrackUri, command.TrackUid, command.SkipToIndex);
+                    filteredContextTracks, command.TrackUri, command.TrackUid, command.SkipToIndex);
                 _queue.SkipTo(startIndex);
             }
             else if (hasPageTracks)
             {
                 // True internal queue — no originating context.
-                var tracks = command.PageTracks!
+                var tracksRaw = command.PageTracks!
                     .Select(BuildQueueTrackFromPageTrack)
                     .ToList();
+                var (tracks, skip) = ApplyHiddenFilter(tracksRaw, command.SkipToIndex ?? 0);
+                var droppedHere = tracksRaw.Count - tracks.Count;
+                if (droppedHere > 0)
+                    _hiddenTracksFilteredSubject.OnNext(new HiddenTracksFilteredEvent(HiddenFilterSurface.PlayContext, droppedHere));
                 _queue.Clear();
                 _queue.SetContext("spotify:internal:queue", false);
-                _queue.SetTracks(tracks, command.SkipToIndex ?? 0);
+                _queue.SetTracks(tracks, skip);
 
                 // Same enrichment as the context-bound paths — a queue-only play of
                 // local tracks (e.g. an Add-to-Queue chain from search results) still
@@ -679,6 +767,12 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             return Task.CompletedTask;
         if (RejectIfSpotifyAudioPlaybackDisabled(trackUri, nameof(PlayNextAsync)))
             return Task.CompletedTask;
+        if (_contentFilter?.IsTrackHidden(trackUri) == true)
+        {
+            _logger?.LogDebug("Orchestrator: skipping hidden track in PlayNext → {Uri}", trackUri);
+            _hiddenTracksFilteredSubject.OnNext(new HiddenTracksFilteredEvent(HiddenFilterSurface.PlayNext, 1));
+            return Task.CompletedTask;
+        }
 
         _queue.PlayNext(new QueueTrack(trackUri));
         _logger?.LogInformation("Orchestrator: PlayNext → {Uri}", trackUri);
@@ -693,6 +787,12 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             return Task.CompletedTask;
         if (RejectIfSpotifyAudioPlaybackDisabled(trackUri, nameof(EnqueueAsync)))
             return Task.CompletedTask;
+        if (_contentFilter?.IsTrackHidden(trackUri) == true)
+        {
+            _logger?.LogDebug("Orchestrator: skipping hidden track in Enqueue → {Uri}", trackUri);
+            _hiddenTracksFilteredSubject.OnNext(new HiddenTracksFilteredEvent(HiddenFilterSurface.AddToQueue, 1));
+            return Task.CompletedTask;
+        }
 
         _queue.EnqueueAfterContext(new QueueTrack(trackUri));
         _logger?.LogInformation("Orchestrator: Enqueue (post-context) → {Uri}", trackUri);
@@ -772,17 +872,22 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         if (context.Tracks.Count == 0)
             throw new InvalidOperationException("The resolved context did not contain any tracks.");
 
+        // Drop hidden tracks from the radio/station seed too — without this
+        // the user-hidden tracks would still play if the station happens to
+        // include them.
+        var radioTracks = FilterHidden(context.Tracks);
+
         // When the playing track IS in the new context (classic song-radio: seed
         // sits at radio[0]), park the cursor on its index — MoveNext on track-end
         // advances past it. When it ISN'T (album/artist radio: current track is
         // unrelated to the radio playlist), park the cursor at -1 so MoveNext
         // lands on radio[0] instead of silently skipping it.
         var resolvedIndex = ContextResolver.FindTrackIndex(
-            context.Tracks,
+            radioTracks,
             activeTrackUri,
             state.TrackUid,
             fallbackIndex: null);
-        var hasCurrentInContext = context.Tracks.Any(t =>
+        var hasCurrentInContext = radioTracks.Any(t =>
             (!string.IsNullOrEmpty(activeTrackUri)
                 && string.Equals(t.Uri, activeTrackUri, StringComparison.Ordinal))
             || (!string.IsNullOrEmpty(state.TrackUid)
@@ -791,7 +896,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
         _queue.Clear();
         _queue.SetContext(contextUri, context.IsInfinite, context.TotalCount);
-        _queue.SetTracks(context.Tracks, startIndex);
+        _queue.SetTracks(radioTracks, startIndex);
 
         _originalContextUri = contextUri;
         _autoplayTriggered = false;
@@ -1816,11 +1921,12 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 var result = await _contextResolver.LoadNextPageAsync(
                     pageUrl, isInfinite: IsInfiniteContextUri(_originalContextUri));
 
-                if (result.Tracks.Count > 0)
+                var pageTracks = FilterHidden(result.Tracks);
+                if (pageTracks.Count > 0)
                 {
-                    _queue.AppendTracks(result.Tracks);
+                    _queue.AppendTracks(pageTracks);
                     PublishQueueState();
-                    _logger?.LogDebug("Appended {Count} tracks from next page", result.Tracks.Count);
+                    _logger?.LogDebug("Appended {Count} tracks from next page", pageTracks.Count);
                 }
 
                 _currentNextPageUrl = result.NextPageUrl;
@@ -1948,13 +2054,26 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             return;
         }
 
+        // Drop autoplay candidates that match the user's hidden-track set.
+        // Recommendation surfaces are silently filtered when SOME are dropped
+        // (no user intent to play a specific track) — but if ALL of them are
+        // hidden, surface a toast so the user understands why nothing rolled
+        // in after end-of-context.
+        var autoplayTracks = FilterHidden(autoplay.Tracks);
+        if (autoplayTracks.Count == 0)
+        {
+            _logger?.LogDebug("Autoplay candidates all hidden — dropping batch.");
+            _hiddenTracksFilteredSubject.OnNext(new HiddenTracksFilteredEvent(HiddenFilterSurface.Autoplay, autoplay.Tracks.Count));
+            return;
+        }
+
         // Append the autoplay tracks (each already carries Provider="autoplay"
         // from LoadAutoplayAsync). StampContextUri inside AppendTracks bakes
         // the CURRENT queue context URI into each appended track — at this
         // point we haven't flipped it yet, so we flip FIRST, then append.
         var stationUri = autoplay.ResolvedContextUri ?? _originalContextUri!;
         _queue.UpdateContext(stationUri, isInfinite: true);
-        _queue.AppendTracks(autoplay.Tracks);
+        _queue.AppendTracks(autoplayTracks);
 
         // Pagination cursor moves to autoplay's own chain.
         _currentNextPageUrl = autoplay.NextPageUrl;
@@ -1974,7 +2093,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
         _logger?.LogInformation(
             "Autoplay active: station={Station}, tracks={Count}, nextPage={HasNext}",
-            stationUri, autoplay.Tracks.Count, autoplay.NextPageUrl != null);
+            stationUri, autoplayTracks.Count, autoplay.NextPageUrl != null);
         PublishQueueState();
     }
 
@@ -2493,6 +2612,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         _stateSubject.Dispose();
         _errorSubject.Dispose();
         _endOfContextSubject.Dispose();
+        _hiddenTracksFilteredSubject.Dispose();
     }
 }
 
@@ -2511,3 +2631,37 @@ public sealed record EndOfContextEvent(
     string? OriginalContextUri,
     bool AutoplayAttempted,
     bool ContextSupportsAutoplay);
+
+/// <summary>
+/// Published by <see cref="PlaybackOrchestrator.HiddenTracksFiltered"/> when
+/// the hidden-track filter dropped at least one item from a play path. The
+/// UI subscribes and surfaces a toast — phrasing differs by surface:
+/// <list type="bullet">
+///   <item><see cref="HiddenFilterSurface.PlayContext"/> →
+///         "Skipped N hidden tracks"</item>
+///   <item><see cref="HiddenFilterSurface.PlayNext"/> /
+///         <see cref="HiddenFilterSurface.AddToQueue"/> →
+///         "Track is hidden — not added"</item>
+///   <item><see cref="HiddenFilterSurface.Autoplay"/> →
+///         "Autoplay had no eligible tracks" (only emitted when ALL autoplay
+///         candidates were dropped)</item>
+/// </list>
+/// </summary>
+public sealed record HiddenTracksFilteredEvent(
+    HiddenFilterSurface Surface,
+    int DroppedCount);
+
+/// <summary>
+/// Which orchestrator entry point dropped the tracks — drives toast phrasing.
+/// </summary>
+public enum HiddenFilterSurface
+{
+    /// <summary>Manual play of a context / page (album, playlist, search result).</summary>
+    PlayContext,
+    /// <summary>Single-track Play Next.</summary>
+    PlayNext,
+    /// <summary>Single-track Add to Queue.</summary>
+    AddToQueue,
+    /// <summary>Autoplay recommendation batch.</summary>
+    Autoplay,
+}

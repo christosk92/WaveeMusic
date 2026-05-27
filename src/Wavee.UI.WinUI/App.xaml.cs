@@ -147,6 +147,13 @@ public partial class App : Application
             // throws MetadataMigrationException on schema failure, which DI
             // wraps in a trivial initializer exception — unwrap to match.
             _ = Ioc.Default.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>();
+
+            // Resolving IAudioCacheDatabase opens audio_cache.db and runs the
+            // one-shot migration that copies any pre-existing head_data /
+            // cdn_cache rows out of metadata.db. Forced before first paint so
+            // the migration completes before the audio resolver hits either
+            // table.
+            _ = Ioc.Default.GetRequiredService<Wavee.Core.Storage.Abstractions.IAudioCacheDatabase>();
         }
         catch (Exception ex) when (UnwrapMigrationException(ex) is MetadataMigrationException migrationEx)
         {

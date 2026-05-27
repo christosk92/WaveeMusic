@@ -35,6 +35,26 @@ public static class WaveeCacheServiceCollectionExtensions
             return new MetadataDatabase(opts.DatabasePath, opts.DatabaseHotCacheSize, opts.SpotifyMetadataLocale, logger);
         });
 
+        // Register the dedicated audio cache database (own SQLite file,
+        // own write semaphore). On first resolution it runs a one-shot
+        // migration that copies any pre-existing head_data / cdn_cache rows
+        // out of metadata.db and drops the source tables.
+        services.AddSingleton<IAudioCacheDatabase>(sp =>
+        {
+            var opts = sp.GetRequiredService<WaveeCacheOptions>();
+            var logger = sp.GetService<ILogger<AudioCacheDatabase>>();
+            var audioCache = new AudioCacheDatabase(opts.ResolveAudioCachePath(), logger);
+            try
+            {
+                audioCache.MigrateFromMetadataAsync(opts.DatabasePath).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "AudioCacheDatabase migration from {Path} failed; continuing", opts.DatabasePath);
+            }
+            return audioCache;
+        });
+
         // Register hot caches for each entity type (singleton)
         services.AddSingleton<IHotCache<TrackCacheEntry>>(sp =>
         {
@@ -96,10 +116,11 @@ public static class WaveeCacheServiceCollectionExtensions
         services.AddSingleton<ICacheService>(sp =>
         {
             var database = sp.GetRequiredService<IMetadataDatabase>();
+            var audioCache = sp.GetRequiredService<IAudioCacheDatabase>();
             var trackHotCache = sp.GetRequiredService<IHotCache<TrackCacheEntry>>();
             var logger = sp.GetService<ILogger<CacheService>>();
             var opts = sp.GetRequiredService<WaveeCacheOptions>();
-            return new CacheService(database, trackHotCache, logger, opts.AudioAuxCacheSize);
+            return new CacheService(database, audioCache, trackHotCache, logger, opts.AudioAuxCacheSize);
         });
 
         // Register ICleanableCache for each HotCache instance

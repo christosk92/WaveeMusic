@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Wavee.Audio;
 using Wavee.Core.Library.Spotify;
 using Wavee.Core.Library.Spotify.Outbox;
 using Wavee.Core.Storage.Abstractions;
@@ -23,8 +24,14 @@ namespace Wavee.UI.Services.Library;
 /// "blocked / hidden" inverse — IsArtistBlocked / IsTrackHidden are read
 /// hot from in-memory sets; mutations route through the library outbox.
 /// </summary>
-public sealed class ContentFilterService : IContentFilterService
+public sealed class ContentFilterService : IContentFilterService, IPlaybackContentFilter
 {
+    // IPlaybackContentFilter is the minimal core-side surface the playback
+    // orchestrator binds against. The thread-safety contract there is "must
+    // be safe to call from the orchestrator scheduler"; our HashSet lookups
+    // are guarded by _gate so they satisfy it. Single shared instance is
+    // registered under both interfaces in DI.
+
     private const string TrackPrefix = "spotify:track:";
     private const string ArtistPrefix = "spotify:artist:";
 

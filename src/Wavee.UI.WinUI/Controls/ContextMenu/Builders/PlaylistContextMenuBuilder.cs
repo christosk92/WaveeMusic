@@ -60,7 +60,7 @@ public static class PlaylistContextMenuBuilder
 
         items.Add(new ContextMenuItemModel
         {
-            Text = AppLocalization.GetString(ctx.IsPinned ? "SidebarMenu_UnpinFolder" : "SidebarMenu_PinFolder"),
+            Text = AppLocalization.GetString(ctx.IsPinned ? "CardMenu_Pinned" : "CardMenu_Pin"),
             Glyph = ctx.IsPinned ? FluentGlyphs.Unpin : FluentGlyphs.Pin,
             Command = ctx.TogglePinCommand,
             Invoke = ctx.TogglePinCommand is null ? () => TogglePinDefault(uri, ctx.IsPinned) : null,

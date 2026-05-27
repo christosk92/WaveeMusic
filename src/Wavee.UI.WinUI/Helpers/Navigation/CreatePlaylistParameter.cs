@@ -18,6 +18,16 @@ public sealed record CreatePlaylistParameter
     public IReadOnlyList<string>? TrackIds { get; init; }
 
     /// <summary>
+    /// Optional sidebar folder to place the new playlist into. Must be the
+    /// folder's <c>spotify:start-group:{id}:{name}</c> URI — same shape the
+    /// rootlist drag-into-folder path uses. When set, the create flow runs
+    /// CreatePlaylistAsync then MovePlaylistIntoFolderAsync as a two-step
+    /// rootlist mutation. Ignored when <see cref="IsFolder"/> is true (you
+    /// can't nest a folder via this path).
+    /// </summary>
+    public string? FolderStartUri { get; init; }
+
+    /// <summary>
     /// Number of tracks to be added.
     /// </summary>
     public int TrackCount => TrackIds?.Count ?? 0;

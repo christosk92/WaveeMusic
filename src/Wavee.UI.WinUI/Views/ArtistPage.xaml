@@ -124,16 +124,41 @@
     </UserControl.Resources>
 
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Full-width "you've ignored this artist" banner. Sits OUTSIDE the
+             dimmed PageScrollView so it stays fully opaque and clickable even
+             while the hero / shelves below are faded out. Severity=Warning
+             matches the eyebrow pill's caution tint; the action button is the
+             same toggle command the More menu uses. -->
+        <InfoBar Grid.Row="0"
+                 IsOpen="{x:Bind ViewModel.IsBlocked, Mode=OneWay}"
+                 IsClosable="False"
+                 Severity="Warning"
+                 Title="You're ignoring this artist"
+                 Message="Their tracks won't appear in your Recently Played, Home, Search-result rails, or autoplay.">
+            <InfoBar.ActionButton>
+                <Button Content="Stop ignoring"
+                        Command="{x:Bind ViewModel.ToggleBlockCommand}"/>
+            </InfoBar.ActionButton>
+        </InfoBar>
+
+        <Grid Grid.Row="1">
         <!-- Page tint wash — palette gradient over the hero region.
              Brush is assigned from code-behind whenever HeaderHeroColorHex / palette change. -->
         <Rectangle x:Name="PageTintFill"
                    VerticalAlignment="Top"
                    Height="780"
+                   Opacity="{x:Bind ViewModel.BlockedDimOpacity, Mode=OneWay}"
                    IsHitTestVisible="False"/>
 
         <ScrollView x:Name="PageScrollView"
                     HorizontalScrollMode="Disabled"
-                    ContentOrientation="Vertical">
+                    ContentOrientation="Vertical"
+                    Opacity="{x:Bind ViewModel.BlockedDimOpacity, Mode=OneWay}">
             <StackPanel x:Name="ContentRoot"
                         HorizontalAlignment="Stretch">
 
@@ -296,6 +321,31 @@
                                                     </StackPanel>
                                                 </Border>
                                             </Grid>
+
+                                            <!-- "Ignored" pill — shown when this artist is on the user's
+                                                 artistban set. Same dark-glass treatment as the world-rank /
+                                                 verified pills; warm accent foreground so it reads as a
+                                                 user-initiated state, not an artist trait. -->
+                                            <Border CornerRadius="13"
+                                                    Height="26"
+                                                    Padding="10,0,12,0"
+                                                    Background="{ThemeResource WorldRankBadgeBackgroundBrush}"
+                                                    BorderBrush="{ThemeResource WorldRankBadgeBorderBrush}"
+                                                    BorderThickness="1"
+                                                    VerticalAlignment="Center"
+                                                    Visibility="{x:Bind ViewModel.IsBlocked, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xF140;"
+                                                              FontSize="12"
+                                                              Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                                              VerticalAlignment="Center"/>
+                                                    <TextBlock Text="IGNORED"
+                                                               FontSize="11"
+                                                               FontWeight="Bold"
+                                                               CharacterSpacing="140"
+                                                               Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                                                </StackPanel>
+                                            </Border>
                                         </StackPanel>
 
                                         <Grid HorizontalAlignment="Stretch">
@@ -444,6 +494,24 @@
                                                         <MenuFlyoutItem x:Uid="Views_ArtistPage__MenuFlyoutItem_106" Text="Copy link to artist" Click="CopyArtistLink_Click">
                                                             <MenuFlyoutItem.Icon>
                                                                 <FontIcon Glyph="&#xE71B;"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                        <!-- Block / unblock. Two items with mutually exclusive
+                                                             Visibility bindings so the right verb shows for the
+                                                             current state — mirrors the toggle pattern used by
+                                                             other Spotify-style "ignore artist" menus. -->
+                                                        <MenuFlyoutItem Text="Don't play this artist"
+                                                                        Command="{x:Bind ViewModel.ToggleBlockCommand}"
+                                                                        Visibility="{x:Bind ViewModel.IsBlocked, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xF140;"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                        <MenuFlyoutItem Text="Stop ignoring this artist"
+                                                                        Command="{x:Bind ViewModel.ToggleBlockCommand}"
+                                                                        Visibility="{x:Bind ViewModel.IsBlocked, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xE73E;"/>
                                                             </MenuFlyoutItem.Icon>
                                                         </MenuFlyoutItem>
                                                         <MenuFlyoutItem x:Uid="Views_ArtistPage__MenuFlyoutItem_107" Text="Open in Spotify" Click="OpenInSpotify_Click">
@@ -1600,11 +1668,13 @@
                 <!-- /BodyHost -->
             </StackPanel>
         </ScrollView>
+        </Grid>
 
         <!--  ════════════════════════════════════════════════════════════════
               SHY HEADER — pinned compact card that morphs in on scroll
               ════════════════════════════════════════════════════════════════ -->
-        <hero:ArtistShyPill x:Name="ShyHeaderCard"
+        <hero:ArtistShyPill Grid.Row="1"
+                            x:Name="ShyHeaderCard"
                             Visibility="Collapsed"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Top"
@@ -1628,7 +1698,8 @@
               on the dimmed backdrop dismiss the overlay (see code-behind
               GalleryLightbox_BackdropTapped / _KeyDown / GalleryLightboxClose_Click).
               ════════════════════════════════════════════════════════════════ -->
-        <Grid x:Name="GalleryLightbox"
+        <Grid Grid.Row="1"
+              x:Name="GalleryLightbox"
               Visibility="Collapsed"
               Background="#E6000000"
               Canvas.ZIndex="100"

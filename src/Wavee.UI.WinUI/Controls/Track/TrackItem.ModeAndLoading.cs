@@ -119,7 +119,12 @@ public sealed partial class TrackItem
                 if (!loading)
                     CompactAlbumArt.RefreshCurrentImage();
             }
-            CompactArtShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+            // CompactArtShimmer is x:Load-gated on IsLoading — null when not
+            // loading, realized in Visible state when loading. Skip the
+            // imperative Visibility toggle (kept as a no-op assignment for
+            // diagnostic clarity if the field is present mid-transition).
+            if (CompactArtShimmer is not null)
+                CompactArtShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
             CompactInfoPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
             CompactInfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
             CompactDuration.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;

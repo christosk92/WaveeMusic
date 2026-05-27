@@ -425,6 +425,17 @@ public interface IMetadataDatabase : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Batched variant of <see cref="TouchPlaylistCacheEntryAsync"/> — runs
+    /// every UPDATE inside a single transaction under a single write-lock
+    /// acquisition. Use this to coalesce burst access-touches (e.g. cold-start
+    /// playlist prefetch) so the audio resolver never waits behind N
+    /// independent touch writes.
+    /// </summary>
+    Task TouchPlaylistCacheEntriesAsync(
+        IReadOnlyList<(string PlaylistUri, DateTimeOffset AccessedAt)> entries,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets the most recently accessed cached playlists.
     /// </summary>
     Task<List<PlaylistCacheEntry>> GetRecentPlaylistCacheEntriesAsync(
@@ -450,6 +461,14 @@ public interface IMetadataDatabase : IAsyncDisposable
     Task TouchRootlistCacheEntryAsync(
         string rootlistUri,
         DateTimeOffset accessedAt,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Batched variant of <see cref="TouchRootlistCacheEntryAsync"/> — see
+    /// <see cref="TouchPlaylistCacheEntriesAsync"/> for rationale.
+    /// </summary>
+    Task TouchRootlistCacheEntriesAsync(
+        IReadOnlyList<(string RootlistUri, DateTimeOffset AccessedAt)> entries,
         CancellationToken cancellationToken = default);
 
     #endregion
@@ -528,30 +547,9 @@ public interface IMetadataDatabase : IAsyncDisposable
     /// </summary>
     Task SetPersistedPlayPlayObfuscatedKeyAsync(string fileIdHex, byte[] obfuscatedKey, CancellationToken ct = default);
 
-    /// <summary>
-    /// Gets persisted head file data for a FileId (~128 KB of encrypted audio
-    /// prefix used for instant-start playback), or null if not stored.
-    /// </summary>
-    Task<byte[]?> GetPersistedHeadDataAsync(string fileIdHex, CancellationToken ct = default);
-
-    /// <summary>
-    /// Persists head file data. Overwrites any existing entry.
-    /// </summary>
-    Task SetPersistedHeadDataAsync(string fileIdHex, byte[] headData, CancellationToken ct = default);
-
-    /// <summary>
-    /// Gets a persisted CDN URL + expiry for a FileId, or null if not stored
-    /// or expired. Used by <c>CacheService</c> to warm-start CDN URL resolution
-    /// across app launches — without it, every cold start needs a round-trip
-    /// to Spotify's storage-resolve endpoint before audio can stream.
-    /// </summary>
-    Task<(string Url, DateTimeOffset Expiry)?> GetPersistedCdnUrlAsync(string fileIdHex, CancellationToken ct = default);
-
-    /// <summary>
-    /// Persists a CDN URL with expiry. Overwrites any existing entry. Cleans
-    /// up expired rows opportunistically (no separate sweep needed).
-    /// </summary>
-    Task SetPersistedCdnUrlAsync(string fileIdHex, string url, DateTimeOffset expiry, CancellationToken ct = default);
+    // head_data / cdn_cache live on IAudioCacheDatabase now (separate
+    // SQLite file, separate write semaphore) so the audio resolver never
+    // queues behind library / playlist writers holding this lock.
 
     #endregion
 

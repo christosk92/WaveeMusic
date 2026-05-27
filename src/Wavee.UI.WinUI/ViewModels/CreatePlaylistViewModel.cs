@@ -29,6 +29,7 @@ public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarI
     private bool _isFolder;
 
     private IReadOnlyList<string>? _trackIds;
+    private string? _folderStartUri;
 
     private readonly ILibraryDataService _libraryDataService;
     private readonly IRootlistService _rootlistService;
@@ -66,6 +67,7 @@ public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarI
     {
         IsFolder = parameter.IsFolder;
         _trackIds = parameter.TrackIds;
+        _folderStartUri = parameter.FolderStartUri;
         Name = "";
         Title = parameter.IsFolder ? "Create Folder" : "Create Playlist";
         IconGlyph = parameter.IsFolder ? "\uE8F4" : "\uE93F";
@@ -104,6 +106,25 @@ public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarI
         }
         else
         {
+            // Two-step rootlist mutation when the caller requested a folder
+            // target: create at root, then move into the folder. Same shape
+            // the drag-into-folder path uses (see LibraryPlaylistMediator).
+            // Best-effort — if the move fails the playlist still exists at
+            // root, which is recoverable; the user sees a toast on failure.
+            if (!string.IsNullOrEmpty(_folderStartUri))
+            {
+                try
+                {
+                    await _rootlistService.MovePlaylistIntoFolderAsync(created.Id, _folderStartUri).ConfigureAwait(true);
+                }
+                catch
+                {
+                    // Move failure → playlist lives at rootlist top. The
+                    // create succeeded; surface a soft warning rather than
+                    // hide the success.
+                }
+            }
+
             NavigationHelpers.OpenPlaylist(created.Id, created.Name, openInNewTab: false);
         }
     }

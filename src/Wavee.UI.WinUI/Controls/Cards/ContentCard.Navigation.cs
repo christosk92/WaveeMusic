@@ -268,20 +268,17 @@ public sealed partial class ContentCard
 
         if (!string.IsNullOrEmpty(NavigationUri))
         {
-            var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.Build(new Controls.ContextMenu.Builders.CardMenuContext
-            {
-                Uri = NavigationUri!,
-                Title = Title ?? string.Empty,
-                Subtitle = Subtitle,
-                ImageUrl = ImageUrl,
-                OpenAction = openInNewTab =>
+            var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.BuildForUri(
+                uri: NavigationUri!,
+                title: Title ?? string.Empty,
+                imageUrl: ImageUrl,
+                openAction: openInNewTab =>
                 {
                     NavigationDiagnostics.RecordClickIntent(
                         "ContentCard." + ClickIntentKindFromUri(NavigationUri!) + ".ContextMenu");
                     ResetInteractionState();
                     NavigateToUri(openInNewTab);
-                }
-            });
+                });
             Controls.ContextMenu.ContextMenuHost.Show(this, items, e.GetPosition(this));
             e.Handled = true;
             return;

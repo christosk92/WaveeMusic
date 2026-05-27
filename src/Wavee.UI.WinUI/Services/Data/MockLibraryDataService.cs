@@ -148,6 +148,20 @@ public sealed class MockLibraryDataService : ILibraryDataService
         return Task.FromResult<IReadOnlyList<PlaylistSummaryDto>?>(_mockPlaylists);
     }
 
+    public Task<UserPlaylistTree?> GetUserPlaylistTreeAsync(CancellationToken ct = default)
+    {
+        var leaves = new List<UserPlaylistTreeNode>(_mockPlaylists.Count);
+        foreach (var p in _mockPlaylists)
+            leaves.Add(new UserPlaylistLeafNode(p));
+        return Task.FromResult<UserPlaylistTree?>(new UserPlaylistTree(leaves));
+    }
+
+    public bool IsOwnedByCurrentUser(string playlistUri)
+        => _mockPlaylists.Any(p => string.Equals(p.Id, playlistUri, StringComparison.Ordinal) && p.IsOwner);
+
+    public bool IsInUserRootlist(string playlistUri)
+        => _mockPlaylists.Any(p => string.Equals(p.Id, playlistUri, StringComparison.Ordinal));
+
     public Task<IReadOnlyList<LibraryAlbumDto>> GetAlbumsAsync(CancellationToken ct = default)
     {
         return Task.FromResult<IReadOnlyList<LibraryAlbumDto>>(_mockAlbums);

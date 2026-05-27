@@ -15,6 +15,24 @@ public class WaveeCacheOptions
         "metadata.db");
 
     /// <summary>
+    /// Path to the audio cache SQLite database file. Holds <c>head_data</c>
+    /// (first ~128 KB of encrypted audio) and <c>cdn_cache</c> (signed CDN
+    /// URLs) — separate from <see cref="DatabasePath"/> so the audio resolver
+    /// never queues behind library or playlist writers.
+    /// Default: sibling of <see cref="DatabasePath"/> named <c>audio_cache.db</c>.
+    /// </summary>
+    public string? AudioCachePath { get; set; }
+
+    internal string ResolveAudioCachePath()
+    {
+        if (!string.IsNullOrWhiteSpace(AudioCachePath))
+            return AudioCachePath;
+
+        var dir = Path.GetDirectoryName(DatabasePath);
+        return Path.Combine(string.IsNullOrEmpty(dir) ? string.Empty : dir, "audio_cache.db");
+    }
+
+    /// <summary>
     /// Root directory for the local-file artwork cache. Backs the
     /// <c>wavee-artwork://{hash}</c> URI scheme. Default:
     /// <c>%APPDATA%/Wavee/local-artwork</c> — same parent as the metadata

@@ -48,6 +48,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly ILocationService _locationService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ITrackLikeService? _likeService;
+    private readonly IContentFilterService? _contentFilterService;
     private readonly ILogger? _logger;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
 
@@ -100,6 +101,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         ArtistAiQuestionService? artistAiQuestionService = null,
         IMusicVideoMetadataService? musicVideoMetadataService = null,
         Wavee.UI.Services.Infra.IBackgroundWorkRunner? backgroundWorkRunner = null,
+        IContentFilterService? contentFilterService = null,
         ILogger<ArtistViewModel>? logger = null)
     {
         _musicVideoMetadataService = musicVideoMetadataService;
@@ -107,6 +109,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _locationService = locationService;
         _playbackStateService = playbackStateService;
         _likeService = likeService;
+        _contentFilterService = contentFilterService;
         _backgroundWork = backgroundWorkRunner ?? new Wavee.UI.Services.Infra.BackgroundWorkRunner();
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
@@ -201,6 +204,24 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty] private string? _artistId;
 
     [ObservableProperty] private bool _isFollowing;
+
+    /// <summary>True when this artist is on the user's <c>artistban</c> set.
+    /// Bound by the ArtistPage hero "Ignored" badge + the More-menu entry that
+    /// toggles between "Don't play this artist" and "Stop ignoring this
+    /// artist". Also drives <see cref="BlockedDimOpacity"/> which fades the
+    /// whole page when set.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BlockedDimOpacity))]
+    private bool _isBlocked;
+
+    /// <summary>
+    /// 0.40 when the artist is blocked, 1.0 otherwise. ArtistPage binds the
+    /// scrolling content's Opacity to this so a blocked artist's whole page
+    /// renders muted, signalling the state without hiding navigation entirely.
+    /// The "Stop ignoring this artist" banner sits OUTSIDE the dimmed region
+    /// so it stays fully readable.
+    /// </summary>
+    public double BlockedDimOpacity => IsBlocked ? 0.40 : 1.0;
 
     /// <summary>True only when <c>?debug</c> was passed via the navigation
     /// parameter — gates the small "source-chip" pills on each V4A section
@@ -347,6 +368,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             Title = "Artist"
         };
         RefreshFollowState();
+        RefreshBlockState();
         TopTracks.SyncArtistPlaybackState();
 
         // Drop any prior subscription (cancels its inflight fetch via refcount==0)
@@ -388,6 +410,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _longLivedAttached = true;
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
+        if (_contentFilterService != null)
+            _contentFilterService.FilterChanged += OnContentFilterChanged;
         _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
     }
 
@@ -397,6 +421,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _longLivedAttached = false;
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
+        if (_contentFilterService != null)
+            _contentFilterService.FilterChanged -= OnContentFilterChanged;
         _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
     }
 
@@ -602,6 +628,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         Header.Artist = null;
         Bio.ResetForNewArtist();
         IsFollowing = false;
+        IsBlocked = false;
         HasData = false;
         _videoCatalogPrimedOverview = null;
         _videoCatalogPrimedFor = null;
@@ -955,6 +982,62 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private void OnSaveStateChanged()
     {
         _dispatcherQueue?.TryEnqueue(RefreshFollowState);
+    }
+
+    /// <summary>
+    /// Bound to the artist-page hero "More" menu — toggles whether this
+    /// artist is on the user's <c>artistban</c> set. Optimistic local
+    /// update; ContentFilterService writes to the outbox and surfaces a
+    /// toast on success/failure via the same in-VM notification path used
+    /// by the track context menu.
+    /// </summary>
+    [RelayCommand]
+    private async Task ToggleBlockAsync()
+    {
+        if (string.IsNullOrEmpty(ArtistId) || _contentFilterService is null) return;
+
+        var artistUri = ArtistId.StartsWith("spotify:artist:", StringComparison.Ordinal)
+            ? ArtistId
+            : "spotify:artist:" + ArtistId;
+        var wasBlocked = IsBlocked;
+        IsBlocked = !wasBlocked;
+        try
+        {
+            await _contentFilterService.SetArtistBlockedAsync(artistUri, !wasBlocked).ConfigureAwait(true);
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Wavee.UI.WinUI.Data.Contracts.INotificationService>()?.Show(
+                    wasBlocked ? "Stopped ignoring this artist" : "Ignoring this artist",
+                    Wavee.UI.WinUI.Data.Models.NotificationSeverity.Success,
+                    TimeSpan.FromSeconds(3));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "ToggleBlockAsync failed for {Uri}", artistUri);
+            IsBlocked = wasBlocked; // revert
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Wavee.UI.WinUI.Data.Contracts.INotificationService>()?.Show(
+                    "Couldn't update blocked artists",
+                    Wavee.UI.WinUI.Data.Models.NotificationSeverity.Error,
+                    TimeSpan.FromSeconds(3));
+        }
+    }
+
+    private void RefreshBlockState()
+    {
+        if (string.IsNullOrEmpty(ArtistId) || _contentFilterService is null)
+        {
+            IsBlocked = false;
+            return;
+        }
+        var artistUri = ArtistId.StartsWith("spotify:artist:", StringComparison.Ordinal)
+            ? ArtistId
+            : "spotify:artist:" + ArtistId;
+        IsBlocked = _contentFilterService.IsArtistBlocked(artistUri);
+    }
+
+    private void OnContentFilterChanged()
+    {
+        _dispatcherQueue?.TryEnqueue(RefreshBlockState);
     }
 
     private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)

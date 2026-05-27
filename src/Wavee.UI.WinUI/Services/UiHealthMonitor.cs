@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.WinUI.Controls.TabBar;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -23,8 +24,16 @@ internal sealed class UiHealthMonitor : IDisposable
     private const int TickIntervalMs = 16; // ~60 fps target
     public int WarnThresholdMs { get; set; } = 50;
     public int CriticalThresholdMs { get; set; } = 100;
-    private const int SevereFreezeThresholdMs = 1500;
-    private const int DegradedCriticalFrameThreshold = 10;
+    // A single very-long freeze (3 s+) is rare enough that one is worth a
+    // prompt on its own — anything shorter is normal cold-start noise.
+    private const int SevereFreezeThresholdMs = 3000;
+    // "We noticed the app might be working slower" requires a sustained
+    // pattern: at least this many critical-threshold frames inside a
+    // rolling window of DegradedCriticalFrameWindow. Tuned so cold-start
+    // GC bursts and a single 20 s DB lock don't trip it — the user has to
+    // experience minutes of jank for it to fire.
+    private const int DegradedCriticalFrameThreshold = 60;
+    private static readonly TimeSpan DegradedCriticalFrameWindow = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan DegradedPromptCooldown = TimeSpan.FromHours(1);
 
     // ── State ──
@@ -51,7 +60,11 @@ internal sealed class UiHealthMonitor : IDisposable
     private int _stallCount;
     private int _criticalCount;
     private int _totalFrames;
-    private int _criticalFramesSinceDegradedPrompt;
+    // Sliding window of Stopwatch timestamps for critical-threshold frames.
+    // Pruned at every evaluation to the last DegradedCriticalFrameWindow so
+    // the count reflects sustained recent jank, not cumulative noise since
+    // app start.
+    private readonly Queue<long> _criticalFrameTimestamps = new();
     private long _lastDegradedPromptTimestamp;
 
     // Cached current-process handle. The overlay polls every render frame when
@@ -68,6 +81,19 @@ internal sealed class UiHealthMonitor : IDisposable
     // (signed: negative deltas mean a Gen0/Gen1 fired between this tick and the
     // previous one and reclaimed bytes).
     private long _lastManagedBytes;
+
+    // Live-Shimmer leak indicator. NavCacheSurfaces maintains a weak-reference
+    // registry of every Shimmer it has visited; we sample it on a slow cadence
+    // because GetLiveShimmerCount() walks (and prunes) that list under a lock.
+    // A high count points at cached pages keeping skeleton subtrees realized
+    // — the leak class fixed by ShimmerLoadGate's IsLoaded=false unrealize and
+    // NavCacheSurfaces' Shimmer.IsActive deactivation.
+    private const int ShimmerSampleEveryTicks = 1875; // ~30 s at 16 ms tick
+    private const int ShimmerWarnThreshold = 500;
+    private static readonly TimeSpan ShimmerWarnCooldown = TimeSpan.FromMinutes(5);
+    private int _ticksSinceShimmerSample;
+    private int _lastShimmerCount;
+    private long _lastShimmerWarnTimestamp;
 
     public UiHealthMonitor(DispatcherQueue dispatcherQueue, ILogger? logger = null)
     {
@@ -227,12 +253,46 @@ internal sealed class UiHealthMonitor : IDisposable
 
         if (degradedArgs is not null)
             Degraded?.Invoke(this, degradedArgs);
+
+        SampleShimmerLeakIndicator(now);
+    }
+
+    private void SampleShimmerLeakIndicator(long timestamp)
+    {
+        // Slow cadence — GetLiveShimmerCount() takes a lock and prunes the
+        // weak-ref registry, so we don't pay for it every UI tick.
+        if (++_ticksSinceShimmerSample < ShimmerSampleEveryTicks)
+            return;
+        _ticksSinceShimmerSample = 0;
+
+        var count = NavCacheSurfaces.GetLiveShimmerCount();
+        _lastShimmerCount = count;
+        if (count < ShimmerWarnThreshold)
+            return;
+
+        if (_lastShimmerWarnTimestamp != 0
+            && Stopwatch.GetElapsedTime(_lastShimmerWarnTimestamp, timestamp) < ShimmerWarnCooldown)
+            return;
+
+        _lastShimmerWarnTimestamp = timestamp;
+        _logger?.LogWarning(
+            "Live Shimmer count {Count} exceeds threshold {Threshold} — cached-page skeleton trees likely leaking; expect inflated working-set",
+            count, ShimmerWarnThreshold);
     }
 
     private UiDegradationDetectedEventArgs? EvaluateDegradationLocked(double elapsedMs, long timestamp)
     {
         if (elapsedMs > CriticalThresholdMs)
-            _criticalFramesSinceDegradedPrompt++;
+            _criticalFrameTimestamps.Enqueue(timestamp);
+
+        // Prune anything outside the rolling window. Both the threshold
+        // check and the next "should I prompt" decision read this trimmed
+        // count, so a quiet hour wipes any earlier accumulation.
+        while (_criticalFrameTimestamps.Count > 0
+               && Stopwatch.GetElapsedTime(_criticalFrameTimestamps.Peek(), timestamp) > DegradedCriticalFrameWindow)
+        {
+            _criticalFrameTimestamps.Dequeue();
+        }
 
         if (_lastDegradedPromptTimestamp != 0
             && Stopwatch.GetElapsedTime(_lastDegradedPromptTimestamp, timestamp) < DegradedPromptCooldown)
@@ -241,13 +301,15 @@ internal sealed class UiHealthMonitor : IDisposable
         }
 
         var severeFreeze = elapsedMs >= SevereFreezeThresholdMs;
-        var repeatedCriticalFrames = _criticalFramesSinceDegradedPrompt >= DegradedCriticalFrameThreshold;
+        var criticalFrames = _criticalFrameTimestamps.Count;
+        var repeatedCriticalFrames = criticalFrames >= DegradedCriticalFrameThreshold;
         if (!severeFreeze && !repeatedCriticalFrames)
             return null;
 
         _lastDegradedPromptTimestamp = timestamp;
-        var criticalFrames = _criticalFramesSinceDegradedPrompt;
-        _criticalFramesSinceDegradedPrompt = 0;
+        // Clear the window after a prompt so the next one needs a fresh
+        // pattern, not a long-tail of frames that already contributed.
+        _criticalFrameTimestamps.Clear();
 
         return new UiDegradationDetectedEventArgs(
             elapsedMs,
@@ -321,6 +383,7 @@ internal sealed class UiHealthMonitor : IDisposable
                     ManagedMb = managedMb,
                     WorkingSetMb = workingSetMb,
                     PrivateMb = privateMb,
+                    LiveShimmerCount = _lastShimmerCount,
                 };
             }
         }
@@ -362,6 +425,7 @@ internal sealed class UiHealthMonitor : IDisposable
         sb.AppendLine($"--- GC Collections ---");
         sb.AppendLine($"Gen0: {s.GcGen0}  Gen1: {s.GcGen1}  Gen2: {s.GcGen2}  Gen2-during-stalls: {s.Gen2DuringStalls}");
         sb.AppendLine($"Managed: {s.ManagedMb:F1} MB  Working set: {s.WorkingSetMb:F1} MB  Private: {s.PrivateMb:F1} MB");
+        sb.AppendLine($"Live Shimmer instances: {s.LiveShimmerCount} (warn at >= {ShimmerWarnThreshold})");
 
         // Append profiler stats if available
         UiOperationProfiler.Instance?.AppendReport(sb);
@@ -389,7 +453,7 @@ internal sealed class UiHealthMonitor : IDisposable
             _stallCount = 0;
             _criticalCount = 0;
             _totalFrames = 0;
-            _criticalFramesSinceDegradedPrompt = 0;
+            _criticalFrameTimestamps.Clear();
             _lastDegradedPromptTimestamp = 0;
             _frameDurations.Clear();
             _renderFrameDurations.Clear();
@@ -405,6 +469,9 @@ internal sealed class UiHealthMonitor : IDisposable
             _lastGen1 = GC.CollectionCount(1);
             _lastGen2 = GC.CollectionCount(2);
             _lastManagedBytes = GC.GetTotalMemory(false);
+            _ticksSinceShimmerSample = 0;
+            _lastShimmerCount = 0;
+            _lastShimmerWarnTimestamp = 0;
         }
         UiOperationProfiler.Instance?.Reset();
     }
@@ -429,6 +496,7 @@ internal record struct UiHealthStats
     public double ManagedMb { get; init; }
     public double WorkingSetMb { get; init; }
     public double PrivateMb { get; init; }
+    public int LiveShimmerCount { get; init; }
 }
 
 internal sealed record UiDegradationDetectedEventArgs(

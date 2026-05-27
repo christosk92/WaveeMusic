@@ -141,7 +141,8 @@
                 </Button>
 
                 <controls1:Shimmer x:Name="CompactArtShimmer" Width="48" Height="48"
-                                   CornerRadius="4" Visibility="Collapsed"/>
+                                   CornerRadius="4"
+                                   x:Load="{x:Bind IsLoading, Mode=OneWay}"/>
             </Grid>
 
             <StackPanel x:Name="CompactInfoPanel" Grid.Column="1" VerticalAlignment="Center" Spacing="2">
