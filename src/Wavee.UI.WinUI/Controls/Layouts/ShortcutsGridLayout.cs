@@ -10,7 +10,7 @@ namespace Wavee.UI.WinUI.Controls.Layouts;
 /// Items flow column-first (col1 row1, col1 row2, col2 row1, col2 row2, ...).
 /// Column count adapts to available width. Excess items are hidden.
 /// </summary>
-public sealed class ShortcutsGridLayout : NonVirtualizingLayout
+public sealed partial class ShortcutsGridLayout : NonVirtualizingLayout
 {
     public static readonly DependencyProperty ItemHeightProperty =
         DependencyProperty.Register(nameof(ItemHeight), typeof(double), typeof(ShortcutsGridLayout),

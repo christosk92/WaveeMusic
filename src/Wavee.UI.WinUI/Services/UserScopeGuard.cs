@@ -9,7 +9,7 @@ using Wavee.Core.Storage.Abstractions;
 
 namespace Wavee.UI.WinUI.Services;
 
-internal sealed class UserScopeGuard : IUserScopeGuard
+internal sealed partial class UserScopeGuard : IUserScopeGuard
 {
     private readonly IMetadataDatabase _database;
     private readonly IPlaylistCacheService _playlistCache;

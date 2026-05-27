@@ -12,6 +12,7 @@ namespace Wavee.UI.WinUI.Controls.Playback;
 /// VM through. Click invokes <c>SwitchToVideoCommand</c> — Mini-as-default
 /// routing in the VM handles surfacing the floating player.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class WatchVideoButton : UserControl
 {
     public PlayerBarViewModel ViewModel { get; }

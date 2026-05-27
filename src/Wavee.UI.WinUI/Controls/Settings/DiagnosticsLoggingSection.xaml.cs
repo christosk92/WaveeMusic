@@ -8,6 +8,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class DiagnosticsLoggingSection : UserControl, ISettingsSearchFilter, IDisposable
 {
     private bool _disposed;

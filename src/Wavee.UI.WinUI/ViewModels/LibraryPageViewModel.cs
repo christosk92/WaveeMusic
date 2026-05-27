@@ -8,7 +8,8 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// sub-view models and caches them for the lifetime of the LibraryPage,
 /// so switching tabs inside the library does not re-instantiate state.
 /// </summary>
-public sealed class LibraryPageViewModel : IDisposable
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class LibraryPageViewModel : IDisposable
 {
     private readonly IServiceProvider _services;
     private bool _disposed;

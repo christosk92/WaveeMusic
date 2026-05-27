@@ -4,36 +4,46 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
-using System.Reflection;
+using System.Runtime.CompilerServices;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Extensions;
 
 public static class ObservableCollectionExtensions
 {
-    // Cached per-T reflection handles. Populated on first call for each generic instantiation.
-    // Both handles are on base types of ObservableCollection<T> so they exist in every
-    // runtime we build for; if reflection ever returns null we fall back to Clear+Add.
-    private static class CollectionReflection<T>
+    // ── [UnsafeAccessor] accessors (correct generic pattern) ───────────
+    //
+    // [UnsafeAccessor] with generic types only resolves when the type
+    // parameter sits on a CONTAINER CLASS, not on the accessor method
+    // itself. Method-level type parameters trigger MissingFieldException /
+    // MissingMethodException at runtime under both JIT and AOT — see
+    // dotnet/runtime#104268, #109890, discussion #110964. The fix is to
+    // declare a generic static container class with T on it and the extern
+    // method as a non-generic member inside that class.
+    //
+    // GetItems reaches the private `items` field on Collection<T> directly
+    // (the field name has been stable across every .NET release, see the
+    // explicit "Do not rename (binary serialization)" comment in the
+    // runtime source). Raise{Collection,Property}Changed call the protected
+    // virtual methods on ObservableCollection<T>.
+
+    private static class Accessors<T>
     {
-        public static readonly PropertyInfo? ItemsProperty =
-            typeof(Collection<T>).GetProperty("Items",
-                BindingFlags.Instance | BindingFlags.NonPublic);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "items")]
+        public static extern ref IList<T> GetItems(Collection<T> collection);
 
-        public static readonly MethodInfo? OnCollectionChanged =
-            typeof(ObservableCollection<T>).GetMethod("OnCollectionChanged",
-                BindingFlags.Instance | BindingFlags.NonPublic,
-                binder: null,
-                types: new[] { typeof(NotifyCollectionChangedEventArgs) },
-                modifiers: null);
+        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "OnCollectionChanged")]
+        public static extern void RaiseCollectionChanged(
+            ObservableCollection<T> collection,
+            NotifyCollectionChangedEventArgs args);
 
-        public static readonly MethodInfo? OnPropertyChanged =
-            typeof(ObservableCollection<T>).GetMethod("OnPropertyChanged",
-                BindingFlags.Instance | BindingFlags.NonPublic,
-                binder: null,
-                types: new[] { typeof(PropertyChangedEventArgs) },
-                modifiers: null);
+        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "OnPropertyChanged")]
+        public static extern void RaisePropertyChanged(
+            ObservableCollection<T> collection,
+            PropertyChangedEventArgs args);
     }
+
+    // ── Public surface (unchanged signatures) ──────────────────────────
 
     public static void InsertRange<T>(this ObservableCollection<T> collection, int index, IEnumerable<T> items)
     {
@@ -48,7 +58,7 @@ public static class ObservableCollectionExtensions
 
     public static void Sort<T>(this ObservableCollection<T> collection, Comparison<T> comparison)
     {
-        using var _ = Services.UiOperationProfiler.Instance?.Profile("CollectionSort");
+        using var _ = UiOperationProfiler.Instance?.Profile("CollectionSort");
         var sorted = collection.ToList();
         sorted.Sort(comparison);
         // Bulk replace instead of O(n^2) individual Move() calls.
@@ -80,52 +90,27 @@ public static class ObservableCollectionExtensions
     /// on the dispatcher → visible hang on load/sort/filter. A single Reset
     /// lets the ListView rebuild its item tracking in one pass.
     ///
-    /// Implementation: reach past ObservableCollection and mutate the protected
-    /// backing <see cref="Collection{T}.Items"/> list directly (no events), then
-    /// manually raise Count / Item[] / Reset via reflection. Same contract as
-    /// ObservableCollection itself fires on Clear(). Falls back to the plain
-    /// Clear+Add path if reflection ever fails.
+    /// Implementation: reach the private `items` IList&lt;T&gt; field on
+    /// Collection&lt;T&gt; via <see cref="Accessors{T}.GetItems"/>, mutate
+    /// it directly (no events), then manually raise Count / Item[] / Reset
+    /// via UnsafeAccessor-bound shims on ObservableCollection&lt;T&gt;.
+    /// Same contract as ObservableCollection itself fires on Clear().
     /// </summary>
     public static void ReplaceWith<T>(this ObservableCollection<T> collection, IEnumerable<T> items)
     {
-        var backing = CollectionReflection<T>.ItemsProperty?.GetValue(collection) as IList<T>;
-        var onChanged = CollectionReflection<T>.OnCollectionChanged;
-        var onPropChanged = CollectionReflection<T>.OnPropertyChanged;
-
-        if (backing is null || onChanged is null || onPropChanged is null)
-        {
-            collection.Clear();
-            foreach (var item in items)
-                collection.Add(item);
-            return;
-        }
-
+        ref var backing = ref Accessors<T>.GetItems(collection);
         backing.Clear();
         foreach (var item in items)
             backing.Add(item);
 
-        onPropChanged.Invoke(collection, new object[] { new PropertyChangedEventArgs(nameof(Collection<T>.Count)) });
-        onPropChanged.Invoke(collection, new object[] { new PropertyChangedEventArgs("Item[]") });
-        onChanged.Invoke(collection, new object[] { new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset) });
+        Accessors<T>.RaisePropertyChanged(collection, new PropertyChangedEventArgs(nameof(Collection<T>.Count)));
+        Accessors<T>.RaisePropertyChanged(collection, new PropertyChangedEventArgs("Item[]"));
+        Accessors<T>.RaiseCollectionChanged(collection, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
     }
 
     public static void ClearWithoutNotify<T>(this ObservableCollection<T> collection)
     {
-        var backing = CollectionReflection<T>.ItemsProperty?.GetValue(collection) as IList<T>;
-        if (backing is not null)
-        {
-            backing.Clear();
-            return;
-        }
-
-        try
-        {
-            collection.Clear();
-        }
-        catch
-        {
-            // Best-effort teardown path. If reflection is unavailable and a
-            // disconnected WinUI listener throws during Clear, leave cleanup to GC.
-        }
+        ref var backing = ref Accessors<T>.GetItems(collection);
+        backing.Clear();
     }
 }

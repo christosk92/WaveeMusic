@@ -6,6 +6,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LikedSongsView : UserControl, IDisposable, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────

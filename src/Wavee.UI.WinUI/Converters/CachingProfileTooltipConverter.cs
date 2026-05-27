@@ -14,7 +14,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// direction is not used by the slider tooltip but is implemented for completeness.
 /// </para>
 /// </summary>
-public sealed class CachingProfileTooltipConverter : IValueConverter
+public sealed partial class CachingProfileTooltipConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

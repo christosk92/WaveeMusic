@@ -13,6 +13,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.TabBar;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposable
 {
     // Single GC critical window per user-initiated navigation. Covers the
@@ -78,34 +79,34 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     public event EventHandler<TabItemParameter>? ContentChanged;
 
     [ObservableProperty]
-    private IconSource? _iconSource;
+    public partial IconSource? IconSource { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayHeader))]
     [NotifyPropertyChangedFor(nameof(DisplayToolTipText))]
-    private string? _header;
+    public partial string? Header { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayToolTipText))]
-    private string? _toolTipText;
+    public partial string? ToolTipText { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayHeader))]
     [NotifyPropertyChangedFor(nameof(PinIndicatorVisibility))]
     [NotifyPropertyChangedFor(nameof(CompactWidth))]
-    private bool _isPinned;
+    public partial bool IsPinned { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayHeader))]
     [NotifyPropertyChangedFor(nameof(TabStyle))]
     [NotifyPropertyChangedFor(nameof(CompactWidth))]
-    private bool _isCompact;
+    public partial bool IsCompact { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SleepIndicatorVisibility))]
     [NotifyPropertyChangedFor(nameof(DisplayToolTipText))]
     [NotifyPropertyChangedFor(nameof(TabOpacity))]
-    private bool _isSleeping;
+    public partial bool IsSleeping { get; set; }
 
     /// <summary>
     /// Returns empty string when compact (icon-only), otherwise the header text

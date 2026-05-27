@@ -27,6 +27,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// Subscribes to <see cref="IPlaybackStateService"/> for track changes,
 /// fetches data via the queryNpvArtist Pathfinder endpoint.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposable
 {
     private const int MaxPodcastCommentLength = 500;
@@ -46,100 +47,100 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
     // ── Loading state ──
 
     [ObservableProperty]
-    private bool _isLoading;
+    public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
-    private bool _hasData;
+    public partial bool HasData { get; set; }
 
     [ObservableProperty]
-    private string? _errorMessage;
+    public partial string? ErrorMessage { get; set; }
 
     // ── Artist section ──
 
     [ObservableProperty]
-    private string? _artistName;
+    public partial string? ArtistName { get; set; }
 
     [ObservableProperty]
-    private string? _artistAvatarUrl;
+    public partial string? ArtistAvatarUrl { get; set; }
 
     [ObservableProperty]
-    private bool _isVerified;
+    public partial bool IsVerified { get; set; }
 
     [ObservableProperty]
-    private string? _followers;
+    public partial string? Followers { get; set; }
 
     [ObservableProperty]
-    private string? _monthlyListeners;
+    public partial string? MonthlyListeners { get; set; }
 
     [ObservableProperty]
-    private string? _biographyText;
+    public partial string? BiographyText { get; set; }
 
     [ObservableProperty]
-    private bool _isBioExpanded;
+    public partial bool IsBioExpanded { get; set; }
 
     [ObservableProperty]
-    private string? _artistUri;
+    public partial string? ArtistUri { get; set; }
 
     [ObservableProperty]
-    private List<ExternalLinkVm>? _externalLinks;
+    public partial List<ExternalLinkVm>? ExternalLinks { get; set; }
 
     // ── Credits section ──
 
     [ObservableProperty]
-    private ObservableCollection<CreditGroupVm> _creditGroups = [];
+    public partial ObservableCollection<CreditGroupVm> CreditGroups { get; set; } = [];
 
     [ObservableProperty]
-    private string? _recordLabel;
+    public partial string? RecordLabel { get; set; }
 
     // ── Concerts section ──
 
     [ObservableProperty]
-    private ObservableCollection<ConcertVm> _concerts = [];
+    public partial ObservableCollection<ConcertVm> Concerts { get; set; } = [];
 
     [ObservableProperty]
-    private bool _hasConcerts;
+    public partial bool HasConcerts { get; set; }
 
     // ── Canvas section ──
 
     [ObservableProperty]
-    private string? _canvasUrl;
+    public partial string? CanvasUrl { get; set; }
 
     [ObservableProperty]
-    private string? _upstreamCanvasUrl;
+    public partial string? UpstreamCanvasUrl { get; set; }
 
     [ObservableProperty]
-    private string? _pendingCanvasUrl;
+    public partial string? PendingCanvasUrl { get; set; }
 
     [ObservableProperty]
-    private string? _canvasType;
+    public partial string? CanvasType { get; set; }
 
     [ObservableProperty]
-    private bool _hasCanvas;
+    public partial bool HasCanvas { get; set; }
 
     [ObservableProperty]
-    private bool _hasPendingCanvasUpdate;
+    public partial bool HasPendingCanvasUpdate { get; set; }
 
     [ObservableProperty]
-    private bool _isUsingCanvasSnapshot;
+    public partial bool IsUsingCanvasSnapshot { get; set; }
 
     [ObservableProperty]
-    private bool _isManualCanvasOverride;
+    public partial bool IsManualCanvasOverride { get; set; }
 
     [ObservableProperty]
-    private string? _currentTrackUri;
+    public partial string? CurrentTrackUri { get; set; }
 
     // ── Related Videos section ──
 
     [ObservableProperty]
-    private ObservableCollection<RelatedVideoVm> _relatedVideos = [];
+    public partial ObservableCollection<RelatedVideoVm> RelatedVideos { get; set; } = [];
 
     [ObservableProperty]
-    private bool _hasRelatedVideos;
+    public partial bool HasRelatedVideos { get; set; }
 
     // Podcast episode section
 
     [ObservableProperty]
-    private bool _isPodcastEpisode;
+    public partial bool IsPodcastEpisode { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PodcastEpisodeTitle))]
@@ -151,41 +152,41 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(HasPodcastDescription))]
     [NotifyPropertyChangedFor(nameof(HasPodcastTranscript))]
     [NotifyPropertyChangedFor(nameof(PodcastTranscriptLabel))]
-    private PodcastEpisodeDetailDto? _podcastEpisodeDetail;
+    public partial PodcastEpisodeDetailDto? PodcastEpisodeDetail { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasPodcastChapters))]
-    private ObservableCollection<EpisodeChapterVm> _podcastChapters = [];
+    public partial ObservableCollection<EpisodeChapterVm> PodcastChapters { get; set; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasPodcastComments))]
-    private ObservableCollection<PodcastCommentViewModel> _podcastComments = [];
+    public partial ObservableCollection<PodcastCommentViewModel> PodcastComments { get; set; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMorePodcastComments))]
     [NotifyCanExecuteChangedFor(nameof(LoadMorePodcastCommentsCommand))]
-    private string? _podcastCommentsNextPageToken;
+    public partial string? PodcastCommentsNextPageToken { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PodcastCommentsCountLabel))]
-    private int _podcastCommentsTotalCount;
+    public partial int PodcastCommentsTotalCount { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PodcastCommentCharacterCount))]
     [NotifyCanExecuteChangedFor(nameof(SubmitPodcastCommentCommand))]
-    private string _podcastCommentDraft = "";
+    public partial string PodcastCommentDraft { get; set; } = "";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SubmitPodcastCommentCommand))]
-    private bool _isSubmittingPodcastComment;
+    public partial bool IsSubmittingPodcastComment { get; set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(LoadMorePodcastCommentsCommand))]
-    private bool _isLoadingMorePodcastComments;
+    public partial bool IsLoadingMorePodcastComments { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasPodcastCommentStatus))]
-    private string? _podcastCommentStatus;
+    public partial string? PodcastCommentStatus { get; set; }
 
     public IPlaybackStateService PlaybackState => _playbackState;
 

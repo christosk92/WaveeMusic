@@ -21,7 +21,7 @@ namespace Wavee.UI.WinUI.Controls;
 /// inline in PlaylistPage.RebuildCollaboratorStack so contributors and podcast
 /// reply-author previews share one implementation.
 /// </summary>
-public sealed class StackedAvatars : UserControl, INavCacheSurfaceParticipant
+public sealed partial class StackedAvatars : UserControl, INavCacheSurfaceParticipant
 {
     private readonly StackPanel _host;
     private INotifyCollectionChanged? _observed;

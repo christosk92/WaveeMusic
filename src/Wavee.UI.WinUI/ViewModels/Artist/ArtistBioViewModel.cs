@@ -27,6 +27,7 @@ namespace Wavee.UI.WinUI.ViewModels.Artist;
 /// projects through accessors. The AI summary is the only piece of state
 /// the VM owns.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
 {
     private const int HeroBioMaxLength = 150;
@@ -107,24 +108,24 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(BioExcerptText))]
     [NotifyPropertyChangedFor(nameof(HeroBioLine))]
     [NotifyPropertyChangedFor(nameof(HasHeroBioLine))]
-    private string? _bioSummaryText;
+    public partial string? BioSummaryText { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAiBioGenerating))]
     [NotifyPropertyChangedFor(nameof(IsAiBioUnavailable))]
-    private bool _isBioSummaryLoading;
+    public partial bool IsBioSummaryLoading { get; set; }
 
     [ObservableProperty]
-    private bool _wasLastBioFromCache;
+    public partial bool WasLastBioFromCache { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAiBioGenerating))]
-    private bool _isBioSummaryStreaming;
+    public partial bool IsBioSummaryStreaming { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAiBioGenerating))]
     [NotifyPropertyChangedFor(nameof(IsAiBioUnavailable))]
-    private string? _bioSummaryUnavailableText;
+    public partial string? BioSummaryUnavailableText { get; set; }
 
     public bool HasBioSummary => !string.IsNullOrWhiteSpace(BioSummaryText);
     public bool IsAiBioCardVisible => _capabilities?.IsArtistBioSummarizeEnabled == true;
@@ -159,23 +160,23 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAskArtistAi))]
-    private string _askAiQuestionText = string.Empty;
+    public partial string AskAiQuestionText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private string _askAiAnswerText = string.Empty;
+    public partial string AskAiAnswerText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private string _askAiCaption = string.Empty;
+    public partial string AskAiCaption { get; set; } = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAskArtistAi))]
-    private bool _isAskAiBusy;
+    public partial bool IsAskAiBusy { get; set; }
 
     [ObservableProperty]
-    private bool _hasAskAiAnswer;
+    public partial bool HasAskAiAnswer { get; set; }
 
     [ObservableProperty]
-    private string _askAiSparkleState = "Normal";
+    public partial string AskAiSparkleState { get; set; } = "Normal";
 
     public bool CanAskArtistAi =>
         IsAiBioCardVisible
@@ -746,7 +747,7 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         _suggestedQuestionsCts = null;
     }
 
-    private sealed class DelegateAiActivitySink : IAiActivitySink
+    private sealed partial class DelegateAiActivitySink : IAiActivitySink
     {
         private readonly Action<AiActivityEvent> _onActivity;
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -44,6 +44,7 @@ namespace Wavee.UI.WinUI.Views;
 /// over the video. Queue, lyrics, and details remain owned by the shell
 /// right panel rather than an inline dock.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class VideoPlayerPage : UserControl, IMediaSurfaceConsumer, IPageHostAware
 {
     // Highest priority — the fullscreen page outranks the floating Mini and

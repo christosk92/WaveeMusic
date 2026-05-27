@@ -15,7 +15,7 @@ namespace Wavee.UI.WinUI.Services;
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNameCaseInsensitive = true)]
 internal partial class AppSettingsJsonContext : JsonSerializerContext { }
 
-public sealed class SettingsService : ISettingsService, IDisposable
+public sealed partial class SettingsService : ISettingsService, IDisposable
 {
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

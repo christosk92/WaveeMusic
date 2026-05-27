@@ -17,7 +17,7 @@ namespace Wavee.UI.WinUI.Services;
 /// Each section item has a <see cref="HomeSectionItemEntry.Content"/> with a typed wrapper
 /// (AlbumResponseWrapper, ArtistResponseWrapper, etc.) and a JsonElement data payload.
 /// </summary>
-public sealed class HomeResponseParserV1 : IHomeResponseParser
+public sealed partial class HomeResponseParserV1 : IHomeResponseParser
 {
     public bool CanParse(HomeResponse response)
     {

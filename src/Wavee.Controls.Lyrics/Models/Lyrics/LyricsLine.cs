@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace Wavee.Controls.Lyrics.Models.Lyrics
 {
-    public class LyricsLine : BaseLyrics
+    public partial class LyricsLine : BaseLyrics
     {
         public List<BaseLyrics> PrimarySyllables { get; set; } = [];
         public List<BaseLyrics> SecondarySyllables { get; set; } = [];

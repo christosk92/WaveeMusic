@@ -2,7 +2,7 @@ using System;
 
 namespace Wavee.UI.WinUI.Controls.Ai;
 
-public sealed class RevealCompletedEventArgs : EventArgs
+public sealed partial class RevealCompletedEventArgs : EventArgs
 {
     public RevealCompletedEventArgs(string text)
     {

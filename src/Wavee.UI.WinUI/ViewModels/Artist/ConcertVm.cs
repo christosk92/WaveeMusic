@@ -3,7 +3,8 @@ using System.ComponentModel;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed class ConcertVm : INotifyPropertyChanged
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ConcertVm : INotifyPropertyChanged
 {
     public string? Title { get; init; }
     public string? Venue { get; init; }

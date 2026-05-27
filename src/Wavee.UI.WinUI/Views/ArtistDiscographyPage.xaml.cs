@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
@@ -29,6 +29,7 @@ public sealed record DiscographyBreadcrumbItem(string Label, string? ArtistUri);
 /// each Pathfinder page is cached one layer down (HotCache), so the
 /// second visit to the same group hydrates instantly.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistDiscographyPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;

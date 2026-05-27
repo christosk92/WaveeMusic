@@ -14,6 +14,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// and <see cref="TrailingText"/>) are refreshed by the service on a timer so
 /// rows correctly transition from "playing now" to "X min" as time passes.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class FriendFeedRowViewModel : ObservableObject
 {
     // Matches Spotify's own Friend Activity panel: equalizer/presence-dot
@@ -43,8 +44,8 @@ public sealed partial class FriendFeedRowViewModel : ObservableObject
 
     public DateTimeOffset Timestamp { get; }
 
-    [ObservableProperty] private bool _isCurrentlyListening;
-    [ObservableProperty] private string? _trailingText;
+    [ObservableProperty] public partial bool IsCurrentlyListening { get; set; }
+    [ObservableProperty] public partial string? TrailingText { get; set; }
 
     public FriendFeedRowViewModel(FriendFeedEntry entry)
     {

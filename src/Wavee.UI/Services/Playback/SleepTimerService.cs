@@ -23,7 +23,8 @@ namespace Wavee.UI.Services.Playback;
 /// best-effort flag rather than a precise event subscription — the existing
 /// PlaybackState property-changed feed already updates near-track-end.
 /// </summary>
-public sealed class SleepTimerService : INotifyPropertyChanged, IDisposable
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class SleepTimerService : INotifyPropertyChanged, IDisposable
 {
     /// <summary>Pass this to <see cref="Start"/> to end at the next track boundary.</summary>
     public static readonly TimeSpan EndOfTrackSentinel = TimeSpan.MaxValue;

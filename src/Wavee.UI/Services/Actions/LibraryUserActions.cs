@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.UI.Contracts;
+using Wavee.UI.Json;
 using Wavee.UI.Models;
 
 namespace Wavee.UI.Services.Actions;
@@ -63,7 +64,7 @@ public sealed class SetLibrarySavedAction : IUndoableUserAction
 {
     public const string Kind = "library.saved.set";
     private readonly ILibrarySavedActionExecutor _executor;
-    private readonly Payload _payload;
+    private readonly SetLibrarySavedPayload _payload;
 
     public SetLibrarySavedAction(
         ILibrarySavedActionExecutor executor,
@@ -73,10 +74,10 @@ public sealed class SetLibrarySavedAction : IUndoableUserAction
         bool newSaved)
     {
         _executor = executor;
-        _payload = new Payload(itemType, itemUri, previousSaved, newSaved);
+        _payload = new SetLibrarySavedPayload(itemType, itemUri, previousSaved, newSaved);
     }
 
-    private SetLibrarySavedAction(ILibrarySavedActionExecutor executor, Payload payload)
+    private SetLibrarySavedAction(ILibrarySavedActionExecutor executor, SetLibrarySavedPayload payload)
     {
         _executor = executor;
         _payload = payload;
@@ -88,7 +89,8 @@ public sealed class SetLibrarySavedAction : IUndoableUserAction
     public string? Message => null;
     public string? IconGlyph => null;
     public string UndoLabel => "Undo";
-    public UserActionDescriptor Descriptor => new(Kind, JsonSerializer.Serialize(_payload));
+    public UserActionDescriptor Descriptor =>
+        new(Kind, JsonSerializer.Serialize(_payload, WaveeUiJsonContext.Default.SetLibrarySavedPayload));
 
     public Task ExecuteAsync(CancellationToken ct = default) =>
         _executor.ApplySavedStateAsync(_payload.ItemType, _payload.ItemUri, _payload.NewSaved, ct);
@@ -98,7 +100,7 @@ public sealed class SetLibrarySavedAction : IUndoableUserAction
 
     public static SetLibrarySavedAction FromDescriptor(ILibrarySavedActionExecutor executor, UserActionDescriptor descriptor)
     {
-        var payload = JsonSerializer.Deserialize<Payload>(descriptor.PayloadJson)
+        var payload = JsonSerializer.Deserialize(descriptor.PayloadJson, WaveeUiJsonContext.Default.SetLibrarySavedPayload)
                       ?? throw new InvalidOperationException("Saved action payload is missing.");
         return new SetLibrarySavedAction(executor, payload);
     }
@@ -115,23 +117,21 @@ public sealed class SetLibrarySavedAction : IUndoableUserAction
         (SavedItemType.Show, false) => "Unfollowed show",
         _ => saved ? "Saved item" : "Removed item from library"
     };
-
-    private sealed record Payload(SavedItemType ItemType, string ItemUri, bool PreviousSaved, bool NewSaved);
 }
 
 public sealed class SetPinnedAction : IUndoableUserAction
 {
     public const string Kind = "library.pin.set";
     private readonly IPinActionExecutor _executor;
-    private readonly Payload _payload;
+    private readonly SetPinnedPayload _payload;
 
     public SetPinnedAction(IPinActionExecutor executor, string uri, bool previousPinned, bool newPinned)
     {
         _executor = executor;
-        _payload = new Payload(uri, previousPinned, newPinned);
+        _payload = new SetPinnedPayload(uri, previousPinned, newPinned);
     }
 
-    private SetPinnedAction(IPinActionExecutor executor, Payload payload)
+    private SetPinnedAction(IPinActionExecutor executor, SetPinnedPayload payload)
     {
         _executor = executor;
         _payload = payload;
@@ -143,7 +143,8 @@ public sealed class SetPinnedAction : IUndoableUserAction
     public string? Message => null;
     public string? IconGlyph => null;
     public string UndoLabel => "Undo";
-    public UserActionDescriptor Descriptor => new(Kind, JsonSerializer.Serialize(_payload));
+    public UserActionDescriptor Descriptor =>
+        new(Kind, JsonSerializer.Serialize(_payload, WaveeUiJsonContext.Default.SetPinnedPayload));
 
     public Task ExecuteAsync(CancellationToken ct = default) =>
         _executor.ApplyPinnedStateAsync(_payload.Uri, _payload.NewPinned, ct);
@@ -153,19 +154,17 @@ public sealed class SetPinnedAction : IUndoableUserAction
 
     public static SetPinnedAction FromDescriptor(IPinActionExecutor executor, UserActionDescriptor descriptor)
     {
-        var payload = JsonSerializer.Deserialize<Payload>(descriptor.PayloadJson)
+        var payload = JsonSerializer.Deserialize(descriptor.PayloadJson, WaveeUiJsonContext.Default.SetPinnedPayload)
                       ?? throw new InvalidOperationException("Pin action payload is missing.");
         return new SetPinnedAction(executor, payload);
     }
-
-    private sealed record Payload(string Uri, bool PreviousPinned, bool NewPinned);
 }
 
 public sealed class SetPlaylistFollowedAction : IUndoableUserAction
 {
     public const string Kind = "playlist.follow.set";
     private readonly IPlaylistMutationActionExecutor _executor;
-    private readonly Payload _payload;
+    private readonly SetPlaylistFollowedPayload _payload;
 
     public SetPlaylistFollowedAction(
         IPlaylistMutationActionExecutor executor,
@@ -174,10 +173,10 @@ public sealed class SetPlaylistFollowedAction : IUndoableUserAction
         bool newFollowed)
     {
         _executor = executor;
-        _payload = new Payload(playlistUri, previousFollowed, newFollowed);
+        _payload = new SetPlaylistFollowedPayload(playlistUri, previousFollowed, newFollowed);
     }
 
-    private SetPlaylistFollowedAction(IPlaylistMutationActionExecutor executor, Payload payload)
+    private SetPlaylistFollowedAction(IPlaylistMutationActionExecutor executor, SetPlaylistFollowedPayload payload)
     {
         _executor = executor;
         _payload = payload;
@@ -189,7 +188,8 @@ public sealed class SetPlaylistFollowedAction : IUndoableUserAction
     public string? Message => null;
     public string? IconGlyph => null;
     public string UndoLabel => "Undo";
-    public UserActionDescriptor Descriptor => new(Kind, JsonSerializer.Serialize(_payload));
+    public UserActionDescriptor Descriptor =>
+        new(Kind, JsonSerializer.Serialize(_payload, WaveeUiJsonContext.Default.SetPlaylistFollowedPayload));
 
     public Task ExecuteAsync(CancellationToken ct = default) =>
         _executor.SetPlaylistFollowedCoreAsync(_payload.PlaylistUri, _payload.NewFollowed, ct);
@@ -201,19 +201,17 @@ public sealed class SetPlaylistFollowedAction : IUndoableUserAction
         IPlaylistMutationActionExecutor executor,
         UserActionDescriptor descriptor)
     {
-        var payload = JsonSerializer.Deserialize<Payload>(descriptor.PayloadJson)
+        var payload = JsonSerializer.Deserialize(descriptor.PayloadJson, WaveeUiJsonContext.Default.SetPlaylistFollowedPayload)
                       ?? throw new InvalidOperationException("Playlist follow action payload is missing.");
         return new SetPlaylistFollowedAction(executor, payload);
     }
-
-    private sealed record Payload(string PlaylistUri, bool PreviousFollowed, bool NewFollowed);
 }
 
 public sealed class PlaylistTracksAction : IUndoableUserAction
 {
     public const string Kind = "playlist.tracks.set";
     private readonly IPlaylistMutationActionExecutor _executor;
-    private readonly Payload _payload;
+    private readonly PlaylistTracksPayload _payload;
 
     public PlaylistTracksAction(
         IPlaylistMutationActionExecutor executor,
@@ -222,13 +220,13 @@ public sealed class PlaylistTracksAction : IUndoableUserAction
         bool addTracks)
     {
         _executor = executor;
-        _payload = new Payload(
+        _payload = new PlaylistTracksPayload(
             playlistUri,
             trackUris.Where(static uri => !string.IsNullOrWhiteSpace(uri)).ToArray(),
             addTracks);
     }
 
-    private PlaylistTracksAction(IPlaylistMutationActionExecutor executor, Payload payload)
+    private PlaylistTracksAction(IPlaylistMutationActionExecutor executor, PlaylistTracksPayload payload)
     {
         _executor = executor;
         _payload = payload;
@@ -240,7 +238,8 @@ public sealed class PlaylistTracksAction : IUndoableUserAction
     public string? Message => null;
     public string? IconGlyph => null;
     public string UndoLabel => "Undo";
-    public UserActionDescriptor Descriptor => new(Kind, JsonSerializer.Serialize(_payload));
+    public UserActionDescriptor Descriptor =>
+        new(Kind, JsonSerializer.Serialize(_payload, WaveeUiJsonContext.Default.PlaylistTracksPayload));
 
     public Task ExecuteAsync(CancellationToken ct = default) =>
         _payload.AddTracks
@@ -256,7 +255,7 @@ public sealed class PlaylistTracksAction : IUndoableUserAction
         IPlaylistMutationActionExecutor executor,
         UserActionDescriptor descriptor)
     {
-        var payload = JsonSerializer.Deserialize<Payload>(descriptor.PayloadJson)
+        var payload = JsonSerializer.Deserialize(descriptor.PayloadJson, WaveeUiJsonContext.Default.PlaylistTracksPayload)
                       ?? throw new InvalidOperationException("Playlist tracks action payload is missing.");
         return new PlaylistTracksAction(executor, payload);
     }
@@ -266,15 +265,13 @@ public sealed class PlaylistTracksAction : IUndoableUserAction
         var noun = count == 1 ? "song" : "songs";
         return added ? $"Added {count} {noun} to playlist" : $"Removed {count} {noun} from playlist";
     }
-
-    private sealed record Payload(string PlaylistUri, string[] TrackUris, bool AddTracks);
 }
 
 public sealed class CreatePlaylistAction : IUndoableUserAction
 {
     public const string Kind = "playlist.create";
     private readonly IPlaylistMutationActionExecutor _executor;
-    private Payload _payload;
+    private CreatePlaylistPayload _payload;
 
     public CreatePlaylistAction(
         IPlaylistMutationActionExecutor executor,
@@ -282,10 +279,10 @@ public sealed class CreatePlaylistAction : IUndoableUserAction
         IReadOnlyList<string>? trackUris)
     {
         _executor = executor;
-        _payload = new Payload(name, trackUris?.ToArray(), null);
+        _payload = new CreatePlaylistPayload(name, trackUris?.ToArray(), null);
     }
 
-    private CreatePlaylistAction(IPlaylistMutationActionExecutor executor, Payload payload)
+    private CreatePlaylistAction(IPlaylistMutationActionExecutor executor, CreatePlaylistPayload payload)
     {
         _executor = executor;
         _payload = payload;
@@ -298,7 +295,8 @@ public sealed class CreatePlaylistAction : IUndoableUserAction
     public string? Message => _payload.Name;
     public string? IconGlyph => null;
     public string UndoLabel => "Undo";
-    public UserActionDescriptor Descriptor => new(Kind, JsonSerializer.Serialize(_payload));
+    public UserActionDescriptor Descriptor =>
+        new(Kind, JsonSerializer.Serialize(_payload, WaveeUiJsonContext.Default.CreatePlaylistPayload));
 
     public async Task ExecuteAsync(CancellationToken ct = default)
     {
@@ -318,27 +316,25 @@ public sealed class CreatePlaylistAction : IUndoableUserAction
         IPlaylistMutationActionExecutor executor,
         UserActionDescriptor descriptor)
     {
-        var payload = JsonSerializer.Deserialize<Payload>(descriptor.PayloadJson)
+        var payload = JsonSerializer.Deserialize(descriptor.PayloadJson, WaveeUiJsonContext.Default.CreatePlaylistPayload)
                       ?? throw new InvalidOperationException("Create playlist action payload is missing.");
         return new CreatePlaylistAction(executor, payload);
     }
-
-    private sealed record Payload(string Name, string[]? TrackUris, string? CreatedPlaylistUri);
 }
 
 public sealed class DeletePlaylistAction : IUndoableUserAction
 {
     public const string Kind = "playlist.delete";
     private readonly IPlaylistMutationActionExecutor _executor;
-    private readonly Payload _payload;
+    private readonly DeletePlaylistPayload _payload;
 
     public DeletePlaylistAction(IPlaylistMutationActionExecutor executor, string playlistUri)
     {
         _executor = executor;
-        _payload = new Payload(playlistUri);
+        _payload = new DeletePlaylistPayload(playlistUri);
     }
 
-    private DeletePlaylistAction(IPlaylistMutationActionExecutor executor, Payload payload)
+    private DeletePlaylistAction(IPlaylistMutationActionExecutor executor, DeletePlaylistPayload payload)
     {
         _executor = executor;
         _payload = payload;
@@ -350,7 +346,8 @@ public sealed class DeletePlaylistAction : IUndoableUserAction
     public string? Message => null;
     public string? IconGlyph => null;
     public string UndoLabel => "Undo";
-    public UserActionDescriptor Descriptor => new(Kind, JsonSerializer.Serialize(_payload));
+    public UserActionDescriptor Descriptor =>
+        new(Kind, JsonSerializer.Serialize(_payload, WaveeUiJsonContext.Default.DeletePlaylistPayload));
 
     public Task ExecuteAsync(CancellationToken ct = default) =>
         _executor.DeletePlaylistCoreAsync(_payload.PlaylistUri, ct);
@@ -362,10 +359,27 @@ public sealed class DeletePlaylistAction : IUndoableUserAction
         IPlaylistMutationActionExecutor executor,
         UserActionDescriptor descriptor)
     {
-        var payload = JsonSerializer.Deserialize<Payload>(descriptor.PayloadJson)
+        var payload = JsonSerializer.Deserialize(descriptor.PayloadJson, WaveeUiJsonContext.Default.DeletePlaylistPayload)
                       ?? throw new InvalidOperationException("Delete playlist action payload is missing.");
         return new DeletePlaylistAction(executor, payload);
     }
-
-    private sealed record Payload(string PlaylistUri);
 }
+
+// ── Top-level payload records ──────────────────────────────────────────
+//
+// Promoted from private nested records inside each action class. The
+// JsonSerializerContext source generator cannot reach private nested types,
+// so each payload has to be at least internal at the top of the namespace.
+// Same data, same shape — only the visibility changed.
+
+internal sealed record SetLibrarySavedPayload(SavedItemType ItemType, string ItemUri, bool PreviousSaved, bool NewSaved);
+
+internal sealed record SetPinnedPayload(string Uri, bool PreviousPinned, bool NewPinned);
+
+internal sealed record SetPlaylistFollowedPayload(string PlaylistUri, bool PreviousFollowed, bool NewFollowed);
+
+internal sealed record PlaylistTracksPayload(string PlaylistUri, string[] TrackUris, bool AddTracks);
+
+internal sealed record CreatePlaylistPayload(string Name, string[]? TrackUris, string? CreatedPlaylistUri);
+
+internal sealed record DeletePlaylistPayload(string PlaylistUri);

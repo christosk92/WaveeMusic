@@ -17,6 +17,7 @@ namespace Wavee.UI.WinUI.ViewModels.Local;
 /// All work is explicit-user-click — fires when the user navigates here, never
 /// on a timer or scan completion.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalPersonDetailViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -24,18 +25,18 @@ public sealed partial class LocalPersonDetailViewModel : ObservableObject, IDisp
     private readonly IDisposable? _changesSub;
     private int? _personId;
 
-    [ObservableProperty] private LocalPersonInfo? _person;
+    [ObservableProperty] public partial LocalPersonInfo? Person { get; set; }
     public ObservableCollection<LocalShow> ShowsInLibrary { get; } = new();
     public ObservableCollection<LocalMovie> MoviesInLibrary { get; } = new();
-    [ObservableProperty] private bool _isLoading;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
 
     /// <summary>
     /// Provisional name + photo carried over from the cast strip on the
     /// previous page so the hero renders something before the TMDB fetch
     /// lands. The page rebinds to <see cref="Person"/> once that resolves.
     /// </summary>
-    [ObservableProperty] private string? _seedName;
-    [ObservableProperty] private string? _seedImageUri;
+    [ObservableProperty] public partial string? SeedName { get; set; }
+    [ObservableProperty] public partial string? SeedImageUri { get; set; }
 
     public LocalPersonDetailViewModel(ILocalLibraryFacade? facade = null)
     {

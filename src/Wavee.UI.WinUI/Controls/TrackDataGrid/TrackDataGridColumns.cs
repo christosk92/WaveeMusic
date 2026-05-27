@@ -9,7 +9,7 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 /// <see cref="TrackDataGrid"/> listens to for rebuilding its filtered-and-sorted
 /// row projection.
 /// </summary>
-public sealed class TrackDataGridColumns : ObservableCollection<TrackDataGridColumn>
+public sealed partial class TrackDataGridColumns : ObservableCollection<TrackDataGridColumn>
 {
     /// <summary>Column currently driving the sort, or <c>null</c> for unsorted.</summary>
     public TrackDataGridColumn? SortColumn { get; private set; }

@@ -17,7 +17,7 @@ using WinRT;
 
 namespace Wavee.UI.WinUI.Services;
 
-public sealed class PreviewAudioGraphService : IPreviewAudioPlaybackEngine, IDisposable
+public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngine, IDisposable
 {
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;

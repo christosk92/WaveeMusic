@@ -425,7 +425,7 @@ public sealed partial class MarqueeGalleryStrip : UserControl
     }
 }
 
-public sealed class GalleryItemTappedEventArgs : EventArgs
+public sealed partial class GalleryItemTappedEventArgs : EventArgs
 {
     public int Index { get; init; }
     public string ImageUrl { get; init; } = string.Empty;

@@ -42,6 +42,7 @@ public enum PlaylistLayoutMode { Banner, Cover }
 /// <see cref="RebuildCollaboratorsFromContext"/> can derive the avatar stack
 /// from the <c>AddedBy</c> values present in already-loaded rows.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PlaylistHeaderViewModel : ObservableObject
 {
     private readonly IUserProfileResolver? _userProfileResolver;
@@ -350,12 +351,12 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     private readonly object _addedByProfilesGate = new();
 
     [ObservableProperty]
-    private bool _hasCollaborators;
+    public partial bool HasCollaborators { get; set; }
 
     /// <summary>Most recently generated invite link for "Invite collaborators…".
     /// Cleared on playlist swap.</summary>
     [ObservableProperty]
-    private PlaylistInviteLink? _latestInviteLink;
+    public partial PlaylistInviteLink? LatestInviteLink { get; set; }
 
     /// <summary>Bare current-user id, used to suppress the "added by" badge on
     /// rows the current user added themselves.</summary>
@@ -807,7 +808,7 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     // ── Follower count ───────────────────────────────────────────────────────
 
     [ObservableProperty]
-    private int _followerCount;
+    public partial int FollowerCount { get; set; }
 
     /// <summary>
     /// True while the popcount fetch for the current playlist is in flight.
@@ -815,7 +816,7 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     /// (whether the count came back as 0 or a real number) or on cancellation.
     /// </summary>
     [ObservableProperty]
-    private bool _isFollowerCountLoading;
+    public partial bool IsFollowerCountLoading { get; set; }
 
     /// <summary>
     /// Formatted follower count.
@@ -929,19 +930,19 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     /// existing palette pipeline still computes (Album/Show/Concert/Episode pages
     /// share the same shape) and so callers don't break if the binding returns.</remarks>
     [ObservableProperty]
-    private Brush? _paletteBackdropBrush;
+    public partial Brush? PaletteBackdropBrush { get; set; }
 
     /// <summary>Hero gradient brush — palette-tinted left-to-right band, theme-aware alpha.</summary>
     [ObservableProperty]
-    private Brush? _paletteHeroGradientBrush;
+    public partial Brush? PaletteHeroGradientBrush { get; set; }
 
     /// <summary>Accent pill background brush. Null falls back to system accent.</summary>
     [ObservableProperty]
-    private Brush? _paletteAccentPillBrush;
+    public partial Brush? PaletteAccentPillBrush { get; set; }
 
     /// <summary>Accent pill foreground brush — auto-computed from accent luminance.</summary>
     [ObservableProperty]
-    private Brush? _paletteAccentPillForegroundBrush;
+    public partial Brush? PaletteAccentPillForegroundBrush { get; set; }
 
     // ── Banner colors (no-image hero fallback) ────────────────────────────
     // When the playlist has no header_image_url_desktop, the hero banner is
@@ -953,12 +954,12 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     /// <summary>Banner fallback primary color — feeds AnimatedHeroBackground.PrimaryColor
     /// when HeaderImageUrl is null. Sourced from AlbumPalette tier Background.</summary>
     [ObservableProperty]
-    private Color _bannerPrimaryColor = Color.FromArgb(255, 90, 50, 160);
+    public partial Color BannerPrimaryColor { get; set; } = Color.FromArgb(255, 90, 50, 160);
 
     /// <summary>Banner fallback accent color — feeds AnimatedHeroBackground.AccentColor
     /// when HeaderImageUrl is null. Sourced from AlbumPalette tier BackgroundTinted.</summary>
     [ObservableProperty]
-    private Color _bannerAccentColor = Color.FromArgb(255, 36, 198, 220);
+    public partial Color BannerAccentColor { get; set; } = Color.FromArgb(255, 36, 198, 220);
 
     /// <summary>True when the playlist has a header image; used to route the banner
     /// row between the composition image surface and the AnimatedHeroBackground
@@ -973,7 +974,7 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     /// render the classic cover-in-left-column layout.
     /// </summary>
     [ObservableProperty]
-    private PlaylistLayoutMode _layoutMode = PlaylistLayoutMode.Cover;
+    public partial PlaylistLayoutMode LayoutMode { get; set; } = PlaylistLayoutMode.Cover;
 
     /// <summary>
     /// Background palette fetch via Pathfinder's fetchPlaylist persisted query.
@@ -1108,7 +1109,7 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     /// <summary>True if the current user follows this playlist (heart filled).
     /// Toggled by <see cref="ToggleFollowAsync"/>; backend wire-up is pending.</summary>
     [ObservableProperty]
-    private bool _isFollowed;
+    public partial bool IsFollowed { get; set; }
 
     /// <summary>
     /// Toggles whether the current user follows this playlist. Visual flip is
@@ -1162,6 +1163,15 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
 
     // ── Logging helper ──────────────────────────────────────────────────────
 
+    // Caller-resolving log helper for diagnosing "who's flipping PlaylistName?"
+    // bugs. Uses StackFrame.GetMethod which the trim analyzer can't reason about
+    // (metadata can be incomplete under trimming, hence the IL2026 escalation
+    // when WarningsAsErrors covers it). The helper is dev-time diagnostic only —
+    // suppressed at the source rather than refactored because the caller's
+    // identity is exactly what we want and there is no AOT-safe equivalent in
+    // System.Diagnostics today.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "Diagnostic logging only; missing caller info under trim is acceptable.")]
     private void LogPlaylistNameChanged(string value)
     {
         // First two stack frames are this method + the property setter; the third is the caller.
@@ -1212,6 +1222,9 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     {
         _disposed = true;
         Deactivate();
-        Collaborators.Clear();
+        // Do not clear Collaborators here. During app shutdown the DI host can
+        // dispose this VM before XAML pages have detached their collection
+        // handlers; raising CollectionChanged then can touch already-torn-down
+        // UIElementCollection instances.
     }
 }

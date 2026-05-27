@@ -4,6 +4,7 @@ using BetterLyrics.Core.Helpers;
 using BetterLyrics.Core.Interfaces;
 using BetterLyrics.Core.Interfaces.Infrastructure;
 using BetterLyrics.Core.Models.SettingsSchema;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -12,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace BetterLyrics.Core.Abstractions
 {
-    public abstract class PluginBase<TConfig> : IPlugin where TConfig : PluginConfigBase, new()
+    public abstract class PluginBase<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] TConfig> : IPlugin where TConfig : PluginConfigBase, new()
     {
         private bool _isDisposed;
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ColorThiefDotNet
@@ -135,7 +135,7 @@ namespace ColorThiefDotNet
         }
     }
 
-    internal class VBoxCountComparer : IComparer<VBox>
+    internal partial class VBoxCountComparer : IComparer<VBox>
     {
         public int Compare(VBox x, VBox y)
         {
@@ -145,7 +145,7 @@ namespace ColorThiefDotNet
         }
     }
 
-    internal class VBoxComparer : IComparer<VBox>
+    internal partial class VBoxComparer : IComparer<VBox>
     {
         public int Compare(VBox x, VBox y)
         {

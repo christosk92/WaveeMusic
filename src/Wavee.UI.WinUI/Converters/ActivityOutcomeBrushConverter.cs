@@ -7,7 +7,7 @@ using Windows.UI;
 
 namespace Wavee.UI.WinUI.Converters;
 
-public sealed class ActivityOutcomeBrushConverter : IValueConverter
+public sealed partial class ActivityOutcomeBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

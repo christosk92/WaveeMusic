@@ -33,6 +33,7 @@ public enum LikedAlbumDetailMode
     FullAlbum
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelBase<LibraryAlbumDto, LikedAlbumDto>, ITrackListViewModel, IDisposable
 {
     protected override string SavedPreferencesKey => "albums.saved";
@@ -47,43 +48,43 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
         new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
 
     [ObservableProperty]
-    private bool _isLoadingTracks;
+    public partial bool IsLoadingTracks { get; set; }
 
     [ObservableProperty]
-    private ObservableCollection<LibraryAlbumDto> _albums = [];
+    public partial ObservableCollection<LibraryAlbumDto> Albums { get; set; } = [];
 
     [ObservableProperty]
-    private ObservableCollection<LibraryAlbumDto> _filteredAlbums = [];
+    public partial ObservableCollection<LibraryAlbumDto> FilteredAlbums { get; set; } = [];
 
     [ObservableProperty]
-    private LibraryAlbumDto? _selectedAlbum;
+    public partial LibraryAlbumDto? SelectedAlbum { get; set; }
 
     [ObservableProperty]
-    private ObservableCollection<AlbumTrackDto> _selectedAlbumTracks = [];
+    public partial ObservableCollection<AlbumTrackDto> SelectedAlbumTracks { get; set; } = [];
 
     [ObservableProperty]
-    private TimeSpan _selectedAlbumDuration;
+    public partial TimeSpan SelectedAlbumDuration { get; set; }
 
     // Wrapper properties for selected album (avoids null reference in x:Bind).
     // Set from EITHER SelectedAlbum (Saved source) OR SelectedLikedAlbum
     // (From-Liked-Songs source) so the detail-pane hero stays unified.
     [ObservableProperty]
-    private string _selectedAlbumName = "";
+    public partial string SelectedAlbumName { get; set; } = "";
 
     [ObservableProperty]
-    private string _selectedAlbumArtist = "";
+    public partial string SelectedAlbumArtist { get; set; } = "";
 
     [ObservableProperty]
-    private int _selectedAlbumYear;
+    public partial int SelectedAlbumYear { get; set; }
 
     [ObservableProperty]
-    private int _selectedAlbumTrackCount;
+    public partial int SelectedAlbumTrackCount { get; set; }
 
     [ObservableProperty]
-    private string? _selectedAlbumImageUrl;
+    public partial string? SelectedAlbumImageUrl { get; set; }
 
     [ObservableProperty]
-    private string _selectedAlbumMetadata = "";
+    public partial string SelectedAlbumMetadata { get; set; } = "";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsWideLayout))]
@@ -97,7 +98,7 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
     [NotifyPropertyChangedFor(nameof(ShowLikedNarrowGrid))]
     [NotifyPropertyChangedFor(nameof(ShowSavedNarrowDetails))]
     [NotifyPropertyChangedFor(nameof(ShowLikedNarrowDetails))]
-    private bool _useNarrowLayout;
+    public partial bool UseNarrowLayout { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNarrowGridStage))]
@@ -107,29 +108,29 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
     [NotifyPropertyChangedFor(nameof(ShowLikedNarrowGrid))]
     [NotifyPropertyChangedFor(nameof(ShowSavedNarrowDetails))]
     [NotifyPropertyChangedFor(nameof(ShowLikedNarrowDetails))]
-    private AlbumsLibraryStage _narrowStage = AlbumsLibraryStage.Grid;
+    public partial AlbumsLibraryStage NarrowStage { get; set; } = AlbumsLibraryStage.Grid;
 
     // ── From-Liked-Songs source ──
 
     [ObservableProperty]
-    private ObservableCollection<LikedAlbumDto> _likedAlbums = [];
+    public partial ObservableCollection<LikedAlbumDto> LikedAlbums { get; set; } = [];
 
     [ObservableProperty]
-    private ObservableCollection<LikedAlbumDto> _filteredLikedAlbums = [];
+    public partial ObservableCollection<LikedAlbumDto> FilteredLikedAlbums { get; set; } = [];
 
     [ObservableProperty]
-    private LikedAlbumDto? _selectedLikedAlbum;
+    public partial LikedAlbumDto? SelectedLikedAlbum { get; set; }
 
     /// <summary>Liked-tracks subset of the currently selected liked-album, in original liked-songs order.</summary>
     [ObservableProperty]
-    private ObservableCollection<LikedSongDto> _selectedLikedAlbumLikedTracks = [];
+    public partial ObservableCollection<LikedSongDto> SelectedLikedAlbumLikedTracks { get; set; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowLikedTracksInDetail))]
     [NotifyPropertyChangedFor(nameof(ShowFullAlbumTracksInDetail))]
     [NotifyPropertyChangedFor(nameof(IsLikedDetailTabActive))]
     [NotifyPropertyChangedFor(nameof(IsFullAlbumDetailTabActive))]
-    private LikedAlbumDetailMode _likedAlbumDetailMode = LikedAlbumDetailMode.Liked;
+    public partial LikedAlbumDetailMode LikedAlbumDetailMode { get; set; } = LikedAlbumDetailMode.Liked;
 
     public ObservableCollection<string> BreadcrumbItems { get; } = [];
     public bool IsWideLayout => !UseNarrowLayout;
@@ -1083,7 +1084,7 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
 
     // Playlists for "Add to playlist" menu
     [ObservableProperty]
-    private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
+    public partial IReadOnlyList<PlaylistSummaryDto> Playlists { get; set; } = Array.Empty<PlaylistSummaryDto>();
 
     // Multi-select commands
     [RelayCommand(CanExecute = nameof(HasSelection))]

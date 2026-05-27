@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Data;
 
 namespace Wavee.UI.WinUI.Converters;
 
-public sealed class BoolToHeartGlyphConverter : IValueConverter
+public sealed partial class BoolToHeartGlyphConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

@@ -9,7 +9,7 @@ namespace Wavee.UI.WinUI.Services;
 /// so concurrent writers from multiple GraphQL response handlers don't
 /// clobber each other.
 /// </summary>
-internal sealed class MusicVideoCatalogCache : IMusicVideoCatalogCache
+internal sealed partial class MusicVideoCatalogCache : IMusicVideoCatalogCache
 {
     private sealed record Entry(bool? HasVideo, string? VideoUri, string? ManifestId);
 

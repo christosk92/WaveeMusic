@@ -15,6 +15,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// every time the Home GraphQL response refreshes or a live-play bumps a
 /// context to position 0; this VM mirrors that into the observable collection.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class RecentlyPlayedViewModel : ObservableObject, IDisposable
 {
     private readonly RecentlyPlayedService _service;
@@ -24,7 +25,7 @@ public sealed partial class RecentlyPlayedViewModel : ObservableObject, IDisposa
     public ObservableCollection<HomeSectionItem> Items { get; } = new();
 
     [ObservableProperty]
-    private bool _hasItems;
+    public partial bool HasItems { get; set; }
 
     public RecentlyPlayedViewModel(RecentlyPlayedService service)
     {

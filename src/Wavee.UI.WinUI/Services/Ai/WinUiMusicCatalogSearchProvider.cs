@@ -9,7 +9,7 @@ using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.Services.Ai;
 
-public sealed class WinUiMusicCatalogSearchProvider : IMusicCatalogSearchProvider
+public sealed partial class WinUiMusicCatalogSearchProvider : IMusicCatalogSearchProvider
 {
     private readonly ISearchService _searchService;
 

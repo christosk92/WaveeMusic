@@ -4,27 +4,28 @@ using Microsoft.UI.Windowing;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 internal sealed partial class WindowContext : ObservableObject, IWindowContext, IDisposable
 {
     private bool _disposed;
 
     [ObservableProperty]
-    private bool _isCompactOverlay;
+    public partial bool IsCompactOverlay { get; set; }
 
     [ObservableProperty]
-    private bool _isFullScreen;
+    public partial bool IsFullScreen { get; set; }
 
     [ObservableProperty]
-    private bool _isMinimized;
+    public partial bool IsMinimized { get; set; }
 
     [ObservableProperty]
-    private bool _isVisible = true;
+    public partial bool IsVisible { get; set; } = true;
 
     [ObservableProperty]
-    private bool _isUiPowerSaving;
+    public partial bool IsUiPowerSaving { get; set; }
 
     [ObservableProperty]
-    private bool _isRunningAsAdmin;
+    public partial bool IsRunningAsAdmin { get; set; }
 
     public WindowContext()
     {

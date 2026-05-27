@@ -2,7 +2,8 @@ using System;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed class MusicVideoVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class MusicVideoVm
 {
     public required string TrackUri { get; init; }
     public string? Title { get; init; }

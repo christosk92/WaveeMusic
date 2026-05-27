@@ -11,6 +11,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// Reusable across artist top tracks, album tracks, playlist tracks, etc.
 /// </summary>
 /// <typeparam name="T">The data model type (e.g. ArtistTopTrackVm, AlbumTrackDto).</typeparam>
+[global::WinRT.GeneratedBindableCustomProperty]
 public partial class LazyItemVm<T> : ObservableObject where T : class
 {
     /// <summary>Unique key for the item.</summary>
@@ -18,15 +19,15 @@ public partial class LazyItemVm<T> : ObservableObject where T : class
 
     /// <summary>Position index (1-based) for display numbering.</summary>
     [ObservableProperty]
-    private int _index;
+    public partial int Index { get; set; }
 
     /// <summary>Whether the real data has been loaded.</summary>
     [ObservableProperty]
-    private bool _isLoaded;
+    public partial bool IsLoaded { get; set; }
 
     /// <summary>The real data. Null when not yet loaded (shimmer state).</summary>
     [ObservableProperty]
-    private T? _data;
+    public partial T? Data { get; set; }
 
     /// <summary>Populate with real data. Automatically sets IsLoaded = true.</summary>
     public void Populate(T data)
@@ -58,6 +59,7 @@ public partial class LazyItemVm<T> : ObservableObject where T : class
 /// be used directly in TrackListView's ItemsSource. When unloaded, returns safe defaults
 /// and TrackListView shows shimmer rows. When Populate() is called, delegates to real data.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
 {
     private string _id = "";
@@ -69,10 +71,10 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
         init => _id = value;
     }
 
-    [ObservableProperty] private int _index;
-    [ObservableProperty] private bool _isLoaded;
-    [ObservableProperty] private ITrackItem? _data;
-    [ObservableProperty] private bool _isSelected;
+    [ObservableProperty] public partial int Index { get; set; }
+    [ObservableProperty] public partial bool IsLoaded { get; set; }
+    [ObservableProperty] public partial ITrackItem? Data { get; set; }
+    [ObservableProperty] public partial bool IsSelected { get; set; }
 
     public void Populate(ITrackItem data)
     {
@@ -183,14 +185,15 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
 /// <summary>
 /// Non-generic wrapper for LazyItemVm&lt;ArtistReleaseVm&gt; for discography cards.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LazyReleaseItem : ObservableObject
 {
     public string Id { get; init; } = "";
 
-    [ObservableProperty] private int _index;
+    [ObservableProperty] public partial int Index { get; set; }
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLoading))]
-    private bool _isLoaded;
+    public partial bool IsLoaded { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Uri))]
@@ -198,7 +201,7 @@ public sealed partial class LazyReleaseItem : ObservableObject
     [NotifyPropertyChangedFor(nameof(ImageUrl))]
     [NotifyPropertyChangedFor(nameof(SubtitleDetail))]
     [NotifyPropertyChangedFor(nameof(TrackCount))]
-    private ArtistReleaseVm? _data;
+    public partial ArtistReleaseVm? Data { get; set; }
 
     public bool IsLoading => !IsLoaded;
     public string? Uri => Data?.Uri;

@@ -25,6 +25,7 @@ namespace Wavee.UI.WinUI.ViewModels.Playlist;
 /// current track snapshot) is pulled in via the accessor delegates the
 /// parent supplies — those values live on the sibling VMs.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PlaylistMutationCoordinator : ObservableObject
 {
     private readonly IPlaylistMutationService _playlistMutationService;
@@ -127,9 +128,9 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
 
     /// <summary>True while a metadata edit (rename or description) is being saved.
     /// The view binds this to the InlineEditableText's IsBusy spinner.</summary>
-    [ObservableProperty] private bool _isRenaming;
+    [ObservableProperty] public partial bool IsRenaming { get; set; }
 
-    [ObservableProperty] private bool _isUpdatingDescription;
+    [ObservableProperty] public partial bool IsUpdatingDescription { get; set; }
 
     /// <summary>
     /// Optimistically sets the playlist name and persists via
@@ -171,7 +172,7 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
 
     /// <summary>True while a cover-photo upload is in flight.
     /// Drives the spinner overlay on the cover edit affordance.</summary>
-    [ObservableProperty] private bool _isUploadingCover;
+    [ObservableProperty] public partial bool IsUploadingCover { get; set; }
 
     /// <summary>
     /// Persists a freshly-picked cover image. <paramref name="jpegBytes"/> must
@@ -341,15 +342,15 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
     private string? _recommendationsAutoTriggeredFor;
 
     [ObservableProperty]
-    private bool _hasRecommendedTracks;
+    public partial bool HasRecommendedTracks { get; set; }
 
     [ObservableProperty]
-    private bool _isFetchingRecommendations;
+    public partial bool IsFetchingRecommendations { get; set; }
 
     /// <summary>True when the last recommendations fetch attempt threw. Drives
     /// the error card in the footer. Reset at the start of each new attempt.</summary>
     [ObservableProperty]
-    private bool _recommendationsLoadFailed;
+    public partial bool RecommendationsLoadFailed { get; set; }
 
     /// <summary>
     /// Re-evaluates the auto-trigger. Called whenever the track count or the

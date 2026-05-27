@@ -18,6 +18,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// settings page. Wraps <see cref="ILocalLibraryService"/>: list folders,
 /// add/remove/toggle/rescan, observe sync progress.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalFilesViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryService _service;
@@ -28,19 +29,19 @@ public sealed partial class LocalFilesViewModel : ObservableObject, IDisposable
     public ObservableCollection<LocalFolderRow> Folders { get; } = new();
 
     [ObservableProperty]
-    private bool _isScanning;
+    public partial bool IsScanning { get; set; }
 
     [ObservableProperty]
-    private int _progressTotal;
+    public partial int ProgressTotal { get; set; }
 
     [ObservableProperty]
-    private int _progressDone;
+    public partial int ProgressDone { get; set; }
 
     [ObservableProperty]
-    private string? _progressCurrentFile;
+    public partial string? ProgressCurrentFile { get; set; }
 
     [ObservableProperty]
-    private string? _statusMessage;
+    public partial string? StatusMessage { get; set; }
 
     /// <summary>
     /// Two-way bound to the Settings "Online metadata lookups" toggle. Flipping
@@ -75,21 +76,21 @@ public sealed partial class LocalFilesViewModel : ObservableObject, IDisposable
     /// <summary>The candidate token typed into the Settings PasswordBox.
     /// Cleared on successful Verify (we persist via the token store instead).</summary>
     [ObservableProperty]
-    private string _tmdbTokenInput = string.Empty;
+    public partial string TmdbTokenInput { get; set; } = string.Empty;
 
     /// <summary>True iff a token is currently stored in the DPAPI blob —
     /// drives the status pill, the Clear button's visibility, and every
     /// "Sync with TMDB" / "Set up TMDB" CTA across the app.</summary>
     [ObservableProperty]
-    private bool _isTokenConfigured;
+    public partial bool IsTokenConfigured { get; set; }
 
     [ObservableProperty]
-    private TmdbStatus _tmdbStatus = TmdbStatus.NotConfigured;
+    public partial TmdbStatus TmdbStatus { get; set; } = TmdbStatus.NotConfigured;
 
     /// <summary>Optional human-readable status (e.g. error message from a
     /// failed Verify call). Shown next to the status pill.</summary>
     [ObservableProperty]
-    private string? _tmdbStatusMessage;
+    public partial string? TmdbStatusMessage { get; set; }
 
     [RelayCommand]
     private async Task VerifyTokenAsync()
@@ -162,8 +163,8 @@ public sealed partial class LocalFilesViewModel : ObservableObject, IDisposable
             .GetService<Wavee.Local.Enrichment.ITmdbTokenStore>();
         if (tokenStore is not null)
         {
-            _isTokenConfigured = tokenStore.HasToken;
-            _tmdbStatus = _isTokenConfigured ? TmdbStatus.Connected : TmdbStatus.NotConfigured;
+            IsTokenConfigured = tokenStore.HasToken;
+            TmdbStatus = IsTokenConfigured ? TmdbStatus.Connected : TmdbStatus.NotConfigured;
             _tokenStoreSub = tokenStore.HasTokenChanged.Subscribe(present =>
                 _dispatcher.TryEnqueue(() =>
                 {
@@ -301,6 +302,7 @@ public enum TmdbStatus
     InvalidToken = 3,
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalFolderRow : ObservableObject
 {
     public required int Id { get; init; }

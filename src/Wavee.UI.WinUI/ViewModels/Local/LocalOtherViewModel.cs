@@ -11,6 +11,7 @@ using Wavee.UI.Library.Local;
 
 namespace Wavee.UI.WinUI.ViewModels.Local;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalOtherViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -18,8 +19,8 @@ public sealed partial class LocalOtherViewModel : ObservableObject, IDisposable
     private readonly IDisposable? _changesSub;
 
     public ObservableCollection<LocalOtherItem> Items { get; } = new();
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _isEmpty;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool IsEmpty { get; set; }
 
     public LocalOtherViewModel(ILocalLibraryFacade? facade = null)
     {

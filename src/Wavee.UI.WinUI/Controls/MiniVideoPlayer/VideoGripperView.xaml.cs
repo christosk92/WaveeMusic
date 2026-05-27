@@ -21,6 +21,7 @@ namespace Wavee.UI.WinUI.Controls.MiniVideoPlayer;
 /// flips <c>IsDismissedByUser</c> back to false, Mini reclaims the surface
 /// and the gripper hides itself.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class VideoGripperView : UserControl, IMediaSurfaceConsumer
 {
     int IMediaSurfaceConsumer.OwnerPriority => 3;

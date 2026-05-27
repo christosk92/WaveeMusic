@@ -19,7 +19,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Service layer for artist data. Wraps IPathfinderClient with domain mapping.
 /// Future: add SQLite caching for overview data.
 /// </summary>
-public sealed class ArtistService : IArtistService
+public sealed partial class ArtistService : IArtistService
 {
     private readonly IPathfinderClient _pathfinder;
     private readonly IColorService _colorService;

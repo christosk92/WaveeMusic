@@ -21,7 +21,8 @@ namespace Wavee.UI.WinUI.Controls.Shelf;
 /// </summary>
 [TemplatePart(Name = PartScroll, Type = typeof(ScrollView))]
 [TemplatePart(Name = PartRepeater, Type = typeof(ItemsRepeater))]
-public sealed class ShelfScroller : Control
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ShelfScroller : Control
 {
     private const string PartScroll = "PART_Scroll";
     private const string PartRepeater = "PART_Repeater";

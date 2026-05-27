@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -29,6 +29,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     public SearchViewModel ViewModel { get; }

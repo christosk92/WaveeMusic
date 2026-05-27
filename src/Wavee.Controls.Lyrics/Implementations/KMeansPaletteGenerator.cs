@@ -1,4 +1,4 @@
-﻿using Impressionist.Abstractions;
+using Impressionist.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace Impressionist.Implementations
 {
     // I'm really appreciate wieslawsoltes's PaletteGenerator. Which make this project possible.
-    public class KMeansPaletteGenerator :
+    public partial class KMeansPaletteGenerator :
         IThemeColorGenrator,
         IPaletteGenrator
     {

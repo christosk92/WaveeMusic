@@ -62,7 +62,7 @@ public sealed record QueueTrackMetadata(
 /// Request from ArtistService for extended top tracks.
 /// TrackMetadataEnricher handles this if it exists (post-connect).
 /// </summary>
-public sealed class ExtendedTopTracksRequest : AsyncRequestMessage<List<ArtistTopTrackResult>>
+public sealed partial class ExtendedTopTracksRequest : AsyncRequestMessage<List<ArtistTopTrackResult>>
 {
     public required string ArtistUri { get; init; }
     public CancellationToken CancellationToken { get; init; }
@@ -72,7 +72,7 @@ public sealed class ExtendedTopTracksRequest : AsyncRequestMessage<List<ArtistTo
 /// Request to resolve cover-art image URLs for a list of playable URIs via the
 /// metadata pipeline. Supports tracks and episodes.
 /// </summary>
-public sealed class TrackImagesEnrichmentRequest : AsyncRequestMessage<IReadOnlyDictionary<string, string?>>
+public sealed partial class TrackImagesEnrichmentRequest : AsyncRequestMessage<IReadOnlyDictionary<string, string?>>
 {
     public required IReadOnlyList<string> TrackUris { get; init; }
     public CancellationToken CancellationToken { get; init; }

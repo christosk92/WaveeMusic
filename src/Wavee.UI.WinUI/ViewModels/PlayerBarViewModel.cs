@@ -34,6 +34,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// to <see cref="IPlaybackStateService"/> while keeping display-only concerns
 /// (formatting, seeking UI, mute toggle) local.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 {
     private const double PodcastResumePromptMinimumMs = 30_000;
@@ -77,31 +78,31 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     // Track info (synced from IPlaybackStateService)
     [ObservableProperty]
-    private string? _trackTitle;
+    public partial string? TrackTitle { get; set; }
 
     [ObservableProperty]
-    private string? _artistName;
+    public partial string? ArtistName { get; set; }
 
     [ObservableProperty]
-    private string? _albumArt;
+    public partial string? AlbumArt { get; set; }
 
     [ObservableProperty]
-    private string? _albumArtLarge;
+    public partial string? AlbumArtLarge { get; set; }
 
     [ObservableProperty]
-    private string? _albumArtColor;
+    public partial string? AlbumArtColor { get; set; }
 
     [ObservableProperty]
-    private string? _currentArtistId;
+    public partial string? CurrentArtistId { get; set; }
 
     [ObservableProperty]
-    private string? _currentAlbumId;
+    public partial string? CurrentAlbumId { get; set; }
 
     [ObservableProperty]
-    private IReadOnlyList<ArtistCredit>? _currentArtists;
+    public partial IReadOnlyList<ArtistCredit>? CurrentArtists { get; set; }
 
     [ObservableProperty]
-    private bool _hasTrack;
+    public partial bool HasTrack { get; set; }
 
     /// <summary>
     /// Chapter / display-segment list for the currently-playing podcast episode,
@@ -110,17 +111,17 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     /// changes and re-populated asynchronously after the Pathfinder fetch lands.
     /// </summary>
     [ObservableProperty]
-    private IReadOnlyList<EpisodeChapterVm> _chapters = Array.Empty<EpisodeChapterVm>();
+    public partial IReadOnlyList<EpisodeChapterVm> Chapters { get; set; } = Array.Empty<EpisodeChapterVm>();
 
     /// <summary>
     /// Tooltip-only preview rows for the playerbar progress control. This is
     /// separate from <see cref="Chapters"/> so music lyrics never segment the rail.
     /// </summary>
     [ObservableProperty]
-    private IReadOnlyList<TimelineHoverPreviewItem> _hoverPreviewItems = Array.Empty<TimelineHoverPreviewItem>();
+    public partial IReadOnlyList<TimelineHoverPreviewItem> HoverPreviewItems { get; set; } = Array.Empty<TimelineHoverPreviewItem>();
 
     [ObservableProperty]
-    private bool _isAlbumArtExpanded;
+    public partial bool IsAlbumArtExpanded { get; set; }
 
     [RelayCommand]
     private void ToggleAlbumArtExpanded() => IsAlbumArtExpanded = !IsAlbumArtExpanded;
@@ -196,10 +197,10 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     // Remote device indicator
     [ObservableProperty]
-    private bool _isPlayingRemotely;
+    public partial bool IsPlayingRemotely { get; set; }
 
     [ObservableProperty]
-    private string? _activeDeviceName;
+    public partial string? ActiveDeviceName { get; set; }
 
     /// <summary>
     /// Name of the local audio output device (speakers / headphones / etc.) as
@@ -208,17 +209,17 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     /// is going on this machine.
     /// </summary>
     [ObservableProperty]
-    private string? _activeAudioDeviceName;
+    public partial string? ActiveAudioDeviceName { get; set; }
 
     [ObservableProperty]
-    private bool _isVolumeRestricted;
+    public partial bool IsVolumeRestricted { get; set; }
 
     // Playback state (synced from IPlaybackStateService)
     [ObservableProperty]
-    private bool _isPlaying;
+    public partial bool IsPlaying { get; set; }
 
     [ObservableProperty]
-    private bool _isBuffering;
+    public partial bool IsBuffering { get; set; }
 
     /// <summary>
     /// Mirrors <see cref="IPlaybackStateService.IsAtEndOfContext"/>. Drives the
@@ -227,16 +228,16 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     /// autoplay tiers.
     /// </summary>
     [ObservableProperty]
-    private bool _isAtEndOfContext;
+    public partial bool IsAtEndOfContext { get; set; }
 
     [ObservableProperty]
-    private bool _isShuffle;
+    public partial bool IsShuffle { get; set; }
 
     [ObservableProperty]
-    private RepeatMode _repeatMode = RepeatMode.Off;
+    public partial RepeatMode RepeatMode { get; set; } = RepeatMode.Off;
 
     [ObservableProperty]
-    private double _playbackSpeed = 1.0;
+    public partial double PlaybackSpeed { get; set; } = 1.0;
 
     public string PlaybackSpeedText => $"{PlaybackSpeed:0.##}x";
 
@@ -246,17 +247,17 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private bool CanChangePlaybackSpeed => CanExecutePlayback && IsCurrentItemEpisode;
 
     [ObservableProperty]
-    private bool _isPodcastResumePromptVisible;
+    public partial bool IsPodcastResumePromptVisible { get; set; }
 
     [ObservableProperty]
-    private string _podcastResumePromptText = "";
+    public partial string PodcastResumePromptText { get; set; } = "";
 
     [ObservableProperty]
-    private string _podcastResumeActionText = "Resume";
+    public partial string PodcastResumeActionText { get; set; } = "Resume";
 
     // Progress (in milliseconds)
     [ObservableProperty]
-    private double _position;
+    public partial double Position { get; set; }
 
     /// <summary>
     /// Shared coarse playback clock for Composition-driven progress bars.
@@ -265,10 +266,10 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     /// initialize from the same position shown by <see cref="PositionText"/>.
     /// </summary>
     [ObservableProperty]
-    private double _anchorPositionMs;
+    public partial double AnchorPositionMs { get; set; }
 
     [ObservableProperty]
-    private double _duration;
+    public partial double Duration { get; set; }
 
     /// <summary>
     /// Safe duration for slider Maximum (returns at least 1 to avoid 0 maximum).
@@ -276,23 +277,23 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     public double SliderMaximum => Math.Max(Duration, 1);
 
     [ObservableProperty]
-    private string _positionText = "0:00";
+    public partial string PositionText { get; set; } = "0:00";
 
     [ObservableProperty]
-    private string _durationText = "0:00";
+    public partial string DurationText { get; set; } = "0:00";
 
     [ObservableProperty]
-    private bool _isSeeking;
+    public partial bool IsSeeking { get; set; }
 
     // Volume (0-100)
     [ObservableProperty]
-    private double _volume = 100;
+    public partial double Volume { get; set; } = 100;
 
     [ObservableProperty]
-    private bool _isMuted;
+    public partial bool IsMuted { get; set; }
 
     [ObservableProperty]
-    private double _previousVolume = 50;
+    public partial double PreviousVolume { get; set; } = 50;
 
     public PlayerBarViewModel(IPlaybackStateService playbackStateService,
                               IConnectivityService? connectivityService = null,
@@ -321,7 +322,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         // Sync initial state
         SyncFromService();
         _logger?.LogDebug("PlayerBarViewModel init: track={Track}, playing={Playing}, pos={Pos}/{Dur}ms, vol={Vol}, shuffle={Shuffle}, repeat={Repeat}",
-            _trackTitle ?? "<none>", _isPlaying, _position, _duration, _volume, _isShuffle, _repeatMode);
+            TrackTitle ?? "<none>", IsPlaying, Position, Duration, Volume, IsShuffle, RepeatMode);
 
         // Subscribe to service changes
         _playbackStateService.PropertyChanged += OnPlaybackServicePropertyChanged;
@@ -745,30 +746,30 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     private void SyncFromService()
     {
-        _trackTitle = _playbackStateService.CurrentTrackTitle;
-        _artistName = _playbackStateService.CurrentArtistName;
-        _albumArt = _playbackStateService.CurrentAlbumArt;
-        _albumArtLarge = _playbackStateService.CurrentAlbumArtLarge;
-        _albumArtColor = _playbackStateService.CurrentAlbumArtColor;
-        _currentArtistId = _playbackStateService.CurrentArtistId;
-        _currentAlbumId = _playbackStateService.CurrentAlbumId;
-        _currentArtists = _playbackStateService.CurrentArtists;
-        _hasTrack = !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId);
-        _isPlaying = _playbackStateService.IsPlaying;
-        _isShuffle = _playbackStateService.IsShuffle;
-        _repeatMode = _playbackStateService.RepeatMode;
-        _playbackSpeed = _playbackStateService.PlaybackSpeed;
-        _duration = _playbackStateService.Duration;
-        _position = ClampPlaybackPosition(_playbackStateService.Position);
-        _anchorPositionMs = _position;
-        _lastServicePosition = _position;
+        TrackTitle = _playbackStateService.CurrentTrackTitle;
+        ArtistName = _playbackStateService.CurrentArtistName;
+        AlbumArt = _playbackStateService.CurrentAlbumArt;
+        AlbumArtLarge = _playbackStateService.CurrentAlbumArtLarge;
+        AlbumArtColor = _playbackStateService.CurrentAlbumArtColor;
+        CurrentArtistId = _playbackStateService.CurrentArtistId;
+        CurrentAlbumId = _playbackStateService.CurrentAlbumId;
+        CurrentArtists = _playbackStateService.CurrentArtists;
+        HasTrack = !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId);
+        IsPlaying = _playbackStateService.IsPlaying;
+        IsShuffle = _playbackStateService.IsShuffle;
+        RepeatMode = _playbackStateService.RepeatMode;
+        PlaybackSpeed = _playbackStateService.PlaybackSpeed;
+        Duration = _playbackStateService.Duration;
+        Position = ClampPlaybackPosition(_playbackStateService.Position);
+        AnchorPositionMs = Position;
+        _lastServicePosition = Position;
         _lastServicePositionUpdate = DateTime.UtcNow;
-        _volume = _playbackStateService.Volume;
-        _isVolumeRestricted = _playbackStateService.IsVolumeRestricted;
-        _isAtEndOfContext = _playbackStateService.IsAtEndOfContext;
-        _activeDeviceName = _playbackStateService.ActiveDeviceName;
-        _activeAudioDeviceName = _playbackStateService.ActiveAudioDeviceName;
-        _isPlayingRemotely = _playbackStateService.IsPlayingRemotely;
+        Volume = _playbackStateService.Volume;
+        IsVolumeRestricted = _playbackStateService.IsVolumeRestricted;
+        IsAtEndOfContext = _playbackStateService.IsAtEndOfContext;
+        ActiveDeviceName = _playbackStateService.ActiveDeviceName;
+        ActiveAudioDeviceName = _playbackStateService.ActiveAudioDeviceName;
+        IsPlayingRemotely = _playbackStateService.IsPlayingRemotely;
     }
 
     private void OnPlaybackServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1270,16 +1271,16 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     // Right panel toggle state (synced from ShellViewModel via messenger)
     [ObservableProperty]
-    private bool _isQueuePanelActive;
+    public partial bool IsQueuePanelActive { get; set; }
 
     [ObservableProperty]
-    private bool _isLyricsPanelActive;
+    public partial bool IsLyricsPanelActive { get; set; }
 
     [ObservableProperty]
-    private bool _isFriendsPanelActive;
+    public partial bool IsFriendsPanelActive { get; set; }
 
     [ObservableProperty]
-    private bool _isDetailsPanelActive;
+    public partial bool IsDetailsPanelActive { get; set; }
 
     [RelayCommand]
     private void ToggleQueuePanel()
@@ -1367,7 +1368,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private void ExitExpandedPresentation() => PresentationService?.ExitToNormal();
 
     [ObservableProperty]
-    private bool _preferVideoPlaybackInSession;
+    public partial bool PreferVideoPlaybackInSession { get; set; }
 
     partial void OnPreferVideoPlaybackInSessionChanged(bool value)
     {
@@ -1388,12 +1389,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _isResolvingVideo;
+    public partial bool IsResolvingVideo { get; set; }
 
     partial void OnIsResolvingVideoChanged(bool value) => SwitchToVideoCommand.NotifyCanExecuteChanged();
 
     [ObservableProperty]
-    private bool _isSwitchingToAudio;
+    public partial bool IsSwitchingToAudio { get; set; }
 
     partial void OnIsSwitchingToAudioChanged(bool value) => SwitchToAudioCommand.NotifyCanExecuteChanged();
 

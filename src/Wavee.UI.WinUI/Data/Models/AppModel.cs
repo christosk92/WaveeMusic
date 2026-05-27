@@ -6,46 +6,47 @@ using Wavee.UI.WinUI.Data.Enums;
 
 namespace Wavee.UI.WinUI.Data.Models;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AppModel : ObservableObject
 {
     private readonly IShellSessionService _shellSession;
     private bool _isHydrating;
 
     [ObservableProperty]
-    private bool _isMainWindowClosed;
+    public partial bool IsMainWindowClosed { get; set; }
 
     [ObservableProperty]
-    private int _tabStripSelectedIndex;
+    public partial int TabStripSelectedIndex { get; set; }
 
     [ObservableProperty]
-    private double _sidebarWidth;
+    public partial double SidebarWidth { get; set; }
 
     [ObservableProperty]
-    private SidebarDisplayMode _sidebarDisplayMode = SidebarDisplayMode.Expanded;
+    public partial SidebarDisplayMode SidebarDisplayMode { get; set; } = SidebarDisplayMode.Expanded;
 
     [ObservableProperty]
-    private bool _isSidebarPaneOpen;
+    public partial bool IsSidebarPaneOpen { get; set; }
 
     [ObservableProperty]
-    private double _rightPanelWidth;
+    public partial double RightPanelWidth { get; set; }
 
     [ObservableProperty]
-    private bool _isRightPanelOpen;
+    public partial bool IsRightPanelOpen { get; set; }
 
     [ObservableProperty]
-    private RightPanelMode _rightPanelMode = RightPanelMode.Queue;
+    public partial RightPanelMode RightPanelMode { get; set; } = RightPanelMode.Queue;
 
     [ObservableProperty]
-    private PlayerLocation _playerLocation = PlayerLocation.Bottom;
+    public partial PlayerLocation PlayerLocation { get; set; } = PlayerLocation.Bottom;
 
     [ObservableProperty]
-    private bool _sidebarPlayerCollapsed;
+    public partial bool SidebarPlayerCollapsed { get; set; }
 
     public AppModel(IShellSessionService shellSession)
     {
         _shellSession = shellSession;
-        _sidebarWidth = 280;
-        _rightPanelWidth = 300;
+        SidebarWidth = 280;
+        RightPanelWidth = 300;
     }
 
     public void InitializeFromSettings()

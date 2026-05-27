@@ -22,7 +22,7 @@ namespace Wavee.UI.WinUI.Controls.PageHost;
 /// <c>Activator.CreateInstance</c> — explicit factory lambdas registered at
 /// startup, no reflection.
 /// </summary>
-public sealed class PageHost : ContentControl
+public sealed partial class PageHost : ContentControl
 {
     private readonly Grid _container = new();
     private readonly Dictionary<Type, UserControl> _cache = new();

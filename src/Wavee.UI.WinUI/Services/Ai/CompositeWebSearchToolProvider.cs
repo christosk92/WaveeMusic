@@ -11,7 +11,7 @@ namespace Wavee.UI.WinUI.Services.Ai;
 /// user a key), otherwise falls back to the DuckDuckGo lite scrape so the
 /// always-on grounding works without configuration.
 /// </summary>
-public sealed class CompositeWebSearchToolProvider : IWebSearchToolProvider
+public sealed partial class CompositeWebSearchToolProvider : IWebSearchToolProvider
 {
     private readonly ConfigurableWebSearchToolProvider _configurable;
     private readonly DuckDuckGoLiteWebSearchProvider _fallback;

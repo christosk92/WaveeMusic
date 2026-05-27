@@ -75,7 +75,7 @@ public sealed partial class RecentlyPlayedSection : UserControl
         RootPanel.Visibility = Visibility.Visible;
     }
 
-    private sealed class RecentlyPlayedItemTemplateSelector : DataTemplateSelector
+    private sealed partial class RecentlyPlayedItemTemplateSelector : DataTemplateSelector
     {
         public DataTemplate? ArtistTemplate { get; set; }
         public DataTemplate? DefaultTemplate { get; set; }

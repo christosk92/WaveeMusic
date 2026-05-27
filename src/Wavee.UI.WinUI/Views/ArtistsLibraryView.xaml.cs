@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────

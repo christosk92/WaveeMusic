@@ -11,7 +11,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// the overlay text only needs to contrast with the current theme — the same brush
 /// that works against the page background works against the scrim.
 /// </summary>
-public sealed class NullToForegroundConverter : IValueConverter
+public sealed partial class NullToForegroundConverter : IValueConverter
 {
     public object? Convert(object value, Type targetType, object parameter, string language)
     {

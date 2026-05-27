@@ -1,6 +1,6 @@
 namespace BetterLyrics.Core.Models.SettingsSchema
 {
-    public class NumberSettingDef : SettingDef
+    public partial class NumberSettingDef : SettingDef
     {
         public double Min { get; set; } = 0;
         public double Max { get; set; } = 100;

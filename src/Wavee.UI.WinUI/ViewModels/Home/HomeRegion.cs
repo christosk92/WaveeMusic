@@ -29,6 +29,7 @@ public enum HomeRegionKind
 /// background and section nesting (16 px bullet titles) live in the
 /// <c>HomeRegionView</c> control; this class is just the data anchor.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class HomeRegion : ObservableObject
 {
     public HomeRegionKind Kind { get; init; }

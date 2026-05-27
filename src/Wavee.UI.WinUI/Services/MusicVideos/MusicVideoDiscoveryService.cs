@@ -30,7 +30,7 @@ namespace Wavee.UI.WinUI.Services;
 /// always deferred to <see cref="ResolveManifestIdAsync"/> — called from
 /// <c>PlaybackStateService.SwitchToVideoAsync</c> at click time.
 /// </summary>
-internal sealed class MusicVideoDiscoveryService
+internal sealed partial class MusicVideoDiscoveryService
     : IMusicVideoDiscoveryService, IDisposable
 {
     private readonly IPathfinderClient _pathfinder;

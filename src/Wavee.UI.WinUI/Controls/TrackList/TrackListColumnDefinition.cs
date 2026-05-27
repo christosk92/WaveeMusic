@@ -7,7 +7,7 @@ namespace Wavee.UI.WinUI.Controls.TrackList;
 /// Defines a custom column for TrackListView.
 /// Supports XAML declaration via PropertyName or code-behind via ValueSelector.
 /// </summary>
-public sealed class TrackListColumnDefinition : DependencyObject
+public sealed partial class TrackListColumnDefinition : DependencyObject
 {
     /// <summary>
     /// Column header text displayed in the header row.

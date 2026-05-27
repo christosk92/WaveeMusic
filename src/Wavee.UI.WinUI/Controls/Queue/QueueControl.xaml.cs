@@ -34,6 +34,7 @@ namespace Wavee.UI.WinUI.Controls.Queue;
 /// <summary>
 /// Display item bound by the shared TrackTemplate in ItemsRepeaters.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class QueueDisplayItem : ObservableObject
 {
     public enum ItemKind { NowPlaying, Header, Track, Delimiter }
@@ -45,9 +46,9 @@ public sealed partial class QueueDisplayItem : ObservableObject
     public bool HasMetadata { get; init; } = true;
     public double VisualOpacity { get; init; } = 1.0;
 
-    /// <summary>Album URI — the title links here.</summary>
+    /// <summary>Album URI � the title links here.</summary>
     public string? AlbumUri { get; init; }
-    /// <summary>Primary-artist URI — the artist line links here.</summary>
+    /// <summary>Primary-artist URI � the artist line links here.</summary>
     public string? ArtistUri { get; init; }
     /// <summary>Album display name, for the navigation tab header.</summary>
     public string? AlbumName { get; init; }
@@ -55,7 +56,7 @@ public sealed partial class QueueDisplayItem : ObservableObject
     public string? Duration { get; init; }
     public bool IsExplicit { get; init; }
     public bool HasVideo { get; init; }
-    /// <summary>The track's own Spotify URI — used to build the drag payload
+    /// <summary>The track's own Spotify URI � used to build the drag payload
     /// when a queue row is dragged onto a playlist / other drop target.</summary>
     public string? TrackUri { get; init; }
 
@@ -65,15 +66,15 @@ public sealed partial class QueueDisplayItem : ObservableObject
     /// reorder index.</summary>
     public int ContextTailIndex { get; set; } = -1;
 
-    /// <summary>0-based position among all upcoming next-tracks (Queue → Next up
-    /// → Queued later → Autoplay). The hover play button skips here.</summary>
+    /// <summary>0-based position among all upcoming next-tracks (Queue ? Next up
+    /// ? Queued later ? Autoplay). The hover play button skips here.</summary>
     public int QueueIndex { get; set; } = -1;
 
     public Visibility IsLoaded => HasMetadata ? Visibility.Visible : Visibility.Collapsed;
     public Visibility IsShimmer => HasMetadata ? Visibility.Collapsed : Visibility.Visible;
 
     [ObservableProperty]
-    private Brush? _artworkTintBrush;
+    public partial Brush? ArtworkTintBrush { get; set; }
 
     public Visibility ArtworkTintVisibility =>
         ArtworkTintBrush == null ? Visibility.Collapsed : Visibility.Visible;
@@ -94,6 +95,7 @@ public sealed partial class QueueDisplayItem : ObservableObject
     }
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class QueueControl : UserControl
 {
     private static readonly InputCursor HandCursor =
@@ -179,7 +181,7 @@ public sealed partial class QueueControl : UserControl
 
         ApplyContextCard();
 
-        // â”€â”€ Now Playing â”€â”€
+        // ── Now Playing ──
         NowPlayingCard.Visibility = hasTrack ? Visibility.Visible : Visibility.Collapsed;
         if (hasTrack)
         {
@@ -193,15 +195,15 @@ public sealed partial class QueueControl : UserControl
             NowPlayingEqualizer.IsActive = _playbackService.IsPlaying;
         }
 
-        // â”€â”€ Categorize raw queue items into four buckets â”€â”€
-        // Render order matches play order: Play-Next (head of user queue) â†’ context â†’ post-context â†’ autoplay
+        // ── Categorize raw queue items into four buckets ──
+        // Render order matches play order: Play-Next (head of user queue) → context → post-context → autoplay
         var userQueued   = new List<QueueDisplayItem>();
         var nextFrom     = new List<QueueDisplayItem>();
         var postContext  = new List<QueueDisplayItem>();
         var autoplay     = new List<QueueDisplayItem>();
         QueueDelimiter? delimiter = null;
 
-        // Running index over the upcoming context tail — Next-up AND Autoplay
+        // Running index over the upcoming context tail � Next-up AND Autoplay
         // rows share one bucket (_contextTracks) in the backend, so this counter
         // spans both, in RawNextQueue (playback) order.
         int contextTailIndex = 0;
@@ -254,42 +256,42 @@ public sealed partial class QueueControl : UserControl
         ResolveArtworkTints(postContext);
         ResolveArtworkTints(autoplay);
 
-        // â”€â”€ Pill states â”€â”€
+        // ── Pill states ──
         ShuffleButton.IsChecked = _playbackService.IsShuffle;
         ApplyRepeatPill(_playbackService.RepeatMode);
         InfiniteButton.IsChecked = _settingsService?.Settings.AutoplayEnabled ?? true;
         CrossfadeButton.IsChecked = false;
 
-        // â”€â”€ User Queue section â”€â”€
+        // ── User Queue section ──
         UserQueueSection.Visibility = userQueued.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (userQueued.Count > 0)
             UserQueueHeaderLabel.Text = $"{AppLocalization.GetString("Queue_Section_Queue")} \u00B7 {userQueued.Count}";
         UserQueueRepeater.ItemsSource = userQueued.Count > 0 ? userQueued : null;
 
-        // â”€â”€ Next Up section (context continuation, non-autoplay) â”€â”€
+        // ── Next Up section (context continuation, non-autoplay) ──
         NextUpSection.Visibility = nextFrom.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (nextFrom.Count > 0)
             NextUpHeader.Text = $"{AppLocalization.GetString("Queue_Section_NextUp")} \u00B7 {nextFrom.Count}";
         NextUpRepeater.ItemsSource = nextFrom.Count > 0 ? nextFrom : null;
 
-        // â”€â”€ Queued later section (post-context bucket, plays after this context) â”€â”€
+        // ── Queued later section (post-context bucket, plays after this context) ──
         PostContextSection.Visibility = postContext.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (postContext.Count > 0)
-            PostContextHeader.Text = $"{AppLocalization.GetString("Queue_Section_QueuedLater")} · {postContext.Count}";
+            PostContextHeader.Text = $"{AppLocalization.GetString("Queue_Section_QueuedLater")} � {postContext.Count}";
         PostContextRepeater.ItemsSource = postContext.Count > 0 ? postContext : null;
 
-        // â”€â”€ Autoplay section (similar music, dimmed) â”€â”€
+        // ── Autoplay section (similar music, dimmed) ──
         AutoPlaySection.Visibility = hasAutoplay ? Visibility.Visible : Visibility.Collapsed;
         AutoPlayRepeater.ItemsSource = hasAutoplay ? autoplay : null;
 
-        // â”€â”€ Delimiter â”€â”€
+        // ── Delimiter ──
         DelimiterSection.Visibility = delimiter != null ? Visibility.Visible : Visibility.Collapsed;
         if (delimiter != null)
         {
             DelimiterText.Text = delimiter.AdvanceAction == "pause" ? "End of queue" : "Queue continues...";
         }
 
-        // â”€â”€ Empty state â”€â”€
+        // ── Empty state ──
         EmptyState.Visibility = !hasTrack && userQueued.Count == 0 && nextFrom.Count == 0 && postContext.Count == 0 && !hasAutoplay
             ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -449,7 +451,7 @@ public sealed partial class QueueControl : UserControl
             : $"{ts.Minutes}:{ts.Seconds:D2}";
     }
 
-    // â”€â”€ Pill click handlers â”€â”€
+    // ── Pill click handlers ──
 
     private void ResolveArtworkTints(IEnumerable<QueueDisplayItem> items)
     {
@@ -495,7 +497,7 @@ public sealed partial class QueueControl : UserControl
     {
         if (_playbackService == null) return;
         var desired = !_playbackService.IsShuffle;
-        _logger?.LogInformation("Queue pill: shuffle → {State}", desired);
+        _logger?.LogInformation("Queue pill: shuffle ? {State}", desired);
         _playbackService.SetShuffle(desired);
     }
 
@@ -509,7 +511,7 @@ public sealed partial class QueueControl : UserControl
             RepeatMode.Track => RepeatMode.Off,
             _ => RepeatMode.Off,
         };
-        _logger?.LogInformation("Queue pill: repeat → {Mode}", next);
+        _logger?.LogInformation("Queue pill: repeat ? {Mode}", next);
         ApplyRepeatPill(next);
         _playbackService.SetRepeatMode(next);
     }
@@ -532,7 +534,7 @@ public sealed partial class QueueControl : UserControl
 
     private void ClearQueueButton_Click(object sender, RoutedEventArgs e)
     {
-        // Backend clear-queue API not yet implemented â€” log a no-op for now so the
+        // Backend clear-queue API not yet implemented — log a no-op for now so the
         // affordance is present without pretending to work.
         _logger?.LogInformation("Queue pill: clear queue (no-op, API pending)");
     }
@@ -549,9 +551,9 @@ public sealed partial class QueueControl : UserControl
                 .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
                 .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
             // Hint the modifier in the non-shift caption so first-time users can
-            // discover the alternate route without reading docs. The ⇧ glyph is in
+            // discover the alternate route without reading docs. The ? glyph is in
             // the base Unicode plane so it round-trips fine through XAML/code.
-            e.DragUIOverride.Caption = shift ? "Play next" : "Add to queue   ⇧ for Play next";
+            e.DragUIOverride.Caption = shift ? "Play next" : "Add to queue   ? for Play next";
             e.DragUIOverride.IsCaptionVisible = true;
             e.DragUIOverride.IsGlyphVisible = true;
         }
@@ -587,7 +589,7 @@ public sealed partial class QueueControl : UserControl
         if (_settingsService == null) return;
         var current = _settingsService.Settings.AutoplayEnabled;
         var desired = !current;
-        _logger?.LogInformation("Queue pill: autoplay → {State}", desired);
+        _logger?.LogInformation("Queue pill: autoplay ? {State}", desired);
         _settingsService.Update(s => s.AutoplayEnabled = desired);
         InfiniteButton.IsChecked = desired;
         WeakReferenceMessenger.Default.Send(new AutoplayEnabledChangedMessage(desired));
@@ -595,14 +597,14 @@ public sealed partial class QueueControl : UserControl
 
     private void CrossfadeButton_Click(object sender, RoutedEventArgs e)
     {
-        // No crossfade API yet â€” visual-only toggle.
+        // No crossfade API yet — visual-only toggle.
         _logger?.LogInformation("Queue pill: crossfade toggled (no-op, API pending)");
         CrossfadeButton.IsChecked = false;
     }
 
-    // â”€â”€ Track row hover state â”€â”€
+    // ── Track row hover state ──
 
-    // ── Row title / artist navigation ──────────────────────────────────────
+    // -- Row title / artist navigation --------------------------------------
 
     private void TitleLink_Click(object sender, RoutedEventArgs e)
     {
@@ -628,8 +630,8 @@ public sealed partial class QueueControl : UserControl
         }
     }
 
-    // ── Drag-reorder ────────────────────────────────────────────────────────
-    //   Rows drag via ManualDragAttachment — it tracks pointer events even
+    // -- Drag-reorder --------------------------------------------------------
+    //   Rows drag via ManualDragAttachment � it tracks pointer events even
     //   through the title/artist HyperlinkButtons, which would otherwise
     //   swallow a CanDragItems gesture. The drag carries a TrackDragPayload so a
     //   queue row can also be dropped on a playlist; the queue-internal reorder
@@ -726,7 +728,7 @@ public sealed partial class QueueControl : UserControl
             return;
         }
 
-        // A drag from outside the queue — the user-queue section accepts an enqueue.
+        // A drag from outside the queue � the user-queue section accepts an enqueue.
         if (ReferenceEquals(sender, UserQueueRepeater))
             UserQueue_DragOver(sender, e);
     }
@@ -747,7 +749,7 @@ public sealed partial class QueueControl : UserControl
             return;
         }
 
-        // A drag from outside the queue — the user-queue section accepts an enqueue.
+        // A drag from outside the queue � the user-queue section accepts an enqueue.
         if (ReferenceEquals(sender, UserQueueRepeater))
             UserQueue_Drop(sender, e);
     }
@@ -824,18 +826,18 @@ public sealed partial class QueueControl : UserControl
         }
     }
 
-    // â”€â”€ Drag handle cursor â”€â”€
+    // ── Drag handle cursor ──
 
     private void DragHandle_Loaded(object sender, RoutedEventArgs e)
     {
         // ChangeCursor sets the (protected) ProtectedCursor property via reflection, so
         // the icon shows the hand cursor whenever the pointer is over it. Done once at
-        // realize time â€” no per-frame pointer event overhead.
+        // realize time — no per-frame pointer event overhead.
         if (sender is FontIcon icon)
             icon.ChangeCursor(HandCursor);
     }
 
-    // ── Hover play button ───────────────────────────────────────────────────
+    // -- Hover play button ---------------------------------------------------
 
     private static void SetRowHoverState(object sender, bool shown)
     {
@@ -890,7 +892,7 @@ public sealed partial class QueueControl : UserControl
         }
     }
 
-    // ── Right-click context menu (shared track menu, queue-row adapter) ──────
+    // -- Right-click context menu (shared track menu, queue-row adapter) ------
 
     private void TrackRow_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
@@ -935,7 +937,7 @@ public sealed partial class QueueControl : UserControl
     /// Lightweight <see cref="ITrackItem"/> over a <see cref="QueueDisplayItem"/>
     /// so the shared <c>TrackContextMenuBuilder</c> can be reused for queue rows.
     /// </summary>
-    private sealed class QueueRowTrackItem : ITrackItem
+    private sealed partial class QueueRowTrackItem : ITrackItem
     {
         private readonly QueueDisplayItem _src;
         public QueueRowTrackItem(QueueDisplayItem src) => _src = src;

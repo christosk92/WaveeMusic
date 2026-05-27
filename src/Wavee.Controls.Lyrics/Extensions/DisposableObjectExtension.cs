@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Reflection;
 
@@ -9,6 +10,18 @@ namespace Wavee.Controls.Lyrics.Extensions
         extension(IDisposable? obj)
         {
             // Credit/Copyright to https://gist.github.com/tcartwright/dab50ebaff7c59f05013de0fb349cabd
+            //
+            // Walks well-known private framework fields (`_disposed`, `_isOpen`,
+            // `_strategy`, `_objRef_global__System_IDisposable`) to figure out
+            // whether the target IDisposable has been disposed. The probed types
+            // (System.IO.Stream, Windows.Graphics.Imaging.SoftwareBitmap) live
+            // in framework / Windows assemblies the linker preserves regardless,
+            // so the fields will be present at runtime — but the trim analyzer
+            // can't prove that, hence the explicit attributes. No callers in
+            // the in-repo build today; kept against the upstream BetterLyrics
+            // surface.
+            [RequiresUnreferencedCode("Walks private framework fields by name; preserved at runtime via known framework types but opaque to the trimmer.")]
+            [RequiresDynamicCode("Reflection-based field access; only safe with the standard System.IO.Stream / Windows.Graphics.Imaging fields enumerated below.")]
             public bool IsDisposed()
             {
                 /*

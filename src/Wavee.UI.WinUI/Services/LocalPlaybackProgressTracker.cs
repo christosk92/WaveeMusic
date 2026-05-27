@@ -19,7 +19,7 @@ namespace Wavee.UI.WinUI.Services;
 ///
 /// <para>Singleton, resolved at app start so the subscription is permanent.</para>
 /// </summary>
-public sealed class LocalPlaybackProgressTracker : IDisposable
+public sealed partial class LocalPlaybackProgressTracker : IDisposable
 {
     private const long WriteEveryMs = 5_000;
     private const double WatchedThreshold = 0.9;

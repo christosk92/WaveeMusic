@@ -34,6 +34,7 @@ namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
 /// An atmospheric backdrop bleeds the album-art palette across the window
 /// so the layout doesn't sit on bare Mica.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ExpandedPlayerView : UserControl
 {
     private readonly PlayerBarViewModel _viewModel;

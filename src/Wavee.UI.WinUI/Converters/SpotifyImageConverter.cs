@@ -25,7 +25,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// (default 200 px).
 /// </para>
 /// </summary>
-public sealed class SpotifyImageConverter : IValueConverter
+public sealed partial class SpotifyImageConverter : IValueConverter
 {
     private const int MaxDecodePixelWidth = 1024;
 

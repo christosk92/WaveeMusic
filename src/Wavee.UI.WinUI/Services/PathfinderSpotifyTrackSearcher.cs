@@ -24,7 +24,7 @@ namespace Wavee.UI.WinUI.Services;
 /// Pathfinder call throws — we swallow it and return empty so the enrichment
 /// service quietly treats it as a no-match.</para>
 /// </summary>
-internal sealed class PathfinderSpotifyTrackSearcher : ISpotifyTrackSearcher
+internal sealed partial class PathfinderSpotifyTrackSearcher : ISpotifyTrackSearcher
 {
     private readonly ISession _session;
     private readonly ILogger? _logger;

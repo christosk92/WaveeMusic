@@ -19,7 +19,7 @@ namespace Wavee.UI.WinUI.Services.Ai;
 /// no-key music metadata sources (MusicBrainz plus public music-page metadata)
 /// and only falls back to Wikipedia when those return no useful source.
 /// </summary>
-internal sealed class MusicWebGroundingProvider : IMusicGroundingProvider
+internal sealed partial class MusicWebGroundingProvider : IMusicGroundingProvider
 {
     private const string ProviderTag = "music-grounding";
     private const string UserAgent = "WaveeMusic/1.0 (https://github.com/ckara/WaveeMusic; music AI grounding)";

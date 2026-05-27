@@ -26,7 +26,7 @@
       </PackageReference>
       <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.7" />
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
-      <PackageReference Include="System.Reactive" Version="7.0.0-preview.1" />
+      <PackageReference Include="System.Reactive" Version="7.0.0-preview.15" />
       <!-- z440.atl.core moved to Wavee.Local with the metadata extractor -->
       <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.7" />
       <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />

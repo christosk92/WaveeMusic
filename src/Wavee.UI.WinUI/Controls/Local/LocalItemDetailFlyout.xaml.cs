@@ -17,6 +17,7 @@ namespace Wavee.UI.WinUI.Controls.Local;
 /// root to replace the cover artwork; commit button persists every edited field
 /// through the facade.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalItemDetailFlyout : UserControl
 {
     public LocalItemDetailFlyoutViewModel ViewModel { get; }

@@ -23,6 +23,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Orchestrates playback commands with retry logic, buffering state, and error broadcasting.
 /// Routes commands through <see cref="IPlaybackCommandExecutor"/> (currently Spotify Web API).
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 internal sealed partial class PlaybackService : ObservableObject, IPlaybackService, IDisposable
 {
     private readonly IPlaybackCommandExecutor _executor;
@@ -36,11 +37,11 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
     private IDisposable? _stateSubscription;
     private IDisposable? _errorNotificationSubscription;
 
-    [ObservableProperty] private bool _isBuffering;
-    [ObservableProperty] private bool _isExecutingCommand;
-    [ObservableProperty] private string? _activeDeviceId;
-    [ObservableProperty] private string? _activeDeviceName;
-    [ObservableProperty] private bool _isPlayingRemotely;
+    [ObservableProperty] public partial bool IsBuffering { get; set; }
+    [ObservableProperty] public partial bool IsExecutingCommand { get; set; }
+    [ObservableProperty] public partial string? ActiveDeviceId { get; set; }
+    [ObservableProperty] public partial string? ActiveDeviceName { get; set; }
+    [ObservableProperty] public partial bool IsPlayingRemotely { get; set; }
 
     public IObservable<PlaybackErrorEvent> Errors => _errorSubject.AsObservable();
     public event Action<string?>? BufferingStarted;

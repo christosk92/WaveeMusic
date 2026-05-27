@@ -8,6 +8,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SpotifyConnectDialog : ContentDialog
 {
     public SpotifyConnectViewModel ViewModel { get; }

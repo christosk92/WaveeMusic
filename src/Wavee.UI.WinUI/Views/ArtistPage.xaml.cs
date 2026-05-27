@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -59,6 +59,7 @@ namespace Wavee.UI.WinUI.Views;
 ///   * the existing <see cref="ShyHeaderController"/> / <see cref="TransitionHelper"/>
 ///     pattern to morph the hero into a pinned compact card on scroll
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;

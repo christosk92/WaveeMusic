@@ -16,37 +16,38 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// (Browse, future Search/Genre/Discovery destinations) inherit here and
 /// only implement <see cref="ReloadAsync"/> to do their fetch + map.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public abstract partial class SectionFeedViewModelBase : ObservableObject, IDisposable
 {
     [ObservableProperty]
-    private string? _title;
+    public partial string? Title { get; set; }
 
     [ObservableProperty]
-    private string? _subtitle;
+    public partial string? Subtitle { get; set; }
 
     /// <summary>Drives the page's header backdrop (typically a vertical
     /// gradient tinted with the response's accent colour).</summary>
     [ObservableProperty]
-    private Brush? _headerBackdropBrush;
+    public partial Brush? HeaderBackdropBrush { get; set; }
 
     /// <summary>The carousel slides. Reassign on each rebuild — Klankhuis's
     /// HeroCarousel tracks both DP-change and collection-change after Phase 8,
     /// but reassigning is the simplest path for derived state.</summary>
     [ObservableProperty]
-    private IList<HeroCarouselItem> _heroSlides = new List<HeroCarouselItem>();
+    public partial IList<HeroCarouselItem> HeroSlides { get; set; } = new List<HeroCarouselItem>();
 
     /// <summary>Section shelves below the hero. Mutated in place by the
     /// derived class so <c>SectionShelvesView</c>'s ItemsRepeater can recycle.</summary>
     public ObservableCollection<HomeSection> Sections { get; } = new();
 
     [ObservableProperty]
-    private bool _isLoading;
+    public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
-    private bool _hasError;
+    public partial bool HasError { get; set; }
 
     [ObservableProperty]
-    private string? _errorMessage;
+    public partial string? ErrorMessage { get; set; }
 
     /// <summary>Implemented by the derived class — fetch from the service,
     /// map into <see cref="HeroSlides"/> + <see cref="Sections"/>, set

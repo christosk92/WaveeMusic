@@ -12,6 +12,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// ViewModel for an album item in the artist detail panel.
 /// Handles lazy loading of tracks when expanded.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistAlbumItemViewModel : ObservableObject
 {
     private readonly Action<ArtistAlbumItemViewModel>? _onSelect;
@@ -21,13 +22,13 @@ public sealed partial class ArtistAlbumItemViewModel : ObservableObject
     public string Subtitle => Album.Year > 0 ? Album.Year.ToString() : "";
 
     [ObservableProperty]
-    private ObservableCollection<AlbumTrackDto> _tracks = [];
+    public partial ObservableCollection<AlbumTrackDto> Tracks { get; set; } = [];
 
     [ObservableProperty]
-    private bool _isLoadingTracks;
+    public partial bool IsLoadingTracks { get; set; }
 
     [ObservableProperty]
-    private bool _hasLoadedTracks;
+    public partial bool HasLoadedTracks { get; set; }
 
     public ArtistAlbumItemViewModel(
         LibraryArtistAlbumDto album,

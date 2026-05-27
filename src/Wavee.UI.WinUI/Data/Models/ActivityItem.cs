@@ -7,7 +7,7 @@ using Wavee.UI.WinUI.Styles;
 
 namespace Wavee.UI.WinUI.Data.Models;
 
-// ── Status enum ──
+// â”€â”€ Status enum â”€â”€
 
 public enum ActivityStatus { Info, InProgress, Completed, Failed }
 
@@ -15,13 +15,35 @@ public enum ActivityNotificationType { System, UserAction, Spotify }
 
 public enum ActivityOutcome { None, Positive, Negative, Undo }
 
-// ── Action model ──
+// â”€â”€ Action model â”€â”€
+//
+// `Callback` is intentionally INTERNAL because it's a Func<Task> — a delegate
+// type that CsWinRT can't project across the WinRT ABI. If it were public,
+// the CsWinRT AOT optimizer would refuse to generate the IBindableVector CCW
+// for any IReadOnlyList<ActivityAction>, breaking the ActivityBell's
+// `ItemsSource="{x:Bind Actions}"` binding (manifests at runtime as
+// `ArgumentException: 'source' is not a supported vector.`). Keeping Callback
+// internal hides it from the CCW dispatch while still letting in-assembly
+// code (ActivityService, NotificationActivityItem consumers) invoke it.
 
-public sealed record ActivityAction(string Label, string? IconGlyph, Func<Task> Callback);
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ActivityAction
+{
+    public string Label { get; }
+    public string? IconGlyph { get; }
+    internal Func<Task> Callback { get; }
+
+    public ActivityAction(string label, string? iconGlyph, Func<Task> callback)
+    {
+        Label = label;
+        IconGlyph = iconGlyph;
+        Callback = callback;
+    }
+}
 
 public sealed record ActivityDetailRow(string Label, string Value);
 
-// ── Category styling ──
+// â”€â”€ Category styling â”€â”€
 
 public sealed record CategoryStyle(
     string CategoryId,
@@ -29,7 +51,7 @@ public sealed record CategoryStyle(
     string DefaultIconGlyph,
     string AccentColorKey);
 
-// ── Interface: common contract for all activity items ──
+// â”€â”€ Interface: common contract for all activity items â”€â”€
 
 public interface IActivityItem : INotifyPropertyChanged
 {
@@ -46,17 +68,18 @@ public interface IActivityItem : INotifyPropertyChanged
     IReadOnlyList<ActivityAction>? Actions { get; }
 }
 
-// ── Base: shared implementation ──
+// â”€â”€ Base: shared implementation â”€â”€
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public abstract partial class ActivityItemBase : ObservableObject, IActivityItem
 {
     public Guid Id { get; init; } = Guid.NewGuid();
     public required string Category { get; init; }
     public required string Title { get; init; }
 
-    [ObservableProperty] private string? _message;
-    [ObservableProperty] private ActivityStatus _status = ActivityStatus.Info;
-    [ObservableProperty] private bool _isRead;
+    [ObservableProperty] public partial string? Message { get; set; }
+    [ObservableProperty] public partial ActivityStatus Status { get; set; } = ActivityStatus.Info;
+    [ObservableProperty] public partial bool IsRead { get; set; }
 
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;
     public string? IconGlyph { get; init; }
@@ -65,19 +88,19 @@ public abstract partial class ActivityItemBase : ObservableObject, IActivityItem
     public IReadOnlyList<ActivityAction>? Actions { get; init; }
 }
 
-// ── Concrete: progress-aware items (sync, download, import) ──
+// â”€â”€ Concrete: progress-aware items (sync, download, import) â”€â”€
 
 public sealed partial class ProgressActivityItem : ActivityItemBase
 {
-    [ObservableProperty] private double? _progress;
-    [ObservableProperty] private string? _progressText;
-    [ObservableProperty] private TimeSpan? _estimatedTimeRemaining;
+    [ObservableProperty] public partial double? Progress { get; set; }
+    [ObservableProperty] public partial string? ProgressText { get; set; }
+    [ObservableProperty] public partial TimeSpan? EstimatedTimeRemaining { get; set; }
 
     public bool IsCancellable { get; init; }
     public Action? CancelAction { get; init; }
 }
 
-// ── Concrete: app notifications (release notes, errors) ──
+// â”€â”€ Concrete: app notifications (release notes, errors) â”€â”€
 
 public sealed partial class NotificationActivityItem : ActivityItemBase
 {
@@ -115,7 +138,7 @@ public sealed partial class NotificationActivityItem : ActivityItemBase
     public bool HasActionRow => HasDetailContent || Actions is { Count: > 0 };
 }
 
-// ── Concrete: Spotify content notifications (new releases, friend activity) ──
+// â”€â”€ Concrete: Spotify content notifications (new releases, friend activity) â”€â”€
 
 public sealed partial class SpotifyActivityItem : ActivityItemBase
 {

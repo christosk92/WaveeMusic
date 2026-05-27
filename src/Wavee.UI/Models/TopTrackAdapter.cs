@@ -5,7 +5,8 @@ using Wavee.UI.Contracts;
 
 namespace Wavee.UI.Models;
 
-public sealed class TopTrackAdapter : ITrackItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class TopTrackAdapter : ITrackItem
 {
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     private readonly TopTrackData _data;

@@ -22,7 +22,7 @@ namespace Wavee.UI.WinUI.Services.Ai;
 /// re-hit Wikipedia. Failures (404, network) collapse to null; callers degrade
 /// gracefully by emitting nothing in their prompt.
 /// </summary>
-internal sealed class WikipediaArticleLookup : IWikipediaLookup
+internal sealed partial class WikipediaArticleLookup : IWikipediaLookup
 {
     private const string ArtistProviderTag = "wikipedia:artist";
     private const string AlbumProviderTag = "wikipedia:album";

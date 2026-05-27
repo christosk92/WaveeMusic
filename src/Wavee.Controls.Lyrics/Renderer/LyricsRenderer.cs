@@ -13,7 +13,7 @@ using Windows.UI;
 
 namespace Wavee.Controls.Lyrics.Renderer
 {
-    public class LyricsRenderer : BreathingRendererBase, IDisposable
+    public partial class LyricsRenderer : BreathingRendererBase, IDisposable
     {
         private Matrix4x4 _threeDimMatrix = Matrix4x4.Identity;
         private readonly Transform3DEffect _threeDimTransform = new();

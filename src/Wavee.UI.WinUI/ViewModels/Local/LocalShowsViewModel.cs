@@ -11,6 +11,7 @@ using Wavee.UI.Library.Local;
 
 namespace Wavee.UI.WinUI.ViewModels.Local;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalShowsViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -18,14 +19,14 @@ public sealed partial class LocalShowsViewModel : ObservableObject, IDisposable
     private readonly IDisposable? _changesSub;
 
     public ObservableCollection<LocalShow> Shows { get; } = new();
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _isEmpty;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool IsEmpty { get; set; }
 
     /// <summary>
-    /// Hero-header subtitle, e.g. <c>"12 shows · 4 unwatched"</c>. Recomputed
+    /// Hero-header subtitle, e.g. <c>"12 shows Â· 4 unwatched"</c>. Recomputed
     /// on every load + facade change.
     /// </summary>
-    [ObservableProperty] private string? _subtitleText;
+    [ObservableProperty] public partial string? SubtitleText { get; set; }
 
     public LocalShowsViewModel(ILocalLibraryFacade? facade = null)
     {
@@ -57,7 +58,7 @@ public sealed partial class LocalShowsViewModel : ObservableObject, IDisposable
         var shows_label = shows.Count == 1 ? "show" : "shows";
         var unwatched = shows.Sum(s => s.UnwatchedCount);
         return unwatched > 0
-            ? $"{shows.Count} {shows_label} · {unwatched} unwatched"
+            ? $"{shows.Count} {shows_label} Â· {unwatched} unwatched"
             : $"{shows.Count} {shows_label}";
     }
 

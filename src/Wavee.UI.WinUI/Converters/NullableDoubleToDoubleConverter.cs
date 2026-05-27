@@ -7,7 +7,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// Converts double? to double for ProgressBar.Value binding.
 /// Returns 0.0 when null.
 /// </summary>
-public sealed class NullableDoubleToDoubleConverter : IValueConverter
+public sealed partial class NullableDoubleToDoubleConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

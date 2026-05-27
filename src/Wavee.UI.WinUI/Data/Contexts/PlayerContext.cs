@@ -2,35 +2,36 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 internal sealed partial class PlayerContext : ObservableObject, IPlayerContext
 {
     [ObservableProperty]
-    private bool _isPlaying;
+    public partial bool IsPlaying { get; set; }
 
     [ObservableProperty]
-    private bool _isShuffle;
+    public partial bool IsShuffle { get; set; }
 
     [ObservableProperty]
-    private bool _isRepeat;
+    public partial bool IsRepeat { get; set; }
 
     [ObservableProperty]
-    private double _volume = 1.0;
+    public partial double Volume { get; set; } = 1.0;
 
     [ObservableProperty]
-    private double _position;
+    public partial double Position { get; set; }
 
     [ObservableProperty]
-    private double _duration;
+    public partial double Duration { get; set; }
 
     [ObservableProperty]
-    private string? _currentTrackId;
+    public partial string? CurrentTrackId { get; set; }
 
     [ObservableProperty]
-    private string? _currentTrackTitle;
+    public partial string? CurrentTrackTitle { get; set; }
 
     [ObservableProperty]
-    private string? _currentArtistName;
+    public partial string? CurrentArtistName { get; set; }
 
     [ObservableProperty]
-    private string? _currentAlbumArt;
+    public partial string? CurrentAlbumArt { get; set; }
 }

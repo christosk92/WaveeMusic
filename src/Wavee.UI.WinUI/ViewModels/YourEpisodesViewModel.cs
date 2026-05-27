@@ -32,6 +32,7 @@ public enum PodcastEpisodeScope
     Latest
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposable
 {
     private const string PodcastShowsColumnWidthKey = "podcasts.showsColumn";
@@ -71,54 +72,54 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(ShowEpisodeEmptyState))]
     [NotifyPropertyChangedFor(nameof(ShowEpisodesShimmer))]
     [NotifyPropertyChangedFor(nameof(ShowLoadError))]
-    private bool _isLoading;
+    public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowLoadError))]
     [NotifyPropertyChangedFor(nameof(ShowEpisodeEmptyState))]
-    private bool _hasError;
+    public partial bool HasError { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LoadErrorDescription))]
-    private string? _errorMessage;
+    public partial string? ErrorMessage { get; set; }
 
     [ObservableProperty]
-    private int _totalPodcasts;
+    public partial int TotalPodcasts { get; set; }
 
     [ObservableProperty]
-    private int _totalEpisodes;
+    public partial int TotalEpisodes { get; set; }
 
     [ObservableProperty]
-    private string _totalDuration = "";
+    public partial string TotalDuration { get; set; } = "";
 
     [ObservableProperty]
-    private string _searchQuery = "";
+    public partial string SearchQuery { get; set; } = "";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SortDirectionGlyph))]
-    private LibrarySortDirection _sortDirection = LibrarySortDirection.Descending;
+    public partial LibrarySortDirection SortDirection { get; set; } = LibrarySortDirection.Descending;
 
     [ObservableProperty]
-    private LibrarySortBy _sortBy = LibrarySortBy.RecentlyAdded;
+    public partial LibrarySortBy SortBy { get; set; } = LibrarySortBy.RecentlyAdded;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEpisodeGroupHeaders))]
-    private LibraryPodcastShowDto? _selectedShow;
+    public partial LibraryPodcastShowDto? SelectedShow { get; set; }
 
     [ObservableProperty]
-    private string _selectedShowName = "Podcasts";
+    public partial string SelectedShowName { get; set; } = "Podcasts";
 
     [ObservableProperty]
-    private string _selectedShowMetadata = "";
+    public partial string SelectedShowMetadata { get; set; } = "";
 
     [ObservableProperty]
-    private string? _selectedShowImageUrl;
+    public partial string? SelectedShowImageUrl { get; set; }
 
     [ObservableProperty]
-    private string? _selectedShowDescription;
+    public partial string? SelectedShowDescription { get; set; }
 
     [ObservableProperty]
-    private string _selectedShowPlaceholderGlyph = "\uEC05";
+    public partial string SelectedShowPlaceholderGlyph { get; set; } = "\uEC05";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedEpisode))]
@@ -133,7 +134,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(HasShowName))]
     [NotifyPropertyChangedFor(nameof(HasExplicit))]
     [NotifyCanExecuteChangedFor(nameof(CopyEpisodeLinkCommand))]
-    private LibraryEpisodeDto? _selectedEpisode;
+    public partial LibraryEpisodeDto? SelectedEpisode { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeTitle))]
@@ -160,7 +161,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(HasPreviewOnly))]
     [NotifyPropertyChangedFor(nameof(TranscriptLanguagesTooltip))]
     [NotifyCanExecuteChangedFor(nameof(CopyEpisodeLinkCommand))]
-    private PodcastEpisodeDetailDto? _selectedEpisodeDetail;
+    public partial PodcastEpisodeDetailDto? SelectedEpisodeDetail { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsWideLayout))]
@@ -168,12 +169,12 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(ShowWidePodcastBrowser))]
     [NotifyPropertyChangedFor(nameof(ShowNarrowShowsStage))]
     [NotifyPropertyChangedFor(nameof(ShowNarrowEpisodesStage))]
-    private bool _useNarrowLayout;
+    public partial bool UseNarrowLayout { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNarrowShowsStage))]
     [NotifyPropertyChangedFor(nameof(ShowNarrowEpisodesStage))]
-    private PodcastLibraryStage _narrowStage = PodcastLibraryStage.Shows;
+    public partial PodcastLibraryStage NarrowStage { get; set; } = PodcastLibraryStage.Shows;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEpisodeEmptyState))]
@@ -181,10 +182,10 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(EpisodeEmptyDescription))]
     [NotifyPropertyChangedFor(nameof(SelectedShowDetailArchiveSummary))]
     [NotifyPropertyChangedFor(nameof(ShowEpisodesShimmer))]
-    private bool _isSelectedShowArchiveLoading;
+    public partial bool IsSelectedShowArchiveLoading { get; set; }
 
     [ObservableProperty]
-    private ShowDetailDto? _selectedShowDetail;
+    public partial ShowDetailDto? SelectedShowDetail { get; set; }
 
     public ObservableCollection<LibraryPodcastShowDto> PodcastShows { get; } = [];
     public ObservableCollection<LibraryPodcastShowDto> FilteredShows { get; } = [];
@@ -1577,6 +1578,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     }
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PodcastEpisodeGroupViewModel : ObservableObject
 {
     public PodcastEpisodeGroupViewModel(
@@ -1602,7 +1604,7 @@ public sealed partial class PodcastEpisodeGroupViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpandGlyph))]
-    private bool _isExpanded;
+    public partial bool IsExpanded { get; set; }
 
     public string Title { get; }
     public string? ImageUrl { get; }

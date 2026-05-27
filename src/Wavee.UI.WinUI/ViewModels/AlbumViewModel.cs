@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -47,6 +47,7 @@ public sealed record DiscGroupHeader(int Number, string TitleText);
 /// ViewModel for the Album detail page.
 /// Album tracks are static after load — no reactive pipeline needed.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackListViewModelBase, ITrackListViewModel, ITabBarItemContent, IDisposable
 {
     private readonly IAlbumService _albumService;

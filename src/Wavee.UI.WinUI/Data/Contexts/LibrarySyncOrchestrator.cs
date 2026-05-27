@@ -19,7 +19,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Reacts to AuthStatusChangedMessage — triggers sync after any successful auth.
 /// Concurrency-safe via SemaphoreSlim. Wires Dealer changes once.
 /// </summary>
-public sealed class LibrarySyncOrchestrator : IDisposable
+public sealed partial class LibrarySyncOrchestrator : IDisposable
 {
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly IMessenger _messenger;

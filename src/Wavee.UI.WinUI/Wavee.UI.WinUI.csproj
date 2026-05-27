@@ -58,6 +58,21 @@
 		     time and the AI types fail to load. -->
 		<AppxOSMinVersionReplaceManifestVersion>false</AppxOSMinVersionReplaceManifestVersion>
 		<AppxOSMaxVersionTestedReplaceManifestVersion>false</AppxOSMaxVersionTestedReplaceManifestVersion>
+		<PublishAot>true</PublishAot>
+
+		<!-- Native AOT analyzers — on for every configuration so AOT warnings
+		     surface during normal Debug builds too. Actual PublishAot is gated
+		     to Release configurations below; the analyzers themselves are cheap
+		     and run at compile time. WinAppSDK 1.6+ ships Native AOT support for
+		     WinUI 3; CommunityToolkit.Mvvm 8.4 / CommunityToolkit.WinUI 8.3+ /
+		     ComputeSharp.D2D1.WinUI 3.x / WinUIEx 2.4.1+ / H.NotifyIcon.WinUI
+		     are all trim/AOT annotated today, so this set is realistic. -->
+		<IsAotCompatible>true</IsAotCompatible>
+		<EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+		<EnableAotAnalyzer>true</EnableAotAnalyzer>
+		<EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+
+		<WarningsAsErrors>$(WarningsAsErrors);IL2026;IL2050;IL2055;IL2060;IL2067;IL2069;IL2070;IL2072;IL2073;IL2075;IL2076;IL2077;IL2079;IL2080;IL2081;IL2082;IL2084;IL2085;IL2086;IL2087;IL2088;IL2089;IL2090;IL2091;IL2092;IL2093;IL2094;IL2095;IL2096;IL2097;IL2098;IL2099;IL2100;IL2101;IL2102;IL2103;IL2104;IL2105;IL2106;IL2107;IL2108;IL2109;IL2110;IL2111;IL2112;IL2113;IL2114;IL2115;IL2116;IL3050;IL3051;IL3052;IL3053;IL3054;IL3055;IL3056</WarningsAsErrors>
 	</PropertyGroup>
 	<ItemGroup>
 		<Content Remove="Assets\MediaPlayerIcons.ttf" />
@@ -169,19 +184,32 @@
 		<HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
 	</PropertyGroup>
 
-	<!-- Publish Properties.
-	     Both PublishTrimmed and PublishReadyToRun were previously enabled for non-Debug
-	     builds, but the project is framework-dependent (<SelfContained> is not set).
-	     The .NET SDK rejects both optimizations in that state:
-	       - PublishTrimmed needs SelfContained=true (trimmer needs the full runtime).
-	       - PublishReadyToRun needs either SelfContained=true or an explicit
-	         <RuntimeIdentifier> with a restored runtime package.
-	     Re-enabling either would require bundling the entire .NET runtime into the AppX
-	     (~70-100 MB bigger) and validating trim safety across WinUI, MVVM
-	     Toolkit, and ComputeSharp, which all use reflection or source generators. Not
-	     worth it for a framework-dependent store/sideload distribution. When self-
-	     contained packaging is revisited, both can be re-enabled together. -->
-	<PropertyGroup>
+	<!-- Native AOT publish for Release configurations only.
+
+	     - Debug keeps JIT so XAML Hot Reload, EnC, and fast F5 cycles work
+	       normally. The IL2xxx / IL3xxx analyzers still run in Debug because
+	       <IsAotCompatible>true</> is set unconditionally above — that's what
+	       catches new reflection / dynamic-code lapses at compile time before
+	       they ever reach an AOT publish.
+	     - Release (packaged MSIX and sideload Release-Unpackaged) uses
+	       PublishAot + SelfContained + WindowsAppSDKSelfContained. The
+	       resulting MSIX has no .NET runtime or WinAppSDK framework
+	       dependency. AppX size goes up versus framework-dependent today, but
+	       AOT cuts the runtime portion roughly in half (per the
+	       Microsoft-published WinAppSDK 1.6 Contoso Camera numbers: ~2x
+	       package size reduction in self-contained mode, ~8x in
+	       framework-mode but that doesn't apply here).
+	     - PublishReadyToRun is incompatible with PublishAot — disabled
+	       explicitly so a stale solution-level PublishReadyToRun=true cannot
+	       contradict the AOT publish. -->
+	<PropertyGroup Condition="'$(Configuration)' == 'Release' or '$(Configuration)' == 'Release-Unpackaged'">
+		<SelfContained>true</SelfContained>
+		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+		<!-- Optimise for size — desktop app payload is already large; trading
+		     some throughput for smaller native binary is the right tradeoff. -->
+		<IlcOptimizationPreference>Size</IlcOptimizationPreference>
+		<IlcTrimMetadata>true</IlcTrimMetadata>
+		<StripSymbols>true</StripSymbols>
 		<PublishReadyToRun>false</PublishReadyToRun>
 	</PropertyGroup>
 

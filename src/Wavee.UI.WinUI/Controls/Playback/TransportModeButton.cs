@@ -8,7 +8,7 @@ namespace Wavee.UI.WinUI.Controls.Playback;
 /// Player-bar mode button whose active state tints the glyph foreground without
 /// using a checked/accent background fill.
 /// </summary>
-public sealed class TransportModeButton : Button
+public sealed partial class TransportModeButton : Button
 {
     public bool IsActive
     {

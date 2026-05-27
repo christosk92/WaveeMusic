@@ -12,7 +12,7 @@ public interface IAppLocalizationService
     string Format(string key, params object?[] args);
 }
 
-public sealed class AppLocalizationService : IAppLocalizationService
+public sealed partial class AppLocalizationService : IAppLocalizationService
 {
     public string GetString(string key) => AppLocalization.GetString(key);
 

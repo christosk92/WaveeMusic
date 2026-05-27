@@ -28,6 +28,7 @@ namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
 /// <c>AudioOutputPicker</c>, <c>CompositionProgressBar</c>,
 /// <c>PlaybackActionContent</c>) — no parallel transport implementation.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfaceConsumer
 {
     private const double AudioArtworkBaseMaxSize = 540d;

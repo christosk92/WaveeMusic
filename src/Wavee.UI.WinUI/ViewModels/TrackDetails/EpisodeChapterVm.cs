@@ -4,7 +4,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed class EpisodeChapterVm : ObservableObject
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class EpisodeChapterVm : ObservableObject
 {
     private bool _isActive;
     private bool _isCompleted;

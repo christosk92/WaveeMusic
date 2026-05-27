@@ -36,7 +36,7 @@ public sealed class LogEntry
 /// Serilog sink that captures log events to an in-memory ring buffer.
 /// Entries are dispatched to the UI thread for safe ObservableCollection binding.
 /// </summary>
-public sealed class InMemorySink : ILogEventSink
+public sealed partial class InMemorySink : ILogEventSink
 {
     private const int MaxEntries = 2000;
 

@@ -24,6 +24,7 @@ namespace Wavee.UI.WinUI.ViewModels.Artist;
 /// the tour banner headline / concert-count stat can derive from sibling
 /// state without direct cross-child coupling.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistHeaderViewModel : ObservableObject, IDisposable
 {
     private readonly PaletteGradientCompositor _paletteCompositor;
@@ -92,7 +93,7 @@ public sealed partial class ArtistHeaderViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(TourBannerEyebrow))]
     [NotifyPropertyChangedFor(nameof(TourBannerIsLive))]
     [NotifyPropertyChangedFor(nameof(TourBannerIconGlyph))]
-    private ArtistView? _artist;
+    public partial ArtistView? Artist { get; set; }
 
     /// <summary>Fired whenever the underlying envelope changes — the parent
     /// listens so it can re-run sibling fan-outs (e.g. spotlight selection,
@@ -103,7 +104,7 @@ public sealed partial class ArtistHeaderViewModel : ObservableObject, IDisposabl
     {
         // Property change notifications for the envelope-dependent surfaces are
         // emitted automatically by the MVVM Toolkit generator via the
-        // [NotifyPropertyChangedFor] attributes on _artist. Theme + downstream
+        // [NotifyPropertyChangedFor] attributes on Artist. Theme + downstream
         // fan-out still need an explicit hook.
         ApplyTheme(_isDarkTheme, _isHighContrastTheme);
         ArtistChanged?.Invoke(this, EventArgs.Empty);
@@ -199,10 +200,10 @@ public sealed partial class ArtistHeaderViewModel : ObservableObject, IDisposabl
 
     // ── Palette-derived brushes (assigned by ApplyTheme) ────────────────────
 
-    [ObservableProperty] private Brush? _sectionAccentBrush;
-    [ObservableProperty] private Brush? _paletteHeroGradientBrush;
-    [ObservableProperty] private Brush? _paletteAccentPillBrush;
-    [ObservableProperty] private Brush? _paletteAccentPillForegroundBrush;
+    [ObservableProperty] public partial Brush? SectionAccentBrush { get; set; }
+    [ObservableProperty] public partial Brush? PaletteHeroGradientBrush { get; set; }
+    [ObservableProperty] public partial Brush? PaletteAccentPillBrush { get; set; }
+    [ObservableProperty] public partial Brush? PaletteAccentPillForegroundBrush { get; set; }
 
     // ── Tour banner projection ──────────────────────────────────────────────
 

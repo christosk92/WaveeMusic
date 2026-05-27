@@ -19,6 +19,7 @@ namespace Wavee.UI.WinUI.Services.Docking;
 /// <see cref="ShellLayoutState"/> via <see cref="IShellSessionService.UpdateLayout"/>
 /// so geometry survives restarts.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 internal sealed partial class PanelDockingService : ObservableObject, IPanelDockingService
 {
     private readonly IShellSessionService _shellSession;
@@ -29,10 +30,10 @@ internal sealed partial class PanelDockingService : ObservableObject, IPanelDock
     private RightPanelFloatingWindow? _rightPanelWindow;
 
     [ObservableProperty]
-    private bool _isPlayerDetached;
+    public partial bool IsPlayerDetached { get; set; }
 
     [ObservableProperty]
-    private bool _isRightPanelDetached;
+    public partial bool IsRightPanelDetached { get; set; }
 
     public PanelDockingService(
         IShellSessionService shellSession,

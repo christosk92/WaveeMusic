@@ -14,7 +14,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// <c>depth × stride + offset</c>. Defaults: stride 16, offset 0.
 /// </para>
 /// </summary>
-public sealed class DepthToThicknessConverter : IValueConverter
+public sealed partial class DepthToThicknessConverter : IValueConverter
 {
     private const double DefaultPixelsPerLevel = 16d;
 

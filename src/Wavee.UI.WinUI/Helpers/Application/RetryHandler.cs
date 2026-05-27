@@ -10,7 +10,7 @@ namespace Wavee.UI.WinUI.Helpers.Application;
 /// Global HTTP delegating handler that retries requests on 429 (Too Many Requests)
 /// and 503 (Service Unavailable) with exponential backoff. Respects Retry-After header.
 /// </summary>
-internal sealed class RetryHandler : DelegatingHandler
+internal sealed partial class RetryHandler : DelegatingHandler
 {
     private const int MaxRetries = 3;
 

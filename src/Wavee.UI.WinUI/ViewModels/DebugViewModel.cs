@@ -16,10 +16,11 @@ using Wavee.Core.Session;
 using Wavee.Protocol.Collection;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
-using Wavee.UI.WinUI.ViewModels.DebugTools;
+using Wavee.UI.WinUI.ViewModels.Debug;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class DebugViewModel : ObservableObject
 {
     private readonly ISession _session;
@@ -29,32 +30,32 @@ public sealed partial class DebugViewModel : ObservableObject
 
     // ── Endpoint family ──
     public string[] EndpointFamilies { get; } = ["SpClient REST", "Extended Metadata", "Pathfinder GraphQL"];
-    [ObservableProperty] private int _selectedEndpointFamily;
+    [ObservableProperty] public partial int SelectedEndpointFamily { get; set; }
 
     // ── Base URL (SpClient family only) ──
-    [ObservableProperty] private string _baseUrl = "";
+    [ObservableProperty] public partial string BaseUrl { get; set; } = "";
 
     // ── URL bar (SpClient family) ──
     public string[] HttpMethods { get; } = ["GET", "POST", "PUT", "DELETE", "PATCH"];
-    [ObservableProperty] private string _selectedMethod = "GET";
-    [ObservableProperty] private string _path = "/";
+    [ObservableProperty] public partial string SelectedMethod { get; set; } = "GET";
+    [ObservableProperty] public partial string Path { get; set; } = "/";
 
     // ── SpClient presets ──
     public string[] Presets { get; } = ["Custom", "Collection Page", "Collection Delta", "Collection Write"];
-    [ObservableProperty] private int _selectedPresetIndex;
+    [ObservableProperty] public partial int SelectedPresetIndex { get; set; }
 
     // ── SpClient preset fields ──
-    [ObservableProperty] private string _username = "";
-    [ObservableProperty] private string _set = "collection";
-    [ObservableProperty] private int _limit = 300;
-    [ObservableProperty] private string _paginationToken = "";
-    [ObservableProperty] private string _lastSyncToken = "";
-    [ObservableProperty] private string _itemUri = "spotify:track:";
-    [ObservableProperty] private bool _isRemoved;
+    [ObservableProperty] public partial string Username { get; set; } = "";
+    [ObservableProperty] public partial string Set { get; set; } = "collection";
+    [ObservableProperty] public partial int Limit { get; set; } = 300;
+    [ObservableProperty] public partial string PaginationToken { get; set; } = "";
+    [ObservableProperty] public partial string LastSyncToken { get; set; } = "";
+    [ObservableProperty] public partial string ItemUri { get; set; } = "spotify:track:";
+    [ObservableProperty] public partial bool IsRemoved { get; set; }
 
     // ── Custom body (SpClient) ──
-    [ObservableProperty] private string _requestBody = "";
-    [ObservableProperty] private string _contentType = "application/json";
+    [ObservableProperty] public partial string RequestBody { get; set; } = "";
+    [ObservableProperty] public partial string ContentType { get; set; } = "application/json";
 
     // ── Extended Metadata fields ──
     // No canonical PLAYLIST_V4 exists in the extended-metadata enum — full
@@ -88,30 +89,30 @@ public sealed partial class DebugViewModel : ObservableObject
         "PLAYLIST_DESCRIPTORS",
         "(custom — type below)"
     ];
-    [ObservableProperty] private int _selectedExtensionKindIndex;
-    [ObservableProperty] private string _customExtensionKind = "";
-    [ObservableProperty] private string _entityUris = "";
+    [ObservableProperty] public partial int SelectedExtensionKindIndex { get; set; }
+    [ObservableProperty] public partial string CustomExtensionKind { get; set; } = "";
+    [ObservableProperty] public partial string EntityUris { get; set; } = "";
 
     // ── Pathfinder fields ──
     public PathfinderCatalog.Operation[] PathfinderOperations { get; } = PathfinderCatalog.All;
-    [ObservableProperty] private int _selectedPathfinderOperationIndex;
-    [ObservableProperty] private string _pathfinderOperationName = "";
-    [ObservableProperty] private string _pathfinderHash = "";
-    [ObservableProperty] private string _pathfinderVariables = "{}";
-    [ObservableProperty] private string _pathfinderCustomHash = "";
-    [ObservableProperty] private string _pathfinderBaseUrl = "https://api-partner.spotify.com";
+    [ObservableProperty] public partial int SelectedPathfinderOperationIndex { get; set; }
+    [ObservableProperty] public partial string PathfinderOperationName { get; set; } = "";
+    [ObservableProperty] public partial string PathfinderHash { get; set; } = "";
+    [ObservableProperty] public partial string PathfinderVariables { get; set; } = "{}";
+    [ObservableProperty] public partial string PathfinderCustomHash { get; set; } = "";
+    [ObservableProperty] public partial string PathfinderBaseUrl { get; set; } = "https://api-partner.spotify.com";
 
     // ── Response (shared across all families) ──
-    [ObservableProperty] private string _responseBody = "";
-    [ObservableProperty] private string _responseHeaders = "";
-    [ObservableProperty] private int _selectedResponseTab;
-    [ObservableProperty] private bool _isLoading;
+    [ObservableProperty] public partial string ResponseBody { get; set; } = "";
+    [ObservableProperty] public partial string ResponseHeaders { get; set; } = "";
+    [ObservableProperty] public partial int SelectedResponseTab { get; set; }
+    [ObservableProperty] public partial bool IsLoading { get; set; }
 
     // ── Status bar ──
-    [ObservableProperty] private string _statusCode = "";
-    [ObservableProperty] private string _statusTime = "";
-    [ObservableProperty] private string _statusSize = "";
-    [ObservableProperty] private bool _isSuccess;
+    [ObservableProperty] public partial string StatusCode { get; set; } = "";
+    [ObservableProperty] public partial string StatusTime { get; set; } = "";
+    [ObservableProperty] public partial string StatusSize { get; set; } = "";
+    [ObservableProperty] public partial bool IsSuccess { get; set; }
 
     public DebugViewModel(
         ISession session,

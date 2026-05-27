@@ -52,6 +52,7 @@ public enum ConnectStep
 /// weighted sum of each phase's internal progress so it advances smoothly
 /// rather than in big jumps.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SpotifyConnectViewModel : ObservableObject, IDisposable
 {
     private readonly IAuthState _authState;
@@ -75,35 +76,35 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject, IDisposa
     private double _phaseHome;
 
     [ObservableProperty]
-    private ConnectStep _currentStep = ConnectStep.Authenticate;
+    public partial ConnectStep CurrentStep { get; set; } = ConnectStep.Authenticate;
 
     [ObservableProperty]
-    private string? _userCode;
+    public partial string? UserCode { get; set; }
 
     [ObservableProperty]
-    private string? _verificationUri;
+    public partial string? VerificationUri { get; set; }
 
     [ObservableProperty]
-    private string? _errorMessage;
+    public partial string? ErrorMessage { get; set; }
 
     [ObservableProperty]
-    private string? _statusMessage = AppLocalization.GetString("Connect_RequestingPairingCode");
+    public partial string? StatusMessage { get; set; } = AppLocalization.GetString("Connect_RequestingPairingCode");
 
     [ObservableProperty]
-    private string? _mainText;
+    public partial string? MainText { get; set; }
 
     [ObservableProperty]
-    private string? _subText;
+    public partial string? SubText { get; set; }
 
     /// <summary>0..100 — sum of weighted phase progresses. Bound to the dialog's progress bar.</summary>
     [ObservableProperty]
-    private double _overallProgress;
+    public partial double OverallProgress { get; set; }
 
     [ObservableProperty]
-    private bool _isDeviceCodeReady;
+    public partial bool IsDeviceCodeReady { get; set; }
 
     [ObservableProperty]
-    private WriteableBitmap? _qrCodeImage;
+    public partial WriteableBitmap? QrCodeImage { get; set; }
 
     /// <summary>
     /// Accent color for theme-aware QR code rendering. Set by dialog code-behind before Initialize().
@@ -255,7 +256,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject, IDisposa
             {
                 Process.Start(new ProcessStartInfo(VerificationUri) { UseShellExecute = true });
             }
-            catch (Exception ex) { Debug.WriteLine($"Failed to open verification URI: {ex.Message}"); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Failed to open verification URI: {ex.Message}"); }
         }
     }
 

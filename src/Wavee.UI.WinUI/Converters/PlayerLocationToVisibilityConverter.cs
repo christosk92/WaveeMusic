@@ -14,7 +14,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// one with TargetLocation=Bottom (drives PlayerBar visibility), one with
 /// TargetLocation=Sidebar (drives SidebarPlayerWidget visibility).
 /// </summary>
-public sealed class PlayerLocationToVisibilityConverter : IValueConverter
+public sealed partial class PlayerLocationToVisibilityConverter : IValueConverter
 {
     public PlayerLocation TargetLocation { get; set; } = PlayerLocation.Bottom;
 

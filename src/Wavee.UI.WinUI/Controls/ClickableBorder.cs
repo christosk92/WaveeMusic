@@ -22,7 +22,7 @@ namespace Wavee.UI.WinUI.Controls;
 /// styling (background, padding, corner radius, click handler) declarative
 /// without further ceremony.
 /// </summary>
-public sealed class ClickableBorder : ContentControl
+public sealed partial class ClickableBorder : ContentControl
 {
     public ClickableBorder()
     {

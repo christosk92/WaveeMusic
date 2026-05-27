@@ -14,7 +14,8 @@ namespace Wavee.UI.Models;
 /// <para><see cref="ITrackItem.IsLocal"/> auto-derives from the URI prefix —
 /// no manual flag needed.</para>
 /// </summary>
-public sealed class LocalTrackItemAdapter : ITrackItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class LocalTrackItemAdapter : ITrackItem
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 

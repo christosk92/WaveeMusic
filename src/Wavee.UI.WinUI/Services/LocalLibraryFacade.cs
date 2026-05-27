@@ -31,7 +31,7 @@ namespace Wavee.UI.WinUI.Services;
 /// on the <see cref="Changes"/> stream after the underlying mutation succeeds. UI
 /// view-models subscribe and re-fetch the relevant slice on each event.</para>
 /// </summary>
-public sealed class LocalLibraryFacade : ILocalLibraryFacade, IDisposable
+public sealed partial class LocalLibraryFacade : ILocalLibraryFacade, IDisposable
 {
     private readonly LocalLibraryService _library;
     private readonly ILocalLikeService _likes;
@@ -132,7 +132,11 @@ public sealed class LocalLibraryFacade : ILocalLibraryFacade, IDisposable
 
     public async Task PatchMetadataAsync(string filePath, MetadataPatch patch, CancellationToken ct = default)
     {
-        var json = System.Text.Json.JsonSerializer.Serialize(patch);
+        // Reuses the AOT-friendly source-generated context already declared in
+        // Wavee.Local for the read path (ParseMetadataOverrides). Wavee.Local
+        // exposes internals to Wavee.UI.WinUI, so this resolves cleanly without
+        // promoting LocalLibraryJsonContext to public.
+        var json = System.Text.Json.JsonSerializer.Serialize(patch, LocalLibraryJsonContext.Default.MetadataPatch);
         await _library.PatchMetadataOverridesAsync(filePath, json, ct);
         _changes.OnNext(new LocalLibraryChange(LocalLibraryChangeKind.MetadataOverrideChanged, filePath));
     }

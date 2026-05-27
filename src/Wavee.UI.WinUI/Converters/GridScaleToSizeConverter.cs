@@ -10,7 +10,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// VM-bound scale slider. Mirrors the behaviour the Library album grid uses
 /// to derive its cell dimensions from `AlbumsLibraryViewModel.GridScale`.
 /// </summary>
-public sealed class GridScaleToSizeConverter : IValueConverter
+public sealed partial class GridScaleToSizeConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

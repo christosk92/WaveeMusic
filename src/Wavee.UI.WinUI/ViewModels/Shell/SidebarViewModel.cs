@@ -40,6 +40,7 @@ namespace Wavee.UI.WinUI.ViewModels.Shell;
 /// VM is invoked by the parent on the relevant ticks (sync started / completed,
 /// library data changed, sign-out).</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SidebarViewModel : ObservableObject
 {
     private readonly ILibraryDataService _libraryDataService;
@@ -140,10 +141,10 @@ public sealed partial class SidebarViewModel : ObservableObject
     // ── Bindable state (XAML binds via Vm.Sidebar.X) ────────────────────────
 
     [ObservableProperty]
-    private ObservableCollection<SidebarItemModel> _sidebarItems = [];
+    public partial ObservableCollection<SidebarItemModel> SidebarItems { get; set; } = [];
 
     [ObservableProperty]
-    private ISidebarItemModel? _selectedSidebarItem;
+    public partial ISidebarItemModel? SelectedSidebarItem { get; set; }
 
     // ── Lifecycle hooks invoked by the parent ───────────────────────────────
 

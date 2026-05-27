@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -12,6 +12,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalOtherPage : UserControl, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware
 {
     public LocalOtherViewModel ViewModel { get; }

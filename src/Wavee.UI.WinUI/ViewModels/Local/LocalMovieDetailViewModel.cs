@@ -12,6 +12,7 @@ using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.ViewModels.Local;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalMovieDetailViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -20,17 +21,17 @@ public sealed partial class LocalMovieDetailViewModel : ObservableObject, IDispo
     private string? _trackUri;
     private string? _paletteSourceUrl;
 
-    [ObservableProperty] private LocalMovie? _movie;
+    [ObservableProperty] public partial LocalMovie? Movie { get; set; }
     public ObservableCollection<LocalSubtitle>      Subtitles   { get; } = new();
     public ObservableCollection<LocalEmbeddedTrack> AudioTracks { get; } = new();
     public ObservableCollection<LocalCastMember>    Cast        { get; } = new();
-    [ObservableProperty] private bool _isLoading;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
 
     /// <summary>
     /// <c>#RRGGBB</c> dominant accent extracted from the movie's backdrop /
     /// poster. Drives <c>HeroHeader.ColorHex</c> (lower-third color blend).
     /// </summary>
-    [ObservableProperty] private string? _headerHeroColorHex;
+    [ObservableProperty] public partial string? HeaderHeroColorHex { get; set; }
 
     public LocalMovieDetailViewModel(ILocalLibraryFacade? facade = null)
     {

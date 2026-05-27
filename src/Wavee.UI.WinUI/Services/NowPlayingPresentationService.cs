@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Wavee.UI.WinUI.Services;
 
 /// <inheritdoc cref="INowPlayingPresentationService"/>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class NowPlayingPresentationService :
     ObservableObject, INowPlayingPresentationService
 {
@@ -14,14 +15,14 @@ public sealed partial class NowPlayingPresentationService :
         .GetService<ILoggerFactory>()?.CreateLogger<NowPlayingPresentationService>();
 
     [ObservableProperty]
-    private NowPlayingPresentation _presentation = NowPlayingPresentation.Normal;
+    public partial NowPlayingPresentation Presentation { get; set; } = NowPlayingPresentation.Normal;
 
     public bool IsExpanded => Presentation != NowPlayingPresentation.Normal;
     public bool IsNormal => Presentation == NowPlayingPresentation.Normal;
 
     partial void OnPresentationChanged(NowPlayingPresentation oldValue, NowPlayingPresentation newValue)
     {
-        Logger?.LogInformation("[presentation] {Old} → {New}", oldValue, newValue);
+        Logger?.LogInformation("[presentation] {Old} â†’ {New}", oldValue, newValue);
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(IsNormal));
     }

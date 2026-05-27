@@ -4,7 +4,7 @@ using System;
 
 namespace Wavee.Controls.Lyrics.Converters
 {
-    public class FPSToTimeSpanConverter : IValueConverter
+    public partial class FPSToTimeSpanConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, string language)
         {

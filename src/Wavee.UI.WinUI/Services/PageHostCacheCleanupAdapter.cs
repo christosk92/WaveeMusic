@@ -11,7 +11,8 @@ namespace Wavee.UI.WinUI.Services;
 /// Lets the memory budget shed collapsed PageHost cache entries. Active pages
 /// stay mounted; only hidden cached pages are evicted.
 /// </summary>
-public sealed class PageHostCacheCleanupAdapter : ICleanableCache
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class PageHostCacheCleanupAdapter : ICleanableCache
 {
     private const int WarmCollapsedPagesToKeepPerTab = 1;
     private int _lastKnownCount;

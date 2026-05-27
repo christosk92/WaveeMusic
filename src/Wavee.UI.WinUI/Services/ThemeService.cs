@@ -6,7 +6,7 @@ using Wavee.UI.WinUI.Helpers.UI;
 
 namespace Wavee.UI.WinUI.Services;
 
-public sealed class ThemeService : IThemeService
+public sealed partial class ThemeService : IThemeService
 {
     private FrameworkElement? _rootElement;
     private readonly ISettingsService _settings;

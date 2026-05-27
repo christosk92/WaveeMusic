@@ -11,6 +11,7 @@ using Wavee.UI.Library.Local;
 
 namespace Wavee.UI.WinUI.ViewModels.Local;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalMusicViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -18,9 +19,9 @@ public sealed partial class LocalMusicViewModel : ObservableObject, IDisposable
     private readonly IDisposable? _changesSub;
 
     public ObservableCollection<LocalTrackRow> Tracks { get; } = new();
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _isEmpty;
-    [ObservableProperty] private bool _showOnlyLiked;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool IsEmpty { get; set; }
+    [ObservableProperty] public partial bool ShowOnlyLiked { get; set; }
 
     public LocalMusicViewModel(ILocalLibraryFacade? facade = null)
     {

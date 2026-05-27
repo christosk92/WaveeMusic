@@ -13,6 +13,7 @@ using Wavee.UI.Library.Local;
 
 namespace Wavee.UI.WinUI.ViewModels.Local;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalMusicVideosViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -24,8 +25,8 @@ public sealed partial class LocalMusicVideosViewModel : ObservableObject, IDispo
     private int _reloadGeneration;
 
     public ObservableCollection<LocalMusicVideo> MusicVideos { get; } = new();
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _isEmpty;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool IsEmpty { get; set; }
 
     public LocalMusicVideosViewModel(ILocalLibraryFacade? facade = null)
     {

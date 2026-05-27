@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -23,11 +23,13 @@ using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.UI;
+using Wavee.UI.WinUI.Json;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;
@@ -751,10 +753,6 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         }
     }
 
-    private static readonly JsonSerializerOptions HomeDebugJsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true
-    };
 
     private async Task ShowHomeSectionDebugDialog(HomeSection section)
     {
@@ -834,14 +832,13 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     {
         if (string.IsNullOrWhiteSpace(section.RawSpotifyJson))
         {
-            return JsonSerializer.Serialize(new
-            {
-                message = "No raw Spotify section JSON is attached to this rendered section.",
-                title = section.Title,
-                sectionUri = section.SectionUri,
-                sectionType = section.SectionType.ToString(),
-                itemCount = section.Items.Count
-            }, HomeDebugJsonOptions);
+            var payload = new HomeDebugMissingSectionPayload(
+                "No raw Spotify section JSON is attached to this rendered section.",
+                section.Title,
+                section.SectionUri,
+                section.SectionType.ToString(),
+                section.Items.Count);
+            return JsonSerializer.Serialize(payload, WaveeUiWinUiJsonContext.Default.HomeDebugMissingSectionPayload);
         }
 
         return PrettyPrintJson(section.RawSpotifyJson);
@@ -849,48 +846,37 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
 
     private static string BuildViewModelDebugJson(HomeSection section)
     {
-        var viewModel = new
-        {
-            title = section.Title,
-            subtitle = section.Subtitle,
-            sectionType = section.SectionType.ToString(),
-            sectionUri = section.SectionUri,
-            headerEntityName = section.HeaderEntityName,
-            headerEntityImageUrl = section.HeaderEntityImageUrl,
-            headerEntityUri = section.HeaderEntityUri,
-            itemCount = section.Items.Count,
-            items = section.Items.Select((item, index) => new
-            {
+        var viewModel = new HomeDebugSectionViewModel(
+            section.Title,
+            section.Subtitle,
+            section.SectionType.ToString(),
+            section.SectionUri,
+            section.HeaderEntityName,
+            section.HeaderEntityImageUrl,
+            section.HeaderEntityUri,
+            section.Items.Count,
+            section.Items.Select(static (item, index) => new HomeDebugSectionItem(
                 index,
-                uri = item.Uri,
-                title = item.Title,
-                subtitle = item.Subtitle,
-                imageUrl = item.ImageUrl,
-                contentType = item.ContentType.ToString(),
-                colorHex = item.ColorHex,
-                placeholderGlyph = item.PlaceholderGlyph,
-                isBaselineLoading = item.IsBaselineLoading,
-                hasBaselinePreview = item.HasBaselinePreview,
-                heroImageUrl = item.HeroImageUrl,
-                heroColorHex = item.HeroColorHex,
-                canvasUrl = item.CanvasUrl,
-                canvasThumbnailUrl = item.CanvasThumbnailUrl,
-                audioPreviewUrl = item.AudioPreviewUrl,
-                baselineGroupTitle = item.BaselineGroupTitle,
-                previewTracks = item.PreviewTracks.Select(track => new
-                {
-                    uri = track.Uri,
-                    name = track.Name,
-                    coverArtUrl = track.CoverArtUrl,
-                    colorHex = track.ColorHex,
-                    canvasUrl = track.CanvasUrl,
-                    canvasThumbnailUrl = track.CanvasThumbnailUrl,
-                    audioPreviewUrl = track.AudioPreviewUrl
-                }).ToList()
-            }).ToList()
-        };
+                item.Uri,
+                item.Title,
+                item.Subtitle,
+                item.ImageUrl,
+                item.ContentType.ToString(),
+                item.ColorHex,
+                item.PlaceholderGlyph,
+                item.IsBaselineLoading,
+                item.HasBaselinePreview,
+                item.HeroImageUrl,
+                item.HeroColorHex,
+                item.CanvasUrl,
+                item.CanvasThumbnailUrl,
+                item.AudioPreviewUrl,
+                item.BaselineGroupTitle,
+                item.PreviewTracks.Select(static t => new HomeDebugSectionPreviewTrack(
+                    t.Uri, t.Name, t.CoverArtUrl, t.ColorHex, t.CanvasUrl, t.CanvasThumbnailUrl, t.AudioPreviewUrl)).ToArray()))
+                .ToArray());
 
-        return JsonSerializer.Serialize(viewModel, HomeDebugJsonOptions);
+        return JsonSerializer.Serialize(viewModel, WaveeUiWinUiJsonContext.Default.HomeDebugSectionViewModel);
     }
 
     private static string PrettyPrintJson(string json)
@@ -898,7 +884,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         try
         {
             using var document = JsonDocument.Parse(json);
-            return JsonSerializer.Serialize(document.RootElement, HomeDebugJsonOptions);
+            return JsonSerializer.Serialize(document.RootElement, WaveeUiWinUiJsonContext.Default.JsonElement);
         }
         catch (JsonException)
         {
@@ -997,7 +983,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
 /// <summary>
 /// Selects the appropriate DataTemplate for each home section type.
 /// </summary>
-public sealed class HomeSectionTemplateSelector : DataTemplateSelector
+public sealed partial class HomeSectionTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? ShortsTemplate { get; set; }
     public DataTemplate? GenericTemplate { get; set; }
@@ -1024,7 +1010,7 @@ public sealed class HomeSectionTemplateSelector : DataTemplateSelector
 /// <summary>
 /// Selects per-item card template based on content type (artist = circle, everything else = square).
 /// </summary>
-public sealed class HomeItemTemplateSelector : DataTemplateSelector
+public sealed partial class HomeItemTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? ArtistTemplate { get; set; }
     public DataTemplate? DefaultTemplate { get; set; }

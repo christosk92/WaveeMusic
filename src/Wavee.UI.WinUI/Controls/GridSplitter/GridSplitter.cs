@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Input;
 
 namespace Wavee.UI.WinUI.Controls;
 
-public sealed class GridSplitterResizeCompletedEventArgs : EventArgs
+public sealed partial class GridSplitterResizeCompletedEventArgs : EventArgs
 {
     public double NewWidth { get; init; }
     public double NewHeight { get; init; }

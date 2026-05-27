@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -11,6 +11,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalPersonDetailPage : UserControl, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware
 {
     public LocalPersonDetailViewModel ViewModel { get; }

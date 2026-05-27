@@ -27,7 +27,7 @@ namespace Wavee.UI.WinUI.Services;
 /// (title / artist / thumbnail / status / button enable bits) ourselves
 /// from the real playback state.
 /// </summary>
-public sealed class SystemMediaTransportControlsService : IDisposable
+public sealed partial class SystemMediaTransportControlsService : IDisposable
 {
     private readonly IPlaybackStateService _state;
     private readonly IPlaybackService _playback;

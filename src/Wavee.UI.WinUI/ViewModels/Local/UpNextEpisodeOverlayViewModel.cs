@@ -26,6 +26,7 @@ namespace Wavee.UI.WinUI.ViewModels.Local;
 /// fresh per episode so internal state (shown / dismissed / countdown)
 /// can't leak across boundaries.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class UpNextEpisodeOverlayViewModel : ObservableObject, IDisposable
 {
     private const int CountdownSecondsTotal = 10;
@@ -56,14 +57,14 @@ public sealed partial class UpNextEpisodeOverlayViewModel : ObservableObject, ID
     private bool _pointerOverCard;
     private bool _disposed;
 
-    [ObservableProperty] private bool _isVisible;
-    [ObservableProperty] private LocalEpisode? _nextEpisode;
-    [ObservableProperty] private string? _nextEpisodePosterUri;
-    [ObservableProperty] private string? _nextEpisodeSeasonEpisodeLabel;
-    [ObservableProperty] private string? _nextEpisodeTitle;
-    [ObservableProperty] private int _countdownSeconds = CountdownSecondsTotal;
+    [ObservableProperty] public partial bool IsVisible { get; set; }
+    [ObservableProperty] public partial LocalEpisode? NextEpisode { get; set; }
+    [ObservableProperty] public partial string? NextEpisodePosterUri { get; set; }
+    [ObservableProperty] public partial string? NextEpisodeSeasonEpisodeLabel { get; set; }
+    [ObservableProperty] public partial string? NextEpisodeTitle { get; set; }
+    [ObservableProperty] public partial int CountdownSeconds { get; set; } = CountdownSecondsTotal;
     /// <summary>0..100 ring fill, suited for direct binding to a determinate ProgressRing.</summary>
-    [ObservableProperty] private double _countdownProgress = 100.0;
+    [ObservableProperty] public partial double CountdownProgress { get; set; } = 100.0;
 
     public UpNextEpisodeOverlayViewModel(
         IPlaybackStateService playback,

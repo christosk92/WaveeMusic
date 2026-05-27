@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace Wavee.UI.WinUI.Converters;
 
-public sealed class BoolToBackgroundConverter : IValueConverter
+public sealed partial class BoolToBackgroundConverter : IValueConverter
 {
     public bool Invert { get; set; }
 

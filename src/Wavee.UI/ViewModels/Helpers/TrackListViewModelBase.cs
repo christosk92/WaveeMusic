@@ -21,6 +21,7 @@ namespace Wavee.UI.ViewModels.Helpers;
 /// different sort-column enum (PlaylistSortColumn, AlbumSortColumn, etc.) and
 /// abstracting that costs more than it saves.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public abstract partial class TrackListViewModelBase : ObservableObject
 {
     /// <summary>
@@ -31,7 +32,7 @@ public abstract partial class TrackListViewModelBase : ObservableObject
     [NotifyPropertyChangedFor(nameof(SelectedCount))]
     [NotifyPropertyChangedFor(nameof(HasSelection))]
     [NotifyPropertyChangedFor(nameof(SelectionHeaderText))]
-    private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
+    public partial IReadOnlyList<object> SelectedItems { get; set; } = Array.Empty<object>();
 
     /// <summary>Number of rows currently selected.</summary>
     public int SelectedCount => SelectedItems.Count;

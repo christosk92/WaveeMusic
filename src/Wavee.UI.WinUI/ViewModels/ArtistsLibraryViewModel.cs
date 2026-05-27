@@ -25,6 +25,7 @@ public enum ArtistsLibraryStage
     Tracks
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModelBase<LibraryArtistDto, LikedArtistDto>, ITrackListViewModel, IDisposable
 {
     protected override string SavedPreferencesKey => "artists.saved";
@@ -40,52 +41,52 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
         new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
 
     [ObservableProperty]
-    private bool _isLoadingDetails;
+    public partial bool IsLoadingDetails { get; set; }
 
     [ObservableProperty]
-    private ObservableCollection<LibraryArtistDto> _artists = [];
+    public partial ObservableCollection<LibraryArtistDto> Artists { get; set; } = [];
 
     [ObservableProperty]
-    private ObservableCollection<LibraryArtistDto> _filteredArtists = [];
+    public partial ObservableCollection<LibraryArtistDto> FilteredArtists { get; set; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowSavedArtistPlaceholder))]
     [NotifyPropertyChangedFor(nameof(ShowSavedArtistDetails))]
-    private LibraryArtistDto? _selectedArtist;
+    public partial LibraryArtistDto? SelectedArtist { get; set; }
 
     [ObservableProperty]
-    private ObservableCollection<LikedArtistDto> _likedArtists = [];
+    public partial ObservableCollection<LikedArtistDto> LikedArtists { get; set; } = [];
 
     [ObservableProperty]
-    private ObservableCollection<LikedArtistDto> _filteredLikedArtists = [];
+    public partial ObservableCollection<LikedArtistDto> FilteredLikedArtists { get; set; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowLikedArtistPlaceholder))]
     [NotifyPropertyChangedFor(nameof(ShowLikedArtistDetails))]
-    private LikedArtistDto? _selectedLikedArtist;
+    public partial LikedArtistDto? SelectedLikedArtist { get; set; }
 
     [ObservableProperty]
-    private ObservableCollection<LikedSongDto> _selectedLikedArtistTracks = [];
+    public partial ObservableCollection<LikedSongDto> SelectedLikedArtistTracks { get; set; } = [];
 
     [ObservableProperty]
-    private ObservableCollection<ArtistAlbumGroupViewModel> _albumGroups = [];
+    public partial ObservableCollection<ArtistAlbumGroupViewModel> AlbumGroups { get; set; } = [];
 
     // Wrapper properties for selected artist (avoids null reference in x:Bind)
     [ObservableProperty]
-    private string _selectedArtistName = "";
+    public partial string SelectedArtistName { get; set; } = "";
 
     [ObservableProperty]
-    private string? _selectedArtistImageUrl;
+    public partial string? SelectedArtistImageUrl { get; set; }
 
     [ObservableProperty]
-    private string _selectedArtistAddedAt = "";
+    public partial string SelectedArtistAddedAt { get; set; } = "";
 
     [ObservableProperty]
-    private int _selectedArtistAlbumCount;
+    public partial int SelectedArtistAlbumCount { get; set; }
 
     // Discography filter
     [ObservableProperty]
-    private bool _showSavedOnly;
+    public partial bool ShowSavedOnly { get; set; }
 
     private List<LibraryArtistAlbumDto> _allAlbums = [];
 
@@ -103,26 +104,26 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
 
     // Tracks panel (third column) properties
     [ObservableProperty]
-    private ArtistAlbumItemViewModel? _selectedAlbumForTracks;
+    public partial ArtistAlbumItemViewModel? SelectedAlbumForTracks { get; set; }
 
     [ObservableProperty]
-    private bool _isTracksPanelVisible;
+    public partial bool IsTracksPanelVisible { get; set; }
 
     [ObservableProperty]
-    private ObservableCollection<AlbumTrackDto> _selectedAlbumTracks = [];
+    public partial ObservableCollection<AlbumTrackDto> SelectedAlbumTracks { get; set; } = [];
 
     [ObservableProperty]
-    private bool _isLoadingSelectedAlbumTracks;
+    public partial bool IsLoadingSelectedAlbumTracks { get; set; }
 
     // Wrapper properties for selected album
     [ObservableProperty]
-    private string _selectedAlbumName = "";
+    public partial string SelectedAlbumName { get; set; } = "";
 
     [ObservableProperty]
-    private string? _selectedAlbumImageUrl;
+    public partial string? SelectedAlbumImageUrl { get; set; }
 
     [ObservableProperty]
-    private int _selectedAlbumYear;
+    public partial int SelectedAlbumYear { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsWideLayout))]
@@ -138,7 +139,7 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
     [NotifyPropertyChangedFor(nameof(ShowSavedNarrowArtistDetailsStage))]
     [NotifyPropertyChangedFor(nameof(ShowLikedNarrowArtistDetailsStage))]
     [NotifyPropertyChangedFor(nameof(ShowSavedNarrowAlbumTracksStage))]
-    private bool _useNarrowLayout;
+    public partial bool UseNarrowLayout { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNarrowArtistsStage))]
@@ -150,7 +151,7 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
     [NotifyPropertyChangedFor(nameof(ShowSavedNarrowArtistDetailsStage))]
     [NotifyPropertyChangedFor(nameof(ShowLikedNarrowArtistDetailsStage))]
     [NotifyPropertyChangedFor(nameof(ShowSavedNarrowAlbumTracksStage))]
-    private ArtistsLibraryStage _narrowStage = ArtistsLibraryStage.Artists;
+    public partial ArtistsLibraryStage NarrowStage { get; set; } = ArtistsLibraryStage.Artists;
 
     public ObservableCollection<string> BreadcrumbItems { get; } = [];
     public bool IsWideLayout => !UseNarrowLayout;
@@ -1065,7 +1066,7 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
 
     // Playlists for "Add to playlist" menu
     [ObservableProperty]
-    private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
+    public partial IReadOnlyList<PlaylistSummaryDto> Playlists { get; set; } = Array.Empty<PlaylistSummaryDto>();
 
     private static string? GetTrackUri(object? item) =>
         item is AlbumTrackDto albumTrack ? albumTrack.Uri :

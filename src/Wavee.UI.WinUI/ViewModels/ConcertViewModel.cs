@@ -14,49 +14,50 @@ using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ConcertViewModel : ObservableObject
 {
     private readonly IConcertService _concertService;
     private readonly ILocationService _locationService;
     private readonly ILogger? _logger;
 
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _hasError;
-    [ObservableProperty] private string? _errorMessage;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool HasError { get; set; }
+    [ObservableProperty] public partial string? ErrorMessage { get; set; }
 
-    [ObservableProperty] private string? _title;
-    [ObservableProperty] private string? _dateFormatted;
-    [ObservableProperty] private string? _dayOfWeek;
-    [ObservableProperty] private string? _dayOfWeekUpper;
-    [ObservableProperty] private string? _dateMonth;
-    [ObservableProperty] private string? _dateDay;
-    [ObservableProperty] private string? _dateYear;
-    [ObservableProperty] private string? _artistNamesJoined;
-    [ObservableProperty] private string? _venue;
-    [ObservableProperty] private string? _city;
-    [ObservableProperty] private string? _country;
-    [ObservableProperty] private string? _headerImageUrl;
-    [ObservableProperty] private string? _showTime;
-    [ObservableProperty] private string? _fullLocation;
-    [ObservableProperty] private bool _isFestival;
-    [ObservableProperty] private bool _isSaved;
+    [ObservableProperty] public partial string? Title { get; set; }
+    [ObservableProperty] public partial string? DateFormatted { get; set; }
+    [ObservableProperty] public partial string? DayOfWeek { get; set; }
+    [ObservableProperty] public partial string? DayOfWeekUpper { get; set; }
+    [ObservableProperty] public partial string? DateMonth { get; set; }
+    [ObservableProperty] public partial string? DateDay { get; set; }
+    [ObservableProperty] public partial string? DateYear { get; set; }
+    [ObservableProperty] public partial string? ArtistNamesJoined { get; set; }
+    [ObservableProperty] public partial string? Venue { get; set; }
+    [ObservableProperty] public partial string? City { get; set; }
+    [ObservableProperty] public partial string? Country { get; set; }
+    [ObservableProperty] public partial string? HeaderImageUrl { get; set; }
+    [ObservableProperty] public partial string? ShowTime { get; set; }
+    [ObservableProperty] public partial string? FullLocation { get; set; }
+    [ObservableProperty] public partial bool IsFestival { get; set; }
+    [ObservableProperty] public partial bool IsSaved { get; set; }
 
-    [ObservableProperty] private ObservableCollection<ConcertArtistVm> _artists = [];
-    [ObservableProperty] private ObservableCollection<ConcertOfferVm> _offers = [];
-    [ObservableProperty] private ObservableCollection<ConcertRelatedVm> _relatedConcerts = [];
-    [ObservableProperty] private ObservableCollection<string> _genres = [];
-    [ObservableProperty] private ObservableCollection<ConcertFeaturedPlaylistVm> _featuredPlaylists = [];
-    [ObservableProperty] private string? _userLocationName;
+    [ObservableProperty] public partial ObservableCollection<ConcertArtistVm> Artists { get; set; } = [];
+    [ObservableProperty] public partial ObservableCollection<ConcertOfferVm> Offers { get; set; } = [];
+    [ObservableProperty] public partial ObservableCollection<ConcertRelatedVm> RelatedConcerts { get; set; } = [];
+    [ObservableProperty] public partial ObservableCollection<string> Genres { get; set; } = [];
+    [ObservableProperty] public partial ObservableCollection<ConcertFeaturedPlaylistVm> FeaturedPlaylists { get; set; } = [];
+    [ObservableProperty] public partial string? UserLocationName { get; set; }
 
     // Multi-artist hero: Store-style "1 feature + up to 3 supporting" mosaic.
     // Null slots collapse their tile; the overall panel hides when there's only 1 artist.
-    [ObservableProperty] private ConcertArtistVm? _supportingArtist1;
-    [ObservableProperty] private ConcertArtistVm? _supportingArtist2;
-    [ObservableProperty] private ConcertArtistVm? _supportingArtist3;
-    [ObservableProperty] private bool _hasSupportingArtists;
-    [ObservableProperty] private bool _hasOneSupporting;
-    [ObservableProperty] private bool _hasTwoSupporting;
-    [ObservableProperty] private bool _hasThreeSupporting;
+    [ObservableProperty] public partial ConcertArtistVm? SupportingArtist1 { get; set; }
+    [ObservableProperty] public partial ConcertArtistVm? SupportingArtist2 { get; set; }
+    [ObservableProperty] public partial ConcertArtistVm? SupportingArtist3 { get; set; }
+    [ObservableProperty] public partial bool HasSupportingArtists { get; set; }
+    [ObservableProperty] public partial bool HasOneSupporting { get; set; }
+    [ObservableProperty] public partial bool HasTwoSupporting { get; set; }
+    [ObservableProperty] public partial bool HasThreeSupporting { get; set; }
 
     // ── Theme-aware palette (from the headliner artist) ──
     // Raw palette from the API (null when not provided). A cached flag lets us refresh
@@ -65,14 +66,14 @@ public sealed partial class ConcertViewModel : ObservableObject
     private bool _isDarkTheme;
 
     /// <summary>Subtle page-wash brush tinted toward the headliner's color. Transparent if no palette.</summary>
-    [ObservableProperty] private Brush? _paletteBackdropBrush;
+    [ObservableProperty] public partial Brush? PaletteBackdropBrush { get; set; }
     /// <summary>Gradient brush used on the StoreHero feature tile's dark-to-transparent overlay,
     /// tinted by the palette. Falls back to a pure black gradient if no palette.</summary>
-    [ObservableProperty] private Brush? _paletteHeroGradientBrush;
+    [ObservableProperty] public partial Brush? PaletteHeroGradientBrush { get; set; }
     /// <summary>Accent pill bg (date pill in the StoreHero). Falls back to system accent.</summary>
-    [ObservableProperty] private Brush? _paletteAccentPillBrush;
+    [ObservableProperty] public partial Brush? PaletteAccentPillBrush { get; set; }
     /// <summary>Text color on the accent pill. White when palette is present.</summary>
-    [ObservableProperty] private Brush? _paletteAccentPillForegroundBrush;
+    [ObservableProperty] public partial Brush? PaletteAccentPillForegroundBrush { get; set; }
 
     public bool HasOffers => Offers.Count > 0;
     public bool HasRelatedConcerts => RelatedConcerts.Count > 0;
@@ -321,7 +322,8 @@ public sealed partial class ConcertViewModel : ObservableObject
     }
 }
 
-public sealed class ConcertArtistVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ConcertArtistVm
 {
     public string? Uri { get; init; }
     public string? Name { get; init; }
@@ -331,7 +333,8 @@ public sealed class ConcertArtistVm
     public List<ConcertAlbumVm> PopularAlbums { get; init; } = [];
 }
 
-public sealed class ConcertAlbumVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ConcertAlbumVm
 {
     public string? Name { get; init; }
     public string? Uri { get; init; }
@@ -339,7 +342,8 @@ public sealed class ConcertAlbumVm
     public string? ArtistName { get; init; }
 }
 
-public sealed class ConcertOfferVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ConcertOfferVm
 {
     public string? ProviderName { get; init; }
     public string? ProviderImageUrl { get; init; }
@@ -347,7 +351,8 @@ public sealed class ConcertOfferVm
     public string? SaleType { get; init; }
 }
 
-public sealed class ConcertRelatedVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ConcertRelatedVm
 {
     public string? Title { get; init; }
     public string? Uri { get; init; }
@@ -358,7 +363,8 @@ public sealed class ConcertRelatedVm
     public string? DateFormatted { get; init; }
 }
 
-public sealed class ConcertFeaturedPlaylistVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ConcertFeaturedPlaylistVm
 {
     public string? Uri { get; init; }
     public string? Name { get; init; }

@@ -32,6 +32,7 @@ namespace Wavee.UI.WinUI.ViewModels.Home;
 /// HomeSection.Items in place, so the parent's bound collection observes the
 /// per-item PropertyChanged notifications without needing a re-assignment.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class HomeRecommendationsViewModel : ObservableObject, IDisposable
 {
     private readonly IHomeFeedService? _homeFeedService;
@@ -49,7 +50,7 @@ public sealed partial class HomeRecommendationsViewModel : ObservableObject, IDi
     /// <summary>Most-recently-played item promoted to the hero card slot
     /// on the right of the greeting band. Drives the parent's palette fetch.</summary>
     [ObservableProperty]
-    private HomeSectionItem? _featuredItem;
+    public partial HomeSectionItem? FeaturedItem { get; set; }
 
     /// <summary>Raised after <see cref="FeaturedItem"/> changes so the parent
     /// can re-derive its hero palette / backdrop brushes. Parent listens on

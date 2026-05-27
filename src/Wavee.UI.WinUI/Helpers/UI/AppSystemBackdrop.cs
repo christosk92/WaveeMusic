@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace Wavee.UI.WinUI.Helpers.UI;
 
-public sealed class AppSystemBackdrop : SystemBackdrop
+public sealed partial class AppSystemBackdrop : SystemBackdrop
 {
     private MicaController? _controller;
     private SystemBackdropConfiguration? _configuration;

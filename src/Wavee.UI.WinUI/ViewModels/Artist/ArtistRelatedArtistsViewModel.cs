@@ -16,6 +16,7 @@ namespace Wavee.UI.WinUI.ViewModels.Artist;
 /// own, the parent feeds it the related-artists list from
 /// <see cref="ArtistOverviewResult.RelatedArtists"/> on every overview apply.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistRelatedArtistsViewModel : ObservableObject, IDisposable
 {
     private readonly ObservableCollection<RelatedArtistVm> _relatedArtists = [];

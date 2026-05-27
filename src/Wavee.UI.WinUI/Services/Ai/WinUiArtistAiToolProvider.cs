@@ -8,7 +8,7 @@ using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.Services.Ai;
 
-public sealed class WinUiArtistAiToolProvider : IArtistAiToolProvider
+public sealed partial class WinUiArtistAiToolProvider : IArtistAiToolProvider
 {
     private readonly IArtistService _artistService;
     private readonly IAlbumService _albumService;

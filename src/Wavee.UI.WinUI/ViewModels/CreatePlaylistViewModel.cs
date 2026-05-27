@@ -11,22 +11,23 @@ using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarItemContent
 {
     [ObservableProperty]
-    private string _name = "";
+    public partial string Name { get; set; } = "";
 
     [ObservableProperty]
-    private string _title = "Create Playlist";
+    public partial string Title { get; set; } = "Create Playlist";
 
     [ObservableProperty]
-    private string _iconGlyph = "\uE93F";
+    public partial string IconGlyph { get; set; } = "\uE93F";
 
     [ObservableProperty]
-    private string _placeholderText = "Playlist name";
+    public partial string PlaceholderText { get; set; } = "Playlist name";
 
     [ObservableProperty]
-    private bool _isFolder;
+    public partial bool IsFolder { get; set; }
 
     private IReadOnlyList<string>? _trackIds;
     private string? _folderStartUri;

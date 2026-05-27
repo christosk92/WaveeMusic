@@ -12,6 +12,7 @@ using Windows.System;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchFilter
 {
     private static readonly IReadOnlyList<ThirdPartyNoticeItem> s_thirdPartyNotices =
@@ -292,7 +293,8 @@ public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchF
     }
 }
 
-public sealed class ThirdPartyNoticeItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ThirdPartyNoticeItem
 {
     private ThirdPartyNoticeItem(
         string name,

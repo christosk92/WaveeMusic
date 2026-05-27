@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using System.ComponentModel;
@@ -24,6 +24,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────

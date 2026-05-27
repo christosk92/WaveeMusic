@@ -33,6 +33,7 @@ namespace Wavee.UI.WinUI.ViewModels.Artist;
 /// <see cref="ComputeSpotlightSelection"/> with header data to keep the
 /// children decoupled.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistDiscographyViewModel : ObservableObject, IDisposable
 {
     private const string AlbumPlaceholderIdPrefix = "album-ph";
@@ -93,7 +94,7 @@ public sealed partial class ArtistDiscographyViewModel : ObservableObject, IDisp
         if (_settingsService != null)
         {
             var saved = _settingsService.Settings.ArtistDiscographyGridScale;
-            _discographyGridScale = saved >= 0.7 && saved <= 1.6 ? saved : 1.0;
+            DiscographyGridScale = saved >= 0.7 && saved <= 1.6 ? saved : 1.0;
         }
     }
 
@@ -136,17 +137,17 @@ public sealed partial class ArtistDiscographyViewModel : ObservableObject, IDisp
     [NotifyPropertyChangedFor(nameof(HasAlbums))]
     [NotifyPropertyChangedFor(nameof(ShowAlbumsSeeAllTile))]
     [NotifyPropertyChangedFor(nameof(AlbumsSeeAllLabel))]
-    private int _albumsTotalCount;
+    public partial int AlbumsTotalCount { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSingles))]
     [NotifyPropertyChangedFor(nameof(ShowSinglesSeeAllTile))]
     [NotifyPropertyChangedFor(nameof(SinglesSeeAllLabel))]
-    private int _singlesTotalCount;
+    public partial int SinglesTotalCount { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCompilations))]
-    private int _compilationsTotalCount;
+    public partial int CompilationsTotalCount { get; set; }
 
     public bool HasAlbums => AlbumsTotalCount > 0;
     public bool HasSingles => SinglesTotalCount > 0;
@@ -158,15 +159,15 @@ public sealed partial class ArtistDiscographyViewModel : ObservableObject, IDisp
     public string AlbumsSeeAllLabel => $"See all {AlbumsTotalCount} albums";
     public string SinglesSeeAllLabel => $"See all {SinglesTotalCount} singles";
 
-    [ObservableProperty] private double _discographyGridScale = 1.0;
+    [ObservableProperty] public partial double DiscographyGridScale { get; set; } = 1.0;
 
-    [ObservableProperty] private bool _hasAlbumsError;
-    [ObservableProperty] private bool _hasSinglesError;
-    [ObservableProperty] private bool _hasCompilationsError;
+    [ObservableProperty] public partial bool HasAlbumsError { get; set; }
+    [ObservableProperty] public partial bool HasSinglesError { get; set; }
+    [ObservableProperty] public partial bool HasCompilationsError { get; set; }
 
-    [ObservableProperty] private LazyReleaseItem? _expandedAlbum;
-    [ObservableProperty] private ObservableCollection<LazyTrackItem> _expandedAlbumTracks = [];
-    [ObservableProperty] private bool _isLoadingExpandedTracks;
+    [ObservableProperty] public partial LazyReleaseItem? ExpandedAlbum { get; set; }
+    [ObservableProperty] public partial ObservableCollection<LazyTrackItem> ExpandedAlbumTracks { get; set; } = [];
+    [ObservableProperty] public partial bool IsLoadingExpandedTracks { get; set; }
 
     partial void OnDiscographyGridScaleChanged(double value)
     {

@@ -39,6 +39,7 @@ public enum PodcastBrowseSectionLayoutKind
 /// <c>ItemsControl</c> whose template selector keys off
 /// <see cref="LayoutKind"/>.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PodcastBrowseSection : ObservableObject
 {
     public string Title { get; init; } = string.Empty;
@@ -53,20 +54,20 @@ public sealed partial class PodcastBrowseSection : ObservableObject
     /// the "Show more" button's Visibility refreshes.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMore))]
-    private int _totalCount;
+    public partial int TotalCount { get; set; }
 
     /// <summary>How many items we've actually pulled from the server for this
     /// section (includes any items currently displayed in the hero filmstrip,
     /// since the server-side offset is independent of where items render).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMore))]
-    private int _loadedFromServer;
+    public partial int LoadedFromServer { get; set; }
 
     /// <summary>True while a pagination request is in flight for this section
     /// — the "Show more" button binds against this to swap to a loading
     /// state.</summary>
     [ObservableProperty]
-    private bool _isLoadingMore;
+    public partial bool IsLoadingMore { get; set; }
 
     /// <summary>True while there are more items to fetch from the server.
     /// Used by the page's scroll-near-end auto-pagination trigger.</summary>
@@ -107,13 +108,14 @@ public sealed class PodcastBrowseTile
 /// is flipped imperatively from <c>PodcastBrowseViewModel.MarkCategorySelected</c>
 /// when the user taps a chip; the bind drives the accent-fill visual.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PodcastBrowseCategoryItem : ObservableObject
 {
     public string Title { get; init; } = string.Empty;
     public string Uri { get; init; } = string.Empty;
 
     [ObservableProperty]
-    private bool _isSelected;
+    public partial bool IsSelected { get; set; }
 }
 
 /// <summary>

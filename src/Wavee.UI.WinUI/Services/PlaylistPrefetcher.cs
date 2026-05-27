@@ -43,7 +43,7 @@ public interface IPlaylistMetadataPrefetcher
     void EnqueuePlaylistPrefetch(string? playlistUri);
 }
 
-public sealed class PlaylistMetadataPrefetcher : IPlaylistMetadataPrefetcher, IDisposable
+public sealed partial class PlaylistMetadataPrefetcher : IPlaylistMetadataPrefetcher, IDisposable
 {
     private const string PlaylistUriPrefix = "spotify:playlist:";
     private const int MaxConcurrentContentPrefetches = 2;

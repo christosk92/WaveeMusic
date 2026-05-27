@@ -25,7 +25,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// resume-point cache + the SpClient / Pathfinder podcast read paths +
 /// the (mostly stubbed) comment / reaction write paths.
 /// </summary>
-public sealed class PodcastEpisodeService : IPodcastEpisodeService
+public sealed partial class PodcastEpisodeService : IPodcastEpisodeService
 {
     private static readonly TimeSpan PodcastProgressCacheTtl = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan PodcastProgressLookback = TimeSpan.FromDays(7);

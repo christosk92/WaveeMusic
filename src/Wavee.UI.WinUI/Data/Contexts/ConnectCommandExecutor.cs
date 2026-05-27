@@ -20,7 +20,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Implements <see cref="IPlaybackCommandExecutor"/> by building playback-specific
 /// command dictionaries and delegating to <see cref="ConnectCommandClient"/>.
 /// </summary>
-internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioPipelineControl
+internal sealed partial class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioPipelineControl
 {
     private readonly ConnectCommandClient _client;
     private readonly Session _session;

@@ -32,6 +32,7 @@ using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 {
     private enum PendingRestartArea
@@ -150,14 +151,14 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         var s = _settingsService.Settings;
         _launchRestartSettings = CaptureRestartSensitiveSettings(s);
 
-        _selectedThemeIndex = s.Theme switch
+        SelectedThemeIndex = s.Theme switch
         {
             "Light" => 0,
             "Dark" => 1,
             _ => 2 // Default / System
         };
 
-        _selectedLanguageIndex = AppLocalization.NormalizeLanguage(s.Language) switch
+        SelectedLanguageIndex = AppLocalization.NormalizeLanguage(s.Language) switch
         {
             "en-US" => 1,
             "ko-KR" => 2,
@@ -165,12 +166,12 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         };
 
         var spotifyMetadataLanguage = SpotifyMetadataLanguageSettings.NormalizeSetting(s.SpotifyMetadataLanguage);
-        _isSpotifyMetadataSameAsApp = spotifyMetadataLanguage == SpotifyMetadataLanguageSettings.MatchApp;
-        _spotifyMetadataCustomLanguageCode = _isSpotifyMetadataSameAsApp ? string.Empty : spotifyMetadataLanguage;
+        IsSpotifyMetadataSameAsApp = spotifyMetadataLanguage == SpotifyMetadataLanguageSettings.MatchApp;
+        SpotifyMetadataCustomLanguageCode = IsSpotifyMetadataSameAsApp ? string.Empty : spotifyMetadataLanguage;
 
-        _trackClickIndex = s.TrackClickBehavior == "SingleTap" ? 0 : 1;
+        TrackClickIndex = s.TrackClickBehavior == "SingleTap" ? 0 : 1;
 
-        _defaultPlayActionIndex = s.DefaultPlayAction switch
+        DefaultPlayActionIndex = s.DefaultPlayAction switch
         {
             "PlayAndClear" => 0,
             "PlayNext" => 1,
@@ -178,33 +179,33 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             _ => 0
         };
 
-        _askPlayAction = s.AskPlayAction;
+        AskPlayAction = s.AskPlayAction;
 
-        _audioPresetIndex = s.AudioPreset switch
+        AudioPresetIndex = s.AudioPreset switch
         {
             "Radio" => 1,
             _ => 0
         };
 
-        _audioQualityIndex = s.AudioQuality switch
+        AudioQualityIndex = s.AudioQuality switch
         {
             "Normal" => 0,
             "High" => 1,
             _ => 2 // VeryHigh
         };
 
-        _normalizationEnabled = s.NormalizationEnabled;
-        _autoplayEnabled = s.AutoplayEnabled;
-        _isPrivateSession = s.IsPrivateSession;
-        _minimizeToTrayOnClose = s.MinimizeToTrayOnClose;
-        _showDockedPlayerWithFloatingPlayer = s.ShowDockedPlayerWithFloatingPlayer;
-        _showLocalFilesOnHome = s.ShowLocalFilesOnHome;
+        NormalizationEnabled = s.NormalizationEnabled;
+        AutoplayEnabled = s.AutoplayEnabled;
+        IsPrivateSession = s.IsPrivateSession;
+        MinimizeToTrayOnClose = s.MinimizeToTrayOnClose;
+        ShowDockedPlayerWithFloatingPlayer = s.ShowDockedPlayerWithFloatingPlayer;
+        ShowLocalFilesOnHome = s.ShowLocalFilesOnHome;
 
         // Initialize lyrics sources from persisted prefs or defaults
         InitializeLyricsSources(s);
 
-        _cacheEnabled = s.CacheEnabled;
-        _cacheSizeLimitIndex = s.CacheSizeLimitBytes switch
+        CacheEnabled = s.CacheEnabled;
+        CacheSizeLimitIndex = s.CacheSizeLimitBytes switch
         {
             500L * 1024 * 1024 => 0,
             1L * 1024 * 1024 * 1024 => 1,
@@ -214,15 +215,15 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         };
 
         // Initialize zoom level from persisted settings
-        _zoomLevelIndex = Array.IndexOf(ZoomStops, Math.Round(s.ZoomLevel, 1));
-        if (_zoomLevelIndex < 0) _zoomLevelIndex = 3; // default 100%
+        ZoomLevelIndex = Array.IndexOf(ZoomStops, Math.Round(s.ZoomLevel, 1));
+        if (ZoomLevelIndex < 0) ZoomLevelIndex = 3; // default 100%
 
         // Initialize caching profile slider from persisted settings.
         // Slider uses double so it binds to Slider.Value without a converter.
-        _cachingProfileIndex = (double)(int)s.CachingProfile;
+        CachingProfileIndex = (double)(int)s.CachingProfile;
 
-        _autoReconnect = s.AutoReconnect;
-        _connectionTimeoutIndex = s.ConnectionTimeoutSeconds switch
+        AutoReconnect = s.AutoReconnect;
+        ConnectionTimeoutIndex = s.ConnectionTimeoutSeconds switch
         {
             10 => 0,
             30 => 1,
@@ -310,7 +311,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     // ── General ──
 
     [ObservableProperty]
-    private int _selectedThemeIndex;
+    public partial int SelectedThemeIndex { get; set; }
 
     partial void OnSelectedThemeIndexChanged(int value)
     {
@@ -325,7 +326,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private int _selectedLanguageIndex;
+    public partial int SelectedLanguageIndex { get; set; }
 
     partial void OnSelectedLanguageIndexChanged(int value)
     {
@@ -341,10 +342,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _isSpotifyMetadataSameAsApp = true;
+    public partial bool IsSpotifyMetadataSameAsApp { get; set; } = true;
 
     [ObservableProperty]
-    private string _spotifyMetadataCustomLanguageCode = string.Empty;
+    public partial string SpotifyMetadataCustomLanguageCode { get; set; } = string.Empty;
 
     public bool IsSpotifyMetadataCustomCodeVisible => !IsSpotifyMetadataSameAsApp;
 
@@ -377,10 +378,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _isRestartInProgress;
+    public partial bool IsRestartInProgress { get; set; }
 
     [ObservableProperty]
-    private bool _hasRestartError;
+    public partial bool HasRestartError { get; set; }
 
     partial void OnIsRestartInProgressChanged(bool value)
     {
@@ -449,7 +450,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public event EventHandler<double>? ZoomChanged;
 
     [ObservableProperty]
-    private int _zoomLevelIndex = 3; // default 100%
+    public partial int ZoomLevelIndex { get; set; } = 3; // default 100%
 
     public string ZoomLevelDisplay => $"{(int)(ZoomStops[ZoomLevelIndex] * 100)}%";
 
@@ -485,7 +486,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CachingProfileSummary))]
-    private double _cachingProfileIndex;
+    public partial double CachingProfileIndex { get; set; }
 
     /// <summary>
     /// "Medium · ~120 MB estimated in caches" — updates live as the user drags the slider.
@@ -494,7 +495,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         get
         {
-            var profile = IndexToProfile(_cachingProfileIndex);
+            var profile = IndexToProfile(CachingProfileIndex);
             return AppLocalization.Format(
                 "Settings_CachingProfileSummary",
                 CachingProfilePresets.GetDisplayName(profile),
@@ -518,7 +519,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     // ── Playback ──
 
     [ObservableProperty]
-    private int _trackClickIndex;
+    public partial int TrackClickIndex { get; set; }
 
     partial void OnTrackClickIndexChanged(int value)
     {
@@ -527,7 +528,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private int _defaultPlayActionIndex;
+    public partial int DefaultPlayActionIndex { get; set; }
 
     partial void OnDefaultPlayActionIndexChanged(int value)
     {
@@ -542,7 +543,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _askPlayAction;
+    public partial bool AskPlayAction { get; set; }
 
     partial void OnAskPlayActionChanged(bool value)
     {
@@ -550,7 +551,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private int _audioPresetIndex;
+    public partial int AudioPresetIndex { get; set; }
 
     partial void OnAudioPresetIndexChanged(int value)
     {
@@ -565,7 +566,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     // ── Audio quality & normalization ──
 
     [ObservableProperty]
-    private int _audioQualityIndex;
+    public partial int AudioQualityIndex { get; set; }
 
     partial void OnAudioQualityIndexChanged(int value)
     {
@@ -589,7 +590,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _normalizationEnabled;
+    public partial bool NormalizationEnabled { get; set; }
 
     public string NormalizationDescription
     {
@@ -612,7 +613,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _autoplayEnabled;
+    public partial bool AutoplayEnabled { get; set; }
 
     partial void OnAutoplayEnabledChanged(bool value)
     {
@@ -624,7 +625,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _isPrivateSession;
+    public partial bool IsPrivateSession { get; set; }
 
     partial void OnIsPrivateSessionChanged(bool value)
     {
@@ -633,7 +634,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _minimizeToTrayOnClose;
+    public partial bool MinimizeToTrayOnClose { get; set; }
 
     partial void OnMinimizeToTrayOnCloseChanged(bool value)
     {
@@ -644,7 +645,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     // ── Verbose logging ──
 
     [ObservableProperty]
-    private bool _showDockedPlayerWithFloatingPlayer;
+    public partial bool ShowDockedPlayerWithFloatingPlayer { get; set; }
 
     partial void OnShowDockedPlayerWithFloatingPlayerChanged(bool value)
     {
@@ -653,7 +654,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _showLocalFilesOnHome;
+    public partial bool ShowLocalFilesOnHome { get; set; }
 
     partial void OnShowLocalFilesOnHomeChanged(bool value)
     {
@@ -786,7 +787,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     // ── Cache (requires restart) ──
 
     [ObservableProperty]
-    private bool _cacheEnabled;
+    public partial bool CacheEnabled { get; set; }
 
     partial void OnCacheEnabledChanged(bool value)
     {
@@ -795,7 +796,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private int _cacheSizeLimitIndex;
+    public partial int CacheSizeLimitIndex { get; set; }
 
     partial void OnCacheSizeLimitIndexChanged(int value)
     {
@@ -898,7 +899,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     // ── Connection (requires restart) ──
 
     [ObservableProperty]
-    private bool _autoReconnect;
+    public partial bool AutoReconnect { get; set; }
 
     partial void OnAutoReconnectChanged(bool value)
     {
@@ -907,7 +908,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private int _connectionTimeoutIndex;
+    public partial int ConnectionTimeoutIndex { get; set; }
 
     partial void OnConnectionTimeoutIndexChanged(int value)
     {
@@ -1015,22 +1016,22 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     // ── Clock Sync ──
 
     [ObservableProperty]
-    private long _clockOffsetMs;
+    public partial long ClockOffsetMs { get; set; }
 
     [ObservableProperty]
-    private long _clockLastRttMs;
+    public partial long ClockLastRttMs { get; set; }
 
     [ObservableProperty]
-    private bool _clockIsSynced;
+    public partial bool ClockIsSynced { get; set; }
 
     [ObservableProperty]
-    private string _clockLastSyncDisplay = AppLocalization.GetString("Clock_Never");
+    public partial string ClockLastSyncDisplay { get; set; } = AppLocalization.GetString("Clock_Never");
 
     [ObservableProperty]
-    private string _clockNextSyncCountdown = AppLocalization.GetString("State_EmDash");
+    public partial string ClockNextSyncCountdown { get; set; } = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private int _clockSyncIntervalIndex = 1; // default 10 min
+    public partial int ClockSyncIntervalIndex { get; set; } = 1; // default 10 min
 
     private DispatcherTimer? _clockTimer;
 
@@ -1100,37 +1101,37 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     // ── Audio Pipeline Health ──
 
     [ObservableProperty]
-    private string _audioPipelineMode = AppLocalization.GetString("AudioPipeline_InProcess");
+    public partial string AudioPipelineMode { get; set; } = AppLocalization.GetString("AudioPipeline_InProcess");
 
     [ObservableProperty]
-    private string _audioPipelineStatus = AppLocalization.GetString("State_Unknown");
+    public partial string AudioPipelineStatus { get; set; } = AppLocalization.GetString("State_Unknown");
 
     [ObservableProperty]
-    private int _audioPipelinePid;
+    public partial int AudioPipelinePid { get; set; }
 
     [ObservableProperty]
-    private int _audioRestartCount;
+    public partial int AudioRestartCount { get; set; }
 
     [ObservableProperty]
-    private long _audioUnderrunCount;
+    public partial long AudioUnderrunCount { get; set; }
 
     [ObservableProperty]
-    private string _audioGcStats = AppLocalization.GetString("State_EmDash");
+    public partial string AudioGcStats { get; set; } = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private string _audioProfilerTop = AppLocalization.GetString("State_EmDash");
+    public partial string AudioProfilerTop { get; set; } = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private string _audioUiStalls = AppLocalization.GetString("State_EmDash");
+    public partial string AudioUiStalls { get; set; } = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private string _audioThroughput = AppLocalization.GetString("State_EmDash");
+    public partial string AudioThroughput { get; set; } = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private string _audioStateFreshness = AppLocalization.GetString("State_EmDash");
+    public partial string AudioStateFreshness { get; set; } = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private double _audioLastRttMs;
+    public partial double AudioLastRttMs { get; set; }
 
     // Chart reference — set by the page after InitializeComponent
     public Action<double[], int, string>? UpdateRttChart { get; set; }
@@ -1237,25 +1238,25 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     // ── Log filters ──
 
     [ObservableProperty]
-    private bool _showVerbose;
+    public partial bool ShowVerbose { get; set; }
 
     [ObservableProperty]
-    private bool _showDebug;
+    public partial bool ShowDebug { get; set; }
 
     [ObservableProperty]
-    private bool _showInfo = true;
+    public partial bool ShowInfo { get; set; } = true;
 
     [ObservableProperty]
-    private bool _showWarning = true;
+    public partial bool ShowWarning { get; set; } = true;
 
     [ObservableProperty]
-    private bool _showError = true;
+    public partial bool ShowError { get; set; } = true;
 
     [ObservableProperty]
-    private bool _showFatal = true;
+    public partial bool ShowFatal { get; set; } = true;
 
     [ObservableProperty]
-    private string _logSearchText = "";
+    public partial string LogSearchText { get; set; } = "";
 
     partial void OnShowVerboseChanged(bool value) => RefreshFilteredLogs();
     partial void OnShowDebugChanged(bool value) => RefreshFilteredLogs();
@@ -1352,7 +1353,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private string _navigationReportStatus = "";
+    public partial string NavigationReportStatus { get; set; } = "";
 
     [RelayCommand]
     private void CopyNavigationHealthReport()
@@ -1419,19 +1420,19 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private Wavee.UI.Contracts.IAudioPipelineControl? _pipelineControl;
 
     [ObservableProperty]
-    private bool _isEqualizerEnabled;
+    public partial bool IsEqualizerEnabled { get; set; }
 
     [ObservableProperty]
-    private int _selectedEqPresetIndex;
+    public partial int SelectedEqPresetIndex { get; set; }
 
     [ObservableProperty]
-    private string _equalizerApplyStatus = "AudioHost: not applied yet";
+    public partial string EqualizerApplyStatus { get; set; } = "AudioHost: not applied yet";
 
     [ObservableProperty]
-    private bool _isEqualizerApplying;
+    public partial bool IsEqualizerApplying { get; set; }
 
     [ObservableProperty]
-    private bool _equalizerApplySucceeded;
+    public partial bool EqualizerApplySucceeded { get; set; }
 
     private long _equalizerApplyVersion;
 
@@ -1440,10 +1441,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _pipelineControl = control;
 
         var s = _settingsService.Settings;
-        _isEqualizerEnabled = s.EqualizerEnabled;
+        IsEqualizerEnabled = s.EqualizerEnabled;
 
-        _selectedEqPresetIndex = Array.IndexOf(EqPresetNames, s.EqualizerPreset);
-        if (_selectedEqPresetIndex < 0) _selectedEqPresetIndex = 0;
+        SelectedEqPresetIndex = Array.IndexOf(EqPresetNames, s.EqualizerPreset);
+        if (SelectedEqPresetIndex < 0) SelectedEqPresetIndex = 0;
 
         EqBands.Clear();
         for (var i = 0; i < 10; i++)
@@ -1460,7 +1461,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedEqPresetIndex));
 
         _logger?.LogInformation("Equalizer initialized: preset={Preset}, enabled={Enabled}, bands={Bands}",
-            EqPresetNames[_selectedEqPresetIndex], _isEqualizerEnabled, EqBands.Count);
+            EqPresetNames[SelectedEqPresetIndex], IsEqualizerEnabled, EqBands.Count);
     }
 
     partial void OnIsEqualizerEnabledChanged(bool value)
@@ -1643,7 +1644,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 }
 
-public sealed class EqualizerBandViewModel : ObservableObject
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class EqualizerBandViewModel : ObservableObject
 {
     private readonly int _index;
     private double _gainDb;
@@ -1682,13 +1684,14 @@ public sealed class EqualizerBandViewModel : ObservableObject
     public event Action<int, double>? GainChanged;
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LyricsSourceItem : ObservableObject
 {
     public required string Name { get; init; }
     public required string Description { get; init; }
 
     [ObservableProperty]
-    private bool _isEnabled;
+    public partial bool IsEnabled { get; set; }
 }
 
 public sealed class PastLogFile

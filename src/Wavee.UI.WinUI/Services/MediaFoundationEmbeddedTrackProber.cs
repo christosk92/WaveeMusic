@@ -22,7 +22,7 @@ namespace Wavee.UI.WinUI.Services;
 /// <para>Returns empty on every failure path — never throws. The scanner
 /// pipeline runs sync inside a Task.Run so we block on the async APIs.</para>
 /// </summary>
-public sealed class MediaFoundationEmbeddedTrackProber : IEmbeddedTrackProber
+public sealed partial class MediaFoundationEmbeddedTrackProber : IEmbeddedTrackProber
 {
     private readonly ILogger? _logger;
 

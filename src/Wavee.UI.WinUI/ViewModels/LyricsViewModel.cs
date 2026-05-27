@@ -26,6 +26,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// fetches lyrics via <see cref="ILyricsService"/>, and exposes data
 /// that the view uses to drive <see cref="Wavee.Controls.Lyrics.Controls.NowPlayingCanvas"/>.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LyricsViewModel : ObservableObject, IDisposable
 {
     private readonly IPlaybackStateService _playbackState;
@@ -39,22 +40,22 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     private readonly HashSet<object> _activeConsumers = new(ReferenceEqualityComparer.Instance);
 
     [ObservableProperty]
-    private LyricsData? _currentLyrics;
+    public partial LyricsData? CurrentLyrics { get; set; }
 
     [ObservableProperty]
-    private SongInfo _currentSongInfo = new() { Title = "", Artist = "", Album = "" };
+    public partial SongInfo CurrentSongInfo { get; set; } = new() { Title = "", Artist = "", Album = "" };
 
     [ObservableProperty]
-    private bool _hasLyrics;
+    public partial bool HasLyrics { get; set; }
 
     [ObservableProperty]
-    private bool _isLoading;
+    public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
-    private NowPlayingPalette? _currentPalette;
+    public partial NowPlayingPalette? CurrentPalette { get; set; }
 
     [ObservableProperty]
-    private LyricsSearchDiagnostics? _lastDiagnostics;
+    public partial LyricsSearchDiagnostics? LastDiagnostics { get; set; }
 
     /// <summary>
     /// True when the currently-playing item is a podcast episode. Drives the
@@ -64,7 +65,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     /// transcript fetch is gated behind <see cref="LoadLyricsAsync"/>.
     /// </summary>
     [ObservableProperty]
-    private bool _isEpisode;
+    public partial bool IsEpisode { get; set; }
 
     public LyricsWindowStatus WindowStatus { get; }
 

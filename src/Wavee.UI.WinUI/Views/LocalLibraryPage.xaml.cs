@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Wavee.UI.WinUI.Data.Contracts;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,6 +16,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalLibraryPage : UserControl, INavigationCacheMemoryParticipant, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware, IRedirectsCtrlFToOmnibar
 {
     public LocalLandingViewModel ViewModel { get; }

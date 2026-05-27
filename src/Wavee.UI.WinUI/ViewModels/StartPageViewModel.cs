@@ -6,6 +6,7 @@ using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class StartPageViewModel : ObservableObject
 {
     public ObservableCollection<QuickAccessItem> QuickAccessItems { get; } = [];

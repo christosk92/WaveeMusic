@@ -37,6 +37,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// (feed composition / recommendation enrichment / greeting + user identity);
 /// they communicate via the parent — no direct child-to-child references.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private readonly IHomeFeedService? _homeFeedService;
@@ -46,16 +47,16 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private bool _isDisposed;
 
     [ObservableProperty]
-    private bool _isLoading;
+    public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
-    private bool _hasError;
+    public partial bool HasError { get; set; }
 
     [ObservableProperty]
-    private string? _errorMessage;
+    public partial string? ErrorMessage { get; set; }
 
     [ObservableProperty]
-    private bool _isCustomizeFlyoutOpen;
+    public partial bool IsCustomizeFlyoutOpen { get; set; }
 
     // ── Children — constructor-initialised, never replaced ──────────────────
 
@@ -89,14 +90,14 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// <summary>Subtle page-wash brush tinted toward the featured item's color.
     /// Null when no palette is available (cold start, fetch failure).</summary>
     [ObservableProperty]
-    private Brush? _heroBackdropBrush;
+    public partial Brush? HeroBackdropBrush { get; set; }
 
     /// <summary>Crisp accent bar matching the section-header AccentLineBrush
     /// treatment, tinted from the featured item's color (lifted for legibility).
     /// Renders as a 120x3 colored bar under the greeting/chips.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HeroAccentLineBrushOrFallback))]
-    private Brush? _heroAccentLineBrush;
+    public partial Brush? HeroAccentLineBrush { get; set; }
 
     /// <summary>Same as <see cref="HeroAccentLineBrush"/>, but falls back to
     /// the system accent brush when no palette is available — keeps the line
@@ -110,7 +111,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// page's top-left corner, tinted from the first home card's extracted
     /// color. Gives the whole page a per-day visual identity.</summary>
     [ObservableProperty]
-    private Brush? _pageBleedBrush;
+    public partial Brush? PageBleedBrush { get; set; }
 
     private bool _isDarkTheme;
 
@@ -1153,6 +1154,7 @@ public enum HomeContentType { Artist, Playlist, Album, Podcast, Episode, Unknown
 /// </summary>
 public enum EpisodePlayedState { NotStarted, InProgress, Completed }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class HomeSection : ObservableObject
 {
     public string? Title { get; set; }
@@ -1217,10 +1219,10 @@ public sealed partial class HomeSection : ObservableObject
     }
 
     [ObservableProperty]
-    private Brush? _accentLineBrush;
+    public partial Brush? AccentLineBrush { get; set; }
 
     [ObservableProperty]
-    private Brush? _accentBackdropBrush;
+    public partial Brush? AccentBackdropBrush { get; set; }
 
     /// <summary>
     /// Slim fading streak — full-alpha accent on the left, transparent on
@@ -1229,7 +1231,7 @@ public sealed partial class HomeSection : ObservableObject
     /// the hard right edge a solid bar would have.
     /// </summary>
     [ObservableProperty]
-    private Brush? _accentFadeBarBrush;
+    public partial Brush? AccentFadeBarBrush { get; set; }
 
     /// <summary>
     /// Theme-aware refresh of the accent brushes. Mirrors the alpha cadence
@@ -1285,7 +1287,8 @@ public sealed partial class HomeSection : ObservableObject
     }
 }
 
-public sealed class HomeSectionItem : ObservableObject
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class HomeSectionItem : ObservableObject
 {
     private string? _uri;
     private string? _title;
@@ -1671,6 +1674,7 @@ public sealed class HomeBaselinePreviewTrack
     public string? AudioPreviewUrl { get; set; }
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class HomeChipViewModel : ObservableObject
 {
     public string Id { get; set; } = "";
@@ -1681,5 +1685,5 @@ public sealed partial class HomeChipViewModel : ObservableObject
     public bool IsBackChip { get; set; }
 
     [ObservableProperty]
-    private bool _isSelected;
+    public partial bool IsSelected { get; set; }
 }

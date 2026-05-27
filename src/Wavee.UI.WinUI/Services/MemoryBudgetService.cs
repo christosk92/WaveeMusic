@@ -18,7 +18,7 @@ namespace Wavee.UI.WinUI.Services;
 /// orchestrate (previous tiers cleared image cache / nav surfaces / triggered
 /// compacting Gen2s, and shipped more pauses than they prevented).
 /// </summary>
-public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
+public sealed partial class MemoryBudgetService : IDisposable, IAsyncDisposable
 {
     public const long DefaultBudgetBytes = 800L * 1024 * 1024;
 

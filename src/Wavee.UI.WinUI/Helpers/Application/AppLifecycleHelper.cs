@@ -334,12 +334,22 @@ public static class AppLifecycleHelper
         var spotifyMetadataLocale = SpotifyMetadataLanguageSettings.ResolveEffectiveLocale(
             SettingsService.PeekSpotifyMetadataLanguage());
 
-        return Host.CreateDefaultBuilder()
-            .ConfigureLogging(logging => logging
-                .ClearProviders()
-                .AddSerilog(Log.Logger, dispose: false)
-                .SetMinimumLevel(hostMinimumLogLevel))
-            .ConfigureServices(services => AddRemoteStateRecorderIfDiagnosticsEnabled(services
+        // HostApplicationBuilder (not the older Host.CreateDefaultBuilder).
+        // CreateDefaultBuilder() pulls in the reflection-based configuration
+        // binder (IL2026/IL3050) even when no IConfiguration is consumed.
+        // HostApplicationBuilder exposes the same Services + Logging surface
+        // but uses the lighter, AOT-clean path. We don't bind appsettings.json
+        // to options anywhere — every config value comes from direct
+        // service registrations below — so dropping the default builder is
+        // a no-op behaviourally.
+        var builder = Host.CreateApplicationBuilder();
+
+        builder.Logging
+            .ClearProviders()
+            .AddSerilog(Log.Logger, dispose: false)
+            .SetMinimumLevel(hostMinimumLogLevel);
+
+        AddRemoteStateRecorderIfDiagnosticsEnabled(builder.Services
                 // Wavee Core services — capacities driven by the caching profile
                 .AddWaveeCache(opts =>
                 {
@@ -1052,9 +1062,9 @@ public static class AppLifecycleHelper
                 // Memory diagnostics (in-app panel under Settings → Diagnostics).
                 // Off the hot path; resolved lazily when the user opens the panel
                 // and only samples while it's visible.
-                .AddSingleton<Diagnostics.MemoryDiagnosticsService>()
-            )
-            .Build();
+                .AddSingleton<Diagnostics.MemoryDiagnosticsService>();
+
+        return builder.Build();
     }
 
     /// <summary>

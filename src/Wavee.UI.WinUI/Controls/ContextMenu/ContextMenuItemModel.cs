@@ -19,7 +19,8 @@ public enum ContextMenuItemType
 /// the rest render as labeled rows in the dropdown. Nested <see cref="Items"/> become a sub-flyout.
 /// Pattern adapted from Files' ContextMenuFlyoutItemViewModel.
 /// </summary>
-public sealed class ContextMenuItemModel
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ContextMenuItemModel
 {
     public string? Text { get; init; }
     public string? Glyph { get; init; }

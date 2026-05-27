@@ -29,7 +29,7 @@ namespace Wavee.UI.WinUI.Diagnostics;
 /// </para>
 /// </remarks>
 [EventSource(Name = "Wavee-UI-Navigation", Guid = "6b8c8d6a-3c21-4a07-9f5c-8e7d2f3a9c5b")]
-internal sealed class WaveeNavigationEventSource : EventSource
+internal sealed partial class WaveeNavigationEventSource : EventSource
 {
     public static readonly WaveeNavigationEventSource Log = new();
 

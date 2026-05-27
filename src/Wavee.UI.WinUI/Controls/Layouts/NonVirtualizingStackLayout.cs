@@ -11,7 +11,7 @@ namespace Wavee.UI.WinUI.Controls.Layouts;
 /// avoids nested realization-rect races that can leave a region shell visible
 /// while its section contents are not realized during fast scroll.
 /// </summary>
-public sealed class NonVirtualizingStackLayout : NonVirtualizingLayout
+public sealed partial class NonVirtualizingStackLayout : NonVirtualizingLayout
 {
     public static readonly DependencyProperty SpacingProperty =
         DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(NonVirtualizingStackLayout),

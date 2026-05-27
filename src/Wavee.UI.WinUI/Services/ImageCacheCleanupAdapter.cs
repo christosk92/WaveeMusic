@@ -10,7 +10,8 @@ namespace Wavee.UI.WinUI.Services;
 /// Bridges the shared <see cref="ImageCacheService"/> to <see cref="ICleanableCache"/>
 /// for background cleanup.
 /// </summary>
-public sealed class ImageCacheCleanupAdapter : ICleanableCache
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ImageCacheCleanupAdapter : ICleanableCache
 {
     public string CacheName => "ImageBitmapCache";
 

@@ -25,6 +25,7 @@ namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
 /// <see cref="ShellViewModel.SidebarPlayerCollapsed"/>. Reuses the singleton
 /// <see cref="PlayerBarViewModel"/> as the only source of truth.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceConsumer
 {
     public PlayerBarViewModel ViewModel { get; }

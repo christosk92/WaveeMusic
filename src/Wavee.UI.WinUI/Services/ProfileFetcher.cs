@@ -133,7 +133,7 @@ internal static class ProfileFetcher
 /// ISession that <see cref="ProfileFetcher"/> needs so neither ProfileCache nor
 /// ProfileViewModel needs to hold the raw session.
 /// </summary>
-public sealed class ProfileService : Wavee.UI.Contracts.IUserProfileService
+public sealed partial class ProfileService : Wavee.UI.Contracts.IUserProfileService
 {
     private readonly ISession? _session;
     private readonly IColorService _colorService;

@@ -8,7 +8,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// VM keeps human-cased titles ("Religion &amp; Spirituality") while the UI renders
 /// "RELIGION &amp; SPIRITUALITY".
 /// </summary>
-public sealed class StringToUpperConverter : IValueConverter
+public sealed partial class StringToUpperConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
         => value is string s ? s.ToUpperInvariant() : (value ?? string.Empty);

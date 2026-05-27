@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace Wavee.Controls.Lyrics.Models.Lyrics
 {
-    public class RenderLyricsSyllable : BaseRenderLyrics
+    public partial class RenderLyricsSyllable : BaseRenderLyrics
     {
         public List<RenderLyricsChar> ChildrenRenderLyricsChars { get; set; } = [];
 

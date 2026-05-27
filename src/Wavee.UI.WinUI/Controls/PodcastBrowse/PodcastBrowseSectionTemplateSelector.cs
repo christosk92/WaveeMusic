@@ -13,7 +13,7 @@ namespace Wavee.UI.WinUI.Controls.PodcastBrowse;
 /// list slots fall back to the artwork rail until Spotify ships responses
 /// that warrant their own treatment.
 /// </summary>
-public sealed class PodcastBrowseSectionTemplateSelector : DataTemplateSelector
+public sealed partial class PodcastBrowseSectionTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? ArtworkRailTemplate { get; set; }
     public DataTemplate? CtaTemplate { get; set; }

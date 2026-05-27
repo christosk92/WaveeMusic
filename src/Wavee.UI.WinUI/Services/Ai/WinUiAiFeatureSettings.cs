@@ -3,7 +3,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Services.Ai;
 
-public sealed class WinUiAiFeatureSettings : IAiFeatureSettings
+public sealed partial class WinUiAiFeatureSettings : IAiFeatureSettings
 {
     private readonly ISettingsService _settings;
 

@@ -29,6 +29,7 @@ namespace Wavee.UI.WinUI.ViewModels.Shell;
 /// page via the <c>activeFrameContentProvider</c> accessor when it needs to
 /// re-search in place on <see cref="SearchPage"/>.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class OmnibarViewModel : ObservableObject
 {
     private readonly ISearchService _searchService;
@@ -74,7 +75,7 @@ public sealed partial class OmnibarViewModel : ObservableObject
     // ── Bindable state (XAML binds via Vm.Omnibar.X) ────────────────────────
 
     [ObservableProperty]
-    private List<SearchSuggestionItem>? _searchSuggestions;
+    public partial List<SearchSuggestionItem>? SearchSuggestions { get; set; }
 
     /// <summary>
     /// Grouped suggestions for the three-section omnibar mode (Settings / Your library
@@ -83,13 +84,13 @@ public sealed partial class OmnibarViewModel : ObservableObject
     /// the legacy flat path used by recent searches and no-match fallback.
     /// </summary>
     [ObservableProperty]
-    private List<SearchSuggestionGroup>? _suggestionGroups;
+    public partial List<SearchSuggestionGroup>? SuggestionGroups { get; set; }
 
     [ObservableProperty]
-    private bool _isSearchSuggestionsLoading;
+    public partial bool IsSearchSuggestionsLoading { get; set; }
 
     [ObservableProperty]
-    private string? _searchSuggestionErrorMessage;
+    public partial string? SearchSuggestionErrorMessage { get; set; }
 
     // ── Public commands invoked from ShellPage code-behind ──────────────────
 

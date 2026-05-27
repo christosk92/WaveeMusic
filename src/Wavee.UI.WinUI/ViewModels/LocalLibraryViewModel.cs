@@ -17,6 +17,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// Home page's Local Files section. Lists every indexed local album with its
 /// tracks. Lightweight by design; per-album detail pages can land later.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalLibraryViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryService? _service;
@@ -27,16 +28,16 @@ public sealed partial class LocalLibraryViewModel : ObservableObject, IDisposabl
     public ObservableCollection<LocalAlbumGroupViewModel> Albums { get; } = new();
 
     [ObservableProperty]
-    private bool _isLoading;
+    public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
-    private bool _isEmpty;
+    public partial bool IsEmpty { get; set; }
 
     [ObservableProperty]
-    private int _trackCount;
+    public partial int TrackCount { get; set; }
 
     [ObservableProperty]
-    private int _albumCount;
+    public partial int AlbumCount { get; set; }
 
     public LocalLibraryViewModel(
         ILocalLibraryService? service = null,
@@ -139,7 +140,8 @@ public sealed partial class LocalLibraryViewModel : ObservableObject, IDisposabl
     }
 }
 
-public sealed class LocalAlbumGroupViewModel
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class LocalAlbumGroupViewModel
 {
     public required string AlbumUri { get; init; }
     public required string AlbumTitle { get; init; }

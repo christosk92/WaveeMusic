@@ -27,6 +27,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.PlayerBar;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PlayerBar : UserControl
 {
     private const double WideBreakpoint = 1500;

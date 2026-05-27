@@ -6,7 +6,7 @@ using System.ComponentModel;
 
 namespace Wavee.UI.WinUI.Collections;
 
-public class FullyObservableCollection<T> : ObservableCollection<T>
+public partial class FullyObservableCollection<T> : ObservableCollection<T>
     where T : INotifyPropertyChanged
 {
     public event EventHandler<ItemPropertyChangedEventArgs>? ItemPropertyChanged;
@@ -68,7 +68,7 @@ public class FullyObservableCollection<T> : ObservableCollection<T>
     }
 }
 
-public class ItemPropertyChangedEventArgs : PropertyChangedEventArgs
+public partial class ItemPropertyChangedEventArgs : PropertyChangedEventArgs
 {
     public int CollectionIndex { get; }
 

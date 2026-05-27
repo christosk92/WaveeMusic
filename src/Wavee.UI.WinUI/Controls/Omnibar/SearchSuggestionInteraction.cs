@@ -153,7 +153,7 @@ internal static class SearchSuggestionInteraction
     private static bool IsSpotifyEpisode(string? uri)
         => uri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
 
-    private sealed class SearchSuggestionTrackItem : ITrackItem
+    private sealed partial class SearchSuggestionTrackItem : ITrackItem
     {
         private readonly SearchSuggestionItem _item;
 

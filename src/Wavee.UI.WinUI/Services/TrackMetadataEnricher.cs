@@ -22,7 +22,7 @@ namespace Wavee.UI.WinUI.Services;
 /// Enriches track metadata by fetching from the Spotify API after the session connects.
 /// Created in InitializePlaybackEngine, communicates via <see cref="IMessenger"/>.
 /// </summary>
-internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestMessage>,
+internal sealed partial class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestMessage>,
     IRecipient<ExtendedTopTracksRequest>,
     IRecipient<QueueEnrichmentRequestMessage>,
     IRecipient<TrackImagesEnrichmentRequest>,

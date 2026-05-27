@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Data;
 
 namespace Wavee.UI.WinUI.Converters;
 
-public sealed class BoolToVisibilityConverter : IValueConverter
+public sealed partial class BoolToVisibilityConverter : IValueConverter
 {
     public bool Invert { get; set; }
 

@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Data;
 
 namespace Wavee.UI.WinUI.Converters;
 
-public sealed class BoolToGridListGlyphConverter : IValueConverter
+public sealed partial class BoolToGridListGlyphConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

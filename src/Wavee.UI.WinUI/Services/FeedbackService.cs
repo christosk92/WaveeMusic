@@ -9,7 +9,7 @@ using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.Services;
 
-public sealed class FeedbackService : IFeedbackService
+public sealed partial class FeedbackService : IFeedbackService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;

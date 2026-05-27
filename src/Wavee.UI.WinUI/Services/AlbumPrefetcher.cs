@@ -45,7 +45,7 @@ public interface IAlbumPrefetcher
     void EnqueueAlbumPrefetch(string? albumUri);
 }
 
-public sealed class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
+public sealed partial class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
 {
     private const string AlbumUriPrefix = "spotify:album:";
     private static readonly TimeSpan FlushDelay = TimeSpan.FromMilliseconds(100);

@@ -32,7 +32,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Reads liked/albums/artists from SQLite and playlists from the dedicated playlist cache.
 /// Reacts to IMessenger messages for refresh signaling.
 /// </summary>
-public sealed class LibraryDataService : ILibraryDataService
+public sealed partial class LibraryDataService : ILibraryDataService
 {
     private readonly IMetadataDatabase _database;
     private readonly IPlaylistCacheService _playlistCache;

@@ -20,7 +20,7 @@ namespace Wavee.UI.WinUI.Data.Stores;
 // No push source today — albums don't get Dealer diffs. TTL handles any
 // staleness. Cold (SQLite) tier left as future work for cross-restart
 // persistence; the BehaviorSubject + HotCache combination is process-scoped.
-public sealed class AlbumStore : EntityStore<string, AlbumDetailResult>
+public sealed partial class AlbumStore : EntityStore<string, AlbumDetailResult>
 {
     private readonly IAlbumService _albumService;
     private readonly IHotCache<AlbumDetailResult> _hotCache;

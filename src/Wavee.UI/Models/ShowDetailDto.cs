@@ -8,7 +8,8 @@ namespace Wavee.UI.Models;
 /// binds against this rather than the raw Pathfinder DTO so the VM doesn't
 /// have to care which fields are nested under which wrapper.
 /// </summary>
-public sealed class ShowDetailDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ShowDetailDto
 {
     public string Uri { get; init; } = "";
     public string Id { get; init; } = "";
@@ -40,13 +41,15 @@ public sealed class ShowDetailDto
     public ShowPaletteDto? Palette { get; init; }
 }
 
-public sealed class ShowTopicDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ShowTopicDto
 {
     public string Title { get; init; } = "";
     public string? Uri { get; init; }
 }
 
-public sealed class ShowPaletteDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ShowPaletteDto
 {
     public ShowPaletteTier? HighContrast { get; init; }
     public ShowPaletteTier? HigherContrast { get; init; }

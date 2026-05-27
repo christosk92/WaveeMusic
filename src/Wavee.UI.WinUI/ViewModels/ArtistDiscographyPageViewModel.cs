@@ -22,6 +22,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// Each Pathfinder page response is cached one layer down, so the second
 /// visit to the same group is a sequence of cache hits.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistDiscographyPageViewModel : ObservableObject
 {
     private const int PageSize = 50;
@@ -32,11 +33,11 @@ public sealed partial class ArtistDiscographyPageViewModel : ObservableObject
     private CancellationTokenSource? _loadCts;
     private int _loadRevision;
 
-    [ObservableProperty] private string? _artistUri;
-    [ObservableProperty] private string? _artistName;
-    [ObservableProperty] private string? _artistImageUrl;
-    [ObservableProperty] private ArtistDiscographyGroupKind _groupKind = ArtistDiscographyGroupKind.Albums;
-    [ObservableProperty] private bool _isLoading;
+    [ObservableProperty] public partial string? ArtistUri { get; set; }
+    [ObservableProperty] public partial string? ArtistName { get; set; }
+    [ObservableProperty] public partial string? ArtistImageUrl { get; set; }
+    [ObservableProperty] public partial ArtistDiscographyGroupKind GroupKind { get; set; } = ArtistDiscographyGroupKind.Albums;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
 
     private readonly ObservableCollection<LazyReleaseItem> _items = [];
     public IReadOnlyList<LazyReleaseItem> Items => _items;

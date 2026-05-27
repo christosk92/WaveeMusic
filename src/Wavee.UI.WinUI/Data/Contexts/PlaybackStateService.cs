@@ -30,6 +30,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Bridges <see cref="PlaybackStateManager"/> (remote Spotify Connect state) to UI-layer properties.
 /// Delegates all commands to <see cref="IPlaybackService"/> (fire-and-forget for backward compat).
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 internal sealed partial class PlaybackStateService : ObservableObject, IPlaybackStateService, IDisposable,
     IRecipient<AuthStatusChangedMessage>,
     IRecipient<TrackMetadataEnrichedMessage>,
@@ -88,47 +89,47 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     // ── State properties ──
 
-    [ObservableProperty] private bool _isPlaying;
-    [ObservableProperty] private string? _currentTrackId;
-    [ObservableProperty] private string? _currentTrackTitle;
-    [ObservableProperty] private string? _currentArtistName;
-    [ObservableProperty] private string? _currentAlbumArt;
-    [ObservableProperty] private string? _currentAlbumArtLarge;
-    [ObservableProperty] private string? _currentArtistId;
-    [ObservableProperty] private string? _currentAlbumId;
-    [ObservableProperty] private float? _currentTrackNormalizationGainDb;
-    [ObservableProperty] private float? _currentTrackNormalizationPeak;
-    [ObservableProperty] private string? _currentTrackManifestId;
-    [ObservableProperty] private bool _currentTrackHasMusicVideo;
-    [ObservableProperty] private bool _currentTrackIsVideo;
-    [ObservableProperty] private string? _currentAlbumArtColor;
-    [ObservableProperty] private IReadOnlyList<ArtistCredit>? _currentArtists;
-    [ObservableProperty] private string? _currentOriginalTrackId;
-    [ObservableProperty] private string? _currentOriginalTrackTitle;
-    [ObservableProperty] private string? _currentOriginalArtistName;
-    [ObservableProperty] private string? _currentOriginalAlbumArt;
-    [ObservableProperty] private string? _currentOriginalAlbumArtLarge;
-    [ObservableProperty] private string? _currentOriginalArtistId;
-    [ObservableProperty] private string? _currentOriginalAlbumId;
-    [ObservableProperty] private double _currentOriginalDuration;
-    [ObservableProperty] private double _position;
-    [ObservableProperty] private double _duration;
-    [ObservableProperty] private double _playbackSpeed = 1.0;
-    [ObservableProperty] private double _volume = 100.0;
-    [ObservableProperty] private bool _isShuffle;
-    [ObservableProperty] private RepeatMode _repeatMode = RepeatMode.Off;
-    [ObservableProperty] private PlaybackContextInfo? _currentContext;
-    [ObservableProperty] private int _queuePosition;
-    [ObservableProperty] private bool _isPlayingRemotely;
-    [ObservableProperty] private string? _activeDeviceName;
-    [ObservableProperty] private DeviceType _activeDeviceType = DeviceType.Computer;
-    [ObservableProperty] private IReadOnlyList<ConnectDevice> _availableConnectDevices = [];
-    [ObservableProperty] private string? _activeAudioDeviceName;
-    [ObservableProperty] private IReadOnlyList<AudioOutputDeviceDto> _availableAudioDevices = [];
-    [ObservableProperty] private bool _isAudioEngineAvailable = true;
-    [ObservableProperty] private bool _isVolumeRestricted;
-    [ObservableProperty] private bool _isBuffering;
-    [ObservableProperty] private string? _bufferingTrackId;
+    [ObservableProperty] public partial bool IsPlaying { get; set; }
+    [ObservableProperty] public partial string? CurrentTrackId { get; set; }
+    [ObservableProperty] public partial string? CurrentTrackTitle { get; set; }
+    [ObservableProperty] public partial string? CurrentArtistName { get; set; }
+    [ObservableProperty] public partial string? CurrentAlbumArt { get; set; }
+    [ObservableProperty] public partial string? CurrentAlbumArtLarge { get; set; }
+    [ObservableProperty] public partial string? CurrentArtistId { get; set; }
+    [ObservableProperty] public partial string? CurrentAlbumId { get; set; }
+    [ObservableProperty] public partial float? CurrentTrackNormalizationGainDb { get; set; }
+    [ObservableProperty] public partial float? CurrentTrackNormalizationPeak { get; set; }
+    [ObservableProperty] public partial string? CurrentTrackManifestId { get; set; }
+    [ObservableProperty] public partial bool CurrentTrackHasMusicVideo { get; set; }
+    [ObservableProperty] public partial bool CurrentTrackIsVideo { get; set; }
+    [ObservableProperty] public partial string? CurrentAlbumArtColor { get; set; }
+    [ObservableProperty] public partial IReadOnlyList<ArtistCredit>? CurrentArtists { get; set; }
+    [ObservableProperty] public partial string? CurrentOriginalTrackId { get; set; }
+    [ObservableProperty] public partial string? CurrentOriginalTrackTitle { get; set; }
+    [ObservableProperty] public partial string? CurrentOriginalArtistName { get; set; }
+    [ObservableProperty] public partial string? CurrentOriginalAlbumArt { get; set; }
+    [ObservableProperty] public partial string? CurrentOriginalAlbumArtLarge { get; set; }
+    [ObservableProperty] public partial string? CurrentOriginalArtistId { get; set; }
+    [ObservableProperty] public partial string? CurrentOriginalAlbumId { get; set; }
+    [ObservableProperty] public partial double CurrentOriginalDuration { get; set; }
+    [ObservableProperty] public partial double Position { get; set; }
+    [ObservableProperty] public partial double Duration { get; set; }
+    [ObservableProperty] public partial double PlaybackSpeed { get; set; } = 1.0;
+    [ObservableProperty] public partial double Volume { get; set; } = 100.0;
+    [ObservableProperty] public partial bool IsShuffle { get; set; }
+    [ObservableProperty] public partial RepeatMode RepeatMode { get; set; } = RepeatMode.Off;
+    [ObservableProperty] public partial PlaybackContextInfo? CurrentContext { get; set; }
+    [ObservableProperty] public partial int QueuePosition { get; set; }
+    [ObservableProperty] public partial bool IsPlayingRemotely { get; set; }
+    [ObservableProperty] public partial string? ActiveDeviceName { get; set; }
+    [ObservableProperty] public partial DeviceType ActiveDeviceType { get; set; } = DeviceType.Computer;
+    [ObservableProperty] public partial IReadOnlyList<ConnectDevice> AvailableConnectDevices { get; set; } = [];
+    [ObservableProperty] public partial string? ActiveAudioDeviceName { get; set; }
+    [ObservableProperty] public partial IReadOnlyList<AudioOutputDeviceDto> AvailableAudioDevices { get; set; } = [];
+    [ObservableProperty] public partial bool IsAudioEngineAvailable { get; set; } = true;
+    [ObservableProperty] public partial bool IsVolumeRestricted { get; set; }
+    [ObservableProperty] public partial bool IsBuffering { get; set; }
+    [ObservableProperty] public partial string? BufferingTrackId { get; set; }
 
     /// <summary>
     /// True once playback has reached end-of-context and auto-advance has
@@ -138,21 +139,21 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     /// which is called from the orchestrator's <c>EndOfContext</c>
     /// subscription in <c>AppLifecycleHelper</c>.
     /// </summary>
-    [ObservableProperty] private bool _isAtEndOfContext;
+    [ObservableProperty] public partial bool IsAtEndOfContext { get; set; }
 
     // ── Local-content (TMDB) properties ───────────────────────────────
     // Populated by OnCurrentTrackIdChanged when a wavee:local:track:* URI lands.
     // Drive PlayerBar title-click routing (show / movie detail vs album) and
     // hide audio-only chrome (lyrics / friends / details) when the item is a
     // film or TV episode.
-    [ObservableProperty] private Wavee.Local.Classification.LocalContentKind? _currentLocalContentKind;
-    [ObservableProperty] private string? _currentLocalSeriesId;
-    [ObservableProperty] private string? _currentLocalSeriesName;
-    [ObservableProperty] private int? _currentLocalSeasonNumber;
-    [ObservableProperty] private int? _currentLocalEpisodeNumber;
-    [ObservableProperty] private string? _currentLocalEpisodeTitle;
-    [ObservableProperty] private int? _currentLocalMovieYear;
-    [ObservableProperty] private int? _currentLocalTmdbId;
+    [ObservableProperty] public partial Wavee.Local.Classification.LocalContentKind? CurrentLocalContentKind { get; set; }
+    [ObservableProperty] public partial string? CurrentLocalSeriesId { get; set; }
+    [ObservableProperty] public partial string? CurrentLocalSeriesName { get; set; }
+    [ObservableProperty] public partial int? CurrentLocalSeasonNumber { get; set; }
+    [ObservableProperty] public partial int? CurrentLocalEpisodeNumber { get; set; }
+    [ObservableProperty] public partial string? CurrentLocalEpisodeTitle { get; set; }
+    [ObservableProperty] public partial int? CurrentLocalMovieYear { get; set; }
+    [ObservableProperty] public partial int? CurrentLocalTmdbId { get; set; }
 
     // Most-recently-resolved local URI — guards against re-running the SQLite
     // lookup on every PlaybackStateSnapshot echo when CurrentTrackId hasn't

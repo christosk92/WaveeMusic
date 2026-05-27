@@ -56,7 +56,7 @@ namespace Wavee.UI.WinUI.Controls.AnimatedVisuals
     // Frame rate:  60 fps
     // Frame count: 60
     // Duration:    1000.0 mS
-    public sealed class LightRedEqualizer
+    public sealed partial class LightRedEqualizer
         : DependencyObject
         , Microsoft.UI.Xaml.Controls.IAnimatedVisualSource
         , Microsoft.UI.Xaml.Controls.IAnimatedVisualSource2
@@ -181,7 +181,7 @@ namespace Wavee.UI.WinUI.Controls.AnimatedVisuals
         {
         }
 
-        sealed class LightRedEqualizer_AnimatedVisual
+        sealed partial class LightRedEqualizer_AnimatedVisual
             : Microsoft.UI.Xaml.Controls.IAnimatedVisual
             , Microsoft.UI.Xaml.Controls.IAnimatedVisual2
         {

@@ -4,6 +4,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AiSettingsSection : UserControl, ISettingsSearchFilter
 {
     public AiSettingsViewModel ViewModel { get; }

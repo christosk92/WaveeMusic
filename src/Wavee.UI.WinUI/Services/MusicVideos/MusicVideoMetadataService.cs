@@ -11,7 +11,7 @@ using Wavee.UI.WinUI.Data.Stores;
 
 namespace Wavee.UI.WinUI.Services;
 
-internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
+internal sealed partial class MusicVideoMetadataService : IMusicVideoMetadataService
 {
     private const int BatchSize = 200;
     private const long NegativeCacheTtlSeconds = 24 * 60 * 60;

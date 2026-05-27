@@ -17,6 +17,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// so the templated comment row can drive its own UI without round-tripping
 /// through the parent <see cref="YourEpisodesViewModel"/>.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PodcastCommentViewModel : ObservableObject
 {
     private const int MaxPodcastReplyLength = 500;
@@ -46,40 +47,40 @@ public sealed partial class PodcastCommentViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RepliesEmpty))]
-    private bool _isRepliesExpanded;
+    public partial bool IsRepliesExpanded { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RepliesEmpty))]
     [NotifyCanExecuteChangedFor(nameof(LoadMoreRepliesCommand))]
-    private bool _isLoadingReplies;
+    public partial bool IsLoadingReplies { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMoreReplies))]
     [NotifyCanExecuteChangedFor(nameof(LoadMoreRepliesCommand))]
-    private string? _repliesNextPageToken;
+    public partial string? RepliesNextPageToken { get; set; }
 
     [ObservableProperty]
-    private bool _isReplyComposerOpen;
+    public partial bool IsReplyComposerOpen { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ReplyCharacterCount))]
     [NotifyPropertyChangedFor(nameof(CanSubmitReply))]
     [NotifyCanExecuteChangedFor(nameof(SubmitReplyCommand))]
-    private string _replyDraft = "";
+    public partial string ReplyDraft { get; set; } = "";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSubmitReply))]
     [NotifyCanExecuteChangedFor(nameof(SubmitReplyCommand))]
-    private bool _isSubmittingReply;
+    public partial bool IsSubmittingReply { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasReplyComposerStatus))]
-    private string? _replyComposerStatus;
+    public partial string? ReplyComposerStatus { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanReact))]
     [NotifyCanExecuteChangedFor(nameof(ReactCommand))]
-    private bool _isReacting;
+    public partial bool IsReacting { get; set; }
 
     public PodcastCommentViewModel(
         PodcastEpisodeCommentDto data,
@@ -306,6 +307,7 @@ public sealed partial class PodcastCommentViewModel : ObservableObject
         => string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PodcastReplyViewModel : ObservableObject
 {
     private const int MaxVisibleReactionEmoji = 3;
@@ -359,7 +361,7 @@ public sealed partial class PodcastReplyViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanReact))]
     [NotifyCanExecuteChangedFor(nameof(ReactCommand))]
-    private bool _isReacting;
+    public partial bool IsReacting { get; set; }
 
     [RelayCommand(CanExecute = nameof(CanReact))]
     private async Task ReactAsync(string emoji)

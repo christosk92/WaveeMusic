@@ -8,7 +8,7 @@ namespace Wavee.UI.WinUI.Controls.ActivityBell;
 /// Selects the DataTemplate based on the concrete IActivityItem type.
 /// Each activity source type gets its own visual treatment.
 /// </summary>
-public sealed class ActivityItemTemplateSelector : DataTemplateSelector
+public sealed partial class ActivityItemTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? ProgressTemplate { get; set; }
     public DataTemplate? NotificationTemplate { get; set; }

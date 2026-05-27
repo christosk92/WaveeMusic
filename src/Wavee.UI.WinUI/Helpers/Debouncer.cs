@@ -9,7 +9,7 @@ namespace Wavee.UI.WinUI.Helpers;
 /// Each call to <see cref="DebounceAsync"/> cancels any pending invocation
 /// and starts a new delay. Only the last call within the delay window executes.
 /// </summary>
-public sealed class Debouncer : IDisposable
+public sealed partial class Debouncer : IDisposable
 {
     private readonly TimeSpan _delay;
     private CancellationTokenSource? _cts;

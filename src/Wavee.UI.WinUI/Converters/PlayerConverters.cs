@@ -10,7 +10,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// <summary>
 /// Converts IsPlaying boolean to Play/Pause glyph.
 /// </summary>
-public sealed class BoolToPlayPauseGlyphConverter : IValueConverter
+public sealed partial class BoolToPlayPauseGlyphConverter : IValueConverter
 {
     // E768 = Play, E769 = Pause
     public object Convert(object value, Type targetType, object parameter, string language)
@@ -27,7 +27,7 @@ public sealed class BoolToPlayPauseGlyphConverter : IValueConverter
 /// <summary>
 /// Converts volume level (0-100) to appropriate volume icon glyph.
 /// </summary>
-public sealed class VolumeToGlyphConverter : IValueConverter
+public sealed partial class VolumeToGlyphConverter : IValueConverter
 {
     // E74F = Muted, E993 = Low, E994 = Medium, E995/E767 = High
     public object Convert(object value, Type targetType, object parameter, string language)
@@ -53,7 +53,7 @@ public sealed class VolumeToGlyphConverter : IValueConverter
 /// <summary>
 /// Converts RepeatMode enum to appropriate repeat icon glyph.
 /// </summary>
-public sealed class RepeatModeToGlyphConverter : IValueConverter
+public sealed partial class RepeatModeToGlyphConverter : IValueConverter
 {
     // E8EE = RepeatAll, E8ED = RepeatOne
     public object Convert(object value, Type targetType, object parameter, string language)
@@ -77,7 +77,7 @@ public sealed class RepeatModeToGlyphConverter : IValueConverter
 /// <summary>
 /// Converts milliseconds to formatted time string (mm:ss or h:mm:ss).
 /// </summary>
-public sealed class MillisecondsToTimeStringConverter : IValueConverter
+public sealed partial class MillisecondsToTimeStringConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -101,7 +101,7 @@ public sealed class MillisecondsToTimeStringConverter : IValueConverter
 /// <summary>
 /// Converts RepeatMode to checked state for toggle button.
 /// </summary>
-public sealed class RepeatModeToCheckedConverter : IValueConverter
+public sealed partial class RepeatModeToCheckedConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -120,7 +120,7 @@ public sealed class RepeatModeToCheckedConverter : IValueConverter
 /// <summary>
 /// Converts RepeatMode to Symbol for repeat button icon.
 /// </summary>
-public sealed class RepeatModeToSymbolConverter : IValueConverter
+public sealed partial class RepeatModeToSymbolConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -149,7 +149,7 @@ public sealed class RepeatModeToSymbolConverter : IValueConverter
 ///
 /// <para>Pass ConverterParameter as an int string to set decode size (default 200 px).</para>
 /// </summary>
-public sealed class StringToImageSourceConverter : IValueConverter
+public sealed partial class StringToImageSourceConverter : IValueConverter
 {
     private const int MaxDecodePixelWidth = 1024;
 

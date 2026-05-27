@@ -11,7 +11,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// otherwise. Drives the visibility of the hero banner row in
 /// <c>PlaylistPage.xaml</c>.
 /// </summary>
-public sealed class PlaylistLayoutModeBannerVisibilityConverter : IValueConverter
+public sealed partial class PlaylistLayoutModeBannerVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -30,7 +30,7 @@ public sealed class PlaylistLayoutModeBannerVisibilityConverter : IValueConverte
 /// otherwise. Drives the visibility of the square-cover Grid + the
 /// left-column title block in <c>PlaylistPage.xaml</c>.
 /// </summary>
-public sealed class PlaylistLayoutModeCoverVisibilityConverter : IValueConverter
+public sealed partial class PlaylistLayoutModeCoverVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

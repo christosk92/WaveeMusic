@@ -36,7 +36,7 @@ public sealed record ProfileSnapshot
 /// Singleton cache for the profile page. Extends <see cref="PageCache{TSnapshot}"/> with
 /// profile-specific fetch logic and flat-list diff helpers.
 /// </summary>
-public sealed class ProfileCache : PageCache<ProfileSnapshot>, IProfileCache
+public sealed partial class ProfileCache : PageCache<ProfileSnapshot>, IProfileCache
 {
     private readonly IUserProfileService? _userProfileService;
 

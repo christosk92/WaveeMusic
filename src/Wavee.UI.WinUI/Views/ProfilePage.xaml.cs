@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -22,6 +22,7 @@ using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private readonly ProfileCache? _cache;

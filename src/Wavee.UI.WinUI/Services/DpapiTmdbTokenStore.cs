@@ -21,7 +21,7 @@ namespace Wavee.UI.WinUI.Services;
 /// inaccessible to other Windows user accounts.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class DpapiTmdbTokenStore : ITmdbTokenStore
+public sealed partial class DpapiTmdbTokenStore : ITmdbTokenStore
 {
     private const string FileName = "tmdb.dat";
 

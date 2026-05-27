@@ -30,6 +30,7 @@ namespace Wavee.UI.WinUI.ViewModels.Artist;
 /// PropertyChanged itself — the parent owns the long-lived subscription and
 /// pushes derived state into <see cref="SyncArtistPlaybackState"/>.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDisposable
 {
     // ── Tuning constants ─────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDispos
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTopTracksSelection))]
     [NotifyPropertyChangedFor(nameof(SelectedTopTracksCount))]
-    private ObservableCollection<LazyTrackItem> _selectedTopTracks = [];
+    public partial ObservableCollection<LazyTrackItem> SelectedTopTracks { get; set; } = [];
 
     public int SelectedTopTracksCount => SelectedTopTracks.Count;
     public bool HasTopTracksSelection => SelectedTopTracks.Count > 0;
@@ -129,15 +130,15 @@ public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDispos
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ArtistPlayButtonText))]
-    private bool _isPlayPending;
+    public partial bool IsPlayPending { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ArtistPlayButtonText))]
-    private bool _isArtistContextPlaying;
+    public partial bool IsArtistContextPlaying { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ArtistPlayButtonText))]
-    private bool _isArtistContextPaused;
+    public partial bool IsArtistContextPaused { get; set; }
 
     public string ArtistPlayButtonText => IsArtistContextPlaying
         ? AppLocalization.GetString("Player_Pause")
@@ -145,8 +146,8 @@ public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDispos
 
     // ── Pagination ──────────────────────────────────────────────────────────
 
-    [ObservableProperty] private int _columnCount = 1;
-    [ObservableProperty] private int _currentPage;
+    [ObservableProperty] public partial int ColumnCount { get; set; } = 1;
+    [ObservableProperty] public partial int CurrentPage { get; set; }
 
     private int TracksPerPage => RowsPerPage * ColumnCount;
 

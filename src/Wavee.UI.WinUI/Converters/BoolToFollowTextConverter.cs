@@ -4,7 +4,7 @@ using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Converters;
 
-public sealed class BoolToFollowTextConverter : IValueConverter
+public sealed partial class BoolToFollowTextConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -19,7 +19,7 @@ public sealed class BoolToFollowTextConverter : IValueConverter
     }
 }
 
-public sealed class BoolToFollowGlyphConverter : IValueConverter
+public sealed partial class BoolToFollowGlyphConverter : IValueConverter
 {
     // EB51 = AddFriend, E8FB = CheckMark
     public object Convert(object value, Type targetType, object parameter, string language)

@@ -8,7 +8,7 @@ using Windows.Foundation;
 
 namespace Wavee.Controls.Lyrics.Models.Lyrics
 {
-    public class RenderLyricsChar : BaseRenderLyrics
+    public partial class RenderLyricsChar : BaseRenderLyrics
     {
         public Rect LayoutRect { get; private set; }
 

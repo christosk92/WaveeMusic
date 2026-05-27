@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -22,6 +22,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;

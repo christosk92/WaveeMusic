@@ -1,6 +1,7 @@
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed class RelatedArtistVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class RelatedArtistVm
 {
     public string? Id { get; init; }
     public string? Uri { get; init; }

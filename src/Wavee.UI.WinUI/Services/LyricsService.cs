@@ -30,7 +30,7 @@ namespace Wavee.UI.WinUI.Services;
 /// Searches multiple lyrics providers in parallel (QQ Music, Kugou, Netease, LRCLIB),
 /// preferring syllable-synced results over line-synced. Falls back to Spotify line-level lyrics.
 /// </summary>
-public sealed class LyricsService : ILyricsService
+public sealed partial class LyricsService : ILyricsService
 {
     private readonly ISession _session;
     private readonly IMetadataDatabase? _db;

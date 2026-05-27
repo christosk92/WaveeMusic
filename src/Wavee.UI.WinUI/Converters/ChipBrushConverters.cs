@@ -8,7 +8,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// <summary>
 /// Returns a filled brush when the chip is selected, subtle brush when not.
 /// </summary>
-public sealed class ChipBackgroundConverter : IValueConverter
+public sealed partial class ChipBackgroundConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -29,7 +29,7 @@ public sealed class ChipBackgroundConverter : IValueConverter
 /// <summary>
 /// Returns white text when selected, default text color when not.
 /// </summary>
-public sealed class ChipForegroundConverter : IValueConverter
+public sealed partial class ChipForegroundConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

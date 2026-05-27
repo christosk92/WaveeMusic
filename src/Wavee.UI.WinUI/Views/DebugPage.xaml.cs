@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,6 +10,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class DebugPage : UserControl, ITabBarItemContent, IPageHostAware
 {
     public DebugViewModel ViewModel { get; }
@@ -35,7 +36,7 @@ public sealed partial class DebugPage : UserControl, ITabBarItemContent, IPageHo
 /// <summary>
 /// Converts a selected index to Visibility. Shows when index matches ConverterParameter.
 /// </summary>
-public sealed class IndexToVisibilityConverter : IValueConverter
+public sealed partial class IndexToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -51,7 +52,7 @@ public sealed class IndexToVisibilityConverter : IValueConverter
 /// <summary>
 /// Negates a boolean value.
 /// </summary>
-public sealed class BoolNegationConverter : IValueConverter
+public sealed partial class BoolNegationConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
         => value is bool b ? !b : value;

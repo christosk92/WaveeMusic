@@ -21,7 +21,7 @@ namespace Wavee.UI.WinUI.Controls.Layouts;
 /// recycles any element we stop requesting between layout passes.
 /// </para>
 /// </summary>
-public sealed class SingleRowLayout : VirtualizingLayout
+public sealed partial class SingleRowLayout : VirtualizingLayout
 {
     public static readonly DependencyProperty MinItemWidthProperty =
         DependencyProperty.Register(nameof(MinItemWidth), typeof(double), typeof(SingleRowLayout),

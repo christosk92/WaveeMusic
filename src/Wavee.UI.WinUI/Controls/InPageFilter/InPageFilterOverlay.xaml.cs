@@ -15,6 +15,7 @@ namespace Wavee.UI.WinUI.Controls.InPageFilter;
 /// is told who the active target is via ShellPage's nav handlers, and the
 /// overlay just mirrors the controller's <c>IsActive</c> + <c>Query</c>.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class InPageFilterOverlay : UserControl, INotifyPropertyChanged
 {
     private InPageFilterController? _controller;

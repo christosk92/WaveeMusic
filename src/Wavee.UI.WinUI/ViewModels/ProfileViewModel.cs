@@ -24,6 +24,7 @@ using Windows.UI;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.TrackListViewModelBase, ITabBarItemContent, ITrackListViewModel
 {
     private readonly ProfileCache? _profileCache;
@@ -35,52 +36,52 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
     private bool _isHibernated;
 
     [ObservableProperty]
-    private string _displayName = "";
+    public partial string DisplayName { get; set; } = "";
 
     [ObservableProperty]
-    private string? _profileImageUrl;
+    public partial string? ProfileImageUrl { get; set; }
 
     [ObservableProperty]
-    private int _followingCount;
+    public partial int FollowingCount { get; set; }
 
     [ObservableProperty]
-    private int _publicPlaylistCount;
+    public partial int PublicPlaylistCount { get; set; }
 
     [ObservableProperty]
-    private int _profileColor;
+    public partial int ProfileColor { get; set; }
 
     [ObservableProperty]
-    private string? _heroColorHex;
+    public partial string? HeroColorHex { get; set; }
 
     /// <summary>Soft top-left radial wash tinted from <see cref="HeroColorHex"/>.
     /// Mirrors HomePage's PageBleedHost — keeps the visual family consistent
     /// across pages with extracted-color identity. Rebuilt whenever
     /// <see cref="HeroColorHex"/> or <see cref="IsDarkTheme"/> changes.</summary>
     [ObservableProperty]
-    private Brush? _pageBleedBrush;
+    public partial Brush? PageBleedBrush { get; set; }
 
     /// <summary>Theme flag the page sets on load / theme-change so the bleed
     /// brush can pick the right alpha curve (dark themes need a deeper push).</summary>
     [ObservableProperty]
-    private bool _isDarkTheme = true;
+    public partial bool IsDarkTheme { get; set; } = true;
 
     [ObservableProperty]
-    private bool _isLoading = true;
+    public partial bool IsLoading { get; set; } = true;
 
     [ObservableProperty]
-    private bool _hasData;
+    public partial bool HasData { get; set; }
 
     [ObservableProperty]
-    private bool _isCurrentUser = true;
+    public partial bool IsCurrentUser { get; set; } = true;
 
     [ObservableProperty]
-    private bool _isFollowing;
+    public partial bool IsFollowing { get; set; }
 
     [ObservableProperty]
-    private string? _username;
+    public partial string? Username { get; set; }
 
     [ObservableProperty]
-    private string? _userUri;
+    public partial string? UserUri { get; set; }
 
     private readonly ObservableCollection<SpotifyProfileArtist> _recentArtists = [];
     private readonly ObservableCollection<SpotifyProfilePlaylist> _publicPlaylists = [];

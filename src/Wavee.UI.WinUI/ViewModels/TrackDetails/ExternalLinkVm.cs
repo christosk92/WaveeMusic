@@ -1,6 +1,7 @@
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed class ExternalLinkVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ExternalLinkVm
 {
     public string? Name { get; init; }
     public string? Url { get; init; }

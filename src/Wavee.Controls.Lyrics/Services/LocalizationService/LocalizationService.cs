@@ -2,7 +2,7 @@ using Microsoft.Windows.ApplicationModel.Resources;
 
 namespace Wavee.Controls.Lyrics.Services.LocalizationService
 {
-    public class LocalizationService : ILocalizationService
+    public partial class LocalizationService : ILocalizationService
     {
         private readonly ResourceLoader? _resourceLoader;
 

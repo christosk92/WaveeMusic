@@ -10,7 +10,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Handles play action prompting via a single combined dialog.
 /// Gets XamlRoot from MainWindow.
 /// </summary>
-internal sealed class PlaybackPromptService : IPlaybackPromptService
+internal sealed partial class PlaybackPromptService : IPlaybackPromptService
 {
     private readonly ISettingsService _settings;
 

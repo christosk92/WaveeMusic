@@ -35,7 +35,7 @@ namespace Wavee.UI.WinUI.Services;
 /// <see cref="IVideoSurfaceProvider"/> so the active-surface service can bind
 /// it to the video player page or mini-player.
 /// </summary>
-public sealed class SpotifyVideoProvider
+public sealed partial class SpotifyVideoProvider
     : ISpotifyVideoPlayback, IVideoSurfaceProvider, ISpotifyVideoPlaybackDetails, IDisposable
 {
     private const uint MsprContentEnablingActionRequired = 0x8004B895;
@@ -343,7 +343,7 @@ public sealed class SpotifyVideoProvider
             ct);
     }
 
-    private sealed class PreparedSpotifyVideoSession : IPreparedVideoSession
+    private sealed partial class PreparedSpotifyVideoSession : IPreparedVideoSession
     {
         public PreparedSpotifyVideoSession(SpotifyVideoPlaybackTarget target)
         {

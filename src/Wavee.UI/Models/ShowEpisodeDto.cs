@@ -10,7 +10,8 @@ namespace Wavee.UI.Models;
 /// EpisodeCacheEntry's playback progress so the row can render its played-state
 /// pill without an extra fetch.
 /// </summary>
-public sealed class ShowEpisodeDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ShowEpisodeDto
 {
     private const long NearEndThresholdMs = 90_000;
 

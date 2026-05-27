@@ -28,7 +28,7 @@ namespace Wavee.UI.WinUI.Controls.Layouts;
 /// <see cref="EstimatedItemHeight"/> fallback for never-measured indices.
 /// </para>
 /// </remarks>
-public sealed class SectionStackLayout : VirtualizingLayout
+public sealed partial class SectionStackLayout : VirtualizingLayout
 {
     /// <summary>
     /// Deltas below this threshold are treated as layout noise and don't update the

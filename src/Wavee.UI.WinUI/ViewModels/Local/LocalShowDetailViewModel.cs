@@ -12,6 +12,7 @@ using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.ViewModels.Local;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalShowDetailViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -20,14 +21,14 @@ public sealed partial class LocalShowDetailViewModel : ObservableObject, IDispos
     private string? _showId;
     private string? _paletteSourceUrl;
 
-    [ObservableProperty] private LocalShow? _show;
+    [ObservableProperty] public partial LocalShow? Show { get; set; }
     public ObservableCollection<LocalSeason> Seasons { get; } = new();
     public ObservableCollection<LocalEpisode> EpisodesForSelectedSeason { get; } = new();
     /// <summary>v21 — principal cast (top-10) for the show, loaded alongside seasons.</summary>
     public ObservableCollection<LocalCastMember> ShowCast { get; } = new();
 
-    [ObservableProperty] private LocalSeason? _selectedSeason;
-    [ObservableProperty] private bool _isLoading;
+    [ObservableProperty] public partial LocalSeason? SelectedSeason { get; set; }
+    [ObservableProperty] public partial bool IsLoading { get; set; }
 
     /// <summary>
     /// <c>#RRGGBB</c> dominant accent extracted from the show's poster /
@@ -35,7 +36,7 @@ public sealed partial class LocalShowDetailViewModel : ObservableObject, IDispos
     /// third picks up the show's palette like ArtistPage does. Null until
     /// extraction finishes (or stays null if there's no on-disk artwork).
     /// </summary>
-    [ObservableProperty] private string? _headerHeroColorHex;
+    [ObservableProperty] public partial string? HeaderHeroColorHex { get; set; }
 
     public LocalShowDetailViewModel(ILocalLibraryFacade? facade = null)
     {

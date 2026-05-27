@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -6,6 +6,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class StartPage : UserControl, IPageHostAware
 {
     public StartPageViewModel ViewModel { get; } = new();

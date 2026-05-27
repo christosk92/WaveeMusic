@@ -31,6 +31,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// band of editorial shelves + a chip grid of category sub-pages + a single
 /// "Explore all" CTA button.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class BrowseViewModel : SectionFeedViewModelBase
 {
     private readonly IHomeFeedService? _homeFeedService;
@@ -38,7 +39,7 @@ public sealed partial class BrowseViewModel : SectionFeedViewModelBase
     private readonly DispatcherQueue _dispatcherQueue;
 
     [ObservableProperty]
-    private string _currentUri = "";
+    public partial string CurrentUri { get; set; } = "";
 
     /// <summary>The page's accent (from <c>browse.header.color.hex</c>) — passed
     /// to <see cref="HeroSlideFactory.BuildSlide"/> as <c>overrideAccent</c> so
@@ -49,19 +50,19 @@ public sealed partial class BrowseViewModel : SectionFeedViewModelBase
     /// (eyebrow + header + mica gradient), rendered via <c>HomeRegionView</c>
     /// to match the homepage's region treatment.</summary>
     [ObservableProperty]
-    private ObservableCollection<HomeRegion> _pageRegions = new();
+    public partial ObservableCollection<HomeRegion> PageRegions { get; set; } = new();
 
     /// <summary>Chip groups extracted from the response's
     /// <c>BrowseGridSectionData</c> — bucketed via
     /// <see cref="BrowseAllGrouper"/> into TOP / FOR YOU / GENRES / etc.</summary>
     [ObservableProperty]
-    private IList<BrowseAllGroup> _browseGroups = new List<BrowseAllGroup>();
+    public partial IList<BrowseAllGroup> BrowseGroups { get; set; } = new List<BrowseAllGroup>();
 
     /// <summary>Single "Explore all categories" CTA extracted from the
     /// response's <c>BrowseRelatedSectionData</c>. Rendered as a separate
     /// button below the chip groups (NOT folded into the grid).</summary>
     [ObservableProperty]
-    private BrowseCta? _browseCta;
+    public partial BrowseCta? BrowseCta { get; set; }
 
     public ICommand HeroPlayCommand { get; }
     public ICommand HeroOpenCommand { get; }

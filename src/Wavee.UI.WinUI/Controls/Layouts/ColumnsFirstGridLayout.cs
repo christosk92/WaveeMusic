@@ -11,7 +11,7 @@ namespace Wavee.UI.WinUI.Controls.Layouts;
 /// Items beyond MaxRows × columns are arranged off-screen.
 /// Reports computed ColumnCount via a deferred event for pagination.
 /// </summary>
-public sealed class ColumnsFirstGridLayout : NonVirtualizingLayout
+public sealed partial class ColumnsFirstGridLayout : NonVirtualizingLayout
 {
     public static readonly DependencyProperty MaxRowsProperty =
         DependencyProperty.Register(nameof(MaxRows), typeof(int), typeof(ColumnsFirstGridLayout),

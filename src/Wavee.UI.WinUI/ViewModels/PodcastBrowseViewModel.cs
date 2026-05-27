@@ -22,6 +22,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// above the title). The trail truncates to a clicked rung and reloads only
 /// the hero + shelves; the chip rail stays static across drills.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PodcastBrowseViewModel : SectionFeedViewModelBase
 {
     /// <summary>
@@ -56,13 +57,13 @@ public sealed partial class PodcastBrowseViewModel : SectionFeedViewModelBase
     }
 
     [ObservableProperty]
-    private string _currentUri = string.Empty;
+    public partial string CurrentUri { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private string? _selectedHeroImageUrl;
+    public partial string? SelectedHeroImageUrl { get; set; }
 
     [ObservableProperty]
-    private string? _backgroundImageUrl;
+    public partial string? BackgroundImageUrl { get; set; }
 
     /// <summary>Pinned synthetic chip at the head of the chip rail. Always
     /// points at the root podcasts page so "All" deselects the active

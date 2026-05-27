@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -18,6 +18,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class FeedbackPage : UserControl, ITabBarItemContent, IPageHostAware
 {
     private static readonly Brush AccentBrush = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];

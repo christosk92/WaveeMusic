@@ -18,7 +18,7 @@ namespace Wavee.UI.WinUI.Services;
 /// - Recents section uses ListResponseWrapper with nested entity/trait items
 /// V2 is detected by the presence of ListResponseWrapper or HomeRecentlyPlayedSectionData.
 /// </summary>
-public sealed class HomeResponseParserV2 : IHomeResponseParser
+public sealed partial class HomeResponseParserV2 : IHomeResponseParser
 {
     // V1 parser for sections that still use the old content format
     private static readonly HomeResponseParserV1 V1Fallback = new();

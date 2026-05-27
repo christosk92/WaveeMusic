@@ -7,7 +7,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// Returns true if value is null, false otherwise.
 /// Useful for IsIndeterminate binding when Progress is null.
 /// </summary>
-public sealed class NullToBoolConverter : IValueConverter
+public sealed partial class NullToBoolConverter : IValueConverter
 {
     public bool Invert { get; set; }
 

@@ -11,7 +11,8 @@ namespace Wavee.UI.WinUI.Data.DTOs;
 /// track in <see cref="IPlaybackStateService"/>. Used to pass the now-playing track
 /// to <see cref="Controls.Track.TrackContextMenu"/> without duplicating menu logic.
 /// </summary>
-public sealed class NowPlayingTrackAdapter : ITrackItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class NowPlayingTrackAdapter : ITrackItem
 {
     private readonly IPlaybackStateService _ps;
 

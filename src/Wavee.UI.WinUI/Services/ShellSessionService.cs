@@ -3,20 +3,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Microsoft.UI.Xaml.Controls;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Json;
 
 namespace Wavee.UI.WinUI.Services;
 
-public sealed class ShellSessionService : IShellSessionService
+public sealed partial class ShellSessionService : IShellSessionService
 {
-    private static readonly JsonSerializerOptions ParameterJsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
+    // Discriminator strings stored in SerializedNavigationParameter.TypeName.
+    // Replaces the prior approach of storing Type.FullName + resolving with
+    // Type.GetType / Assembly.GetType — AOT cannot guarantee that round-trip.
+    private const string ParameterKindString = "string";
+    private const string ParameterKindCreatePlaylist = "CreatePlaylistParameter";
 
     private readonly ISettingsService _settings;
 
@@ -86,8 +89,12 @@ public sealed class ShellSessionService : IShellSessionService
 
         foreach (var tab in GetOrCreateState().Tabs)
         {
-            var pageType = ResolveType(tab.PageTypeName);
-            if (pageType == null)
+            // PageTypeName is a stable string key (page nameof literal) sourced
+            // from PageTypeRegistry — NOT Type.FullName. AOT cannot guarantee
+            // the FullName↔Type round-trip survives trimming, so we look it up
+            // through the same registry that PageRegistration populated at
+            // startup.
+            if (!PageTypeRegistry.TryGetType(tab.PageTypeName, out var pageType) || pageType is null)
                 continue;
 
             var parameter = DeserializeParameter(tab.Parameter);
@@ -213,12 +220,18 @@ public sealed class ShellSessionService : IShellSessionService
     private static TabSessionState? CreateTabState(TabBarItem tab)
     {
         var pageType = tab.NavigationParameter?.InitialPageType ?? tab.ContentHost.ActivePage?.GetType();
-        if (pageType == null || string.IsNullOrWhiteSpace(pageType.FullName))
+        if (pageType == null)
+            return null;
+
+        // PageTypeName is the PageTypeRegistry key (a nameof literal), not
+        // Type.FullName. Page types absent from the registry can't be restored,
+        // which mirrors PageHost behaviour for any unregistered page.
+        if (!PageTypeRegistry.TryGetKey(pageType, out var pageKey) || string.IsNullOrEmpty(pageKey))
             return null;
 
         return new TabSessionState
         {
-            PageTypeName = pageType.FullName,
+            PageTypeName = pageKey,
             Parameter = SerializeParameter(tab.NavigationParameter?.NavigationParameter),
             Header = tab.Header,
             IsPinned = tab.IsPinned,
@@ -226,56 +239,56 @@ public sealed class ShellSessionService : IShellSessionService
         };
     }
 
+    // ── Navigation parameter persistence ────────────────────────────────
+    //
+    // Replaces the prior reflection-based approach
+    // (JsonSerializer.Serialize(obj, Type, opts) + Type.GetType(string)) with
+    // an explicit kind-discriminated switch. The two supported parameter
+    // shapes today are bare strings (URIs, sort tags, search queries) and the
+    // CreatePlaylistParameter record. Any other parameter type returns null on
+    // serialize, which mirrors how PageTypeRegistry handles an unregistered
+    // page: the parameter is lost on restore, the page still opens. If a new
+    // typed parameter is introduced and needs to survive shell-session
+    // restore, register it both here and in WaveeUiWinUiJsonContext.
+
     private static SerializedNavigationParameter? SerializeParameter(object? parameter)
     {
-        if (parameter == null)
-            return null;
+        return parameter switch
+        {
+            null => null,
+            string s => new SerializedNavigationParameter
+            {
+                TypeName = ParameterKindString,
+                // Store the string raw — no JSON wrapping needed for a primitive.
+                Json = s
+            },
+            CreatePlaylistParameter cp => new SerializedNavigationParameter
+            {
+                TypeName = ParameterKindCreatePlaylist,
+                Json = JsonSerializer.Serialize(cp, WaveeUiWinUiJsonContext.Default.CreatePlaylistParameter)
+            },
+            _ => null
+        };
+    }
 
-        var type = parameter.GetType();
-        if (string.IsNullOrWhiteSpace(type.FullName))
+    private static object? DeserializeParameter(SerializedNavigationParameter? parameter)
+    {
+        if (parameter == null || string.IsNullOrWhiteSpace(parameter.TypeName))
             return null;
 
         try
         {
-            return new SerializedNavigationParameter
+            return parameter.TypeName switch
             {
-                TypeName = type.FullName,
-                Json = JsonSerializer.Serialize(parameter, type, ParameterJsonOptions)
+                ParameterKindString => parameter.Json,
+                ParameterKindCreatePlaylist when !string.IsNullOrWhiteSpace(parameter.Json) =>
+                    (object?)JsonSerializer.Deserialize(parameter.Json, WaveeUiWinUiJsonContext.Default.CreatePlaylistParameter),
+                _ => null
             };
         }
         catch
         {
             return null;
         }
-    }
-
-    private static object? DeserializeParameter(SerializedNavigationParameter? parameter)
-    {
-        if (parameter == null || string.IsNullOrWhiteSpace(parameter.TypeName) || string.IsNullOrWhiteSpace(parameter.Json))
-            return null;
-
-        var type = ResolveType(parameter.TypeName);
-        if (type == null)
-            return null;
-
-        try
-        {
-            return JsonSerializer.Deserialize(parameter.Json, type, ParameterJsonOptions);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static Type? ResolveType(string? typeName)
-    {
-        if (string.IsNullOrWhiteSpace(typeName))
-            return null;
-
-        return Type.GetType(typeName, throwOnError: false)
-               ?? typeof(ShellSessionService).Assembly.GetType(typeName, throwOnError: false)
-               ?? typeof(CreatePlaylistParameter).Assembly.GetType(typeName, throwOnError: false)
-               ?? typeof(string).Assembly.GetType(typeName, throwOnError: false);
     }
 }

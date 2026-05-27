@@ -9,7 +9,7 @@ namespace Wavee.UI.WinUI.Services;
 /// so plain-C# services in <c>Wavee.UI</c> can marshal callbacks onto the UI thread without
 /// taking a direct dependency on Microsoft.UI.Dispatching.
 /// </summary>
-public sealed class DispatcherQueueUiDispatcher : IUiDispatcher
+public sealed partial class DispatcherQueueUiDispatcher : IUiDispatcher
 {
     private readonly DispatcherQueue _dispatcherQueue;
 

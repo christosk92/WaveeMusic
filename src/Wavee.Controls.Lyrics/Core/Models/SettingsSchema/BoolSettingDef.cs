@@ -1,4 +1,4 @@
 namespace BetterLyrics.Core.Models.SettingsSchema
 {
-    public class BoolSettingDef : SettingDef { }
+    public partial class BoolSettingDef : SettingDef { }
 }

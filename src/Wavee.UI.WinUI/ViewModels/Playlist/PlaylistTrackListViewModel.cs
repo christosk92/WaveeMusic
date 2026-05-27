@@ -37,6 +37,7 @@ namespace Wavee.UI.WinUI.ViewModels.Playlist;
 /// interface itself; XAML binds <c>Vm.TrackList</c> wherever an
 /// <c>ITrackListViewModel</c>-shaped surface is expected.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PlaylistTrackListViewModel
     : TrackListViewModelBase, ITrackListViewModel
 {
@@ -152,30 +153,30 @@ public sealed partial class PlaylistTrackListViewModel
     /// a POST to the playlist signals endpoint and refreshes the track list.
     /// </summary>
     [ObservableProperty]
-    private SessionControlChipViewModel? _selectedSessionControlChip;
+    public partial SessionControlChipViewModel? SelectedSessionControlChip { get; set; }
 
     // ── Filter + sort state ──────────────────────────────────────────────────
 
     [ObservableProperty]
-    private string _searchQuery = "";
+    public partial string SearchQuery { get; set; } = "";
 
     [ObservableProperty]
-    private bool _showOnlyVideoTracks;
+    public partial bool ShowOnlyVideoTracks { get; set; }
 
     [ObservableProperty]
-    private PlaylistSortColumn _currentSortColumn = PlaylistSortColumn.Custom;
+    public partial PlaylistSortColumn CurrentSortColumn { get; set; } = PlaylistSortColumn.Custom;
 
     [ObservableProperty]
-    private bool _isSortDescending = false;
+    public partial bool IsSortDescending { get; set; } = false;
 
     [ObservableProperty]
-    private bool _isLoadingTracks;
+    public partial bool IsLoadingTracks { get; set; }
 
     [ObservableProperty]
-    private int _totalTracks;
+    public partial int TotalTracks { get; set; }
 
     [ObservableProperty]
-    private string _totalDuration = "";
+    public partial string TotalDuration { get; set; } = "";
 
     /// <summary>
     /// True when at least one loaded track has a non-null <c>AddedAt</c>. Editorial
@@ -183,7 +184,7 @@ public sealed partial class PlaylistTrackListViewModel
     /// this to hide the Date Added grid column in that case.
     /// </summary>
     [ObservableProperty]
-    private bool _hasAnyAddedAt;
+    public partial bool HasAnyAddedAt { get; set; }
 
     // Sort indicator properties for column headers
     public bool IsSortingByTitle => CurrentSortColumn == PlaylistSortColumn.Title;
@@ -216,7 +217,7 @@ public sealed partial class PlaylistTrackListViewModel
     /// <summary>True when the user is allowed to drag-reorder tracks within this
     /// list. We gate on owner-edit AND on "no sort applied" — applying a sort
     /// makes manual position meaningless, so the gesture is hidden in that mode.</summary>
-    public bool CanReorderTracks => _canEditItemsProvider() && _currentSortColumn == PlaylistSortColumn.Custom;
+    public bool CanReorderTracks => _canEditItemsProvider() && CurrentSortColumn == PlaylistSortColumn.Custom;
 
     private bool _parentIsLoading;
     private bool _parentHasError;
@@ -1287,6 +1288,7 @@ public sealed partial class PlaylistTrackListViewModel
 /// driving the chase-around-border animation while the signal POST is
 /// in flight.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SessionControlChipViewModel : ObservableObject
 {
     /// <summary>Raw option key (e.g. <c>pop_rock</c>) — used for identity/matching.</summary>
@@ -1303,5 +1305,5 @@ public sealed partial class SessionControlChipViewModel : ObservableObject
     public string? SignalIdentifier { get; init; }
 
     [ObservableProperty]
-    private bool _isLoading;
+    public partial bool IsLoading { get; set; }
 }

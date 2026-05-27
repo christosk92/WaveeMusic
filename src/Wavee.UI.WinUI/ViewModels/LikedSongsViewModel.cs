@@ -29,6 +29,7 @@ public enum LikedSongsSortColumn { Title, Artist, Album, AddedAt }
 /// <summary>
 /// ViewModel for the Liked Songs page with imperative filtering and sorting.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
@@ -63,37 +64,37 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     private readonly DispatcherTimer _searchDebounceTimer;
 
     [ObservableProperty]
-    private bool _showOnlyVideoTracks;
+    public partial bool ShowOnlyVideoTracks { get; set; }
 
     [ObservableProperty]
-    private LikedSongsSortColumn _currentSortColumn = LikedSongsSortColumn.AddedAt;
+    public partial LikedSongsSortColumn CurrentSortColumn { get; set; } = LikedSongsSortColumn.AddedAt;
 
     [ObservableProperty]
-    private bool _isSortDescending = true;
+    public partial bool IsSortDescending { get; set; } = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasFilterChipsOrShimmer))]
-    private bool _isTagsLoading;
+    public partial bool IsTagsLoading { get; set; }
 
     // Source of truth for which filter chip is currently selected.
     // Bound TwoWay to TokenView.SelectedItem. Property-changed hook triggers re-filtering.
     [ObservableProperty]
-    private LikedSongsFilterChipViewModel? _selectedFilterChip;
+    public partial LikedSongsFilterChipViewModel? SelectedFilterChip { get; set; }
 
     [ObservableProperty]
-    private bool _hasError;
+    public partial bool HasError { get; set; }
 
     [ObservableProperty]
-    private string? _errorMessage;
+    public partial string? ErrorMessage { get; set; }
 
     [ObservableProperty]
-    private int _totalSongs;
+    public partial int TotalSongs { get; set; }
 
     [ObservableProperty]
-    private string _totalDuration = "";
+    public partial string TotalDuration { get; set; } = "";
 
     [ObservableProperty]
-    private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
+    public partial IReadOnlyList<PlaylistSummaryDto> Playlists { get; set; } = Array.Empty<PlaylistSummaryDto>();
 
     public ObservableCollection<LikedSongDto> FilteredSongs { get; } = [];
     public ObservableCollection<LikedSongsFilterChipViewModel> FilterChips { get; } = [];
@@ -503,8 +504,17 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
         await LoadAsync();
     }
 
+    // Renamed from `SortBy` to avoid a name clash with the inherited
+    // `LibraryViewModelBase.SortBy` property. Under CsWinRT's AOT optimizer
+    // the [GeneratedBindableCustomProperty] attribute on this class emits a
+    // dispatch table that tries to assign to `SortBy` — when a method named
+    // SortBy hides the inherited property, the generated `instance.SortBy = …`
+    // resolves to a method group and fails to compile. The RelayCommand
+    // source generator picks up the new name verbatim, so the public XAML
+    // binding surface (`ITrackListViewModel.SortByCommand`) routes through
+    // `SortByColumnCommand` below.
     [RelayCommand]
-    private void SortBy(string? columnName)
+    private void SortByColumn(string? columnName)
     {
         if (!Enum.TryParse<LikedSongsSortColumn>(columnName, out var column))
             return;
@@ -732,7 +742,7 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
 
     #region Explicit ITrackListViewModel ICommand Implementation
 
-    ICommand ITrackListViewModel.SortByCommand => SortByCommand;
+    ICommand ITrackListViewModel.SortByCommand => SortByColumnCommand;
     ICommand ITrackListViewModel.PlayTrackCommand => PlayTrackCommand;
     ICommand ITrackListViewModel.PlaySelectedCommand => PlaySelectedCommand;
     ICommand ITrackListViewModel.PlayAfterCommand => PlayAfterCommand;
@@ -743,7 +753,8 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     #endregion
 }
 
-public sealed class LikedSongsFilterChipViewModel
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class LikedSongsFilterChipViewModel
 {
     public string Label { get; init; } = "";
 

@@ -4,6 +4,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PlaybackSettingsSection : UserControl, ISettingsSearchFilter
 {
     public SettingsViewModel ViewModel { get; }

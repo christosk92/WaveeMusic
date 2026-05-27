@@ -11,11 +11,26 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using Wavee.Core.Video;
+using Wavee.UI.WinUI.Json;
 using Windows.Storage.Streams;
 
 namespace Wavee.UI.WinUI.Services.SpotifyVideo;
 
-internal sealed class SpotifyWebEmePlayer : IDisposable
+/// <summary>
+/// JS-bound payload posted back to the WebView2 EME player when a Widevine
+/// license request succeeds. Promoted to a concrete record (from an anonymous
+/// type) so the AOT-safe <see cref="JsonSerializer.Serialize{T}(T, System.Text.Json.Serialization.Metadata.JsonTypeInfo{T})"/>
+/// overload can be used via <see cref="WaveeUiWinUiJsonContext"/>.
+/// </summary>
+internal sealed record WebEmeLicenseResponseMessage(string Type, string RequestId, string Body);
+
+/// <summary>
+/// Sibling payload for license-request failure. Same rationale as
+/// <see cref="WebEmeLicenseResponseMessage"/>.
+/// </summary>
+internal sealed record WebEmeLicenseErrorMessage(string Type, string RequestId, string Message);
+
+internal sealed partial class SpotifyWebEmePlayer : IDisposable
 {
     public const string PlayerUrl = "https://wavee-player.example/spotify-video-player.html";
     private const string PlayerBrowserArguments = "--autoplay-policy=no-user-gesture-required";
@@ -308,28 +323,31 @@ internal sealed class SpotifyWebEmePlayer : IDisposable
                 _config?.LicenseServerEndpoint,
                 _playbackCancellationToken);
 
-            PostWebMessage(new
-            {
-                type = "license-response",
-                requestId,
-                body = Convert.ToBase64String(license)
-            });
+            var response = new WebEmeLicenseResponseMessage(
+                Type: "license-response",
+                RequestId: requestId,
+                Body: Convert.ToBase64String(license));
+            var responseJson = JsonSerializer.Serialize(
+                response,
+                WaveeUiWinUiJsonContext.Default.WebEmeLicenseResponseMessage);
+            PostWebMessage(responseJson);
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "SpotifyWebEmePlayer: Widevine license request failed requestId={RequestId}", requestId);
-            PostWebMessage(new
-            {
-                type = "license-error",
-                requestId,
-                message = ex.Message
-            });
+            var error = new WebEmeLicenseErrorMessage(
+                Type: "license-error",
+                RequestId: requestId,
+                Message: ex.Message);
+            var errorJson = JsonSerializer.Serialize(
+                error,
+                WaveeUiWinUiJsonContext.Default.WebEmeLicenseErrorMessage);
+            PostWebMessage(errorJson);
         }
     }
 
-    private void PostWebMessage(object payload)
+    private void PostWebMessage(string json)
     {
-        var json = JsonSerializer.Serialize(payload);
         _ = RunOnUiAsync(() =>
         {
             var core = _webView?.CoreWebView2;

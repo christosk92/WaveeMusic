@@ -7,7 +7,7 @@ namespace Wavee.UI.WinUI.Converters;
 /// <summary>
 /// Returns true when ActivityStatus is InProgress (for ProgressRing.IsActive).
 /// </summary>
-public sealed class StatusToActiveConverter : IValueConverter
+public sealed partial class StatusToActiveConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

@@ -7,7 +7,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// <summary>
 /// Convenience facade that exposes all app-wide state services.
 /// </summary>
-internal sealed class AppState : IAppState
+internal sealed partial class AppState : IAppState
 {
     public IAuthState Auth { get; }
     public IPlaybackStateService Playback { get; }

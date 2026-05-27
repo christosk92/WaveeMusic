@@ -23,7 +23,7 @@ namespace Wavee.UI.WinUI.Controls.HeroHeader;
 ///         <see cref="Visibility.Visible"/> via its own toggle method.</item>
 /// </list>
 /// </summary>
-public sealed class ShyHeaderController : IDisposable
+public sealed partial class ShyHeaderController : IDisposable
 {
     private readonly ScrollView _scrollView;
     private readonly FrameworkElement _hero;

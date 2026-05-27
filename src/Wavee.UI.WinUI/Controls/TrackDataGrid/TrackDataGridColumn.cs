@@ -12,7 +12,8 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 /// <see cref="Length"/>, which is the point of having this live on an INPC model
 /// rather than separate <see cref="Microsoft.UI.Xaml.Controls.ColumnDefinition"/>s.
 /// </summary>
-public sealed class TrackDataGridColumn : INotifyPropertyChanged
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class TrackDataGridColumn : INotifyPropertyChanged
 {
     private GridLength _length = new(1, GridUnitType.Star);
     private GridLength _minLength = new(48);

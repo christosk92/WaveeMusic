@@ -23,6 +23,7 @@ namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
 ///   - Footer label/glyph swap to match the current expansion state.
 ///   - Scroll-to-top reset when a fresh result lands (HasResult flip).
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LyricsAiPanel : UserControl
 {
     private const double CompactResultCardWidth = 368;

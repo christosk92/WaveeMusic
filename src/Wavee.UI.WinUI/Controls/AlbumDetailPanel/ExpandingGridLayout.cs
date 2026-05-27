@@ -15,7 +15,7 @@ namespace Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 /// a repeater item, so expanding/collapsing never realizes or recycles
 /// anything and card artwork never flashes.</para>
 /// </summary>
-public sealed class ExpandingGridLayout : VirtualizingLayout
+public sealed partial class ExpandingGridLayout : VirtualizingLayout
 {
     internal const double MinItemWidth = 160;
     internal const double ColumnSpacing = 16;

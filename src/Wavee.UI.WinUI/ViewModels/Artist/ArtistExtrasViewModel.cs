@@ -24,6 +24,7 @@ namespace Wavee.UI.WinUI.ViewModels.Artist;
 /// reads the snapshot to derive the tour-banner text — that's a one-way
 /// pull (header observes, extras owns).</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistExtrasViewModel : ObservableObject, IDisposable
 {
     private readonly Func<string?> _userLocationProvider;
@@ -79,7 +80,7 @@ public sealed partial class ArtistExtrasViewModel : ObservableObject, IDisposabl
     public event EventHandler? ConcertsChanged;
 
     [ObservableProperty]
-    private string? _userLocationName;
+    public partial string? UserLocationName { get; set; }
 
     public void ApplyOverview(ArtistOverviewResult overview)
     {

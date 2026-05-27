@@ -25,6 +25,7 @@ namespace Wavee.UI.WinUI.Controls.AddToPlaylist;
 /// bind against. Persists across navigation because it lives above the
 /// content Frame in the ShellPage visual tree.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AddToPlaylistBar : UserControl, INotifyPropertyChanged
 {
     private const int MaxVisibleThumbs = 4;

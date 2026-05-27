@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -23,6 +23,7 @@ namespace Wavee.UI.WinUI.Views;
 /// the shared <c>HeroBandPanel</c> and <c>SectionShelvesView</c> blocks so
 /// future feed-shaped pages reuse the same building bricks.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class BrowsePage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private TabItemParameter? _tabItemParameter;

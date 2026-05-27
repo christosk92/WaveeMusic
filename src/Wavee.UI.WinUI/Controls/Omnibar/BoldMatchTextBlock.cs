@@ -9,7 +9,7 @@ namespace Wavee.UI.WinUI.Controls.Omnibar;
 /// A TextBlock that bolds the portion of Text matching MatchText.
 /// e.g. Text="arabian nights", MatchText="ara" → "<b>ara</b>bian nights"
 /// </summary>
-public sealed class BoldMatchTextBlock : Control
+public sealed partial class BoldMatchTextBlock : Control
 {
     private RichTextBlock? _rtb;
 

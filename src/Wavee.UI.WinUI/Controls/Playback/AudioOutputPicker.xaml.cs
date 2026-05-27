@@ -25,6 +25,7 @@ public enum AudioOutputPickerDisplayMode
     Card
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AudioOutputPicker : UserControl
 {
     public static readonly DependencyProperty DisplayModeProperty =
@@ -681,6 +682,7 @@ public sealed partial class AudioOutputPicker : UserControl
     }
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AudioOutputDeviceRowViewModel : ObservableObject
 {
     public required string Name { get; init; }
@@ -688,8 +690,8 @@ public sealed partial class AudioOutputDeviceRowViewModel : ObservableObject
     public int? LocalDeviceIndex { get; init; }
     public string? SpotifyDeviceId { get; init; }
 
-    [ObservableProperty] private bool _isActive;
-    [ObservableProperty] private bool _isSwitching;
+    [ObservableProperty] public partial bool IsActive { get; set; }
+    [ObservableProperty] public partial bool IsSwitching { get; set; }
 
     public Brush? RowBackground => null;
 

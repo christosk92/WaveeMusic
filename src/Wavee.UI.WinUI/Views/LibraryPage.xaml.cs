@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -14,6 +14,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -39,6 +39,7 @@ using Wavee.UI.WinUI.ViewModels.Playlist;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryParticipant, INavCacheSurfaceParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────

@@ -7,56 +7,70 @@ namespace Wavee.UI.WinUI.Controls.PageHost;
 /// Central registration of all <c>Page</c> factories. Called once during app
 /// startup before any <see cref="PageHost.Navigate"/> fires. Adding a new page
 /// to the app means adding one line here.
+///
+/// Each page is registered twice: once with <see cref="PageRegistry"/> (the
+/// factory used by PageHost.Navigate) and once with
+/// <see cref="PageTypeRegistry"/> (the string-key ↔ Type lookup used by
+/// TabItemParameter persistence). Skipping the PageTypeRegistry call means
+/// the page cannot be restored as an active tab across an app restart — the
+/// rest of the navigation surface still works.
 /// </summary>
 internal static class PageRegistration
 {
     public static void RegisterAll()
     {
-        PageRegistry.Register(() => new ShellPage());
+        Register(() => new ShellPage(), nameof(ShellPage));
 
         // Main content pages
-        PageRegistry.Register(() => new HomePage());
-        PageRegistry.Register(() => new StartPage());
-        PageRegistry.Register(() => new LibraryPage());
-        PageRegistry.Register(() => new SearchPage());
-        PageRegistry.Register(() => new BrowsePage());
+        Register(() => new HomePage(), nameof(HomePage));
+        Register(() => new StartPage(), nameof(StartPage));
+        Register(() => new LibraryPage(), nameof(LibraryPage));
+        Register(() => new SearchPage(), nameof(SearchPage));
+        Register(() => new BrowsePage(), nameof(BrowsePage));
 
         // Detail pages
-        PageRegistry.Register(() => new AlbumPage());
-        PageRegistry.Register(() => new PlaylistPage());
-        PageRegistry.Register(() => new ArtistPage());
-        PageRegistry.Register(() => new ArtistDiscographyPage());
-        PageRegistry.Register(() => new ShowPage());
-        PageRegistry.Register(() => new EpisodePage());
-        PageRegistry.Register(() => new ConcertPage());
-        PageRegistry.Register(() => new ProfilePage());
+        Register(() => new AlbumPage(), nameof(AlbumPage));
+        Register(() => new PlaylistPage(), nameof(PlaylistPage));
+        Register(() => new ArtistPage(), nameof(ArtistPage));
+        Register(() => new ArtistDiscographyPage(), nameof(ArtistDiscographyPage));
+        Register(() => new ShowPage(), nameof(ShowPage));
+        Register(() => new EpisodePage(), nameof(EpisodePage));
+        Register(() => new ConcertPage(), nameof(ConcertPage));
+        Register(() => new ProfilePage(), nameof(ProfilePage));
 
         // Podcast
-        PageRegistry.Register(() => new PodcastBrowsePage());
+        Register(() => new PodcastBrowsePage(), nameof(PodcastBrowsePage));
 
         // Composition / wizard
-        PageRegistry.Register(() => new CreatePlaylistPage());
+        Register(() => new CreatePlaylistPage(), nameof(CreatePlaylistPage));
 
         // Media
-        PageRegistry.Register(() => new VideoPlayerPage());
+        Register(() => new VideoPlayerPage(), nameof(VideoPlayerPage));
 
         // App utility
-        PageRegistry.Register(() => new CrashRecoveryPage());
-        PageRegistry.Register(() => new SettingsPage());
-        PageRegistry.Register(() => new DebugPage());
-        PageRegistry.Register(() => new FeedbackPage());
+        Register(() => new CrashRecoveryPage(), nameof(CrashRecoveryPage));
+        Register(() => new SettingsPage(), nameof(SettingsPage));
+        Register(() => new DebugPage(), nameof(DebugPage));
+        Register(() => new FeedbackPage(), nameof(FeedbackPage));
 
         // Local-library tree
-        PageRegistry.Register(() => new LocalLibraryPage());
-        PageRegistry.Register(() => new LocalLikedSongsPage());
-        PageRegistry.Register(() => new LocalMusicPage());
-        PageRegistry.Register(() => new LocalMusicVideosPage());
-        PageRegistry.Register(() => new LocalShowsPage());
-        PageRegistry.Register(() => new LocalShowDetailPage());
-        PageRegistry.Register(() => new LocalMoviesPage());
-        PageRegistry.Register(() => new LocalMovieDetailPage());
-        PageRegistry.Register(() => new LocalCollectionDetailPage());
-        PageRegistry.Register(() => new LocalPersonDetailPage());
-        PageRegistry.Register(() => new LocalOtherPage());
+        Register(() => new LocalLibraryPage(), nameof(LocalLibraryPage));
+        Register(() => new LocalLikedSongsPage(), nameof(LocalLikedSongsPage));
+        Register(() => new LocalMusicPage(), nameof(LocalMusicPage));
+        Register(() => new LocalMusicVideosPage(), nameof(LocalMusicVideosPage));
+        Register(() => new LocalShowsPage(), nameof(LocalShowsPage));
+        Register(() => new LocalShowDetailPage(), nameof(LocalShowDetailPage));
+        Register(() => new LocalMoviesPage(), nameof(LocalMoviesPage));
+        Register(() => new LocalMovieDetailPage(), nameof(LocalMovieDetailPage));
+        Register(() => new LocalCollectionDetailPage(), nameof(LocalCollectionDetailPage));
+        Register(() => new LocalPersonDetailPage(), nameof(LocalPersonDetailPage));
+        Register(() => new LocalOtherPage(), nameof(LocalOtherPage));
+    }
+
+    private static void Register<TPage>(System.Func<TPage> factory, string key)
+        where TPage : Microsoft.UI.Xaml.Controls.UserControl
+    {
+        PageRegistry.Register(factory);
+        PageTypeRegistry.Register(key, typeof(TPage));
     }
 }

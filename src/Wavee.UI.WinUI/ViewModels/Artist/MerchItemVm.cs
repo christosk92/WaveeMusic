@@ -1,6 +1,7 @@
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed class MerchItemVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class MerchItemVm
 {
     public string? Name { get; init; }
     public string? Price { get; init; }

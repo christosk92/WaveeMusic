@@ -12,7 +12,7 @@ namespace Wavee.UI.WinUI.Services.Data;
 /// <summary>
 /// Mock implementation of ILibraryDataService for demo/offline mode.
 /// </summary>
-public sealed class MockLibraryDataService : ILibraryDataService
+public sealed partial class MockLibraryDataService : ILibraryDataService
 {
     // Artist image URLs (from Last.fm CDN - verified working)
     private static readonly string[] ArtistImageUrls =

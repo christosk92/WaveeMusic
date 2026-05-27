@@ -32,7 +32,7 @@ public interface IPlaylistPrefetcher
     Task PrefetchAllAsync(CancellationToken ct = default);
 }
 
-internal sealed class PlaylistPrefetchService : IPlaylistPrefetcher
+internal sealed partial class PlaylistPrefetchService : IPlaylistPrefetcher
 {
     private const int MaxConcurrent = 4;
 

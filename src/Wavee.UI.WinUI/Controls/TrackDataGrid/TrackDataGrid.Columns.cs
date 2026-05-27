@@ -494,7 +494,7 @@ public sealed partial class TrackDataGrid
     // Sort relay (header click → cycle the column's sort state)
     // ----------------------------------------------------------------------
 
-    private sealed class SortRelay : ICommand
+    private sealed partial class SortRelay : ICommand
     {
         private readonly TrackDataGrid _owner;
         public SortRelay(TrackDataGrid owner) => _owner = owner;

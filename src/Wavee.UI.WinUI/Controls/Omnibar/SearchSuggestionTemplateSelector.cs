@@ -4,7 +4,7 @@ using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.Controls.Omnibar;
 
-public sealed class SearchSuggestionTemplateSelector : DataTemplateSelector
+public sealed partial class SearchSuggestionTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? TextQueryTemplate { get; set; }
     public DataTemplate? EntityTemplate { get; set; }
@@ -38,7 +38,7 @@ public sealed class SearchSuggestionTemplateSelector : DataTemplateSelector
 /// omnibar's flat suggestions list. Section header rows span the full grid width and
 /// are non-interactive; everything else takes a single cell.
 /// </summary>
-public sealed class SearchSuggestionContainerStyleSelector : StyleSelector
+public sealed partial class SearchSuggestionContainerStyleSelector : StyleSelector
 {
     public Style? DefaultStyle { get; set; }
     public Style? SectionHeaderStyle { get; set; }

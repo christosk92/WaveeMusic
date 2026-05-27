@@ -23,6 +23,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// <see cref="OnLyricsPropertyChanged"/>. The result card stays hidden until
 /// the await returns with a real result — never during the busy phase.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposable
 {
     private readonly LyricsViewModel _lyrics;
@@ -62,7 +63,7 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
     [NotifyPropertyChangedFor(nameof(IsNotBusy))]
     [NotifyPropertyChangedFor(nameof(SummarizeButtonLabel))]
     [NotifyPropertyChangedFor(nameof(SummarizeButtonTooltip))]
-    private bool _isBusy;
+    public partial bool IsBusy { get; set; }
 
     public bool IsNotBusy => !IsBusy;
 
@@ -70,16 +71,16 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
     public string SummarizeButtonTooltip => IsBusy ? "Stop generation" : "Interpret the lyrics on-device";
 
     [ObservableProperty]
-    private string _resultText = string.Empty;
+    public partial string ResultText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private string _resultCaption = string.Empty;
+    public partial string ResultCaption { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private bool _hasResult;
+    public partial bool HasResult { get; set; }
 
     [ObservableProperty]
-    private string _sparkleState = "Normal";
+    public partial string SparkleState { get; set; } = "Normal";
 
     /// <summary>
     /// Compact (false, default) vs expanded (true) result card. The compact
@@ -90,7 +91,7 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpandToggleGlyph))]
     [NotifyPropertyChangedFor(nameof(ExpandToggleLabel))]
-    private bool _isResultExpanded;
+    public partial bool IsResultExpanded { get; set; }
 
     /// <summary>Chevron glyph that swaps with the expansion state. Bound from XAML.</summary>
     public string ExpandToggleGlyph =>

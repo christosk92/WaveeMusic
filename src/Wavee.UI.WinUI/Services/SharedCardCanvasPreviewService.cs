@@ -12,7 +12,7 @@ using Windows.Media.Playback;
 
 namespace Wavee.UI.WinUI.Services;
 
-public sealed class SharedCardCanvasPreviewService : ISharedCardCanvasPreviewService, IDisposable
+public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPreviewService, IDisposable
 {
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly SemaphoreSlim _gate = new(1, 1);

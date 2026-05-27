@@ -18,6 +18,7 @@ namespace Wavee.UI.WinUI.ViewModels.Home;
 /// (they cross greeting + featured concerns and feed the carousel-driven page
 /// bleed too).</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class HomeGreetingViewModel : ObservableObject, IDisposable
 {
     private readonly IAuthState? _authState;
@@ -26,10 +27,10 @@ public sealed partial class HomeGreetingViewModel : ObservableObject, IDisposabl
     private bool _attached;
 
     [ObservableProperty]
-    private string _text = AppLocalization.GetString("Home_Greeting_Morning");
+    public partial string Text { get; set; } = AppLocalization.GetString("Home_Greeting_Morning");
 
     [ObservableProperty]
-    private string _subtitle = AppLocalization.GetString("Home_Greeting_Subtitle");
+    public partial string Subtitle { get; set; } = AppLocalization.GetString("Home_Greeting_Subtitle");
 
     public HomeGreetingViewModel(IAuthState? authState)
     {

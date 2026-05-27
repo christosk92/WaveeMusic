@@ -12,7 +12,7 @@ namespace Wavee.UI.WinUI.Controls.AccentIcon;
 ///
 /// Inspired by Files' ThemedIcon (MIT) but stripped down to exactly the roles we need.
 /// </summary>
-public sealed class AccentIcon : Control
+public sealed partial class AccentIcon : Control
 {
     public AccentIcon()
     {

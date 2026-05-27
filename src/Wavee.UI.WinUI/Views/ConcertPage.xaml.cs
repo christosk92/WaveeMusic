@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ConcertPage : UserControl, ITabBarItemContent, IPageHostAware, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;

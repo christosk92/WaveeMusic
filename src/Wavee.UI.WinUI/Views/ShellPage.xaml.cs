@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Input;
@@ -35,6 +35,7 @@ using Windows.UI.Popups;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ShellPage : UserControl
 {
     private readonly ILogger? _logger;

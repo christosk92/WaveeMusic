@@ -15,7 +15,7 @@ using Windows.UI;
 
 namespace Wavee.Controls.Lyrics.Models.Lyrics
 {
-    public class RenderLyricsLine : BaseRenderLyrics
+    public partial class RenderLyricsLine : BaseRenderLyrics
     {
         public List<RenderLyricsChar> PrimaryRenderChars { get; private set; } = [];
         public List<RenderLyricsSyllable> PrimaryRenderSyllables { get; private set; }

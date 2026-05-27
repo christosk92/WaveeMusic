@@ -11,6 +11,7 @@ using Wavee.UI.Library.Local;
 
 namespace Wavee.UI.WinUI.ViewModels.Local;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalMoviesViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -18,14 +19,14 @@ public sealed partial class LocalMoviesViewModel : ObservableObject, IDisposable
     private readonly IDisposable? _changesSub;
 
     public ObservableCollection<LocalMovie> Movies { get; } = new();
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _isEmpty;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool IsEmpty { get; set; }
 
     /// <summary>
-    /// Hero-header subtitle, e.g. <c>"38 movies · 6 unwatched"</c>. Recomputed
+    /// Hero-header subtitle, e.g. <c>"38 movies Â· 6 unwatched"</c>. Recomputed
     /// on every load + facade change.
     /// </summary>
-    [ObservableProperty] private string? _subtitleText;
+    [ObservableProperty] public partial string? SubtitleText { get; set; }
 
     public LocalMoviesViewModel(ILocalLibraryFacade? facade = null)
     {
@@ -56,7 +57,7 @@ public sealed partial class LocalMoviesViewModel : ObservableObject, IDisposable
         var label = movies.Count == 1 ? "movie" : "movies";
         var unwatched = movies.Count(m => m.WatchedAt is null);
         return unwatched > 0
-            ? $"{movies.Count} {label} · {unwatched} unwatched"
+            ? $"{movies.Count} {label} Â· {unwatched} unwatched"
             : $"{movies.Count} {label}";
     }
 

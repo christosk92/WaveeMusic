@@ -14,7 +14,7 @@ namespace Wavee.UI.WinUI.Services.AddToPlaylist;
 /// <see cref="IAddToPlaylistSubmitter"/> in its ctor to stay testable from
 /// <c>Wavee.UI.Tests</c>; the WinUI host wires this adapter.
 /// </summary>
-internal sealed class LibraryDataServiceAddToPlaylistSubmitter : IAddToPlaylistSubmitter
+internal sealed partial class LibraryDataServiceAddToPlaylistSubmitter : IAddToPlaylistSubmitter
 {
     private readonly IPlaylistMutationService _playlistMutationService;
 

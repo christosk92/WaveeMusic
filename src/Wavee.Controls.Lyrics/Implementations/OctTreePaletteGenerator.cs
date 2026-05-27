@@ -1,4 +1,4 @@
-﻿using Impressionist.Abstractions;
+using Impressionist.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Impressionist.Implementations
 {
-    public class OctTreePaletteGenerator :
+    public partial class OctTreePaletteGenerator :
         IThemeColorGenrator,
         IPaletteGenrator
     {

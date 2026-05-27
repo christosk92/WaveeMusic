@@ -20,6 +20,7 @@ namespace Wavee.UI.WinUI.ViewModels.Local;
 /// — the underlying writes land in <c>local_files.metadata_overrides</c> as JSON,
 /// so they survive re-scans and never trample the original ATL tags.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalItemDetailFlyoutViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -27,28 +28,28 @@ public sealed partial class LocalItemDetailFlyoutViewModel : ObservableObject, I
     private readonly ILogger? _logger;
     private readonly IDisposable? _changesSub;
 
-    [ObservableProperty] private string? _trackUri;
-    [ObservableProperty] private string? _filePath;
-    [ObservableProperty] private LocalContentKind _kind;
-    [ObservableProperty] private string? _artworkUri;
+    [ObservableProperty] public partial string? TrackUri { get; set; }
+    [ObservableProperty] public partial string? FilePath { get; set; }
+    [ObservableProperty] public partial LocalContentKind Kind { get; set; }
+    [ObservableProperty] public partial string? ArtworkUri { get; set; }
 
     // Editable fields — bound TwoWay against InlineEditableText.Text.
-    [ObservableProperty] private string? _title;
-    [ObservableProperty] private string? _artist;
-    [ObservableProperty] private string? _album;
-    [ObservableProperty] private string? _albumArtist;
-    [ObservableProperty] private string? _showName;
-    [ObservableProperty] private string? _episodeTitle;
-    [ObservableProperty] private int? _year;
-    [ObservableProperty] private int? _trackNumber;
-    [ObservableProperty] private int? _discNumber;
-    [ObservableProperty] private int? _season;
-    [ObservableProperty] private int? _episode;
+    [ObservableProperty] public partial string? Title { get; set; }
+    [ObservableProperty] public partial string? Artist { get; set; }
+    [ObservableProperty] public partial string? Album { get; set; }
+    [ObservableProperty] public partial string? AlbumArtist { get; set; }
+    [ObservableProperty] public partial string? ShowName { get; set; }
+    [ObservableProperty] public partial string? EpisodeTitle { get; set; }
+    [ObservableProperty] public partial int? Year { get; set; }
+    [ObservableProperty] public partial int? TrackNumber { get; set; }
+    [ObservableProperty] public partial int? DiscNumber { get; set; }
+    [ObservableProperty] public partial int? Season { get; set; }
+    [ObservableProperty] public partial int? Episode { get; set; }
 
     // Read-only file detail strip
-    [ObservableProperty] private long _fileSize;
-    [ObservableProperty] private string? _format;
-    [ObservableProperty] private long _durationMs;
+    [ObservableProperty] public partial long FileSize { get; set; }
+    [ObservableProperty] public partial string? Format { get; set; }
+    [ObservableProperty] public partial long DurationMs { get; set; }
 
     // Per-kind feature visibility
     public bool IsMusic       => Kind == LocalContentKind.Music;

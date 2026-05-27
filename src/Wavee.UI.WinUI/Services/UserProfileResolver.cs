@@ -46,7 +46,7 @@ public interface IUserProfileResolver
 /// and falls back to a direct <see cref="ISpClient.GetUserProfileAsync"/> call
 /// if the extension returns nothing or the bytes don't parse as the expected JSON.
 /// </summary>
-public sealed class UserProfileResolver : IUserProfileResolver
+public sealed partial class UserProfileResolver : IUserProfileResolver
 {
     private const string UserUriPrefix = "spotify:user:";
 

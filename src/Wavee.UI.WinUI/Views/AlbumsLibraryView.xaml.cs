@@ -13,6 +13,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AlbumsLibraryView : UserControl, IDisposable, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────

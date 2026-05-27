@@ -7,7 +7,7 @@ using System;
 
 namespace Wavee.UI.WinUI.Controls.SessionTokens;
 
-public class SessionTokenItemRemovingEventArgs : EventArgs
+public partial class SessionTokenItemRemovingEventArgs : EventArgs
 {
     public SessionTokenItemRemovingEventArgs(object item, SessionTokenItem tokenItem)
     {

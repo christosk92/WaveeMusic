@@ -35,6 +35,7 @@ public enum ShowEpisodeSort { Newest, Oldest }
 /// theme-aware palette brushes from the show's <c>extractedColorSet</c>, and
 /// surfaces the filter/sort/search state for the right column.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ShowViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private const long PodcastProgressUiDeltaMs = 5_000;

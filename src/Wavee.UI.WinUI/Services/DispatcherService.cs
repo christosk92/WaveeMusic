@@ -5,7 +5,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Services;
 
-public sealed class DispatcherService : IDispatcherService
+public sealed partial class DispatcherService : IDispatcherService
 {
     private readonly DispatcherQueue _dispatcherQueue;
 

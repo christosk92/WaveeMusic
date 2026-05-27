@@ -12,6 +12,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Tracks network/backend connectivity status by subscribing to
 /// <see cref="ISession.ConnectionState"/>.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 internal sealed partial class ConnectivityService : ObservableObject, IConnectivityService, IDisposable
 {
     private readonly IMessenger _messenger;
@@ -19,13 +20,13 @@ internal sealed partial class ConnectivityService : ObservableObject, IConnectiv
     private IDisposable? _subscription;
 
     [ObservableProperty]
-    private bool _isConnected = true;
+    public partial bool IsConnected { get; set; } = true;
 
     [ObservableProperty]
-    private bool _isReconnecting;
+    public partial bool IsReconnecting { get; set; }
 
     [ObservableProperty]
-    private DateTimeOffset? _lastConnectedAt = DateTimeOffset.UtcNow;
+    public partial DateTimeOffset? LastConnectedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public ConnectivityService(IMessenger messenger, Session session)
     {

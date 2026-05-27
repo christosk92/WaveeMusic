@@ -8,7 +8,7 @@ namespace Wavee.UI.WinUI.Controls;
 /// A templatable control that displays an error state with icon, title, message, and retry button.
 /// Override the default template via <see cref="Control.Template"/> for full customization.
 /// </summary>
-public sealed class ErrorStateView : Control
+public sealed partial class ErrorStateView : Control
 {
     public ErrorStateView()
     {

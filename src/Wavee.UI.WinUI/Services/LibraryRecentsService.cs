@@ -16,7 +16,7 @@ namespace Wavee.UI.WinUI.Services;
 /// (album and artist filters) with a short TTL; both are dropped whenever the active playback
 /// context changes so a freshly-played item moves to the top on the next sort re-apply.
 /// </summary>
-public sealed class LibraryRecentsService : IDisposable
+public sealed partial class LibraryRecentsService : IDisposable
 {
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(2);
 

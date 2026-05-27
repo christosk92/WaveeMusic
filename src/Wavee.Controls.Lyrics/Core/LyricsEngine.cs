@@ -28,7 +28,7 @@ namespace Wavee.Controls.Lyrics.Core
     /// Owns all renderers, transitions, helpers, and state for the lyrics render loop.
     /// Built once by NowPlayingCanvas; the canvas delegates Create/Update/Draw/Dispose here.
     /// </summary>
-    public sealed class LyricsEngine : IDisposable
+    public sealed partial class LyricsEngine : IDisposable
     {
         // Canvas control reference (set in CreateResources, used by TriggerRelayout)
         private ICanvasAnimatedControl? _control;

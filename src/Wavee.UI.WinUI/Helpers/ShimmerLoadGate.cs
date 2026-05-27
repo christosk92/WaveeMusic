@@ -25,7 +25,7 @@ namespace Wavee.UI.WinUI.Helpers;
 ///     is stale. <see cref="Reset"/> therefore takes accessor delegates and
 ///     evaluates them AFTER realization, never a raw stale reference.
 /// </summary>
-public sealed class ShimmerLoadGate : DependencyObject
+public sealed partial class ShimmerLoadGate : DependencyObject
 {
     public static readonly DependencyProperty IsLoadedProperty =
         DependencyProperty.Register(

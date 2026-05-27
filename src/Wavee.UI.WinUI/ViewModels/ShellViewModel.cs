@@ -47,6 +47,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// <see cref="PlaylistViewModel"/>. The child VMs are constructor-init,
 /// never replaced, and disposed in turn by the parent's <see cref="Dispose"/>.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly IThemeService _themeService;
@@ -126,41 +127,41 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public ObservableCollection<TabBarItem> Tabs => TabInstances;
 
     [ObservableProperty]
-    private TabBarItem? _selectedTabItem;
+    public partial TabBarItem? SelectedTabItem { get; set; }
 
     [ObservableProperty]
-    private int _selectedTabIndex;
+    public partial int SelectedTabIndex { get; set; }
 
     // Track previous tab index for animation direction
     private int _previousTabIndex;
 
     // Direction for tab switch animation (1 = right, -1 = left, 0 = none)
     [ObservableProperty]
-    private int _tabSwitchDirection;
+    public partial int TabSwitchDirection { get; set; }
 
     // ── Sidebar layout state (display mode + width — owned here because
     //    they're chrome state, not part of the sidebar tree itself) ─────────
 
     [ObservableProperty]
-    private double _sidebarWidth = 280;
+    public partial double SidebarWidth { get; set; } = 280;
 
     [ObservableProperty]
-    private SidebarDisplayMode _sidebarDisplayMode = SidebarDisplayMode.Expanded;
+    public partial SidebarDisplayMode SidebarDisplayMode { get; set; } = SidebarDisplayMode.Expanded;
 
     [ObservableProperty]
-    private bool _isSidebarPaneOpen;
+    public partial bool IsSidebarPaneOpen { get; set; }
 
     [ObservableProperty]
-    private double _rightPanelWidth = 300;
+    public partial double RightPanelWidth { get; set; } = 300;
 
     [ObservableProperty]
-    private bool _isRightPanelOpen;
+    public partial bool IsRightPanelOpen { get; set; }
 
     [ObservableProperty]
-    private RightPanelMode _rightPanelMode = RightPanelMode.Queue;
+    public partial RightPanelMode RightPanelMode { get; set; } = RightPanelMode.Queue;
 
     [ObservableProperty]
-    private PlayerLocation _playerLocation = PlayerLocation.Bottom;
+    public partial PlayerLocation PlayerLocation { get; set; } = PlayerLocation.Bottom;
 
     /// <summary>
     /// Single source of truth for tear-off state. Bound from XAML (visibility
@@ -342,19 +343,19 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool IsSidebarVisibleInShell => IsNormalPresentation;
 
     [ObservableProperty]
-    private bool _sidebarPlayerCollapsed;
+    public partial bool SidebarPlayerCollapsed { get; set; }
 
     [ObservableProperty]
-    private bool _canGoBack;
+    public partial bool CanGoBack { get; set; }
 
     [ObservableProperty]
-    private bool _canGoForward;
+    public partial bool CanGoForward { get; set; }
 
     [ObservableProperty]
-    private bool _isOnHomePage;
+    public partial bool IsOnHomePage { get; set; }
 
     [ObservableProperty]
-    private bool _isOnProfilePage;
+    public partial bool IsOnProfilePage { get; set; }
 
     // Notification properties backed by INotificationService
     public bool IsNotificationOpen
@@ -461,15 +462,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             _miniVideoVm.PropertyChanged += OnMiniVideoPlayerPropertyChanged;
 
         // Initialize from AppModel (one-time read)
-        _sidebarWidth = appModel.SidebarWidth;
-        _sidebarDisplayMode = appModel.SidebarDisplayMode;
-        _isSidebarPaneOpen = appModel.IsSidebarPaneOpen;
-        _rightPanelWidth = appModel.RightPanelWidth;
-        _isRightPanelOpen = appModel.IsRightPanelOpen;
-        _rightPanelMode = appModel.RightPanelMode;
-        _selectedTabIndex = appModel.TabStripSelectedIndex;
-        _playerLocation = appModel.PlayerLocation;
-        _sidebarPlayerCollapsed = appModel.SidebarPlayerCollapsed;
+        SidebarWidth = appModel.SidebarWidth;
+        SidebarDisplayMode = appModel.SidebarDisplayMode;
+        IsSidebarPaneOpen = appModel.IsSidebarPaneOpen;
+        RightPanelWidth = appModel.RightPanelWidth;
+        IsRightPanelOpen = appModel.IsRightPanelOpen;
+        RightPanelMode = appModel.RightPanelMode;
+        SelectedTabIndex = appModel.TabStripSelectedIndex;
+        PlayerLocation = appModel.PlayerLocation;
+        SidebarPlayerCollapsed = appModel.SidebarPlayerCollapsed;
 
         // Listen for right panel toggle requests from PlayerBar
         WeakReferenceMessenger.Default.Register<ToggleRightPanelMessage>(this, (r, m) =>
@@ -873,7 +874,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// fires; cleared when the panel is toggled off for that mode.
     /// </summary>
     [ObservableProperty]
-    private Wavee.UI.Contracts.ITrackItem? _selectedTrackForDetails;
+    public partial Wavee.UI.Contracts.ITrackItem? SelectedTrackForDetails { get; set; }
 
     /// <summary>
     /// Open the right panel with the temporary "Track details" tab showing metadata for
@@ -985,7 +986,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private bool _isOnSearchPage;
+    public partial bool IsOnSearchPage { get; set; }
 
     /// <summary>
     /// True when the active tab is hosting <see cref="Wavee.UI.WinUI.Views.VideoPlayerPage"/>.
@@ -996,7 +997,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// when the same page type was also hosted in the Theatre overlay frame.
     /// </summary>
     [ObservableProperty]
-    private bool _isOnVideoPage;
+    public partial bool IsOnVideoPage { get; set; }
 
     partial void OnIsOnVideoPageChanged(bool value)
     {

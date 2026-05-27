@@ -15,7 +15,7 @@ using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Services;
 
-public sealed class UpdateService : IUpdateService
+public sealed partial class UpdateService : IUpdateService
 {
     private const string GitHubReleasesUrl = "https://api.github.com/repos/christosk92/WaveeMusic/releases/latest";
 

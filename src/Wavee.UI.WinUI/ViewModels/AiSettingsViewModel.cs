@@ -27,6 +27,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// instead of staring at a "nothing happens" silence for several minutes on
 /// the first opt-in.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AiSettingsViewModel : ObservableObject
 {
     private readonly ISettingsService _settings;
@@ -50,11 +51,11 @@ public sealed partial class AiSettingsViewModel : ObservableObject
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
         // Snapshot the initial state for the bound props.
-        _aiFeaturesEnabled = _settings.Settings.AiFeaturesEnabled;
-        _aiLyricsSummarizeEnabled = _settings.Settings.AiLyricsSummarizeEnabled;
-        _aiBioSummarizeEnabled = _settings.Settings.AiBioSummarizeEnabled;
-        _aiAlbumSummarizeEnabled = _settings.Settings.AiAlbumSummarizeEnabled;
-        _aiWebSearchEndpoint = _settings.Settings.AiWebSearchEndpoint ?? string.Empty;
+        AiFeaturesEnabled = _settings.Settings.AiFeaturesEnabled;
+        AiLyricsSummarizeEnabled = _settings.Settings.AiLyricsSummarizeEnabled;
+        AiBioSummarizeEnabled = _settings.Settings.AiBioSummarizeEnabled;
+        AiAlbumSummarizeEnabled = _settings.Settings.AiAlbumSummarizeEnabled;
+        AiWebSearchEndpoint = _settings.Settings.AiWebSearchEndpoint ?? string.Empty;
 
         // If the user already opted in on a previous session, reflect the
         // current model state in the bound status without kicking off a fresh
@@ -79,7 +80,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
         ArePerFeatureTogglesEnabled;
 
     [ObservableProperty]
-    private bool _aiFeaturesEnabled;
+    public partial bool AiFeaturesEnabled { get; set; }
 
     partial void OnAiFeaturesEnabledChanged(bool value)
     {
@@ -105,7 +106,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private bool _aiLyricsSummarizeEnabled;
+    public partial bool AiLyricsSummarizeEnabled { get; set; }
 
     partial void OnAiLyricsSummarizeEnabledChanged(bool value)
     {
@@ -113,7 +114,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private bool _aiBioSummarizeEnabled;
+    public partial bool AiBioSummarizeEnabled { get; set; }
 
     partial void OnAiBioSummarizeEnabledChanged(bool value)
     {
@@ -121,7 +122,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private bool _aiAlbumSummarizeEnabled;
+    public partial bool AiAlbumSummarizeEnabled { get; set; }
 
     partial void OnAiAlbumSummarizeEnabledChanged(bool value)
     {
@@ -129,7 +130,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private string _aiWebSearchEndpoint = string.Empty;
+    public partial string AiWebSearchEndpoint { get; set; } = string.Empty;
 
     partial void OnAiWebSearchEndpointChanged(string value)
     {
@@ -140,19 +141,19 @@ public sealed partial class AiSettingsViewModel : ObservableObject
 
     /// <summary>True while EnsureReadyAsync is in flight (download / OS-side install).</summary>
     [ObservableProperty]
-    private bool _isModelPreparing;
+    public partial bool IsModelPreparing { get; set; }
 
     /// <summary>Download progress 0–100. -1 means "indeterminate" (no progress yet).</summary>
     [ObservableProperty]
-    private double _modelPreparationProgress = -1;
+    public partial double ModelPreparationProgress { get; set; } = -1;
 
     /// <summary>One-line status for the prep UI ("Downloading…", "Ready", "Couldn't download", etc.).</summary>
     [ObservableProperty]
-    private string _modelPreparationStatus = string.Empty;
+    public partial string ModelPreparationStatus { get; set; } = string.Empty;
 
     /// <summary>True when the per-feature toggles can show "Ready" badge.</summary>
     [ObservableProperty]
-    private bool _isModelReady;
+    public partial bool IsModelReady { get; set; }
 
     [RelayCommand]
     private void RetryModelPreparation()
@@ -179,7 +180,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
             // If the user toggled in on a previous session AND the model is
             // already installed, opting in again is a no-op (EnsureReadyAsync
             // returns immediately with progress=1.0).
-            if (_aiFeaturesEnabled)
+            if (AiFeaturesEnabled)
                 BeginModelPreparation();
         }
     }

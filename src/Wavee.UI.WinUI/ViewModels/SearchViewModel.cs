@@ -34,12 +34,14 @@ public enum SearchFilterType
 /// wrapper — e.g. "Featuring JJ Lin" (playlists), "Music videos" (video tracks). Rendered
 /// as a horizontal adaptive row of cards on the search page, reusing the HomePage layout.
 /// </summary>
-public sealed class SearchSectionViewModel
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class SearchSectionViewModel
 {
     public required string Title { get; init; }
     public required IReadOnlyList<SearchResultItem> Items { get; init; }
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SearchViewModel : ObservableObject, ITabBarItemContent
 {
     private readonly ISearchService _searchService;
@@ -81,40 +83,40 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private const int ResultCacheMax = 32;
 
     [ObservableProperty]
-    private bool _isLoading;
+    public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
-    private bool _hasError;
+    public partial bool HasError { get; set; }
 
     [ObservableProperty]
-    private string? _errorMessage;
+    public partial string? ErrorMessage { get; set; }
 
     [ObservableProperty]
-    private string? _query;
+    public partial string? Query { get; set; }
 
     [ObservableProperty]
-    private SearchFilterType _selectedFilter = SearchFilterType.All;
+    public partial SearchFilterType SelectedFilter { get; set; } = SearchFilterType.All;
 
     [ObservableProperty]
-    private SearchResultItem? _topResult;
+    public partial SearchResultItem? TopResult { get; set; }
 
     [ObservableProperty]
-    private bool _showTopResult = true;
+    public partial bool ShowTopResult { get; set; } = true;
 
     [ObservableProperty]
-    private bool _showTracks = true;
+    public partial bool ShowTracks { get; set; } = true;
 
     [ObservableProperty]
-    private bool _showArtists = true;
+    public partial bool ShowArtists { get; set; } = true;
 
     [ObservableProperty]
-    private bool _showAlbums = true;
+    public partial bool ShowAlbums { get; set; } = true;
 
     [ObservableProperty]
-    private bool _showPlaylists = true;
+    public partial bool ShowPlaylists { get; set; } = true;
 
     [ObservableProperty]
-    private bool _showEmptyState;
+    public partial bool ShowEmptyState { get; set; }
 
     public ObservableCollection<SearchResultItem> Tracks { get; } = [];
     public ObservableCollection<ITrackItem> AdaptedTracks { get; } = [];

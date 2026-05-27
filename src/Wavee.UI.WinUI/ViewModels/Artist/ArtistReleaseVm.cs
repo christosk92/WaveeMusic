@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistReleaseVm : ObservableObject
 {
     public string Id { get; init; }
@@ -43,5 +44,5 @@ public sealed partial class ArtistReleaseVm : ObservableObject
     }
 
     [ObservableProperty]
-    private string? _colorHex;
+    public partial string? ColorHex { get; set; }
 }

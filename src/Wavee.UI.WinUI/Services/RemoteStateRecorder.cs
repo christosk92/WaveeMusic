@@ -9,7 +9,7 @@ using Wavee.Connect.Diagnostics;
 
 namespace Wavee.UI.WinUI.Services;
 
-public sealed class RemoteStateRecorder : IRemoteStateRecorder
+public sealed partial class RemoteStateRecorder : IRemoteStateRecorder
 {
     private const int MaxEntries = 500;
     private const int MaxJsonBodyChars = 200_000;

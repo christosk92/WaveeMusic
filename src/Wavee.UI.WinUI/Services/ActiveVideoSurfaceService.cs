@@ -8,7 +8,7 @@ using Windows.Media.Playback;
 namespace Wavee.UI.WinUI.Services;
 
 /// <inheritdoc cref="IActiveVideoSurfaceService"/>
-public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
+public sealed partial class ActiveVideoSurfaceService : IActiveVideoSurfaceService
 {
     private readonly List<IVideoSurfaceProvider> _providers = new();
     private readonly List<IDisposable> _subscriptions = new();

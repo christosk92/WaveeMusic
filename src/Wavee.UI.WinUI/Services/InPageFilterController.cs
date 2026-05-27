@@ -17,7 +17,8 @@ namespace Wavee.UI.WinUI.Services;
 /// already in <see cref="Wavee.UI.WinUI.ViewModels.LikedSongsViewModel"/>
 /// and friends). Two debouncers would race.
 /// </summary>
-public sealed class InPageFilterController : INotifyPropertyChanged
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class InPageFilterController : INotifyPropertyChanged
 {
     private IInPageFilterable? _currentTarget;
     private bool _isActive;

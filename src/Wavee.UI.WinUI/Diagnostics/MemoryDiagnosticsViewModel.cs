@@ -19,6 +19,7 @@ namespace Wavee.UI.WinUI.Diagnostics;
 /// exposes the action commands (Force GC, Clear caches, Snapshot, …) the panel
 /// uses to drive memory experiments while diagnosing leaks.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class MemoryDiagnosticsViewModel : ObservableObject, IDisposable
 {
     private readonly MemoryDiagnosticsService _service;
@@ -26,18 +27,18 @@ public sealed partial class MemoryDiagnosticsViewModel : ObservableObject, IDisp
     private bool _started;
     private bool _disposed;
 
-    [ObservableProperty] private string _workingSetMb = "—";
-    [ObservableProperty] private string _managedMb = "—";
-    [ObservableProperty] private string _heapCommittedMb = "—";
-    [ObservableProperty] private string _heapFragmentedMb = "—";
-    [ObservableProperty] private string _gcCounts = "—";
-    [ObservableProperty] private string _cpuPercent = "—";
-    [ObservableProperty] private int _imageCacheCount;
-    [ObservableProperty] private int _tabCount;
-    [ObservableProperty] private int _cachedPageCount;
-    [ObservableProperty] private string _cacheBreakdown = "—";
-    [ObservableProperty] private string _liveViewModels = "—";
-    [ObservableProperty] private string _lastAction = "";
+    [ObservableProperty] public partial string WorkingSetMb { get; set; } = "—";
+    [ObservableProperty] public partial string ManagedMb { get; set; } = "—";
+    [ObservableProperty] public partial string HeapCommittedMb { get; set; } = "—";
+    [ObservableProperty] public partial string HeapFragmentedMb { get; set; } = "—";
+    [ObservableProperty] public partial string GcCounts { get; set; } = "—";
+    [ObservableProperty] public partial string CpuPercent { get; set; } = "—";
+    [ObservableProperty] public partial int ImageCacheCount { get; set; }
+    [ObservableProperty] public partial int TabCount { get; set; }
+    [ObservableProperty] public partial int CachedPageCount { get; set; }
+    [ObservableProperty] public partial string CacheBreakdown { get; set; } = "—";
+    [ObservableProperty] public partial string LiveViewModels { get; set; } = "—";
+    [ObservableProperty] public partial string LastAction { get; set; } = "";
 
     public MemoryDiagnosticsViewModel(
         MemoryDiagnosticsService service,

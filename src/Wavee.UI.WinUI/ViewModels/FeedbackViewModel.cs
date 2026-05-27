@@ -20,6 +20,7 @@ using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class FeedbackViewModel : ObservableObject
 {
     private readonly IFeedbackService _feedbackService;
@@ -45,27 +46,27 @@ public sealed partial class FeedbackViewModel : ObservableObject
 
         // Initialize from persisted consent defaults
         var s = _settingsService.Settings;
-        _includeDiagnostics = s.FeedbackIncludeDiagnostics;
-        _includeDeviceMetadata = s.FeedbackIncludeDeviceMetadata;
-        _isAnonymous = s.FeedbackAnonymous;
+        IncludeDiagnostics = s.FeedbackIncludeDiagnostics;
+        IncludeDeviceMetadata = s.FeedbackIncludeDeviceMetadata;
+        IsAnonymous = s.FeedbackAnonymous;
     }
 
-    // ── Inline validation ──
+    // â”€â”€ Inline validation â”€â”€
 
     [ObservableProperty]
-    private string _titleError = "";
+    public partial string TitleError { get; set; } = "";
 
     [ObservableProperty]
-    private string _bodyError = "";
+    public partial string BodyError { get; set; } = "";
 
     public bool HasTitleError => !string.IsNullOrEmpty(TitleError);
     public bool HasBodyError => !string.IsNullOrEmpty(BodyError);
 
     [ObservableProperty]
-    private string _severityError = "";
+    public partial string SeverityError { get; set; } = "";
 
     [ObservableProperty]
-    private string _reproducibilityError = "";
+    public partial string ReproducibilityError { get; set; } = "";
 
     public bool HasSeverityError => !string.IsNullOrEmpty(SeverityError);
     public bool HasReproducibilityError => !string.IsNullOrEmpty(ReproducibilityError);
@@ -122,13 +123,13 @@ public sealed partial class FeedbackViewModel : ObservableObject
         return valid;
     }
 
-    // ── Form fields ──
+    // â”€â”€ Form fields â”€â”€
 
     [ObservableProperty]
-    private int _feedbackTypeIndex;
+    public partial int FeedbackTypeIndex { get; set; }
 
     [ObservableProperty]
-    private int _severityIndex = -1; // Unselected
+    public partial int SeverityIndex { get; set; } = -1; // Unselected
 
     partial void OnSeverityIndexChanged(int value)
     {
@@ -137,7 +138,7 @@ public sealed partial class FeedbackViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private int _reproducibilityIndex = -1; // Unselected
+    public partial int ReproducibilityIndex { get; set; } = -1; // Unselected
 
     partial void OnReproducibilityIndexChanged(int value)
     {
@@ -146,7 +147,7 @@ public sealed partial class FeedbackViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private string _title = "";
+    public partial string Title { get; set; } = "";
 
     partial void OnTitleChanged(string value)
     {
@@ -155,7 +156,7 @@ public sealed partial class FeedbackViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private string _body = "";
+    public partial string Body { get; set; } = "";
 
     partial void OnBodyChanged(string value)
     {
@@ -164,9 +165,9 @@ public sealed partial class FeedbackViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private string _contactEmail = "";
+    public partial string ContactEmail { get; set; } = "";
 
-    // ── Image attachments ──
+    // â”€â”€ Image attachments â”€â”€
 
     public const int MaxImages = 5;
     public const long MaxImageBytes = 5 * 1024 * 1024; // 5 MB
@@ -178,7 +179,7 @@ public sealed partial class FeedbackViewModel : ObservableObject
     public bool CanAddMoreImages => AttachedImages.Count < MaxImages;
 
     [ObservableProperty]
-    private string _imageError = "";
+    public partial string ImageError { get; set; } = "";
 
     public bool HasImageError => !string.IsNullOrEmpty(ImageError);
     partial void OnImageErrorChanged(string value) => OnPropertyChanged(nameof(HasImageError));
@@ -251,16 +252,16 @@ public sealed partial class FeedbackViewModel : ObservableObject
         OnPropertyChanged(nameof(CanAddMoreImages));
     }
 
-    // ── Consent toggles ──
+    // â”€â”€ Consent toggles â”€â”€
 
     [ObservableProperty]
-    private bool _includeDiagnostics;
+    public partial bool IncludeDiagnostics { get; set; }
 
     [ObservableProperty]
-    private bool _includeDeviceMetadata;
+    public partial bool IncludeDeviceMetadata { get; set; }
 
     [ObservableProperty]
-    private bool _isAnonymous;
+    public partial bool IsAnonymous { get; set; }
 
     partial void OnIncludeDiagnosticsChanged(bool value) =>
         _settingsService.Update(s => s.FeedbackIncludeDiagnostics = value);
@@ -271,24 +272,24 @@ public sealed partial class FeedbackViewModel : ObservableObject
     partial void OnIsAnonymousChanged(bool value) =>
         _settingsService.Update(s => s.FeedbackAnonymous = value);
 
-    // ── Submission state ──
+    // â”€â”€ Submission state â”€â”€
 
     [ObservableProperty]
-    private bool _isSubmitting;
+    public partial bool IsSubmitting { get; set; }
 
     [ObservableProperty]
-    private bool _isSuccess;
+    public partial bool IsSuccess { get; set; }
 
     [ObservableProperty]
-    private bool _isError;
+    public partial bool IsError { get; set; }
 
     [ObservableProperty]
-    private string _errorMessage = "";
+    public partial string ErrorMessage { get; set; } = "";
 
     [ObservableProperty]
-    private string _successId = "";
+    public partial string SuccessId { get; set; } = "";
 
-    // ── Computed ──
+    // â”€â”€ Computed â”€â”€
 
     public bool ShowSeverity => FeedbackTypeIndex == 0; // Bug
     public bool ShowReproducibility => FeedbackTypeIndex == 0; // Bug
@@ -314,7 +315,7 @@ public sealed partial class FeedbackViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowContactEmail));
     }
 
-    // ── Commands ──
+    // â”€â”€ Commands â”€â”€
 
     [RelayCommand]
     private async Task SubmitAsync(CancellationToken ct)

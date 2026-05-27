@@ -24,7 +24,7 @@ namespace Wavee.UI.WinUI.Data.Stores;
 // when the playlist cache emits Changes (sync complete, dealer diff), any
 // subscribed ViewModel gets the invalidation signal through the same
 // stream rather than a parallel event wire.
-public sealed class PlaylistStore : EntityStore<string, PlaylistDetailDto>
+public sealed partial class PlaylistStore : EntityStore<string, PlaylistDetailDto>
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly IDisposable _changeSubscription;

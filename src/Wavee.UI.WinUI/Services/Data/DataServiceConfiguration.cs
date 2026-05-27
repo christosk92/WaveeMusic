@@ -6,7 +6,7 @@ namespace Wavee.UI.WinUI.Services.Data;
 /// <summary>
 /// Configuration for switching between real and mock data services.
 /// </summary>
-public sealed class DataServiceConfiguration : IDataServiceConfiguration
+public sealed partial class DataServiceConfiguration : IDataServiceConfiguration
 {
     private bool _isDemoMode;
 

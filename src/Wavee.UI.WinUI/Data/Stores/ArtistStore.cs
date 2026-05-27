@@ -19,7 +19,7 @@ namespace Wavee.UI.WinUI.Data.Stores;
 // No cold (SQLite) tier yet. The BehaviorSubject + HotCache combination is
 // process-scoped; data is lost on app restart. A SQLite tier is the next
 // step if we want offline / cross-restart persistence.
-public sealed class ArtistStore : EntityStore<string, ArtistOverviewResult>
+public sealed partial class ArtistStore : EntityStore<string, ArtistOverviewResult>
 {
     private readonly IArtistService _artistService;
     private readonly IHotCache<ArtistOverviewResult> _hotCache;

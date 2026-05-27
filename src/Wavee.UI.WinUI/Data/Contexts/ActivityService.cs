@@ -20,6 +20,7 @@ using Wavee.UI.Services.Actions;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Json;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
@@ -27,6 +28,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Central activity feed. Producers publish via Post/Start/Complete/Fail.
 /// UI binds to Items + UnreadCount. Listens to IMessenger for sync messages.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ActivityService : ObservableObject, IActivityService, IUserActionActivitySink
 {
     private sealed record UserActionPresentation(
@@ -48,7 +50,7 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
     private readonly ILogger? _logger;
     private readonly DispatcherQueue? _dispatcher;
 
-    [ObservableProperty] private int _unreadCount;
+    [ObservableProperty] public partial int UnreadCount { get; set; }
 
     public ReadOnlyObservableCollection<IActivityItem> Items { get; }
 
@@ -280,7 +282,9 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
             isUndone: false,
             ct).ConfigureAwait(false);
 
-        var descriptorJson = System.Text.Json.JsonSerializer.Serialize(action.Descriptor);
+        var descriptorJson = JsonSerializer.Serialize(
+            action.Descriptor,
+            WaveeUiWinUiJsonContext.Default.UserActionDescriptor);
         var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         if (_database != null)
         {
@@ -367,7 +371,9 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
                 UserActionDescriptor? descriptor = null;
                 try
                 {
-                    descriptor = System.Text.Json.JsonSerializer.Deserialize<UserActionDescriptor>(entry.DescriptorJson);
+                    descriptor = JsonSerializer.Deserialize(
+                        entry.DescriptorJson,
+                        WaveeUiWinUiJsonContext.Default.UserActionDescriptor);
                 }
                 catch (Exception ex)
                 {

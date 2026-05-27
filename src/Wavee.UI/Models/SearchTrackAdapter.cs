@@ -7,7 +7,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Adapts a SearchResultItem (track type) to ITrackItem for use in TrackItem control.
 /// </summary>
-public sealed class SearchTrackAdapter : ITrackItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class SearchTrackAdapter : ITrackItem
 {
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     private readonly SearchResultItem _data;

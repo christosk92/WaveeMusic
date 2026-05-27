@@ -23,7 +23,7 @@ public interface ISpotifyLinkPreviewService
 
 public sealed record LinkPreview(string Title, string? Subtitle, string? ImageUrl);
 
-public sealed class SpotifyLinkPreviewService : ISpotifyLinkPreviewService
+public sealed partial class SpotifyLinkPreviewService : ISpotifyLinkPreviewService
 {
     private readonly IPathfinderClient _pathfinder;
     private readonly ISpClient _spClient;

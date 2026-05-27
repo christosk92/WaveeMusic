@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PodcastBrowsePage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable
 {
     private TabItemParameter? _tabItemParameter;

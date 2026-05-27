@@ -16,7 +16,8 @@ namespace Wavee.UI.WinUI.Controls.Sidebar;
 /// <summary>
 /// ViewModel implementation for sidebar items.
 /// </summary>
-public class SidebarItemModel : ISidebarItemModel
+[global::WinRT.GeneratedBindableCustomProperty]
+public partial class SidebarItemModel : ISidebarItemModel
 {
     private object? _children;
     private IconSource? _iconSource;

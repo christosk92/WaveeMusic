@@ -15,7 +15,7 @@ namespace Wavee.UI.WinUI.Services;
 /// 1) Render cadence via CompositionTarget.Rendering (for FPS)
 /// 2) Dispatcher timer latency (for UI stall detection)
 /// </summary>
-internal sealed class UiHealthMonitor : IDisposable
+internal sealed partial class UiHealthMonitor : IDisposable
 {
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;

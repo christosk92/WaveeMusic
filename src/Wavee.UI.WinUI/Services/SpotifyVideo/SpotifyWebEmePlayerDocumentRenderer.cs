@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Core.Video;
+using Wavee.UI.WinUI.Json;
 using Windows.Storage;
 
 namespace Wavee.UI.WinUI.Services.SpotifyVideo;
@@ -14,11 +15,6 @@ internal sealed class SpotifyWebEmePlayerDocumentRenderer
     private const string StartSecondsPlaceholder = "__WAVEE_START_SECONDS__";
     private const string AutoPlayPlaceholder = "__WAVEE_AUTO_PLAY__";
     private static readonly Uri TemplateUri = new("ms-appx:///Services/SpotifyVideo/WebEmePlayer.html");
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
 
     private string? _template;
 
@@ -47,7 +43,7 @@ internal sealed class SpotifyWebEmePlayerDocumentRenderer
         if (_template is null)
             throw new InvalidOperationException("Spotify Web EME player template has not been loaded.");
 
-        var configJson = JsonSerializer.Serialize(config, JsonOptions);
+        var configJson = JsonSerializer.Serialize(config, WaveeUiWinUiJsonContext.Default.SpotifyWebEmeVideoManifest);
         var startSeconds = (Math.Max(0, startPositionMs) / 1000d)
             .ToString(CultureInfo.InvariantCulture);
 

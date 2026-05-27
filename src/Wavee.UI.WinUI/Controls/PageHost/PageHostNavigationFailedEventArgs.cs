@@ -2,7 +2,7 @@ using System;
 
 namespace Wavee.UI.WinUI.Controls.PageHost;
 
-public sealed class PageHostNavigationFailedEventArgs : EventArgs
+public sealed partial class PageHostNavigationFailedEventArgs : EventArgs
 {
     public PageHostNavigationFailedEventArgs(Type? pageType, object? parameter, Exception exception)
     {

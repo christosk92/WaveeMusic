@@ -21,7 +21,7 @@ namespace Wavee.UI.WinUI.Services;
 /// (file unreachable, codec missing, RPC error, etc.) so a single bad file
 /// can't poison the whole scan.
 /// </remarks>
-public sealed class WindowsVideoThumbnailExtractor : IVideoThumbnailExtractor
+public sealed partial class WindowsVideoThumbnailExtractor : IVideoThumbnailExtractor
 {
     private const uint RequestedSize = 256;
     private readonly ILogger<WindowsVideoThumbnailExtractor>? _logger;

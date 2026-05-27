@@ -27,7 +27,7 @@ namespace Wavee.UI.WinUI.Services;
 /// public Play API will gain a stream-based overload.
 /// </para>
 /// </summary>
-public sealed class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IVideoSurfaceProvider, IDisposable
+public sealed partial class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IVideoSurfaceProvider, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcher;

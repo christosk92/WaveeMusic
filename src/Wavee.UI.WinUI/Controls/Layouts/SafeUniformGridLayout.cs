@@ -8,7 +8,7 @@ namespace Wavee.UI.WinUI.Controls.Layouts;
 /// <summary>
 /// Defensive uniform grid for Home sections that only realizes rows intersecting the viewport.
 /// </summary>
-public sealed class SafeUniformGridLayout : VirtualizingLayout
+public sealed partial class SafeUniformGridLayout : VirtualizingLayout
 {
     // Number of rows to keep realized beyond the viewport top/bottom. Heavy item
     // templates (BaselineHomeCard in particular — hero image, preview pipeline,

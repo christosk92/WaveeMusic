@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using Wavee.UI.WinUI.Helpers.Application;
+using Wavee.UI.WinUI.Json;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -29,11 +30,6 @@ public sealed record CrashRecoveryReport(
 
 public static class CrashRecoveryReportStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true
-    };
-
     public static void WritePending(string source, Exception ex)
     {
         try
@@ -48,7 +44,8 @@ public static class CrashRecoveryReportStore
                 PiiRedactor.Redact(ex.StackTrace ?? string.Empty),
                 ex.InnerException is null ? string.Empty : PiiRedactor.Redact(ex.InnerException.ToString()));
 
-            File.WriteAllText(AppPaths.PendingCrashReportPath, JsonSerializer.Serialize(report, JsonOptions));
+            var json = JsonSerializer.Serialize(report, WaveeUiWinUiJsonContext.Default.CrashRecoveryReport);
+            File.WriteAllText(AppPaths.PendingCrashReportPath, json);
         }
         catch
         {
@@ -68,7 +65,7 @@ public static class CrashRecoveryReportStore
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete);
-            return JsonSerializer.Deserialize<CrashRecoveryReport>(stream, JsonOptions);
+            return JsonSerializer.Deserialize(stream, WaveeUiWinUiJsonContext.Default.CrashRecoveryReport);
         }
         catch
         {

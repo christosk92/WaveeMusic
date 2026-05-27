@@ -35,7 +35,7 @@ namespace Wavee.UI.WinUI.Controls.Playback;
 /// Bind <see cref="HoverPreviewItems"/> for tooltip-only timeline previews that
 /// should not affect the rendered rail.
 /// </summary>
-public sealed class CompositionProgressBar : UserControl
+public sealed partial class CompositionProgressBar : UserControl
 {
     private const double TrackHeight = 3.0;
     private const double TrackHeightHover = 4.0;

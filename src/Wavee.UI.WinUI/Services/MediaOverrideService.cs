@@ -50,7 +50,7 @@ public sealed record ResolvedMediaOverrideResult
     public bool IsManualOverride { get; init; }
 }
 
-public sealed class MediaOverrideService : IMediaOverrideService
+public sealed partial class MediaOverrideService : IMediaOverrideService
 {
     private static readonly MediaOverrideAssetType CanvasAssetType = MediaOverrideAssetType.DetailsCanvas;
     private static readonly string ManagedCanvasRoot = Path.Combine(AppPaths.AppDataDirectory, "media", "canvas");

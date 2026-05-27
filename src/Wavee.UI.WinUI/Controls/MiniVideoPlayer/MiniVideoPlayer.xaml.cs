@@ -27,6 +27,7 @@ namespace Wavee.UI.WinUI.Controls.MiniVideoPlayer;
 /// <see cref="IActiveVideoSurfaceService"/> rather than a concrete engine,
 /// so it works equally well for local files and (future) Spotify videos.
 /// </remarks>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
 {
     // Middle priority — outranks Sidebar / Expanded (default 0) but yields

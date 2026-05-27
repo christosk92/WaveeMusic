@@ -11,7 +11,7 @@ namespace Wavee.UI.WinUI.Controls;
 /// layout system reflows naturally, then applies a ScaleTransform to fill the space.
 /// No custom MeasureOverride — just standard XAML layout with constrained dimensions.
 /// </summary>
-public sealed class ZoomContentControl : ContentControl
+public sealed partial class ZoomContentControl : ContentControl
 {
     private readonly ScaleTransform _scaleTransform = new() { ScaleX = 1.0, ScaleY = 1.0 };
 

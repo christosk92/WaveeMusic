@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,6 +10,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class CreatePlaylistPage : UserControl, ITabBarItemContent, IPageHostAware
 {
     public CreatePlaylistViewModel ViewModel { get; }

@@ -31,6 +31,7 @@ namespace Wavee.UI.WinUI.ViewModels.Home;
 /// enrichment / recents dispatch without children referencing each other
 /// directly.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
 {
     private readonly IHomeFeedService? _homeFeedService;
@@ -59,17 +60,17 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
     private const string LocalChipId = "wavee:chip:local";
 
     [ObservableProperty]
-    private ObservableCollection<HomeSection> _sections = [];
+    public partial ObservableCollection<HomeSection> Sections { get; set; } = [];
 
     [ObservableProperty]
-    private ObservableCollection<HomeSectionPref> _sectionPreferences = [];
+    public partial ObservableCollection<HomeSectionPref> SectionPreferences { get; set; } = [];
 
     [ObservableProperty]
-    private int _newSectionCount;
+    public partial int NewSectionCount { get; set; }
 
     /// <summary>The chips currently displayed in the single row.</summary>
     [ObservableProperty]
-    private ObservableCollection<HomeChipViewModel> _displayedChips = [];
+    public partial ObservableCollection<HomeChipViewModel> DisplayedChips { get; set; } = [];
 
     /// <summary>
     /// True while the synthetic "Local files" chip is selected. Drives the
@@ -78,7 +79,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
     /// rebuilding the underlying section collection.
     /// </summary>
     [ObservableProperty]
-    private bool _isLocalChipActive;
+    public partial bool IsLocalChipActive { get; set; }
 
     /// <summary>The original main chips (preserved for reverting from sub-chips).</summary>
     private List<HomeChipViewModel>? _mainChips;

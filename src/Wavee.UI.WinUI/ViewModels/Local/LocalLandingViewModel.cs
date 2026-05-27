@@ -18,6 +18,7 @@ namespace Wavee.UI.WinUI.ViewModels.Local;
 /// View-model for <c>LocalLandingPage</c> — the new rail-based local-files
 /// landing page replacing the old single-list <c>LocalLibraryViewModel</c>.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LocalLandingViewModel : ObservableObject, IDisposable
 {
     private readonly ILocalLibraryFacade? _facade;
@@ -38,29 +39,29 @@ public sealed partial class LocalLandingViewModel : ObservableObject, IDisposabl
     public ObservableCollection<Wavee.Local.LocalTrackRow> RecentlyPlayed  { get; } = new();
     public ObservableCollection<Wavee.Local.LocalTrackRow> LikedTracks     { get; } = new();
 
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _isEmpty;
-    [ObservableProperty] private int _showCount;
-    [ObservableProperty] private int _movieCount;
-    [ObservableProperty] private int _musicCount;
-    [ObservableProperty] private int _musicVideoCount;
-    [ObservableProperty] private int _otherCount;
-    [ObservableProperty] private string? _enrichmentRibbon;
-    [ObservableProperty] private bool _hasEnrichmentProgress;
-    [ObservableProperty] private bool _hasContinue;
-    [ObservableProperty] private bool _hasShows;
-    [ObservableProperty] private bool _hasMovies;
-    [ObservableProperty] private bool _hasMusic;
-    [ObservableProperty] private bool _hasMusicVideos;
-    [ObservableProperty] private bool _hasOthers;
-    [ObservableProperty] private bool _hasCollections;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool IsEmpty { get; set; }
+    [ObservableProperty] public partial int ShowCount { get; set; }
+    [ObservableProperty] public partial int MovieCount { get; set; }
+    [ObservableProperty] public partial int MusicCount { get; set; }
+    [ObservableProperty] public partial int MusicVideoCount { get; set; }
+    [ObservableProperty] public partial int OtherCount { get; set; }
+    [ObservableProperty] public partial string? EnrichmentRibbon { get; set; }
+    [ObservableProperty] public partial bool HasEnrichmentProgress { get; set; }
+    [ObservableProperty] public partial bool HasContinue { get; set; }
+    [ObservableProperty] public partial bool HasShows { get; set; }
+    [ObservableProperty] public partial bool HasMovies { get; set; }
+    [ObservableProperty] public partial bool HasMusic { get; set; }
+    [ObservableProperty] public partial bool HasMusicVideos { get; set; }
+    [ObservableProperty] public partial bool HasOthers { get; set; }
+    [ObservableProperty] public partial bool HasCollections { get; set; }
 
     /// <summary>
     /// True when the user hasn't configured a TMDB token yet AND there's
     /// at least one show or movie indexed AND they haven't dismissed the
     /// teaser. Drives the landing-page InfoBar.
     /// </summary>
-    [ObservableProperty] private bool _showTmdbCta;
+    [ObservableProperty] public partial bool ShowTmdbCta { get; set; }
 
     public LocalLandingViewModel(
         ILocalLibraryFacade? facade = null,

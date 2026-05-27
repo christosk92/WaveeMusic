@@ -19,7 +19,7 @@ namespace Wavee.UI.WinUI.Controls.Shelf;
 /// <c>FrameworkElement.Width</c> in <c>ElementPrepared</c>, which triggered
 /// layout oscillations during outer-page vertical scrolls.
 /// </remarks>
-public sealed class ShelfLayout : VirtualizingLayout
+public sealed partial class ShelfLayout : VirtualizingLayout
 {
     private double _arrangeItemWidth = 160.0;
 

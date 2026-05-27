@@ -31,6 +31,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// Mirrors <see cref="ShowViewModel"/>'s palette + cancellation patterns but is
 /// scoped to one episode rather than a whole show.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class EpisodePageViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private const int MaxPodcastCommentLength = 500;

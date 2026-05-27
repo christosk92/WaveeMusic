@@ -25,7 +25,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// (for the authoritative show episode list), and the extended-metadata
 /// batch API (for episode payloads).
 /// </summary>
-public sealed class PodcastService : IPodcastService
+public sealed partial class PodcastService : IPodcastService
 {
     private readonly IPathfinderClient _pathfinder;
     private readonly IExtendedMetadataClient _extendedMetadata;

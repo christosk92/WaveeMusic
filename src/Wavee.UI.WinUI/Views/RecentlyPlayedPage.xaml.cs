@@ -11,6 +11,7 @@ namespace Wavee.UI.WinUI.Views;
 /// <see cref="RecentlyPlayedViewModel"/>; updates as the Home GraphQL response
 /// refreshes or a live-play bumps a fresh context to the front.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class RecentlyPlayedPage : UserControl
 {
     public RecentlyPlayedViewModel ViewModel { get; }

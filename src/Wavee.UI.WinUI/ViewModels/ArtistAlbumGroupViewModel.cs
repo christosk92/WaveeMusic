@@ -15,6 +15,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// ViewModel for a group of albums (Albums, Singles & EPs, Compilations).
 /// Each group has its own Grid/List toggle.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
 {
     private readonly IAlbumService _albumService;
@@ -25,13 +26,13 @@ public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
     public string GroupType { get; }
 
     [ObservableProperty]
-    private ObservableCollection<ArtistAlbumItemViewModel> _albums = [];
+    public partial ObservableCollection<ArtistAlbumItemViewModel> Albums { get; set; } = [];
 
     [ObservableProperty]
-    private bool _isListView;
+    public partial bool IsListView { get; set; }
 
     [ObservableProperty]
-    private ArtistAlbumItemViewModel? _selectedAlbum;
+    public partial ArtistAlbumItemViewModel? SelectedAlbum { get; set; }
 
     public ArtistAlbumGroupViewModel(
         string groupName,
@@ -55,7 +56,7 @@ public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
 
     private void OnAlbumItemPlay(ArtistAlbumItemViewModel album)
     {
-        // ContentCard.PlayRequested → start playing the album immediately
+        // ContentCard.PlayRequested â†’ start playing the album immediately
         // via the same path the [RelayCommand] PlayAlbumAsync uses.
         _ = _playbackService.PlayContextAsync($"spotify:album:{album.Album.Id}");
     }

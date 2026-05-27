@@ -7,7 +7,8 @@ using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed class ArtistTopTrackVm : ITrackItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ArtistTopTrackVm : ITrackItem
 {
     public required string Id { get; init; }
     public int Index { get; set; }

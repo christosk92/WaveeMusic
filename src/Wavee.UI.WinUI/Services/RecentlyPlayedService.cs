@@ -33,7 +33,7 @@ namespace Wavee.UI.WinUI.Services;
 /// re-fetch. New contexts not in the last Home response are placeholder-
 /// rendered immediately and enriched via Pathfinder in the background.
 /// </summary>
-public sealed class RecentlyPlayedService : IDisposable
+public sealed partial class RecentlyPlayedService : IDisposable
 {
     private readonly ISession _session;
     private readonly IPlaybackStateService _playbackStateService;

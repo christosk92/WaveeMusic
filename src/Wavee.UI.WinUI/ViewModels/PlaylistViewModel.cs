@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -37,6 +37,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// (envelope state / track table / mutation commands); they communicate via
 /// the parent — no direct child-to-child references.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
@@ -57,16 +58,16 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
     private bool _disposed;
 
     [ObservableProperty]
-    private string _playlistId = "";
+    public partial string PlaylistId { get; set; } = "";
 
     [ObservableProperty]
-    private bool _hasError;
+    public partial bool HasError { get; set; }
 
     [ObservableProperty]
-    private string? _errorMessage;
+    public partial string? ErrorMessage { get; set; }
 
     [ObservableProperty]
-    private bool _isLoading;
+    public partial bool IsLoading { get; set; }
 
     /// <summary>Envelope state (name, owner, image, capabilities, palette,
     /// collaborators, follower count, layout mode, invite link, follow toggle).

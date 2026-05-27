@@ -24,6 +24,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Manages the authenticated user's state. Bridges Wavee.Core OAuth/Session to the UI layer.
 /// Supports demo mode fallback, cached credential restore, and real OAuth flows.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 internal sealed partial class AuthStateService : ObservableObject, IAuthState, IDisposable
 {
     private static readonly TimeSpan AuthorizationCodeLoginTimeout = TimeSpan.FromMinutes(5);
@@ -47,21 +48,21 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAuthenticated))]
-    private AuthStatus _status = AuthStatus.Unknown;
+    public partial AuthStatus Status { get; set; } = AuthStatus.Unknown;
 
     [ObservableProperty]
-    private string? _connectionError;
+    public partial string? ConnectionError { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Username))]
     [NotifyPropertyChangedFor(nameof(DisplayName))]
     [NotifyPropertyChangedFor(nameof(ProfileImageUrl))]
     [NotifyPropertyChangedFor(nameof(IsPremium))]
-    private UserData? _currentUser;
+    public partial UserData? CurrentUser { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsPremium))]
-    private AccountType? _accountType;
+    public partial AccountType? AccountType { get; set; }
 
     public string? Username => CurrentUser?.Username;
     public string? DisplayName => CurrentUser?.DisplayName ?? CurrentUser?.Username;

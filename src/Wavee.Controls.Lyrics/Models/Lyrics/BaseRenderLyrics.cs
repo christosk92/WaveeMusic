@@ -2,7 +2,7 @@ using System;
 
 namespace Wavee.Controls.Lyrics.Models.Lyrics
 {
-    public class BaseRenderLyrics : BaseLyrics
+    public partial class BaseRenderLyrics : BaseLyrics
     {
         public bool IsPlayingLastFrame { get; set; } = false;
 

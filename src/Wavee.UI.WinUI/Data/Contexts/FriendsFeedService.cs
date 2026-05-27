@@ -29,6 +29,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// dealer push arrives (fetching the updated entry from
 /// <c>/presence-view/v1/user/{userId}</c>).
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class FriendsFeedService
     : ObservableObject, IFriendsFeedService, IDisposable,
       IRecipient<AuthStatusChangedMessage>
@@ -73,11 +74,11 @@ public sealed partial class FriendsFeedService
 
     public event Action<string>? FriendUpserted;
 
-    [ObservableProperty] private FriendsFeedState _state = FriendsFeedState.Idle;
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private DateTimeOffset? _lastUpdated;
-    [ObservableProperty] private string? _errorMessage;
-    [ObservableProperty] private string? _lastPushUri;
+    [ObservableProperty] public partial FriendsFeedState State { get; set; } = FriendsFeedState.Idle;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial DateTimeOffset? LastUpdated { get; set; }
+    [ObservableProperty] public partial string? ErrorMessage { get; set; }
+    [ObservableProperty] public partial string? LastPushUri { get; set; }
 
     public FriendsFeedService(
         SessionImpl session,

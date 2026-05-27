@@ -5,7 +5,7 @@ using Windows.UI;
 
 namespace Wavee.Controls.Lyrics.Renderer
 {
-    public class PureColorBackgroundRenderer : IBackgroundRenderer
+    public partial class PureColorBackgroundRenderer : IBackgroundRenderer
     {
         public bool IsEnabled { get; private set; }
 

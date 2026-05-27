@@ -5,15 +5,16 @@ using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     private readonly IThemeService _themeService;
 
     [ObservableProperty]
-    private string _title = "Wavee";
+    public partial string Title { get; set; } = "Wavee";
 
     [ObservableProperty]
-    private bool _isFullScreen;
+    public partial bool IsFullScreen { get; set; }
 
     public MainWindowViewModel(IThemeService themeService)
     {

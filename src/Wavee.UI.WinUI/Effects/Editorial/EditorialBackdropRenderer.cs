@@ -28,7 +28,7 @@ namespace Wavee.UI.WinUI.Effects.Editorial;
 /// by <c>(uri, accent, size, theme)</c> so theme/size flips don't force a
 /// full re-load of the source bitmap.
 /// </summary>
-public sealed class EditorialBackdropRenderer : IDisposable
+public sealed partial class EditorialBackdropRenderer : IDisposable
 {
     private readonly Compositor _compositor;
     private readonly Lazy<CanvasDevice> _device;

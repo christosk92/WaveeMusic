@@ -22,6 +22,7 @@ using Windows.UI.Core;
 namespace Wavee.UI.WinUI.Controls.Sidebar;
 
 [ContentProperty(Name = "InnerContent")]
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 {
 	private const double MinExpandedPaneWidth = 200;

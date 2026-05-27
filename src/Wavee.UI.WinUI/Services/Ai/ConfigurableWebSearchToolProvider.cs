@@ -18,7 +18,7 @@ namespace Wavee.UI.WinUI.Services.Ai;
 /// scrape. The composite provider routes here whenever
 /// <see cref="AppSettings.AiWebSearchEndpoint"/> is non-empty.
 /// </summary>
-public sealed class ConfigurableWebSearchToolProvider : IWebSearchToolProvider
+public sealed partial class ConfigurableWebSearchToolProvider : IWebSearchToolProvider
 {
     private const string ProviderTag = "configurable";
 

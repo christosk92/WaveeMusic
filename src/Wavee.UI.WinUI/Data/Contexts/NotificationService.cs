@@ -16,6 +16,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// <see cref="Show(string, NotificationSeverity, TimeSpan?)"/> to display
 /// a global notification in the shell's InfoBar.
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 internal sealed partial class NotificationService : ObservableObject, INotificationService
 {
     private readonly IMessenger _messenger;
@@ -24,19 +25,19 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
     private Func<Task>? _currentAction;
 
     [ObservableProperty]
-    private bool _isOpen;
+    public partial bool IsOpen { get; set; }
 
     [ObservableProperty]
-    private string? _message;
+    public partial string? Message { get; set; }
 
     [ObservableProperty]
-    private NotificationSeverity _severity = NotificationSeverity.Error;
+    public partial NotificationSeverity Severity { get; set; } = NotificationSeverity.Error;
 
     [ObservableProperty]
-    private string? _actionLabel;
+    public partial string? ActionLabel { get; set; }
 
     [ObservableProperty]
-    private bool _isActionBusy;
+    public partial bool IsActionBusy { get; set; }
 
     public NotificationService(IMessenger messenger, IActivityService? activityService = null)
     {

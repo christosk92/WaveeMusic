@@ -40,6 +40,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// responsibility; they communicate via the parent — no direct child-to-
 /// child references.</para>
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private readonly IMusicVideoMetadataService? _musicVideoMetadataService;
@@ -197,13 +198,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Top-level scalar state ──────────────────────────────────────────────
 
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _hasData;
-    [ObservableProperty] private bool _hasError;
-    [ObservableProperty] private string? _errorMessage;
-    [ObservableProperty] private string? _artistId;
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool HasData { get; set; }
+    [ObservableProperty] public partial bool HasError { get; set; }
+    [ObservableProperty] public partial string? ErrorMessage { get; set; }
+    [ObservableProperty] public partial string? ArtistId { get; set; }
 
-    [ObservableProperty] private bool _isFollowing;
+    [ObservableProperty] public partial bool IsFollowing { get; set; }
 
     /// <summary>True when this artist is on the user's <c>artistban</c> set.
     /// Bound by the ArtistPage hero "Ignored" badge + the More-menu entry that
@@ -212,7 +213,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// whole page when set.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(BlockedDimOpacity))]
-    private bool _isBlocked;
+    public partial bool IsBlocked { get; set; }
 
     /// <summary>
     /// 0.40 when the artist is blocked, 1.0 otherwise. ArtistPage binds the
@@ -226,26 +227,26 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// <summary>True only when <c>?debug</c> was passed via the navigation
     /// parameter — gates the small "source-chip" pills on each V4A section
     /// header that name the GraphQL fragments backing it.</summary>
-    [ObservableProperty] private bool _isDebugMode;
+    [ObservableProperty] public partial bool IsDebugMode { get; set; }
 
     // ── Spotlight projection (derived from Header + Discography) ────────────
 
-    [ObservableProperty] private SpotlightMode _spotlightCardMode;
-    [ObservableProperty] private string? _spotlightReleaseName;
-    [ObservableProperty] private string? _spotlightReleaseImageUrl;
-    [ObservableProperty] private string? _spotlightReleaseUri;
-    [ObservableProperty] private string? _spotlightReleaseSubtitle;
-    [ObservableProperty] private int _spotlightReleaseTrackCount;
-    [ObservableProperty] private string _spotlightReleaseTagText = string.Empty;
-    [ObservableProperty] private string _spotlightReleaseEyebrowText = string.Empty;
-    [ObservableProperty] private string? _spotlightCommentText;
-    [ObservableProperty] private bool _hasSpotlightRelease;
-    [ObservableProperty] private bool _hasSpotlightComment;
+    [ObservableProperty] public partial SpotlightMode SpotlightCardMode { get; set; }
+    [ObservableProperty] public partial string? SpotlightReleaseName { get; set; }
+    [ObservableProperty] public partial string? SpotlightReleaseImageUrl { get; set; }
+    [ObservableProperty] public partial string? SpotlightReleaseUri { get; set; }
+    [ObservableProperty] public partial string? SpotlightReleaseSubtitle { get; set; }
+    [ObservableProperty] public partial int SpotlightReleaseTrackCount { get; set; }
+    [ObservableProperty] public partial string SpotlightReleaseTagText { get; set; } = string.Empty;
+    [ObservableProperty] public partial string SpotlightReleaseEyebrowText { get; set; } = string.Empty;
+    [ObservableProperty] public partial string? SpotlightCommentText { get; set; }
+    [ObservableProperty] public partial bool HasSpotlightRelease { get; set; }
+    [ObservableProperty] public partial bool HasSpotlightComment { get; set; }
 
     /// <summary>The Popular Releases column shown in the V4A magazine layout
     /// — derived from <see cref="SpotlightSelectionService"/>'s mode-dependent
     /// projection so the rows never collide with the hero spotlight.</summary>
-    [ObservableProperty] private IReadOnlyList<LazyReleaseItem> _popularReleasesDisplayed = Array.Empty<LazyReleaseItem>();
+    [ObservableProperty] public partial IReadOnlyList<LazyReleaseItem> PopularReleasesDisplayed { get; set; } = Array.Empty<LazyReleaseItem>();
 
     /// <summary>
     /// Recompute the spotlight selection by combining the header's pinned /

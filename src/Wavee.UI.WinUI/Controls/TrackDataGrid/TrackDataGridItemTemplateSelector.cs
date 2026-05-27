@@ -11,7 +11,7 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 /// <c>BuildFlatRowsWithHeaders</c> route to <see cref="GroupHeaderTemplate"/>;
 /// everything else (the <c>ITrackItem</c>s) routes to <see cref="RowTemplate"/>.
 /// </summary>
-public sealed class TrackDataGridItemTemplateSelector : DataTemplateSelector
+public sealed partial class TrackDataGridItemTemplateSelector : DataTemplateSelector
 {
     /// <summary>Template used for <c>ITrackItem</c> rows. Wraps a
     /// <see cref="Wavee.UI.WinUI.Controls.Track.TrackItem"/> in <c>Row</c> mode.</summary>

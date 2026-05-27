@@ -17,6 +17,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 ///   <c>IsVideoActive == true &amp;&amp; !IsOnVideoPage</c>
 /// — flipped from outside (<c>ShellViewModel</c> tracks page navigation).
 /// </summary>
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDisposable
 {
     private readonly IActiveVideoSurfaceService _surface;
@@ -26,12 +27,12 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
     private bool _disposed;
     private string? _lastTrackId;
 
-    [ObservableProperty] private string? _title;
-    [ObservableProperty] private bool _isVideoActive;
-    [ObservableProperty] private bool _isOnVideoPage;
-    [ObservableProperty] private bool _isSuppressedBySidebarPlayer;
-    [ObservableProperty] private bool _isSuppressedByFloatingPlayer;
-    [ObservableProperty] private bool _isDismissedByUser;
+    [ObservableProperty] public partial string? Title { get; set; }
+    [ObservableProperty] public partial bool IsVideoActive { get; set; }
+    [ObservableProperty] public partial bool IsOnVideoPage { get; set; }
+    [ObservableProperty] public partial bool IsSuppressedBySidebarPlayer { get; set; }
+    [ObservableProperty] public partial bool IsSuppressedByFloatingPlayer { get; set; }
+    [ObservableProperty] public partial bool IsDismissedByUser { get; set; }
 
     /// <summary>
     /// True only once the active video surface has rendered at least one
@@ -40,7 +41,7 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
     /// MediaFoundation's first-frame callback (the cause of the "lingering
     /// black surface on nav-away" symptom).
     /// </summary>
-    [ObservableProperty] private bool _hasVideoSurfaceWithFirstFrame;
+    [ObservableProperty] public partial bool HasVideoSurfaceWithFirstFrame { get; set; }
 
     public bool IsVisible => IsVideoActive
                              && HasVideoSurfaceWithFirstFrame

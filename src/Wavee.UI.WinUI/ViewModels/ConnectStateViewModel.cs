@@ -11,6 +11,7 @@ using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ConnectStateViewModel : ObservableObject, IDisposable
 {
     private readonly RemoteStateRecorder _recorder;
@@ -18,18 +19,18 @@ public sealed partial class ConnectStateViewModel : ObservableObject, IDisposabl
 
     public ObservableCollection<ConnectStateEventRow> FilteredEvents { get; } = [];
 
-    [ObservableProperty] private bool _showPutStateRequest = true;
-    [ObservableProperty] private bool _showPutStateResponse = true;
-    [ObservableProperty] private bool _showClusterUpdate = true;
-    [ObservableProperty] private bool _showVolumeCommand = true;
-    [ObservableProperty] private bool _showDealerCommand = true;
-    [ObservableProperty] private bool _showDealerReply = true;
-    [ObservableProperty] private bool _showDealerLifecycle = true;
-    [ObservableProperty] private bool _showConnectionLifecycle = true;
-    [ObservableProperty] private bool _showSubscriptions = true;
-    [ObservableProperty] private bool _showSelfEcho;
-    [ObservableProperty] private string _searchText = string.Empty;
-    [ObservableProperty] private bool _isPaused;
+    [ObservableProperty] public partial bool ShowPutStateRequest { get; set; } = true;
+    [ObservableProperty] public partial bool ShowPutStateResponse { get; set; } = true;
+    [ObservableProperty] public partial bool ShowClusterUpdate { get; set; } = true;
+    [ObservableProperty] public partial bool ShowVolumeCommand { get; set; } = true;
+    [ObservableProperty] public partial bool ShowDealerCommand { get; set; } = true;
+    [ObservableProperty] public partial bool ShowDealerReply { get; set; } = true;
+    [ObservableProperty] public partial bool ShowDealerLifecycle { get; set; } = true;
+    [ObservableProperty] public partial bool ShowConnectionLifecycle { get; set; } = true;
+    [ObservableProperty] public partial bool ShowSubscriptions { get; set; } = true;
+    [ObservableProperty] public partial bool ShowSelfEcho { get; set; }
+    [ObservableProperty] public partial string SearchText { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool IsPaused { get; set; }
 
     public ConnectStateViewModel(RemoteStateRecorder recorder)
     {
@@ -148,6 +149,7 @@ public sealed partial class ConnectStateViewModel : ObservableObject, IDisposabl
     }
 }
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class ConnectStateEventRow : ObservableObject
 {
     public ConnectStateEventRow(RemoteStateEvent evt, string searchText)
@@ -156,7 +158,7 @@ public sealed partial class ConnectStateEventRow : ObservableObject
         SearchText = searchText;
     }
 
-    [ObservableProperty] private bool _isExpanded;
+    [ObservableProperty] public partial bool IsExpanded { get; set; }
 
     public RemoteStateEvent Event { get; }
     public string SearchText { get; }

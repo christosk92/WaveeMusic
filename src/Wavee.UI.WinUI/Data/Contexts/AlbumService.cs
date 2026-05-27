@@ -25,7 +25,7 @@ internal partial class AlbumTrackResultJsonContext : JsonSerializerContext { }
 /// Album service with 3-tier caching: hot (in-memory) → SQLite → API.
 /// Reusable from artist page, album detail page, search results, etc.
 /// </summary>
-public sealed class AlbumService : IAlbumService
+public sealed partial class AlbumService : IAlbumService
 {
     private readonly IPathfinderClient _pathfinder;
     private readonly IMetadataDatabase _db;

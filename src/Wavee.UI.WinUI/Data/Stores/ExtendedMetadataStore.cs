@@ -30,7 +30,7 @@ public readonly record struct ExtensionRequestKey(string Uri, ExtensionKind Kind
 // When every subscriber for a pending batch cancels, the batch still fires
 // because its output lands in the client's SQLite cache; the work is not
 // wasted.
-public sealed class ExtendedMetadataStore : EntityStore<ExtensionRequestKey, byte[]>
+public sealed partial class ExtendedMetadataStore : EntityStore<ExtensionRequestKey, byte[]>
 {
     private readonly IExtendedMetadataClient _client;
     private readonly TimeSpan _batchWindow;

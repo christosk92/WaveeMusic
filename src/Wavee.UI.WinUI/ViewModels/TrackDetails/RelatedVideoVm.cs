@@ -1,6 +1,7 @@
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed class RelatedVideoVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class RelatedVideoVm
 {
     public string? Title { get; init; }
     public string? ThumbnailUrl { get; init; }

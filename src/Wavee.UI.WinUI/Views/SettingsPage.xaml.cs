@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -15,6 +15,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
+[global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class SettingsPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable
 {
     private const int MaxDeferredShowSectionAttempts = 3;

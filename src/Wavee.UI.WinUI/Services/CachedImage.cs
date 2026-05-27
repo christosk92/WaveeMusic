@@ -17,7 +17,7 @@ namespace Wavee.UI.WinUI.Services;
 /// <see cref="ImageCacheService.Clear"/>.
 /// </para>
 /// </summary>
-public sealed class CachedImage : IDisposable
+public sealed partial class CachedImage : IDisposable
 {
     private bool _disposed;
 
