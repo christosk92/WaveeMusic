@@ -111,7 +111,8 @@ public static class CardContextMenuBuilder
                     title,
                     mediator is null
                         ? null
-                        : ct => mediator.GetPlaylistTrackUrisAsync(uri, ct));
+                        : ct => mediator.GetPlaylistTrackUrisAsync(uri, ct),
+                    addToPlaylistLabel: AppLocalization.GetString("PlaylistMenu_CopyContentsToPlaylist"));
             }
 
             case "show":
@@ -172,7 +173,8 @@ public static class CardContextMenuBuilder
     private static IReadOnlyList<ContextMenuItemModel> InjectContextEntries(
         IReadOnlyList<ContextMenuItemModel> menu,
         string sourceLabel,
-        Func<CancellationToken, Task<IReadOnlyList<string>>>? trackUrisLoader)
+        Func<CancellationToken, Task<IReadOnlyList<string>>>? trackUrisLoader,
+        string? addToPlaylistLabel = null)
     {
         if (trackUrisLoader is null) return menu;
 
@@ -185,7 +187,10 @@ public static class CardContextMenuBuilder
 
         var addToPlaylist = new ContextMenuItemModel
         {
-            Text = AppLocalization.GetString("TrackMenu_AddToPlaylist"),
+            // Playlist sources read "Copy contents to playlist" because the
+            // tracks are copied — the source isn't nested as a sub-playlist.
+            // Other entity types keep the generic "Add to playlist" label.
+            Text = addToPlaylistLabel ?? AppLocalization.GetString("TrackMenu_AddToPlaylist"),
             Glyph = FluentGlyphs.Add,
             LoadSubMenuAsync = AddToPlaylistSubmenuBuilder.Loader(sourceLabel, trackUrisLoader)
         };

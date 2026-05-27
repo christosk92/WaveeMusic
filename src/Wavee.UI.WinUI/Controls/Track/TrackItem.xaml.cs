@@ -807,7 +807,7 @@ public sealed partial class TrackItem : UserControl
 
         CompactPlayCount.Text = playCount.Contains("play", StringComparison.OrdinalIgnoreCase)
             ? playCount
-            : $"{playCount} plays";
+            : AppLocalization.Format("Count_Plays", playCount);
         CompactPlayCount.Visibility = Visibility.Visible;
     }
 

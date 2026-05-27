@@ -109,7 +109,7 @@
                     <!-- "Open in browser" overlay for IsExternal cards (e.g. merch).
                          Mutually exclusive with the play button — see UpdatePlayingState
                          and the IsExternal branches in EnsurePlayOverlayRealized. -->
-                    <Button x:Name="SquareExternalButton"
+                    <Button x:Uid="Controls_Cards_ContentCard__Auto_600" x:Name="SquareExternalButton"
                             x:Load="False"
                             Visibility="Collapsed"
                             HorizontalAlignment="Right"

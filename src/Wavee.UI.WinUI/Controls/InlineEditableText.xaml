@@ -90,7 +90,7 @@
                                  TextWrapping="NoWrap"
                                  KeyDown="EditBox_KeyDown"
                                  LostFocus="EditBox_LostFocus"/>
-                        <Button x:Name="SaveButtonSingle"
+                        <Button x:Uid="Controls_InlineEditableText__Auto_600" x:Name="SaveButtonSingle"
                                 Grid.Column="1"
                                 Width="28" Height="28"
                                 MinWidth="28" MinHeight="28"
@@ -103,7 +103,7 @@
                             <FontIcon Glyph="&#xE73E;" FontSize="12"
                                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                         </Button>
-                        <Button x:Name="CancelButtonSingle"
+                        <Button x:Uid="Controls_InlineEditableText__Auto_601" x:Name="CancelButtonSingle"
                                 Grid.Column="2"
                                 Width="28" Height="28"
                                 MinWidth="28" MinHeight="28"
@@ -141,7 +141,7 @@
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Right"
                                     Spacing="6">
-                            <Button x:Name="CancelButtonMulti"
+                            <Button x:Uid="Controls_InlineEditableText__Auto_602" x:Name="CancelButtonMulti"
                                     Width="28" Height="28"
                                     MinWidth="28" MinHeight="28"
                                     CornerRadius="14"
@@ -151,7 +151,7 @@
                                     Click="CancelButton_Click">
                                 <FontIcon Glyph="&#xE711;" FontSize="12"/>
                             </Button>
-                            <Button x:Name="SaveButtonMulti"
+                            <Button x:Uid="Controls_InlineEditableText__Auto_603" x:Name="SaveButtonMulti"
                                     Width="28" Height="28"
                                     MinWidth="28" MinHeight="28"
                                     CornerRadius="14"
@@ -170,7 +170,7 @@
 
         <!-- Persistent pencil hint — visible when IsEditable && not editing && not busy.
              Click also enters edit mode (in addition to the hover-frame Tapped). -->
-        <Button x:Name="EditAffordanceButton"
+        <Button x:Uid="Controls_InlineEditableText__Auto_604" x:Name="EditAffordanceButton"
                 Grid.Column="1"
                 Width="24" Height="24"
                 MinWidth="24" MinHeight="24"

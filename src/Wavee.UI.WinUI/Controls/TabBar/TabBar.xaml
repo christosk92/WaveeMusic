@@ -57,7 +57,7 @@
                     </TabViewItem.HeaderTemplate>
                     <TabViewItem.ContextFlyout>
                         <MenuFlyout Opening="ContextMenu_Opening">
-                            <MenuFlyoutItem x:Name="PinMenuItem" Text="Pin" Click="PinTab_Click" Tag="{x:Bind}">
+                            <MenuFlyoutItem x:Uid="Controls_TabBar_TabBar__Auto_600" x:Name="PinMenuItem" Text="Pin" Click="PinTab_Click" Tag="{x:Bind}">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE718;"/>
                                 </MenuFlyoutItem.Icon>
@@ -67,7 +67,7 @@
                                     <FontIcon Glyph="&#xE921;"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="SleepMenuItem" Text="Sleep Tab" Click="SleepTab_Click" Tag="{x:Bind}">
+                            <MenuFlyoutItem x:Uid="Controls_TabBar_TabBar__Auto_601" x:Name="SleepMenuItem" Text="Sleep Tab" Click="SleepTab_Click" Tag="{x:Bind}">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE708;"/>
                                 </MenuFlyoutItem.Icon>

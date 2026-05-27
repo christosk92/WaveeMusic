@@ -277,7 +277,7 @@
                                        TextWrapping="Wrap"
                                        Style="{ThemeResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            <PasswordBox x:Name="TmdbTokenBox"
+                            <PasswordBox x:Uid="Controls_Settings_StorageNetworkSettingsSection__Auto_600" x:Name="TmdbTokenBox"
                                          Password="{x:Bind ViewModel.LocalFiles.TmdbTokenInput, Mode=TwoWay}"
                                          PlaceholderText="eyJhbGciOi..."
                                          HorizontalAlignment="Stretch"/>

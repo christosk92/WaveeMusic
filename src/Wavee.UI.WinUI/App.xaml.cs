@@ -49,7 +49,7 @@ public partial class App : Application
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
-        LogUnhandledException("XamlUnhandledException", e.Exception);
+        LogUnhandledException("XamlUnhandledException", e.Exception, markForNextLaunch: true);
 
         e.Handled = true; // Prevent crash — let the app try to continue
     }
@@ -57,15 +57,16 @@ public partial class App : Application
     private void OnCurrentDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
         => LogUnhandledException(
             $"AppDomainUnhandledException (IsTerminating={e.IsTerminating})",
-            e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString() ?? "Unknown exception object"));
+            e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString() ?? "Unknown exception object"),
+            markForNextLaunch: true);
 
     private void OnTaskSchedulerUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        LogUnhandledException("TaskSchedulerUnobservedTaskException", e.Exception);
+        LogUnhandledException("TaskSchedulerUnobservedTaskException", e.Exception, markForNextLaunch: true);
         e.SetObserved();
     }
 
-    private static void LogUnhandledException(string source, Exception ex)
+    private static void LogUnhandledException(string source, Exception ex, bool markForNextLaunch = false)
     {
         // Keep crash logging allocation-light and resilient: this can run while the process
         // is already unstable or terminating on a background thread.
@@ -97,6 +98,9 @@ public partial class App : Application
                 crashLog,
                 $"\n[{System.DateTime.UtcNow:O}] [{source}] {ex.GetType().Name}: {redactedMessage}\n{redactedStack}\n" +
                 (string.IsNullOrWhiteSpace(redactedInner) ? "" : $"Inner: {redactedInner}\n"));
+
+            if (markForNextLaunch)
+                CrashRecoveryReportStore.WritePending(source, ex);
         }
         catch
         {

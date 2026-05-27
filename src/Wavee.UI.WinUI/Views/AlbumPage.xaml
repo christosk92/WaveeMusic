@@ -44,6 +44,7 @@
         <!-- Full-page error state — covers the scaffold when the initial fetch
              failed. Retry re-invalidates the album store. -->
         <appControls:PageErrorState
+            x:Uid="Views_AlbumPage__PageErrorState_AlbumLoadFailed"
             Title="Couldn't load this album"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"
@@ -625,24 +626,22 @@
                             <controls:Shimmer Width="180" Height="12"
                                           HorizontalAlignment="Left" CornerRadius="4"/>
 
-                            <!-- Primary CTA row shimmer — Play (~92×40) + Shuffle (40×40),
-                                 sized to the real buttons' bounds. Matches the loaded-
-                                 state StackPanel Spacing=8 Margin="0,8,0,0". -->
+                            <!-- Primary CTA row shimmer — Play + Shuffle / Save / Share,
+                                 sized to the loaded-state StackPanel. -->
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                                 <controls:Shimmer Width="92" Height="40" CornerRadius="20"/>
                                 <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
+                                <controls:Shimmer Width="32" Height="32" CornerRadius="16"
+                                                  VerticalAlignment="Center"/>
+                                <controls:Shimmer Width="32" Height="32" CornerRadius="16"
+                                                  VerticalAlignment="Center"/>
                             </StackPanel>
 
-                            <!-- Secondary action cluster shimmer — 5 labeled pills at 36 px
-                                 height. Widths approximate the real labels: Save ~74,
-                                 Share ~80, Add to playlist ~136, Add to queue ~128, Start
-                                 radio ~108. WrapPanel matches the real cluster so the
-                                 shimmer wraps identically on narrow column widths. -->
+                            <!-- Secondary action cluster shimmer — labeled pill buttons only.
+                                 Save + Share live in the icon row above in the loaded UI. -->
                             <controls:WrapPanel Orientation="Horizontal"
                                                 HorizontalSpacing="6" VerticalSpacing="6"
                                                 Margin="0,4,0,0">
-                                <controls:Shimmer Width="74"  Height="36" CornerRadius="18"/>
-                                <controls:Shimmer Width="80"  Height="36" CornerRadius="18"/>
                                 <controls:Shimmer Width="136" Height="36" CornerRadius="18"/>
                                 <controls:Shimmer Width="128" Height="36" CornerRadius="18"/>
                                 <controls:Shimmer Width="108" Height="36" CornerRadius="18"/>
@@ -785,16 +784,10 @@
                              breathing room; right padding stays minimal so shelves
                              can extend toward the fade edge.
 
-                             Layered Grid hosts the real footer (Opacity=0 until the
-                             shimmer→content crossfade fires) plus a sibling shimmer
-                             skeleton mirroring the same vertical rhythm. Order in
-                             the Grid matters: shimmer comes AFTER content so it
-                             paints on top while the page is still loading; the
-                             FooterShimmerGate's RunCrossfadeAsync then fades the
-                             shimmer out (200 ms) while the content fades in
-                             (300 ms, 100 ms delay) underneath. Gate operates
-                             independently from the main ContentPageController so
-                             the footer can wait for IsLoadingTracks too. -->
+                             FooterContent starts at Opacity=0 until the footer
+                             crossfade fires. Section-level placeholders inside the
+                             content handle artist/related-section hydration so the
+                             footer does not paint a fixed all-sections overlay. -->
                         <Grid>
                         <StackPanel x:Name="FooterContent"
                                     Spacing="32"
@@ -942,25 +935,51 @@
                                 </Grid>
                             </Border>
 
-                            <!-- About-the-artist. Geometry preserved by the sibling
-                                 FooterShimmer skeleton (about-artist card slot
-                                 below) — by the time the parent FooterContent
-                                 fades in, the real card data has hydrated and
-                                 there's no placeholder-flicker window. -->
-                            <artistControls:ArtistSummaryCard
-                                x:Name="FooterArtistCard"
-                                Margin="0,0,16,0"
-                                ArtistUri="{x:Bind ViewModel.ArtistId, Mode=OneWay}"
-                                ArtistName="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                                ArtistImageUrl="{x:Bind ViewModel.ArtistAvatarImageUrl, Mode=OneWay}"
-                                BioExcerpt="{x:Bind ViewModel.ArtistBioExcerpt, Mode=OneWay}"
-                                SummaryMonthlyListenersDisplay="{x:Bind ViewModel.ArtistMonthlyListenersDisplay, Mode=OneWay}"
-                                SummaryTopTrackNames="{x:Bind ViewModel.ArtistSummaryTopTrackNames, Mode=OneWay}"
-                                IsVerified="{x:Bind ViewModel.IsArtistVerified, Mode=OneWay}"
-                                AccentBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
-                                IsFollowing="{x:Bind ViewModel.IsArtistFollowing, Mode=TwoWay}"
-                                ToggleFollowCommand="{x:Bind ViewModel.ToggleArtistFollowCommand}"
-                                EnableAiSummary="True"/>
+                            <!-- About-the-artist. Placeholder and real card share the
+                                 same slot so NPV hydration does not shift footer content. -->
+                            <Grid>
+                                <Border
+                                    x:Name="FooterArtistCardSkeleton"
+                                    x:Load="{x:Bind ViewModel.ShowArtistSummarySkeleton, Mode=OneWay}"
+                                    Margin="0,0,16,0"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="14,12">
+                                    <Grid ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="56"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <controls:Shimmer Grid.Column="0" Width="56" Height="56" CornerRadius="28"/>
+                                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                            <controls:Shimmer Width="116" Height="9" HorizontalAlignment="Left" CornerRadius="2"/>
+                                            <controls:Shimmer Width="140" Height="15" HorizontalAlignment="Left" CornerRadius="3"/>
+                                            <controls:Shimmer Width="260" Height="11" HorizontalAlignment="Left" CornerRadius="3"/>
+                                            <controls:Shimmer Width="220" Height="11" HorizontalAlignment="Left" CornerRadius="3"/>
+                                        </StackPanel>
+                                        <controls:Shimmer Grid.Column="2" Width="92" Height="36" CornerRadius="18"/>
+                                    </Grid>
+                                </Border>
+
+                                <artistControls:ArtistSummaryCard
+                                    x:Name="FooterArtistCard"
+                                    x:Load="{x:Bind ViewModel.ShowArtistSummaryCard, Mode=OneWay}"
+                                    Margin="0,0,16,0"
+                                    ArtistUri="{x:Bind ViewModel.ArtistId, Mode=OneWay}"
+                                    ArtistName="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
+                                    ArtistImageUrl="{x:Bind ViewModel.ArtistAvatarImageUrl, Mode=OneWay}"
+                                    BioExcerpt="{x:Bind ViewModel.ArtistBioExcerpt, Mode=OneWay}"
+                                    SummaryMonthlyListenersDisplay="{x:Bind ViewModel.ArtistMonthlyListenersDisplay, Mode=OneWay}"
+                                    SummaryTopTrackNames="{x:Bind ViewModel.ArtistSummaryTopTrackNames, Mode=OneWay}"
+                                    IsVerified="{x:Bind ViewModel.IsArtistVerified, Mode=OneWay}"
+                                    AccentBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
+                                    IsFollowing="{x:Bind ViewModel.IsArtistFollowing, Mode=TwoWay}"
+                                    ToggleFollowCommand="{x:Bind ViewModel.ToggleArtistFollowCommand}"
+                                    EnableAiSummary="True"/>
+                            </Grid>
 
                             <!-- Fans also like — horizontal scrolling pill rail. Plain
                                  ScrollViewer + ItemsControl with horizontal StackPanel
@@ -972,8 +991,66 @@
                                  up uneven because some pills have lots of whitespace and
                                  others crowd their text. The fade-right hint sits on top
                                  of the rail to suggest there's more off-screen. -->
+                            <StackPanel x:Name="FansAlsoLikeSkeleton"
+                                        x:Load="{x:Bind ViewModel.ShowSimilarArtistsSkeleton, Mode=OneWay}"
+                                        Spacing="16">
+                                <controls:Shimmer Width="110" Height="18" HorizontalAlignment="Left" CornerRadius="3"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="22"
+                                            Padding="8,6,16,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <controls:Shimmer Width="32" Height="32" CornerRadius="16"/>
+                                            <controls:Shimmer Width="80" Height="12" CornerRadius="3"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="22"
+                                            Padding="8,6,16,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <controls:Shimmer Width="32" Height="32" CornerRadius="16"/>
+                                            <controls:Shimmer Width="110" Height="12" CornerRadius="3"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="22"
+                                            Padding="8,6,16,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <controls:Shimmer Width="32" Height="32" CornerRadius="16"/>
+                                            <controls:Shimmer Width="70" Height="12" CornerRadius="3"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="22"
+                                            Padding="8,6,16,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <controls:Shimmer Width="32" Height="32" CornerRadius="16"/>
+                                            <controls:Shimmer Width="95" Height="12" CornerRadius="3"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="22"
+                                            Padding="8,6,16,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <controls:Shimmer Width="32" Height="32" CornerRadius="16"/>
+                                            <controls:Shimmer Width="60" Height="12" CornerRadius="3"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+
                             <StackPanel x:Name="FansAlsoLikePanel"
-                                        x:Load="{x:Bind ViewModel.HasSimilarArtists, Mode=OneWay}"
+                                        x:Load="{x:Bind ViewModel.ShowSimilarArtistsPanel, Mode=OneWay}"
                                         Spacing="16">
                                 <TextBlock x:Uid="Views_AlbumPage__TextBlock_121"
                                            Text="Fans also like"
@@ -1017,9 +1094,37 @@
                             </StackPanel>
 
                             <!-- More by Artist. -->
+                            <StackPanel x:Name="MoreByArtistSkeleton"
+                                        x:Load="{x:Bind ViewModel.ShowMoreByArtistSkeleton, Mode=OneWay}"
+                                        Spacing="16">
+                                <controls:Shimmer Width="180" Height="18" HorizontalAlignment="Left" CornerRadius="3"/>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <StackPanel Spacing="8" Width="180">
+                                        <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
+                                        <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left" CornerRadius="3"/>
+                                        <controls:Shimmer Width="60" Height="11" HorizontalAlignment="Left" CornerRadius="3"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="8" Width="180">
+                                        <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
+                                        <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left" CornerRadius="3"/>
+                                        <controls:Shimmer Width="60" Height="11" HorizontalAlignment="Left" CornerRadius="3"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="8" Width="180">
+                                        <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
+                                        <controls:Shimmer Width="160" Height="14" HorizontalAlignment="Left" CornerRadius="3"/>
+                                        <controls:Shimmer Width="60" Height="11" HorizontalAlignment="Left" CornerRadius="3"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="8" Width="180">
+                                        <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
+                                        <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Left" CornerRadius="3"/>
+                                        <controls:Shimmer Width="60" Height="11" HorizontalAlignment="Left" CornerRadius="3"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+
                             <StackPanel Spacing="16"
                                         x:Name="HasMorePanel"
-                                        x:Load="{x:Bind ViewModel.HasMoreByArtist, Mode=OneWay}">
+                                        x:Load="{x:Bind ViewModel.ShowMoreByArtistPanel, Mode=OneWay}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -1029,7 +1134,7 @@
                                                Style="{StaticResource SubtitleTextBlockStyle}"
                                                FontWeight="Bold"
                                                VerticalAlignment="Center">
-                                        <Run Text="More by "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"/>
+                                        <Run x:Uid="Views_AlbumPage__Run_MoreBy" Text="More by "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"/>
                                     </TextBlock>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
                                                 Visibility="{Binding ElementName=MoreByArtistShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -1182,23 +1287,12 @@
 
                         </StackPanel>
 
-                        <!-- ── FOOTER SHIMMER ──────────────────────────────────
-                             Sibling skeleton painted ON TOP of FooterContent
-                             while the page is still loading. x:Load gated by
-                             FooterShimmerGate.IsLoaded so the whole subtree
-                             unrealises after the crossfade end (freeing
-                             compositor + Xaml peer memory while the page sits
-                             in the Frame cache).
-
-                             Skeleton mirrors the three commonly-present footer
-                             sections: about-artist card, "Fans also like" pill
-                             rail, "More by Artist" card shelf. MusicVideoStrip
-                             / "Featured on" / "Merch" are NOT skeletoned —
-                             they're conditional and a placeholder for content
-                             that turns out not to exist looks worse than no
-                             placeholder at all. -->
+                        <!-- Legacy footer shimmer host kept only so the load gate can
+                             release its x:Load subtree after reveal. Visible footer
+                             placeholders now live inside FooterContent per section. -->
                         <StackPanel x:Name="FooterShimmer"
                                     x:Load="{x:Bind FooterShimmerGate.IsLoaded, Mode=OneWay}"
+                                    Visibility="Collapsed"
                                     Spacing="32"
                                     Padding="0,32,0,32">
 

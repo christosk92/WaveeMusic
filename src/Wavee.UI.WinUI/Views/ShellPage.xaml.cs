@@ -1082,10 +1082,10 @@ public sealed partial class ShellPage : UserControl
 
         var dialog = new ContentDialog
         {
-            Title = "Delete playlist?",
-            Content = $"\"{playlistName}\" will be removed from your library. This cannot be undone.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
+            Title = AppLocalization.GetString("Sidebar_DeletePlaylistTitle"),
+            Content = AppLocalization.Format("Sidebar_DeletePlaylistContent", playlistName),
+            PrimaryButtonText = AppLocalization.GetString("Dialog_Delete"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = this.XamlRoot
         };
@@ -1101,7 +1101,7 @@ public sealed partial class ShellPage : UserControl
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to delete playlist {Uri} from sidebar", playlistUri);
-            ViewModel.ShowNotification("Couldn't delete the playlist");
+            ViewModel.ShowNotification(AppLocalization.GetString("Sidebar_DeletePlaylistError"));
         }
     }
 
@@ -1113,15 +1113,15 @@ public sealed partial class ShellPage : UserControl
         var input = new TextBox
         {
             Text = currentName,
-            PlaceholderText = "Folder name",
+            PlaceholderText = AppLocalization.GetString("Sidebar_RenameFolderPlaceholder"),
             SelectionStart = currentName.Length
         };
         var dialog = new ContentDialog
         {
-            Title = "Rename folder",
+            Title = AppLocalization.GetString("Sidebar_RenameFolderTitle"),
             Content = input,
-            PrimaryButtonText = "Rename",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = AppLocalization.GetString("Dialog_Rename"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = this.XamlRoot
         };
@@ -1140,7 +1140,7 @@ public sealed partial class ShellPage : UserControl
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to rename folder {Uri}", folderStartUri);
-            ViewModel.ShowNotification("Couldn't rename the folder");
+            ViewModel.ShowNotification(AppLocalization.GetString("Sidebar_RenameFolderError"));
         }
     }
 
@@ -1151,10 +1151,10 @@ public sealed partial class ShellPage : UserControl
 
         var dialog = new ContentDialog
         {
-            Title = "Delete folder?",
-            Content = $"\"{folderName}\" will be removed. Playlists inside the folder stay in your library.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
+            Title = AppLocalization.GetString("Sidebar_DeleteFolderTitle"),
+            Content = AppLocalization.Format("Sidebar_DeleteFolderContent", folderName),
+            PrimaryButtonText = AppLocalization.GetString("Dialog_Delete"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = this.XamlRoot
         };

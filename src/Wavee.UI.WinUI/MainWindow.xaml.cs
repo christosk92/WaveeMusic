@@ -38,6 +38,8 @@ public sealed partial class MainWindow : WindowEx
     private bool _allowWindowClose;
     private bool _closeConfirmationInFlight;
     private bool _wasDeactivatedForVideoPrompt;
+    private ISettingsService? _startupSettingsService;
+    private bool _shellStartupStarted;
 
     private MainWindow()
     {
@@ -395,24 +397,38 @@ public sealed partial class MainWindow : WindowEx
         // Initialize theme service
         var themeService = Ioc.Default.GetRequiredService<IThemeService>();
         themeService.Initialize(WindowRoot);
+        _startupSettingsService = settingsService;
 
-        // Always navigate to ShellPage (app works without Spotify login).
-        // Hand off from BootSplash → ShellPage on PageHost.Navigated, deferred
-        // one Low-priority dispatcher tick so ShellPage's first layout pass
-        // completes before the fade animation starts. Otherwise the splash
-        // dissolves into a still-empty host for one frame.
-        if (Splash is { } splash)
+        if (CrashRecoveryReportStore.TryReadPending() is { } pendingCrash)
         {
-            void OnNavigated(object? _, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigatedEventArgs __)
-            {
-                RootHost.Navigated -= OnNavigated;
-                DispatcherQueue.TryEnqueue(
-                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                    () => _ = splash.FadeOutAsync());
-            }
-            RootHost.Navigated += OnNavigated;
+            NavigateRootPage(typeof(CrashRecoveryPage), pendingCrash);
+            return;
         }
-        RootHost.Navigate(typeof(ShellPage));
+
+        await StartShellAsync(settingsService);
+    }
+
+    public async Task ContinueAfterCrashRecoveryAsync()
+    {
+        CrashRecoveryReportStore.ClearPending();
+        var settingsService = _startupSettingsService ?? Ioc.Default.GetRequiredService<ISettingsService>();
+        if (_startupSettingsService is null)
+        {
+            await settingsService.LoadAsync();
+            App.AppModel.InitializeFromSettings();
+            _startupSettingsService = settingsService;
+        }
+
+        await StartShellAsync(settingsService);
+    }
+
+    private async Task StartShellAsync(ISettingsService settingsService)
+    {
+        if (_shellStartupStarted)
+            return;
+
+        _shellStartupStarted = true;
+        NavigateRootPage(typeof(ShellPage));
 
         // Restore tear-off panel windows from persisted state. Must run AFTER
         // the shell exists so the floating windows have a XamlRoot baseline
@@ -493,6 +509,26 @@ public sealed partial class MainWindow : WindowEx
                 System.Diagnostics.Debug.WriteLine($"Apply private-session on auth failed: {ex}");
             }
         };
+    }
+
+    private void NavigateRootPage(Type pageType, object? parameter = null)
+    {
+        // Hand off from BootSplash to the first root page on PageHost.Navigated,
+        // deferred one Low-priority dispatcher tick so the first layout pass
+        // completes before the fade animation starts.
+        if (Splash is { Visibility: Visibility.Visible } splash)
+        {
+            void OnNavigated(object? _, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigatedEventArgs __)
+            {
+                RootHost.Navigated -= OnNavigated;
+                DispatcherQueue.TryEnqueue(
+                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    () => _ = splash.FadeOutAsync());
+            }
+            RootHost.Navigated += OnNavigated;
+        }
+
+        RootHost.Navigate(pageType, parameter);
     }
 
     private static async Task ApplyPrivateSessionAsync(bool isPrivate)

@@ -57,10 +57,10 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
                 ? rawTitle
                 : sectionType switch
                 {
-                    HomeSectionType.Shorts => "Quick access",
-                    HomeSectionType.RecentlyPlayed => "Recently played",
-                    HomeSectionType.Baseline => entry.Data?.TypeName ?? "Recommended",
-                    _ => "Untitled section"
+                    HomeSectionType.Shorts => AppLocalization.GetString("Home_Section_QuickAccess"),
+                    HomeSectionType.RecentlyPlayed => AppLocalization.GetString("Home_Section_RecentlyPlayed"),
+                    HomeSectionType.Baseline => entry.Data?.TypeName ?? AppLocalization.GetString("Home_Section_Recommended"),
+                    _ => AppLocalization.GetString("Home_Section_Untitled")
                 };
 
             var section = new HomeSection
@@ -444,7 +444,7 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
             return new HomeSectionItem
             {
                 Uri = uri,
-                Title = "Liked Songs",
+                Title = AppLocalization.GetString("LikedSongs_Title"),
                 ContentType = HomeContentType.Playlist,
                 PlaceholderGlyph = "\uEB52",
                 ColorHex = "#4B2A8A"

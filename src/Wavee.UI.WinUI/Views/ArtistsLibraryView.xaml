@@ -834,7 +834,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                            <TextBlock Text="Play liked"/>
+                                            <TextBlock x:Uid="Views_ArtistsLibraryView__Auto_600" Text="Play liked"/>
                                         </StackPanel>
                                     </Button>
                                     <Button
@@ -842,7 +842,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
-                                            <TextBlock Text="Shuffle"/>
+                                            <TextBlock x:Uid="Views_ArtistsLibraryView__Auto_601" Text="Shuffle"/>
                                         </StackPanel>
                                     </Button>
                                     <Button
@@ -850,7 +850,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
-                                            <TextBlock Text="Open artist"/>
+                                            <TextBlock x:Uid="Views_ArtistsLibraryView__Auto_602" Text="Open artist"/>
                                         </StackPanel>
                                     </Button>
                                 </primitives:WrapPanel>
@@ -1186,7 +1186,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBox
+                    <TextBox x:Uid="Views_ArtistsLibraryView__Auto_603"
                         Grid.Row="0"
                         PlaceholderText="Filter artists..."
                         Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -1431,7 +1431,7 @@
                                     Padding="12,6">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                        <TextBlock Text="Play liked"/>
+                                        <TextBlock x:Uid="Views_ArtistsLibraryView__Auto_604" Text="Play liked"/>
                                     </StackPanel>
                                 </Button>
                                 <Button
@@ -1439,7 +1439,7 @@
                                     Padding="12,6">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
-                                        <TextBlock Text="Shuffle"/>
+                                        <TextBlock x:Uid="Views_ArtistsLibraryView__Auto_605" Text="Shuffle"/>
                                     </StackPanel>
                                 </Button>
                                 <Button
@@ -1447,7 +1447,7 @@
                                     Padding="12,6">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
-                                        <TextBlock Text="Open artist"/>
+                                        <TextBlock x:Uid="Views_ArtistsLibraryView__Auto_606" Text="Open artist"/>
                                     </StackPanel>
                                 </Button>
                             </primitives:WrapPanel>

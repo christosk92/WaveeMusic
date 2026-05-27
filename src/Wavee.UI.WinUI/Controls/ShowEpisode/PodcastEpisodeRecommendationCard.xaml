@@ -95,7 +95,7 @@
                         Orientation="Horizontal"
                         Opacity="0"
                         VerticalAlignment="Center">
-                <Button x:Name="PlayButton"
+                <Button x:Uid="Controls_ShowEpisode_PodcastEpisodeRecommendationCard__Auto_600" x:Name="PlayButton"
                         Width="36"
                         Height="36"
                         Padding="0"

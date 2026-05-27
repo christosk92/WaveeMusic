@@ -56,11 +56,11 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" Spacing="6" VerticalAlignment="Bottom">
-                                <TextBlock Text="LIBRARY"
+                                <TextBlock x:Uid="Views_Local_LocalShowsPage__Auto_600" Text="LIBRARY"
                                            FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            Style="{ThemeResource CaptionTextBlockStyle}"/>
-                                <TextBlock Text="TV shows"
+                                <TextBlock x:Uid="Views_Local_LocalShowsPage__Auto_601" Text="TV shows"
                                            Style="{ThemeResource TitleLargeTextBlockStyle}"
                                            FontWeight="Bold"
                                            transitions:TransitionHelper.Id="library-title"/>
@@ -78,7 +78,7 @@
                                     transitions:TransitionHelper.Id="library-sync">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon x:Name="SyncButtonGlyph" Glyph="&#xE895;" FontSize="14"/>
-                                    <TextBlock x:Name="SyncButtonText" Text="Sync with TMDB"/>
+                                    <TextBlock x:Uid="Views_Local_LocalShowsPage__Auto_602" x:Name="SyncButtonText" Text="Sync with TMDB"/>
                                 </StackPanel>
                             </Button>
                         </Grid>
@@ -94,8 +94,8 @@
                                 Margin="0,80,0,0"
                                 Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <FontIcon Glyph="&#xE7F4;" FontSize="48" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                        <TextBlock Text="No local TV shows yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Add a watched folder containing TV episodes in Settings."
+                        <TextBlock x:Uid="Views_Local_LocalShowsPage__Auto_603" Text="No local TV shows yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
+                        <TextBlock x:Uid="Views_Local_LocalShowsPage__Auto_604" Text="Add a watched folder containing TV episodes in Settings."
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    HorizontalAlignment="Center"/>
                     </StackPanel>
@@ -155,7 +155,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0"
+                    <TextBlock x:Uid="Views_Local_LocalShowsPage__Auto_605" Grid.Column="0"
                                Text="TV shows"
                                VerticalAlignment="Center"
                                FontSize="16"
@@ -172,7 +172,7 @@
                             transitions:TransitionHelper.Id="library-sync">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon x:Name="ShySyncGlyph" Glyph="&#xE895;" FontSize="12"/>
-                            <TextBlock x:Name="ShySyncText" Text="Sync"/>
+                            <TextBlock x:Uid="Views_Local_LocalShowsPage__Auto_606" x:Name="ShySyncText" Text="Sync"/>
                         </StackPanel>
                     </Button>
                 </Grid>

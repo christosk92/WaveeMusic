@@ -81,6 +81,15 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     // MinHeight floor per row; content (padding + art + text) may still push the
     // row taller on larger steps, and that's intentional.
     private static readonly double[] DensityRowHeights = { 32d, 40d, 48d, 60d, 76d };
+    private static readonly Thickness[] DensityRowPaddings =
+    {
+        new(4, 2, 4, 2),
+        new(6, 4, 6, 4),
+        new(8, 6, 8, 6),
+        new(10, 10, 10, 10),
+        new(12, 14, 12, 14),
+    };
+    private static readonly double[] DensityArtSizes = { 0d, 28d, 34d, 40d, 48d };
 
     public TrackDataGrid()
     {
@@ -548,6 +557,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             items[i] = new LoadingRowConfig
             {
                 Index = i,
+                RowPadding = template.RowPadding,
+                RowMargin = template.RowMargin,
+                RowMinHeight = template.RowMinHeight,
+                ShowRowChrome = UseCardRows || i % 2 != 0,
                 ShowIndexCell = template.ShowIndexCell,
                 ShowLikeCell = template.ShowLikeCell,
                 ShowArtCell = template.ShowArtCell,
@@ -605,6 +618,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         var playCountCol = Columns?.FirstOrDefault(c => c.Key == "PlayCount");
         var durationCol = Columns?.FirstOrDefault(c => c.Key == "Duration");
         var titleCol = Columns?.FirstOrDefault(c => c.Key == "Track");
+        var density = Math.Clamp(_preferredDensity, 0, DensityRowPaddings.Length - 1);
+        var artSize = DensityArtSizes[density];
+        var showArt = IsVisible(artCol) && artSize > 0;
+        var artWidth = showArt ? new GridLength(artSize + 8) : new GridLength(0);
 
         // AddedBy is special: the column may be present in the set but hidden
         // by the page-level AddedByVisible toggle (non-collab playlists).
@@ -629,7 +646,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         var contentMinWidth =
             PixelWidthOrZero(indexCol) +
             PixelWidthOrZero(likeCol) +
-            PixelWidthOrZero(artCol) +
+            (showArt ? artWidth.Value : 0) +
             titleSkeletonWidth +
             PixelWidthOrZero(albumCol) +
             (showAddedBy ? PixelWidthOrZero(addedByCol) : 0) +
@@ -639,15 +656,18 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
         return new LoadingRowConfig
         {
+            RowPadding = DensityRowPaddings[density],
+            RowMargin = density == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2),
+            RowMinHeight = _preferredRowHeight ?? DensityRowHeights[density],
             ShowIndexCell = IsVisible(indexCol),
             ShowLikeCell = IsVisible(likeCol),
-            ShowArtCell = IsVisible(artCol),
+            ShowArtCell = showArt,
             ShowAlbumCell = IsVisible(albumCol),
             ShowAddedByCell = showAddedBy,
             ShowDateAddedCell = IsVisible(dateAddedCol),
             ShowPlayCountCell = IsVisible(playCountCol),
             ShowDurationCell = IsVisible(durationCol),
-            ArtColumnWidth = WidthOrZero(artCol),
+            ArtColumnWidth = artWidth,
             AlbumColumnWidth = WidthOrZero(albumCol),
             AddedByColumnWidth = addedByWidth,
             DateAddedColumnWidth = WidthOrZero(dateAddedCol),
@@ -655,7 +675,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             DurationColumnWidth = WidthOrZero(durationCol),
             ContentMinWidth = contentMinWidth,
             TitleColumnMaxWidth = titleMax,
-            ShowArtistSubtitle = ResolveShowArtistColumn(),
+            ShowArtistSubtitle = ResolveShowArtistColumn() && density > 0 && !ShouldShowInlineProgress(),
         };
     }
 
@@ -760,7 +780,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private static void OnUseCardRowsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is TrackDataGrid grid)
+        {
             grid.RefreshRowCardStyles();
+            grid.ApplyLoadingRowCount();
+        }
     }
 
     public void ClearSelection()
@@ -1344,6 +1367,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         // Preserve for future containers (virtualization materializes on demand).
         _preferredRowHeight = height;
         _preferredDensity = stop;
+        ApplyLoadingRowCount();
     }
 
     private double? _preferredRowHeight;

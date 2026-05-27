@@ -69,7 +69,8 @@
                             CornerRadius="6"
                             Padding="6,1"
                             Background="{ThemeResource AccentFillColorTertiaryBrush}">
-                        <TextBlock Text="NEAR YOU"
+                        <TextBlock x:Uid="Controls_Cards_TicketStub__NearYou"
+                                   Text="NEAR YOU"
                                    FontSize="9"
                                    FontWeight="Bold"
                                    CharacterSpacing="120"
@@ -85,13 +86,13 @@
                         VerticalAlignment="Center"
                         HorizontalAlignment="Right"
                         Spacing="-2">
-                <HyperlinkButton x:Name="ViewLink"
+                <HyperlinkButton x:Uid="Controls_Cards_TicketStub__Auto_600" x:Name="ViewLink"
                                  Content="View ›"
                                  FontWeight="SemiBold"
                                  Padding="6,2"
                                  HorizontalAlignment="Right"
                                  Click="ViewLink_Click"/>
-                <HyperlinkButton x:Name="BuyLink"
+                <HyperlinkButton x:Uid="Controls_Cards_TicketStub__Auto_601" x:Name="BuyLink"
                                  Content="Buy ›"
                                  FontWeight="SemiBold"
                                  Padding="6,2"

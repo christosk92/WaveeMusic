@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Windows.UI;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels.Home;
 
@@ -49,64 +50,64 @@ public sealed partial class HomeRegion : ObservableObject
         HomeRegionKind.Recents => new HomeRegion
         {
             Kind = kind,
-            Eyebrow = "YOUR ACTIVITY",
-            Header = "Recently played",
+            Eyebrow = AppLocalization.GetString("Home_Region_YourActivity_Eyebrow"),
+            Header = AppLocalization.GetString("Home_Region_RecentlyPlayed_Header"),
             AccentColor = Color.FromArgb(255, 0xF5, 0x9E, 0x0B)
         },
         HomeRegionKind.LocalFiles => new HomeRegion
         {
             Kind = kind,
-            Eyebrow = "ON THIS PC",
-            Header = "Local files",
+            Eyebrow = AppLocalization.GetString("Home_Region_OnThisPC_Eyebrow"),
+            Header = AppLocalization.GetString("Home_Region_LocalFiles_Header"),
             AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
         },
         HomeRegionKind.LocalShows => new HomeRegion
         {
             Kind = kind,
-            Eyebrow = "ON THIS PC",
-            Header = "Local TV shows",
+            Eyebrow = AppLocalization.GetString("Home_Region_OnThisPC_Eyebrow"),
+            Header = AppLocalization.GetString("Home_Region_LocalShows_Header"),
             AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
         },
         HomeRegionKind.LocalMovies => new HomeRegion
         {
             Kind = kind,
-            Eyebrow = "ON THIS PC",
-            Header = "Local movies",
+            Eyebrow = AppLocalization.GetString("Home_Region_OnThisPC_Eyebrow"),
+            Header = AppLocalization.GetString("Home_Region_LocalMovies_Header"),
             AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
         },
         HomeRegionKind.LocalMusic => new HomeRegion
         {
             Kind = kind,
-            Eyebrow = "ON THIS PC",
-            Header = "Local music",
+            Eyebrow = AppLocalization.GetString("Home_Region_OnThisPC_Eyebrow"),
+            Header = AppLocalization.GetString("Home_Region_LocalMusic_Header"),
             AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
         },
         HomeRegionKind.LocalMusicVideos => new HomeRegion
         {
             Kind = kind,
-            Eyebrow = "ON THIS PC",
-            Header = "Local music videos",
+            Eyebrow = AppLocalization.GetString("Home_Region_OnThisPC_Eyebrow"),
+            Header = AppLocalization.GetString("Home_Region_LocalMusicVideos_Header"),
             AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
         },
         HomeRegionKind.MadeForYou => new HomeRegion
         {
             Kind = kind,
-            Eyebrow = "MADE FOR YOU",
-            Header = "Picked for you",
+            Eyebrow = AppLocalization.GetString("Home_Region_MadeForYou_Eyebrow"),
+            Header = AppLocalization.GetString("Home_Region_MadeForYou_Header"),
             AccentColor = Color.FromArgb(255, 0x3B, 0x82, 0xF6)
         },
         HomeRegionKind.Discover => new HomeRegion
         {
             Kind = kind,
-            Eyebrow = "DISCOVER",
-            Header = "Explore",
+            Eyebrow = AppLocalization.GetString("Home_Region_Discover_Eyebrow"),
+            Header = AppLocalization.GetString("Home_Region_Discover_Header"),
             AccentColor = Color.FromArgb(255, 0x10, 0xB9, 0x81)
         },
         HomeRegionKind.Podcasts => new HomeRegion
         {
             Kind = kind,
-            Eyebrow = "PODCASTS & SHOWS",
-            Header = "Podcasts you'll love",
+            Eyebrow = AppLocalization.GetString("Home_Region_Podcasts_Eyebrow"),
+            Header = AppLocalization.GetString("Home_Region_Podcasts_Header"),
             AccentColor = Color.FromArgb(255, 0xF4, 0x3F, 0x5E)
         },
         _ => new HomeRegion { Kind = kind }

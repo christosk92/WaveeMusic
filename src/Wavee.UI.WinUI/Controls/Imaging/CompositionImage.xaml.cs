@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Composition;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -151,6 +152,70 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
     private bool _releasedForNavigationCache;
     private EventHandler? _loadCompletedHandler;
 
+    // Deferred composition-resource release: scrolled-out cards in an
+    // ItemsRepeater recycle pool fire OnUnloaded but stay alive (the C# instance
+    // is held by the recycle pool). Without this, their SpriteVisual + brush +
+    // clip geometry + expression animations stay realized indefinitely. Schedule
+    // a one-shot timer per OnUnloaded; if the control hasn't been re-loaded by
+    // then, run the full nav-cache-equivalent teardown. Cancelled by OnLoaded
+    // so hot recycle (scroll-up-then-down) pays no rebuild cost.
+    private static readonly TimeSpan DeferredCompositionReleaseDelay = TimeSpan.FromSeconds(3);
+    private DispatcherQueueTimer? _deferredCompositionReleaseTimer;
+
+    // Static registry of every CompositionImage seen by OnLoaded — drives the
+    // UiHealthMonitor "live image surfaces" diagnostic. Counts are derived on
+    // read (released vs active determined by _releasedForNavigationCache and
+    // _spriteVisual presence at sample time).
+    private static readonly object s_registryLock = new();
+    private static readonly List<WeakReference<CompositionImage>> s_registry = new(128);
+
+    private static void RegisterInstance(CompositionImage instance)
+    {
+        lock (s_registryLock)
+        {
+            for (var i = 0; i < s_registry.Count; i++)
+            {
+                if (s_registry[i].TryGetTarget(out var existing) && ReferenceEquals(existing, instance))
+                    return;
+            }
+            s_registry.Add(new WeakReference<CompositionImage>(instance));
+        }
+    }
+
+    /// <summary>
+    /// Snapshot of live CompositionImage counts. <c>Total</c> is every instance
+    /// the registry has seen and not yet collected; <c>WithLivePeer</c> is the
+    /// subset that still holds a SpriteVisual; <c>EstimatedSurfaceBytes</c> sums
+    /// <see cref="EstimatedSurfaceBytes"/> across all live instances. Pruning
+    /// dead refs is folded into the read.
+    /// </summary>
+    public static (int Total, int WithLivePeer, long EstimatedSurfaceBytes) GetDiagnosticCounts()
+    {
+        lock (s_registryLock)
+        {
+            var write = 0;
+            var withPeer = 0;
+            long bytes = 0;
+            for (var read = 0; read < s_registry.Count; read++)
+            {
+                if (s_registry[read].TryGetTarget(out var instance))
+                {
+                    if (write != read)
+                        s_registry[write] = s_registry[read];
+                    write++;
+                    if (instance._spriteVisual is not null && !instance._releasedForNavigationCache)
+                    {
+                        withPeer++;
+                        bytes += instance.EstimatedSurfaceBytes;
+                    }
+                }
+            }
+            if (write < s_registry.Count)
+                s_registry.RemoveRange(write, s_registry.Count - write);
+            return (s_registry.Count, withPeer, bytes);
+        }
+    }
+
     // â”€â”€ Diagnostics â”€â”€
     // Opt-in with WAVEE_IMAGE_DIAGNOSTICS. The call sites pass interpolated
     // strings on hot paths, so compile-time gating avoids hidden allocations.
@@ -298,6 +363,8 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         DiagLog("OnLoaded:enter", $"ImageUrl={ImageUrl ?? "(null)"} decode={DecodePixelSize}");
+        CancelDeferredCompositionRelease();
+        RegisterInstance(this);
         _isAttached = true;
         _releasedForNavigationCache = false;
         EnsureCompositionResources();
@@ -344,7 +411,47 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
         ReleaseSurfaceReference(resetResolvedUrl: true, evictIfUnpinned: true);
 
         _releasedForNavigationCache = false;
+        // Schedule the full composition-resource teardown for items that stay
+        // detached past the dwell window — handles ItemsRepeater recycle-pool
+        // residents and cached-page items the nav-cache walk would otherwise
+        // miss (the walk only sees realized children of cached pages, not
+        // recycled ones held by the repeater itself).
+        ScheduleDeferredCompositionRelease();
         DiagLog("OnUnloaded:exit");
+    }
+
+    private void ScheduleDeferredCompositionRelease()
+    {
+        CancelDeferredCompositionRelease();
+        var dispatcher = DispatcherQueue;
+        if (dispatcher is null) return;
+
+        var timer = dispatcher.CreateTimer();
+        timer.Interval = DeferredCompositionReleaseDelay;
+        timer.IsRepeating = false;
+        timer.Tick += (s, _) =>
+        {
+            s.Stop();
+            _deferredCompositionReleaseTimer = null;
+            // Belt-and-braces: defense-in-depth even though OnLoaded cancels.
+            if (_isAttached) return;
+            // Skip if the nav-cache path already tore us down — idempotency
+            // mirrors ReleaseForNavCache's early-return check.
+            if (_spriteVisual is null && _surfaceBrush is null) return;
+            DiagLog("DeferredCompositionRelease:fire");
+            ReleaseCompositionResources();
+        };
+        _deferredCompositionReleaseTimer = timer;
+        timer.Start();
+    }
+
+    private void CancelDeferredCompositionRelease()
+    {
+        if (_deferredCompositionReleaseTimer is { } t)
+        {
+            t.Stop();
+            _deferredCompositionReleaseTimer = null;
+        }
     }
 
     // ── INavCacheSurfaceParticipant ──

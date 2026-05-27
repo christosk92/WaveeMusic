@@ -119,7 +119,7 @@
                                     VerticalAlignment="Center"
                                     Spacing="8">
                             <FontIcon Glyph="&#xE8D6;" FontSize="13" />
-                            <TextBlock Text="Listen as audio"
+                            <TextBlock x:Uid="Views_VideoPlayerPage__Auto_600" Text="Listen as audio"
                                        FontSize="13"
                                        VerticalAlignment="Center" />
                         </StackPanel>
@@ -148,7 +148,7 @@
                             Margin="56,0,56,32">
 
                     <StackPanel Spacing="4">
-                        <HyperlinkButton Padding="0"
+                        <HyperlinkButton x:Uid="Views_VideoPlayerPage__Auto_601" Padding="0"
                                          MinWidth="0"
                                          MinHeight="0"
                                          HorizontalAlignment="Left"
@@ -165,7 +165,7 @@
                                        TextTrimming="CharacterEllipsis"
                                        TextWrapping="Wrap" />
                         </HyperlinkButton>
-                        <HyperlinkButton Padding="0"
+                        <HyperlinkButton x:Uid="Views_VideoPlayerPage__Auto_602" Padding="0"
                                          MinWidth="0"
                                          MinHeight="0"
                                          HorizontalAlignment="Left"
@@ -219,12 +219,12 @@
                         VerticalAlignment="Center"
                         Spacing="14">
                 <FontIcon Glyph="&#xE7C3;" FontSize="48" Foreground="White" />
-                <TextBlock Text="Drop subtitle file"
+                <TextBlock x:Uid="Views_VideoPlayerPage__Auto_603" Text="Drop subtitle file"
                            FontSize="22"
                            FontWeight="SemiBold"
                            Foreground="White"
                            HorizontalAlignment="Center" />
-                <TextBlock Text=".srt · .vtt · .ass · .ssa · .sub"
+                <TextBlock x:Uid="Views_VideoPlayerPage__Auto_604" Text=".srt · .vtt · .ass · .ssa · .sub"
                            FontSize="12"
                            Foreground="#B8FFFFFF"
                            HorizontalAlignment="Center" />

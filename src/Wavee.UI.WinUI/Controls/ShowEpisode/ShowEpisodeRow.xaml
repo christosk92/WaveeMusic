@@ -161,7 +161,7 @@
                     Spacing="4"
                     VerticalAlignment="Center"
                     Opacity="0">
-            <Button x:Name="PlayButton"
+            <Button x:Uid="Controls_ShowEpisode_ShowEpisodeRow__Auto_600" x:Name="PlayButton"
                     Width="36" Height="36"
                     CornerRadius="18"
                     Padding="0"
@@ -171,7 +171,7 @@
                     Click="PlayButton_Click">
                 <FontIcon Glyph="&#xE768;" FontSize="13"/>
             </Button>
-            <Button x:Name="LikeButton"
+            <Button x:Uid="Controls_ShowEpisode_ShowEpisodeRow__Auto_601" x:Name="LikeButton"
                     Width="36" Height="36"
                     CornerRadius="18"
                     Padding="0"

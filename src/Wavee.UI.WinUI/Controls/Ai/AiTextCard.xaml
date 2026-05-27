@@ -40,7 +40,7 @@
                         Foreground="{ThemeResource AiAccentSolidBrush}"
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Text="{Binding Title, ElementName=Root}" />
-                    <waveeControls:AiSparkleIcon
+                    <waveeControls:AiSparkleIcon x:Uid="Controls_Ai_AiTextCard__Auto_600"
                         x:Name="HeaderSparkle"
                         Width="16"
                         Height="16"

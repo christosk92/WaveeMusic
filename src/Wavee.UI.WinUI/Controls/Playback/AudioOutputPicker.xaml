@@ -98,7 +98,7 @@
     </UserControl.Resources>
 
     <Grid>
-        <Button
+        <Button x:Uid="Controls_Playback_AudioOutputPicker__Auto_600"
             x:Name="CompactRoot"
             Padding="8,4"
             CornerRadius="4"
@@ -123,6 +123,7 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <TextBlock
                     x:Name="CompactDeviceName"
+                    x:Uid="Controls_AudioOutputPicker__CompactDeviceName"
                     Grid.Column="1"
                     Text="This device"
                     FontSize="12"
@@ -197,6 +198,7 @@
                             Margin="10,2,10,4"
                             Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                         <TextBlock x:Name="FlyoutLocalHeader"
+                                   x:Uid="Controls_AudioOutputPicker__LocalAudioHeader"
                                    Text="LOCAL AUDIO"
                                    FontSize="10"
                                    FontWeight="SemiBold"
@@ -210,6 +212,7 @@
                                 Margin="10,8,10,4"
                                 Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                         <TextBlock x:Name="FlyoutConnectHeader"
+                                   x:Uid="Controls_AudioOutputPicker__SpotifyConnectHeader"
                                    Text="SPOTIFY CONNECT"
                                    FontSize="10"
                                    FontWeight="SemiBold"
@@ -219,6 +222,7 @@
                         <ItemsRepeater x:Name="FlyoutConnectDeviceList"
                                        ItemTemplate="{StaticResource AudioOutputRowTemplate}" />
                         <TextBlock x:Name="FlyoutEmptyText"
+                                   x:Uid="Controls_AudioOutputPicker__FlyoutEmpty"
                                    Text="No other devices available"
                                    FontSize="12"
                                    Margin="10,14,10,14"
@@ -258,10 +262,12 @@
                                   HorizontalAlignment="Center" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                             <TextBlock x:Name="CardDeviceLabel"
+                                       x:Uid="Controls_AudioOutputPicker__CardDeviceLabel"
                                        Text="Playing on"
                                        FontSize="11"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <TextBlock x:Name="CardDeviceName"
+                                       x:Uid="Controls_AudioOutputPicker__CardDeviceName"
                                        Text="This device"
                                        FontSize="14"
                                        FontWeight="SemiBold"
@@ -332,6 +338,7 @@
                             Background="{ThemeResource CardStrokeColorDefaultBrush}"
                             Margin="0,0,0,6" />
                     <TextBlock x:Name="CardLocalHeader"
+                               x:Uid="Controls_AudioOutputPicker__CardLocalHeader"
                                Text="LOCAL AUDIO"
                                FontSize="10"
                                FontWeight="SemiBold"
@@ -346,6 +353,7 @@
                             Background="{ThemeResource CardStrokeColorDefaultBrush}"
                             Margin="14,6,14,6" />
                     <TextBlock x:Name="CardConnectHeader"
+                               x:Uid="Controls_AudioOutputPicker__CardConnectHeader"
                                Text="SPOTIFY CONNECT"
                                FontSize="10"
                                FontWeight="SemiBold"
@@ -356,6 +364,7 @@
                                    Margin="6,0"
                                    ItemTemplate="{StaticResource AudioOutputRowTemplate}" />
                     <TextBlock x:Name="CardEmptyText"
+                               x:Uid="Controls_AudioOutputPicker__CardEmpty"
                                Text="No other devices nearby"
                                FontSize="12"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
@@ -379,11 +388,13 @@
                               VerticalAlignment="Center"
                               HorizontalAlignment="Center" />
                     <TextBlock Grid.Column="1"
+                               x:Uid="Controls_AudioOutputPicker__AudioEngineOffline"
                                Text="Audio engine offline"
                                VerticalAlignment="Center"
                                FontSize="13"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <Button Grid.Column="2"
+                            x:Uid="Controls_AudioOutputPicker__RetryButton"
                             Content="Retry"
                             FontSize="12"
                             Style="{StaticResource AudioOutputRowStyle}"

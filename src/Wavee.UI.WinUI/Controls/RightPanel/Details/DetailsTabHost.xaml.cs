@@ -1122,9 +1122,9 @@ public sealed partial class DetailsTabHost : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Set canvas URL",
-            PrimaryButtonText = "Apply",
-            CloseButtonText = "Cancel",
+            Title = AppLocalization.GetString("Details_SetCanvasUrlTitle"),
+            PrimaryButtonText = AppLocalization.GetString("Dialog_Apply"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             Content = new StackPanel
             {
@@ -1281,7 +1281,7 @@ public sealed partial class DetailsTabHost : UserControl
         if (_lyricsAiService!.TryGetCachedLyricsMeaning(trackUri, out var cached))
             ApplyDetailsAiMeaningResult(cached);
         else if (!_detailsAiMeaningBusy)
-            DetailsAiMeaningButton.Content = "Generate";
+            DetailsAiMeaningButton.Content = AppLocalization.GetString("Details_AiGenerate");
 
         DetailsAiMeaningButton.IsEnabled = !_detailsAiMeaningBusy;
     }
@@ -1343,15 +1343,17 @@ public sealed partial class DetailsTabHost : UserControl
     private void ApplyDetailsAiMeaningResult(LyricsAiResult result)
     {
         DetailsAiMeaningText.Visibility = Visibility.Visible;
-        DetailsAiMeaningButton.Content = result.Kind == LyricsAiResultKind.Ok ? "Ready" : "Retry";
+        DetailsAiMeaningButton.Content = result.Kind == LyricsAiResultKind.Ok
+            ? AppLocalization.GetString("Details_AiReady")
+            : AppLocalization.GetString("Details_AiRetry");
 
         var text = result.Kind switch
         {
             LyricsAiResultKind.Ok => result.Text,
-            LyricsAiResultKind.Filtered => "The on-device safety filter blocked this lyrics meaning.",
-            LyricsAiResultKind.Empty => "No lyrics are available to interpret.",
-            LyricsAiResultKind.Unavailable => "On-device AI is not available right now.",
-            LyricsAiResultKind.Error => "Something went wrong asking the on-device model.",
+            LyricsAiResultKind.Filtered => AppLocalization.GetString("Details_AiFiltered"),
+            LyricsAiResultKind.Empty => AppLocalization.GetString("Details_AiEmpty"),
+            LyricsAiResultKind.Unavailable => AppLocalization.GetString("Details_AiUnavailable"),
+            LyricsAiResultKind.Error => AppLocalization.GetString("Details_AiError"),
             _ => string.Empty,
         };
 
@@ -1468,7 +1470,7 @@ public sealed partial class DetailsTabHost : UserControl
         DetailsAiMeaningProgress.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
         DetailsAiMeaningButton.IsEnabled = !isBusy;
         if (isBusy)
-            DetailsAiMeaningButton.Content = "Generating";
+            DetailsAiMeaningButton.Content = AppLocalization.GetString("Details_AiGenerating");
     }
 
     private void ResetDetailsAiMeaningUi(bool clearText)
@@ -1476,7 +1478,7 @@ public sealed partial class DetailsTabHost : UserControl
         _detailsAiMeaningBusy = false;
         DetailsAiMeaningProgress.Visibility = Visibility.Collapsed;
         DetailsAiMeaningButton.IsEnabled = true;
-        DetailsAiMeaningButton.Content = "Generate";
+        DetailsAiMeaningButton.Content = AppLocalization.GetString("Details_AiGenerate");
         if (clearText)
         {
             DetailsAiMeaningText.Blocks.Clear();
@@ -2206,7 +2208,7 @@ public sealed partial class DetailsTabHost : UserControl
             DetailsCreditGroups.ItemsSource = allGroups;
             DetailsCreditsToggle.Visibility = totalPeople > CreditsCollapsedMaxPeople
                 ? Visibility.Visible : Visibility.Collapsed;
-            DetailsCreditsToggle.Content = "Show less";
+            DetailsCreditsToggle.Content = AppLocalization.GetString("Details_ShowLess");
         }
         else
         {
@@ -2225,7 +2227,7 @@ public sealed partial class DetailsTabHost : UserControl
             DetailsCreditGroups.ItemsSource = collapsed;
             var hidden = totalPeople - count;
             DetailsCreditsToggle.Visibility = Visibility.Visible;
-            DetailsCreditsToggle.Content = $"View all credits (+{hidden} more)";
+            DetailsCreditsToggle.Content = AppLocalization.Format("Details_ViewAllCredits", hidden);
         }
     }
 

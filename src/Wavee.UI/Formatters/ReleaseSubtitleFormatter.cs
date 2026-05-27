@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Wavee.UI.Localization;
 
 namespace Wavee.UI.Formatters;
 
@@ -28,31 +29,42 @@ internal static class ReleaseSubtitleFormatter
         var parts = new List<string>(3);
 
         if (!string.IsNullOrWhiteSpace(releaseType))
-            parts.Add(TitleCase(releaseType!));
+            parts.Add(LocalizeReleaseType(releaseType!));
 
         if (year is int y && y > 0)
             parts.Add(y.ToString(CultureInfo.InvariantCulture));
 
         if (itemCount is int c && c > 0)
-            parts.Add(c == 1 ? $"1 {Singular(noun)}" : $"{c} {Plural(noun)}");
+            parts.Add(c == 1
+                ? LocalizationHook.GetString(SingularKey(noun))
+                : LocalizationHook.Format(PluralKey(noun), c));
 
         return parts.Count == 0 ? string.Empty : string.Join(Sep, parts);
     }
 
-    private static string Singular(CountNoun noun) => noun switch
+    private static string SingularKey(CountNoun noun) => noun switch
     {
-        CountNoun.Song    => "song",
-        CountNoun.Track   => "track",
-        CountNoun.Episode => "episode",
-        _                 => "song",
+        CountNoun.Song    => "Count_Song_One",
+        CountNoun.Track   => "Count_Track_One",
+        CountNoun.Episode => "Count_Episode_One",
+        _                 => "Count_Song_One",
     };
 
-    private static string Plural(CountNoun noun) => noun switch
+    private static string PluralKey(CountNoun noun) => noun switch
     {
-        CountNoun.Song    => "songs",
-        CountNoun.Track   => "tracks",
-        CountNoun.Episode => "episodes",
-        _                 => "songs",
+        CountNoun.Song    => "Count_Song_Many",
+        CountNoun.Track   => "Count_Track_Many",
+        CountNoun.Episode => "Count_Episode_Many",
+        _                 => "Count_Song_Many",
+    };
+
+    private static string LocalizeReleaseType(string type) => type.ToLowerInvariant() switch
+    {
+        "single"      => LocalizationHook.GetString("ReleaseType_Single"),
+        "ep"          => LocalizationHook.GetString("ReleaseType_EP"),
+        "album"       => LocalizationHook.GetString("ReleaseType_Album"),
+        "compilation" => LocalizationHook.GetString("ReleaseType_Compilation"),
+        _             => TitleCase(type),
     };
 
     /// <summary>

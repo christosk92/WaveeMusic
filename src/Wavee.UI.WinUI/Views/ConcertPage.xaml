@@ -233,7 +233,7 @@
                                                 BorderThickness="1"
                                                 VerticalAlignment="Center"
                                                 Visibility="{x:Bind ViewModel.IsFestival, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                            <TextBlock Text="Festival"
+                                            <TextBlock x:Uid="Views_ConcertPage__FestivalBadge" Text="Festival"
                                                        FontSize="13"
                                                        FontWeight="SemiBold"
                                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
@@ -254,7 +254,7 @@
                                                FontWeight="SemiBold"
                                                Foreground="White"
                                                Opacity="0.85">
-                                        <Run Text="Featuring "/>
+                                        <Run x:Uid="Views_ConcertPage__FeaturingRun" Text="Featuring "/>
                                         <Run Text="{x:Bind ViewModel.ArtistNamesJoined, Mode=OneWay}"/>
                                     </TextBlock>
 
@@ -283,7 +283,7 @@
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <FontIcon Glyph="&#xE823;" FontSize="13" Foreground="White" Opacity="0.8"/>
                                             <TextBlock FontSize="13" Foreground="White" Opacity="0.9">
-                                                <Run Text="Doors at "/>
+                                                <Run x:Uid="Views_ConcertPage__DoorsAtRun" Text="Doors at "/>
                                                 <Run Text="{x:Bind ViewModel.ShowTime, Mode=OneWay}"/>
                                             </TextBlock>
                                         </StackPanel>
@@ -304,7 +304,7 @@
                                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                                             <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
                                                             <TextBlock FontSize="13" FontWeight="SemiBold">
-                                                                <Run Text="Tickets on "/>
+                                                                <Run x:Uid="Views_ConcertPage__TicketsOnRun" Text="Tickets on "/>
                                                                 <Run Text="{x:Bind ProviderName}"/>
                                                             </TextBlock>
                                                         </StackPanel>
@@ -318,7 +318,7 @@
                                                 BorderThickness="1">
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <FontIcon Glyph="&#xEB51;" FontSize="14" Foreground="White"/>
-                                                <TextBlock Text="Save" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
+                                                <TextBlock x:Uid="Views_ConcertPage__SaveText" Text="Save" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
@@ -683,7 +683,7 @@
                                             </Grid>
                                         </Button>
                                         <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <TextBlock Text="On tour:"
+                                            <TextBlock x:Uid="Views_ConcertPage__OnTourText" Text="On tour:"
                                                        FontSize="13"
                                                        FontWeight="SemiBold"
                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -692,7 +692,7 @@
                                                              Tag="{x:Bind Uri}"
                                                              Padding="0">
                                                 <TextBlock FontSize="13" FontWeight="SemiBold">
-                                                    <Run Text="View all upcoming concerts ("/>
+                                                    <Run x:Uid="Views_ConcertPage__ViewAllConcertsRun" Text="View all upcoming concerts ("/>
                                                     <Run Text="{x:Bind UpcomingConcertCount}"/>
                                                     <Run Text=")"/>
                                                 </TextBlock>
@@ -708,6 +708,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0"
+                                                       x:Uid="Views_ConcertPage__PopularAlbumsText"
                                                        Text="Popular albums"
                                                        FontSize="12"
                                                        FontWeight="SemiBold"
@@ -763,6 +764,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0"
+                                   x:Uid="Views_ConcertPage__FeaturedPlaylistsText"
                                    Text="Featured playlists"
                                    Style="{StaticResource TitleTextBlockStyle}"
                                    VerticalAlignment="Center"/>
@@ -1041,7 +1043,7 @@
                             Visibility="{x:Bind ViewModel.HasOffers, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE8A7;" FontSize="12"/>
-                            <TextBlock Text="Tickets" FontSize="13" FontWeight="SemiBold"/>
+                            <TextBlock x:Uid="Views_ConcertPage__TicketsText" Text="Tickets" FontSize="13" FontWeight="SemiBold"/>
                         </StackPanel>
                     </Button>
                 </Grid>

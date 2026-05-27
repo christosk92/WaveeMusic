@@ -76,13 +76,13 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
+                        <TextBlock x:Uid="Controls_Local_UpNextEpisodeOverlay__Auto_600" Grid.Column="0"
                                    Text="UP NEXT"
                                    FontSize="10"
                                    FontWeight="SemiBold"
                                    CharacterSpacing="200"
                                    Foreground="#B8FFFFFF"/>
-                        <Button Grid.Column="1"
+                        <Button x:Uid="Controls_Local_UpNextEpisodeOverlay__Auto_601" Grid.Column="1"
                                 x:Name="CancelButton"
                                 Width="22"
                                 Height="22"
@@ -144,7 +144,7 @@
                                        VerticalAlignment="Center"/>
                         </Grid>
 
-                        <TextBlock Grid.Column="1"
+                        <TextBlock x:Uid="Controls_Local_UpNextEpisodeOverlay__Auto_602" Grid.Column="1"
                                    Text="Playing next…"
                                    FontSize="11"
                                    Foreground="#A0FFFFFF"
@@ -158,7 +158,7 @@
                                 Padding="12,4">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <FontIcon Glyph="&#xE768;" FontSize="11"/>
-                                <TextBlock Text="Watch now"
+                                <TextBlock x:Uid="Controls_Local_UpNextEpisodeOverlay__Auto_603" Text="Watch now"
                                            FontSize="12"
                                            VerticalAlignment="Center"/>
                             </StackPanel>

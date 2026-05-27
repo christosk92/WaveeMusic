@@ -16,7 +16,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <settings:SettingsGroupHeader Grid.Row="0"
+        <settings:SettingsGroupHeader x:Uid="Controls_Settings_DiagnosticsConnectUpdatesSection__Auto_600" Grid.Row="0"
                                       Title="Connect Updates"
                                       Description="Live log of cluster updates, dealer commands, and PUT state requests for the local device."
                                       IconGlyph="&#xE703;"

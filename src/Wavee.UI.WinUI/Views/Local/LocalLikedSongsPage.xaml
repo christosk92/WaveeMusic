@@ -12,7 +12,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <TextBlock Grid.Row="0" Text="Liked songs" Style="{StaticResource TitleTextBlockStyle}" FontWeight="Bold"/>
+        <TextBlock x:Uid="Views_Local_LocalLikedSongsPage__Auto_600" Grid.Row="0" Text="Liked songs" Style="{StaticResource TitleTextBlockStyle}" FontWeight="Bold"/>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <ItemsRepeater ItemsSource="{x:Bind ViewModel.Tracks}">
                 <ItemsRepeater.Layout>

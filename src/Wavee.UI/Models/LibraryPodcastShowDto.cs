@@ -1,4 +1,5 @@
 using System;
+using Wavee.UI.Localization;
 
 namespace Wavee.UI.Models;
 
@@ -30,22 +31,30 @@ public sealed record LibraryPodcastShowDto
         get
         {
             if (IsAllPodcasts)
-                return SavedEpisodeCount == 1 ? "1 saved episode" : $"{SavedEpisodeCount} saved episodes";
+                return SavedEpisodeCount == 1
+                    ? LocalizationHook.GetString("Count_SavedEpisode_One")
+                    : LocalizationHook.Format("Count_SavedEpisode_Many", SavedEpisodeCount);
 
             if (IsRecentlyPlayed)
-                return EpisodeCount == 1 ? "1 recent episode" : $"{EpisodeCount} recent episodes";
+                return EpisodeCount == 1
+                    ? LocalizationHook.GetString("Count_RecentEpisode_One")
+                    : LocalizationHook.Format("Count_RecentEpisode_Many", EpisodeCount);
 
             var parts = new System.Collections.Generic.List<string>();
             if (!string.IsNullOrWhiteSpace(Publisher))
                 parts.Add(Publisher!);
             if (SavedEpisodeCount > 0)
-                parts.Add(SavedEpisodeCount == 1 ? "1 saved episode" : $"{SavedEpisodeCount} saved episodes");
+                parts.Add(SavedEpisodeCount == 1
+                    ? LocalizationHook.GetString("Count_SavedEpisode_One")
+                    : LocalizationHook.Format("Count_SavedEpisode_Many", SavedEpisodeCount));
             else if (EpisodeCount > 0)
-                parts.Add(EpisodeCount == 1 ? "1 episode" : $"{EpisodeCount} episodes");
+                parts.Add(EpisodeCount == 1
+                    ? LocalizationHook.GetString("Count_Episode_One")
+                    : LocalizationHook.Format("Count_Episode_Many", EpisodeCount));
             if (IsFollowed)
-                parts.Add("Followed");
+                parts.Add(LocalizationHook.GetString("Podcast_FollowedLabel"));
 
-            return parts.Count == 0 ? "Podcast" : string.Join(" - ", parts);
+            return parts.Count == 0 ? LocalizationHook.GetString("Podcast_Placeholder") : string.Join(" - ", parts);
         }
     }
 
@@ -59,11 +68,11 @@ public sealed record LibraryPodcastShowDto
             return "";
 
         var diff = DateTime.Now - date;
-        if (diff.TotalDays < 1) return "Today";
-        if (diff.TotalDays < 2) return "Yesterday";
-        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays} days ago";
-        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)} weeks ago";
-        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)} months ago";
+        if (diff.TotalDays < 1) return LocalizationHook.GetString("Relative_Today");
+        if (diff.TotalDays < 2) return LocalizationHook.GetString("Relative_Yesterday");
+        if (diff.TotalDays < 7) return LocalizationHook.Format("Relative_DaysAgo", (int)diff.TotalDays);
+        if (diff.TotalDays < 30) return LocalizationHook.Format("Relative_WeeksAgo", (int)(diff.TotalDays / 7));
+        if (diff.TotalDays < 365) return LocalizationHook.Format("Relative_MonthsAgo", (int)(diff.TotalDays / 30));
         return date.ToString("MMM d, yyyy");
     }
 }

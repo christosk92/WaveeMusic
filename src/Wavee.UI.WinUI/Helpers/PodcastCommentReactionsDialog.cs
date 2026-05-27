@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Models;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Helpers;
 
@@ -48,7 +49,7 @@ internal static class PodcastCommentReactionsDialog
 
         var loadMoreButton = new Button
         {
-            Content = "Load more",
+            Content = AppLocalization.GetString("Dialog_LoadMore"),
             HorizontalAlignment = HorizontalAlignment.Center,
             Padding = new Thickness(14, 6, 14, 6),
             Visibility = Visibility.Collapsed,
@@ -89,7 +90,7 @@ internal static class PodcastCommentReactionsDialog
             }
 
             loadMoreButton.IsEnabled = false;
-            statusText.Text = reset ? "Loading reactions..." : "Loading more reactions...";
+            statusText.Text = reset ? AppLocalization.GetString("Reactions_Loading") : AppLocalization.GetString("Reactions_LoadingMore");
             statusText.Visibility = Visibility.Visible;
 
             PodcastCommentReactionsPageDto? page;
@@ -99,7 +100,7 @@ internal static class PodcastCommentReactionsDialog
             }
             catch
             {
-                statusText.Text = "Could not load reactions.";
+                statusText.Text = AppLocalization.GetString("Reactions_LoadError");
                 statusText.Visibility = Visibility.Visible;
                 loadMoreButton.IsEnabled = true;
                 RenderChips();
@@ -123,7 +124,7 @@ internal static class PodcastCommentReactionsDialog
             chipsPanel.Children.Clear();
             var total = reactionCounts.Sum(static count => count.Count);
             chipsPanel.Children.Add(BuildFilterButton(
-                total > 0 ? $"All {total:N0}" : "All",
+                total > 0 ? AppLocalization.Format("Reactions_AllWithCount", total.ToString("N0")) : AppLocalization.GetString("Reactions_AllChip"),
                 selectedReaction is null,
                 async () =>
                 {
@@ -151,7 +152,7 @@ internal static class PodcastCommentReactionsDialog
 
             if (reactions.Count == 0)
             {
-                statusText.Text = "No reactions yet.";
+                statusText.Text = AppLocalization.GetString("Reactions_None");
                 statusText.Visibility = Visibility.Visible;
             }
             else
@@ -171,8 +172,8 @@ internal static class PodcastCommentReactionsDialog
 
         var dialog = new ContentDialog
         {
-            Title = "Reactions",
-            CloseButtonText = "Close",
+            Title = AppLocalization.GetString("Reactions_DialogTitle"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Close"),
             DefaultButton = ContentDialogButton.Close,
             Content = content,
             XamlRoot = xamlRoot,

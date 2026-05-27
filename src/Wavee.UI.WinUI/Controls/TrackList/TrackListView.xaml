@@ -306,17 +306,17 @@
             <controls:TabbedCommandBar x:Name="SelectionCommandBar">
                 <controls:TabbedCommandBar.MenuItems>
                     <controls:TabbedCommandBarItem x:Name="SelectionCommandBarItem">
-                        <AppBarButton Icon="{ui:FontIcon Glyph=&#xE768;}"
+                        <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_600" Icon="{ui:FontIcon Glyph=&#xE768;}"
                                       Label="Play selected"
                                       Command="{x:Bind ViewModel.PlaySelectedCommand, Mode=OneWay}"/>
-                        <AppBarButton Icon="{ui:FontIcon Glyph=&#xE768;}"
+                        <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_601" Icon="{ui:FontIcon Glyph=&#xE768;}"
                                       Label="Play after"
                                       Command="{x:Bind ViewModel.PlayAfterCommand, Mode=OneWay}"/>
-                        <AppBarButton Icon="{ui:FontIcon Glyph=&#xE90B;}"
+                        <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_602" Icon="{ui:FontIcon Glyph=&#xE90B;}"
                                       Label="Add to queue"
                                       Command="{x:Bind ViewModel.AddSelectedToQueueCommand, Mode=OneWay}"/>
                         <AppBarSeparator/>
-                        <AppBarButton Icon="{ui:FontIcon Glyph=&#xE710;}"
+                        <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_603" Icon="{ui:FontIcon Glyph=&#xE710;}"
                                       Label="Add to playlist">
                             <AppBarButton.Flyout>
                                 <MenuFlyout x:Name="AddToPlaylistFlyout"

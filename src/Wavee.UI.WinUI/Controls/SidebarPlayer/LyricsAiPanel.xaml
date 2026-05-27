@@ -131,7 +131,7 @@
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center" />
 
-                    <Button Grid.Column="1"
+                    <Button x:Uid="Controls_SidebarPlayer_LyricsAiPanel__Auto_600" Grid.Column="1"
                             Command="{x:Bind ViewModel.DismissResultCommand}"
                             Background="Transparent"
                             BorderThickness="0"

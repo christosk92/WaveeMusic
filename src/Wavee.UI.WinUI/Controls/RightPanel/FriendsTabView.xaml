@@ -245,23 +245,23 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Spacing="12">
-                    <TextBlock Text="Invite others to your Jam, and listen together from anywhere."
+                    <TextBlock x:Uid="Controls_RightPanel_FriendsTabView__Auto_600" Text="Invite others to your Jam, and listen together from anywhere."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                TextWrapping="Wrap"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <Button x:Name="StartJamButton"
+                    <Button x:Uid="Controls_RightPanel_FriendsTabView__Auto_601" x:Name="StartJamButton"
                             Style="{StaticResource AccentButtonStyle}"
                             Click="StartJam_Click"
                             HorizontalAlignment="Left"
                             ToolTipService.ToolTip="Jam is not yet supported in Wavee.">
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <FontIcon Glyph="&#xE7F4;" FontSize="14"/>
-                            <TextBlock Text="Start a Jam"/>
+                            <TextBlock x:Uid="Controls_RightPanel_FriendsTabView__Auto_602" Text="Start a Jam"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
 
-                <Button Grid.Column="1"
+                <Button x:Uid="Controls_RightPanel_FriendsTabView__Auto_603" Grid.Column="1"
                         x:Name="JamDismissButton"
                         Click="JamDismiss_Click"
                         Style="{StaticResource DefaultButtonStyle}"
@@ -326,7 +326,7 @@
                           FontSize="28"
                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                           HorizontalAlignment="Center"/>
-                <TextBlock Text="No friends listening right now"
+                <TextBlock x:Uid="Controls_RightPanel_FriendsTabView__Auto_604" Text="No friends listening right now"
                            Style="{StaticResource BodyTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            HorizontalAlignment="Center"/>
@@ -343,7 +343,7 @@
                           FontSize="28"
                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                           HorizontalAlignment="Center"/>
-                <TextBlock Text="Friend activity is unavailable while disconnected"
+                <TextBlock x:Uid="Controls_RightPanel_FriendsTabView__Auto_605" Text="Friend activity is unavailable while disconnected"
                            Style="{StaticResource BodyTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            TextWrapping="Wrap"
@@ -362,14 +362,14 @@
                           FontSize="28"
                           Foreground="{ThemeResource SystemFillColorCautionBrush}"
                           HorizontalAlignment="Center"/>
-                <TextBlock x:Name="ErrorText"
+                <TextBlock x:Uid="Controls_RightPanel_FriendsTabView__Auto_606" x:Name="ErrorText"
                            Text="Couldn't load friend activity."
                            Style="{StaticResource BodyTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            TextWrapping="Wrap"
                            TextAlignment="Center"
                            HorizontalAlignment="Center"/>
-                <Button Content="Retry"
+                <Button x:Uid="Controls_RightPanel_FriendsTabView__Auto_607" Content="Retry"
                         HorizontalAlignment="Center"
                         Click="Retry_Click"/>
             </StackPanel>

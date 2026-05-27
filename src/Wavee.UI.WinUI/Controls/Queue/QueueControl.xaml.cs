@@ -263,19 +263,19 @@ public sealed partial class QueueControl : UserControl
         // â”€â”€ User Queue section â”€â”€
         UserQueueSection.Visibility = userQueued.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (userQueued.Count > 0)
-            UserQueueHeaderLabel.Text = $"QUEUE \u00B7 {userQueued.Count}";
+            UserQueueHeaderLabel.Text = $"{AppLocalization.GetString("Queue_Section_Queue")} \u00B7 {userQueued.Count}";
         UserQueueRepeater.ItemsSource = userQueued.Count > 0 ? userQueued : null;
 
         // â”€â”€ Next Up section (context continuation, non-autoplay) â”€â”€
         NextUpSection.Visibility = nextFrom.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (nextFrom.Count > 0)
-            NextUpHeader.Text = $"NEXT UP \u00B7 {nextFrom.Count}";
+            NextUpHeader.Text = $"{AppLocalization.GetString("Queue_Section_NextUp")} \u00B7 {nextFrom.Count}";
         NextUpRepeater.ItemsSource = nextFrom.Count > 0 ? nextFrom : null;
 
         // â”€â”€ Queued later section (post-context bucket, plays after this context) â”€â”€
         PostContextSection.Visibility = postContext.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (postContext.Count > 0)
-            PostContextHeader.Text = $"QUEUED LATER · {postContext.Count}";
+            PostContextHeader.Text = $"{AppLocalization.GetString("Queue_Section_QueuedLater")} · {postContext.Count}";
         PostContextRepeater.ItemsSource = postContext.Count > 0 ? postContext : null;
 
         // â”€â”€ Autoplay section (similar music, dimmed) â”€â”€

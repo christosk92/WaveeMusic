@@ -247,6 +247,11 @@ public static class AppLifecycleHelper
     {
         _uiDispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
+        // Wire the framework-neutral LocalizationHook so Wavee.UI DTOs / formatters
+        // can resolve user-facing strings through resw. Must happen before any DTO
+        // metadata is composed.
+        AppLocalization.InstallHook();
+
         // Initial switch level: Verbose if user opted in (or DEBUG build), otherwise Information.
         // The switch is mutable at runtime — see SetVerboseLogging.
         var verboseEnabled = AppFeatureFlags.DiagnosticsEnabled && SettingsService.PeekVerboseLogging();
@@ -515,6 +520,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<Wavee.AI.IAiFeatureSettings, Services.Ai.WinUiAiFeatureSettings>()
                 .AddSingleton<Wavee.AI.Generation.ILanguageModelClient, Wavee.AI.Generation.PhiSilicaLanguageModelClient>()
                 .AddSingleton<Wavee.AI.Artists.IArtistAiToolProvider, Services.Ai.WinUiArtistAiToolProvider>()
+                .AddSingleton<Wavee.AI.Artists.IMusicCatalogSearchProvider, Services.Ai.WinUiMusicCatalogSearchProvider>()
                 // Web grounding: a shared LRU cache underlies a composite provider that
                 // routes to the user's custom endpoint when configured, else to the
                 // baked-in DuckDuckGo lite scrape so grounding works on a fresh install.

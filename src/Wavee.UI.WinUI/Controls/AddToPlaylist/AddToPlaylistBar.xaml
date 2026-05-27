@@ -64,7 +64,7 @@
                                MaxLines="1"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>
-                <Button Grid.Column="2"
+                <Button x:Uid="Controls_AddToPlaylist_AddToPlaylistBar__Auto_600" Grid.Column="2"
                         Width="28" Height="28"
                         Padding="0"
                         Style="{ThemeResource SubtleButtonStyle}"
@@ -118,7 +118,7 @@
                      the playlist (session stays active so the user can keep
                      shopping after a quick peek). Styled as a flat button so
                      the visual is "tile + label" not "obvious button chrome". -->
-                <Button Grid.Column="0"
+                <Button x:Uid="Controls_AddToPlaylist_AddToPlaylistBar__Auto_601" Grid.Column="0"
                         x:Name="TargetButton"
                         Padding="8,4"
                         CornerRadius="8"
@@ -144,7 +144,7 @@
                             </Grid>
                         </Border>
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Adding to"
+                            <TextBlock x:Uid="Controls_AddToPlaylistBar__AddingToText" Text="Adding to"
                                        FontSize="11"
                                        Opacity="0.7"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -162,7 +162,7 @@
                      Wrapped in a flat button that opens a Flyout listing all
                      pending tracks (with per-row remove). Hidden when nothing
                      pending so the bar collapses to label + Cancel/Add. -->
-                <Button Grid.Column="1"
+                <Button x:Uid="Controls_AddToPlaylist_AddToPlaylistBar__Auto_602" Grid.Column="1"
                         x:Name="PendingButton"
                         HorizontalAlignment="Right"
                         Padding="8,4"
@@ -235,7 +235,7 @@
                         Click="OnCancelClick">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <FontIcon Glyph="&#xE894;" FontSize="11"/>
-                        <TextBlock Text="Cancel" FontSize="12"/>
+                        <TextBlock x:Uid="Controls_AddToPlaylistBar__CancelText" Text="Cancel" FontSize="12"/>
                     </StackPanel>
                 </Button>
 
@@ -284,7 +284,7 @@
                             <ProgressRing IsActive="True"
                                           Width="14" Height="14"
                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                            <TextBlock Text="Adding…"
+                            <TextBlock x:Uid="Controls_AddToPlaylistBar__AddingText" Text="Adding…"
                                        FontSize="13"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>

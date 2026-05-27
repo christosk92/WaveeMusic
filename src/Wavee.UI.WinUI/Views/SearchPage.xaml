@@ -19,6 +19,7 @@
 
     <Grid>
     <controls:PageErrorState
+        x:Uid="Views_SearchPage__PageErrorState"
         Title="Couldn't load search results"
         Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
         RetryCommand="{x:Bind ViewModel.RetryCommand}"
@@ -34,7 +35,7 @@
                           VerticalScrollBarVisibility="Disabled"
                           Margin="0,0,0,18">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <RadioButton x:Name="FilterAll" Content="All" GroupName="SearchFilter"
+                    <RadioButton x:Uid="Views_SearchPage__FilterAll" x:Name="FilterAll" Content="All" GroupName="SearchFilter"
                                  IsChecked="True" Click="FilterChip_Click" Tag="All"
                                  Style="{StaticResource DefaultToggleButtonStyle}"
                                  CornerRadius="19" MinHeight="38" MinWidth="0" Padding="18,8"/>
@@ -54,15 +55,15 @@
                                  Click="FilterChip_Click" Tag="Albums"
                                  Style="{StaticResource DefaultToggleButtonStyle}"
                                  CornerRadius="19" MinHeight="38" MinWidth="0" Padding="18,8"/>
-                    <RadioButton x:Name="FilterPodcasts" Content="Podcasts" GroupName="SearchFilter"
+                    <RadioButton x:Uid="Views_SearchPage__FilterPodcasts" x:Name="FilterPodcasts" Content="Podcasts" GroupName="SearchFilter"
                                  Click="FilterChip_Click" Tag="Podcasts"
                                  Style="{StaticResource DefaultToggleButtonStyle}"
                                  CornerRadius="19" MinHeight="38" MinWidth="0" Padding="18,8"/>
-                    <RadioButton x:Name="FilterUsers" Content="Profiles" GroupName="SearchFilter"
+                    <RadioButton x:Uid="Views_SearchPage__FilterUsers" x:Name="FilterUsers" Content="Profiles" GroupName="SearchFilter"
                                  Click="FilterChip_Click" Tag="Users"
                                  Style="{StaticResource DefaultToggleButtonStyle}"
                                  CornerRadius="19" MinHeight="38" MinWidth="0" Padding="18,8"/>
-                    <RadioButton x:Name="FilterGenres" Content="Genres" GroupName="SearchFilter"
+                    <RadioButton x:Uid="Views_SearchPage__FilterGenres" x:Name="FilterGenres" Content="Genres" GroupName="SearchFilter"
                                  Click="FilterChip_Click" Tag="Genres"
                                  Style="{StaticResource DefaultToggleButtonStyle}"
                                  CornerRadius="19" MinHeight="38" MinWidth="0" Padding="18,8"/>

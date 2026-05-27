@@ -32,7 +32,7 @@
                 <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_4" Content="Treble Boost"/>
                 <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_5" Content="Vocal"/>
                 <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_6" Content="Radio"/>
-                <ComboBoxItem Content="EQ Proof"/>
+                <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__Auto_600" Content="EQ Proof"/>
             </ComboBox>
 
             <ToggleSwitch x:Uid="Controls_Settings_AudioSettingsSection__ToggleSwitch_7" Grid.Column="2" Header="Equalizer"

@@ -139,7 +139,9 @@ public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDispos
     [NotifyPropertyChangedFor(nameof(ArtistPlayButtonText))]
     private bool _isArtistContextPaused;
 
-    public string ArtistPlayButtonText => IsArtistContextPlaying ? "Pause" : "Play";
+    public string ArtistPlayButtonText => IsArtistContextPlaying
+        ? AppLocalization.GetString("Player_Pause")
+        : AppLocalization.GetString("Player_Play");
 
     // ── Pagination ──────────────────────────────────────────────────────────
 

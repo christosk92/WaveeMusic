@@ -17,6 +17,7 @@ using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Windows.UI;
 using Wavee.UI.WinUI.Controls.Cards;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels.Home;
 
@@ -333,9 +334,9 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         {
             slides.Add(BuildSlide(
                 featured,
-                eyebrow: "PICK UP WHERE YOU LEFT OFF",
-                primaryCta: "Play",
-                secondaryCta: "Open"));
+                eyebrow: AppLocalization.GetString("Home_Hero_PickUpEyebrow"),
+                primaryCta: AppLocalization.GetString("Home_Hero_PlayCta"),
+                secondaryCta: AppLocalization.GetString("Home_Hero_OpenCta")));
             if (!string.IsNullOrEmpty(featured.Uri))
                 seenUris.Add(featured.Uri!);
         }
@@ -367,8 +368,8 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
             slides.Add(BuildSlide(
                 first,
                 eyebrow: sectionTitle.ToUpperInvariant(),
-                primaryCta: "Play",
-                secondaryCta: "Open"));
+                primaryCta: AppLocalization.GetString("Home_Hero_PlayCta"),
+                secondaryCta: AppLocalization.GetString("Home_Hero_OpenCta")));
         }
 
         // Transient-empty guard. RebuildHeroSlides fires on every

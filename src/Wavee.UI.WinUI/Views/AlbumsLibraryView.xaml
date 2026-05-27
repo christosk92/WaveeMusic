@@ -42,13 +42,13 @@
             <primitives:SegmentedItem Tag="Saved">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xEB52;" FontSize="14"/>
-                    <TextBlock Text="Hearted"/>
+                    <TextBlock x:Uid="Views_AlbumsLibraryView__HeartedText" Text="Hearted"/>
                 </StackPanel>
             </primitives:SegmentedItem>
             <primitives:SegmentedItem Tag="FromLikedSongs">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xE8D6;" FontSize="14"/>
-                    <TextBlock Text="From Liked Songs"/>
+                    <TextBlock x:Uid="Views_AlbumsLibraryView__FromLikedSongsText" Text="From Liked Songs"/>
                 </StackPanel>
             </primitives:SegmentedItem>
         </primitives:Segmented>
@@ -60,6 +60,7 @@
                  ════════════════════════════════════════════════════════════════ -->
             <controls:LibraryGridView
                 x:Name="SavedWideGrid"
+                x:Uid="Views_AlbumsLibraryView__SavedWideGrid"
                 x:Load="{x:Bind ViewModel.IsSavedWide, Mode=OneWay}"
                 ItemsSource="{x:Bind ViewModel.FilteredAlbums, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedAlbum, Mode=TwoWay}"
@@ -304,7 +305,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xEB52;" FontSize="14"/>
-                                            <TextBlock Text="Unheart"/>
+                                            <TextBlock x:Uid="Views_AlbumsLibraryView__UnheartText" Text="Unheart"/>
                                         </StackPanel>
                                     </Button>
                                 </primitives:WrapPanel>
@@ -329,7 +330,7 @@
             <!-- ════════════════════════════════════════════════════════════════
                  FROM-LIKED-SONGS SOURCE — WIDE LAYOUT
                  ════════════════════════════════════════════════════════════════ -->
-            <controls:LibraryGridView
+            <controls:LibraryGridView x:Uid="Views_AlbumsLibraryView__Auto_600"
                 x:Name="LikedWideGrid"
                 x:Load="{x:Bind ViewModel.IsLikedWide, Mode=OneWay}"
                 ItemsSource="{x:Bind ViewModel.FilteredLikedAlbums, Mode=OneWay}"
@@ -545,14 +546,14 @@
                                     Text="{x:Bind ViewModel.SelectedAlbumMetadata, Mode=OneWay}"/>
 
                                 <primitives:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="6" Margin="0,8,0,0">
-                                    <Button
+                                    <Button x:Uid="Views_AlbumsLibraryView__Auto_601"
                                         Style="{StaticResource AccentButtonStyle}"
                                         Command="{x:Bind ViewModel.PlayLikedAlbumLikedTracksCommand}"
                                         Padding="12,6"
                                         ToolTipService.ToolTip="Play the liked tracks of this album">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                            <TextBlock Text="Play liked"/>
+                                            <TextBlock x:Uid="Views_AlbumsLibraryView__PlayLikedText" Text="Play liked"/>
                                         </StackPanel>
                                     </Button>
                                     <Button
@@ -560,7 +561,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
-                                            <TextBlock Text="Shuffle"/>
+                                            <TextBlock x:Uid="Views_AlbumsLibraryView__ShuffleText" Text="Shuffle"/>
                                         </StackPanel>
                                     </Button>
                                     <Button
@@ -568,7 +569,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
-                                            <TextBlock Text="Open album"/>
+                                            <TextBlock x:Uid="Views_AlbumsLibraryView__OpenAlbumText" Text="Open album"/>
                                         </StackPanel>
                                     </Button>
                                 </primitives:WrapPanel>
@@ -582,8 +583,8 @@
                             Margin="0,0,0,8"
                             HorizontalAlignment="Left"
                             SelectionChanged="DetailModeSelector_SelectionChanged">
-                            <primitives:SegmentedItem Content="Liked" Tag="Liked"/>
-                            <primitives:SegmentedItem Content="Full album" Tag="FullAlbum"/>
+                            <primitives:SegmentedItem x:Uid="Views_AlbumsLibraryView__SegmentLiked" Content="Liked" Tag="Liked"/>
+                            <primitives:SegmentedItem x:Uid="Views_AlbumsLibraryView__SegmentFullAlbum" Content="Full album" Tag="FullAlbum"/>
                         </primitives:Segmented>
 
                         <!-- Liked-tracks pane (default). -->
@@ -670,7 +671,7 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <TextBox
+                        <TextBox x:Uid="Views_AlbumsLibraryView__Auto_602"
                             Grid.Row="0"
                             Margin="0,0,0,16"
                             PlaceholderText="Filter albums..."
@@ -753,7 +754,7 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <TextBox
+                        <TextBox x:Uid="Views_AlbumsLibraryView__Auto_603"
                             Grid.Row="0"
                             Margin="0,0,0,16"
                             PlaceholderText="Filter albums..."
@@ -909,7 +910,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xEB52;" FontSize="14"/>
-                                            <TextBlock Text="Unheart"/>
+                                            <TextBlock x:Uid="Views_AlbumsLibraryView__UnheartText" Text="Unheart"/>
                                         </StackPanel>
                                     </Button>
                                 </primitives:WrapPanel>
@@ -990,7 +991,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                            <TextBlock Text="Play liked"/>
+                                            <TextBlock x:Uid="Views_AlbumsLibraryView__PlayLikedText" Text="Play liked"/>
                                         </StackPanel>
                                     </Button>
                                     <Button
@@ -998,7 +999,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
-                                            <TextBlock Text="Shuffle"/>
+                                            <TextBlock x:Uid="Views_AlbumsLibraryView__ShuffleText" Text="Shuffle"/>
                                         </StackPanel>
                                     </Button>
                                     <Button
@@ -1006,7 +1007,7 @@
                                         Padding="12,6">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
-                                            <TextBlock Text="Open album"/>
+                                            <TextBlock x:Uid="Views_AlbumsLibraryView__OpenAlbumText" Text="Open album"/>
                                         </StackPanel>
                                     </Button>
                                 </primitives:WrapPanel>
@@ -1019,8 +1020,8 @@
                             Margin="0,0,0,8"
                             HorizontalAlignment="Left"
                             SelectionChanged="DetailModeSelector_SelectionChanged">
-                            <primitives:SegmentedItem Content="Liked" Tag="Liked"/>
-                            <primitives:SegmentedItem Content="Full album" Tag="FullAlbum"/>
+                            <primitives:SegmentedItem x:Uid="Views_AlbumsLibraryView__SegmentLiked" Content="Liked" Tag="Liked"/>
+                            <primitives:SegmentedItem x:Uid="Views_AlbumsLibraryView__SegmentFullAlbum" Content="Full album" Tag="FullAlbum"/>
                         </primitives:Segmented>
 
                         <tracklist:TrackListView

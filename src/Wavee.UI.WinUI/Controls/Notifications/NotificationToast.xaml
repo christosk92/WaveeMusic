@@ -77,7 +77,7 @@
                         Visibility="Collapsed"
                         Click="OnActionClick"/>
 
-                <Button x:Name="CloseButton"
+                <Button x:Uid="Controls_Notifications_NotificationToast__Auto_600" x:Name="CloseButton"
                         Grid.Column="3"
                         VerticalAlignment="Center"
                         Width="28"

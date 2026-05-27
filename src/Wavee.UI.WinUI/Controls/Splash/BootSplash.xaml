@@ -50,7 +50,7 @@
                 Width="128"
                 Height="128"
                 HorizontalAlignment="Center"/>
-            <TextBlock
+            <TextBlock x:Uid="Controls_Splash_BootSplash__Auto_600"
                 HorizontalAlignment="Center"
                 Text="Wavee"
                 FontFamily="Segoe UI Variable Display"

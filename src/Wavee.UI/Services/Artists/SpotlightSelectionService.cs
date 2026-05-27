@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Wavee.UI.Contracts;
+using Wavee.UI.Localization;
 
 namespace Wavee.UI.Services.Artists;
 
@@ -100,8 +101,8 @@ public sealed class SpotlightSelectionService
                 // the hero card's skeleton row count at 0 in that case.
                 TrackCount: 0,
                 Subtitle: pinned.Subtitle ?? string.Empty,
-                TagText: "Pinned",
-                EyebrowText: "Pinned",
+                TagText: LocalizationHook.GetString("Spotlight_PinnedTag"),
+                EyebrowText: LocalizationHook.GetString("Spotlight_PinnedEyebrow"),
                 Comment: pinned.Comment,
                 PopularReleasesDisplayed: BuildPopularColumn(SpotlightMode.Pinned, inputs, hasLatestRelease),
                 VirtualLatestReleaseRow: BuildVirtualLatestReleaseRow(inputs, hasLatestRelease, requireVirtual: true));
@@ -117,8 +118,8 @@ public sealed class SpotlightSelectionService
                 ImageUrl: latest.ImageUrl,
                 TrackCount: latest.TrackCount,
                 Subtitle: BuildLatestReleaseSubtitle(latest),
-                TagText: "Latest release",
-                EyebrowText: "Latest release",
+                TagText: LocalizationHook.GetString("Spotlight_LatestReleaseTag"),
+                EyebrowText: LocalizationHook.GetString("Spotlight_LatestReleaseEyebrow"),
                 Comment: null,
                 PopularReleasesDisplayed: BuildPopularColumn(SpotlightMode.LatestRelease, inputs, hasLatestRelease),
                 VirtualLatestReleaseRow: null);
@@ -131,8 +132,8 @@ public sealed class SpotlightSelectionService
             ImageUrl: firstPopular?.ImageUrl,
             TrackCount: firstPopular?.TrackCount ?? 0,
             Subtitle: firstPopular is null ? string.Empty : FormatPopularSubtitle(firstPopular),
-            TagText: "Popular now",
-            EyebrowText: "Popular release",
+            TagText: LocalizationHook.GetString("Spotlight_PopularNowTag"),
+            EyebrowText: LocalizationHook.GetString("Spotlight_PopularReleaseEyebrow"),
             Comment: null,
             PopularReleasesDisplayed: BuildPopularColumn(SpotlightMode.PopularRelease, inputs, hasLatestRelease),
             VirtualLatestReleaseRow: null);
@@ -205,12 +206,23 @@ public sealed class SpotlightSelectionService
     private static string BuildLatestReleaseSubtitle(ArtistLatestReleaseResult latest)
     {
         var parts = new List<string>(3);
-        if (!string.IsNullOrEmpty(latest.Type)) parts.Add(latest.Type!);
+        if (!string.IsNullOrEmpty(latest.Type)) parts.Add(LocalizeReleaseType(latest.Type!));
         if (!string.IsNullOrEmpty(latest.FormattedDate)) parts.Add(latest.FormattedDate!);
         if (latest.TrackCount > 0)
-            parts.Add(latest.TrackCount == 1 ? "1 track" : $"{latest.TrackCount} tracks");
+            parts.Add(latest.TrackCount == 1
+                ? LocalizationHook.GetString("Count_Track_One")
+                : LocalizationHook.Format("Count_Track_Many", latest.TrackCount));
         return string.Join(" - ", parts);
     }
+
+    private static string LocalizeReleaseType(string type) => type.ToLowerInvariant() switch
+    {
+        "single" => LocalizationHook.GetString("ReleaseType_Single"),
+        "ep" => LocalizationHook.GetString("ReleaseType_EP"),
+        "album" => LocalizationHook.GetString("ReleaseType_Album"),
+        "compilation" => LocalizationHook.GetString("ReleaseType_Compilation"),
+        _ => type,
+    };
 
     private static string FormatPopularSubtitle(SpotlightPopularRelease release)
         => Wavee.UI.Formatters.ReleaseSubtitleFormatter.Format(

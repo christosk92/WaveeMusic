@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.RightPanel;
@@ -254,9 +255,9 @@ public sealed partial class FriendsTabView : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Jam is not available yet",
-            Content = "Jam sessions aren't supported in Wavee yet. Stay tuned!",
-            CloseButtonText = "OK",
+            Title = AppLocalization.GetString("Friends_JamUnavailableTitle"),
+            Content = AppLocalization.GetString("Friends_JamUnavailableContent"),
+            CloseButtonText = AppLocalization.GetString("Dialog_OK"),
             DefaultButton = ContentDialogButton.Close
         };
         await dialog.ShowAsync();

@@ -18,6 +18,7 @@ using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -1044,16 +1045,23 @@ public sealed partial class ShowViewModel : ObservableObject, ITabBarItemContent
 
     private static string FormatEpisodeCount(int loaded, int total)
     {
-        if (total <= 0) return loaded == 1 ? "1 episode" : $"{loaded} episodes";
-        var word = total == 1 ? "episode" : "episodes";
-        return $"{total.ToString("N0", CultureInfo.CurrentCulture)} {word}";
+        if (total <= 0)
+            return loaded == 1
+                ? AppLocalization.GetString("Count_Episode_One")
+                : AppLocalization.Format("Count_Episode_Many", loaded);
+        return total == 1
+            ? AppLocalization.GetString("Count_Episode_One")
+            : AppLocalization.Format("Count_Episode_Many", total.ToString("N0", CultureInfo.CurrentCulture));
     }
 
     private static string BuildArchiveSummaryLine(int visible, int total)
     {
         if (total <= 0) return "";
-        if (visible == total) return $"{total.ToString("N0", CultureInfo.CurrentCulture)} available";
-        return $"{visible.ToString("N0", CultureInfo.CurrentCulture)} of {total.ToString("N0", CultureInfo.CurrentCulture)} shown";
+        if (visible == total)
+            return AppLocalization.Format("Podcasts_VisibleAvailable", total.ToString("N0", CultureInfo.CurrentCulture));
+        return AppLocalization.Format("Podcasts_VisibleOfTotalShown",
+            visible.ToString("N0", CultureInfo.CurrentCulture),
+            total.ToString("N0", CultureInfo.CurrentCulture));
     }
 
     private static string BuildListeningSummaryLine(
@@ -1064,12 +1072,12 @@ public sealed partial class ShowViewModel : ObservableObject, ITabBarItemContent
         bool startsFromBeginning)
     {
         var parts = new List<string>(4);
-        if (startsFromBeginning) parts.Add("Start from the beginning");
-        else if (hasProgressAnchor) parts.Add("Up next from your progress");
-        if (inProgress > 0) parts.Add($"{inProgress.ToString("N0", CultureInfo.CurrentCulture)} in progress");
-        if (unplayed > 0) parts.Add($"{unplayed.ToString("N0", CultureInfo.CurrentCulture)} unplayed");
-        if (completed > 0) parts.Add($"{completed.ToString("N0", CultureInfo.CurrentCulture)} played");
-        return parts.Count == 0 ? "Replay recent episodes" : string.Join(" | ", parts);
+        if (startsFromBeginning) parts.Add(AppLocalization.GetString("Podcasts_StartFromBeginning"));
+        else if (hasProgressAnchor) parts.Add(AppLocalization.GetString("Podcasts_UpNextFromProgress"));
+        if (inProgress > 0) parts.Add(AppLocalization.Format("Podcasts_CountInProgress", inProgress.ToString("N0", CultureInfo.CurrentCulture)));
+        if (unplayed > 0) parts.Add(AppLocalization.Format("Podcasts_CountUnplayed", unplayed.ToString("N0", CultureInfo.CurrentCulture)));
+        if (completed > 0) parts.Add(AppLocalization.Format("Podcasts_CountPlayed", completed.ToString("N0", CultureInfo.CurrentCulture)));
+        return parts.Count == 0 ? AppLocalization.GetString("Podcasts_ReplayRecent") : string.Join(" | ", parts);
     }
 
     private static string? BuildRatingLine(ShowDetailDto detail)
@@ -1077,7 +1085,9 @@ public sealed partial class ShowViewModel : ObservableObject, ITabBarItemContent
         if (!detail.ShowAverageRating || detail.AverageRating <= 0) return null;
         var avg = detail.AverageRating.ToString("0.0", CultureInfo.CurrentCulture);
         var count = detail.TotalRatings.ToString("N0", CultureInfo.CurrentCulture);
-        return detail.TotalRatings > 0 ? $"★ {avg}  ·  {count} ratings" : $"★ {avg}";
+        return detail.TotalRatings > 0
+            ? AppLocalization.Format("Podcasts_RatingWithCount", avg, count)
+            : AppLocalization.Format("Podcasts_RatingOnly", avg);
     }
 
     [RelayCommand]

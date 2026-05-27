@@ -117,7 +117,7 @@
                     VerticalAlignment="Top"
                     CornerRadius="4"
                     Background="{ThemeResource SystemFillColorCautionBackgroundBrush}">
-                <TextBlock Text="Not in library"
+                <TextBlock x:Uid="Controls_Local_LocalEpisodeCard__Auto_600" Text="Not in library"
                            FontSize="10"
                            FontWeight="SemiBold"
                            Foreground="{ThemeResource SystemFillColorCautionBrush}"/>

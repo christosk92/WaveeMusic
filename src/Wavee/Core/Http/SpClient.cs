@@ -1709,6 +1709,20 @@ public sealed class SpClient : ISpClient
                 throw new SpClientException(SpClientFailureReason.NotFound, $"Playlist not found: {playlistUri}");
             case HttpStatusCode.Unauthorized:
                 throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.NotModified:
+                // 304 from the diff endpoint = "your revision is current, no
+                // changes" — equivalent to a successful response with
+                // UpToDate=true and an empty op list. Synthesize that shape so
+                // the caller takes the no-change branch instead of falling
+                // back to a full re-fetch.
+                _logger?.LogInformation(
+                    "[playlist-diff] 304 Not Modified — synthesizing UpToDate response for {Uri} rev={Rev}",
+                    playlistUri, revisionStr);
+                return new Protocol.Playlist.SelectedListContent
+                {
+                    UpToDate = true,
+                    Revision = ByteString.CopyFrom(revision),
+                };
         }
 
         if ((int)response.StatusCode >= 500)

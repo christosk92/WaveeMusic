@@ -17,6 +17,8 @@ public static class AppPaths
 
     public static string CrashLogPath { get; } = Path.Combine(AppDataDirectory, "crash.log");
 
+    public static string PendingCrashReportPath { get; } = Path.Combine(AppDataDirectory, "pending-crash.json");
+
     public static string DiagnosticsDirectory { get; } = Path.Combine(AppDataDirectory, "diag");
 
     public static string PhiSilicaDiagnosticsDirectory { get; } = Path.Combine(DiagnosticsDirectory, "phi-silica");

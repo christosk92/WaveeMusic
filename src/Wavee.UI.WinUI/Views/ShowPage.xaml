@@ -234,7 +234,7 @@
                                     Background="{ThemeResource AccentFillColorDefaultBrush}"
                                     BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
                                     BorderThickness="1">
-                                <TextBlock Text="PODCAST"
+                                <TextBlock x:Uid="Views_ShowPage__PodcastBadge" Text="PODCAST"
                                            FontSize="11"
                                            FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
@@ -245,7 +245,7 @@
                                     BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                     BorderThickness="1"
                                     Visibility="{x:Bind ViewModel.IsExclusive, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Text="EXCLUSIVE"
+                                <TextBlock x:Uid="Views_ShowPage__ExclusiveBadge" Text="EXCLUSIVE"
                                            FontSize="11"
                                            FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
@@ -311,7 +311,7 @@
                                 <TextBlock Text="E" FontSize="10" FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </Border>
-                            <TextBlock Text="EXPLICIT"
+                            <TextBlock x:Uid="Views_ShowPage__ExplicitBadge" Text="EXPLICIT"
                                        FontSize="11" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        VerticalAlignment="Center"/>
@@ -324,10 +324,11 @@
                             <Button Style="{StaticResource AccentButtonStyle}"
                                     Command="{x:Bind ViewModel.PlayShowCommand}"
                                     Padding="18,10" CornerRadius="20"
+                                    x:Uid="Views_ShowPage__PlayButton"
                                     ToolTipService.ToolTip="Play">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                    <TextBlock Text="Play" FontSize="13" FontWeight="SemiBold"/>
+                                    <TextBlock x:Uid="Views_ShowPage__PlayText" Text="Play" FontSize="13" FontWeight="SemiBold"/>
                                 </StackPanel>
                             </Button>
                             <Button Command="{x:Bind ViewModel.ToggleFollowCommand}"
@@ -347,6 +348,7 @@
                                     Width="40" Height="40" CornerRadius="20" Padding="0"
                                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                     BorderThickness="0"
+                                    x:Uid="Views_ShowPage__ShareButton"
                                     ToolTipService.ToolTip="Copy link to show">
                                 <FontIcon Glyph="&#xE72D;" FontSize="14"/>
                             </Button>
@@ -364,7 +366,7 @@
                                   Margin="0,8,0,0"
                                   Visibility="{x:Bind ViewModel.Description, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                             <Expander.Header>
-                                <TextBlock Text="About"
+                                <TextBlock x:Uid="Views_ShowPage__AboutHeader" Text="About"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"/>
                             </Expander.Header>
                             <TextBlock Text="{x:Bind ViewModel.Description, Mode=OneWay}"
@@ -407,18 +409,18 @@
                                   Grid.Column="0"
                                   Width="160"
                                   SelectionChanged="FilterCombo_SelectionChanged">
-                            <ComboBoxItem Tag="All" IsSelected="True">All episodes</ComboBoxItem>
-                            <ComboBoxItem Tag="Unplayed">Unplayed</ComboBoxItem>
-                            <ComboBoxItem Tag="InProgress">In progress</ComboBoxItem>
-                            <ComboBoxItem Tag="Completed">Played</ComboBoxItem>
+                            <ComboBoxItem x:Uid="Views_ShowPage__FilterAll" Tag="All" IsSelected="True">All episodes</ComboBoxItem>
+                            <ComboBoxItem x:Uid="Views_ShowPage__FilterUnplayed" Tag="Unplayed">Unplayed</ComboBoxItem>
+                            <ComboBoxItem x:Uid="Views_ShowPage__FilterInProgress" Tag="InProgress">In progress</ComboBoxItem>
+                            <ComboBoxItem x:Uid="Views_ShowPage__FilterPlayed" Tag="Completed">Played</ComboBoxItem>
                         </ComboBox>
 
                         <ComboBox x:Name="SortCombo"
                                   Grid.Column="1"
                                   Width="140"
                                   SelectionChanged="SortCombo_SelectionChanged">
-                            <ComboBoxItem Tag="Newest" IsSelected="True">Newest first</ComboBoxItem>
-                            <ComboBoxItem Tag="Oldest">Oldest first</ComboBoxItem>
+                            <ComboBoxItem x:Uid="Views_ShowPage__SortNewest" Tag="Newest" IsSelected="True">Newest first</ComboBoxItem>
+                            <ComboBoxItem x:Uid="Views_ShowPage__SortOldest" Tag="Oldest">Oldest first</ComboBoxItem>
                         </ComboBox>
 
                         <TextBlock Grid.Column="2"
@@ -447,7 +449,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" Spacing="2">
-                                        <TextBlock Text="Listen next"
+                                        <TextBlock x:Uid="Views_ShowPage__ListenNextHeader" Text="Listen next"
                                                    Style="{StaticResource SubtitleTextBlockStyle}"
                                                    FontWeight="Bold"/>
                                         <TextBlock Text="{x:Bind ViewModel.ListeningSummaryLine, Mode=OneWay}"
@@ -463,7 +465,7 @@
                                             BorderThickness="0">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE768;" FontSize="12"/>
-                                            <TextBlock Text="Play next" FontSize="12" FontWeight="SemiBold"/>
+                                            <TextBlock x:Uid="Views_ShowPage__PlayNextText" Text="Play next" FontSize="12" FontWeight="SemiBold"/>
                                         </StackPanel>
                                     </Button>
                                 </Grid>
@@ -487,7 +489,7 @@
 
                                 <!-- "UP NEXT" eyebrow only when the banner is above; otherwise the
                                      section header alone tells the user what they're looking at. -->
-                                <TextBlock Text="UP NEXT"
+                                <TextBlock x:Uid="Views_ShowPage__UpNextEyebrow" Text="UP NEXT"
                                            FontSize="10"
                                            FontWeight="SemiBold"
                                            CharacterSpacing="120"
@@ -525,10 +527,10 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock Text="Episode archive"
+                                    <TextBlock x:Uid="Views_ShowPage__EpisodeArchiveHeader" Text="Episode archive"
                                                Style="{StaticResource SubtitleTextBlockStyle}"
                                                FontWeight="Bold"/>
-                                    <TextBlock Text="Search, filter, or jump into the full back catalog."
+                                    <TextBlock x:Uid="Views_ShowPage__EpisodeArchiveSubtitle" Text="Search, filter, or jump into the full back catalog."
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
@@ -541,10 +543,10 @@
                                         Visibility="{x:Bind ViewModel.NoEpisodesMatch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <FontIcon Glyph="&#xE721;" FontSize="32" Opacity="0.5"
                                           HorizontalAlignment="Center"/>
-                                <TextBlock Text="No episodes match these filters."
+                                <TextBlock x:Uid="Views_ShowPage__NoEpisodesMatch" Text="No episodes match these filters."
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            HorizontalAlignment="Center"/>
-                                <TextBlock Text="Try clearing the search box or switching the filter."
+                                <TextBlock x:Uid="Views_ShowPage__NoEpisodesHint" Text="Try clearing the search box or switching the filter."
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            HorizontalAlignment="Center"/>
@@ -579,6 +581,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0"
+                                               x:Uid="Views_ShowPage__MoreRecsHeader"
                                                Text="More podcasts you might like"
                                                Style="{StaticResource SubtitleTextBlockStyle}"
                                                FontWeight="Bold"
@@ -630,7 +633,7 @@
                     Padding="32"
                     x:Load="{x:Bind ViewModel.HasError, Mode=OneWay}">
             <FontIcon Glyph="&#xE783;" FontSize="36" Opacity="0.6" HorizontalAlignment="Center"/>
-            <TextBlock Text="We couldn't load this show."
+            <TextBlock x:Uid="Views_ShowPage__LoadError" Text="We couldn't load this show."
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
             <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"

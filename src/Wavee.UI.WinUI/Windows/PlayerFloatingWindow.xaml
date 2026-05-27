@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<winuiex:WindowEx
+<winuiex:WindowEx x:Uid="Windows_PlayerFloatingWindow__Auto_600"
     x:Class="Wavee.UI.WinUI.Floating.PlayerFloatingWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -48,7 +48,7 @@
             VerticalAlignment="Top"
             Margin="0,2,142,0"
             Canvas.ZIndex="20">
-            <ToggleButton x:Name="AlwaysOnTopButton"
+            <ToggleButton x:Uid="Windows_PlayerFloatingWindow__Auto_601" x:Name="AlwaysOnTopButton"
                           Width="34"
                           Height="28"
                           Padding="0"
@@ -79,7 +79,7 @@
                 </ToggleButton.Resources>
                 <FontIcon x:Name="AlwaysOnTopGlyph" Glyph="&#xE718;" FontSize="12" />
             </ToggleButton>
-            <Button x:Name="FullScreenButton"
+            <Button x:Uid="Windows_PlayerFloatingWindow__Auto_602" x:Name="FullScreenButton"
                     Width="34"
                     Height="28"
                     Padding="0"

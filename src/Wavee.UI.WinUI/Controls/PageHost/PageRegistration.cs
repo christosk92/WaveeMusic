@@ -41,6 +41,7 @@ internal static class PageRegistration
         PageRegistry.Register(() => new VideoPlayerPage());
 
         // App utility
+        PageRegistry.Register(() => new CrashRecoveryPage());
         PageRegistry.Register(() => new SettingsPage());
         PageRegistry.Register(() => new DebugPage());
         PageRegistry.Register(() => new FeedbackPage());

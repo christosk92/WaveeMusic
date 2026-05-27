@@ -27,7 +27,7 @@
                        TextAlignment="Center"
                        TextWrapping="Wrap"
                        Visibility="{x:Bind HasMessage, Mode=OneWay}"/>
-            <Button x:Name="RetryButton"
+            <Button x:Uid="Controls_PageErrorState__Auto_600" x:Name="RetryButton"
                     Content="Retry"
                     HorizontalAlignment="Center"
                     Click="OnRetryClicked"

@@ -183,7 +183,7 @@
                                 </Grid>
 
                                 <!--  Pin / Unpin button (Pinned-section rows + Liked Songs / Podcasts YL rows)  -->
-                                <Button
+                                <Button x:Uid="Controls_Sidebar_SidebarStyles__Auto_600"
                                     x:Name="PinButton"
                                     Grid.Column="4"
                                     Width="28"

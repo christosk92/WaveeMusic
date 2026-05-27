@@ -16,6 +16,7 @@ using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -203,7 +204,9 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             episode.ImageUrl);
     };
     public Func<int, string> PodcastEpisodeGroupCountFormatter { get; } = static count =>
-        count == 1 ? "1 episode" : $"{count:N0} episodes";
+        count == 1
+            ? AppLocalization.GetString("Count_Episode_One")
+            : AppLocalization.Format("Count_Episode_Many", count.ToString("N0"));
 
     public bool IsWideLayout => !UseNarrowLayout;
     public bool IsNarrowLayout => UseNarrowLayout;
@@ -222,23 +225,23 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     public bool CanSwitchPodcastEpisodeScope => CanLoadArchiveForShow(SelectedShow);
     public bool ShowEpisodeEmptyState => !HasError && !HasEpisodeGroups && !IsSelectedShowArchiveLoading && !IsLoading;
     public string LoadErrorDescription => string.IsNullOrWhiteSpace(ErrorMessage)
-        ? "Podcasts could not be loaded. Try again in a moment."
+        ? AppLocalization.GetString("Podcasts_LoadError")
         : ErrorMessage;
     public string EpisodeEmptyTitle => IsSelectedShowArchiveLoading
-        ? "Loading episodes"
+        ? AppLocalization.GetString("Podcasts_LoadingEpisodes")
         : CanSwitchPodcastEpisodeScope && _podcastEpisodeScope == PodcastEpisodeScope.Saved && SelectedShow is { HasSavedEpisodes: false }
-            ? "No saved episodes yet"
-            : "No saved episodes";
+            ? AppLocalization.GetString("Podcasts_NoSavedEpisodesYet")
+            : AppLocalization.GetString("Podcasts_NoSavedEpisodes");
 
     public string EpisodeEmptyDescription => IsSelectedShowArchiveLoading
-        ? "Fetching the latest episodes from this show."
+        ? AppLocalization.GetString("Podcasts_FetchingLatestDesc")
             : CanSwitchPodcastEpisodeScope && _podcastEpisodeScope == PodcastEpisodeScope.Saved
-                ? "Switch to Latest to browse this followed show's recent archive."
+                ? AppLocalization.GetString("Podcasts_SwitchToLatestDesc")
             : CanSwitchPodcastEpisodeScope
-                ? "Open the show page for the full archive, recommendations, and show details."
-            : "Followed shows appear here even before you save an episode.";
+                ? AppLocalization.GetString("Podcasts_OpenShowDesc")
+            : AppLocalization.GetString("Podcasts_FollowedShowsDesc");
 
-    public string SelectedEpisodeTitle => SelectedEpisodeDetail?.Title ?? SelectedEpisode?.Title ?? "Select an episode";
+    public string SelectedEpisodeTitle => SelectedEpisodeDetail?.Title ?? SelectedEpisode?.Title ?? AppLocalization.GetString("Podcasts_SelectEpisode");
     public string? SelectedEpisodeImageUrl => SelectedEpisodeDetail?.ImageUrl ?? SelectedEpisode?.ImageUrl;
     public string SelectedEpisodeShowName => SelectedEpisodeDetail?.ShowName ?? SelectedEpisode?.AlbumName ?? "";
     public string SelectedEpisodeMetadata => SelectedEpisodeDetail?.Metadata
@@ -265,7 +268,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             var duration = SelectedEpisodeDurationFormatted;
             if (!string.IsNullOrWhiteSpace(duration)) parts.Add(duration);
             var added = SelectedEpisodeAddedAt;
-            if (!string.IsNullOrWhiteSpace(added)) parts.Add($"Added {added}");
+            if (!string.IsNullOrWhiteSpace(added)) parts.Add(AppLocalization.Format("Podcasts_AddedPrefix", added));
             return string.Join(" • ", parts);
         }
     }
@@ -294,9 +297,9 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         {
             if (SelectedEpisodeDetail is not { } d || !HasResumeProgress) return "";
             var remaining = d.Duration - d.PlayedPosition;
-            if (remaining.TotalHours >= 1) return $"{(int)remaining.TotalHours} hr {remaining.Minutes} min left";
-            if (remaining.TotalMinutes >= 1) return $"{(int)remaining.TotalMinutes} min left";
-            return $"{(int)remaining.TotalSeconds} sec left";
+            if (remaining.TotalHours >= 1) return AppLocalization.Format("Duration_HoursMinutesLeft", (int)remaining.TotalHours, remaining.Minutes);
+            if (remaining.TotalMinutes >= 1) return AppLocalization.Format("Duration_MinutesLeft", (int)remaining.TotalMinutes);
+            return AppLocalization.Format("Duration_SecondsLeft", (int)remaining.TotalSeconds);
         }
     }
 
@@ -308,7 +311,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     public bool HasPreviewOnly => SelectedEpisodeDetail is { IsPlayable: false } d
         && !string.IsNullOrWhiteSpace(d.PreviewUrl);
     public string TranscriptLanguagesTooltip => SelectedEpisodeDetail is { } d && d.TranscriptLanguages.Count > 0
-        ? "Transcript: " + string.Join(", ", d.TranscriptLanguages)
+        ? AppLocalization.Format("Podcasts_TranscriptPrefix", string.Join(", ", d.TranscriptLanguages))
         : "";
 
     public bool CanOpenSelectedShow => SelectedShow is { IsAllPodcasts: false } show
@@ -329,10 +332,14 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             if (total <= 0)
             {
                 var loaded = GetVisibleEpisodes().Count;
-                return loaded == 1 ? "1 episode" : $"{loaded:N0} episodes";
+                return loaded == 1
+                    ? AppLocalization.GetString("Count_Episode_One")
+                    : AppLocalization.Format("Count_Episode_Many", loaded.ToString("N0"));
             }
 
-            return total == 1 ? "1 episode" : $"{total:N0} episodes";
+            return total == 1
+                ? AppLocalization.GetString("Count_Episode_One")
+                : AppLocalization.Format("Count_Episode_Many", total.ToString("N0"));
         }
     }
 
@@ -349,7 +356,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         get
         {
             if (IsSelectedShowArchiveLoading)
-                return "Loading episodes";
+                return AppLocalization.GetString("Podcasts_LoadingEpisodes");
 
             var visible = GetVisibleEpisodes().Count;
             if (visible <= 0)
@@ -357,9 +364,9 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
 
             var total = SelectedShowDetail?.TotalEpisodes ?? visible;
             if (total > visible)
-                return $"{visible:N0} of {total:N0} shown";
+                return AppLocalization.Format("Podcasts_VisibleOfTotalShown", visible.ToString("N0"), total.ToString("N0"));
 
-            return $"{visible:N0} available";
+            return AppLocalization.Format("Podcasts_VisibleAvailable", visible.ToString("N0"));
         }
     }
 
@@ -1070,8 +1077,10 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     private LibraryPodcastShowDto CreateAllPodcastsShow() => new()
     {
         Id = AllPodcastsShowId,
-        Name = "All Podcasts",
-        Publisher = TotalPodcasts == 1 ? "1 podcast" : $"{TotalPodcasts} podcasts",
+        Name = AppLocalization.GetString("Podcasts_AllPodcasts"),
+        Publisher = TotalPodcasts == 1
+            ? AppLocalization.GetString("Count_Podcast_One")
+            : AppLocalization.Format("Count_Podcast_Many", TotalPodcasts),
         EpisodeCount = TotalEpisodes,
         SavedEpisodeCount = TotalEpisodes,
         AddedAt = _allEpisodes.FirstOrDefault()?.AddedAt ?? DateTime.Now,
@@ -1087,8 +1096,8 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         return new LibraryPodcastShowDto
         {
             Id = RecentlyPlayedShowId,
-            Name = "Recently played",
-            Publisher = "From listening history",
+            Name = AppLocalization.GetString("Podcasts_RecentlyPlayed"),
+            Publisher = AppLocalization.GetString("Podcasts_FromHistory"),
             EpisodeCount = _recentEpisodes.Count,
             SavedEpisodeCount = _recentEpisodes.Count,
             AddedAt = _recentEpisodes.FirstOrDefault()?.AddedAt ?? DateTime.Now,

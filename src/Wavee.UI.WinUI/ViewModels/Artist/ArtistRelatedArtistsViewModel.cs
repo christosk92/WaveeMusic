@@ -35,12 +35,14 @@ public sealed partial class ArtistRelatedArtistsViewModel : ObservableObject, ID
             Name = ra.Name,
             ImageUrl = ra.ImageUrl
         }));
+        OnPropertyChanged(nameof(RelatedArtists));
         OnPropertyChanged(nameof(HasRelatedArtists));
     }
 
     public void ResetForNewArtist()
     {
-        _relatedArtists.Clear();
+        _relatedArtists.ClearWithoutNotify();
+        OnPropertyChanged(nameof(RelatedArtists));
         OnPropertyChanged(nameof(HasRelatedArtists));
     }
 

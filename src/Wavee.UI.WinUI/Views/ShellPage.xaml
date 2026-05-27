@@ -100,25 +100,28 @@
 
             <!-- Live connectivity banner — driven by IConnectivityService. -->
             <InfoBar x:Name="ReconnectingBar"
+                     x:Uid="Views_ShellPage__ReconnectingBar"
                      Title="Reconnecting…"
                      Message="Wavee lost its connection to Spotify and is retrying. Some features may be unavailable until you're back online."
                      Severity="Warning"
                      IsClosable="False"
                      IsOpen="{x:Bind ViewModel.Connectivity.IsReconnecting, Mode=OneWay}"/>
             <InfoBar x:Name="OfflineBar"
+                     x:Uid="Views_ShellPage__OfflineBar"
                      Title="You're offline"
                      Message="Wavee can't reach Spotify. Check your network connection — playback and library updates are paused until you reconnect."
                      Severity="Error"
                      IsClosable="False"
                      IsOpen="{x:Bind ViewModel.IsOfflineBannerOpen, Mode=OneWay}"/>
             <InfoBar x:Name="PremiumRequiredBar"
+                     x:Uid="Views_ShellPage__PremiumRequiredBar"
                      Title="Wavee requires Spotify Premium"
                      Message="Playback won't work with a free Spotify account. Upgrade to Premium or sign in with a Premium account to use Wavee."
                      Severity="Warning"
                      IsClosable="False"
                      IsOpen="{x:Bind ViewModel.IsPremiumRequiredBannerOpen, Mode=OneWay}">
                 <InfoBar.ActionButton>
-                    <Button Content="Get Premium" Click="OpenSpotifyPremium_Click"/>
+                    <Button x:Uid="Views_ShellPage__GetPremiumButton" Content="Get Premium" Click="OpenSpotifyPremium_Click"/>
                 </InfoBar.ActionButton>
             </InfoBar>
         </StackPanel>
@@ -328,6 +331,7 @@
 
         <TeachingTip
             x:Name="ShowVideoHereTeachingTip"
+            x:Uid="Views_ShellPage__ShowVideoHereTip"
             Grid.Row="2"
             Title="Show video here?"
             Subtitle="A video is playing. Show the mini player in this window?"
@@ -341,6 +345,7 @@
             Closed="ShowVideoHereTeachingTip_Closed">
             <CheckBox
                 x:Name="DoNotAskShowVideoHereCheckBox"
+                x:Uid="Views_ShellPage__DoNotAskCheckBox"
                 Content="Don't ask me again"/>
         </TeachingTip>
 

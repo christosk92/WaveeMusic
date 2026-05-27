@@ -53,7 +53,8 @@
                         Padding="7,1"
                         HorizontalAlignment="Left"
                         Background="{ThemeResource AccentFillColorTertiaryBrush}">
-                    <TextBlock Text="POPULAR NOW"
+                    <TextBlock x:Uid="Controls_Cards_PopularReleaseRow__PopularNow"
+                               Text="POPULAR NOW"
                                FontSize="9"
                                FontWeight="Bold"
                                CharacterSpacing="120"

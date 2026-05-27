@@ -14,6 +14,7 @@
     xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
     xmlns:transitions="using:CommunityToolkit.WinUI"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
+    xmlns:services="using:Wavee.UI.WinUI.Services"
     mc:Ignorable="d"
     Background="Transparent"
     waveeHelpers:PageEntranceFade.Fade="True">
@@ -150,13 +151,13 @@
                                         transitions:TransitionHelper.Id="profile-follow">
                                     <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"/>
                                 </Button>
-                                <Button Style="{StaticResource SubtleButtonStyle}"
+                                <Button x:Uid="Views_ProfilePage__Auto_600" Style="{StaticResource SubtleButtonStyle}"
                                         Width="40" Height="40" Padding="0" CornerRadius="20"
                                         ToolTipService.ToolTip="Share"
                                         Click="ShareProfile_Click">
                                     <FontIcon Glyph="&#xE72D;" FontSize="14"/>
                                 </Button>
-                                <Button Style="{StaticResource SubtleButtonStyle}"
+                                <Button x:Uid="Views_ProfilePage__Auto_601" Style="{StaticResource SubtleButtonStyle}"
                                         Width="40" Height="40" Padding="0" CornerRadius="20"
                                         ToolTipService.ToolTip="More">
                                     <FontIcon Glyph="&#xE712;" FontSize="14"/>
@@ -313,7 +314,7 @@
                                         <cards:ContentCard
                                             ImageUrl="{x:Bind ImageUrl}"
                                             Title="{x:Bind Name}"
-                                            Subtitle="Artist"
+                                            Subtitle="{x:Bind services:LocalizedStrings.ArtistSubtitle, Mode=OneTime}"
                                             PlaceholderGlyph="&#xE77B;"
                                             IsCircularImage="True"
                                             CenterText="True"
@@ -374,7 +375,7 @@
                                         <cards:ContentCard
                                             ImageUrl="{x:Bind ImageUrl}"
                                             Title="{x:Bind Name}"
-                                            Subtitle="Artist"
+                                            Subtitle="{x:Bind services:LocalizedStrings.ArtistSubtitle, Mode=OneTime}"
                                             PlaceholderGlyph="&#xE77B;"
                                             IsCircularImage="True"
                                             CenterText="True"
@@ -441,7 +442,7 @@
                                    TextTrimming="CharacterEllipsis"
                                    MaxLines="1"
                                    transitions:TransitionHelper.Id="profile-meta">
-                            <Run Text="{x:Bind ViewModel.PublicPlaylistCount, Mode=OneWay}"/><Run Text=" playlists · "/><Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}"/><Run Text=" following"/>
+                            <Run Text="{x:Bind ViewModel.PublicPlaylistCount, Mode=OneWay}"/><Run x:Uid="Views_ProfilePage__Auto_602" Text=" playlists · "/><Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}"/><Run x:Uid="Views_ProfilePage__Auto_603" Text=" following"/>
                         </TextBlock>
                     </StackPanel>
 

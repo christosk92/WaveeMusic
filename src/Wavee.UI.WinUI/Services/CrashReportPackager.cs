@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Threading.Tasks;
 using Wavee.UI.WinUI.Helpers.Application;
+using Windows.System;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -16,6 +19,7 @@ namespace Wavee.UI.WinUI.Services;
 /// </summary>
 public static class CrashReportPackager
 {
+    private const string GitHubIssuesNewUrl = "https://github.com/christosk92/WaveeMusic/issues/new";
     private const int MaxLogFiles = 5;
     private const long MaxIndividualFileBytes = 5 * 1024 * 1024;
 
@@ -120,6 +124,43 @@ public static class CrashReportPackager
             - **Arch:** {(Environment.Is64BitProcess ? "x64" : "x86")}
             - **Culture:** {System.Globalization.CultureInfo.CurrentUICulture.Name}
             """;
+
+    public static async Task OpenIssueReportAsync()
+    {
+        string? zipPath = null;
+        try
+        {
+            zipPath = await CreateZipAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"CrashReportPackager.CreateZipAsync failed: {ex}");
+        }
+
+        // Reveal the zip in File Explorer so the user can drag it onto the
+        // GitHub issue form. A missing zip (fresh install, no logs) just skips
+        // this step and still opens the issue form.
+        if (!string.IsNullOrEmpty(zipPath) && File.Exists(zipPath))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{zipPath}\"",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Explorer /select for {zipPath} failed: {ex}");
+            }
+        }
+
+        var body = BuildIssueBodyTemplate();
+        var url = $"{GitHubIssuesNewUrl}?body={WebUtility.UrlEncode(body)}";
+        await Launcher.LaunchUriAsync(new Uri(url));
+    }
 
     private static List<(string SourcePath, string EntryName)> CollectSourceFiles()
     {

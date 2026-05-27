@@ -19,7 +19,7 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
         <StackPanel Spacing="14">
             <!-- Artwork — drag-drop target -->
-            <Border CornerRadius="6" Width="160" Height="160"
+            <Border x:Uid="Controls_Local_LocalItemDetailFlyout__Auto_600" CornerRadius="6" Width="160" Height="160"
                     Background="{ThemeResource SubtleFillColorTertiaryBrush}"
                     HorizontalAlignment="Center"
                     ToolTipService.ToolTip="Drag an image file here to set cover art">
@@ -61,11 +61,11 @@
             </StackPanel>
 
             <!-- Save -->
-            <Button Content="Save changes" HorizontalAlignment="Stretch" Click="Save_Click"/>
+            <Button x:Uid="Controls_Local_LocalItemDetailFlyout__Auto_601" Content="Save changes" HorizontalAlignment="Stretch" Click="Save_Click"/>
 
             <!-- Subtitles -->
             <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.IsVideo, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Subtitles" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                <TextBlock x:Uid="Controls_Local_LocalItemDetailFlyout__Auto_602" Text="Subtitles" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
                 <ItemsControl ItemsSource="{x:Bind ViewModel.Subtitles}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:LocalSubtitle">
@@ -83,7 +83,7 @@
 
             <!-- Audio tracks -->
             <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.IsVideo, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Audio tracks" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                <TextBlock x:Uid="Controls_Local_LocalItemDetailFlyout__Auto_603" Text="Audio tracks" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
                 <ItemsControl ItemsSource="{x:Bind ViewModel.AudioTracks}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:LocalEmbeddedTrack">
@@ -110,7 +110,7 @@
                     <Run Text="{x:Bind ViewModel.Format, Mode=OneWay}"/>
                     <Run Text=" · "/>
                     <Run Text="{x:Bind ViewModel.FileSize, Mode=OneWay}"/>
-                    <Run Text=" bytes"/>
+                    <Run x:Uid="Controls_Local_LocalItemDetailFlyout__Auto_604" Text=" bytes"/>
                 </TextBlock>
             </StackPanel>
         </StackPanel>

@@ -59,6 +59,7 @@
                  56 px sidebar rail below. -->
             <Button
                 x:Name="SidebarToggleButton"
+                x:Uid="Controls_NavigationToolbar__SidebarToggleButton"
                 Style="{StaticResource NavigationButtonStyle}"
                 Width="48"
                 AutomationProperties.Name="Toggle sidebar"
@@ -235,7 +236,7 @@
                     Visibility="{x:Bind ShowSignInCta, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <FontIcon FontSize="14" Glyph="&#xE77B;"/>
-                        <TextBlock Text="Sign in" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock x:Uid="Controls_NavigationToolbar__SignInText" Text="Sign in" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
 
@@ -254,6 +255,7 @@
 
             <ToggleButton
                 x:Name="FriendsButton"
+                x:Uid="Controls_NavigationToolbar__FriendsButton"
                 Style="{StaticResource SubtleToggleButtonStyle}"
                 Width="36"
                 Height="32"
@@ -287,6 +289,7 @@
             <!-- Right Panel Toggle (accent foreground when panel is open) -->
             <ToggleButton
                 x:Name="RightPanelToggleButton"
+                x:Uid="Controls_NavigationToolbar__RightPanelToggleButton"
                 Style="{StaticResource SubtleToggleButtonStyle}"
                 Width="36"
                 Height="32"

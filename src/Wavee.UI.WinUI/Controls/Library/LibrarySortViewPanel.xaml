@@ -127,7 +127,7 @@
     </UserControl.Resources>
 
     <!-- Trigger: ghost DropDownButton that reflects current sort + direction + view. -->
-    <DropDownButton
+    <DropDownButton x:Uid="Controls_Library_LibrarySortViewPanel__Auto_600"
         x:Name="TriggerButton"
         Padding="10,6"
         MinWidth="0"
@@ -140,7 +140,7 @@
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                 <FontIcon Glyph="&#xE8CB;" FontSize="13"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                <TextBlock x:Name="TriggerSortLabel"
+                <TextBlock x:Uid="Controls_Library_LibrarySortViewPanel__Auto_601" x:Name="TriggerSortLabel"
                            Text="Recents"
                            FontSize="12"
                            VerticalAlignment="Center"/>
@@ -174,7 +174,7 @@
                 <StackPanel MinWidth="260" Padding="8">
 
                     <!-- Sort by section -->
-                    <TextBlock Text="Sort by"
+                    <TextBlock x:Uid="Controls_Library_LibrarySortViewPanel__Auto_602" Text="Sort by"
                                Style="{StaticResource BodyStrongTextBlockStyle}"
                                FontSize="14"
                                Padding="8,6,8,6"/>
@@ -187,7 +187,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Recents" VerticalAlignment="Center"/>
+                                <TextBlock x:Uid="Controls_Library_LibrarySortViewPanel__Auto_603" Grid.Column="0" Text="Recents" VerticalAlignment="Center"/>
                                 <FontIcon Grid.Column="1" x:Name="SortRecentsCheck" Glyph="&#xE73E;" FontSize="14"
                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="Collapsed"/>
                                 <FontIcon Grid.Column="2" x:Name="SortRecentsDir" Glyph="&#xE74B;" FontSize="12"
@@ -202,7 +202,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Recently added" VerticalAlignment="Center"/>
+                                <TextBlock x:Uid="Controls_Library_LibrarySortViewPanel__Auto_604" Grid.Column="0" Text="Recently added" VerticalAlignment="Center"/>
                                 <FontIcon Grid.Column="1" x:Name="SortRecentlyAddedCheck" Glyph="&#xE73E;" FontSize="14"
                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="Collapsed"/>
                                 <FontIcon Grid.Column="2" x:Name="SortRecentlyAddedDir" Glyph="&#xE74B;" FontSize="12"
@@ -217,7 +217,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Alphabetical" VerticalAlignment="Center"/>
+                                <TextBlock x:Uid="Controls_Library_LibrarySortViewPanel__Auto_605" Grid.Column="0" Text="Alphabetical" VerticalAlignment="Center"/>
                                 <FontIcon Grid.Column="1" x:Name="SortAlphabeticalCheck" Glyph="&#xE73E;" FontSize="14"
                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="Collapsed"/>
                                 <FontIcon Grid.Column="2" x:Name="SortAlphabeticalDir" Glyph="&#xE74B;" FontSize="12"
@@ -232,7 +232,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Creator" VerticalAlignment="Center"/>
+                                <TextBlock x:Uid="Controls_Library_LibrarySortViewPanel__Auto_606" Grid.Column="0" Text="Creator" VerticalAlignment="Center"/>
                                 <FontIcon Grid.Column="1" x:Name="SortCreatorCheck" Glyph="&#xE73E;" FontSize="14"
                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="Collapsed"/>
                                 <FontIcon Grid.Column="2" x:Name="SortCreatorDir" Glyph="&#xE74B;" FontSize="12"
@@ -247,7 +247,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Release date" VerticalAlignment="Center"/>
+                                <TextBlock x:Uid="Controls_Library_LibrarySortViewPanel__Auto_607" Grid.Column="0" Text="Release date" VerticalAlignment="Center"/>
                                 <FontIcon Grid.Column="1" x:Name="SortReleaseDateCheck" Glyph="&#xE73E;" FontSize="14"
                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="Collapsed"/>
                                 <FontIcon Grid.Column="2" x:Name="SortReleaseDateDir" Glyph="&#xE74B;" FontSize="12"
@@ -259,31 +259,31 @@
                     <MenuFlyoutSeparator Margin="0,6"/>
 
                     <!-- View as section -->
-                    <TextBlock Text="View as"
+                    <TextBlock x:Uid="Controls_Library_LibrarySortViewPanel__Auto_608" Text="View as"
                                Style="{StaticResource BodyStrongTextBlockStyle}"
                                FontSize="14"
                                Padding="8,6,8,6"/>
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="4" Padding="8,4,8,8">
-                        <ToggleButton x:Name="ViewCompactList"
+                        <ToggleButton x:Uid="Controls_Library_LibrarySortViewPanel__Auto_609" x:Name="ViewCompactList"
                                       Style="{StaticResource ViewModeToggleStyle}"
                                       Click="ViewToggle_Click"
                                       ToolTipService.ToolTip="Compact list">
                             <FontIcon Glyph="&#xE8FD;" FontSize="14"/>
                         </ToggleButton>
-                        <ToggleButton x:Name="ViewDefaultList"
+                        <ToggleButton x:Uid="Controls_Library_LibrarySortViewPanel__Auto_610" x:Name="ViewDefaultList"
                                       Style="{StaticResource ViewModeToggleStyle}"
                                       Click="ViewToggle_Click"
                                       ToolTipService.ToolTip="List">
                             <FontIcon Glyph="&#xE14C;" FontSize="14"/>
                         </ToggleButton>
-                        <ToggleButton x:Name="ViewCompactGrid"
+                        <ToggleButton x:Uid="Controls_Library_LibrarySortViewPanel__Auto_611" x:Name="ViewCompactGrid"
                                       Style="{StaticResource ViewModeToggleStyle}"
                                       Click="ViewToggle_Click"
                                       ToolTipService.ToolTip="Compact grid">
                             <FontIcon Glyph="&#xE80A;" FontSize="14"/>
                         </ToggleButton>
-                        <ToggleButton x:Name="ViewDefaultGrid"
+                        <ToggleButton x:Uid="Controls_Library_LibrarySortViewPanel__Auto_612" x:Name="ViewDefaultGrid"
                                       Style="{StaticResource ViewModeToggleStyle}"
                                       Click="ViewToggle_Click"
                                       ToolTipService.ToolTip="Grid">
@@ -299,7 +299,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Size"
+                            <TextBlock x:Uid="Controls_Library_LibrarySortViewPanel__Auto_613" Grid.Column="0" Text="Size"
                                        VerticalAlignment="Center"
                                        FontSize="13"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>

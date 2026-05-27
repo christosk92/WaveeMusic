@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls;
 
@@ -21,7 +22,7 @@ public static class CloseTabsDialog
     {
         var askToggle = new ToggleSwitch
         {
-            Header = "Always ask me this",
+            Header = AppLocalization.GetString("CloseTabs_AlwaysAsk"),
             IsOn = alwaysAsk,
             Margin = new Thickness(0, 12, 0, 0)
         };
@@ -33,7 +34,7 @@ public static class CloseTabsDialog
             {
                 new TextBlock
                 {
-                    Text = "Do you want to save your open tabs for the next launch, discard them, or cancel closing?",
+                    Text = AppLocalization.GetString("CloseTabs_Question"),
                     TextWrapping = TextWrapping.Wrap
                 },
                 askToggle
@@ -42,11 +43,11 @@ public static class CloseTabsDialog
 
         var dialog = new ContentDialog
         {
-            Title = "Close Wavee",
+            Title = AppLocalization.GetString("CloseTabs_Title"),
             Content = content,
-            PrimaryButtonText = "Save Tabs",
-            SecondaryButtonText = "Discard Tabs",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = AppLocalization.GetString("CloseTabs_SaveTabs"),
+            SecondaryButtonText = AppLocalization.GetString("CloseTabs_DiscardTabs"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = xamlRoot,
             RequestedTheme = ResolveTheme(xamlRoot),

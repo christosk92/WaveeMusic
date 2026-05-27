@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.WinUI.Controls.Imaging;
 using Wavee.UI.WinUI.Controls.TabBar;
 
 namespace Wavee.UI.WinUI.Services;
@@ -94,6 +95,16 @@ internal sealed class UiHealthMonitor : IDisposable
     private int _ticksSinceShimmerSample;
     private int _lastShimmerCount;
     private long _lastShimmerWarnTimestamp;
+
+    // CompositionImage live-peer counter. Same cadence as the Shimmer sample.
+    // "Total" is every CompositionImage that has been OnLoaded since startup
+    // (weak refs, pruned on read); "WithLivePeer" excludes those whose
+    // composition resources have been torn down (nav-cache release or the
+    // deferred OnUnloaded release). A high TotalLivePeer count points at
+    // ItemsRepeater recycle pools or cached-page items the release walk missed.
+    private int _lastCompositionImageTotal;
+    private int _lastCompositionImageWithLivePeer;
+    private long _lastCompositionImageBytes;
 
     public UiHealthMonitor(DispatcherQueue dispatcherQueue, ILogger? logger = null)
     {
@@ -265,9 +276,14 @@ internal sealed class UiHealthMonitor : IDisposable
             return;
         _ticksSinceShimmerSample = 0;
 
-        var count = NavCacheSurfaces.GetLiveShimmerCount();
-        _lastShimmerCount = count;
-        if (count < ShimmerWarnThreshold)
+        _lastShimmerCount = NavCacheSurfaces.GetLiveShimmerCount();
+
+        var (total, withPeer, bytes) = CompositionImage.GetDiagnosticCounts();
+        _lastCompositionImageTotal = total;
+        _lastCompositionImageWithLivePeer = withPeer;
+        _lastCompositionImageBytes = bytes;
+
+        if (_lastShimmerCount < ShimmerWarnThreshold)
             return;
 
         if (_lastShimmerWarnTimestamp != 0
@@ -277,7 +293,7 @@ internal sealed class UiHealthMonitor : IDisposable
         _lastShimmerWarnTimestamp = timestamp;
         _logger?.LogWarning(
             "Live Shimmer count {Count} exceeds threshold {Threshold} — cached-page skeleton trees likely leaking; expect inflated working-set",
-            count, ShimmerWarnThreshold);
+            _lastShimmerCount, ShimmerWarnThreshold);
     }
 
     private UiDegradationDetectedEventArgs? EvaluateDegradationLocked(double elapsedMs, long timestamp)
@@ -384,6 +400,9 @@ internal sealed class UiHealthMonitor : IDisposable
                     WorkingSetMb = workingSetMb,
                     PrivateMb = privateMb,
                     LiveShimmerCount = _lastShimmerCount,
+                    CompositionImageTotal = _lastCompositionImageTotal,
+                    CompositionImageWithLivePeer = _lastCompositionImageWithLivePeer,
+                    CompositionImageEstimatedSurfaceBytes = _lastCompositionImageBytes,
                 };
             }
         }
@@ -426,6 +445,8 @@ internal sealed class UiHealthMonitor : IDisposable
         sb.AppendLine($"Gen0: {s.GcGen0}  Gen1: {s.GcGen1}  Gen2: {s.GcGen2}  Gen2-during-stalls: {s.Gen2DuringStalls}");
         sb.AppendLine($"Managed: {s.ManagedMb:F1} MB  Working set: {s.WorkingSetMb:F1} MB  Private: {s.PrivateMb:F1} MB");
         sb.AppendLine($"Live Shimmer instances: {s.LiveShimmerCount} (warn at >= {ShimmerWarnThreshold})");
+        sb.AppendLine(
+            $"CompositionImage: total={s.CompositionImageTotal} withLivePeer={s.CompositionImageWithLivePeer} estSurfaceMB={s.CompositionImageEstimatedSurfaceBytes / 1048576.0:F1}");
 
         // Append profiler stats if available
         UiOperationProfiler.Instance?.AppendReport(sb);
@@ -472,6 +493,9 @@ internal sealed class UiHealthMonitor : IDisposable
             _ticksSinceShimmerSample = 0;
             _lastShimmerCount = 0;
             _lastShimmerWarnTimestamp = 0;
+            _lastCompositionImageTotal = 0;
+            _lastCompositionImageWithLivePeer = 0;
+            _lastCompositionImageBytes = 0;
         }
         UiOperationProfiler.Instance?.Reset();
     }
@@ -497,6 +521,9 @@ internal record struct UiHealthStats
     public double WorkingSetMb { get; init; }
     public double PrivateMb { get; init; }
     public int LiveShimmerCount { get; init; }
+    public int CompositionImageTotal { get; init; }
+    public int CompositionImageWithLivePeer { get; init; }
+    public long CompositionImageEstimatedSurfaceBytes { get; init; }
 }
 
 internal sealed record UiDegradationDetectedEventArgs(

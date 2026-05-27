@@ -2013,10 +2013,10 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     {
         var dialog = new ContentDialog
         {
-            Title = "Leave playlist?",
-            Content = $"You'll lose access to \"{ViewModel.Header.PlaylistName}\". You can rejoin if the owner shares a new invite link.",
-            PrimaryButtonText = "Leave",
-            CloseButtonText = "Cancel",
+            Title = AppLocalization.GetString("Playlist_LeaveTitle"),
+            Content = AppLocalization.Format("Playlist_LeaveContent", ViewModel.Header.PlaylistName),
+            PrimaryButtonText = AppLocalization.GetString("Dialog_Leave"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = this.XamlRoot
         };
@@ -2045,10 +2045,10 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     {
         var dialog = new ContentDialog
         {
-            Title = "Delete playlist?",
-            Content = $"\"{ViewModel.Header.PlaylistName}\" will be removed from your library. This cannot be undone.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
+            Title = AppLocalization.GetString("Playlist_DeleteTitle"),
+            Content = AppLocalization.Format("Playlist_DeleteContent", ViewModel.Header.PlaylistName),
+            PrimaryButtonText = AppLocalization.GetString("Dialog_Delete"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = this.XamlRoot
         };

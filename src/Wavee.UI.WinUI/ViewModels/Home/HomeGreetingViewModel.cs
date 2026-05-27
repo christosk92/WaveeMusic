@@ -3,6 +3,7 @@ using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Dispatching;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels.Home;
 
@@ -25,10 +26,10 @@ public sealed partial class HomeGreetingViewModel : ObservableObject, IDisposabl
     private bool _attached;
 
     [ObservableProperty]
-    private string _text = "Good morning";
+    private string _text = AppLocalization.GetString("Home_Greeting_Morning");
 
     [ObservableProperty]
-    private string _subtitle = "What do you feel like?";
+    private string _subtitle = AppLocalization.GetString("Home_Greeting_Subtitle");
 
     public HomeGreetingViewModel(IAuthState? authState)
     {
@@ -90,9 +91,9 @@ public sealed partial class HomeGreetingViewModel : ObservableObject, IDisposabl
         var hour = DateTime.Now.Hour;
         Text = hour switch
         {
-            < 12 => "Good morning",
-            < 18 => "Good afternoon",
-            _ => "Good evening"
+            < 12 => AppLocalization.GetString("Home_Greeting_Morning"),
+            < 18 => AppLocalization.GetString("Home_Greeting_Afternoon"),
+            _ => AppLocalization.GetString("Home_Greeting_Evening")
         };
     }
 

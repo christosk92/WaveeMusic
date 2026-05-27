@@ -60,6 +60,7 @@
                             BorderBrush="#22FFFFFF"
                             BorderThickness="1">
                         <TextBlock x:Name="PillText"
+                                   x:Uid="Controls_Cards_EditorialHeroCard__PillText"
                                    Text="Continue where you left off"
                                    Foreground="White"
                                    Opacity="0.9"

@@ -54,7 +54,8 @@ public sealed class WinUiArtistAiToolProvider : IArtistAiToolProvider
                 t.AlbumUri,
                 t.AlbumImageUrl,
                 t.PlayCount,
-                Year: null))
+                Year: null,
+                ArtistNames: SplitArtistNames(t.ArtistNames)))
             .Take(50)
             .ToList();
     }
@@ -135,10 +136,21 @@ public sealed class WinUiArtistAiToolProvider : IArtistAiToolProvider
                     track.PlayCount,
                     release.Year,
                     release.ReleaseDate,
-                    track.TrackNumber));
+                    track.TrackNumber,
+                    ArtistNames: track.Artists is { Count: > 0 }
+                        ? track.Artists.Select(a => a.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList()
+                        : SplitArtistNames(track.ArtistName)));
             }
         }
 
         return results.Take(300).ToList();
     }
+
+    private static IReadOnlyList<string> SplitArtistNames(string? artistNames)
+        => string.IsNullOrWhiteSpace(artistNames)
+            ? []
+            : artistNames
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
 }

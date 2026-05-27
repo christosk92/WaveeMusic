@@ -53,6 +53,7 @@
                         VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <TextBlock x:Name="EyebrowTextBlock"
+                               x:Uid="Controls_Artist_ArtistSummaryCard__Eyebrow"
                                Text="ABOUT THE ARTIST"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                FontWeight="SemiBold"
@@ -61,7 +62,7 @@
                     <!-- Sparkle is only visible when the bio shown is the
                          on-device AI summary (Spotify's bio was empty and
                          Phi Silica filled in). Tooltip explains it. -->
-                    <ic:SymbolIcon x:Name="AiSparkle"
+                    <ic:SymbolIcon x:Uid="Controls_Artist_ArtistSummaryCard__Auto_600" x:Name="AiSparkle"
                                    Symbol="Sparkle"
                                    IconVariant="Filled"
                                    FontSize="11"

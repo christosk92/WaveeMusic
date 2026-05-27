@@ -11,7 +11,7 @@
 
     <ScrollView>
         <StackPanel x:Name="SettingsGroupsRoot" Spacing="6" Padding="0,12,0,24">
-            <settings:SettingsGroupHeader Title="Appearance"
+            <settings:SettingsGroupHeader x:Uid="Controls_Settings_GeneralSettingsSection__Auto_600" Title="Appearance"
                                           Description="Choose how Wavee follows your Windows theme."
                                           IconGlyph="&#xE790;"
                                           Tag="appearance"/>
@@ -29,7 +29,7 @@
                 </ComboBox>
             </controls:SettingsCard>
 
-            <settings:SettingsGroupHeader Title="Language &amp; metadata"
+            <settings:SettingsGroupHeader x:Uid="Controls_Settings_GeneralSettingsSection__Auto_601" Title="Language &amp; metadata"
                                           Description="Control the app language and the language used for Spotify catalog text."
                                           IconGlyph="&#xE774;"
                                           Tag="language"/>
@@ -69,7 +69,7 @@
                 </StackPanel>
             </controls:SettingsCard>
 
-            <settings:SettingsGroupHeader Title="Display scale"
+            <settings:SettingsGroupHeader x:Uid="Controls_Settings_GeneralSettingsSection__Auto_602" Title="Display scale"
                                           Description="Tune density and zoom for track lists, library shelves, and settings controls."
                                           IconGlyph="&#xE8A3;"
                                           Tag="display"/>

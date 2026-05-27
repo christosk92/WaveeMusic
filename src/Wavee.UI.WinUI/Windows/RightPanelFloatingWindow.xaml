@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<winuiex:WindowEx
+<winuiex:WindowEx x:Uid="Windows_RightPanelFloatingWindow__Auto_600"
     x:Class="Wavee.UI.WinUI.Floating.RightPanelFloatingWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

@@ -25,7 +25,7 @@
         expressions; consumers just drop the control in and set
         ButtonSize / IconSize.
     -->
-    <Button x:Name="ButtonRoot"
+    <Button x:Uid="Controls_Playback_WatchVideoButton__Auto_600" x:Name="ButtonRoot"
             Style="{StaticResource TransparentButtonStyle}"
             Width="{x:Bind ButtonSize, Mode=OneWay}"
             Height="{x:Bind ButtonSize, Mode=OneWay}"

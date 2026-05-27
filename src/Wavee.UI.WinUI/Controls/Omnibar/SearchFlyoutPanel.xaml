@@ -290,7 +290,7 @@
                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                MaxLines="3"/>
                 </StackPanel>
-                <Button x:Name="RetryButton"
+                <Button x:Uid="Controls_Omnibar_SearchFlyoutPanel__Auto_600" x:Name="RetryButton"
                         Content="Retry"
                         HorizontalAlignment="Left"
                         Click="RetryButton_Click"/>

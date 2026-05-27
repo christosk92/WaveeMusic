@@ -74,7 +74,7 @@
                          Text="{x:Bind QueryText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          KeyDown="OnQueryInputKeyDown"/>
 
-                <Button Grid.Column="2"
+                <Button x:Uid="Controls_InPageFilter_InPageFilterOverlay__Auto_600" Grid.Column="2"
                         x:Name="CloseButton"
                         Width="28" Height="28"
                         Padding="0"

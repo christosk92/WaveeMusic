@@ -25,19 +25,19 @@
             <NavigationViewItem x:Name="ConfigurationItem" Tag="configuration">
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon Width="18" Glyph="&#xE713;" FontSize="15"/>
-                    <TextBlock Text="Configuration"/>
+                    <TextBlock x:Uid="Controls_Settings_DiagnosticsSettingsSection__Auto_600" Text="Configuration"/>
                 </StackPanel>
             </NavigationViewItem>
             <NavigationViewItem x:Name="LoggingItem" Tag="logging">
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon Width="18" Glyph="&#xE9D9;" FontSize="15"/>
-                    <TextBlock Text="Logging"/>
+                    <TextBlock x:Uid="Controls_Settings_DiagnosticsSettingsSection__Auto_601" Text="Logging"/>
                 </StackPanel>
             </NavigationViewItem>
             <NavigationViewItem x:Name="ConnectUpdatesItem" Tag="connect-updates">
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon Width="18" Glyph="&#xE703;" FontSize="15"/>
-                    <TextBlock Text="Connect Updates"/>
+                    <TextBlock x:Uid="Controls_Settings_DiagnosticsSettingsSection__Auto_602" Text="Connect Updates"/>
                 </StackPanel>
             </NavigationViewItem>
         </NavigationView.MenuItems>

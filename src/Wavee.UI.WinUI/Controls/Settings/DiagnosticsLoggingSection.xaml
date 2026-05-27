@@ -20,7 +20,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <controls:SettingsCard Grid.Row="0"
+        <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsLoggingSection__Auto_600" Grid.Row="0"
                                Header="Verbose logging"
                                Tag="logs"
                                Description="Captures detailed diagnostic output to the rolling log file. Useful for bug reports. Restart the app for the audio engine to pick up the change.">

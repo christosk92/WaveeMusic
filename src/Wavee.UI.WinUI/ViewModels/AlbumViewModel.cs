@@ -81,6 +81,9 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     private bool _isSaved;
     private bool _isLoading;
     private bool _isLoadingTracks;
+    private bool _isArtistSummaryLoading;
+    private bool _isSimilarArtistsLoading;
+    private bool _isMoreByArtistLoading;
     private bool _hasError;
     private string? _errorMessage;
 
@@ -169,7 +172,8 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         nameof(AlbumType), nameof(AlbumTypeUpper), nameof(Label), nameof(ReleaseDateFormatted),
         nameof(CopyrightsText), nameof(IsPreRelease), nameof(PreReleaseEndDateTime),
         nameof(PreReleaseFormatted), nameof(PreReleaseRelative), nameof(ShareUrl), nameof(CanShare),
-        nameof(MetaInlineLine), nameof(Palette)
+        nameof(MetaInlineLine), nameof(Palette), nameof(HasArtistAboutCard),
+        nameof(ShowArtistSummarySkeleton), nameof(ShowArtistSummaryCard)
     ];
 
     private void RaiseAlbumEnvelopeDependents()
@@ -342,6 +346,45 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     /// related shelves don't appear floating below skeleton track rows.
     /// </summary>
     public bool IsContentReady => !_isLoading && !_isLoadingTracks;
+
+    public bool IsArtistSummaryLoading
+    {
+        get => _isArtistSummaryLoading;
+        private set
+        {
+            if (SetProperty(ref _isArtistSummaryLoading, value))
+            {
+                OnPropertyChanged(nameof(ShowArtistSummarySkeleton));
+                OnPropertyChanged(nameof(ShowArtistSummaryCard));
+            }
+        }
+    }
+
+    public bool IsSimilarArtistsLoading
+    {
+        get => _isSimilarArtistsLoading;
+        private set
+        {
+            if (SetProperty(ref _isSimilarArtistsLoading, value))
+            {
+                OnPropertyChanged(nameof(ShowSimilarArtistsSkeleton));
+                OnPropertyChanged(nameof(ShowSimilarArtistsPanel));
+            }
+        }
+    }
+
+    public bool IsMoreByArtistLoading
+    {
+        get => _isMoreByArtistLoading;
+        private set
+        {
+            if (SetProperty(ref _isMoreByArtistLoading, value))
+            {
+                OnPropertyChanged(nameof(ShowMoreByArtistSkeleton));
+                OnPropertyChanged(nameof(ShowMoreByArtistPanel));
+            }
+        }
+    }
 
     /// <summary>
     /// Whether an error occurred during loading.
@@ -520,8 +563,15 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     public bool HasMoreByArtist
     {
         get => _hasMoreByArtist;
-        private set => SetProperty(ref _hasMoreByArtist, value);
+        private set
+        {
+            if (SetProperty(ref _hasMoreByArtist, value))
+                OnPropertyChanged(nameof(ShowMoreByArtistPanel));
+        }
     }
+
+    public bool ShowMoreByArtistSkeleton => IsMoreByArtistLoading;
+    public bool ShowMoreByArtistPanel => !IsMoreByArtistLoading && HasMoreByArtist;
 
     private bool _hasNoRelatedAlbums;
     public bool HasNoRelatedAlbums
@@ -568,8 +618,15 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     public bool HasSimilarArtists
     {
         get => _hasSimilarArtists;
-        private set => SetProperty(ref _hasSimilarArtists, value);
+        private set
+        {
+            if (SetProperty(ref _hasSimilarArtists, value))
+                OnPropertyChanged(nameof(ShowSimilarArtistsPanel));
+        }
     }
+
+    public bool ShowSimilarArtistsSkeleton => IsSimilarArtistsLoading;
+    public bool ShowSimilarArtistsPanel => !IsSimilarArtistsLoading && HasSimilarArtists;
 
     /// <summary>~150 char excerpt of the primary artist's biography — mini About card.</summary>
     private string? _artistBioExcerpt;
@@ -646,6 +703,8 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     /// having a valid <see cref="ArtistId"/>. Avatar / bio gracefully fall
     /// back to placeholders inside the card when missing.</summary>
     public bool HasArtistAboutCard => !string.IsNullOrEmpty(ArtistId) && !string.IsNullOrEmpty(ArtistName);
+    public bool ShowArtistSummarySkeleton => IsArtistSummaryLoading && HasArtistAboutCard;
+    public bool ShowArtistSummaryCard => !IsArtistSummaryLoading && HasArtistAboutCard;
 
     /// <summary>True when the album's lead track has at least one music-video association.
     /// Used to gate the "Watch the official video" CTA on single-track releases.</summary>
@@ -735,8 +794,15 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
     public string? MetaInlineLine => Album?.MetaInlineLine;
 
-    /// <summary>"ALBUM" / "SINGLE" / "EP" / "COMPILATION", upper-cased for the hero pill.</summary>
-    public string AlbumTypeUpper => AlbumType?.ToUpperInvariant() ?? "ALBUM";
+    /// <summary>"ALBUM" / "SINGLE" / "EP" / "COMPILATION", localized + upper-cased for the hero pill.</summary>
+    public string AlbumTypeUpper => AlbumType?.ToLowerInvariant() switch
+    {
+        "single" => AppLocalization.GetString("AlbumType_Single"),
+        "ep" => AppLocalization.GetString("AlbumType_EP"),
+        "compilation" => AppLocalization.GetString("AlbumType_Compilation"),
+        "soundtrack" => AppLocalization.GetString("AlbumType_Soundtrack"),
+        _ => AppLocalization.GetString("AlbumType_Album"),
+    };
 
     /// <summary>
     /// Filtered and sorted tracks for UI binding. Stable instance — mutate via
@@ -1007,7 +1073,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         AlbumId = albumId;
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Album, albumId)
         {
-            Title = "Album"
+            Title = AppLocalization.GetString("TabTitle_Album")
         };
         if (preserveHeaderPrefill)
             UpdateTabTitle();
@@ -1066,8 +1132,24 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         ClearSecondaryAlbumSections();
     }
 
+    private void BeginSecondaryAlbumSectionLoading()
+    {
+        IsArtistSummaryLoading = true;
+        IsSimilarArtistsLoading = true;
+        IsMoreByArtistLoading = true;
+    }
+
+    private void EndSecondaryAlbumSectionLoading()
+    {
+        IsArtistSummaryLoading = false;
+        IsSimilarArtistsLoading = false;
+        IsMoreByArtistLoading = false;
+    }
+
     private void ClearSecondaryAlbumSections()
     {
+        BeginSecondaryAlbumSectionLoading();
+
         _alternateReleases.ClearWithoutNotify();
         OnPropertyChanged(nameof(AlternateReleases));
         HasAlternateReleases = false;
@@ -1335,15 +1417,17 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     {
         var ts = TimeSpan.FromSeconds(totalSeconds);
         if (ts.TotalHours >= 1)
-            return $"{(int)ts.TotalHours} hr {ts.Minutes} min";
-        return $"{ts.Minutes} min";
+            return AppLocalization.Format("Duration_HoursMinutes", (int)ts.TotalHours, ts.Minutes);
+        return AppLocalization.Format("Duration_Minutes", ts.Minutes);
     }
 
     /// <summary>"12 songs · 38 min · 1980" — null parts are skipped.</summary>
     private static string BuildMetaInlineLine(int trackCount, double totalSeconds, int year)
     {
         var parts = new List<string>(3);
-        if (trackCount > 0) parts.Add(trackCount == 1 ? "1 song" : $"{trackCount} songs");
+        if (trackCount > 0) parts.Add(trackCount == 1
+            ? AppLocalization.GetString("Count_Song_One")
+            : AppLocalization.Format("Count_Song_Many", trackCount));
         if (totalSeconds > 0) parts.Add(FormatDuration(totalSeconds));
         if (year > 0) parts.Add(year.ToString());
         return string.Join(" · ", parts);
@@ -1359,24 +1443,30 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             return (null, null);
 
         var local = releaseAt.Value.ToLocalTime();
-        var formatted = $"Coming {local:dddd, MMMM d} at {local:HH:mm}";
+        var formatted = AppLocalization.Format("Album_PreRelease_Coming", local.ToString("dddd, MMMM d"), local.ToString("HH:mm"));
 
         var delta = local - DateTimeOffset.Now;
         string relative;
         if (delta.TotalDays >= 1)
         {
             var days = (int)Math.Ceiling(delta.TotalDays);
-            relative = days == 1 ? "in 1 day" : $"in {days} days";
+            relative = days == 1
+                ? AppLocalization.GetString("Relative_InOneDay")
+                : AppLocalization.Format("Relative_InDays", days);
         }
         else if (delta.TotalHours >= 1)
         {
             var hours = (int)Math.Ceiling(delta.TotalHours);
-            relative = hours == 1 ? "in 1 hour" : $"in {hours} hours";
+            relative = hours == 1
+                ? AppLocalization.GetString("Relative_InOneHour")
+                : AppLocalization.Format("Relative_InHours", hours);
         }
         else
         {
             var minutes = Math.Max(1, (int)Math.Ceiling(delta.TotalMinutes));
-            relative = minutes == 1 ? "in 1 minute" : $"in {minutes} minutes";
+            relative = minutes == 1
+                ? AppLocalization.GetString("Relative_InOneMinute")
+                : AppLocalization.Format("Relative_InMinutes", minutes);
         }
 
         return (formatted, relative);
@@ -1649,6 +1739,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
                 // skeleton avoids constructing placeholder TrackItems before this.
                 ApplyFilterAndSort();
 
+                BeginSecondaryAlbumSectionLoading();
                 _ = ApplySecondaryAlbumSectionsAsync(detail, albumId);
             }).ConfigureAwait(false);
         }
@@ -1872,6 +1963,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
                 _moreByArtist.ReplaceWith(detail.MoreByArtist);
                 HasMoreByArtist = MoreByArtist.Count > 0;
                 HasNoRelatedAlbums = !HasMoreByArtist;
+                IsMoreByArtistLoading = false;
             }).ConfigureAwait(false);
 
             await Task.Yield();
@@ -1907,12 +1999,16 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
                     var multiTrackArtistUri = detail.Artists.FirstOrDefault()?.Uri;
                     if (!string.IsNullOrEmpty(multiTrackArtistUri))
                         _ = LoadArtistContextAsync(albumId, multiTrackArtistUri);
+                    else
+                        IsSimilarArtistsLoading = false;
                 }
 
                 var npvArtistUri = detail.Artists.FirstOrDefault()?.Uri;
                 var npvLeadTrackUri = (_allTracks.FirstOrDefault()?.Data as AlbumTrackDto)?.Uri;
                 if (!string.IsNullOrEmpty(npvArtistUri) && !string.IsNullOrEmpty(npvLeadTrackUri))
                     _ = LoadArtistNpvAsync(albumId, npvArtistUri, npvLeadTrackUri);
+                else
+                    IsArtistSummaryLoading = false;
 
                 RefreshArtistFollowState();
                 _ = LoadRecommendedPlaylistsAsync(albumId);
@@ -1925,6 +2021,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         }
         catch (Exception ex)
         {
+            await RunCurrentAlbumUiAsync(albumId, EndSecondaryAlbumSectionLoading).ConfigureAwait(false);
             _logger?.LogDebug(ex, "ApplySecondaryAlbumSectionsAsync failed for {AlbumId}", albumId);
         }
     }
@@ -2254,10 +2351,12 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
                 ArtistBioExcerpt = context.BioExcerpt;
                 _similarArtists.ReplaceWith(context.SimilarArtists);
                 HasSimilarArtists = _similarArtists.Count > 0;
+                IsSimilarArtistsLoading = false;
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
+            await RunCurrentAlbumUiAsync(albumId, () => IsSimilarArtistsLoading = false).ConfigureAwait(false);
             _logger?.LogDebug(ex, "Failed to load artist context for {ArtistUri}", artistUri);
         }
     }
@@ -2294,7 +2393,11 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         {
             var npv = await Task.Run(async () =>
                 await _albumService.GetArtistNpvAsync(artistUri, leadTrackUri)).ConfigureAwait(false);
-            if (npv is null) return;
+            if (npv is null)
+            {
+                await RunCurrentAlbumUiAsync(albumId, () => IsArtistSummaryLoading = false).ConfigureAwait(false);
+                return;
+            }
 
             await RunCurrentAlbumUiAsync(albumId, () =>
             {
@@ -2305,10 +2408,12 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
                 ArtistMonthlyListeners = npv.MonthlyListeners;
                 if (!string.IsNullOrEmpty(npv.BioExcerpt))
                     ArtistBioExcerpt = npv.BioExcerpt;
+                IsArtistSummaryLoading = false;
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
+            await RunCurrentAlbumUiAsync(albumId, () => IsArtistSummaryLoading = false).ConfigureAwait(false);
             _logger?.LogDebug(ex, "LoadArtistNpvAsync failed for {ArtistUri}", artistUri);
         }
     }
@@ -2337,13 +2442,21 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
     private async Task LoadSingleTrackContextAsync(string albumId, LazyTrackItem track)
     {
-        if (track?.Data is not AlbumTrackDto dto || string.IsNullOrEmpty(dto.Uri)) return;
+        if (track?.Data is not AlbumTrackDto dto || string.IsNullOrEmpty(dto.Uri))
+        {
+            await RunCurrentAlbumUiAsync(albumId, () => IsSimilarArtistsLoading = false).ConfigureAwait(false);
+            return;
+        }
 
         try
         {
             var ctx = await Task.Run(async () =>
                 await _albumService.GetSingleTrackContextAsync(dto.Uri)).ConfigureAwait(false);
-            if (ctx == null) return;
+            if (ctx == null)
+            {
+                await RunCurrentAlbumUiAsync(albumId, () => IsSimilarArtistsLoading = false).ConfigureAwait(false);
+                return;
+            }
 
             await RunCurrentAlbumUiAsync(albumId, () =>
             {
@@ -2352,10 +2465,12 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
                 _similarArtists.ReplaceWith(ctx.RelatedArtists);
                 HasSimilarArtists = _similarArtists.Count > 0;
+                IsSimilarArtistsLoading = false;
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
+            await RunCurrentAlbumUiAsync(albumId, () => IsSimilarArtistsLoading = false).ConfigureAwait(false);
             _logger?.LogDebug(ex, "Failed to fetch single-track context for {TrackUri}", dto.Uri);
         }
     }

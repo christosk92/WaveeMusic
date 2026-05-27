@@ -10,14 +10,14 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="20" Padding="32,24">
             <StackPanel Spacing="6">
-                <TextBlock Text="Collection" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                <TextBlock x:Uid="Views_Local_LocalCollectionDetailPage__Auto_600" Text="Collection" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Style="{ThemeResource CaptionTextBlockStyle}"/>
                 <TextBlock Text="{x:Bind ViewModel.Collection.Name, Mode=OneWay}"
                            Style="{ThemeResource TitleLargeTextBlockStyle}" FontWeight="Bold"/>
                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Style="{ThemeResource CaptionTextBlockStyle}">
                     <Run Text="{x:Bind ViewModel.Collection.ItemCount, Mode=OneWay}"/>
-                    <Run Text=" items"/>
+                    <Run x:Uid="Views_Local_LocalCollectionDetailPage__Auto_601" Text=" items"/>
                 </TextBlock>
             </StackPanel>
 

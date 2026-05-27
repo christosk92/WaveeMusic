@@ -144,10 +144,10 @@ public static class LocalItemContextMenuPresenter
         if (facade is null || xamlRoot is null) return;
         var dlg = new ContentDialog
         {
-            Title = "Delete from disk?",
-            Content = "This permanently removes the file from your disk. This can't be undone.\n\n" + filePath,
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
+            Title = AppLocalization.GetString("LocalItem_DeleteFromDiskTitle"),
+            Content = AppLocalization.Format("LocalItem_DeleteFromDiskContent", filePath),
+            PrimaryButtonText = AppLocalization.GetString("Dialog_Delete"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = xamlRoot,
         };

@@ -30,19 +30,19 @@
 
         <!-- Header -->
         <StackPanel Grid.Row="0" Spacing="6">
-            <TextBlock Text="Local files" Style="{StaticResource TitleTextBlockStyle}" FontWeight="Bold"/>
+            <TextBlock x:Uid="Views_LocalLibraryPage__Title" Text="Local files" Style="{StaticResource TitleTextBlockStyle}" FontWeight="Bold"/>
             <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Style="{ThemeResource BodyTextBlockStyle}">
                 <Run Text="{x:Bind ViewModel.ShowCount, Mode=OneWay}"/>
-                <Run Text=" shows · "/>
+                <Run x:Uid="Views_LocalLibraryPage__ShowsSuffix" Text=" shows · "/>
                 <Run Text="{x:Bind ViewModel.MovieCount, Mode=OneWay}"/>
-                <Run Text=" movies · "/>
+                <Run x:Uid="Views_LocalLibraryPage__MoviesSuffix" Text=" movies · "/>
                 <Run Text="{x:Bind ViewModel.MusicCount, Mode=OneWay}"/>
-                <Run Text=" music · "/>
+                <Run x:Uid="Views_LocalLibraryPage__MusicSuffix" Text=" music · "/>
                 <Run Text="{x:Bind ViewModel.MusicVideoCount, Mode=OneWay}"/>
-                <Run Text=" music videos · "/>
+                <Run x:Uid="Views_LocalLibraryPage__MusicVideosSuffix" Text=" music videos · "/>
                 <Run Text="{x:Bind ViewModel.OtherCount, Mode=OneWay}"/>
-                <Run Text=" other"/>
+                <Run x:Uid="Views_LocalLibraryPage__OtherSuffix" Text=" other"/>
             </TextBlock>
         </StackPanel>
 
@@ -53,6 +53,7 @@
             <!-- BYO-token CTA: hidden once a token is set or once the user
                  dismisses it. Drives the explicit-sync onboarding flow. -->
             <InfoBar x:Name="TmdbCtaBar"
+                     x:Uid="Views_LocalLibraryPage__TmdbCtaBar"
                      IsOpen="{x:Bind ViewModel.ShowTmdbCta, Mode=OneWay}"
                      IsClosable="True"
                      Closed="TmdbCtaBar_Closed"
@@ -60,7 +61,7 @@
                      Title="Get free posters and metadata"
                      Message="Add a TMDB token in Settings to fetch posters and episode info for your local movies and shows.">
                 <InfoBar.ActionButton>
-                    <Button Content="Set up TMDB" Click="SetUpTmdb_Click"/>
+                    <Button x:Uid="Views_LocalLibraryPage__SetUpTmdbButton" Content="Set up TMDB" Click="SetUpTmdb_Click"/>
                 </InfoBar.ActionButton>
             </InfoBar>
 
@@ -69,6 +70,7 @@
             <InfoBar IsOpen="{x:Bind ViewModel.HasEnrichmentProgress, Mode=OneWay}"
                      IsClosable="False"
                      Severity="Informational"
+                     x:Uid="Views_LocalLibraryPage__EnrichmentBar"
                      Title="Enriching local metadata"
                      Message="{x:Bind ViewModel.EnrichmentRibbon, Mode=OneWay}"/>
         </StackPanel>
@@ -78,8 +80,8 @@
                     HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
                     Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
             <FontIcon Glyph="&#xE8B7;" FontSize="48" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-            <TextBlock Text="No local files indexed yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
-            <TextBlock Text="Add a watched folder in Settings → Storage and Network → Local Files."
+            <TextBlock x:Uid="Views_LocalLibraryPage__EmptyTitle" Text="No local files indexed yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
+            <TextBlock x:Uid="Views_LocalLibraryPage__EmptyDesc" Text="Add a watched folder in Settings → Storage and Network → Local Files."
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Style="{ThemeResource BodyTextBlockStyle}"
                        HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"/>
@@ -93,7 +95,7 @@
 
                 <!-- Continue watching/listening -->
                 <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasContinue, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="Continue watching" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                    <TextBlock x:Uid="Views_LocalLibraryPage__ContinueWatchingHeader" Text="Continue watching" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
                     <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled">
                         <ItemsRepeater ItemsSource="{x:Bind ViewModel.Continue}">
                             <ItemsRepeater.Layout>
@@ -117,8 +119,8 @@
                 <!-- TV shows -->
                 <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasShows, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <Grid>
-                        <TextBlock Text="TV shows" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
-                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllShows_Click"/>
+                        <TextBlock x:Uid="Views_LocalLibraryPage__TvShowsHeader" Text="TV shows" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton x:Uid="Views_LocalLibraryPage__SeeAllShows" Content="See all →" HorizontalAlignment="Right" Click="SeeAllShows_Click"/>
                     </Grid>
                     <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled">
                         <ItemsRepeater ItemsSource="{x:Bind ViewModel.Shows}">
@@ -144,8 +146,8 @@
                 <!-- Movies -->
                 <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasMovies, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <Grid>
-                        <TextBlock Text="Movies" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
-                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllMovies_Click"/>
+                        <TextBlock x:Uid="Views_LocalLibraryPage__MoviesHeader" Text="Movies" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton x:Uid="Views_LocalLibraryPage__SeeAllMovies" Content="See all →" HorizontalAlignment="Right" Click="SeeAllMovies_Click"/>
                     </Grid>
                     <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled">
                         <ItemsRepeater ItemsSource="{x:Bind ViewModel.Movies}">
@@ -171,8 +173,8 @@
                 <!-- Music videos -->
                 <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasMusicVideos, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <Grid>
-                        <TextBlock Text="Music videos" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
-                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllMusicVideos_Click"/>
+                        <TextBlock x:Uid="Views_LocalLibraryPage__MusicVideosHeader" Text="Music videos" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton x:Uid="Views_LocalLibraryPage__SeeAllMusicVideos" Content="See all →" HorizontalAlignment="Right" Click="SeeAllMusicVideos_Click"/>
                     </Grid>
                     <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled">
                         <ItemsRepeater ItemsSource="{x:Bind ViewModel.MusicVideos}">
@@ -198,8 +200,8 @@
                 <!-- Music (recently added) -->
                 <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasMusic, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <Grid>
-                        <TextBlock Text="Music — recently added" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
-                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllMusic_Click"/>
+                        <TextBlock x:Uid="Views_LocalLibraryPage__MusicRecentHeader" Text="Music — recently added" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton x:Uid="Views_LocalLibraryPage__SeeAllMusic" Content="See all →" HorizontalAlignment="Right" Click="SeeAllMusic_Click"/>
                     </Grid>
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecentlyAdded}">
                         <ItemsRepeater.Layout>
@@ -232,10 +234,10 @@
                 <!-- Other -->
                 <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasOthers, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <Grid>
-                        <TextBlock Text="Other" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
-                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllOthers_Click"/>
+                        <TextBlock x:Uid="Views_LocalLibraryPage__OtherHeader" Text="Other" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton x:Uid="Views_LocalLibraryPage__SeeAllOthers" Content="See all →" HorizontalAlignment="Right" Click="SeeAllOthers_Click"/>
                     </Grid>
-                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    <TextBlock x:Uid="Views_LocalLibraryPage__OtherDesc" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Style="{ThemeResource CaptionTextBlockStyle}"
                                Text="Files we couldn't classify. Right-click an item to set its type."/>
                 </StackPanel>

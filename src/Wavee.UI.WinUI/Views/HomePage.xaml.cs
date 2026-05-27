@@ -271,6 +271,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     /// own width so the layout matches what the user actually sees.
     /// </summary>
     private string? _currentHeroBandState;
+
     private void HeroBand_SizeChanged(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
     {
         var width = e.NewSize.Width;

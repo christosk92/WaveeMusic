@@ -15,6 +15,7 @@
 
     <Grid>
         <controls:PageErrorState
+            x:Uid="Views_LikedSongsView__PageErrorState"
             Title="Couldn't load Liked Songs"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.LoadCommand}"
@@ -105,13 +106,13 @@
                                TextTrimming="CharacterEllipsis">
                         <Run Text="{x:Bind ViewModel.TotalSongs, Mode=OneWay}"/>
                         <Run x:Uid="Views_LikedSongsView__Run_2" Text="songs"/>
-                        <Run Text=" &#x2022; "/>
+                        <Run x:Uid="Views_LikedSongsView__Auto_600" Text=" &#x2022; "/>
                         <Run Text="{x:Bind ViewModel.TotalDuration, Mode=OneWay}"/>
                     </TextBlock>
                 </StackPanel>
             </tdg:TrackDataGrid.ToolbarLeftContent>
             <tdg:TrackDataGrid.FilterBarContent>
-                <ToggleButton
+                <ToggleButton x:Uid="Views_LikedSongsView__Auto_601"
                     MinHeight="32"
                     Padding="10,4"
                     CornerRadius="16"

@@ -71,7 +71,7 @@
                                 <StackPanel Grid.Column="1"
                                             Spacing="6"
                                             VerticalAlignment="Bottom">
-                                    <TextBlock Text="CAST MEMBER"
+                                    <TextBlock x:Uid="Views_Local_LocalPersonDetailPage__Auto_600" Text="CAST MEMBER"
                                                FontWeight="SemiBold"
                                                Foreground="#CCFFFFFF"
                                                Style="{ThemeResource CaptionTextBlockStyle}"/>
@@ -101,7 +101,7 @@
                                 Spacing="8"
                                 Padding="32,0,32,0"
                                 Visibility="Collapsed">
-                        <TextBlock Text="About"
+                        <TextBlock x:Uid="Views_Local_LocalPersonDetailPage__Auto_601" Text="About"
                                    Style="{ThemeResource SubtitleTextBlockStyle}"
                                    FontWeight="SemiBold"/>
                         <TextBlock x:Name="BiographyText"
@@ -113,7 +113,7 @@
                     <!-- TV shows shelf. -->
                     <StackPanel x:Name="ShowsSection" Spacing="10" Padding="32,0,0,0"
                                 Visibility="Collapsed">
-                        <TextBlock Text="TV shows in your library"
+                        <TextBlock x:Uid="Views_Local_LocalPersonDetailPage__Auto_602" Text="TV shows in your library"
                                    Style="{ThemeResource SubtitleTextBlockStyle}"
                                    FontWeight="SemiBold"
                                    Margin="0,0,32,0"/>
@@ -143,7 +143,7 @@
                     <!-- Movies shelf. -->
                     <StackPanel x:Name="MoviesSection" Spacing="10" Padding="32,0,0,0"
                                 Visibility="Collapsed">
-                        <TextBlock Text="Movies in your library"
+                        <TextBlock x:Uid="Views_Local_LocalPersonDetailPage__Auto_603" Text="Movies in your library"
                                    Style="{ThemeResource SubtitleTextBlockStyle}"
                                    FontWeight="SemiBold"
                                    Margin="0,0,32,0"/>
@@ -177,10 +177,10 @@
                                 Margin="32,40,32,0"
                                 Visibility="Collapsed">
                         <FontIcon Glyph="&#xE721;" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                        <TextBlock Text="Not in your library yet"
+                        <TextBlock x:Uid="Views_Local_LocalPersonDetailPage__Auto_604" Text="Not in your library yet"
                                    Style="{ThemeResource SubtitleTextBlockStyle}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="Add TV shows or movies featuring this cast member to see them here."
+                        <TextBlock x:Uid="Views_Local_LocalPersonDetailPage__Auto_605" Text="Add TV shows or movies featuring this cast member to see them here."
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    HorizontalAlignment="Center"
                                    TextAlignment="Center"/>

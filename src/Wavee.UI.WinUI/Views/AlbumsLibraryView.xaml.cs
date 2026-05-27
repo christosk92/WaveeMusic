@@ -8,6 +8,7 @@ using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -20,7 +21,7 @@ public sealed partial class AlbumsLibraryView : UserControl, IDisposable, IInPag
         get => ViewModel?.SearchQuery ?? string.Empty;
         set { if (ViewModel is { } vm) vm.SearchQuery = value ?? string.Empty; }
     }
-    string IInPageFilterable.FilterPlaceholder => "Filter albums…";
+    string IInPageFilterable.FilterPlaceholder => AppLocalization.GetString("Filter_AlbumsPlaceholder");
     bool IInPageFilterable.CanFilter => ViewModel is not null;
 
     private const double NarrowLayoutBreakpoint = 650;
@@ -236,12 +237,12 @@ public sealed partial class AlbumsLibraryView : UserControl, IDisposable, IInPag
     {
         var dialog = new ContentDialog
         {
-            Title = "Unlike all songs from this album?",
-            Content = $"This will unlike all {album.LikedSongCount} song"
-                + (album.LikedSongCount == 1 ? "" : "s")
-                + $" from “{album.Name}”. This can't be undone.",
-            PrimaryButtonText = "Unlike all",
-            CloseButtonText = "Cancel",
+            Title = AppLocalization.GetString("Library_UnlikeAllFromAlbumTitle"),
+            Content = album.LikedSongCount == 1
+                ? AppLocalization.Format("Library_UnlikeAllFromAlbum_OneContent", album.Name)
+                : AppLocalization.Format("Library_UnlikeAllFromAlbum_ManyContent", album.LikedSongCount, album.Name),
+            PrimaryButtonText = AppLocalization.GetString("Dialog_UnlikeAll"),
+            CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot
         };

@@ -426,7 +426,7 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             ResetScrollPositionForNavigation();
             _footerRevealed = false;
             _footerRevealGeneration++;
-            FooterShimmerGate.Reset(() => FooterShimmer, () => FooterContent);
+            FooterShimmerGate.Reset(() => null, () => FooterContent);
         }
         else
         {
@@ -613,10 +613,10 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         _footerRevealed = true;
         _logger?.LogDebug(
             "[xfade][album:{Id}] footer.xfade.start shimmer={ShimmerKnown}",
-            XfadeLog.Tag(ViewModel.AlbumId), FooterShimmer is not null);
+            XfadeLog.Tag(ViewModel.AlbumId), false);
 
         await FooterShimmerGate.RunCrossfadeAsync(
-            FooterShimmer, content,
+            null, content,
             continuePredicate: () =>
                 _footerRevealed &&
                 !_isDisposed &&

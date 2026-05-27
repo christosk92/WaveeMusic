@@ -864,10 +864,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         {
             var dialog = new ContentDialog
             {
-                Title = "Clear collection revisions?",
-                Content = "This forces a full refresh of your Spotify library. Your local cached lists (Liked Songs, albums, artists, shows) will be rebuilt from the server. Useful if something looks out of date.",
-                PrimaryButtonText = "Clear & resync",
-                CloseButtonText = "Cancel",
+                Title = AppLocalization.GetString("Settings_ClearRevisionsTitle"),
+                Content = AppLocalization.GetString("Settings_ClearRevisionsContent"),
+                PrimaryButtonText = AppLocalization.GetString("Settings_ClearAndResync"),
+                CloseButtonText = AppLocalization.GetString("Dialog_Cancel"),
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = xamlRoot,
             };

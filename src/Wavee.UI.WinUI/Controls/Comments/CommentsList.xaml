@@ -40,7 +40,8 @@
             <FontIcon Glyph="&#xE90A;" FontSize="14"
                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                       VerticalAlignment="Center"/>
-            <TextBlock Text="No comments yet — be the first."
+            <TextBlock x:Uid="Controls_Comments_CommentsList__NoCommentsYet"
+                       Text="No comments yet — be the first."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        VerticalAlignment="Center"/>
@@ -93,7 +94,7 @@
             </Grid>
         </StackPanel>
 
-        <HyperlinkButton x:Name="LoadMoreButton"
+        <HyperlinkButton x:Uid="Controls_Comments_CommentsList__Auto_600" x:Name="LoadMoreButton"
                          Content="Load more comments"
                          Padding="0,4"
                          HorizontalAlignment="Left"

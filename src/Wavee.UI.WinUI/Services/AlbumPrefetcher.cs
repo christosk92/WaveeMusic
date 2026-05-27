@@ -261,8 +261,9 @@ public sealed class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
 
         if (totalTracks > 0)
         {
-            var word = totalTracks == 1 ? "track" : "tracks";
-            parts.Add($"{totalTracks.ToString("N0", CultureInfo.CurrentCulture)} {word}");
+            parts.Add(totalTracks == 1
+                ? AppLocalization.GetString("Count_Track_One")
+                : AppLocalization.Format("Count_Track_Many", totalTracks.ToString("N0", CultureInfo.CurrentCulture)));
         }
 
         return parts.Count == 0 ? null : string.Join(" \u00B7 ", parts);

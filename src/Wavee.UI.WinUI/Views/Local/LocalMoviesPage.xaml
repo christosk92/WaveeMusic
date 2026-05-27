@@ -155,7 +155,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0"
+                    <TextBlock x:Uid="Views_Local_LocalMoviesPage__Auto_600" Grid.Column="0"
                                Text="Movies"
                                VerticalAlignment="Center"
                                FontSize="16"
@@ -172,7 +172,7 @@
                             transitions:TransitionHelper.Id="library-sync">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon x:Name="ShySyncGlyph" Glyph="&#xE895;" FontSize="12"/>
-                            <TextBlock x:Name="ShySyncText" Text="Sync"/>
+                            <TextBlock x:Uid="Views_Local_LocalMoviesPage__Auto_601" x:Name="ShySyncText" Text="Sync"/>
                         </StackPanel>
                     </Button>
                 </Grid>

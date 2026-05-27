@@ -19,6 +19,11 @@ public sealed class LoadingRowConfig
 {
     public int Index { get; init; }
 
+    public Thickness RowPadding { get; init; }
+    public Thickness RowMargin { get; init; }
+    public double RowMinHeight { get; init; }
+    public bool ShowRowChrome { get; init; }
+
     public bool ShowIndexCell { get; init; }
     public bool ShowLikeCell { get; init; }
     public bool ShowArtCell { get; init; }

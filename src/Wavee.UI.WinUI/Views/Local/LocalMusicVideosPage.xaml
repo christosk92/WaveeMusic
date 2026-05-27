@@ -13,7 +13,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <TextBlock Grid.Row="0" Text="Music videos" Style="{StaticResource TitleTextBlockStyle}" FontWeight="Bold"/>
+        <TextBlock x:Uid="Views_Local_LocalMusicVideosPage__Auto_600" Grid.Row="0" Text="Music videos" Style="{StaticResource TitleTextBlockStyle}" FontWeight="Bold"/>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <ItemsRepeater ItemsSource="{x:Bind ViewModel.MusicVideos}">
                 <ItemsRepeater.Layout>

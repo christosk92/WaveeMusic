@@ -108,7 +108,7 @@
             <StackPanel x:Name="ContentContainer"
                         Padding="32,28,32,40"
                         Spacing="0">
-                <TextBlock Text="BROWSE"
+                <TextBlock x:Uid="Views_BrowsePage__Auto_600" Text="BROWSE"
                            FontSize="11"
                            FontWeight="SemiBold"
                            Opacity="0.78"
@@ -177,7 +177,7 @@
                             HorizontalAlignment="Center"
                             Margin="0,40,0,40"
                             Spacing="8">
-                    <TextBlock Text="Couldn't load this browse page"
+                    <TextBlock x:Uid="Views_BrowsePage__Auto_601" Text="Couldn't load this browse page"
                                FontSize="16"
                                FontWeight="SemiBold"
                                HorizontalAlignment="Center"/>

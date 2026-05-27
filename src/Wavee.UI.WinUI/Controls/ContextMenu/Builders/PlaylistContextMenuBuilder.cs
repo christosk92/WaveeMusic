@@ -78,13 +78,34 @@ public static class PlaylistContextMenuBuilder
             Invoke = ctx.AddToQueueCommand is null ? () => AddContextToQueueDefault(uri) : null
         });
 
-        items.Add(new ContextMenuItemModel
+        // Owners delete their own playlists; "save / remove from library" only
+        // applies to playlists you follow.
+        if (!ctx.IsOwner)
         {
-            Text = AppLocalization.GetString(ctx.IsSaved ? "SidebarMenu_RemoveFromLibrary" : "SidebarMenu_SaveToLibrary"),
-            Glyph = ctx.IsSaved ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
-            Command = ctx.ToggleSaveCommand,
-            Invoke = ctx.ToggleSaveCommand is null ? () => ToggleFollowDefault(uri, ctx.IsSaved) : null
-        });
+            if (ctx.IsSaved)
+            {
+                // Already in the rootlist — single "Remove from library" row.
+                items.Add(new ContextMenuItemModel
+                {
+                    Text = AppLocalization.GetString("SidebarMenu_RemoveFromLibrary"),
+                    Glyph = FluentGlyphs.HeartFilled,
+                    Command = ctx.ToggleSaveCommand,
+                    Invoke = ctx.ToggleSaveCommand is null ? () => RemoveFromLibraryDefault(uri) : null
+                });
+            }
+            else
+            {
+                // Not yet in the rootlist — folder-aware submenu so the user
+                // can place the playlist directly at the top of the library
+                // or inside an existing folder in one shot.
+                items.Add(new ContextMenuItemModel
+                {
+                    Text = AppLocalization.GetString("SidebarMenu_SaveToLibrary"),
+                    Glyph = FluentGlyphs.HeartOutline,
+                    LoadSubMenuAsync = SaveToLibrarySubmenuBuilder.Loader(uri, ctx.PlaylistName)
+                });
+            }
+        }
 
         if (ctx.IsOwner)
         {
@@ -150,18 +171,18 @@ public static class PlaylistContextMenuBuilder
     private static void AddContextToQueueDefault(string uri)
         => Ioc.Default.GetService<IPlaybackStateService>()?.AddToQueue(uri);
 
-    private static async void ToggleFollowDefault(string uri, bool wasSaved)
+    private static async void RemoveFromLibraryDefault(string uri)
     {
         var mutations = Ioc.Default.GetService<IPlaylistMutationService>();
         if (mutations is null) return;
         try
         {
-            await mutations.SetPlaylistFollowedAsync(uri, !wasSaved).ConfigureAwait(true);
+            await mutations.SetPlaylistFollowedAsync(uri, followed: false).ConfigureAwait(true);
         }
         catch
         {
             Ioc.Default.GetService<INotificationService>()?.Show(
-                wasSaved ? "Couldn't remove from library" : "Couldn't save to library",
+                "Couldn't remove from library",
                 NotificationSeverity.Error,
                 TimeSpan.FromSeconds(3));
         }

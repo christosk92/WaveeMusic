@@ -81,7 +81,7 @@
 
                     <!-- Header — eyebrow + #N — title + meta line. -->
                     <StackPanel Grid.Row="0" Spacing="0" VerticalAlignment="Center">
-                        <TextBlock x:Name="EyebrowText"
+                        <TextBlock x:Uid="Controls_ShowEpisode_ShowResumeBanner__Auto_600" x:Name="EyebrowText"
                                    Text="CONTINUE LISTENING"
                                    FontSize="10"
                                    FontWeight="SemiBold"
@@ -132,7 +132,7 @@
                                     SizeChanged="ProgressLane_SizeChanged"/>
                         </Grid>
 
-                        <Button Grid.Column="1"
+                        <Button x:Uid="Controls_ShowEpisode_ShowResumeBanner__Auto_601" Grid.Column="1"
                                 x:Name="ResumeButton"
                                 CornerRadius="18"
                                 Padding="14,7"
@@ -141,7 +141,7 @@
                                 ToolTipService.ToolTip="Resume">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE768;" FontSize="12"/>
-                                <TextBlock Text="Resume" FontSize="12" FontWeight="SemiBold"/>
+                                <TextBlock x:Uid="Controls_ShowEpisode_ShowResumeBanner__Auto_602" Text="Resume" FontSize="12" FontWeight="SemiBold"/>
                             </StackPanel>
                         </Button>
                     </Grid>

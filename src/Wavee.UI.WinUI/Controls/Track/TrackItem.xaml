@@ -161,7 +161,7 @@
                         <FontIcon x:Name="CompactLocalBadge" Visibility="Collapsed"
                                   Glyph="&#xE8B7;" FontSize="11"
                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                  ToolTipService.ToolTip="On this PC"/>
+                                  x:Uid="Controls_TrackItem__OnThisPCTooltip" ToolTipService.ToolTip="On this PC"/>
                     </StackPanel>
                 </Grid>
                 <StackPanel Orientation="Horizontal"
@@ -170,13 +170,13 @@
                     <Border x:Name="CompactExplicit"
                             Style="{StaticResource ExplicitContentBadgeStyle}"
                             Visibility="Collapsed"
-                            ToolTipService.ToolTip="Explicit">
+                            x:Uid="Controls_TrackItem__ExplicitTooltip" ToolTipService.ToolTip="Explicit">
                         <TextBlock Text="E" Style="{StaticResource ExplicitContentBadgeTextStyle}"/>
                     </Border>
                     <FontIcon x:Name="CompactVideoBadge"
                               Style="{StaticResource VideoAvailabilityBadgeIconStyle}"
                               Visibility="Collapsed"
-                              ToolTipService.ToolTip="Music video available"/>
+                              x:Uid="Controls_TrackItem__MusicVideoTooltip" ToolTipService.ToolTip="Music video available"/>
                     <TextBlock x:Name="CompactVideoSeparator"
                                Text="&#x00B7;"
                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -198,7 +198,8 @@
             </StackPanel>
 
             <StackPanel x:Name="CompactInfoShimmer" Grid.Column="1" VerticalAlignment="Center"
-                        Spacing="6" Visibility="Collapsed">
+                        Spacing="6"
+                        x:Load="{x:Bind IsLoading, Mode=OneWay}">
                 <controls1:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
                 <controls1:Shimmer Width="110" Height="12" HorizontalAlignment="Left"/>
             </StackPanel>
@@ -223,7 +224,7 @@
                     BorderThickness="1"
                     Visibility="Collapsed"
                     Click="CompactAddToPlaylistButton_Click"
-                    ToolTipService.ToolTip="Add to playlist">
+                    x:Uid="Controls_TrackItem__AddToPlaylistTooltip" ToolTipService.ToolTip="Add to playlist">
                 <FontIcon x:Name="CompactAddToPlaylistGlyph"
                           Glyph="&#xE710;"
                           FontSize="13"
@@ -248,7 +249,7 @@
                     Background="Transparent"
                     BorderThickness="0"
                     AutomationProperties.Name="More options"
-                    ToolTipService.ToolTip="More">
+                    x:Uid="Controls_TrackItem__MoreTooltip" ToolTipService.ToolTip="More">
                 <FontIcon Glyph="&#xE712;" FontSize="14"/>
             </Button>
         </Grid>
@@ -307,7 +308,7 @@
                                   Margin="2,0,0,0"
                                   IsHitTestVisible="False"
                                   Visibility="Collapsed"
-                                  ToolTipService.ToolTip="Popular track"/>
+                                  x:Uid="Controls_TrackItem__PopularTrackTooltip" ToolTipService.ToolTip="Popular track"/>
                         <TextBlock x:Name="RowIndexText"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -367,7 +368,7 @@
                              TrackItem.Selection.cs — Opacity / IsHitTestVisible
                              drive show/hide so the OpacityTransition can
                              animate the reveal. -->
-                        <CheckBox x:Name="RowSelectCheckBox"
+                        <CheckBox x:Uid="Controls_Track_TrackItem__Auto_600" x:Name="RowSelectCheckBox"
                                   Width="20" Height="20"
                                   MinWidth="0" Padding="0"
                                   Margin="0"
@@ -403,7 +404,7 @@
                             BorderThickness="1"
                             Visibility="Collapsed"
                             Click="RowAddToPlaylistButton_Click"
-                            ToolTipService.ToolTip="Add to playlist">
+                            x:Uid="Controls_TrackItem__AddToPlaylistTooltip" ToolTipService.ToolTip="Add to playlist">
                         <FontIcon x:Name="RowAddToPlaylistGlyph"
                                   Glyph="&#xE710;"
                                   FontSize="13"
@@ -448,7 +449,7 @@
                                 <!-- Inline badge slots: used when the artist subline
                                      is hidden (album page) so badges sit beside the
                                      title instead of floating on an empty subline. -->
-                                <Border x:Name="RowExplicitInline"
+                                <Border x:Uid="Controls_Track_TrackItem__Auto_601" x:Name="RowExplicitInline"
                                         Style="{StaticResource ExplicitContentBadgeStyle}"
                                         Visibility="Collapsed"
                                         ToolTipService.ToolTip="Explicit">
@@ -457,11 +458,11 @@
                                 <FontIcon x:Name="RowVideoBadgeInline"
                                           Style="{StaticResource VideoAvailabilityBadgeIconStyle}"
                                           Visibility="Collapsed"
-                                          ToolTipService.ToolTip="Music video available"/>
+                                          x:Uid="Controls_TrackItem__MusicVideoTooltip" ToolTipService.ToolTip="Music video available"/>
                                 <FontIcon x:Name="RowLocalBadge" Visibility="Collapsed"
                                           Glyph="&#xE8B7;" FontSize="12"
                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                          ToolTipService.ToolTip="On this PC"/>
+                                          x:Uid="Controls_TrackItem__OnThisPCTooltip" ToolTipService.ToolTip="On this PC"/>
                             </StackPanel>
                         </Grid>
                         <Grid x:Name="RowProgressCell"
@@ -474,7 +475,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <Border x:Name="RowProgressExplicit"
+                            <Border x:Uid="Controls_Track_TrackItem__Auto_602" x:Name="RowProgressExplicit"
                                     Grid.Column="0"
                                     Style="{StaticResource ExplicitContentBadgeStyle}"
                                     Visibility="Collapsed"
@@ -506,6 +507,7 @@
                                               VerticalAlignment="Center"/>
                                 </Border>
                                 <TextBlock x:Name="RowPlayedText"
+                                           x:Uid="Controls_TrackItem__RowPlayedText"
                                            Text="Played"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
@@ -524,7 +526,7 @@
                                     Spacing="4"
                                     Margin="0,-2,0,0"
                                     VerticalAlignment="Center">
-                            <Border x:Name="RowExplicit"
+                            <Border x:Uid="Controls_Track_TrackItem__Auto_603" x:Name="RowExplicit"
                                     Style="{StaticResource ExplicitContentBadgeStyle}"
                                     Visibility="Collapsed"
                                     ToolTipService.ToolTip="Explicit">
@@ -533,7 +535,7 @@
                             <FontIcon x:Name="RowVideoBadge"
                                       Style="{StaticResource VideoAvailabilityBadgeIconStyle}"
                                       Visibility="Collapsed"
-                                      ToolTipService.ToolTip="Music video available"/>
+                                      x:Uid="Controls_TrackItem__MusicVideoTooltip" ToolTipService.ToolTip="Music video available"/>
                             <TextBlock x:Name="RowVideoSeparator"
                                        Text="&#x00B7;"
                                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -630,7 +632,7 @@
                             Background="Transparent"
                             BorderThickness="0"
                             AutomationProperties.Name="More options"
-                            ToolTipService.ToolTip="More">
+                            x:Uid="Controls_TrackItem__MoreTooltip" ToolTipService.ToolTip="More">
                         <FontIcon Glyph="&#xE712;" FontSize="14"/>
                     </Button>
                 </Grid>
@@ -640,7 +642,7 @@
                      conditional column widths are kept in sync with the real row in
                      ApplyShowFlags (TrackItem.xaml.cs). -->
                 <Grid x:Name="RowShimmerOverlay" VerticalAlignment="Center"
-                      Visibility="Collapsed"
+                      x:Load="{x:Bind IsLoading, Mode=OneWay}"
                       ColumnSpacing="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="40"/>

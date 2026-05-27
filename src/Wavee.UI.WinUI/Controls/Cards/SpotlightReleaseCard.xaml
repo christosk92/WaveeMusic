@@ -83,6 +83,7 @@
 
                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                     <TextBlock x:Name="EyebrowTextBlock"
+                               x:Uid="Controls_Cards_SpotlightReleaseCard__EyebrowTextBlock"
                                Text="Latest release"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
@@ -128,10 +129,10 @@
                                 Click="PlayButton_Click">
                             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                                 <FontIcon Glyph="&#xE768;" FontSize="10"/>
-                                <TextBlock Text="Play" FontSize="12"/>
+                                <TextBlock x:Uid="Controls_Cards_SpotlightReleaseCard__PlayText" Text="Play" FontSize="12"/>
                             </StackPanel>
                         </Button>
-                        <Button x:Name="SaveButton"
+                        <Button x:Uid="Controls_Cards_SpotlightReleaseCard__Auto_600" x:Name="SaveButton"
                                 Style="{StaticResource SubtleButtonStyle}"
                                 Width="26"
                                 Height="26"
@@ -141,7 +142,7 @@
                                 Click="SaveButton_Click">
                             <FontIcon Glyph="&#xEB51;" FontSize="12"/>
                         </Button>
-                        <Button x:Name="ShareButton"
+                        <Button x:Uid="Controls_Cards_SpotlightReleaseCard__Auto_601" x:Name="ShareButton"
                                 Style="{StaticResource SubtleButtonStyle}"
                                 Width="26"
                                 Height="26"

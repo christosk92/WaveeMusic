@@ -822,7 +822,7 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     /// </summary>
     public string FollowerCountFormatted => FollowerCount <= 0
         ? string.Empty
-        : $"{Wavee.UI.Formatters.NumberFormatter.FormatFollowerCount(FollowerCount)} followers";
+        : AppLocalization.Format("Playlist_FollowerCount", Wavee.UI.Formatters.NumberFormatter.FormatFollowerCount(FollowerCount));
 
     /// <summary>
     /// Visibility gate for the resolved follower-count text. False while the
@@ -844,7 +844,9 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
         {
             var parts = new List<string>(3);
             if (_totalTracks > 0)
-                parts.Add(_totalTracks == 1 ? "1 song" : $"{_totalTracks} songs");
+                parts.Add(_totalTracks == 1
+                    ? AppLocalization.GetString("Count_Song_One")
+                    : AppLocalization.Format("Count_Song_Many", _totalTracks));
             if (!string.IsNullOrWhiteSpace(_totalDurationCached))
                 parts.Add(_totalDurationCached);
             if (!string.IsNullOrWhiteSpace(FollowerCountFormatted))

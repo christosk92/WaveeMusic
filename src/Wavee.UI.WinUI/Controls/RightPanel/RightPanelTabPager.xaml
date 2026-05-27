@@ -32,7 +32,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- Left pager — only visible when there's content scrolled off the left. -->
-        <Button x:Name="TabPagerLeftButton"
+        <Button x:Uid="Controls_RightPanel_RightPanelTabPager__Auto_600" x:Name="TabPagerLeftButton"
                 Grid.Column="0"
                 Visibility="Collapsed"
                 Click="TabPagerLeft_Click"
@@ -81,7 +81,7 @@
                         details toggle. Collapsed by default; code-behind shows it
                         when ShellViewModel.SelectedTrackForDetails is set.
                     -->
-                    <controls:SegmentedItem x:Name="TrackDetailsTabItem"
+                    <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelTabPager__Auto_601" x:Name="TrackDetailsTabItem"
                                             Content="Track"
                                             Tag="TrackDetails"
                                             Visibility="Collapsed"/>
@@ -90,7 +90,7 @@
         </Grid>
 
         <!-- Right pager — visible when there's content cut off on the right. -->
-        <Button x:Name="TabPagerRightButton"
+        <Button x:Uid="Controls_RightPanel_RightPanelTabPager__Auto_602" x:Name="TabPagerRightButton"
                 Grid.Column="2"
                 Visibility="Collapsed"
                 Click="TabPagerRight_Click"
@@ -107,7 +107,7 @@
         <!-- Pop-out: tear the right panel into its own window. The header strip
              carries DragToDetachBehavior too, so dragging it outside the main
              window achieves the same. -->
-        <Button x:Name="PopOutButton"
+        <Button x:Uid="Controls_RightPanel_RightPanelTabPager__Auto_603" x:Name="PopOutButton"
                 Grid.Column="3"
                 Click="PopOutButton_Click"
                 Background="Transparent"

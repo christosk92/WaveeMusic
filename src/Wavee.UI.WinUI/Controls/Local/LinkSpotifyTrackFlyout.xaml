@@ -133,7 +133,7 @@
                           Glyph="&#xE71B;"
                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                           VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1"
+                <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_600" Grid.Column="1"
                            Text="Link Spotify track"
                            FontSize="14"
                            FontWeight="SemiBold"
@@ -148,7 +148,7 @@
 
             <!-- ───────── Search input ───────── -->
             <Grid Grid.Row="1">
-                <TextBox x:Name="QueryBox"
+                <TextBox x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_601" x:Name="QueryBox"
                          FontSize="14"
                          MinHeight="40"
                          PlaceholderText="Search Spotify or paste a track link"
@@ -186,7 +186,7 @@
                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                               VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0">
-                        <TextBlock Text="Currently linked"
+                        <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_602" Text="Currently linked"
                                    FontSize="10"
                                    CharacterSpacing="120"
                                    FontWeight="SemiBold"
@@ -248,11 +248,11 @@
                               Glyph="&#xE721;"
                               Opacity="0.28"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <TextBlock Text="No matching tracks"
+                    <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_603" Text="No matching tracks"
                                FontSize="14"
                                FontWeight="SemiBold"
                                HorizontalAlignment="Center"/>
-                    <TextBlock Text="Try a different search, or paste a Spotify track link."
+                    <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_604" Text="Try a different search, or paste a Spotify track link."
                                FontSize="12"
                                TextWrapping="Wrap"
                                TextAlignment="Center"
@@ -271,11 +271,11 @@
                               Glyph="&#xE721;"
                               Opacity="0.24"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <TextBlock Text="Search for a Spotify track"
+                    <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_605" Text="Search for a Spotify track"
                                FontSize="14"
                                FontWeight="SemiBold"
                                HorizontalAlignment="Center"/>
-                    <TextBlock Text="Start typing above, or paste a Spotify share link."
+                    <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_606" Text="Start typing above, or paste a Spotify share link."
                                FontSize="12"
                                TextWrapping="Wrap"
                                TextAlignment="Center"
@@ -293,13 +293,13 @@
                     <FontIcon FontSize="24"
                               Glyph="&#xE783;"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <TextBlock x:Name="ErrorText"
+                    <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_607" x:Name="ErrorText"
                                Text="Search failed."
                                FontSize="13"
                                TextWrapping="WrapWholeWords"
                                HorizontalAlignment="Center"
                                TextAlignment="Center"/>
-                    <Button Content="Retry"
+                    <Button x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_608" Content="Retry"
                             HorizontalAlignment="Center"
                             Click="RetryButton_Click"/>
                 </StackPanel>
@@ -385,7 +385,7 @@
                                         Orientation="Horizontal"
                                         HorizontalAlignment="Right"
                                         Spacing="8">
-                                <Button x:Name="PreviewDismissButton"
+                                <Button x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_609" x:Name="PreviewDismissButton"
                                         Click="ClearButton_Click"
                                         Content="Cancel"/>
                                 <Button x:Name="PreviewLinkButton"
@@ -393,7 +393,7 @@
                                         Click="PreviewLinkButton_Click">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon FontSize="12" Glyph="&#xE71B;"/>
-                                        <TextBlock Text="Link this track"/>
+                                        <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_610" Text="Link this track"/>
                                     </StackPanel>
                                 </Button>
                             </StackPanel>
@@ -420,15 +420,15 @@
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                           VerticalAlignment="Center"/>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                    <TextBlock Text="Couldn't fetch track details"
+                                    <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_611" Text="Couldn't fetch track details"
                                                FontSize="13"
                                                FontWeight="SemiBold"/>
-                                    <TextBlock Text="The link looks valid - you can link it anyway."
+                                    <TextBlock x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_612" Text="The link looks valid - you can link it anyway."
                                                FontSize="12"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
                             </Grid>
-                            <Button HorizontalAlignment="Right"
+                            <Button x:Uid="Controls_Local_LinkSpotifyTrackFlyout__Auto_613" HorizontalAlignment="Right"
                                     Style="{StaticResource AccentButtonStyle}"
                                     Content="Link by URI"
                                     Click="PreviewLinkByUriButton_Click"/>

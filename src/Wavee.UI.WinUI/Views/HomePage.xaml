@@ -213,6 +213,7 @@
                             </Grid>
 
                             <Button Grid.Column="2"
+                                x:Uid="Views_HomePage__Button_ViewAll"
                                 Content="View all"
                                 Tag="{x:Bind ViewAllUri}"
                                 Click="HomeSectionViewAll_Click"
@@ -335,6 +336,13 @@
                 <VisualState x:Name="HeroBandWideState"/>
                 <VisualState x:Name="HeroBandStackedMediumState">
                     <VisualState.Setters>
+                        <!-- Collapsing the side rail. The hero spans both
+                             columns and stretches into a wide landscape
+                             rectangle — Microsoft Store hero rail
+                             proportions. The BakeImageHero path uses
+                             UniformToFill so the cover art fills the
+                             entire card edge-to-edge regardless of the
+                             resulting aspect ratio. -->
                         <Setter Target="HomeHero.(Grid.ColumnSpan)" Value="2"/>
                         <Setter Target="HaloBackdrop.(Grid.ColumnSpan)" Value="2"/>
                         <Setter Target="WideSideRail.Visibility" Value="Collapsed"/>
@@ -361,6 +369,7 @@
         </VisualStateManager.VisualStateGroups>
 
         <controls1:PageErrorState
+            x:Uid="Views_HomePage__PageErrorState_1"
             Title="Couldn't load Home"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RefreshCommand}"
@@ -515,6 +524,15 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
+                    <!-- Wide landscape hero (Microsoft Store rail proportions).
+                         In WideState the carousel sits in Column 0 next to the
+                         WideSideRail; in Medium / Narrow the VSM stretches it
+                         across both columns. The cover art fills the entire
+                         card edge-to-edge via BakeImageHero's UniformToFill
+                         transform, with a left-side darken gradient for text
+                         legibility. HaloBackdrop sits in the same Grid cell
+                         and stretches with the hero — no JS-style width
+                         mirror needed since both layout the same way. -->
                     <Grid x:Name="HaloBackdrop"
                           Grid.Row="0"
                           Grid.Column="0"
@@ -527,6 +545,7 @@
                     <hero:HeroCarousel x:Name="HomeHero"
                         Grid.Row="0"
                         Grid.Column="0"
+                        HorizontalAlignment="Stretch"
                         VerticalAlignment="Stretch"
                         Autoplay="True"
                         AutoplayInterval="0:0:7"

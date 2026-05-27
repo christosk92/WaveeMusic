@@ -56,7 +56,7 @@
                 <!-- Click-anywhere expand: lowest overlay, fills the whole
                      video area. Specific buttons sit on top with their own
                      hit-testing so they swallow the click. -->
-                <Button x:Name="ExpandClickArea"
+                <Button x:Uid="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_600" x:Name="ExpandClickArea"
                         Click="ExpandClickArea_Click"
                         Background="Transparent"
                         BorderThickness="0"
@@ -73,7 +73,7 @@
                     <!-- Top-left: open-full / expand. YouTube uses a "pop out"
                          glyph (E740 = "FullScreen"); we go with the same so the
                          affordance reads as "open this in a bigger surface". -->
-                    <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                    <Button x:Uid="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_601" Style="{StaticResource OverlayCircleButtonStyle}"
                             Width="28" Height="28"
                             CornerRadius="14"
                             HorizontalAlignment="Left"
@@ -90,7 +90,7 @@
                     <!-- Top-right: close. Stops playback (provider-agnostic
                          IPlaybackEngine.StopAsync), which then clears
                          ActiveSurface and the mini hides itself. -->
-                    <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                    <Button x:Uid="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_602" Style="{StaticResource OverlayCircleButtonStyle}"
                             Width="28" Height="28"
                             CornerRadius="14"
                             HorizontalAlignment="Right"
@@ -112,7 +112,7 @@
                                 Spacing="10"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center">
-                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                        <Button x:Uid="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_603" Style="{StaticResource OverlayCircleButtonStyle}"
                                 Width="36" Height="36"
                                 CornerRadius="18"
                                 Command="{x:Bind ViewModel.Player.PreviousCommand}"
@@ -122,7 +122,7 @@
                                       FontSize="13"
                                       Foreground="White"/>
                         </Button>
-                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                        <Button x:Uid="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_604" Style="{StaticResource OverlayCircleButtonStyle}"
                                 Width="48" Height="48"
                                 CornerRadius="24"
                                 Command="{x:Bind ViewModel.Player.PlayPauseCommand}"
@@ -134,7 +134,7 @@
                                 IsPending="{x:Bind ViewModel.Player.IsBuffering, Mode=OneWay}"
                                 ActionForeground="White"/>
                         </Button>
-                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                        <Button x:Uid="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_605" Style="{StaticResource OverlayCircleButtonStyle}"
                                 Width="36" Height="36"
                                 CornerRadius="18"
                                 Command="{x:Bind ViewModel.Player.NextCommand}"
@@ -230,7 +230,7 @@
                 <!-- Resize grip. 18×18 affordance with the chevron-corner
                      glyph, swallows pointer events so the chrome's drag
                      handler doesn't fire during a resize. -->
-                <Border Grid.Column="1"
+                <Border x:Uid="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_606" Grid.Column="1"
                         x:Name="ResizeGrip"
                         Width="18" Height="18"
                         Background="Transparent"

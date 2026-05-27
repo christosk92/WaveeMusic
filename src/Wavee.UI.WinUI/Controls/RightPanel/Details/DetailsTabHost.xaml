@@ -82,7 +82,7 @@
                 Visibility="Collapsed">
             <StackPanel Orientation="Horizontal" Spacing="6">
                 <FontIcon Glyph="&#xE895;" FontSize="12"/>
-                <TextBlock Text="New canvas" FontSize="12" FontWeight="SemiBold"/>
+                <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_600" Text="New canvas" FontSize="12" FontWeight="SemiBold"/>
             </StackPanel>
         </Button>
 
@@ -213,7 +213,7 @@
                     </StackPanel>
 
                     <!-- More options button -->
-                    <Button x:Name="DetailsMoreButton"
+                    <Button x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_601" x:Name="DetailsMoreButton"
                         Grid.Column="2"
                         Click="DetailsMoreButton_Click"
                         Style="{StaticResource SubtleButtonStyle}"
@@ -285,7 +285,7 @@
                                     HorizontalAlignment="Stretch">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE8A7;" FontSize="13"/>
-                                    <TextBlock Text="Episode"/>
+                                    <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_602" Text="Episode"/>
                                 </StackPanel>
                             </Button>
                             <Button Grid.Column="1"
@@ -294,7 +294,7 @@
                                     HorizontalAlignment="Stretch">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE93C;" FontSize="13"/>
-                                    <TextBlock Text="Show"/>
+                                    <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_603" Text="Show"/>
                                 </StackPanel>
                             </Button>
                         </Grid>
@@ -322,7 +322,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xED1E;" FontSize="12"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            <TextBlock Text="Lyrics" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_604" Text="Lyrics" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
                         <!-- Previous line (faded) -->
@@ -362,12 +362,12 @@
                                 <FontIcon Glyph="&#xECAD;"
                                           FontSize="12"
                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                                <TextBlock Text="Lyrics meaning"
+                                <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_605" Text="Lyrics meaning"
                                            FontSize="12"
                                            FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </StackPanel>
-                            <Button x:Name="DetailsAiMeaningButton"
+                            <Button x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_606" x:Name="DetailsAiMeaningButton"
                                     Grid.Column="1"
                                     Content="Generate"
                                     Click="DetailsAiMeaningButton_Click"
@@ -394,7 +394,7 @@
                         BorderThickness="1" CornerRadius="8" Padding="12"
                         Visibility="Collapsed">
                     <StackPanel Spacing="4">
-                        <TextBlock
+                        <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_607"
                             Text="About"
                             Style="{StaticResource BodyStrongTextBlockStyle}"
                             Margin="0,0,0,4"/>
@@ -406,7 +406,7 @@
                             TextTrimming="CharacterEllipsis"
                             MaxLines="3"
                             IsTextTrimmedChanged="DetailsBioText_IsTextTrimmedChanged"/>
-                        <HyperlinkButton
+                        <HyperlinkButton x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_608"
                             x:Name="DetailsBioToggle"
                             Content="Show more"
                             Click="DetailsBioToggle_Click"
@@ -430,7 +430,7 @@
                         BorderThickness="1" CornerRadius="8" Padding="12"
                         Visibility="Collapsed">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="About this episode"
+                        <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_609" Text="About this episode"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <TextBlock x:Name="DetailsPodcastDescriptionText"
                                    FontSize="12"
@@ -469,7 +469,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Chapters"
+                            <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_610" Text="Chapters"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        VerticalAlignment="Center"/>
                             <Button x:Name="DetailsPodcastChaptersToggleButton"
@@ -486,7 +486,7 @@
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>
                                 <DataTemplate>
-                                    <Button Tag="{Binding}"
+                                    <Button x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_611" Tag="{Binding}"
                                             Click="DetailsPodcastChapter_Click"
                                             PointerEntered="DetailsPodcastChapter_PointerEntered"
                                             PointerExited="DetailsPodcastChapter_PointerExited"
@@ -589,7 +589,7 @@
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="12"
                         Visibility="Collapsed">
-                    <comments:CommentsList x:Name="DetailsPodcastComments"
+                    <comments:CommentsList x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_612" x:Name="DetailsPodcastComments"
                                            CompactMode="True"
                                            PlaceholderText="Add a comment..."
                                            ShowStatusAsInfoBar="False"
@@ -608,7 +608,7 @@
                         BorderThickness="1" CornerRadius="8" Padding="12"
                         Visibility="Collapsed">
                     <StackPanel Spacing="14">
-                        <TextBlock
+                        <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_613"
                             Text="Credits"
                             Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <ItemsRepeater x:Name="DetailsCreditGroups">
@@ -670,7 +670,7 @@
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                         </ItemsRepeater>
-                        <HyperlinkButton
+                        <HyperlinkButton x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_614"
                             x:Name="DetailsCreditsToggle"
                             Content="View all credits"
                             Click="DetailsCreditsToggle_Click"
@@ -688,7 +688,7 @@
                         BorderThickness="1" CornerRadius="8" Padding="12"
                         Visibility="Collapsed">
                     <StackPanel Spacing="8">
-                        <TextBlock
+                        <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_615"
                             Text="Concerts"
                             Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <ItemsRepeater x:Name="DetailsConcertsList">
@@ -733,7 +733,7 @@
                 <Border x:Name="DetailsRelatedVideosSection"
                         Visibility="Collapsed">
                     <StackPanel Spacing="10">
-                        <TextBlock
+                        <TextBlock x:Uid="Controls_RightPanel_Details_DetailsTabHost__Auto_616"
                             Text="Related Videos"
                             Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <ItemsRepeater x:Name="DetailsRelatedVideosList">

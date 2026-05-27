@@ -292,7 +292,7 @@
                                 Padding="10,4">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE768;" FontSize="12"/>
-                                    <TextBlock Text="Play"/>
+                                    <TextBlock x:Uid="Views_YourEpisodesView__Auto_600" Text="Play"/>
                                 </StackPanel>
                             </Button>
                             <Button
@@ -300,10 +300,10 @@
                                 Padding="10,4">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE8A5;" FontSize="12"/>
-                                    <TextBlock Text="Open"/>
+                                    <TextBlock x:Uid="Views_YourEpisodesView__Auto_601" Text="Open"/>
                                 </StackPanel>
                             </Button>
-                            <Button
+                            <Button x:Uid="Views_YourEpisodesView__Auto_602"
                                 Command="{x:Bind CopyEpisodeLinkCommand, Mode=OneWay}"
                                 Padding="8,4"
                                 Visibility="{x:Bind HasShareUrl, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -319,7 +319,7 @@
                                 Text="{x:Bind SelectedEpisodeDescription, Mode=OneWay}"
                                 MaxLines="6"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            <HyperlinkButton
+                            <HyperlinkButton x:Uid="Views_YourEpisodesView__Auto_603"
                                 Content="Show more"
                                 Padding="0"
                                 MinHeight="0"
@@ -335,7 +335,7 @@
                     Spacing="8"
                     Visibility="{x:Bind HasSelectedEpisode, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <FontIcon Glyph="&#xE8D6;" FontSize="28" Opacity="0.35"/>
-                    <TextBlock
+                    <TextBlock x:Uid="Views_YourEpisodesView__Auto_604"
                         Text="Select an episode"
                         Style="{StaticResource BodyStrongTextBlockStyle}"
                         HorizontalAlignment="Center"/>
@@ -395,10 +395,11 @@
                     Padding="12,6"
                     HorizontalAlignment="Right"
                     Click="BrowsePodcasts_Click"
+                    x:Uid="Views_YourEpisodesView__BrowseButton"
                     ToolTipService.ToolTip="Browse podcasts">
                     <StackPanel Orientation="Horizontal" Spacing="7">
                         <FontIcon Glyph="&#xE71B;" FontSize="14"/>
-                        <TextBlock Text="Browse podcasts"/>
+                        <TextBlock x:Uid="Views_YourEpisodesView__BrowseButtonText" Text="Browse podcasts"/>
                     </StackPanel>
                 </Button>
             </Grid>
@@ -420,10 +421,11 @@
 
                     <TextBox
                         Grid.Column="0"
+                        x:Uid="Views_YourEpisodesView__FilterTextBox"
                         PlaceholderText="Filter podcasts..."
                         Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
-                    <Button
+                    <Button x:Uid="Views_YourEpisodesView__Auto_605"
                         Grid.Column="1"
                         Padding="10,6"
                         ToolTipService.ToolTip="Sort"
@@ -603,7 +605,7 @@
                                 Padding="10,5">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE768;" FontSize="13"/>
-                                    <TextBlock Text="Play"/>
+                                    <TextBlock x:Uid="Views_YourEpisodesView__Auto_606" Text="Play"/>
                                 </StackPanel>
                             </Button>
                             <Button
@@ -612,7 +614,7 @@
                                 Padding="10,5">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE8B1;" FontSize="13"/>
-                                    <TextBlock Text="Shuffle"/>
+                                    <TextBlock x:Uid="Views_YourEpisodesView__Auto_607" Text="Shuffle"/>
                                 </StackPanel>
                             </Button>
                             <Button
@@ -621,7 +623,7 @@
                                 Visibility="{x:Bind ViewModel.CanOpenSelectedShow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE8A5;" FontSize="13"/>
-                                    <TextBlock Text="Open show"/>
+                                    <TextBlock x:Uid="Views_YourEpisodesView__OpenShowText" Text="Open show"/>
                                 </StackPanel>
                             </Button>
                             <controls:Segmented
@@ -629,8 +631,8 @@
                                 SelectedIndex="{x:Bind ViewModel.PodcastEpisodeScopeIndex, Mode=OneWay}"
                                 SelectionChanged="PodcastEpisodeScopeSelector_SelectionChanged"
                                 Visibility="{x:Bind ViewModel.CanSwitchPodcastEpisodeScope, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <controls:SegmentedItem Content="Saved"/>
-                                <controls:SegmentedItem Content="Latest"/>
+                                <controls:SegmentedItem x:Uid="Views_YourEpisodesView__SegmentSaved" Content="Saved"/>
+                                <controls:SegmentedItem x:Uid="Views_YourEpisodesView__SegmentLatest" Content="Latest"/>
                             </controls:Segmented>
                         </controls:WrapPanel>
                     </StackPanel>
@@ -825,10 +827,11 @@
                     Padding="10,6"
                     HorizontalAlignment="Right"
                     Click="BrowsePodcasts_Click"
+                    x:Uid="Views_YourEpisodesView__BrowseButton2"
                     ToolTipService.ToolTip="Browse podcasts">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE71B;" FontSize="14"/>
-                        <TextBlock Text="Browse"/>
+                        <TextBlock x:Uid="Views_YourEpisodesView__BrowseButton2Text" Text="Browse"/>
                     </StackPanel>
                 </Button>
             </Grid>
@@ -844,6 +847,7 @@
                     <TextBox
                         Grid.Row="0"
                         Margin="0,0,0,12"
+                        x:Uid="Views_YourEpisodesView__FilterTextBox2"
                         PlaceholderText="Filter podcasts..."
                         Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
@@ -894,7 +898,7 @@
                     FontSize="36"
                     Opacity="0.45"
                     HorizontalAlignment="Center"/>
-                <TextBlock
+                <TextBlock x:Uid="Views_YourEpisodesView__Auto_608"
                     Text="Podcasts could not load"
                     Style="{StaticResource SubtitleTextBlockStyle}"
                     TextAlignment="Center"
@@ -912,7 +916,7 @@
                     Padding="14,7">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE72C;" FontSize="13"/>
-                        <TextBlock Text="Retry"/>
+                        <TextBlock x:Uid="Views_YourEpisodesView__Auto_609" Text="Retry"/>
                     </StackPanel>
                 </Button>
             </StackPanel>

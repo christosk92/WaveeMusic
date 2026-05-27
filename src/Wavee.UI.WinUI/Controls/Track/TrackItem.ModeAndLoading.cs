@@ -119,14 +119,15 @@ public sealed partial class TrackItem
                 if (!loading)
                     CompactAlbumArt.RefreshCurrentImage();
             }
-            // CompactArtShimmer is x:Load-gated on IsLoading — null when not
-            // loading, realized in Visible state when loading. Skip the
-            // imperative Visibility toggle (kept as a no-op assignment for
-            // diagnostic clarity if the field is present mid-transition).
+            // CompactArtShimmer / CompactInfoShimmer are x:Load-gated on
+            // IsLoading — null when not loading, realized in default-Visible
+            // state when loading. Imperative Visibility toggle stays as a
+            // null-safe no-op for diagnostic clarity if the field is present.
             if (CompactArtShimmer is not null)
                 CompactArtShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
             CompactInfoPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
-            CompactInfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+            if (CompactInfoShimmer is not null)
+                CompactInfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
             CompactDuration.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
             if (CompactMoreButton is not null && loading)
                 CompactMoreButton.Visibility = Visibility.Collapsed;
@@ -134,7 +135,23 @@ public sealed partial class TrackItem
         else
         {
             RowContentGrid.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
-            RowShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+            if (loading)
+            {
+                // RowShimmerOverlay is x:Load-gated on IsLoading. Force
+                // synchronous realization so the Shim*ColDef named fields
+                // referenced by ApplyRowColumnVisibility are wired before the
+                // sync call below.
+                if (RowShimmerOverlay is null) FindName(nameof(RowShimmerOverlay));
+                if (RowShimmerOverlay is not null)
+                {
+                    RowShimmerOverlay.Visibility = Visibility.Visible;
+                    ApplyRowColumnVisibility();
+                }
+            }
+            else if (RowShimmerOverlay is not null)
+            {
+                RowShimmerOverlay.Visibility = Visibility.Collapsed;
+            }
         }
     }
 
@@ -353,14 +370,21 @@ public sealed partial class TrackItem
         RowArtistsHost.Visibility = (ShowArtistColumn && density > 0 && !ShowProgress) ? Visibility.Visible : Visibility.Collapsed;
 
         // Keep the shimmer overlay's columns in sync so loading rows align with the
-        // real row layout (and with the column headers above).
-        ShimArtColDef.Width       = RowArtColDef.Width;
-        ShimTitleColDef.MaxWidth  = RowTitleColDef.MaxWidth;
-        ShimAlbumColDef.Width     = RowAlbumColDef.Width;
-        ShimAddedByColDef.Width   = RowAddedByColDef.Width;
-        ShimDateColDef.Width      = RowDateColDef.Width;
-        ShimPlayCountColDef.Width = RowPlayCountColDef.Width;
-        ShimDurationColDef.Width  = RowDurationColDef.Width;
+        // real row layout (and with the column headers above). RowShimmerOverlay
+        // is x:Load-gated on IsLoading — when not loading, the named
+        // ColumnDefinitions are null. Skip the sync; ApplyLoadingVisualState
+        // calls back into this method once the shimmer realizes for a fresh
+        // loading state.
+        if (ShimArtColDef is not null)
+        {
+            ShimArtColDef.Width       = RowArtColDef.Width;
+            ShimTitleColDef.MaxWidth  = RowTitleColDef.MaxWidth;
+            ShimAlbumColDef.Width     = RowAlbumColDef.Width;
+            ShimAddedByColDef.Width   = RowAddedByColDef.Width;
+            ShimDateColDef.Width      = RowDateColDef.Width;
+            ShimPlayCountColDef.Width = RowPlayCountColDef.Width;
+            ShimDurationColDef.Width  = RowDurationColDef.Width;
+        }
 
         // Subline visibility just changed (artist link) — re-evaluate whether the
         // explicit/video badges should sit on the subline or inline beside the title.

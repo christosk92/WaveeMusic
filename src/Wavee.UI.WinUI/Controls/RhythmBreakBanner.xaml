@@ -107,7 +107,7 @@
 
             <!-- Text stack — eyebrow, headline, subline -->
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                <TextBlock x:Name="EyebrowText"
+                <TextBlock x:Uid="Controls_RhythmBreakBanner__Auto_600" x:Name="EyebrowText"
                            Text="ON TOUR NOW"
                            FontSize="11"
                            FontWeight="Bold"

@@ -232,20 +232,20 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Album"
+                            <TextBlock x:Uid="Controls_RightPanel_RightPanelView__Auto_600" Grid.Row="0" Grid.Column="0" Text="Album"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock x:Name="TrackDetailsAlbum" Grid.Row="0" Grid.Column="1"
                                        TextTrimming="CharacterEllipsis" FontWeight="SemiBold"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Duration"
+                            <TextBlock x:Uid="Controls_RightPanel_RightPanelView__Auto_601" Grid.Row="1" Grid.Column="0" Text="Duration"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock x:Name="TrackDetailsDuration" Grid.Row="1" Grid.Column="1"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Added"
+                            <TextBlock x:Uid="Controls_RightPanel_RightPanelView__Auto_602" Grid.Row="2" Grid.Column="0" Text="Added"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock x:Name="TrackDetailsAdded" Grid.Row="2" Grid.Column="1"/>
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Plays"
+                            <TextBlock x:Uid="Controls_RightPanel_RightPanelView__Auto_603" Grid.Row="3" Grid.Column="0" Text="Plays"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock x:Name="TrackDetailsPlays" Grid.Row="3" Grid.Column="1"/>
                         </Grid>

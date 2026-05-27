@@ -133,14 +133,14 @@
                     </controls:SettingsExpander.HeaderIcon>
                     <controls:SettingsExpander.Items>
                         <controls:SettingsCard ContentAlignment="Vertical">
-                            <TextBlock TextWrapping="Wrap"
+                            <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__Auto_600" TextWrapping="Wrap"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        Text="Wavee is a third-party Spotify client. To make Recently Played, play counts, and recommendations work, the app sends the same minimum set of playback events to Spotify that the official client sends (the &quot;gabo&quot; telemetry pipeline): track URI, context URI, ms played, reason started/ended, audio format. Nothing else. No third-party analytics, no Wavee-operated server, no remote crash reporting. Your Spotify credentials are encrypted on disk via Windows DPAPI; the encryption is bound to your Windows user account. AI features (lyrics meaning, song themes) run entirely on-device via Phi Silica on Copilot+ PCs and never leave the machine."/>
                         </controls:SettingsCard>
                     </controls:SettingsExpander.Items>
                 </controls:SettingsExpander>
 
-                <controls:SettingsCard Header="License"
+                <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__Auto_601" Header="License"
                                        Description="Wavee is MIT-licensed open source"
                                        IsClickEnabled="True"
                                        Click="License_Click"
@@ -151,7 +151,7 @@
                     <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
                 </controls:SettingsCard>
 
-                <controls:SettingsExpander Header="Third-party notices"
+                <controls:SettingsExpander x:Uid="Controls_Settings_AboutSettingsSection__Auto_602" Header="Third-party notices"
                                            Description="Licenses, links, and why each component is included"
                                            Tag="legal">
                     <controls:SettingsExpander.HeaderIcon>
@@ -160,7 +160,7 @@
                     <controls:SettingsExpander.Items>
                         <controls:SettingsCard ContentAlignment="Vertical">
                             <StackPanel Spacing="12">
-                                <TextBlock TextWrapping="Wrap"
+                                <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__Auto_603" TextWrapping="Wrap"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            Style="{ThemeResource CaptionTextBlockStyle}"
                                            Text="These are the major direct and vendored components Wavee ships with or builds against. The complete transitive package graph is still available from dotnet list package --include-transitive."/>

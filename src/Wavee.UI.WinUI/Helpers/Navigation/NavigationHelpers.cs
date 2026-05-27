@@ -217,7 +217,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenSearch(string? query = null, bool openInNewTab = false)
     {
-        Navigate(typeof(SearchPage), query, "Search", CreateIconSource(typeof(SearchPage), query), openInNewTab);
+        Navigate(typeof(SearchPage), query, AppLocalization.GetString("TabTitle_Search"), CreateIconSource(typeof(SearchPage), query), openInNewTab);
     }
 
     /// <summary>
@@ -271,7 +271,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenRecentlyPlayed(bool openInNewTab = false)
     {
-        Navigate(typeof(RecentlyPlayedPage), null, "Recently played",
+        Navigate(typeof(RecentlyPlayedPage), null, AppLocalization.GetString("Home_Region_RecentlyPlayed_Header"),
             CreateIconSource(typeof(RecentlyPlayedPage), null), openInNewTab);
     }
 
@@ -290,8 +290,8 @@ public static class NavigationHelpers
         OpenPodcastBrowse(new ContentNavigationParameter
         {
             Uri = PodcastBrowseViewModel.RootPodcastsUri,
-            Title = "Podcasts",
-            Subtitle = "Browse shows, charts, and categories."
+            Title = AppLocalization.GetString("TabTitle_Podcasts"),
+            Subtitle = AppLocalization.GetString("Podcasts_BrowseSubtitle")
         }, openInNewTab);
     }
 
@@ -753,31 +753,31 @@ public static class NavigationHelpers
     public static string GetDefaultHeader(Type pageType, object? parameter)
     {
         if (pageType == typeof(HomePage))
-            return "Home";
+            return AppLocalization.GetString("TabTitle_Home");
 
         if (pageType == typeof(StartPage))
-            return "New Tab";
+            return AppLocalization.GetString("TabTitle_NewTab");
 
         if (pageType == typeof(SearchPage))
-            return "Search";
+            return AppLocalization.GetString("TabTitle_Search");
 
         if (pageType == typeof(ProfilePage))
-            return (parameter as ContentNavigationParameter)?.Title ?? "Profile";
+            return (parameter as ContentNavigationParameter)?.Title ?? AppLocalization.GetString("TabTitle_Profile");
 
         if (pageType == typeof(SettingsPage))
-            return "Settings";
+            return AppLocalization.GetString("TabTitle_Settings");
 
         if (pageType == typeof(DebugPage))
-            return "Debug";
+            return AppLocalization.GetString("TabTitle_Debug");
 
         if (pageType == typeof(FeedbackPage))
-            return "Feedback";
+            return AppLocalization.GetString("TabTitle_Feedback");
 
         if (pageType == typeof(PodcastBrowsePage))
-            return (parameter as ContentNavigationParameter)?.Title ?? "Podcasts";
+            return (parameter as ContentNavigationParameter)?.Title ?? AppLocalization.GetString("TabTitle_Podcasts");
 
         if (pageType == typeof(BrowsePage))
-            return (parameter as ContentNavigationParameter)?.Title ?? "Browse";
+            return (parameter as ContentNavigationParameter)?.Title ?? AppLocalization.GetString("TabTitle_Browse");
 
         if (pageType == typeof(LibraryPage))
         {

@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using Microsoft.Windows.ApplicationModel.Resources;
 using Windows.Globalization;
+using Wavee.UI.Localization;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -31,6 +32,16 @@ public static class AppLocalization
             return null;
         }
     });
+
+    /// <summary>
+    /// Wires the framework-neutral <see cref="LocalizationHook"/> so DTOs /
+    /// formatters in <c>Wavee.UI</c> can localize through resw without
+    /// depending on Windows.* APIs. Call once at app startup.
+    /// </summary>
+    public static void InstallHook()
+    {
+        LocalizationHook.Configure(GetString, Format);
+    }
 
     public static string GetString(string key)
     {

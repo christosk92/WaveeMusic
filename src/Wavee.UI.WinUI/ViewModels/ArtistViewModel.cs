@@ -365,7 +365,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         ArtistId = artistId;
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Artist, artistId)
         {
-            Title = "Artist"
+            Title = AppLocalization.GetString("TabTitle_Artist")
         };
         RefreshFollowState();
         RefreshBlockState();

@@ -102,7 +102,7 @@
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"/>
 
-                    <Button x:Name="PlayButton"
+                    <Button x:Uid="Controls_ShowEpisode_ShowUpNextCard__Auto_600" x:Name="PlayButton"
                             Grid.Column="1"
                             Width="28" Height="28" Padding="0"
                             CornerRadius="14"

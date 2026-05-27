@@ -20,6 +20,7 @@ internal sealed class DealerConnection : IDealerConnection
     private Task? _processTask;
     private volatile bool _disposed;
     private volatile ConnectionState _state;
+    private long _connectedAtTicks;
 
     /// <summary>
     /// Raised when a complete WebSocket message is received.
@@ -96,6 +97,7 @@ internal sealed class DealerConnection : IDealerConnection
         {
             await _webSocket.ConnectAsync(new Uri(wsUrl), cancellationToken);
             State = ConnectionState.Connected;
+            _connectedAtTicks = Environment.TickCount64;
 
             _logger?.LogDebug("WebSocket connected to {Url}", wsUrl);
 
@@ -172,6 +174,9 @@ internal sealed class DealerConnection : IDealerConnection
         State = ConnectionState.Disconnected;
     }
 
+    private long UptimeSeconds()
+        => _connectedAtTicks == 0 ? 0 : (Environment.TickCount64 - _connectedAtTicks) / 1000;
+
     /// <summary>
     /// Cleans up pipe tasks from a previous connection.
     /// Waits for both FillPipeAsync and ProcessPipeAsync to complete.
@@ -237,26 +242,39 @@ internal sealed class DealerConnection : IDealerConnection
                 }
                 catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                 {
-                    _logger?.LogDebug("WebSocket connection closed prematurely");
+                    // Spotify's dealer rotates connections periodically — closes
+                    // the TCP socket without a WebSocket close handshake. Log at
+                    // Information so the rotation cause is visible alongside the
+                    // outer "Dealer connection closed" line (otherwise the cause
+                    // is invisible at default log level).
+                    _logger?.LogInformation(
+                        "WebSocket connection closed prematurely (no close frame, likely server-side rotation) after {Uptime}s",
+                        UptimeSeconds());
                     Closed?.Invoke(this, null);
                     break;
                 }
                 catch (System.IO.IOException ioEx)
                 {
-                    _logger?.LogWarning("WebSocket IOException (network dropped): {Message}", ioEx.Message);
+                    _logger?.LogWarning(
+                        "WebSocket IOException (network dropped) after {Uptime}s: {Message}",
+                        UptimeSeconds(), ioEx.Message);
                     Closed?.Invoke(this, null);
                     break;
                 }
                 catch (WebSocketException wsEx)
                 {
-                    _logger?.LogWarning("WebSocket error: {Code} — {Message}", wsEx.WebSocketErrorCode, wsEx.Message);
+                    _logger?.LogWarning(
+                        "WebSocket error after {Uptime}s: {Code} — {Message}",
+                        UptimeSeconds(), wsEx.WebSocketErrorCode, wsEx.Message);
                     Closed?.Invoke(this, null);
                     break;
                 }
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    _logger?.LogInformation("WebSocket closed by server: {Status}", _webSocket.CloseStatus);
+                    _logger?.LogInformation(
+                        "WebSocket closed by server after {Uptime}s: status={Status} desc='{Desc}'",
+                        UptimeSeconds(), _webSocket.CloseStatus, _webSocket.CloseStatusDescription);
                     Closed?.Invoke(this, _webSocket.CloseStatus);
                     break;
                 }

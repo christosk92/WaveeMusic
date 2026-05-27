@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -94,7 +95,8 @@ public sealed record ArtistTrackFact(
     long PlayCount,
     int? Year,
     DateTimeOffset ReleaseDate = default,
-    int TrackNumber = 0);
+    int TrackNumber = 0,
+    IReadOnlyList<string>? ArtistNames = null);
 
 public sealed record ArtistReleaseFact(
     string? Name,
@@ -105,6 +107,11 @@ public sealed record ArtistReleaseFact(
     int TrackCount,
     string? Label,
     int Year);
+
+public sealed record ArtistSearchFact(
+    string? Name,
+    string? Uri,
+    string? ImageUrl = null);
 
 public interface IArtistAiToolProvider
 {
@@ -127,6 +134,21 @@ public interface IArtistAiToolProvider
         CancellationToken cancellationToken = default);
 }
 
+public interface IMusicCatalogSearchProvider
+{
+    bool IsAvailable { get; }
+
+    Task<IReadOnlyList<ArtistSearchFact>> SearchArtistsAsync(
+        string query,
+        int limit = 5,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ArtistTrackFact>> SearchTracksAsync(
+        string query,
+        int limit = 20,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed class ArtistAiQuestionService
 {
     private const int MaxPromptCharacters = 8000;
@@ -137,6 +159,7 @@ public sealed class ArtistAiQuestionService
     private readonly IWebSearchToolProvider? _webSearch;
     private readonly IMusicGroundingProvider? _musicGrounding;
     private readonly IWikipediaLookup? _wikipedia;
+    private readonly IMusicCatalogSearchProvider? _catalogSearch;
     private readonly ILogger? _logger;
 
     public ArtistAiQuestionService(
@@ -146,6 +169,7 @@ public sealed class ArtistAiQuestionService
         IMusicGroundingProvider? musicGrounding = null,
         IWebSearchToolProvider? webSearch = null,
         IWikipediaLookup? wikipedia = null,
+        IMusicCatalogSearchProvider? catalogSearch = null,
         ILogger<ArtistAiQuestionService>? logger = null)
     {
         _model = model ?? throw new ArgumentNullException(nameof(model));
@@ -154,6 +178,7 @@ public sealed class ArtistAiQuestionService
         _musicGrounding = musicGrounding;
         _webSearch = webSearch;
         _wikipedia = wikipedia;
+        _catalogSearch = catalogSearch;
         _logger = logger;
     }
 
@@ -190,6 +215,16 @@ public sealed class ArtistAiQuestionService
                 AiActivityKind.ToolCompleted,
                 $"Prepared {recommendations.Count} catalog item{(recommendations.Count == 1 ? "" : "s")}",
                 ToolName: "artist.recommendations"));
+        }
+
+        if (ShouldAnswerFromGroundedRecommendations(plan))
+        {
+            activity.Report(new AiActivityEvent(
+                AiActivityKind.ModelCompleted,
+                "Answered from verified catalog matches",
+                ToolName: "artist.recommendations"));
+
+            return ArtistAiQuestionResult.Ok(BuildFallbackAnswer(plan, recommendations), recommendations);
         }
 
         activity.Report(new AiActivityEvent(
@@ -269,7 +304,7 @@ public sealed class ArtistAiQuestionService
         IAiActivitySink activity,
         CancellationToken cancellationToken)
     {
-        var deterministic = ArtistQuestionPlan.FromQuestion(request.Question);
+        var deterministic = ArtistQuestionPlan.FromQuestion(request.Question, request.ArtistName);
         if (deterministic.Intent != ArtistQuestionIntent.General)
         {
             activity.Report(new AiActivityEvent(
@@ -330,6 +365,7 @@ public sealed class ArtistAiQuestionService
         IReadOnlyList<ArtistTrackFact> topTracks = [];
         IReadOnlyList<ArtistReleaseFact> releases = [];
         IReadOnlyList<ArtistTrackFact> releaseTracks = [];
+        IReadOnlyList<ArtistTrackFact> searchTracks = [];
         IReadOnlyList<WebSearchResult> webResults = [];
         MusicGroundingResult musicGrounding = MusicGroundingResult.Empty;
 
@@ -464,6 +500,44 @@ public sealed class ArtistAiQuestionService
             }
         }
 
+        if (plan.UseSpotifySearch)
+        {
+            if (_catalogSearch?.IsAvailable != true)
+            {
+                activity.Report(new AiActivityEvent(
+                    AiActivityKind.ToolSkipped,
+                    "Spotify catalog search is not available",
+                    ToolName: "spotify.search"));
+            }
+            else
+            {
+                activity.Report(new AiActivityEvent(
+                    AiActivityKind.ToolStarted,
+                    "Searching Spotify catalog",
+                    ToolName: "spotify.search"));
+                try
+                {
+                    searchTracks = await _catalogSearch.SearchTracksAsync(
+                        BuildSpotifyTrackSearchQuery(request, plan),
+                        limit: 25,
+                        cancellationToken).ConfigureAwait(false);
+                    activity.Report(new AiActivityEvent(
+                        AiActivityKind.ToolCompleted,
+                        $"Loaded {searchTracks.Count} Spotify search track{(searchTracks.Count == 1 ? "" : "s")}",
+                        ToolName: "spotify.search"));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger?.LogDebug(ex, "Spotify catalog search failed for {Artist}/{Question}", request.ArtistName, request.Question);
+                    activity.Report(new AiActivityEvent(
+                        AiActivityKind.Warning,
+                        "Spotify catalog search failed",
+                        ToolName: "spotify.search",
+                        Detail: ex.Message));
+                }
+            }
+        }
+
         if (plan.UseWebSearch)
         {
             if (_webSearch?.IsAvailable != true)
@@ -502,7 +576,15 @@ public sealed class ArtistAiQuestionService
             }
         }
 
-        return new ArtistQuestionContext(profile, topTracks, releases, releaseTracks, webResults, musicGrounding);
+        return new ArtistQuestionContext(
+            request.ArtistName,
+            profile,
+            topTracks,
+            releases,
+            releaseTracks,
+            searchTracks,
+            webResults,
+            musicGrounding);
     }
 
     private static string BuildAnswerPrompt(
@@ -517,6 +599,7 @@ public sealed class ArtistAiQuestionService
         sb.AppendLine("You may use trained music-domain knowledge for broad, well-known context, but do not invent precise facts not supported by the supplied signals.");
         sb.AppendLine("If the question asks for 'best', distinguish popularity, historical importance, and personal taste when helpful.");
         sb.AppendLine("If the question asks for lesser-known songs, avoid only naming the most popular tracks unless you explain why catalog data is limited.");
+        sb.AppendLine("If the question asks for songs featuring a named artist, use only tracks whose artist credits include that named artist. If no such tracks are present, say the loaded catalog did not show a grounded match.");
         sb.AppendLine("If RECOMMENDED_ITEMS is present, anchor the answer to those exact items and do not introduce unrelated song or release titles.");
         sb.AppendLine("For song-list questions, cover 3-5 recommendations unless the user clearly asks for one single pick.");
         sb.AppendLine("Do not recommend modified versions such as slowed, sped-up, instrumental, karaoke, remix, edit, live, demo, or acapella tracks unless the user explicitly asks for those versions.");
@@ -525,6 +608,12 @@ public sealed class ArtistAiQuestionService
         sb.Append("ARTIST: ").AppendLine(request.ArtistName);
         sb.Append("QUESTION: ").AppendLine(request.Question.Trim());
         sb.Append("PLANNED_INTENT: ").AppendLine(plan.Intent.ToString());
+        if (!string.IsNullOrWhiteSpace(plan.TrackArtistCreditFilter))
+            sb.Append("TRACK_ARTIST_CREDIT_FILTER: ").AppendLine(plan.TrackArtistCreditFilter);
+        if (!string.IsNullOrWhiteSpace(plan.ReleaseTypeFilter))
+            sb.Append("RELEASE_TYPE_FILTER: ").AppendLine(plan.ReleaseTypeFilter);
+        if (plan.ReleaseYearFilter is { } releaseYearFilter)
+            sb.Append("RELEASE_YEAR_FILTER: ").AppendLine(releaseYearFilter.ToString(System.Globalization.CultureInfo.InvariantCulture));
         sb.Append("TODAY: ").AppendLine(DateTimeOffset.Now.ToString("yyyy-MM-dd"));
         sb.AppendLine();
 
@@ -579,14 +668,7 @@ public sealed class ArtistAiQuestionService
                          .OrderByDescending(t => t.PlayCount)
                          .Take(20))
             {
-                sb.Append("- ").Append(track.Title);
-                if (!string.IsNullOrWhiteSpace(track.AlbumName))
-                    sb.Append(" (").Append(track.AlbumName).Append(')');
-                if (track.Year is { } year and > 0)
-                    sb.Append(", ").Append(year);
-                if (track.PlayCount > 0)
-                    sb.Append(", plays ").Append(track.PlayCount.ToString("N0"));
-                sb.AppendLine();
+                AppendTrackPromptLine(sb, track);
             }
             sb.AppendLine();
         }
@@ -618,14 +700,17 @@ public sealed class ArtistAiQuestionService
                          .ThenBy(t => t.TrackNumber <= 0 ? int.MaxValue : t.TrackNumber)
                          .Take(40))
             {
-                sb.Append("- ").Append(track.Title);
-                if (!string.IsNullOrWhiteSpace(track.AlbumName))
-                    sb.Append(" (").Append(track.AlbumName).Append(')');
-                if (track.Year is { } year and > 0)
-                    sb.Append(", ").Append(year);
-                if (track.PlayCount > 0)
-                    sb.Append(", plays ").Append(track.PlayCount.ToString("N0"));
-                sb.AppendLine();
+                AppendTrackPromptLine(sb, track);
+            }
+            sb.AppendLine();
+        }
+
+        if (context.SearchTracks.Count > 0)
+        {
+            sb.AppendLine("SPOTIFY_SEARCH_TRACKS:");
+            foreach (var track in CanonicalTracks(context.SearchTracks).Take(20))
+            {
+                AppendTrackPromptLine(sb, track);
             }
             sb.AppendLine();
         }
@@ -667,14 +752,22 @@ public sealed class ArtistAiQuestionService
         ArtistQuestionPlan plan,
         ArtistQuestionContext context)
     {
+        if (!string.IsNullOrWhiteSpace(plan.TrackArtistCreditFilter))
+            return BuildArtistCreditTrackRecommendations(context, plan.TrackArtistCreditFilter);
+
         return plan.Intent switch
         {
             ArtistQuestionIntent.OldestSongs => BuildOldestReleaseRecommendations(context),
             ArtistQuestionIntent.LesserKnownSongs => BuildLesserKnownTrackRecommendations(context),
             ArtistQuestionIntent.BestKnownSongs => BuildBestKnownTrackRecommendations(context),
+            ArtistQuestionIntent.ListReleases => BuildReleaseRecommendations(context, plan),
             _ => [],
         };
     }
+
+    private static bool ShouldAnswerFromGroundedRecommendations(ArtistQuestionPlan plan)
+        => !string.IsNullOrWhiteSpace(plan.TrackArtistCreditFilter)
+           || plan.Intent == ArtistQuestionIntent.ListReleases;
 
     private static IReadOnlyList<ArtistAiRecommendation> BuildBestKnownTrackRecommendations(
         ArtistQuestionContext context)
@@ -692,6 +785,69 @@ public sealed class ArtistAiQuestionService
                 PlayCount: t.PlayCount,
                 Year: t.Year))
             .ToList();
+
+    private static IReadOnlyList<ArtistAiRecommendation> BuildArtistCreditTrackRecommendations(
+        ArtistQuestionContext context,
+        string? artistCreditFilter)
+    {
+        if (string.IsNullOrWhiteSpace(artistCreditFilter))
+            return [];
+
+        var localTracks = context.ReleaseTracks.Concat(context.TopTracks);
+        var validatedSearchTracks = context.SearchTracks
+            .Where(t => TrackMatchesArtist(t, context.ArtistName));
+
+        return CanonicalTracks(localTracks.Concat(validatedSearchTracks))
+            .Where(t => TrackMatchesArtist(t, artistCreditFilter))
+            .DistinctBy(t => NormalizeTrackKey(t.Title))
+            .OrderByDescending(t => t.PlayCount)
+            .ThenByDescending(t => t.Year ?? 0)
+            .ThenBy(t => t.Title)
+            .Take(5)
+            .Select(t => new ArtistAiRecommendation(
+                ArtistAiRecommendationKind.Track,
+                t.Title!,
+                BuildFeaturingTrackSubtitle(t),
+                t.Uri,
+                t.ImageUrl,
+                ContextUri: t.AlbumUri,
+                Reason: $"Artist credit includes {artistCreditFilter}",
+                PlayCount: t.PlayCount,
+                Year: t.Year))
+            .ToList();
+    }
+
+    private static IReadOnlyList<ArtistAiRecommendation> BuildReleaseRecommendations(
+        ArtistQuestionContext context,
+        ArtistQuestionPlan plan)
+    {
+        var releases = context.Releases
+            .Where(r => !string.IsNullOrWhiteSpace(r.Name))
+            .Where(r => !IsModifiedTitle(r.Name));
+
+        if (!string.IsNullOrWhiteSpace(plan.ReleaseTypeFilter))
+        {
+            releases = releases.Where(r =>
+                string.Equals(NormalizeReleaseType(r.Type), NormalizeReleaseType(plan.ReleaseTypeFilter), StringComparison.Ordinal));
+        }
+
+        if (plan.ReleaseYearFilter is { } year)
+            releases = releases.Where(r => r.Year == year);
+
+        return releases
+            .OrderByDescending(r => r.ReleaseDate == default ? DateTimeOffset.MinValue : r.ReleaseDate)
+            .ThenBy(r => r.Name)
+            .Take(10)
+            .Select(r => new ArtistAiRecommendation(
+                ArtistAiRecommendationKind.Release,
+                r.Name!,
+                BuildReleaseSubtitle(r),
+                r.Uri,
+                r.ImageUrl,
+                Reason: BuildReleaseReason(plan),
+                Year: r.Year))
+            .ToList();
+    }
 
     private static IReadOnlyList<ArtistAiRecommendation> BuildLesserKnownTrackRecommendations(
         ArtistQuestionContext context)
@@ -797,6 +953,7 @@ public sealed class ArtistAiQuestionService
         {
             ArtistQuestionIntent.OldestSongs => ordered.Take(24).ToList(),
             ArtistQuestionIntent.LesserKnownSongs => ordered.Take(24).ToList(),
+            _ when !string.IsNullOrWhiteSpace(plan.TrackArtistCreditFilter) => ordered.Take(64).ToList(),
             _ => ordered.Take(12).ToList(),
         };
     }
@@ -805,6 +962,51 @@ public sealed class ArtistAiQuestionService
         => tracks.Where(t => !string.IsNullOrWhiteSpace(t.Title))
             .Where(t => !IsModifiedTitle(t.Title))
             .Where(t => !IsModifiedTitle(t.AlbumName));
+
+    private static void AppendTrackPromptLine(StringBuilder sb, ArtistTrackFact track)
+    {
+        sb.Append("- ").Append(track.Title);
+        if (track.ArtistNames is { Count: > 0 })
+            sb.Append(" — artists: ").Append(string.Join(", ", track.ArtistNames.Where(a => !string.IsNullOrWhiteSpace(a)).Take(6)));
+        if (!string.IsNullOrWhiteSpace(track.AlbumName))
+            sb.Append(" (").Append(track.AlbumName).Append(')');
+        if (track.Year is { } year and > 0)
+            sb.Append(", ").Append(year);
+        if (track.PlayCount > 0)
+            sb.Append(", plays ").Append(track.PlayCount.ToString("N0"));
+        sb.AppendLine();
+    }
+
+    private static bool TrackMatchesArtist(ArtistTrackFact track, string artistName)
+        => !string.IsNullOrWhiteSpace(artistName)
+           && track.ArtistNames is { Count: > 0 }
+           && track.ArtistNames.Any(a => ArtistNameMatches(a, artistName));
+
+    private static bool ArtistNameMatches(string? left, string? right)
+    {
+        var l = NormalizeEntityKey(left);
+        var r = NormalizeEntityKey(right);
+        return !string.IsNullOrWhiteSpace(l)
+               && !string.IsNullOrWhiteSpace(r)
+               && string.Equals(l, r, StringComparison.Ordinal);
+    }
+
+    private static string NormalizeEntityKey(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : Regex.Replace(value.Trim().ToLowerInvariant(), "[^a-z0-9]+", string.Empty);
+
+    private static string NormalizeReleaseType(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : value.Trim().ToUpperInvariant() switch
+            {
+                "ALBUMS" => "ALBUM",
+                "SINGLES" => "SINGLE",
+                "EPS" => "EP",
+                "COMPILATIONS" => "COMPILATION",
+                var normalized => normalized,
+            };
 
     private static string NormalizeTrackKey(string? title)
         => string.IsNullOrWhiteSpace(title)
@@ -859,6 +1061,20 @@ public sealed class ArtistAiQuestionService
         return parts.Count == 0 ? null : string.Join(" • ", parts);
     }
 
+    private static string? BuildFeaturingTrackSubtitle(ArtistTrackFact track)
+    {
+        var parts = new List<string>(4);
+        if (track.ArtistNames is { Count: > 0 })
+            parts.Add(string.Join(", ", track.ArtistNames.Where(a => !string.IsNullOrWhiteSpace(a)).Take(4)));
+        if (!string.IsNullOrWhiteSpace(track.AlbumName))
+            parts.Add(track.AlbumName!);
+        if (track.Year is { } year and > 0)
+            parts.Add(year.ToString(System.Globalization.CultureInfo.CurrentCulture));
+        if (track.PlayCount > 0)
+            parts.Add($"{track.PlayCount:N0} plays");
+        return parts.Count == 0 ? null : string.Join(" • ", parts);
+    }
+
     private static string? BuildReleaseSubtitle(ArtistReleaseFact release)
     {
         var parts = new List<string>(3);
@@ -871,10 +1087,56 @@ public sealed class ArtistAiQuestionService
         return parts.Count == 0 ? null : string.Join(" • ", parts);
     }
 
+    private static string BuildReleaseReason(ArtistQuestionPlan plan)
+    {
+        var parts = new List<string>(2);
+        if (!string.IsNullOrWhiteSpace(plan.ReleaseTypeFilter))
+            parts.Add(NormalizeReleaseType(plan.ReleaseTypeFilter).ToLowerInvariant());
+        if (plan.ReleaseYearFilter is { } year)
+            parts.Add(year.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return parts.Count == 0 ? "Loaded artist release" : "Matches " + string.Join(" ", parts);
+    }
+
+    private static string BuildSpotifyTrackSearchQuery(
+        ArtistAiQuestionRequest request,
+        ArtistQuestionPlan plan)
+    {
+        var parts = new List<string>(3) { request.ArtistName };
+        if (!string.IsNullOrWhiteSpace(plan.TrackArtistCreditFilter))
+            parts.Add(plan.TrackArtistCreditFilter!);
+        else
+            parts.Add(request.Question);
+        return string.Join(" ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+    }
+
     private static string BuildFallbackAnswer(
         ArtistQuestionPlan plan,
         IReadOnlyList<ArtistAiRecommendation> recommendations)
     {
+        if (!string.IsNullOrWhiteSpace(plan.TrackArtistCreditFilter))
+        {
+            var target = string.IsNullOrWhiteSpace(plan.TrackArtistCreditFilter)
+                ? "that artist"
+                : plan.TrackArtistCreditFilter!;
+
+            if (recommendations.Count == 0)
+            {
+                return $"I couldn't find any loaded catalog tracks whose Spotify artist credits include {target}. I won't guess from related-artist signals.";
+            }
+
+            return $"The loaded Spotify catalog shows these tracks with {target} in the artist credits: "
+                   + string.Join(", ", recommendations.Select(r => r.Title));
+        }
+
+        if (plan.Intent == ArtistQuestionIntent.ListReleases)
+        {
+            if (recommendations.Count == 0)
+                return "I couldn't find any loaded releases matching those filters.";
+
+            return "The loaded Spotify catalog shows these matching releases: "
+                   + string.Join(", ", recommendations.Select(r => r.Title));
+        }
+
         var intro = plan.Intent switch
         {
             ArtistQuestionIntent.OldestSongs => "Based on the loaded discography, these are the earliest releases I found:",
@@ -891,6 +1153,7 @@ public sealed class ArtistAiQuestionService
            "Available tools: artist.profile, artist.top_tracks, artist.discography, artist.release_tracks.\n" +
            "Use artist.discography for oldest, early, albums, releases, lesser-known, deep cuts, or catalog questions.\n" +
            "Use artist.release_tracks for oldest songs, lesser-known songs, deep cuts, or questions that need tracks inside releases.\n" +
+           "Use artist.release_tracks for songs with a named collaborator, feature, guest artist, or artist credit.\n" +
            "Use artist.top_tracks for best, biggest, most popular, hit, or recommendation questions.\n\n" +
            $"Artist: {request.ArtistName}\nQuestion: {request.Question}\n";
 
@@ -1019,6 +1282,8 @@ public sealed class ArtistAiQuestionService
     private static ArtistQuestionIntent ParseIntent(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
+            "list_tracks" => ArtistQuestionIntent.ListTracks,
+            "list_releases" => ArtistQuestionIntent.ListReleases,
             "oldest_songs" => ArtistQuestionIntent.OldestSongs,
             "best_known_songs" => ArtistQuestionIntent.BestKnownSongs,
             "lesser_known_songs" => ArtistQuestionIntent.LesserKnownSongs,
@@ -1052,6 +1317,8 @@ public sealed class ArtistAiQuestionService
           "type": "string",
           "enum": [
             "general",
+            "list_tracks",
+            "list_releases",
             "oldest_songs",
             "best_known_songs",
             "lesser_known_songs",
@@ -1093,10 +1360,12 @@ public sealed class ArtistAiQuestionService
     """;
 
     private sealed record ArtistQuestionContext(
+        string ArtistName,
         ArtistProfileFacts? Profile,
         IReadOnlyList<ArtistTrackFact> TopTracks,
         IReadOnlyList<ArtistReleaseFact> Releases,
         IReadOnlyList<ArtistTrackFact> ReleaseTracks,
+        IReadOnlyList<ArtistTrackFact> SearchTracks,
         IReadOnlyList<WebSearchResult> WebResults,
         MusicGroundingResult MusicGrounding);
 
@@ -1106,14 +1375,46 @@ public sealed class ArtistAiQuestionService
         bool UseTopTracks,
         bool UseDiscography,
         bool UseReleaseTracks,
-        bool UseWebSearch)
+        bool UseWebSearch,
+        bool UseSpotifySearch = false,
+        string? TrackArtistCreditFilter = null,
+        string? ReleaseTypeFilter = null,
+        int? ReleaseYearFilter = null)
     {
         public static ArtistQuestionPlan Default { get; } =
             new(ArtistQuestionIntent.General, UseProfile: true, UseTopTracks: true, UseDiscography: false, UseReleaseTracks: false, UseWebSearch: true);
 
-        public static ArtistQuestionPlan FromQuestion(string question)
+        public static ArtistQuestionPlan FromQuestion(string question, string artistName)
         {
             var q = question.Trim().ToLowerInvariant();
+            if (TryExtractTrackArtistCreditFilter(question, artistName, out var artistCreditFilter))
+            {
+                return new(
+                    ArtistQuestionIntent.ListTracks,
+                    UseProfile: true,
+                    UseTopTracks: true,
+                    UseDiscography: true,
+                    UseReleaseTracks: true,
+                    UseWebSearch: true,
+                    UseSpotifySearch: true,
+                    TrackArtistCreditFilter: artistCreditFilter);
+            }
+
+            var releaseType = ExtractReleaseTypeFilter(q);
+            var releaseYear = ExtractReleaseYearFilter(q);
+            if (releaseType is not null || (releaseYear is not null && ContainsAny(q, "release", "album", "single", "ep", "compilation")))
+            {
+                return new(
+                    ArtistQuestionIntent.ListReleases,
+                    UseProfile: true,
+                    UseTopTracks: false,
+                    UseDiscography: true,
+                    UseReleaseTracks: false,
+                    UseWebSearch: true,
+                    ReleaseTypeFilter: releaseType,
+                    ReleaseYearFilter: releaseYear);
+            }
+
             if (ContainsAny(q, "oldest", "earliest", "first song", "first songs", "early songs", "debut"))
                 return new(ArtistQuestionIntent.OldestSongs, true, true, true, true, true);
             if (ContainsAny(q, "lesser known", "lesser-known", "deep cut", "deep cuts", "underrated", "hidden gem", "hidden gems", "obscure"))
@@ -1126,6 +1427,77 @@ public sealed class ArtistAiQuestionService
             return Default;
         }
 
+        private static bool TryExtractTrackArtistCreditFilter(
+            string question,
+            string artistName,
+            out string artistCreditFilter)
+        {
+            artistCreditFilter = string.Empty;
+            if (!ContainsAny(question.ToLowerInvariant(), "song", "songs", "track", "tracks", "collab", "feature", "featuring", "feat", "ft.", "with"))
+                return false;
+
+            var patterns = new[]
+            {
+                @"\b(?:featur(?:e|es|ing|ed)?|feat\.?|ft\.?|with|collab(?:orations?)?(?:\s+with)?|duet(?:s)?\s+with)\s+(?<name>[^?.,;]+)",
+                @"\bsongs?\s+(?:that\s+)?(?:have|include|with)\s+(?<name>[^?.,;]+)",
+                @"\btracks?\s+(?:that\s+)?(?:have|include|with)\s+(?<name>[^?.,;]+)"
+            };
+
+            foreach (var pattern in patterns)
+            {
+                var match = Regex.Match(question, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!match.Success)
+                    continue;
+
+                var candidate = CleanExtractedEntity(match.Groups["name"].Value);
+                if (candidate.Length == 0 || ArtistNameMatches(candidate, artistName))
+                    continue;
+
+                artistCreditFilter = candidate;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string CleanExtractedEntity(string value)
+        {
+            var cleaned = value.Trim()
+                .Trim('"', '\'', '“', '”')
+                .Trim();
+
+            foreach (var stop in new[] { " songs", " tracks", " song", " track", " on spotify", " in spotify" })
+            {
+                if (cleaned.EndsWith(stop, StringComparison.OrdinalIgnoreCase))
+                    cleaned = cleaned[..^stop.Length].Trim();
+            }
+
+            var byIndex = cleaned.IndexOf(" by ", StringComparison.OrdinalIgnoreCase);
+            if (byIndex >= 0)
+                cleaned = cleaned[..byIndex].Trim();
+
+            return cleaned;
+        }
+
+        private static string? ExtractReleaseTypeFilter(string q)
+        {
+            if (ContainsAny(q, "compilation", "compilations"))
+                return "COMPILATION";
+            if (ContainsAny(q, "single", "singles"))
+                return "SINGLE";
+            if (ContainsAny(q, "album", "albums"))
+                return "ALBUM";
+            if (ContainsAny(q, " ep", " eps", "ep?", "eps?"))
+                return "EP";
+            return null;
+        }
+
+        private static int? ExtractReleaseYearFilter(string q)
+        {
+            var match = Regex.Match(q, @"\b(?:19|20)\d{2}\b", RegexOptions.CultureInvariant);
+            return match.Success && int.TryParse(match.Value, out var year) ? year : null;
+        }
+
         private static bool ContainsAny(string haystack, params string[] needles)
             => needles.Any(n => haystack.Contains(n, StringComparison.Ordinal));
     }
@@ -1133,6 +1505,8 @@ public sealed class ArtistAiQuestionService
     private enum ArtistQuestionIntent
     {
         General,
+        ListTracks,
+        ListReleases,
         OldestSongs,
         BestKnownSongs,
         LesserKnownSongs,

@@ -38,14 +38,14 @@
 
     <StackPanel x:Name="Root" Margin="0,4,0,24">
         <!-- "BROWSE ALL" eyebrow + header — always visible, even during shimmer. -->
-        <TextBlock
+        <TextBlock x:Uid="Views_Home_BrowseAllSection__Auto_600"
             Text="BROWSE ALL"
             FontSize="10"
             FontWeight="SemiBold"
             CharacterSpacing="160"
             Opacity="0.85"
             Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-        <TextBlock
+        <TextBlock x:Uid="Views_Home_BrowseAllSection__Auto_601"
             Text="Discover something new"
             FontSize="22"
             FontWeight="SemiBold"

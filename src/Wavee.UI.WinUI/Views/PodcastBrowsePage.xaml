@@ -310,7 +310,7 @@
                             HorizontalAlignment="Center"
                             Margin="0,16,0,16"
                             Spacing="8">
-                    <TextBlock Text="Couldn't load this topic"
+                    <TextBlock x:Uid="Views_PodcastBrowsePage__Auto_600" Text="Couldn't load this topic"
                                Style="{StaticResource SubtitleTextBlockStyle}"
                                HorizontalAlignment="Center"/>
                     <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"

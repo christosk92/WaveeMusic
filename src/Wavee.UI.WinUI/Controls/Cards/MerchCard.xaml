@@ -59,7 +59,7 @@
                        MaxLines="1"/>
 
             <!-- Buy -->
-            <HyperlinkButton x:Name="BuyLink"
+            <HyperlinkButton x:Uid="Controls_Cards_MerchCard__Auto_600" x:Name="BuyLink"
                              Content="Buy ›"
                              FontWeight="SemiBold"
                              Padding="0,4"

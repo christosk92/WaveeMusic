@@ -393,8 +393,8 @@ public sealed partial class PlaylistTrackListViewModel
     {
         var ts = TimeSpan.FromSeconds(totalSeconds);
         if (ts.TotalHours >= 1)
-            return $"{(int)ts.TotalHours} hr {ts.Minutes} min";
-        return $"{ts.Minutes} min";
+            return AppLocalization.Format("Duration_HoursMinutes", (int)ts.TotalHours, ts.Minutes);
+        return AppLocalization.Format("Duration_Minutes", ts.Minutes);
     }
 
     /// <summary>

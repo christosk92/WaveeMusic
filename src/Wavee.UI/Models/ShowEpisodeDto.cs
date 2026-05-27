@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Wavee.UI.Localization;
 
 namespace Wavee.UI.Models;
 
@@ -91,9 +92,9 @@ public sealed class ShowEpisodeDto
 
         var durationOrRemaining = normalizedState switch
         {
-            "COMPLETED" => "Played",
+            "COMPLETED" => LocalizationHook.GetString("Podcast_Played"),
             "IN_PROGRESS" when DurationMs > 0 && normalizedPosition > 0
-                => $"{FormatDuration(Math.Max(0, DurationMs - normalizedPosition))} left",
+                => LocalizationHook.Format("Podcast_DurationLeft", FormatDuration(Math.Max(0, DurationMs - normalizedPosition))),
             _ => FormatDuration(DurationMs),
         };
 
@@ -151,10 +152,12 @@ public sealed class ShowEpisodeDto
         {
             var hr = (int)ts.TotalHours;
             var min = ts.Minutes;
-            return min > 0 ? $"{hr} hr {min} min" : $"{hr} hr";
+            return min > 0
+                ? LocalizationHook.Format("Duration_HoursMinutes", hr, min)
+                : LocalizationHook.Format("Duration_Hours", hr);
         }
 
         var totalMin = Math.Max(1, (int)Math.Round(ts.TotalMinutes));
-        return $"{totalMin} min";
+        return LocalizationHook.Format("Duration_Minutes", totalMin);
     }
 }

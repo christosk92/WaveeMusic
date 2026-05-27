@@ -74,7 +74,7 @@
                                 </StackPanel>
                             </Border>
                         </Button>
-                        <Button
+                        <Button x:Uid="Controls_Comments_CommentThreadItem__Auto_600"
                             Content="React"
                             Padding="8,3"
                             MinHeight="0"
@@ -136,7 +136,7 @@
                         </StackPanel>
                     </Border>
                 </Button>
-                <Button x:Name="ReactButton"
+                <Button x:Uid="Controls_Comments_CommentThreadItem__Auto_601" x:Name="ReactButton"
                         Content="React"
                         Padding="8,3"
                         MinHeight="0">
@@ -152,7 +152,7 @@
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
-                <HyperlinkButton x:Name="ReplyHyperlink"
+                <HyperlinkButton x:Uid="Controls_Comments_CommentThreadItem__Auto_602" x:Name="ReplyHyperlink"
                                  Content="Reply"
                                  Padding="2,4"
                                  Click="ReplyHyperlink_Click"/>
@@ -177,12 +177,12 @@
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                VerticalAlignment="Center"/>
-                    <Button x:Name="ReplyCancelButton"
+                    <Button x:Uid="Controls_Comments_CommentThreadItem__Auto_603" x:Name="ReplyCancelButton"
                             Grid.Column="1"
                             Content="Cancel"
                             Padding="10,5"
                             Click="ReplyCancel_Click"/>
-                    <Button x:Name="ReplySubmitButton"
+                    <Button x:Uid="Controls_Comments_CommentThreadItem__Auto_604" x:Name="ReplySubmitButton"
                             Grid.Column="2"
                             Content="Reply"
                             Padding="12,5"
@@ -248,7 +248,7 @@
                             </StackPanel>
                         </Grid>
                     </StackPanel>
-                    <HyperlinkButton x:Name="LoadMoreRepliesButton"
+                    <HyperlinkButton x:Uid="Controls_Comments_CommentThreadItem__Auto_605" x:Name="LoadMoreRepliesButton"
                                      Content="Load more replies"
                                      Padding="0,2"/>
                 </StackPanel>

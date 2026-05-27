@@ -14,7 +14,6 @@ namespace Wavee.UI.WinUI.Controls.Settings;
 
 public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchFilter
 {
-    private const string GitHubIssuesNewUrl = "https://github.com/christosk92/WaveeMusic/issues/new";
     private static readonly IReadOnlyList<ThirdPartyNoticeItem> s_thirdPartyNotices =
     [
         ThirdPartyNoticeItem.Brand(
@@ -289,39 +288,7 @@ public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchF
 
     private async void ReportOnGitHub_Click(object sender, RoutedEventArgs e)
     {
-        string? zipPath = null;
-        try
-        {
-            zipPath = await CrashReportPackager.CreateZipAsync();
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"CrashReportPackager.CreateZipAsync failed: {ex}");
-        }
-
-        // Reveal the zip in File Explorer so the user can drag it onto the
-        // GitHub issue form. A missing zip (fresh install, no logs) just skips
-        // this step and still opens the issue form.
-        if (!string.IsNullOrEmpty(zipPath) && File.Exists(zipPath))
-        {
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    Arguments = $"/select,\"{zipPath}\"",
-                    UseShellExecute = true,
-                });
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Explorer /select for {zipPath} failed: {ex}");
-            }
-        }
-
-        var body = CrashReportPackager.BuildIssueBodyTemplate();
-        var url = $"{GitHubIssuesNewUrl}?body={WebUtility.UrlEncode(body)}";
-        await Launcher.LaunchUriAsync(new Uri(url));
+        await CrashReportPackager.OpenIssueReportAsync();
     }
 }
 

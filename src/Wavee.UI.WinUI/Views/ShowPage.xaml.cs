@@ -8,7 +8,6 @@ using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.Cards;
@@ -76,10 +75,11 @@ public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigat
         Loaded += ShowPage_Loaded;
         Unloaded += ShowPage_Unloaded;
 
-        // Start the content layer invisible at the composition layer so the
-        // shimmer-to-content transition is a true crossfade, matching Album
-        // and Artist pages.
-        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
+        // Start the content invisible so the shimmer-to-content transition is
+        // a true crossfade. Uses XAML opacity to match CrossfadeLayer above —
+        // composition opacity here would multiply through and the XAML-layer
+        // crossfade can't reach the composition visual to bring it back.
+        ContentContainer.Opacity = 0;
 
         ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }

@@ -478,7 +478,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         var chip = new HomeChipViewModel
         {
             Id = LocalChipId,
-            Label = "Local files",
+            Label = AppLocalization.GetString("Home_Chip_LocalFiles"),
             IsSelected = IsLocalChipActive,
         };
 
@@ -602,7 +602,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
             chips.Insert(0, new HomeChipViewModel
             {
                 Id = string.Empty,
-                Label = "All"
+                Label = AppLocalization.GetString("Home_Chip_All")
             });
         }
 

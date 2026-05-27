@@ -99,7 +99,7 @@
 
                 <!-- Hover play button over the artwork — skips playback to this
                      queue item. Shown by TrackRow_PointerEntered. -->
-                <Button x:Name="RowPlayButton"
+                <Button x:Uid="Controls_Queue_QueueControl__Auto_600" x:Name="RowPlayButton"
                         Grid.Column="0"
                         Width="40" Height="40"
                         CornerRadius="4"
@@ -145,7 +145,7 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0"
+                        <Border x:Uid="Controls_Queue_QueueControl__Auto_601" Grid.Column="0"
                                 Margin="0,0,4,0"
                                 Style="{StaticResource QueueExplicitContentBadgeStyle}"
                                 Visibility="{x:Bind IsExplicit, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -153,7 +153,7 @@
                             <TextBlock Text="E" Style="{StaticResource QueueExplicitContentBadgeTextStyle}"/>
                         </Border>
 
-                        <FontIcon Grid.Column="1"
+                        <FontIcon x:Uid="Controls_Queue_QueueControl__Auto_602" Grid.Column="1"
                                   Margin="0,0,4,0"
                                   Style="{StaticResource QueueVideoAvailabilityBadgeIconStyle}"
                                   Visibility="{x:Bind HasVideo, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -192,7 +192,7 @@
                 <!-- Same hover affordance as TrackItem: swap the duration for
                      a trailing More button so queue rows have a direct pointer
                      path to the shared track context menu. -->
-                <Button x:Name="RowMoreButton"
+                <Button x:Uid="Controls_Queue_QueueControl__Auto_603" x:Name="RowMoreButton"
                         Grid.Column="2"
                         Width="28" Height="28"
                         Padding="0"
@@ -235,7 +235,7 @@
                     HorizontalAlignment="Center"
                     Spacing="6"
                     Margin="0,10,0,12">
-            <ToggleButton x:Name="ShuffleButton"
+            <ToggleButton x:Uid="Controls_Queue_QueueControl__Auto_604" x:Name="ShuffleButton"
                           Width="42" Height="34"
                           MinWidth="42" MinHeight="34"
                           Padding="0"
@@ -246,7 +246,7 @@
                           Glyph="&#xE8B1;" FontSize="14"/>
             </ToggleButton>
 
-            <ToggleButton x:Name="RepeatButton"
+            <ToggleButton x:Uid="Controls_Queue_QueueControl__Auto_605" x:Name="RepeatButton"
                           Width="42" Height="34"
                           MinWidth="42" MinHeight="34"
                           Padding="0"
@@ -258,7 +258,7 @@
                           Glyph="&#xE8EE;" FontSize="14"/>
             </ToggleButton>
 
-            <ToggleButton x:Name="InfiniteButton"
+            <ToggleButton x:Uid="Controls_Queue_QueueControl__Auto_606" x:Name="InfiniteButton"
                           Width="42" Height="34"
                           MinWidth="42" MinHeight="34"
                           Padding="0"
@@ -273,7 +273,7 @@
                            Margin="0,-3,0,0"/>
             </ToggleButton>
 
-            <ToggleButton x:Name="CrossfadeButton"
+            <ToggleButton x:Uid="Controls_Queue_QueueControl__Auto_607" x:Name="CrossfadeButton"
                           Width="42" Height="34"
                           MinWidth="42" MinHeight="34"
                           Padding="0"
@@ -295,7 +295,7 @@
                 <!-- Playing-from breadcrumb. Borderless / fill-less single line; the
                      visual contrast against the bordered NowPlayingCard below is what
                      differentiates "what we're playing from" from "what's playing now". -->
-                <Button x:Name="ContextCard"
+                <Button x:Uid="Controls_Queue_QueueControl__Auto_608" x:Name="ContextCard"
                         Visibility="Collapsed"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Stretch"
@@ -323,7 +323,7 @@
                                    FontSize="12"
                                    MaxLines="1"
                                    TextTrimming="CharacterEllipsis">
-                            <Run Text="Playing from "
+                            <Run x:Uid="Controls_Queue_QueueControl__Auto_609" Text="Playing from "
                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <Run x:Name="ContextTitle"
                                  FontWeight="SemiBold"/>
@@ -388,11 +388,11 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="UserQueueHeaderLabel"
+                        <TextBlock x:Uid="Controls_Queue_QueueControl__Auto_610" x:Name="UserQueueHeaderLabel"
                                    Text="Queue"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"
                                    VerticalAlignment="Center"/>
-                        <HyperlinkButton Grid.Column="1"
+                        <HyperlinkButton x:Uid="Controls_Queue_QueueControl__Auto_611" Grid.Column="1"
                                          x:Name="ClearQueueButton"
                                          Content="Clear"
                                          FontSize="12"
@@ -415,7 +415,7 @@
 
                 <!-- Next up section -->
                 <StackPanel x:Name="NextUpSection" Visibility="Collapsed" Spacing="0">
-                    <TextBlock x:Name="NextUpHeader"
+                    <TextBlock x:Uid="Controls_Queue_QueueControl__Auto_612" x:Name="NextUpHeader"
                                Text="Next up"
                                Style="{StaticResource BodyStrongTextBlockStyle}"
                                Margin="2,14,2,4"/>
@@ -437,10 +437,10 @@
                      that play after the context exhausts, before autoplay) -->
                 <StackPanel x:Name="PostContextSection" Visibility="Collapsed" Spacing="0">
                     <StackPanel Margin="2,14,2,4" Spacing="1">
-                        <TextBlock x:Name="PostContextHeader"
+                        <TextBlock x:Uid="Controls_Queue_QueueControl__Auto_613" x:Name="PostContextHeader"
                                    Text="Queued later"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                        <TextBlock Text="Plays after this context finishes"
+                        <TextBlock x:Uid="Controls_Queue_QueueControl__Auto_614" Text="Plays after this context finishes"
                                    FontSize="11"
                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                     </StackPanel>
@@ -461,9 +461,11 @@
                 <!-- Autoplay section (progressively dimmed) -->
                 <StackPanel x:Name="AutoPlaySection" Visibility="Collapsed" Spacing="0">
                     <StackPanel x:Name="AutoPlayHeader" Margin="2,14,2,4" Spacing="1">
-                        <TextBlock Text="Autoplay"
+                        <TextBlock x:Uid="Controls_Queue_QueueControl__AutoplayHeader"
+                                   Text="Autoplay"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                        <TextBlock Text="Similar music will keep playing"
+                        <TextBlock x:Uid="Controls_Queue_QueueControl__AutoplaySubtitle"
+                                   Text="Similar music will keep playing"
                                    FontSize="11"
                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                     </StackPanel>

@@ -116,7 +116,7 @@
                                   FontSize="40"
                                   Opacity="0.45"
                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                        <TextBlock Text="No lyrics available"
+                        <TextBlock x:Uid="Controls_SidebarPlayer_ExpandedPlayerView__Auto_600" Text="No lyrics available"
                                    FontSize="15"
                                    Opacity="0.75"
                                    HorizontalAlignment="Center"
@@ -152,7 +152,7 @@
                                      CornerRadius="9"
                                      Margin="86,0"
                                      Opacity="0.52" />
-                        <TextBlock Text="Loading lyrics…"
+                        <TextBlock x:Uid="Controls_SidebarPlayer_ExpandedPlayerView__Auto_601" Text="Loading lyrics…"
                                    FontSize="14"
                                    Opacity="0.75"
                                    HorizontalAlignment="Center"
@@ -211,7 +211,7 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 Spacing="2">
-                <HyperlinkButton
+                <HyperlinkButton x:Uid="Controls_SidebarPlayer_ExpandedPlayerView__Auto_602"
                     Padding="0"
                     MinHeight="0"
                     MinWidth="0"
@@ -258,7 +258,7 @@
                 <animations:OpacityAnimation Duration="0:0:0.16" From="1" To="0" />
                 <animations:TranslationAnimation Duration="0:0:0.16" From="0" To="0,10,0" />
             </animations:Implicit.HideAnimations>
-            <ToggleButton x:Name="LyricsToggleButton"
+            <ToggleButton x:Uid="Controls_SidebarPlayer_ExpandedPlayerView__Auto_603" x:Name="LyricsToggleButton"
                           Width="36" Height="36" Padding="0"
                           CornerRadius="18"
                           Background="{ThemeResource ControlFillColorDefaultBrush}"
@@ -266,7 +266,7 @@
                           ToolTipService.ToolTip="Lyrics">
                 <FontIcon Glyph="&#xED1E;" FontSize="14" />
             </ToggleButton>
-            <ToggleButton x:Name="QueueToggleButton"
+            <ToggleButton x:Uid="Controls_SidebarPlayer_ExpandedPlayerView__Auto_604" x:Name="QueueToggleButton"
                           Width="36" Height="36" Padding="0"
                           CornerRadius="18"
                           Background="{ThemeResource ControlFillColorDefaultBrush}"

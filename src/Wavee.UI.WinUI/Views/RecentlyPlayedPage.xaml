@@ -24,10 +24,12 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,18" Spacing="4">
-            <TextBlock Text="Recently played"
+            <TextBlock x:Uid="Views_RecentlyPlayedPage__Title"
+                       Text="Recently played"
                        FontSize="32"
                        FontWeight="SemiBold"/>
-            <TextBlock Text="Albums, playlists, artists, and shows you've recently started"
+            <TextBlock x:Uid="Views_RecentlyPlayedPage__Subtitle"
+                       Text="Albums, playlists, artists, and shows you've recently started"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        FontSize="14"/>
         </StackPanel>
@@ -37,10 +39,12 @@
                     HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
             <FontIcon Glyph="&#xE823;" FontSize="36" HorizontalAlignment="Center"
                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-            <TextBlock Text="Nothing here yet"
+            <TextBlock x:Uid="Views_RecentlyPlayedPage__EmptyTitle"
+                       Text="Nothing here yet"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
-            <TextBlock Text="Start playing an album, playlist, or artist and it'll show up here."
+            <TextBlock x:Uid="Views_RecentlyPlayedPage__EmptyDesc"
+                       Text="Start playing an album, playlist, or artist and it'll show up here."
                        HorizontalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
         </StackPanel>

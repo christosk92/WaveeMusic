@@ -12,7 +12,7 @@
          (session.IsActive AND IsEligible); glyph toggles between Add and
          CheckMark depending on whether the configured TrackUri is in the
          session's pending set. Click toggles. -->
-    <Button x:Name="ChipButton"
+    <Button x:Uid="Controls_AddToPlaylist_AddToPlaylistChip__Auto_600" x:Name="ChipButton"
             Width="28" Height="28"
             Padding="0"
             CornerRadius="14"

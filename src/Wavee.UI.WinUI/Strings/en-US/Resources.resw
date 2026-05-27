@@ -1112,6 +1112,15 @@ the music you previously queued?</value>
   <data name="PlaylistMenu_Download" xml:space="preserve">
     <value>Download</value>
   </data>
+  <data name="PlaylistMenu_CopyContentsToPlaylist" xml:space="preserve">
+    <value>Copy contents to playlist</value>
+  </data>
+  <data name="PlaylistMenu_SaveToLibrary_TopOfLibrary" xml:space="preserve">
+    <value>Top of library</value>
+  </data>
+  <data name="PlaylistMenu_SaveToLibrary_CreateNewFolder" xml:space="preserve">
+    <value>Create new folder...</value>
+  </data>
   <data name="ArtistMenu_Follow" xml:space="preserve">
     <value>Follow</value>
   </data>
@@ -2822,5 +2831,2473 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   </data>
   <data name="Views_ArtistPage__Button_136.ToolTipService.ToolTip" xml:space="preserve">
     <value>Close (Esc)</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__TextBlock_1.Text" xml:space="preserve">
+    <value>:(</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__TextBlock_2.Text" xml:space="preserve">
+    <value>Wavee ran into a problem and recorded a crash report.</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__TextBlock_3.Text" xml:space="preserve">
+    <value>You can continue using the app, or report the issue with the diagnostic logs attached.</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__TextBlock_4.Text" xml:space="preserve">
+    <value>Stop code</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__TextBlock_5.Text" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__TextBlock_6.Text" xml:space="preserve">
+    <value>Recorded</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__TextBlock_7.Text" xml:space="preserve">
+    <value>Crash reports stay on this PC. Reporting opens GitHub and prepares a zip with local Wavee logs for you to attach.</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__TextBlock_8.Text" xml:space="preserve">
+    <value>Crash report stacktrace</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__Button_9.Content" xml:space="preserve">
+    <value>Continue to Wavee</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__Button_10.Content" xml:space="preserve">
+    <value>Report issue</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__Button_11.Content" xml:space="preserve">
+    <value>Copy stacktrace</value>
+  </data>
+  <data name="Views_CrashRecoveryPage__Button_12.Content" xml:space="preserve">
+    <value>Open logs</value>
+  </data>
+  <data name="CrashRecovery_UnknownStopCode" xml:space="preserve">
+    <value>UNKNOWN_CRASH</value>
+  </data>
+  <data name="CrashRecovery_UnknownSource" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="CrashRecovery_MissingStackTrace" xml:space="preserve">
+    <value>Wavee recorded a crash marker, but no stacktrace could be loaded.</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__SettingsCard_100.Header" xml:space="preserve">
+    <value>Report an issue on GitHub</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__SettingsCard_100.Description" xml:space="preserve">
+    <value>Packages your recent logs into a zip and opens GitHub Issues</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__SettingsExpander_102.Header" xml:space="preserve">
+    <value>Privacy</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__SettingsExpander_102.Description" xml:space="preserve">
+    <value>What data Wavee sends and where</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__TextBlock_101.Text" xml:space="preserve">
+    <value>Legal</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__Button_113.Content" xml:space="preserve">
+    <value>Force GC</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__Button_114.Content" xml:space="preserve">
+    <value>Release working set</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__Button_115.Content" xml:space="preserve">
+    <value>Snapshot</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__Button_116.Content" xml:space="preserve">
+    <value>Clear image cache</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__Button_117.Content" xml:space="preserve">
+    <value>Clear all caches</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__Button_118.Content" xml:space="preserve">
+    <value>Drop tab cache</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__Run_103.Text" xml:space="preserve">
+    <value>frag</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__Run_107.Text" xml:space="preserve">
+    <value>tabs · </value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__Run_108.Text" xml:space="preserve">
+    <value>pages</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_101.Header" xml:space="preserve">
+    <value>Managed heap</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_101.Description" xml:space="preserve">
+    <value>GC.GetTotalMemory</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_102.Header" xml:space="preserve">
+    <value>Heap committed</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_102.Description" xml:space="preserve">
+    <value>Total committed bytes (incl. fragmentation)</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_104.Header" xml:space="preserve">
+    <value>GC collections</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_104.Description" xml:space="preserve">
+    <value>Counts since process start</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_105.Header" xml:space="preserve">
+    <value>CPU usage</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_105.Description" xml:space="preserve">
+    <value>% of all logical cores since previous sample (matches Task Manager)</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_109.Header" xml:space="preserve">
+    <value>Image cache</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_109.Description" xml:space="preserve">
+    <value>BitmapImage entries (bucketed by URL · decode size)</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_110.Header" xml:space="preserve">
+    <value>Cache breakdown</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_110.Description" xml:space="preserve">
+    <value>Counts per ICleanableCache instance</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_111.Header" xml:space="preserve">
+    <value>Live ViewModels</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_111.Description" xml:space="preserve">
+    <value>Tracked via WeakReference. Counts that don't drop after navigating away indicate leaks.</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_112.Header" xml:space="preserve">
+    <value>Actions</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_112.Description" xml:space="preserve">
+    <value>Run experiments and append snapshots to %AppData%\Wavee\diag\memory-{date}.csv</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_119.Header" xml:space="preserve">
+    <value>Last action</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsExpander_100.Header" xml:space="preserve">
+    <value>Memory diagnostics</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsExpander_100.Description" xml:space="preserve">
+    <value>Live process memory + cache + retained-page counts. Use this to find what grows during navigation.</value>
+  </data>
+  <data name="Views_AlbumPage__AiTextCard_118.Title" xml:space="preserve">
+    <value>ABOUT THIS ALBUM</value>
+  </data>
+  <data name="Views_AlbumPage__Button_101.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_AlbumPage__Button_103.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Shuffle play</value>
+  </data>
+  <data name="Views_AlbumPage__Button_104.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Copy link to album</value>
+  </data>
+  <data name="Views_AlbumPage__Button_105.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add every track to a playlist</value>
+  </data>
+  <data name="Views_AlbumPage__Button_111.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Start a radio seeded from this album</value>
+  </data>
+  <data name="Views_AlbumPage__ClickableBorder_100.ToolTipService.ToolTip" xml:space="preserve">
+    <value>View all artists</value>
+  </data>
+  <data name="Views_AlbumPage__MenuFlyoutItem_109.Text" xml:space="preserve">
+    <value>Play next</value>
+  </data>
+  <data name="Views_AlbumPage__MenuFlyoutItem_109.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Plays right after the current track.</value>
+  </data>
+  <data name="Views_AlbumPage__MenuFlyoutItem_110.Text" xml:space="preserve">
+    <value>Add to queue</value>
+  </data>
+  <data name="Views_AlbumPage__MenuFlyoutItem_110.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Plays after the current list ends.</value>
+  </data>
+  <data name="Views_AlbumPage__SplitButton_107.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add every track to the queue (after this list ends). Open menu for Play next.</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_102.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_106.Text" xml:space="preserve">
+    <value>Add to playlist</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_108.Text" xml:space="preserve">
+    <value>Add to queue</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_112.Text" xml:space="preserve">
+    <value>Start radio</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_113.Text" xml:space="preserve">
+    <value>Other versions</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_114.Text" xml:space="preserve">
+    <value>ABOUT THIS RELEASE</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_115.Text" xml:space="preserve">
+    <value>Released</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_116.Text" xml:space="preserve">
+    <value>Label</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_117.Text" xml:space="preserve">
+    <value>Copyright</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_119.Text" xml:space="preserve">
+    <value>Sources</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_120.Text" xml:space="preserve">
+    <value>WATCH THE OFFICIAL VIDEO</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_121.Text" xml:space="preserve">
+    <value>Fans also like</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_122.Text" xml:space="preserve">
+    <value>Featured on</value>
+  </data>
+  <data name="Views_AlbumPage__TextBlock_123.Text" xml:space="preserve">
+    <value>Merch</value>
+  </data>
+  <data name="Views_ArtistPage__SectionShelf_FansAlsoLike.Title" xml:space="preserve">
+    <value>Fans Also Like</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__TextBlock_100.Text" xml:space="preserve">
+    <value>Following</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__TextBlock_101.Text" xml:space="preserve">
+    <value>From Liked Songs</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__TextBlock_102.Text" xml:space="preserve">
+    <value>Select an artist to see liked songs</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__TextBox_2.PlaceholderText" xml:space="preserve">
+    <value>Filter artists...</value>
+  </data>
+  <data name="Views_Local_LocalMoviesPage__TextBlock_100.Text" xml:space="preserve">
+    <value>LIBRARY</value>
+  </data>
+  <data name="Views_Local_LocalMoviesPage__TextBlock_101.Text" xml:space="preserve">
+    <value>Movies</value>
+  </data>
+  <data name="Views_Local_LocalMoviesPage__TextBlock_102.Text" xml:space="preserve">
+    <value>Sync with TMDB</value>
+  </data>
+  <data name="Views_Local_LocalMoviesPage__TextBlock_103.Text" xml:space="preserve">
+    <value>No local movies yet</value>
+  </data>
+  <data name="Views_Local_LocalMoviesPage__TextBlock_104.Text" xml:space="preserve">
+    <value>Add a watched folder containing movie files in Settings.</value>
+  </data>
+  <data name="Views_Local_LocalMusicPage__Button_101.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Search Spotify for canonical metadata + cover art for every local track</value>
+  </data>
+  <data name="Views_Local_LocalMusicPage__Button_103.ToolTipService.ToolTip" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="Views_Local_LocalMusicPage__MenuFlyoutItem_104.Text" xml:space="preserve">
+    <value>Force re-sync with Spotify</value>
+  </data>
+  <data name="Views_Local_LocalMusicPage__TextBlock_100.Text" xml:space="preserve">
+    <value>Music</value>
+  </data>
+  <data name="Views_Local_LocalMusicPage__TextBlock_102.Text" xml:space="preserve">
+    <value>Sync with Spotify</value>
+  </data>
+  <data name="Views_Local_LocalMusicPage__TextBlock_106.Text" xml:space="preserve">
+    <value>No local music yet</value>
+  </data>
+  <data name="Views_Local_LocalMusicPage__TextBlock_107.Text" xml:space="preserve">
+    <value>Add a folder containing audio files in Settings.</value>
+  </data>
+  <data name="Views_Local_LocalMusicPage__ToggleSwitch_105.Header" xml:space="preserve">
+    <value>Show only liked</value>
+  </data>
+  <data name="Views_PlaylistPage__Button_101.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_PlaylistPage__Button_103.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Shuffle play</value>
+  </data>
+  <data name="Views_PlaylistPage__Button_104.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Copy link to playlist</value>
+  </data>
+  <data name="Views_PlaylistPage__TextBlock_100.Text" xml:space="preserve">
+    <value>Change photo</value>
+  </data>
+  <data name="Views_PlaylistPage__TextBlock_102.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_ShellPage__TextBlock_3.Text" xml:space="preserve">
+    <value>Reconnecting to Spotify...</value>
+  </data>
+  <data name="Home_Greeting_Morning" xml:space="preserve">
+    <value>Good morning</value>
+  </data>
+  <data name="Home_Greeting_Afternoon" xml:space="preserve">
+    <value>Good afternoon</value>
+  </data>
+  <data name="Home_Greeting_Evening" xml:space="preserve">
+    <value>Good evening</value>
+  </data>
+  <data name="Home_Greeting_Subtitle" xml:space="preserve">
+    <value>What do you feel like?</value>
+  </data>
+  <data name="Home_Region_YourActivity_Eyebrow" xml:space="preserve">
+    <value>YOUR ACTIVITY</value>
+  </data>
+  <data name="Home_Region_RecentlyPlayed_Header" xml:space="preserve">
+    <value>Recently played</value>
+  </data>
+  <data name="Home_Region_OnThisPC_Eyebrow" xml:space="preserve">
+    <value>ON THIS PC</value>
+  </data>
+  <data name="Home_Region_LocalFiles_Header" xml:space="preserve">
+    <value>Local files</value>
+  </data>
+  <data name="Home_Region_LocalShows_Header" xml:space="preserve">
+    <value>Local TV shows</value>
+  </data>
+  <data name="Home_Region_LocalMovies_Header" xml:space="preserve">
+    <value>Local movies</value>
+  </data>
+  <data name="Home_Region_LocalMusic_Header" xml:space="preserve">
+    <value>Local music</value>
+  </data>
+  <data name="Home_Region_LocalMusicVideos_Header" xml:space="preserve">
+    <value>Local music videos</value>
+  </data>
+  <data name="Home_Region_MadeForYou_Eyebrow" xml:space="preserve">
+    <value>MADE FOR YOU</value>
+  </data>
+  <data name="Home_Region_MadeForYou_Header" xml:space="preserve">
+    <value>Picked for you</value>
+  </data>
+  <data name="Home_Region_Discover_Eyebrow" xml:space="preserve">
+    <value>DISCOVER</value>
+  </data>
+  <data name="Home_Region_Discover_Header" xml:space="preserve">
+    <value>Explore</value>
+  </data>
+  <data name="Home_Region_Podcasts_Eyebrow" xml:space="preserve">
+    <value>PODCASTS &amp; SHOWS</value>
+  </data>
+  <data name="Home_Region_Podcasts_Header" xml:space="preserve">
+    <value>Podcasts you'll love</value>
+  </data>
+  <data name="Home_Hero_PickUpEyebrow" xml:space="preserve">
+    <value>PICK UP WHERE YOU LEFT OFF</value>
+  </data>
+  <data name="Home_Hero_PlayCta" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Home_Hero_OpenCta" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="Home_Chip_All" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="Home_Chip_LocalFiles" xml:space="preserve">
+    <value>Local files</value>
+  </data>
+  <data name="ContentType_Album" xml:space="preserve">
+    <value>Album</value>
+  </data>
+  <data name="ContentType_Playlist" xml:space="preserve">
+    <value>Playlist</value>
+  </data>
+  <data name="ContentType_Podcast" xml:space="preserve">
+    <value>Podcast</value>
+  </data>
+  <data name="ContentType_MadeForYou" xml:space="preserve">
+    <value>Made for you</value>
+  </data>
+  <data name="Views_HomePage__Button_ViewAll.Content" xml:space="preserve">
+    <value>View all</value>
+  </data>
+  <data name="Views_HomePage__PageErrorState_1.Title" xml:space="preserve">
+    <value>Couldn't load Home</value>
+  </data>
+  <data name="Controls_Cards_EditorialHeroCard__PillText.Text" xml:space="preserve">
+    <value>Continue where you left off</value>
+  </data>
+  <data name="Controls_Cards_SpotlightReleaseCard__EyebrowTextBlock.Text" xml:space="preserve">
+    <value>Latest release</value>
+  </data>
+  <data name="Controls_Cards_SpotlightReleaseCard__PlayText.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Duration_HoursMinutes" xml:space="preserve">
+    <value>{0} hr {1} min</value>
+  </data>
+  <data name="Duration_Minutes" xml:space="preserve">
+    <value>{0} min</value>
+  </data>
+  <data name="Duration_HoursMinutesLeft" xml:space="preserve">
+    <value>{0} hr {1} min left</value>
+  </data>
+  <data name="Duration_MinutesLeft" xml:space="preserve">
+    <value>{0} min left</value>
+  </data>
+  <data name="Duration_SecondsLeft" xml:space="preserve">
+    <value>{0} sec left</value>
+  </data>
+  <data name="Count_Song_One" xml:space="preserve">
+    <value>1 song</value>
+  </data>
+  <data name="Count_Song_Many" xml:space="preserve">
+    <value>{0} songs</value>
+  </data>
+  <data name="Count_Episode_One" xml:space="preserve">
+    <value>1 episode</value>
+  </data>
+  <data name="Count_Episode_Many" xml:space="preserve">
+    <value>{0} episodes</value>
+  </data>
+  <data name="Count_SavedEpisode_One" xml:space="preserve">
+    <value>1 saved episode</value>
+  </data>
+  <data name="Count_SavedEpisode_Many" xml:space="preserve">
+    <value>{0} saved episodes</value>
+  </data>
+  <data name="Count_RecentEpisode_One" xml:space="preserve">
+    <value>1 recent episode</value>
+  </data>
+  <data name="Count_RecentEpisode_Many" xml:space="preserve">
+    <value>{0} recent episodes</value>
+  </data>
+  <data name="Count_Podcast_One" xml:space="preserve">
+    <value>1 podcast</value>
+  </data>
+  <data name="Count_Podcast_Many" xml:space="preserve">
+    <value>{0} podcasts</value>
+  </data>
+  <data name="Album_PreRelease_Coming" xml:space="preserve">
+    <value>Coming {0} at {1}</value>
+  </data>
+  <data name="Relative_InOneDay" xml:space="preserve">
+    <value>in 1 day</value>
+  </data>
+  <data name="Relative_InDays" xml:space="preserve">
+    <value>in {0} days</value>
+  </data>
+  <data name="Relative_InOneHour" xml:space="preserve">
+    <value>in 1 hour</value>
+  </data>
+  <data name="Relative_InHours" xml:space="preserve">
+    <value>in {0} hours</value>
+  </data>
+  <data name="Relative_InOneMinute" xml:space="preserve">
+    <value>in 1 minute</value>
+  </data>
+  <data name="Relative_InMinutes" xml:space="preserve">
+    <value>in {0} minutes</value>
+  </data>
+  <data name="Relative_Today" xml:space="preserve">
+    <value>Today</value>
+  </data>
+  <data name="Relative_Yesterday" xml:space="preserve">
+    <value>Yesterday</value>
+  </data>
+  <data name="Relative_DaysAgo" xml:space="preserve">
+    <value>{0} days ago</value>
+  </data>
+  <data name="Relative_WeeksAgo" xml:space="preserve">
+    <value>{0} weeks ago</value>
+  </data>
+  <data name="Relative_MonthsAgo" xml:space="preserve">
+    <value>{0} months ago</value>
+  </data>
+  <data name="AlbumType_Single" xml:space="preserve">
+    <value>SINGLE</value>
+  </data>
+  <data name="AlbumType_EP" xml:space="preserve">
+    <value>EP</value>
+  </data>
+  <data name="AlbumType_Compilation" xml:space="preserve">
+    <value>COMPILATION</value>
+  </data>
+  <data name="AlbumType_Soundtrack" xml:space="preserve">
+    <value>SOUNDTRACK</value>
+  </data>
+  <data name="AlbumType_Album" xml:space="preserve">
+    <value>ALBUM</value>
+  </data>
+  <data name="Playlist_FollowerCount" xml:space="preserve">
+    <value>{0} followers</value>
+  </data>
+  <data name="Home_Section_QuickAccess" xml:space="preserve">
+    <value>Quick access</value>
+  </data>
+  <data name="Home_Section_RecentlyPlayed" xml:space="preserve">
+    <value>Recently played</value>
+  </data>
+  <data name="Home_Section_Recommended" xml:space="preserve">
+    <value>Recommended</value>
+  </data>
+  <data name="Home_Section_Untitled" xml:space="preserve">
+    <value>Untitled section</value>
+  </data>
+  <data name="LikedSongs_Title" xml:space="preserve">
+    <value>Liked Songs</value>
+  </data>
+  <data name="Queue_Section_Queue" xml:space="preserve">
+    <value>QUEUE</value>
+  </data>
+  <data name="Queue_Section_NextUp" xml:space="preserve">
+    <value>NEXT UP</value>
+  </data>
+  <data name="Queue_Section_QueuedLater" xml:space="preserve">
+    <value>QUEUED LATER</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__AutoplayHeader.Text" xml:space="preserve">
+    <value>Autoplay</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__AutoplaySubtitle.Text" xml:space="preserve">
+    <value>Similar music will keep playing</value>
+  </data>
+  <data name="Views_YourEpisodesView__BrowseButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Browse podcasts</value>
+  </data>
+  <data name="Views_YourEpisodesView__BrowseButtonText.Text" xml:space="preserve">
+    <value>Browse podcasts</value>
+  </data>
+  <data name="Views_YourEpisodesView__FilterTextBox.PlaceholderText" xml:space="preserve">
+    <value>Filter podcasts...</value>
+  </data>
+  <data name="Views_YourEpisodesView__BrowseButton2.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Browse podcasts</value>
+  </data>
+  <data name="Views_YourEpisodesView__BrowseButton2Text.Text" xml:space="preserve">
+    <value>Browse</value>
+  </data>
+  <data name="Views_YourEpisodesView__FilterTextBox2.PlaceholderText" xml:space="preserve">
+    <value>Filter podcasts...</value>
+  </data>
+  <data name="Views_YourEpisodesView__OpenShowText.Text" xml:space="preserve">
+    <value>Open show</value>
+  </data>
+  <data name="Views_YourEpisodesView__SegmentSaved.Content" xml:space="preserve">
+    <value>Saved</value>
+  </data>
+  <data name="Views_YourEpisodesView__SegmentLatest.Content" xml:space="preserve">
+    <value>Latest</value>
+  </data>
+  <data name="Podcasts_LoadError" xml:space="preserve">
+    <value>Podcasts could not be loaded. Try again in a moment.</value>
+  </data>
+  <data name="Podcasts_LoadingEpisodes" xml:space="preserve">
+    <value>Loading episodes</value>
+  </data>
+  <data name="Podcasts_NoSavedEpisodesYet" xml:space="preserve">
+    <value>No saved episodes yet</value>
+  </data>
+  <data name="Podcasts_NoSavedEpisodes" xml:space="preserve">
+    <value>No saved episodes</value>
+  </data>
+  <data name="Podcasts_FetchingLatestDesc" xml:space="preserve">
+    <value>Fetching the latest episodes from this show.</value>
+  </data>
+  <data name="Podcasts_SwitchToLatestDesc" xml:space="preserve">
+    <value>Switch to Latest to browse this followed show's recent archive.</value>
+  </data>
+  <data name="Podcasts_OpenShowDesc" xml:space="preserve">
+    <value>Open the show page for the full archive, recommendations, and show details.</value>
+  </data>
+  <data name="Podcasts_FollowedShowsDesc" xml:space="preserve">
+    <value>Followed shows appear here even before you save an episode.</value>
+  </data>
+  <data name="Podcasts_SelectEpisode" xml:space="preserve">
+    <value>Select an episode</value>
+  </data>
+  <data name="Podcasts_AddedPrefix" xml:space="preserve">
+    <value>Added {0}</value>
+  </data>
+  <data name="Podcasts_TranscriptPrefix" xml:space="preserve">
+    <value>Transcript: {0}</value>
+  </data>
+  <data name="Podcasts_VisibleOfTotalShown" xml:space="preserve">
+    <value>{0} of {1} shown</value>
+  </data>
+  <data name="Podcasts_VisibleAvailable" xml:space="preserve">
+    <value>{0} available</value>
+  </data>
+  <data name="Podcasts_AllPodcasts" xml:space="preserve">
+    <value>All Podcasts</value>
+  </data>
+  <data name="Podcasts_RecentlyPlayed" xml:space="preserve">
+    <value>Recently played</value>
+  </data>
+  <data name="Podcasts_FromHistory" xml:space="preserve">
+    <value>From listening history</value>
+  </data>
+  <data name="Podcast_FollowedLabel" xml:space="preserve">
+    <value>Followed</value>
+  </data>
+  <data name="Podcast_Placeholder" xml:space="preserve">
+    <value>Podcast</value>
+  </data>
+  <data name="Count_Track_One" xml:space="preserve">
+    <value>1 track</value>
+  </data>
+  <data name="Count_Track_Many" xml:space="preserve">
+    <value>{0} tracks</value>
+  </data>
+  <data name="Count_Album_One" xml:space="preserve">
+    <value>1 album</value>
+  </data>
+  <data name="Count_Album_Many" xml:space="preserve">
+    <value>{0} albums</value>
+  </data>
+  <data name="Views_AlbumPage__PageErrorState_AlbumLoadFailed.Title" xml:space="preserve">
+    <value>Couldn't load this album</value>
+  </data>
+  <data name="Views_AlbumPage__Run_MoreBy.Text" xml:space="preserve">
+    <value>More by </value>
+  </data>
+  <data name="Views_PlaylistPage__AddToPlaylistButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Copy all tracks to another playlist</value>
+  </data>
+  <data name="Views_PlaylistPage__AddToPlaylistText.Text" xml:space="preserve">
+    <value>Add to playlist</value>
+  </data>
+  <data name="Views_PlaylistPage__AddToQueueSplitButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add every track to the queue (after this list ends). Open menu for Play next.</value>
+  </data>
+  <data name="Views_PlaylistPage__AddToQueueText.Text" xml:space="preserve">
+    <value>Add to queue</value>
+  </data>
+  <data name="Views_PlaylistPage__MenuPlayNext.Text" xml:space="preserve">
+    <value>Play next</value>
+  </data>
+  <data name="Views_PlaylistPage__MenuPlayNext.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Plays right after the current track.</value>
+  </data>
+  <data name="Views_PlaylistPage__MenuAddToQueue.Text" xml:space="preserve">
+    <value>Add to queue</value>
+  </data>
+  <data name="Views_PlaylistPage__MenuAddToQueue.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Plays after the current list ends.</value>
+  </data>
+  <data name="Views_PlaylistPage__StartRadioButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Start a radio seeded from this playlist</value>
+  </data>
+  <data name="Views_PlaylistPage__StartRadioText.Text" xml:space="preserve">
+    <value>Start radio</value>
+  </data>
+  <data name="Views_PlaylistPage__DeleteButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Delete playlist</value>
+  </data>
+  <data name="Views_PlaylistPage__DeleteText.Text" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Views_PlaylistPage__OwnerOverflowButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="Views_PlaylistPage__DescriptionMoreLabel.Text" xml:space="preserve">
+    <value>More...</value>
+  </data>
+  <data name="Views_PlaylistPage__FilterPlaylistText.Text" xml:space="preserve">
+    <value>Filter playlist</value>
+  </data>
+  <data name="Views_PlaylistPage__RecommendedSongsText.Text" xml:space="preserve">
+    <value>Recommended Songs</value>
+  </data>
+  <data name="Views_PlaylistPage__FindMoreSongsChip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Browse the app and add tracks to this playlist</value>
+  </data>
+  <data name="Views_PlaylistPage__FindMoreSongsText.Text" xml:space="preserve">
+    <value>Find more songs</value>
+  </data>
+  <data name="Views_PlaylistPage__RefreshChip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Get a new batch of recommendations</value>
+  </data>
+  <data name="Views_PlaylistPage__RefreshText.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="Views_PlaylistPage__RecsErrorTitle.Text" xml:space="preserve">
+    <value>Couldn't load recommendations</value>
+  </data>
+  <data name="Views_PlaylistPage__RecsErrorBody.Text" xml:space="preserve">
+    <value>Check your connection and try again.</value>
+  </data>
+  <data name="Views_PlaylistPage__RetryText.Text" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="TabTitle_Artist" xml:space="preserve">
+    <value>Artist</value>
+  </data>
+  <data name="TabTitle_Album" xml:space="preserve">
+    <value>Album</value>
+  </data>
+  <data name="TabTitle_Podcasts" xml:space="preserve">
+    <value>Podcasts</value>
+  </data>
+  <data name="Podcasts_BrowseSubtitle" xml:space="preserve">
+    <value>Browse shows, charts, and categories.</value>
+  </data>
+  <data name="Duration_Hours" xml:space="preserve">
+    <value>{0} hr</value>
+  </data>
+  <data name="Views_ShowPage__PodcastBadge.Text" xml:space="preserve">
+    <value>PODCAST</value>
+  </data>
+  <data name="Views_ShowPage__ExclusiveBadge.Text" xml:space="preserve">
+    <value>EXCLUSIVE</value>
+  </data>
+  <data name="Views_ShowPage__ExplicitBadge.Text" xml:space="preserve">
+    <value>EXPLICIT</value>
+  </data>
+  <data name="Views_ShowPage__PlayButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_ShowPage__PlayText.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_ShowPage__ShareButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Copy link to show</value>
+  </data>
+  <data name="Views_ShowPage__AboutHeader.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="Views_ShowPage__FilterAll.Content" xml:space="preserve">
+    <value>All episodes</value>
+  </data>
+  <data name="Views_ShowPage__FilterUnplayed.Content" xml:space="preserve">
+    <value>Unplayed</value>
+  </data>
+  <data name="Views_ShowPage__FilterInProgress.Content" xml:space="preserve">
+    <value>In progress</value>
+  </data>
+  <data name="Views_ShowPage__FilterPlayed.Content" xml:space="preserve">
+    <value>Played</value>
+  </data>
+  <data name="Views_ShowPage__SortNewest.Content" xml:space="preserve">
+    <value>Newest first</value>
+  </data>
+  <data name="Views_ShowPage__SortOldest.Content" xml:space="preserve">
+    <value>Oldest first</value>
+  </data>
+  <data name="Views_ShowPage__ListenNextHeader.Text" xml:space="preserve">
+    <value>Listen next</value>
+  </data>
+  <data name="Views_ShowPage__PlayNextText.Text" xml:space="preserve">
+    <value>Play next</value>
+  </data>
+  <data name="Views_ShowPage__UpNextEyebrow.Text" xml:space="preserve">
+    <value>UP NEXT</value>
+  </data>
+  <data name="Views_ShowPage__EpisodeArchiveHeader.Text" xml:space="preserve">
+    <value>Episode archive</value>
+  </data>
+  <data name="Views_ShowPage__EpisodeArchiveSubtitle.Text" xml:space="preserve">
+    <value>Search, filter, or jump into the full back catalog.</value>
+  </data>
+  <data name="Views_ShowPage__NoEpisodesMatch.Text" xml:space="preserve">
+    <value>No episodes match these filters.</value>
+  </data>
+  <data name="Views_ShowPage__NoEpisodesHint.Text" xml:space="preserve">
+    <value>Try clearing the search box or switching the filter.</value>
+  </data>
+  <data name="Views_ShowPage__MoreRecsHeader.Text" xml:space="preserve">
+    <value>More podcasts you might like</value>
+  </data>
+  <data name="Views_ShowPage__LoadError.Text" xml:space="preserve">
+    <value>We couldn't load this show.</value>
+  </data>
+  <data name="Podcasts_StartFromBeginning" xml:space="preserve">
+    <value>Start from the beginning</value>
+  </data>
+  <data name="Podcasts_UpNextFromProgress" xml:space="preserve">
+    <value>Up next from your progress</value>
+  </data>
+  <data name="Podcasts_CountInProgress" xml:space="preserve">
+    <value>{0} in progress</value>
+  </data>
+  <data name="Podcasts_CountUnplayed" xml:space="preserve">
+    <value>{0} unplayed</value>
+  </data>
+  <data name="Podcasts_CountPlayed" xml:space="preserve">
+    <value>{0} played</value>
+  </data>
+  <data name="Podcasts_ReplayRecent" xml:space="preserve">
+    <value>Replay recent episodes</value>
+  </data>
+  <data name="Podcasts_RatingWithCount" xml:space="preserve">
+    <value>★ {0}  ·  {1} ratings</value>
+  </data>
+  <data name="Podcasts_RatingOnly" xml:space="preserve">
+    <value>★ {0}</value>
+  </data>
+  <data name="Podcast_Played" xml:space="preserve">
+    <value>Played</value>
+  </data>
+  <data name="Podcast_DurationLeft" xml:space="preserve">
+    <value>{0} left</value>
+  </data>
+  <data name="Views_ArtistPage__BlockedInfoBar.Title" xml:space="preserve">
+    <value>You're ignoring this artist</value>
+  </data>
+  <data name="Views_ArtistPage__BlockedInfoBar.Message" xml:space="preserve">
+    <value>Their tracks won't appear in your Recently Played, Home, Search-result rails, or autoplay.</value>
+  </data>
+  <data name="Views_ArtistPage__StopIgnoringButton.Content" xml:space="preserve">
+    <value>Stop ignoring</value>
+  </data>
+  <data name="Views_ArtistPage__BlockArtistItem.Text" xml:space="preserve">
+    <value>Don't play this artist</value>
+  </data>
+  <data name="Views_ArtistPage__UnblockArtistItem.Text" xml:space="preserve">
+    <value>Stop ignoring this artist</value>
+  </data>
+  <data name="Controls_AddToPlaylistBar__AddingToText.Text" xml:space="preserve">
+    <value>Adding to</value>
+  </data>
+  <data name="Controls_AddToPlaylistBar__CancelText.Text" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Controls_AddToPlaylistBar__AddingText.Text" xml:space="preserve">
+    <value>Adding…</value>
+  </data>
+  <data name="ContentType_Artist" xml:space="preserve">
+    <value>Artist</value>
+  </data>
+  <data name="Views_SearchPage__PageErrorState.Title" xml:space="preserve">
+    <value>Couldn't load search results</value>
+  </data>
+  <data name="Views_SearchPage__FilterAll.Content" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="Views_SearchPage__FilterPodcasts.Content" xml:space="preserve">
+    <value>Podcasts</value>
+  </data>
+  <data name="Views_SearchPage__FilterUsers.Content" xml:space="preserve">
+    <value>Profiles</value>
+  </data>
+  <data name="Views_SearchPage__FilterGenres.Content" xml:space="preserve">
+    <value>Genres</value>
+  </data>
+  <data name="Views_ShellPage__ReconnectingBar.Title" xml:space="preserve">
+    <value>Reconnecting…</value>
+  </data>
+  <data name="Views_ShellPage__ReconnectingBar.Message" xml:space="preserve">
+    <value>Wavee lost its connection to Spotify and is retrying. Some features may be unavailable until you're back online.</value>
+  </data>
+  <data name="Views_ShellPage__OfflineBar.Title" xml:space="preserve">
+    <value>You're offline</value>
+  </data>
+  <data name="Views_ShellPage__OfflineBar.Message" xml:space="preserve">
+    <value>Wavee can't reach Spotify. Check your network connection — playback and library updates are paused until you reconnect.</value>
+  </data>
+  <data name="Views_ShellPage__PremiumRequiredBar.Title" xml:space="preserve">
+    <value>Wavee requires Spotify Premium</value>
+  </data>
+  <data name="Views_ShellPage__PremiumRequiredBar.Message" xml:space="preserve">
+    <value>Playback won't work with a free Spotify account. Upgrade to Premium or sign in with a Premium account to use Wavee.</value>
+  </data>
+  <data name="Views_ShellPage__GetPremiumButton.Content" xml:space="preserve">
+    <value>Get Premium</value>
+  </data>
+  <data name="Views_ShellPage__ShowVideoHereTip.Title" xml:space="preserve">
+    <value>Show video here?</value>
+  </data>
+  <data name="Views_ShellPage__ShowVideoHereTip.Subtitle" xml:space="preserve">
+    <value>A video is playing. Show the mini player in this window?</value>
+  </data>
+  <data name="Views_ShellPage__ShowVideoHereTip.ActionButtonContent" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="Views_ShellPage__ShowVideoHereTip.CloseButtonContent" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="Views_ShellPage__DoNotAskCheckBox.Content" xml:space="preserve">
+    <value>Don't ask me again</value>
+  </data>
+  <data name="Views_LikedSongsView__PageErrorState.Title" xml:space="preserve">
+    <value>Couldn't load Liked Songs</value>
+  </data>
+  <data name="Views_ConcertPage__FestivalBadge.Text" xml:space="preserve">
+    <value>Festival</value>
+  </data>
+  <data name="Views_ConcertPage__FeaturingRun.Text" xml:space="preserve">
+    <value>Featuring </value>
+  </data>
+  <data name="Views_ConcertPage__DoorsAtRun.Text" xml:space="preserve">
+    <value>Doors at </value>
+  </data>
+  <data name="Views_ConcertPage__TicketsOnRun.Text" xml:space="preserve">
+    <value>Tickets on </value>
+  </data>
+  <data name="Views_ConcertPage__SaveText.Text" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Views_ConcertPage__OnTourText.Text" xml:space="preserve">
+    <value>On tour:</value>
+  </data>
+  <data name="Views_ConcertPage__ViewAllConcertsRun.Text" xml:space="preserve">
+    <value>View all upcoming concerts (</value>
+  </data>
+  <data name="Views_ConcertPage__PopularAlbumsText.Text" xml:space="preserve">
+    <value>Popular albums</value>
+  </data>
+  <data name="Views_ConcertPage__FeaturedPlaylistsText.Text" xml:space="preserve">
+    <value>Featured playlists</value>
+  </data>
+  <data name="Views_ConcertPage__TicketsText.Text" xml:space="preserve">
+    <value>Tickets</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__HeartedText.Text" xml:space="preserve">
+    <value>Hearted</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__FromLikedSongsText.Text" xml:space="preserve">
+    <value>From Liked Songs</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__SavedWideGrid.SearchPlaceholderText" xml:space="preserve">
+    <value>Filter albums...</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__SavedWideGrid.EmptyStateText" xml:space="preserve">
+    <value>Select an album to see tracks</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__UnheartText.Text" xml:space="preserve">
+    <value>Unheart</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__PlayLikedText.Text" xml:space="preserve">
+    <value>Play liked</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__ShuffleText.Text" xml:space="preserve">
+    <value>Shuffle</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__OpenAlbumText.Text" xml:space="preserve">
+    <value>Open album</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__SegmentLiked.Content" xml:space="preserve">
+    <value>Liked</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__SegmentFullAlbum.Content" xml:space="preserve">
+    <value>Full album</value>
+  </data>
+  <data name="Views_LocalLibraryPage__Title.Text" xml:space="preserve">
+    <value>Local files</value>
+  </data>
+  <data name="Views_LocalLibraryPage__ShowsSuffix.Text" xml:space="preserve">
+    <value> shows · </value>
+  </data>
+  <data name="Views_LocalLibraryPage__MoviesSuffix.Text" xml:space="preserve">
+    <value> movies · </value>
+  </data>
+  <data name="Views_LocalLibraryPage__MusicSuffix.Text" xml:space="preserve">
+    <value> music · </value>
+  </data>
+  <data name="Views_LocalLibraryPage__MusicVideosSuffix.Text" xml:space="preserve">
+    <value> music videos · </value>
+  </data>
+  <data name="Views_LocalLibraryPage__OtherSuffix.Text" xml:space="preserve">
+    <value> other</value>
+  </data>
+  <data name="Views_LocalLibraryPage__TmdbCtaBar.Title" xml:space="preserve">
+    <value>Get free posters and metadata</value>
+  </data>
+  <data name="Views_LocalLibraryPage__TmdbCtaBar.Message" xml:space="preserve">
+    <value>Add a TMDB token in Settings to fetch posters and episode info for your local movies and shows.</value>
+  </data>
+  <data name="Views_LocalLibraryPage__SetUpTmdbButton.Content" xml:space="preserve">
+    <value>Set up TMDB</value>
+  </data>
+  <data name="Views_LocalLibraryPage__EnrichmentBar.Title" xml:space="preserve">
+    <value>Enriching local metadata</value>
+  </data>
+  <data name="Views_LocalLibraryPage__EmptyTitle.Text" xml:space="preserve">
+    <value>No local files indexed yet</value>
+  </data>
+  <data name="Views_LocalLibraryPage__EmptyDesc.Text" xml:space="preserve">
+    <value>Add a watched folder in Settings → Storage and Network → Local Files.</value>
+  </data>
+  <data name="Views_LocalLibraryPage__ContinueWatchingHeader.Text" xml:space="preserve">
+    <value>Continue watching</value>
+  </data>
+  <data name="Views_LocalLibraryPage__TvShowsHeader.Text" xml:space="preserve">
+    <value>TV shows</value>
+  </data>
+  <data name="Views_LocalLibraryPage__SeeAllShows.Content" xml:space="preserve">
+    <value>See all →</value>
+  </data>
+  <data name="Views_LocalLibraryPage__MoviesHeader.Text" xml:space="preserve">
+    <value>Movies</value>
+  </data>
+  <data name="Views_LocalLibraryPage__SeeAllMovies.Content" xml:space="preserve">
+    <value>See all →</value>
+  </data>
+  <data name="Views_LocalLibraryPage__MusicVideosHeader.Text" xml:space="preserve">
+    <value>Music videos</value>
+  </data>
+  <data name="Views_LocalLibraryPage__SeeAllMusicVideos.Content" xml:space="preserve">
+    <value>See all →</value>
+  </data>
+  <data name="Views_LocalLibraryPage__MusicRecentHeader.Text" xml:space="preserve">
+    <value>Music — recently added</value>
+  </data>
+  <data name="Views_LocalLibraryPage__SeeAllMusic.Content" xml:space="preserve">
+    <value>See all →</value>
+  </data>
+  <data name="Views_LocalLibraryPage__OtherHeader.Text" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="Views_LocalLibraryPage__SeeAllOthers.Content" xml:space="preserve">
+    <value>See all →</value>
+  </data>
+  <data name="Views_LocalLibraryPage__OtherDesc.Text" xml:space="preserve">
+    <value>Files we couldn't classify. Right-click an item to set its type.</value>
+  </data>
+  <data name="Views_MigrationErrorWindow__Window.Title" xml:space="preserve">
+    <value>Wavee — Library cache issue</value>
+  </data>
+  <data name="Views_MigrationErrorWindow__Headline.Text" xml:space="preserve">
+    <value>Can't open your library cache</value>
+  </data>
+  <data name="Views_MigrationErrorWindow__QuitButton.Content" xml:space="preserve">
+    <value>Quit Wavee</value>
+  </data>
+  <data name="Views_MigrationErrorWindow__RebuildButton.Content" xml:space="preserve">
+    <value>Rebuild library cache</value>
+  </data>
+  <data name="Controls_TrackItem__OnThisPCTooltip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>On this PC</value>
+  </data>
+  <data name="Controls_TrackItem__ExplicitTooltip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Explicit</value>
+  </data>
+  <data name="Controls_TrackItem__MusicVideoTooltip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Music video available</value>
+  </data>
+  <data name="Controls_TrackItem__AddToPlaylistTooltip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add to playlist</value>
+  </data>
+  <data name="Controls_TrackItem__MoreTooltip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="Controls_TrackItem__PopularTrackTooltip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Popular track</value>
+  </data>
+  <data name="Controls_TrackItem__RowPlayedText.Text" xml:space="preserve">
+    <value>Played</value>
+  </data>
+  <data name="TabTitle_Home" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="TabTitle_NewTab" xml:space="preserve">
+    <value>New Tab</value>
+  </data>
+  <data name="TabTitle_Search" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="TabTitle_Profile" xml:space="preserve">
+    <value>Profile</value>
+  </data>
+  <data name="TabTitle_Settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="TabTitle_Debug" xml:space="preserve">
+    <value>Debug</value>
+  </data>
+  <data name="TabTitle_Feedback" xml:space="preserve">
+    <value>Feedback</value>
+  </data>
+  <data name="TabTitle_Browse" xml:space="preserve">
+    <value>Browse</value>
+  </data>
+  <data name="Dialog_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Dialog_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Dialog_Rename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="Dialog_Leave" xml:space="preserve">
+    <value>Leave</value>
+  </data>
+  <data name="Dialog_UnlikeAll" xml:space="preserve">
+    <value>Unlike all</value>
+  </data>
+  <data name="Dialog_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Dialog_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Dialog_Apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="Dialog_LoadMore" xml:space="preserve">
+    <value>Load more</value>
+  </data>
+  <data name="Sidebar_DeletePlaylistTitle" xml:space="preserve">
+    <value>Delete playlist?</value>
+  </data>
+  <data name="Sidebar_DeletePlaylistContent" xml:space="preserve">
+    <value>"{0}" will be removed from your library. This cannot be undone.</value>
+  </data>
+  <data name="Sidebar_DeletePlaylistError" xml:space="preserve">
+    <value>Couldn't delete the playlist</value>
+  </data>
+  <data name="Sidebar_RenameFolderTitle" xml:space="preserve">
+    <value>Rename folder</value>
+  </data>
+  <data name="Sidebar_RenameFolderPlaceholder" xml:space="preserve">
+    <value>Folder name</value>
+  </data>
+  <data name="Sidebar_RenameFolderError" xml:space="preserve">
+    <value>Couldn't rename the folder</value>
+  </data>
+  <data name="Sidebar_DeleteFolderTitle" xml:space="preserve">
+    <value>Delete folder?</value>
+  </data>
+  <data name="Sidebar_DeleteFolderContent" xml:space="preserve">
+    <value>"{0}" will be removed. Playlists inside the folder stay in your library.</value>
+  </data>
+  <data name="Playlist_LeaveTitle" xml:space="preserve">
+    <value>Leave playlist?</value>
+  </data>
+  <data name="Playlist_LeaveContent" xml:space="preserve">
+    <value>You'll lose access to "{0}". You can rejoin if the owner shares a new invite link.</value>
+  </data>
+  <data name="Playlist_DeleteTitle" xml:space="preserve">
+    <value>Delete playlist?</value>
+  </data>
+  <data name="Playlist_DeleteContent" xml:space="preserve">
+    <value>"{0}" will be removed from your library. This cannot be undone.</value>
+  </data>
+  <data name="Library_UnlikeAllFromAlbumTitle" xml:space="preserve">
+    <value>Unlike all songs from this album?</value>
+  </data>
+  <data name="Library_UnlikeAllFromAlbum_OneContent" xml:space="preserve">
+    <value>This will unlike 1 song from “{0}”. This can't be undone.</value>
+  </data>
+  <data name="Library_UnlikeAllFromAlbum_ManyContent" xml:space="preserve">
+    <value>This will unlike all {0} songs from “{1}”. This can't be undone.</value>
+  </data>
+  <data name="Library_UnlikeAllFromArtistTitle" xml:space="preserve">
+    <value>Unlike all songs from this artist?</value>
+  </data>
+  <data name="Library_UnlikeAllFromArtist_OneContent" xml:space="preserve">
+    <value>This will unlike 1 song by "{0}". This can't be undone.</value>
+  </data>
+  <data name="Library_UnlikeAllFromArtist_ManyContent" xml:space="preserve">
+    <value>This will unlike all {0} songs by "{1}". This can't be undone.</value>
+  </data>
+  <data name="Filter_AlbumsPlaceholder" xml:space="preserve">
+    <value>Filter albums…</value>
+  </data>
+  <data name="Filter_ArtistsPlaceholder" xml:space="preserve">
+    <value>Filter artists…</value>
+  </data>
+  <data name="LocalItem_DeleteFromDiskTitle" xml:space="preserve">
+    <value>Delete from disk?</value>
+  </data>
+  <data name="LocalItem_DeleteFromDiskContent" xml:space="preserve">
+    <value>This permanently removes the file from your disk. This can't be undone.
+
+{0}</value>
+  </data>
+  <data name="Reactions_DialogTitle" xml:space="preserve">
+    <value>Reactions</value>
+  </data>
+  <data name="Reactions_Loading" xml:space="preserve">
+    <value>Loading reactions...</value>
+  </data>
+  <data name="Reactions_LoadingMore" xml:space="preserve">
+    <value>Loading more reactions...</value>
+  </data>
+  <data name="Reactions_LoadError" xml:space="preserve">
+    <value>Could not load reactions.</value>
+  </data>
+  <data name="Reactions_None" xml:space="preserve">
+    <value>No reactions yet.</value>
+  </data>
+  <data name="Reactions_AllChip" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="Reactions_AllWithCount" xml:space="preserve">
+    <value>All {0}</value>
+  </data>
+  <data name="CloseTabs_Title" xml:space="preserve">
+    <value>Close Wavee</value>
+  </data>
+  <data name="CloseTabs_Question" xml:space="preserve">
+    <value>Do you want to save your open tabs for the next launch, discard them, or cancel closing?</value>
+  </data>
+  <data name="CloseTabs_AlwaysAsk" xml:space="preserve">
+    <value>Always ask me this</value>
+  </data>
+  <data name="CloseTabs_SaveTabs" xml:space="preserve">
+    <value>Save Tabs</value>
+  </data>
+  <data name="CloseTabs_DiscardTabs" xml:space="preserve">
+    <value>Discard Tabs</value>
+  </data>
+  <data name="Friends_JamUnavailableTitle" xml:space="preserve">
+    <value>Jam is not available yet</value>
+  </data>
+  <data name="Friends_JamUnavailableContent" xml:space="preserve">
+    <value>Jam sessions aren't supported in Wavee yet. Stay tuned!</value>
+  </data>
+  <data name="Details_SetCanvasUrlTitle" xml:space="preserve">
+    <value>Set canvas URL</value>
+  </data>
+  <data name="Details_AiGenerate" xml:space="preserve">
+    <value>Generate</value>
+  </data>
+  <data name="Details_AiGenerating" xml:space="preserve">
+    <value>Generating</value>
+  </data>
+  <data name="Details_AiReady" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="Details_AiRetry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Details_AiFiltered" xml:space="preserve">
+    <value>The on-device safety filter blocked this lyrics meaning.</value>
+  </data>
+  <data name="Details_AiEmpty" xml:space="preserve">
+    <value>No lyrics are available to interpret.</value>
+  </data>
+  <data name="Details_AiUnavailable" xml:space="preserve">
+    <value>On-device AI is not available right now.</value>
+  </data>
+  <data name="Details_AiError" xml:space="preserve">
+    <value>Something went wrong asking the on-device model.</value>
+  </data>
+  <data name="Details_ShowLess" xml:space="preserve">
+    <value>Show less</value>
+  </data>
+  <data name="Details_ViewAllCredits" xml:space="preserve">
+    <value>View all credits (+{0} more)</value>
+  </data>
+  <data name="Views_RecentlyPlayedPage__Title.Text" xml:space="preserve">
+    <value>Recently played</value>
+  </data>
+  <data name="Views_RecentlyPlayedPage__Subtitle.Text" xml:space="preserve">
+    <value>Albums, playlists, artists, and shows you've recently started</value>
+  </data>
+  <data name="Views_RecentlyPlayedPage__EmptyTitle.Text" xml:space="preserve">
+    <value>Nothing here yet</value>
+  </data>
+  <data name="Views_RecentlyPlayedPage__EmptyDesc.Text" xml:space="preserve">
+    <value>Start playing an album, playlist, or artist and it'll show up here.</value>
+  </data>
+  <data name="Controls_Cards_PopularReleaseRow__PopularNow.Text" xml:space="preserve">
+    <value>POPULAR NOW</value>
+  </data>
+  <data name="Controls_Cards_TicketStub__NearYou.Text" xml:space="preserve">
+    <value>NEAR YOU</value>
+  </data>
+  <data name="Controls_Artist_ArtistSummaryCard__Eyebrow.Text" xml:space="preserve">
+    <value>ABOUT THE ARTIST</value>
+  </data>
+  <data name="Controls_Comments_CommentsList__NoCommentsYet.Text" xml:space="preserve">
+    <value>No comments yet — be the first.</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__CompactDeviceName.Text" xml:space="preserve">
+    <value>This device</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__FlyoutEmpty.Text" xml:space="preserve">
+    <value>No other devices available</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__CardDeviceLabel.Text" xml:space="preserve">
+    <value>Playing on</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__CardDeviceName.Text" xml:space="preserve">
+    <value>This device</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__CardEmpty.Text" xml:space="preserve">
+    <value>No other devices nearby</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__AudioEngineOffline.Text" xml:space="preserve">
+    <value>Audio engine offline</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__RetryButton.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__LocalAudioHeader.Text" xml:space="preserve">
+    <value>LOCAL AUDIO</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__SpotifyConnectHeader.Text" xml:space="preserve">
+    <value>SPOTIFY CONNECT</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__CardLocalHeader.Text" xml:space="preserve">
+    <value>LOCAL AUDIO</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__CardConnectHeader.Text" xml:space="preserve">
+    <value>SPOTIFY CONNECT</value>
+  </data>
+  <data name="Controls_NavigationToolbar__SidebarToggleButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Toggle sidebar</value>
+  </data>
+  <data name="Controls_NavigationToolbar__SignInText.Text" xml:space="preserve">
+    <value>Sign in</value>
+  </data>
+  <data name="Controls_NavigationToolbar__FriendsButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Friends Activity</value>
+  </data>
+  <data name="Controls_NavigationToolbar__RightPanelToggleButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Toggle side panel</value>
+  </data>
+  <data name="ArtistStat_MonthlyListeners" xml:space="preserve">
+    <value>monthly listeners</value>
+  </data>
+  <data name="ArtistStat_Followers" xml:space="preserve">
+    <value>followers</value>
+  </data>
+  <data name="ArtistStat_Albums" xml:space="preserve">
+    <value>albums</value>
+  </data>
+  <data name="ArtistStat_SinglesAndEPs" xml:space="preserve">
+    <value>singles &amp; EPs</value>
+  </data>
+  <data name="ArtistStat_UpcomingConcerts" xml:space="preserve">
+    <value>upcoming concerts</value>
+  </data>
+  <data name="ArtistStat_RelatedArtists" xml:space="preserve">
+    <value>related artists</value>
+  </data>
+  <data name="Player_Play" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Player_Pause" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="Count_Plays" xml:space="preserve">
+    <value>{0} plays</value>
+  </data>
+  <data name="Spotlight_PinnedTag" xml:space="preserve">
+    <value>Pinned</value>
+  </data>
+  <data name="Spotlight_PinnedEyebrow" xml:space="preserve">
+    <value>Pinned</value>
+  </data>
+  <data name="Spotlight_LatestReleaseTag" xml:space="preserve">
+    <value>Latest release</value>
+  </data>
+  <data name="Spotlight_LatestReleaseEyebrow" xml:space="preserve">
+    <value>Latest release</value>
+  </data>
+  <data name="Spotlight_PopularNowTag" xml:space="preserve">
+    <value>Popular now</value>
+  </data>
+  <data name="Spotlight_PopularReleaseEyebrow" xml:space="preserve">
+    <value>Popular release</value>
+  </data>
+  <data name="ReleaseType_Single" xml:space="preserve">
+    <value>Single</value>
+  </data>
+  <data name="ReleaseType_EP" xml:space="preserve">
+    <value>EP</value>
+  </data>
+  <data name="ReleaseType_Album" xml:space="preserve">
+    <value>Album</value>
+  </data>
+  <data name="ReleaseType_Compilation" xml:space="preserve">
+    <value>Compilation</value>
+  </data>
+  <data name="Settings_ClearRevisionsTitle" xml:space="preserve">
+    <value>Clear collection revisions?</value>
+  </data>
+  <data name="Settings_ClearRevisionsContent" xml:space="preserve">
+    <value>This forces a full refresh of your Spotify library. Your local cached lists (Liked Songs, albums, artists, shows) will be rebuilt from the server. Useful if something looks out of date.</value>
+  </data>
+  <data name="Settings_ClearAndResync" xml:space="preserve">
+    <value>Clear &amp; resync</value>
+  </data>
+  <data name="Views_LibraryPage__SegmentedItem_Podcasts.Content" xml:space="preserve">
+    <value>Podcasts</value>
+  </data>
+  <data name="MainWindow__Auto_600.Text" xml:space="preserve">
+    <value>Show Wavee</value>
+  </data>
+  <data name="MainWindow__Auto_601.Text" xml:space="preserve">
+    <value>Play / pause</value>
+  </data>
+  <data name="MainWindow__Auto_602.Text" xml:space="preserve">
+    <value>Next track</value>
+  </data>
+  <data name="MainWindow__Auto_603.Text" xml:space="preserve">
+    <value>Previous track</value>
+  </data>
+  <data name="MainWindow__Auto_604.Text" xml:space="preserve">
+    <value>Quit Wavee</value>
+  </data>
+  <data name="Controls_HeartButton__Button_1.AutomationProperties.Name" xml:space="preserve">
+    <value>Save to Liked Songs</value>
+  </data>
+  <data name="Controls_InlineEditableText__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save (Enter)</value>
+  </data>
+  <data name="Controls_InlineEditableText__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Cancel (Esc)</value>
+  </data>
+  <data name="Controls_InlineEditableText__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Cancel (Esc)</value>
+  </data>
+  <data name="Controls_InlineEditableText__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save (Ctrl+Enter)</value>
+  </data>
+  <data name="Controls_InlineEditableText__Auto_604.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="Controls_PageErrorState__Auto_600.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Controls_RhythmBreakBanner__Auto_600.Text" xml:space="preserve">
+    <value>ON TOUR NOW</value>
+  </data>
+  <data name="Controls_ActivityBell_ActivityBell__Auto_600.Content" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="Controls_ActivityBell_ActivityBell__Auto_601.Content" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="Controls_ActivityBell_ActivityBell__Auto_602.Content" xml:space="preserve">
+    <value>Actions</value>
+  </data>
+  <data name="Controls_ActivityBell_ActivityBell__Auto_603.Content" xml:space="preserve">
+    <value>Spotify</value>
+  </data>
+  <data name="Controls_ActivityBell_ActivityBell__Auto_604.Content" xml:space="preserve">
+    <value>Badge</value>
+  </data>
+  <data name="Controls_AddToPlaylist_AddToPlaylistBar__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Remove from pending</value>
+  </data>
+  <data name="Controls_AddToPlaylist_AddToPlaylistBar__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open this playlist</value>
+  </data>
+  <data name="Controls_AddToPlaylist_AddToPlaylistBar__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>See all pending songs</value>
+  </data>
+  <data name="Controls_AddToPlaylist_AddToPlaylistChip__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add to playlist</value>
+  </data>
+  <data name="Controls_Ai_AiTextCard__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>On-device summary generated by Phi Silica</value>
+  </data>
+  <data name="Controls_Artist_ArtistSummaryCard__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Summary generated on-device by AI</value>
+  </data>
+  <data name="Controls_Cards_ContentCard__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open in browser</value>
+  </data>
+  <data name="Controls_Cards_MerchCard__Auto_600.Content" xml:space="preserve">
+    <value>Buy ›</value>
+  </data>
+  <data name="Controls_Cards_SpotlightReleaseCard__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Controls_Cards_SpotlightReleaseCard__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Share</value>
+  </data>
+  <data name="Controls_Cards_TicketStub__Auto_600.Content" xml:space="preserve">
+    <value>View ›</value>
+  </data>
+  <data name="Controls_Cards_TicketStub__Auto_601.Content" xml:space="preserve">
+    <value>Buy ›</value>
+  </data>
+  <data name="Controls_Comments_CommentsList__Auto_600.Content" xml:space="preserve">
+    <value>Load more comments</value>
+  </data>
+  <data name="Controls_Comments_CommentThreadItem__Auto_600.Content" xml:space="preserve">
+    <value>React</value>
+  </data>
+  <data name="Controls_Comments_CommentThreadItem__Auto_601.Content" xml:space="preserve">
+    <value>React</value>
+  </data>
+  <data name="Controls_Comments_CommentThreadItem__Auto_602.Content" xml:space="preserve">
+    <value>Reply</value>
+  </data>
+  <data name="Controls_Comments_CommentThreadItem__Auto_603.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Controls_Comments_CommentThreadItem__Auto_604.Content" xml:space="preserve">
+    <value>Reply</value>
+  </data>
+  <data name="Controls_Comments_CommentThreadItem__Auto_605.Content" xml:space="preserve">
+    <value>Load more replies</value>
+  </data>
+  <data name="Controls_HeroHeader_ArtistShyPill__Auto_600.Text" xml:space="preserve">
+    <value> monthly listeners</value>
+  </data>
+  <data name="Controls_InPageFilter_InPageFilterOverlay__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close (Esc)</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sort and view options</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_601.Text" xml:space="preserve">
+    <value>Recents</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_602.Text" xml:space="preserve">
+    <value>Sort by</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_603.Text" xml:space="preserve">
+    <value>Recents</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_604.Text" xml:space="preserve">
+    <value>Recently added</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_605.Text" xml:space="preserve">
+    <value>Alphabetical</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_606.Text" xml:space="preserve">
+    <value>Creator</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_607.Text" xml:space="preserve">
+    <value>Release date</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_608.Text" xml:space="preserve">
+    <value>View as</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_609.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Compact list</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_610.ToolTipService.ToolTip" xml:space="preserve">
+    <value>List</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_611.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Compact grid</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_612.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Grid</value>
+  </data>
+  <data name="Controls_Library_LibrarySortViewPanel__Auto_613.Text" xml:space="preserve">
+    <value>Size</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_600.Text" xml:space="preserve">
+    <value>Link Spotify track</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_601.PlaceholderText" xml:space="preserve">
+    <value>Search Spotify or paste a track link</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_602.Text" xml:space="preserve">
+    <value>Currently linked</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_603.Text" xml:space="preserve">
+    <value>No matching tracks</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_604.Text" xml:space="preserve">
+    <value>Try a different search, or paste a Spotify track link.</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_605.Text" xml:space="preserve">
+    <value>Search for a Spotify track</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_606.Text" xml:space="preserve">
+    <value>Start typing above, or paste a Spotify share link.</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_607.Text" xml:space="preserve">
+    <value>Search failed.</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_608.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_609.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_610.Text" xml:space="preserve">
+    <value>Link this track</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_611.Text" xml:space="preserve">
+    <value>Couldn't fetch track details</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_612.Text" xml:space="preserve">
+    <value>The link looks valid - you can link it anyway.</value>
+  </data>
+  <data name="Controls_Local_LinkSpotifyTrackFlyout__Auto_613.Content" xml:space="preserve">
+    <value>Link by URI</value>
+  </data>
+  <data name="Controls_Local_LocalEpisodeCard__Auto_600.Text" xml:space="preserve">
+    <value>Not in library</value>
+  </data>
+  <data name="Controls_Local_LocalEpisodeRow__Auto_600.Text" xml:space="preserve">
+    <value>Not in library</value>
+  </data>
+  <data name="Controls_Local_LocalItemDetailFlyout__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Drag an image file here to set cover art</value>
+  </data>
+  <data name="Controls_Local_LocalItemDetailFlyout__Auto_601.Content" xml:space="preserve">
+    <value>Save changes</value>
+  </data>
+  <data name="Controls_Local_LocalItemDetailFlyout__Auto_602.Text" xml:space="preserve">
+    <value>Subtitles</value>
+  </data>
+  <data name="Controls_Local_LocalItemDetailFlyout__Auto_603.Text" xml:space="preserve">
+    <value>Audio tracks</value>
+  </data>
+  <data name="Controls_Local_LocalItemDetailFlyout__Auto_604.Text" xml:space="preserve">
+    <value> bytes</value>
+  </data>
+  <data name="Controls_Local_UpNextEpisodeOverlay__Auto_600.Text" xml:space="preserve">
+    <value>UP NEXT</value>
+  </data>
+  <data name="Controls_Local_UpNextEpisodeOverlay__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Dismiss</value>
+  </data>
+  <data name="Controls_Local_UpNextEpisodeOverlay__Auto_602.Text" xml:space="preserve">
+    <value>Playing next…</value>
+  </data>
+  <data name="Controls_Local_UpNextEpisodeOverlay__Auto_603.Text" xml:space="preserve">
+    <value>Watch now</value>
+  </data>
+  <data name="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Expand</value>
+  </data>
+  <data name="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Expand</value>
+  </data>
+  <data name="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Previous</value>
+  </data>
+  <data name="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_604.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play/Pause</value>
+  </data>
+  <data name="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_605.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Next</value>
+  </data>
+  <data name="Controls_MiniVideoPlayer_MiniVideoPlayer__Auto_606.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Resize</value>
+  </data>
+  <data name="Controls_MiniVideoPlayer_VideoGripperView__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Show video player</value>
+  </data>
+  <data name="Controls_NavigationToolbar__SidebarToggleButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Toggle sidebar</value>
+  </data>
+  <data name="Controls_NavigationToolbar_NavigationToolbar__Button_1.AutomationProperties.Name" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="Controls_NavigationToolbar_NavigationToolbar__Button_2.AutomationProperties.Name" xml:space="preserve">
+    <value>Forward</value>
+  </data>
+  <data name="Controls_NavigationToolbar_NavigationToolbar__Button_3.AutomationProperties.Name" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Controls_NavigationToolbar_NavigationToolbar__Button_4.AutomationProperties.Name" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="Controls_NavigationToolbar_NavigationToolbar__Button_6.AutomationProperties.Name" xml:space="preserve">
+    <value>Profile</value>
+  </data>
+  <data name="Controls_NavigationToolbar_NavigationToolbar__SignInButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Sign in with Spotify</value>
+  </data>
+  <data name="Controls_NavigationToolbar__FriendsButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Friends Activity</value>
+  </data>
+  <data name="Controls_NavigationToolbar_NavigationToolbar__Button_10.AutomationProperties.Name" xml:space="preserve">
+    <value>Toggle theme</value>
+  </data>
+  <data name="Controls_NavigationToolbar__RightPanelToggleButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Toggle side panel</value>
+  </data>
+  <data name="Controls_Notifications_NotificationToast__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Controls_Omnibar_SearchFlyoutPanel__Auto_600.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Controls_Playback_AudioOutputPicker__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Choose output device</value>
+  </data>
+  <data name="Controls_AudioOutputPicker__CardDeviceName.ToolTipService.ToolTip" xml:space="preserve">
+    <value>This device</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play / pause (Space)</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Previous</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Back 10 seconds (Shift+←)</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Forward 30 seconds (Shift+→)</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_604.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Next</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_605.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Volume</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_606.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Audio · Video · Subtitles</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_607.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Expand player</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_608.Text" xml:space="preserve">
+    <value>Theatre mode</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_609.Text" xml:space="preserve">
+    <value>Fullscreen</value>
+  </data>
+  <data name="Controls_Playback_VideoTransportBar__Auto_610.Text" xml:space="preserve">
+    <value>Mini player</value>
+  </data>
+  <data name="Controls_Playback_WatchVideoButton__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Watch Video</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_106.AutomationProperties.Name" xml:space="preserve">
+    <value>Previous track</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_107.AutomationProperties.Name" xml:space="preserve">
+    <value>Play or pause</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_108.AutomationProperties.Name" xml:space="preserve">
+    <value>Next track</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_133.AutomationProperties.Name" xml:space="preserve">
+    <value>Previous track</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_134.AutomationProperties.Name" xml:space="preserve">
+    <value>Play or pause</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_135.AutomationProperties.Name" xml:space="preserve">
+    <value>Next track</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Explicit</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Music video available</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_603.AutomationProperties.Name" xml:space="preserve">
+    <value>More options</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_604.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Shuffle</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_605.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Repeat</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_606.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Autoplay</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_607.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Crossfade</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_608.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open playback context</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_609.Text" xml:space="preserve">
+    <value>Playing from </value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_610.Text" xml:space="preserve">
+    <value>Queue</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_611.Content" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_612.Text" xml:space="preserve">
+    <value>Next up</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_613.Text" xml:space="preserve">
+    <value>Queued later</value>
+  </data>
+  <data name="Controls_Queue_QueueControl__Auto_614.Text" xml:space="preserve">
+    <value>Plays after this context finishes</value>
+  </data>
+  <data name="Controls_RightPanel_FriendsTabView__Auto_600.Text" xml:space="preserve">
+    <value>Invite others to your Jam, and listen together from anywhere.</value>
+  </data>
+  <data name="Controls_RightPanel_FriendsTabView__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Jam is not yet supported in Wavee.</value>
+  </data>
+  <data name="Controls_RightPanel_FriendsTabView__Auto_602.Text" xml:space="preserve">
+    <value>Start a Jam</value>
+  </data>
+  <data name="Controls_RightPanel_FriendsTabView__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Dismiss</value>
+  </data>
+  <data name="Controls_RightPanel_FriendsTabView__Auto_604.Text" xml:space="preserve">
+    <value>No friends listening right now</value>
+  </data>
+  <data name="Controls_RightPanel_FriendsTabView__Auto_605.Text" xml:space="preserve">
+    <value>Friend activity is unavailable while disconnected</value>
+  </data>
+  <data name="Controls_RightPanel_FriendsTabView__Auto_606.Text" xml:space="preserve">
+    <value>Couldn't load friend activity.</value>
+  </data>
+  <data name="Controls_RightPanel_FriendsTabView__Auto_607.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelTabPager__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Scroll tabs left</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelTabPager__Auto_601.Content" xml:space="preserve">
+    <value>Track</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelTabPager__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Scroll tabs right</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelTabPager__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Pop out to window</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelView__Auto_600.Text" xml:space="preserve">
+    <value>Album</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelView__Auto_601.Text" xml:space="preserve">
+    <value>Duration</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelView__Auto_602.Text" xml:space="preserve">
+    <value>Added</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelView__Auto_603.Text" xml:space="preserve">
+    <value>Plays</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_600.Text" xml:space="preserve">
+    <value>New canvas</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>More options</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_602.Text" xml:space="preserve">
+    <value>Episode</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_603.Text" xml:space="preserve">
+    <value>Show</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_604.Text" xml:space="preserve">
+    <value>Lyrics</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_605.Text" xml:space="preserve">
+    <value>Lyrics meaning</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_606.Content" xml:space="preserve">
+    <value>Generate</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_607.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_608.Content" xml:space="preserve">
+    <value>Show more</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_609.Text" xml:space="preserve">
+    <value>About this episode</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_610.Text" xml:space="preserve">
+    <value>Chapters</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_611.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Seek to chapter</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_612.PlaceholderText" xml:space="preserve">
+    <value>Add a comment...</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_613.Text" xml:space="preserve">
+    <value>Credits</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_614.Content" xml:space="preserve">
+    <value>View all credits</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_615.Text" xml:space="preserve">
+    <value>Concerts</value>
+  </data>
+  <data name="Controls_RightPanel_Details_DetailsTabHost__Auto_616.Text" xml:space="preserve">
+    <value>Related Videos</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__Auto_600.Text" xml:space="preserve">
+    <value>Wavee is a third-party Spotify client. To make Recently Played, play counts, and recommendations work, the app sends the same minimum set of playback events to Spotify that the official client sends (the &amp;quot;gabo&amp;quot; telemetry pipeline): track URI, context URI, ms played, reason started/ended, audio format. Nothing else. No third-party analytics, no Wavee-operated server, no remote crash reporting. Your Spotify credentials are encrypted on disk via Windows DPAPI; the encryption is bound to your Windows user account. AI features (lyrics meaning, song themes) run entirely on-device via Phi Silica on Copilot+ PCs and never leave the machine.</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__Auto_601.Header" xml:space="preserve">
+    <value>License</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__Auto_601.Description" xml:space="preserve">
+    <value>Wavee is MIT-licensed open source</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__Auto_602.Header" xml:space="preserve">
+    <value>Third-party notices</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__Auto_602.Description" xml:space="preserve">
+    <value>Licenses, links, and why each component is included</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__Auto_603.Text" xml:space="preserve">
+    <value>These are the major direct and vendored components Wavee ships with or builds against. The complete transitive package graph is still available from dotnet list package --include-transitive.</value>
+  </data>
+  <data name="Controls_Settings_AudioSettingsSection__Auto_600.Content" xml:space="preserve">
+    <value>EQ Proof</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_600.PlaceholderText" xml:space="preserve">
+    <value>Filter summary, JSON, headers, correlation id...</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_601.Text" xml:space="preserve">
+    <value>events</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_602.Content" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_604.Content" xml:space="preserve">
+    <value>PUT req</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_605.Content" xml:space="preserve">
+    <value>PUT resp</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_606.Content" xml:space="preserve">
+    <value>Cluster</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_607.Content" xml:space="preserve">
+    <value>Volume</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_608.Content" xml:space="preserve">
+    <value>Cmd</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_609.Content" xml:space="preserve">
+    <value>Reply</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_610.Content" xml:space="preserve">
+    <value>Dealer</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_611.Content" xml:space="preserve">
+    <value>ConnId</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_612.Content" xml:space="preserve">
+    <value>Subs</value>
+  </data>
+  <data name="Controls_Settings_ConnectStateSection__Auto_613.Content" xml:space="preserve">
+    <value>Self echo</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConnectUpdatesSection__Auto_600.Title" xml:space="preserve">
+    <value>Connect Updates</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConnectUpdatesSection__Auto_600.Description" xml:space="preserve">
+    <value>Live log of cluster updates, dealer commands, and PUT state requests for the local device.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsLoggingSection__Auto_600.Header" xml:space="preserve">
+    <value>Verbose logging</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsLoggingSection__Auto_600.Description" xml:space="preserve">
+    <value>Captures detailed diagnostic output to the rolling log file. Useful for bug reports. Restart the app for the audio engine to pick up the change.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsSettingsSection__Auto_600.Text" xml:space="preserve">
+    <value>Configuration</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsSettingsSection__Auto_601.Text" xml:space="preserve">
+    <value>Logging</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsSettingsSection__Auto_602.Text" xml:space="preserve">
+    <value>Connect Updates</value>
+  </data>
+  <data name="Controls_Settings_GeneralSettingsSection__Auto_600.Title" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="Controls_Settings_GeneralSettingsSection__Auto_600.Description" xml:space="preserve">
+    <value>Choose how Wavee follows your Windows theme.</value>
+  </data>
+  <data name="Controls_Settings_GeneralSettingsSection__Auto_601.Title" xml:space="preserve">
+    <value>Language &amp; metadata</value>
+  </data>
+  <data name="Controls_Settings_GeneralSettingsSection__Auto_601.Description" xml:space="preserve">
+    <value>Control the app language and the language used for Spotify catalog text.</value>
+  </data>
+  <data name="Controls_Settings_GeneralSettingsSection__Auto_602.Title" xml:space="preserve">
+    <value>Display scale</value>
+  </data>
+  <data name="Controls_Settings_GeneralSettingsSection__Auto_602.Description" xml:space="preserve">
+    <value>Tune density and zoom for track lists, library shelves, and settings controls.</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_106.Header" xml:space="preserve">
+    <value>Tabs / cached pages</value>
+  </data>
+  <data name="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_106.Description" xml:space="preserve">
+    <value>Open tabs and total retained Page instances across them</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__Auto_600.Header" xml:space="preserve">
+    <value>Private session</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__Auto_600.Description" xml:space="preserve">
+    <value>Hides this session from Recently Played, friend activity, and recommendations until you turn it off.</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__Auto_601.Header" xml:space="preserve">
+    <value>Close minimizes to tray</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__Auto_601.Description" xml:space="preserve">
+    <value>When on, the X button hides Wavee into the system tray and keeps playback going. Closes the app when off.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__Auto_600.PlaceholderText" xml:space="preserve">
+    <value>eyJhbGciOi...</value>
+  </data>
+  <data name="Controls_ShowEpisode_PodcastEpisodeRecommendationCard__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play episode</value>
+  </data>
+  <data name="Controls_ShowEpisode_ShowEpisodeRow__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play episode</value>
+  </data>
+  <data name="Controls_ShowEpisode_ShowEpisodeRow__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save episode</value>
+  </data>
+  <data name="Controls_ShowEpisode_ShowResumeBanner__Auto_600.Text" xml:space="preserve">
+    <value>CONTINUE LISTENING</value>
+  </data>
+  <data name="Controls_ShowEpisode_ShowResumeBanner__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="Controls_ShowEpisode_ShowResumeBanner__Auto_602.Text" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="Controls_ShowEpisode_ShowUpNextCard__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play episode</value>
+  </data>
+  <data name="Controls_Sidebar_SidebarStyles__Auto_600.AutomationProperties.Name" xml:space="preserve">
+    <value>Pin or unpin</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedPlayerView__Auto_600.Text" xml:space="preserve">
+    <value>No lyrics available</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedPlayerView__Auto_601.Text" xml:space="preserve">
+    <value>Loading lyrics…</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedPlayerView__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open album</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedPlayerView__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Lyrics</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedPlayerView__Auto_604.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Queue</value>
+  </data>
+  <data name="Controls_SidebarPlayer_LyricsAiPanel__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Dismiss</value>
+  </data>
+  <data name="Controls_Splash_BootSplash__Auto_600.Text" xml:space="preserve">
+    <value>Wavee</value>
+  </data>
+  <data name="Controls_TabBar_TabBar__Auto_600.Text" xml:space="preserve">
+    <value>Pin</value>
+  </data>
+  <data name="Controls_TabBar_TabBar__Auto_601.Text" xml:space="preserve">
+    <value>Sleep Tab</value>
+  </data>
+  <data name="Controls_TrackItem__MoreTooltip.AutomationProperties.Name" xml:space="preserve">
+    <value>More options</value>
+  </data>
+  <data name="Controls_Track_TrackItem__Auto_600.AutomationProperties.Name" xml:space="preserve">
+    <value>Select track</value>
+  </data>
+  <data name="Controls_Track_TrackItem__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Explicit</value>
+  </data>
+  <data name="Controls_Track_TrackItem__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Explicit</value>
+  </data>
+  <data name="Controls_Track_TrackItem__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Explicit</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Select tracks</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sort</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_603.Text" xml:space="preserve">
+    <value>Sort by</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_604.Text" xml:space="preserve">
+    <value>Ascending</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_605.Text" xml:space="preserve">
+    <value>Descending</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_606.ToolTipService.ToolTip" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_607.Text" xml:space="preserve">
+    <value>Size</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_608.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="Controls_TrackDataGrid_TrackDataGrid__Auto_609.PlaceholderText" xml:space="preserve">
+    <value>Filter tracks</value>
+  </data>
+  <data name="Controls_TrackList_TrackListView__Auto_600.Label" xml:space="preserve">
+    <value>Play selected</value>
+  </data>
+  <data name="Controls_TrackList_TrackListView__Auto_601.Label" xml:space="preserve">
+    <value>Play after</value>
+  </data>
+  <data name="Controls_TrackList_TrackListView__Auto_602.Label" xml:space="preserve">
+    <value>Add to queue</value>
+  </data>
+  <data name="Controls_TrackList_TrackListView__Auto_603.Label" xml:space="preserve">
+    <value>Add to playlist</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__Auto_600.SearchPlaceholderText" xml:space="preserve">
+    <value>Filter albums...</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__Auto_600.EmptyStateText" xml:space="preserve">
+    <value>Select an album to see its liked tracks</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play the liked tracks of this album</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__Auto_602.PlaceholderText" xml:space="preserve">
+    <value>Filter albums...</value>
+  </data>
+  <data name="Views_AlbumsLibraryView__Auto_603.PlaceholderText" xml:space="preserve">
+    <value>Filter albums...</value>
+  </data>
+  <data name="Views_ArtistPage__Auto_600.Text" xml:space="preserve">
+    <value>IGNORED</value>
+  </data>
+  <data name="Views_ArtistPage__Auto_601.Text" xml:space="preserve">
+    <value> monthly listeners</value>
+  </data>
+  <data name="Views_ArtistPage__Auto_602.Text" xml:space="preserve">
+    <value> followers</value>
+  </data>
+  <data name="Views_ArtistPage__Auto_603.Text" xml:space="preserve">
+    <value> albums</value>
+  </data>
+  <data name="Views_ArtistPage__Auto_604.Text" xml:space="preserve">
+    <value> singles</value>
+  </data>
+  <data name="Views_ArtistPage__Auto_605.Text" xml:space="preserve">
+    <value>topTracks + popularReleasesAlbums</value>
+  </data>
+  <data name="Views_ArtistPage__Auto_606.Content" xml:space="preserve">
+    <value>Spotify</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__Auto_600.Text" xml:space="preserve">
+    <value>Play liked</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__Auto_601.Text" xml:space="preserve">
+    <value>Shuffle</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__Auto_602.Text" xml:space="preserve">
+    <value>Open artist</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__Auto_603.PlaceholderText" xml:space="preserve">
+    <value>Filter artists...</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__Auto_604.Text" xml:space="preserve">
+    <value>Play liked</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__Auto_605.Text" xml:space="preserve">
+    <value>Shuffle</value>
+  </data>
+  <data name="Views_ArtistsLibraryView__Auto_606.Text" xml:space="preserve">
+    <value>Open artist</value>
+  </data>
+  <data name="Views_BrowsePage__Auto_600.Text" xml:space="preserve">
+    <value>BROWSE</value>
+  </data>
+  <data name="Views_BrowsePage__Auto_601.Text" xml:space="preserve">
+    <value>Couldn't load this browse page</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_600.Text" xml:space="preserve">
+    <value>EPISODE</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_601.Text" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_602.Text" xml:space="preserve">
+    <value>VIDEO</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Play episode</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_604.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save episode</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_605.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add to queue</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_606.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Copy link to episode</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_607.Text" xml:space="preserve">
+    <value>About this episode</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_608.Text" xml:space="preserve">
+    <value>Chapters</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_609.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Seek to chapter</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_610.Text" xml:space="preserve">
+    <value>More from this show</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_611.Content" xml:space="preserve">
+    <value>See all</value>
+  </data>
+  <data name="Views_EpisodePage__Auto_612.Text" xml:space="preserve">
+    <value>We couldn't load this episode.</value>
+  </data>
+  <data name="Views_FeedbackPage__InfoBar_2.Message" xml:space="preserve">
+    <value>Thank you! Your feedback has been received.</value>
+  </data>
+  <data name="Views_LikedSongsView__Auto_600.Text" xml:space="preserve">
+    <value> &amp;#x2022; </value>
+  </data>
+  <data name="Views_LikedSongsView__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Show only tracks with music videos</value>
+  </data>
+  <data name="Views_PlaylistPage__Auto_600.AutomationProperties.Name" xml:space="preserve">
+    <value>Playlist filters</value>
+  </data>
+  <data name="Views_PlaylistPage__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Show only tracks with music videos</value>
+  </data>
+  <data name="Views_PlaylistPage__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add to this playlist</value>
+  </data>
+  <data name="Views_PlaylistPage__Auto_603.Text" xml:space="preserve">
+    <value>This playlist is empty</value>
+  </data>
+  <data name="Views_PlaylistPage__Auto_604.Text" xml:space="preserve">
+    <value>Find songs to add — anything you tap with + lands here.</value>
+  </data>
+  <data name="Views_PlaylistPage__Auto_605.Text" xml:space="preserve">
+    <value>Find songs to add</value>
+  </data>
+  <data name="Views_PlaylistPage__Auto_606.Text" xml:space="preserve">
+    <value>Or browse by genre</value>
+  </data>
+  <data name="Views_PodcastBrowsePage__Auto_600.Text" xml:space="preserve">
+    <value>Couldn't load this topic</value>
+  </data>
+  <data name="Views_ProfilePage__Auto_600.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Share</value>
+  </data>
+  <data name="Views_ProfilePage__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="Views_ProfilePage__Auto_602.Text" xml:space="preserve">
+    <value> playlists · </value>
+  </data>
+  <data name="Views_ProfilePage__Auto_603.Text" xml:space="preserve">
+    <value> following</value>
+  </data>
+  <data name="Views_SettingsPage__Auto_600.Content" xml:space="preserve">
+    <value>View all sections</value>
+  </data>
+  <data name="Views_SettingsPage__Auto_601.PlaceholderText" xml:space="preserve">
+    <value>Search settings</value>
+  </data>
+  <data name="Views_SettingsPage__Auto_602.Text" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="Views_SettingsPage__Auto_603.Text" xml:space="preserve">
+    <value>On-device AI</value>
+  </data>
+  <data name="Views_SettingsPage__Auto_604.Text" xml:space="preserve">
+    <value>Playback &amp; audio</value>
+  </data>
+  <data name="Views_SettingsPage__Auto_605.Text" xml:space="preserve">
+    <value>Storage &amp; local files</value>
+  </data>
+  <data name="Views_SettingsPage__Auto_606.Text" xml:space="preserve">
+    <value>Diagnostics</value>
+  </data>
+  <data name="Views_SettingsPage__Auto_607.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="Views_VideoPlayerPage__Auto_600.Text" xml:space="preserve">
+    <value>Listen as audio</value>
+  </data>
+  <data name="Views_VideoPlayerPage__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open details</value>
+  </data>
+  <data name="Views_VideoPlayerPage__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open details</value>
+  </data>
+  <data name="Views_VideoPlayerPage__Auto_603.Text" xml:space="preserve">
+    <value>Drop subtitle file</value>
+  </data>
+  <data name="Views_VideoPlayerPage__Auto_604.Text" xml:space="preserve">
+    <value>.srt · .vtt · .ass · .ssa · .sub</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_600.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_601.Text" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Copy episode link</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_603.Content" xml:space="preserve">
+    <value>Show more</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_604.Text" xml:space="preserve">
+    <value>Select an episode</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_605.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sort</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_606.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_607.Text" xml:space="preserve">
+    <value>Shuffle</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_608.Text" xml:space="preserve">
+    <value>Podcasts could not load</value>
+  </data>
+  <data name="Views_YourEpisodesView__Auto_609.Text" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Views_Home_BrowseAllSection__Auto_600.Text" xml:space="preserve">
+    <value>BROWSE ALL</value>
+  </data>
+  <data name="Views_Home_BrowseAllSection__Auto_601.Text" xml:space="preserve">
+    <value>Discover something new</value>
+  </data>
+  <data name="Views_Local_LocalCollectionDetailPage__Auto_600.Text" xml:space="preserve">
+    <value>Collection</value>
+  </data>
+  <data name="Views_Local_LocalCollectionDetailPage__Auto_601.Text" xml:space="preserve">
+    <value> items</value>
+  </data>
+  <data name="Views_Local_LocalLikedSongsPage__Auto_600.Text" xml:space="preserve">
+    <value>Liked songs</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_600.Text" xml:space="preserve">
+    <value>MOVIE</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_601.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_602.Text" xml:space="preserve">
+    <value>Mark watched</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sync with TMDB</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_604.Text" xml:space="preserve">
+    <value>Sync with TMDB</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_605.ToolTipService.ToolTip" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_606.Text" xml:space="preserve">
+    <value>Force re-sync with TMDB</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_607.Text" xml:space="preserve">
+    <value>Cast</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_608.Text" xml:space="preserve">
+    <value>Subtitles</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_609.Text" xml:space="preserve">
+    <value>Audio tracks</value>
+  </data>
+  <data name="Views_Local_LocalMovieDetailPage__Auto_610.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_Local_LocalMoviesPage__Auto_600.Text" xml:space="preserve">
+    <value>Movies</value>
+  </data>
+  <data name="Views_Local_LocalMoviesPage__Auto_601.Text" xml:space="preserve">
+    <value>Sync</value>
+  </data>
+  <data name="Views_Local_LocalMusicVideosPage__Auto_600.Text" xml:space="preserve">
+    <value>Music videos</value>
+  </data>
+  <data name="Views_Local_LocalOtherPage__Auto_600.Text" xml:space="preserve">
+    <value>Other files</value>
+  </data>
+  <data name="Views_Local_LocalPersonDetailPage__Auto_600.Text" xml:space="preserve">
+    <value>CAST MEMBER</value>
+  </data>
+  <data name="Views_Local_LocalPersonDetailPage__Auto_601.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="Views_Local_LocalPersonDetailPage__Auto_602.Text" xml:space="preserve">
+    <value>TV shows in your library</value>
+  </data>
+  <data name="Views_Local_LocalPersonDetailPage__Auto_603.Text" xml:space="preserve">
+    <value>Movies in your library</value>
+  </data>
+  <data name="Views_Local_LocalPersonDetailPage__Auto_604.Text" xml:space="preserve">
+    <value>Not in your library yet</value>
+  </data>
+  <data name="Views_Local_LocalPersonDetailPage__Auto_605.Text" xml:space="preserve">
+    <value>Add TV shows or movies featuring this cast member to see them here.</value>
+  </data>
+  <data name="Views_Local_LocalShowDetailPage__Auto_600.Text" xml:space="preserve">
+    <value>TV SHOW</value>
+  </data>
+  <data name="Views_Local_LocalShowDetailPage__Auto_601.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_Local_LocalShowDetailPage__Auto_602.Text" xml:space="preserve">
+    <value>Mark all watched</value>
+  </data>
+  <data name="Views_Local_LocalShowDetailPage__Auto_603.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sync with TMDB</value>
+  </data>
+  <data name="Views_Local_LocalShowDetailPage__Auto_604.Text" xml:space="preserve">
+    <value>Sync with TMDB</value>
+  </data>
+  <data name="Views_Local_LocalShowDetailPage__Auto_605.ToolTipService.ToolTip" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="Views_Local_LocalShowDetailPage__Auto_606.Text" xml:space="preserve">
+    <value>Force re-sync with TMDB</value>
+  </data>
+  <data name="Views_Local_LocalShowDetailPage__Auto_607.Text" xml:space="preserve">
+    <value>Cast</value>
+  </data>
+  <data name="Views_Local_LocalShowDetailPage__Auto_608.Text" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Views_Local_LocalShowsPage__Auto_600.Text" xml:space="preserve">
+    <value>LIBRARY</value>
+  </data>
+  <data name="Views_Local_LocalShowsPage__Auto_601.Text" xml:space="preserve">
+    <value>TV shows</value>
+  </data>
+  <data name="Views_Local_LocalShowsPage__Auto_602.Text" xml:space="preserve">
+    <value>Sync with TMDB</value>
+  </data>
+  <data name="Views_Local_LocalShowsPage__Auto_603.Text" xml:space="preserve">
+    <value>No local TV shows yet</value>
+  </data>
+  <data name="Views_Local_LocalShowsPage__Auto_604.Text" xml:space="preserve">
+    <value>Add a watched folder containing TV episodes in Settings.</value>
+  </data>
+  <data name="Views_Local_LocalShowsPage__Auto_605.Text" xml:space="preserve">
+    <value>TV shows</value>
+  </data>
+  <data name="Views_Local_LocalShowsPage__Auto_606.Text" xml:space="preserve">
+    <value>Sync</value>
+  </data>
+  <data name="Windows_DebugFloatingWindow__Auto_600.Title" xml:space="preserve">
+    <value>Wavee — Debug</value>
+  </data>
+  <data name="Windows_DebugFloatingWindow__Auto_601.Text" xml:space="preserve">
+    <value>Wavee — Debug</value>
+  </data>
+  <data name="Windows_PlayerFloatingWindow__Auto_600.Title" xml:space="preserve">
+    <value>Wavee — Player</value>
+  </data>
+  <data name="Windows_PlayerFloatingWindow__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Always on top</value>
+  </data>
+  <data name="Windows_PlayerFloatingWindow__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Enter full screen (F12)</value>
+  </data>
+  <data name="Windows_RightPanelFloatingWindow__Auto_600.Title" xml:space="preserve">
+    <value>Wavee — Now playing</value>
   </data>
 </root>

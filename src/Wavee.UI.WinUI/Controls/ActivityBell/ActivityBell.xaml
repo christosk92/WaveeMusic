@@ -136,7 +136,7 @@
                             Spacing="6"
                             Margin="0,6,0,0"
                             Visibility="{x:Bind HasActionRow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <Button Content="Details"
+                    <Button x:Uid="Controls_ActivityBell_ActivityBell__Auto_600" Content="Details"
                             Tag="{x:Bind}"
                             CommandParameter="{x:Bind}"
                             Click="ActivityDetails_Click"
@@ -264,21 +264,21 @@
                                               Padding="10,4"
                                               MinWidth="0"
                                               FontSize="12"/>
-                                <ToggleButton x:Name="FilterSystemButton"
+                                <ToggleButton x:Uid="Controls_ActivityBell_ActivityBell__Auto_601" x:Name="FilterSystemButton"
                                               Content="System"
                                               Tag="System"
                                               Click="FilterButton_Click"
                                               Padding="10,4"
                                               MinWidth="0"
                                               FontSize="12"/>
-                                <ToggleButton x:Name="FilterActionsButton"
+                                <ToggleButton x:Uid="Controls_ActivityBell_ActivityBell__Auto_602" x:Name="FilterActionsButton"
                                               Content="Actions"
                                               Tag="Actions"
                                               Click="FilterButton_Click"
                                               Padding="10,4"
                                               MinWidth="0"
                                               FontSize="12"/>
-                                <ToggleButton x:Name="FilterSpotifyButton"
+                                <ToggleButton x:Uid="Controls_ActivityBell_ActivityBell__Auto_603" x:Name="FilterSpotifyButton"
                                               Content="Spotify"
                                               Tag="Spotify"
                                               Click="FilterButton_Click"
@@ -287,7 +287,7 @@
                                               FontSize="12"/>
                             </StackPanel>
 
-                            <ToggleButton x:Name="BadgeToggleButton"
+                            <ToggleButton x:Uid="Controls_ActivityBell_ActivityBell__Auto_604" x:Name="BadgeToggleButton"
                                           Grid.Column="1"
                                           Content="Badge"
                                           IsChecked="True"

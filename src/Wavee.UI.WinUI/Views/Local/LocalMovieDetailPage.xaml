@@ -86,7 +86,7 @@
                                 </Grid>
 
                                 <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Bottom">
-                                    <TextBlock Text="MOVIE"
+                                    <TextBlock x:Uid="Views_Local_LocalMovieDetailPage__Auto_600" Text="MOVIE"
                                                FontWeight="SemiBold"
                                                Foreground="#CCFFFFFF"
                                                Style="{ThemeResource CaptionTextBlockStyle}"/>
@@ -118,7 +118,7 @@
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <FontIcon Glyph="&#xE768;" FontSize="14"
                                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                                                <TextBlock Text="Play"/>
+                                                <TextBlock x:Uid="Views_Local_LocalMovieDetailPage__Auto_601" Text="Play"/>
                                             </StackPanel>
                                         </Button>
                                         <Button Padding="16,10"
@@ -126,20 +126,20 @@
                                                 Click="MarkWatched_Click">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <FontIcon Glyph="&#xE73E;" FontSize="14"/>
-                                                <TextBlock Text="Mark watched"/>
+                                                <TextBlock x:Uid="Views_Local_LocalMovieDetailPage__Auto_602" Text="Mark watched"/>
                                             </StackPanel>
                                         </Button>
-                                        <Button x:Name="TmdbSyncButton"
+                                        <Button x:Uid="Views_Local_LocalMovieDetailPage__Auto_603" x:Name="TmdbSyncButton"
                                                 Padding="16,10"
                                                 CornerRadius="20"
                                                 Click="TmdbSyncButton_Click"
                                                 ToolTipService.ToolTip="Sync with TMDB">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <FontIcon x:Name="TmdbSyncGlyph" Glyph="&#xE895;" FontSize="14"/>
-                                                <TextBlock x:Name="TmdbSyncText" Text="Sync with TMDB"/>
+                                                <TextBlock x:Uid="Views_Local_LocalMovieDetailPage__Auto_604" x:Name="TmdbSyncText" Text="Sync with TMDB"/>
                                             </StackPanel>
                                         </Button>
-                                        <Button x:Name="MoreButton"
+                                        <Button x:Uid="Views_Local_LocalMovieDetailPage__Auto_605" x:Name="MoreButton"
                                                 Style="{StaticResource SubtleButtonStyle}"
                                                 Width="40" Height="40"
                                                 Padding="0"
@@ -148,7 +148,7 @@
                                             <FontIcon Glyph="&#xE712;" FontSize="14"/>
                                             <Button.Flyout>
                                                 <MenuFlyout>
-                                                    <MenuFlyoutItem Text="Force re-sync with TMDB"
+                                                    <MenuFlyoutItem x:Uid="Views_Local_LocalMovieDetailPage__Auto_606" Text="Force re-sync with TMDB"
                                                                     Click="ForceResync_Click">
                                                         <MenuFlyoutItem.Icon>
                                                             <FontIcon Glyph="&#xE72C;"/>
@@ -175,7 +175,7 @@
 
                     <StackPanel x:Name="CastSection" Spacing="10" Padding="32,0,0,0"
                                 Visibility="Collapsed">
-                        <TextBlock Text="Cast"
+                        <TextBlock x:Uid="Views_Local_LocalMovieDetailPage__Auto_607" Text="Cast"
                                    Style="{ThemeResource SubtitleTextBlockStyle}"
                                    FontWeight="SemiBold"/>
                         <ScrollViewer HorizontalScrollMode="Auto"
@@ -203,7 +203,7 @@
                     </StackPanel>
 
                     <StackPanel Spacing="6" Padding="32,0,32,0">
-                        <TextBlock Text="Subtitles" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <TextBlock x:Uid="Views_Local_LocalMovieDetailPage__Auto_608" Text="Subtitles" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
                         <ItemsControl ItemsSource="{x:Bind ViewModel.Subtitles}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:LocalSubtitle">
@@ -219,7 +219,7 @@
                     </StackPanel>
 
                     <StackPanel Spacing="6" Padding="32,0,32,0">
-                        <TextBlock Text="Audio tracks" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <TextBlock x:Uid="Views_Local_LocalMovieDetailPage__Auto_609" Text="Audio tracks" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
                         <ItemsControl ItemsSource="{x:Bind ViewModel.AudioTracks}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:LocalEmbeddedTrack">
@@ -310,7 +310,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <FontIcon Glyph="&#xE768;" FontSize="12"
                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                                <TextBlock Text="Play"/>
+                                <TextBlock x:Uid="Views_Local_LocalMovieDetailPage__Auto_610" Text="Play"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>

@@ -49,7 +49,7 @@
                         Spacing="2"
                         VerticalAlignment="Center">
 
-                <Button x:Name="PlayPauseButton"
+                <Button x:Uid="Controls_Playback_VideoTransportBar__Auto_600" x:Name="PlayPauseButton"
                         Width="36" Height="36"
                         Padding="0"
                         CornerRadius="18"
@@ -65,7 +65,7 @@
                                                     ActionForeground="White" />
                 </Button>
 
-                <Button x:Name="PrevButton"
+                <Button x:Uid="Controls_Playback_VideoTransportBar__Auto_601" x:Name="PrevButton"
                         Width="36" Height="36"
                         Padding="0"
                         CornerRadius="18"
@@ -76,7 +76,7 @@
                     <FontIcon Glyph="&#xE892;" FontSize="14" />
                 </Button>
 
-                <Button x:Name="SkipBack10Button"
+                <Button x:Uid="Controls_Playback_VideoTransportBar__Auto_602" x:Name="SkipBack10Button"
                         Width="36" Height="36"
                         Padding="0"
                         CornerRadius="18"
@@ -87,7 +87,7 @@
                     <FontIcon Glyph="&#xED3C;" FontSize="16" />
                 </Button>
 
-                <Button x:Name="SkipForward30Button"
+                <Button x:Uid="Controls_Playback_VideoTransportBar__Auto_603" x:Name="SkipForward30Button"
                         Width="36" Height="36"
                         Padding="0"
                         CornerRadius="18"
@@ -98,7 +98,7 @@
                     <FontIcon Glyph="&#xED3D;" FontSize="16" />
                 </Button>
 
-                <Button x:Name="NextButton"
+                <Button x:Uid="Controls_Playback_VideoTransportBar__Auto_604" x:Name="NextButton"
                         Width="36" Height="36"
                         Padding="0"
                         CornerRadius="18"
@@ -111,7 +111,7 @@
 
                 <!-- Volume icon + slider in a flyout — mirrors YouTube's
                      hover-expand pattern but uses a click-flyout for predictability. -->
-                <Button x:Name="VolumeButton"
+                <Button x:Uid="Controls_Playback_VideoTransportBar__Auto_605" x:Name="VolumeButton"
                         Width="36" Height="36"
                         Padding="0"
                         CornerRadius="18"
@@ -147,7 +147,7 @@
 
                 <!-- Tracks (audio / video / subtitle) — same MediaTracksMenuBuilder
                      the popout and cinematic page already share. -->
-                <Button x:Name="TracksButton"
+                <Button x:Uid="Controls_Playback_VideoTransportBar__Auto_606" x:Name="TracksButton"
                         Width="36" Height="36"
                         Padding="0"
                         CornerRadius="18"
@@ -165,7 +165,7 @@
                 <!-- Expand player — Theatre / Fullscreen / Mini player.
                      Glyph swaps on the active mode so the user can see at a glance
                      whether they can enter or exit. -->
-                <DropDownButton x:Name="ExpandPlayerDropDown"
+                <DropDownButton x:Uid="Controls_Playback_VideoTransportBar__Auto_607" x:Name="ExpandPlayerDropDown"
                                 Width="36"
                                 Height="36"
                                 Padding="0"
@@ -177,14 +177,14 @@
                               Glyph="&#xE740;" FontSize="14" />
                     <DropDownButton.Flyout>
                         <MenuFlyout Placement="TopEdgeAlignedRight">
-                            <ToggleMenuFlyoutItem x:Name="TheatreMenuItem"
+                            <ToggleMenuFlyoutItem x:Uid="Controls_Playback_VideoTransportBar__Auto_608" x:Name="TheatreMenuItem"
                                                   Text="Theatre mode"
                                                   Click="TheatreMenuItem_Click">
                                 <ToggleMenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE73F;" FontSize="14" />
                                 </ToggleMenuFlyoutItem.Icon>
                             </ToggleMenuFlyoutItem>
-                            <ToggleMenuFlyoutItem x:Name="FullscreenMenuItem"
+                            <ToggleMenuFlyoutItem x:Uid="Controls_Playback_VideoTransportBar__Auto_609" x:Name="FullscreenMenuItem"
                                                   Text="Fullscreen"
                                                   Click="FullscreenMenuItem_Click"
                                                   KeyboardAcceleratorTextOverride="F11">
@@ -193,7 +193,7 @@
                                 </ToggleMenuFlyoutItem.Icon>
                             </ToggleMenuFlyoutItem>
                             <MenuFlyoutSeparator x:Name="TheatreMiniSeparator" />
-                            <MenuFlyoutItem x:Name="MiniPlayerMenuItem"
+                            <MenuFlyoutItem x:Uid="Controls_Playback_VideoTransportBar__Auto_610" x:Name="MiniPlayerMenuItem"
                                             Text="Mini player"
                                             Click="MiniPlayerMenuItem_Click">
                                 <MenuFlyoutItem.Icon>

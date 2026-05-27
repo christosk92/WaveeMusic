@@ -37,7 +37,7 @@
                            TextTrimming="CharacterEllipsis"/>
             </StackPanel>
 
-            <Button x:Name="ViewAllSettingsGroupsButton"
+            <Button x:Uid="Views_SettingsPage__Auto_600" x:Name="ViewAllSettingsGroupsButton"
                     Grid.Column="1"
                     Content="View all sections"
                     Visibility="Collapsed"
@@ -45,7 +45,7 @@
                     Click="ViewAllSettingsGroups_Click"/>
         </Grid>
 
-        <AutoSuggestBox x:Name="SettingsSearchBox"
+        <AutoSuggestBox x:Uid="Views_SettingsPage__Auto_601" x:Name="SettingsSearchBox"
                         Grid.Row="1"
                         Width="420"
                         HorizontalAlignment="Left"
@@ -109,37 +109,37 @@
                 <NavigationViewItem x:Name="GeneralItem" Tag="general">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE713;" FontSize="15"/>
-                        <TextBlock Text="General"/>
+                        <TextBlock x:Uid="Views_SettingsPage__Auto_602" Text="General"/>
                     </StackPanel>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="AiItem" Tag="ai">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE950;" FontSize="15"/>
-                        <TextBlock Text="On-device AI"/>
+                        <TextBlock x:Uid="Views_SettingsPage__Auto_603" Text="On-device AI"/>
                     </StackPanel>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="PlaybackAudioItem" Tag="playback-audio">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE8D6;" FontSize="15"/>
-                        <TextBlock Text="Playback &amp; audio"/>
+                        <TextBlock x:Uid="Views_SettingsPage__Auto_604" Text="Playback &amp; audio"/>
                     </StackPanel>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="StorageItem" Tag="storage">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE8B7;" FontSize="15"/>
-                        <TextBlock Text="Storage &amp; local files"/>
+                        <TextBlock x:Uid="Views_SettingsPage__Auto_605" Text="Storage &amp; local files"/>
                     </StackPanel>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="DiagnosticsItem" Tag="diagnostics">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE9D9;" FontSize="15"/>
-                        <TextBlock Text="Diagnostics"/>
+                        <TextBlock x:Uid="Views_SettingsPage__Auto_606" Text="Diagnostics"/>
                     </StackPanel>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="AboutItem" Tag="about">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE946;" FontSize="15"/>
-                        <TextBlock Text="About"/>
+                        <TextBlock x:Uid="Views_SettingsPage__Auto_607" Text="About"/>
                     </StackPanel>
                 </NavigationViewItem>
             </NavigationView.MenuItems>

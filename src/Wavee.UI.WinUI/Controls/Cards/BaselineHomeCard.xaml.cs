@@ -234,10 +234,10 @@ public sealed partial class BaselineHomeCard : UserControl
         SubtitleText.Text = item.DisplaySubtitle ?? "";
         TypeText.Text = item.ContentType switch
         {
-            HomeContentType.Album => "Album",
-            HomeContentType.Playlist => "Playlist",
-            HomeContentType.Podcast => "Podcast",
-            _ => "Made for you"
+            HomeContentType.Album => AppLocalization.GetString("ContentType_Album"),
+            HomeContentType.Playlist => AppLocalization.GetString("ContentType_Playlist"),
+            HomeContentType.Podcast => AppLocalization.GetString("ContentType_Podcast"),
+            _ => AppLocalization.GetString("ContentType_MadeForYou")
         };
 
         var previewTrackName = activePreviewTrack?.Name;

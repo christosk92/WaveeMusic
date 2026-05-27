@@ -28,7 +28,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <AutoSuggestBox Grid.Column="0"
+                <AutoSuggestBox x:Uid="Controls_Settings_ConnectStateSection__Auto_600" Grid.Column="0"
                                 QueryIcon="Find"
                                 PlaceholderText="Filter summary, JSON, headers, correlation id..."
                                 Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -40,16 +40,16 @@
                            FontFamily="Consolas"
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}">
                     <Run Text="{x:Bind ViewModel.FilteredEvents.Count, Mode=OneWay}"/>
-                    <Run Text="events"/>
+                    <Run x:Uid="Controls_Settings_ConnectStateSection__Auto_601" Text="events"/>
                 </TextBlock>
 
-                <ToggleButton Grid.Column="2"
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_602" Grid.Column="2"
                               Content="Pause"
                               IsChecked="{x:Bind ViewModel.IsPaused, Mode=TwoWay}"
                               Padding="10,6"
                               MinHeight="0"/>
 
-                <Button Grid.Column="3"
+                <Button x:Uid="Controls_Settings_ConnectStateSection__Auto_603" Grid.Column="3"
                         Content="&#xE74D;"
                         FontFamily="Segoe Fluent Icons"
                         FontSize="12"
@@ -66,16 +66,16 @@
                     VerticalScrollBarVisibility="Hidden"
                     Tag="events">
             <StackPanel Orientation="Horizontal" Spacing="4">
-                <ToggleButton Content="PUT req" IsChecked="{x:Bind ViewModel.ShowPutStateRequest, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
-                <ToggleButton Content="PUT resp" IsChecked="{x:Bind ViewModel.ShowPutStateResponse, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
-                <ToggleButton Content="Cluster" IsChecked="{x:Bind ViewModel.ShowClusterUpdate, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
-                <ToggleButton Content="Volume" IsChecked="{x:Bind ViewModel.ShowVolumeCommand, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
-                <ToggleButton Content="Cmd" IsChecked="{x:Bind ViewModel.ShowDealerCommand, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
-                <ToggleButton Content="Reply" IsChecked="{x:Bind ViewModel.ShowDealerReply, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
-                <ToggleButton Content="Dealer" IsChecked="{x:Bind ViewModel.ShowDealerLifecycle, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
-                <ToggleButton Content="ConnId" IsChecked="{x:Bind ViewModel.ShowConnectionLifecycle, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
-                <ToggleButton Content="Subs" IsChecked="{x:Bind ViewModel.ShowSubscriptions, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
-                <ToggleButton Content="Self echo" IsChecked="{x:Bind ViewModel.ShowSelfEcho, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_604" Content="PUT req" IsChecked="{x:Bind ViewModel.ShowPutStateRequest, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_605" Content="PUT resp" IsChecked="{x:Bind ViewModel.ShowPutStateResponse, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_606" Content="Cluster" IsChecked="{x:Bind ViewModel.ShowClusterUpdate, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_607" Content="Volume" IsChecked="{x:Bind ViewModel.ShowVolumeCommand, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_608" Content="Cmd" IsChecked="{x:Bind ViewModel.ShowDealerCommand, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_609" Content="Reply" IsChecked="{x:Bind ViewModel.ShowDealerReply, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_610" Content="Dealer" IsChecked="{x:Bind ViewModel.ShowDealerLifecycle, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_611" Content="ConnId" IsChecked="{x:Bind ViewModel.ShowConnectionLifecycle, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_612" Content="Subs" IsChecked="{x:Bind ViewModel.ShowSubscriptions, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton x:Uid="Controls_Settings_ConnectStateSection__Auto_613" Content="Self echo" IsChecked="{x:Bind ViewModel.ShowSelfEcho, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
             </StackPanel>
         </ScrollView>
 

@@ -263,7 +263,7 @@
                                 <Border CornerRadius="14"
                                         Padding="10,3,10,5"
                                         Background="{ThemeResource AccentFillColorDefaultBrush}">
-                                    <TextBlock Text="EPISODE"
+                                    <TextBlock x:Uid="Views_EpisodePage__Auto_600" Text="EPISODE"
                                                FontSize="11"
                                                FontWeight="SemiBold"
                                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
@@ -296,7 +296,7 @@
                                              Command="{x:Bind ViewModel.OpenShowCommand}"
                                              Visibility="{x:Bind ViewModel.HasParentShow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <TextBlock Text="From"
+                                    <TextBlock x:Uid="Views_EpisodePage__Auto_601" Text="From"
                                                FontSize="13"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                     <TextBlock Text="{x:Bind ViewModel.ParentShowTitle, Mode=OneWay}"
@@ -324,14 +324,14 @@
                                             Visibility="{x:Bind ViewModel.IsVideo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <FontIcon Glyph="&#xE714;" FontSize="11"
                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                    <TextBlock Text="VIDEO" FontSize="10" FontWeight="SemiBold"
+                                    <TextBlock x:Uid="Views_EpisodePage__Auto_602" Text="VIDEO" FontSize="10" FontWeight="SemiBold"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
                             </StackPanel>
 
                             <!-- Action cluster: primary play CTA + secondaries. -->
                             <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="8" Margin="0,12,0,0">
-                                <Button Style="{StaticResource AccentButtonStyle}"
+                                <Button x:Uid="Views_EpisodePage__Auto_603" Style="{StaticResource AccentButtonStyle}"
                                         Command="{x:Bind ViewModel.PlayCommand}"
                                         Padding="20,10" CornerRadius="22"
                                         ToolTipService.ToolTip="Play episode">
@@ -341,21 +341,21 @@
                                                    FontSize="13" FontWeight="SemiBold"/>
                                     </StackPanel>
                                 </Button>
-                                <Button Click="LikeButton_Click"
+                                <Button x:Uid="Views_EpisodePage__Auto_604" Click="LikeButton_Click"
                                         Width="44" Height="44" CornerRadius="22" Padding="0"
                                         Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                         BorderThickness="0"
                                         ToolTipService.ToolTip="Save episode">
                                     <FontIcon Glyph="&#xEB51;" FontSize="14"/>
                                 </Button>
-                                <Button Click="QueueButton_Click"
+                                <Button x:Uid="Views_EpisodePage__Auto_605" Click="QueueButton_Click"
                                         Width="44" Height="44" CornerRadius="22" Padding="0"
                                         Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                         BorderThickness="0"
                                         ToolTipService.ToolTip="Add to queue">
                                     <FontIcon Glyph="&#xE823;" FontSize="14"/>
                                 </Button>
-                                <Button Command="{x:Bind ViewModel.ShareCommand}"
+                                <Button x:Uid="Views_EpisodePage__Auto_606" Command="{x:Bind ViewModel.ShareCommand}"
                                         Click="ShareButton_Click"
                                         IsEnabled="{x:Bind ViewModel.CanShare, Mode=OneWay}"
                                         Width="44" Height="44" CornerRadius="22" Padding="0"
@@ -386,7 +386,7 @@
                                     Spacing="24">
                             <StackPanel Spacing="10"
                                         Visibility="{x:Bind ViewModel.HasDescription, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Text="About this episode"
+                                <TextBlock x:Uid="Views_EpisodePage__Auto_607" Text="About this episode"
                                            Style="{StaticResource SubtitleTextBlockStyle}"
                                            FontWeight="Bold"/>
                                 <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
@@ -428,7 +428,7 @@
                          tapping a row seeks the player to chapter start. -->
                     <StackPanel Spacing="14"
                                 Visibility="{x:Bind ViewModel.HasChapters, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="Chapters"
+                        <TextBlock x:Uid="Views_EpisodePage__Auto_608" Text="Chapters"
                                    Style="{StaticResource SubtitleTextBlockStyle}"
                                    FontWeight="Bold"/>
                         <ItemsRepeater ItemsSource="{x:Bind ViewModel.Chapters, Mode=OneWay}">
@@ -437,7 +437,7 @@
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>
                                 <DataTemplate x:DataType="vm:EpisodeChapterVm">
-                                    <Button Tag="{x:Bind}"
+                                    <Button x:Uid="Views_EpisodePage__Auto_609" Tag="{x:Bind}"
                                             Click="ChapterButton_Click"
                                             Background="Transparent"
                                             BorderThickness="0"
@@ -509,12 +509,12 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0"
+                            <TextBlock x:Uid="Views_EpisodePage__Auto_610" Grid.Column="0"
                                        Text="More from this show"
                                        Style="{StaticResource SubtitleTextBlockStyle}"
                                        FontWeight="Bold"
                                        VerticalAlignment="Center"/>
-                            <HyperlinkButton Grid.Column="1"
+                            <HyperlinkButton x:Uid="Views_EpisodePage__Auto_611" Grid.Column="1"
                                              Command="{x:Bind ViewModel.OpenShowCommand}"
                                              Content="See all"
                                              VerticalAlignment="Center"
@@ -549,7 +549,7 @@
                     Padding="32"
                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
             <FontIcon Glyph="&#xE783;" FontSize="36" Opacity="0.6" HorizontalAlignment="Center"/>
-            <TextBlock Text="We couldn't load this episode."
+            <TextBlock x:Uid="Views_EpisodePage__Auto_612" Text="We couldn't load this episode."
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
             <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"

@@ -54,7 +54,7 @@
 
             <!-- Whole-tab click target. Sits above the surface + progress
                  so any tap on the tab restores Mini. -->
-            <Button x:Name="RestoreButton"
+            <Button x:Uid="Controls_MiniVideoPlayer_VideoGripperView__Auto_600" x:Name="RestoreButton"
                     Background="Transparent"
                     BorderThickness="0"
                     Padding="0"

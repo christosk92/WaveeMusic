@@ -67,7 +67,7 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            transitions:TransitionHelper.Id="artist-meta">
                     <Run Text="{x:Bind MonthlyListenersText, Mode=OneWay}"/>
-                    <Run Text=" monthly listeners"/>
+                    <Run x:Uid="Controls_HeroHeader_ArtistShyPill__Auto_600" Text=" monthly listeners"/>
                 </TextBlock>
             </StackPanel>
             <Button x:Name="PlayBtn"
