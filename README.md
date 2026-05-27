@@ -31,11 +31,11 @@ A **Spotify Premium** account is required, and the app is intended for personal 
 - **Friends feed**, **profile**, **concerts**, in‑app **settings** (theme, audio device, EQ, language, storage/network, diagnostics).
 - **On-device AI on Copilot+ PCs** (opt-in) — explain a lyric line or summarize a song's themes with Phi Silica running locally on the NPU. Nothing leaves the machine; off by default.
 
-### Coming soon after the initial beta release
+### Coming soon after the initial alpha release
 - **Local media library** — index audio, music videos, movies, TV shows, episodes, subtitles, and embedded tracks from disk; browse them alongside Spotify content.
 - **Local metadata enrichment** — TMDB for movies / TV, MusicBrainz + Cover Art Archive for music, local artwork caching, thumbnails, watched state, resume position, custom collections, and local likes.
 - **Spotify linking for local media** — link local music videos to Spotify tracks so playback, metadata, queue state, and now-playing identity stay connected.
-- This code is present behind the `WAVEE_ENABLE_LOCAL_FILES` feature flag for internal testing, but it is disabled in the initial beta release.
+- This code is present behind the `WAVEE_ENABLE_LOCAL_FILES` feature flag for internal testing, but it is disabled in the initial alpha release.
 
 ### Spotify Connect
 - Full Dealer WebSocket implementation, real‑time cluster state synchronization.
@@ -84,12 +84,12 @@ A **Spotify Premium** account is required, and the app is intended for personal 
   </tr>
 </table>
 
-## Download the beta
+## Download the alpha
 
-The public beta ships as a signed MSIX from
+The experimental alpha ships as a signed MSIX from
 [GitHub Releases](https://github.com/christosk92/WaveeMusic/releases) —
-grab `WaveeMusic-{version}-x64.msix` or `-arm64.msix` for your machine.
-See [BETA.md](BETA.md) for system requirements, installation steps,
+grab the matching `Wavee.UI.WinUI_{package-version}_{arch}.msix` for your machine.
+See [ALPHA.md](ALPHA.md) for system requirements, installation steps,
 known limitations, and how to file a useful bug report.
 
 > A Spotify **Premium** account is required. Wavee shows a non-dismissible
@@ -98,7 +98,7 @@ known limitations, and how to file a useful bug report.
 ## Quick start (for developers)
 
 ### Prerequisites
-- **Windows 11 version 24H2 (build 26100)** or later — required since v0.1.0-beta to enable on-device AI features.
+- **Windows 11 version 24H2 (build 26100)** or later — required since v0.1.0-alpha.1 to enable on-device AI features.
 - .NET 10 SDK
 - A Spotify **Premium** account
 

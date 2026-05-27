@@ -48,6 +48,9 @@ public sealed partial class ArtistHeaderViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(ArtistName))]
     [NotifyPropertyChangedFor(nameof(ArtistImageUrl))]
     [NotifyPropertyChangedFor(nameof(HeaderImageUrl))]
+    [NotifyPropertyChangedFor(nameof(GalleryHeroUrl))]
+    [NotifyPropertyChangedFor(nameof(HeaderBackdropImageUrl))]
+    [NotifyPropertyChangedFor(nameof(HeaderFallbackImageUrl))]
     [NotifyPropertyChangedFor(nameof(HeaderHeroColorHex))]
     [NotifyPropertyChangedFor(nameof(Palette))]
     [NotifyPropertyChangedFor(nameof(MonthlyListeners))]
@@ -111,6 +114,13 @@ public sealed partial class ArtistHeaderViewModel : ObservableObject, IDisposabl
     public string? ArtistName => Artist?.Name;
     public string? ArtistImageUrl => Artist?.ArtistImageUrl;
     public string? HeaderImageUrl => Artist?.HeaderImageUrl;
+    public string? GalleryHeroUrl => Artist?.GalleryHeroUrl;
+    public string? HeaderBackdropImageUrl => ArtistHeroImageSelector
+        .Select(HeaderImageUrl, GalleryHeroUrl, ArtistImageUrl)
+        .BackdropImageUrl;
+    public string? HeaderFallbackImageUrl => ArtistHeroImageSelector
+        .Select(HeaderImageUrl, GalleryHeroUrl, ArtistImageUrl)
+        .FallbackImageUrl;
     public string? HeaderHeroColorHex => Artist?.HeaderHeroColorHex;
     public ArtistPalette? Palette => Artist?.Palette;
 

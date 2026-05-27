@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -19,6 +20,8 @@ namespace Wavee.UI.WinUI.Controls.HeroHeader;
 public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipant
 {
     private static readonly TimeSpan ColorTransitionDuration = TimeSpan.FromMilliseconds(420);
+    private const float FallbackBlurAmount = 34f;
+    private const float FallbackImageScale = 1.18f;
     private CompositionSurfaceBrush? _surfaceBrush;
     private CompositionLinearGradientBrush? _colorBlendBrush;
     private CompositionColorGradientStop? _colorBlendMidStop;
@@ -34,10 +37,21 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
     private Visual? _overlayVisual;
     private Compositor? _compositor;
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
+    private Compositor? _fallbackCompositor;
+    private ContainerVisual? _fallbackContainerVisual;
+    private SpriteVisual? _fallbackBlurVisual;
+    private SpriteVisual? _fallbackSharpVisual;
+    private CompositionSurfaceBrush? _fallbackSurfaceBrush;
+    private CompositionSurfaceBrush? _fallbackSharpSurfaceBrush;
+    private CompositionEffectFactory? _fallbackBlurFactory;
+    private CompositionEffectBrush? _fallbackBlurBrush;
+    private Microsoft.UI.Xaml.Media.LoadedImageSurface? _fallbackImageSurface;
     private bool _hasAnimated;
     private bool _animateNextImageLoad = true;
     private string? _loadedImageUrl;
     private string? _requestedImageUrl;
+    private string? _loadedFallbackImageUrl;
+    private string? _requestedFallbackImageUrl;
     private bool _navCacheReleased;
 
     // â”€â”€ Dependency Properties â”€â”€
@@ -49,6 +63,10 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
     public static readonly DependencyProperty ColorHexProperty =
         DependencyProperty.Register(nameof(ColorHex), typeof(string), typeof(HeroHeader),
             new PropertyMetadata(null, OnColorHexChanged));
+
+    public static readonly DependencyProperty FallbackImageUrlProperty =
+        DependencyProperty.Register(nameof(FallbackImageUrl), typeof(string), typeof(HeroHeader),
+            new PropertyMetadata(null, OnFallbackImageUrlChanged));
 
     public static readonly DependencyProperty OverlayContentProperty =
         DependencyProperty.Register(nameof(OverlayContent), typeof(object), typeof(HeroHeader),
@@ -92,6 +110,17 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
     {
         get => (string?)GetValue(ColorHexProperty);
         set => SetValue(ColorHexProperty, value);
+    }
+
+    /// <summary>
+    /// Optional portrait/square fallback used only when <see cref="ImageUrl"/> is
+    /// empty. Rendered as a blurred, scaled full-bleed backdrop behind the
+    /// existing procedural fallback wash.
+    /// </summary>
+    public string? FallbackImageUrl
+    {
+        get => (string?)GetValue(FallbackImageUrlProperty);
+        set => SetValue(FallbackImageUrlProperty, value);
     }
 
     public object? OverlayContent
@@ -160,6 +189,7 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
     {
         InitializeComponent();
         ImageBorder.Loaded += OnImageBorderLoaded;
+        FallbackImageBorder.Loaded += OnFallbackImageBorderLoaded;
         Unloaded += OnUnloaded;
         ActualThemeChanged += OnHeroActualThemeChanged;
         ApplyColor(ColorHex);
@@ -245,6 +275,7 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ImageBorder.SizeChanged -= OnImageBorderSizeChanged;
+        FallbackImageBorder.SizeChanged -= OnFallbackImageBorderSizeChanged;
         ActualThemeChanged -= OnHeroActualThemeChanged;
 
         _imageSurface?.Dispose();
@@ -277,6 +308,19 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
 
         _overlayVisual = null;
         _compositor = null;
+
+        ClearFallbackImageSurface(resetLoadedUrl: true);
+        if (_fallbackContainerVisual != null)
+        {
+            ElementCompositionPreview.SetElementChildVisual(FallbackImageBorder, null);
+            _fallbackBlurVisual?.Dispose();
+            _fallbackSharpVisual?.Dispose();
+            _fallbackContainerVisual.Dispose();
+            _fallbackBlurVisual = null;
+            _fallbackSharpVisual = null;
+            _fallbackContainerVisual = null;
+        }
+        _fallbackCompositor = null;
     }
 
     private void OnImageBorderLoaded(object sender, RoutedEventArgs e)
@@ -285,6 +329,12 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
         _overlayVisual = ElementCompositionPreview.GetElementVisual(OverlayPresenter);
         ApplyScrollFade();
         LoadImage(ImageUrl);
+    }
+
+    private void OnFallbackImageBorderLoaded(object sender, RoutedEventArgs e)
+    {
+        EnsureFallbackImageComposition();
+        ApplyFallbackImage(FallbackImageUrl);
     }
 
     private static void OnScrollFadeProgressChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -463,6 +513,7 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
             _surfaceBrush.Surface = null;
         _imageSurface?.Dispose();
         _imageSurface = null;
+        ClearFallbackImageSurface(resetLoadedUrl: true);
         // Clear the last-loaded URL so RestoreSurface's LoadImage compare
         // sees a mismatch and re-hydrates from the current ImageUrl.
         _loadedImageUrl = null;
@@ -477,6 +528,7 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
     public void RestoreSurface()
     {
         LoadImage(ImageUrl);
+        ApplyFallbackImage(FallbackImageUrl);
     }
 
     // ── INavCacheSurfaceParticipant ──
@@ -506,11 +558,15 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
     {
         get
         {
-            if (_navCacheReleased || _imageSurface is null)
+            if (_navCacheReleased)
                 return 0;
+
+            if (_imageSurface is null)
+                return EstimateFallbackSurfaceBytes();
+
             var w = ImageBorder.ActualWidth > 0 ? ImageBorder.ActualWidth : 1200;
             var h = ImageBorder.ActualHeight > 0 ? ImageBorder.ActualHeight : 420;
-            return (long)(w * h * 4);
+            return (long)(w * h * 4) + EstimateFallbackSurfaceBytes();
         }
     }
 
@@ -534,8 +590,11 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
                 _containerVisual.Scale = new Vector3((float)InitialScale);
                 _containerVisual.Opacity = 0f;
             }
+            ApplyFallbackImage(FallbackImageUrl);
             return;
         }
+
+        ClearFallbackImageSurface(resetLoadedUrl: true);
 
         var shouldAnimate = _animateNextImageLoad;
         PrepareContainerForImageLoad(shouldAnimate);
@@ -570,6 +629,189 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
                 }
             });
         };
+    }
+
+    private void ApplyFallbackImage(string? url)
+    {
+        if (!string.IsNullOrEmpty(NormalizeImageUrl(ImageUrl)))
+        {
+            ClearFallbackImageSurface(resetLoadedUrl: true);
+            return;
+        }
+
+        var normalizedUrl = NormalizeImageUrl(url);
+        _requestedFallbackImageUrl = normalizedUrl;
+
+        if (string.IsNullOrEmpty(normalizedUrl))
+        {
+            ClearFallbackImageSurface(resetLoadedUrl: true);
+            return;
+        }
+
+        EnsureFallbackImageComposition();
+        if (_fallbackCompositor is null || _fallbackBlurVisual is null || _fallbackSharpVisual is null)
+            return;
+
+        if (string.Equals(_loadedFallbackImageUrl, normalizedUrl, StringComparison.OrdinalIgnoreCase)
+            && _fallbackImageSurface is not null
+            && _fallbackBlurVisual.Brush is not null
+            && _fallbackSharpVisual.Brush is not null)
+        {
+            return;
+        }
+
+        ClearFallbackImageSurface(resetLoadedUrl: false);
+
+        try
+        {
+            var decode = ComputeFallbackImageDecodeSize();
+            _fallbackImageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(
+                new Uri(normalizedUrl),
+                new Windows.Foundation.Size(decode, decode));
+        }
+        catch
+        {
+            _fallbackImageSurface = null;
+        }
+
+        if (_fallbackImageSurface is null)
+        {
+            _loadedFallbackImageUrl = null;
+            _fallbackBlurVisual.Brush = null;
+            _fallbackSharpVisual.Brush = null;
+            return;
+        }
+
+        _fallbackSurfaceBrush = _fallbackCompositor.CreateSurfaceBrush(_fallbackImageSurface);
+        _fallbackSurfaceBrush.Stretch = CompositionStretch.UniformToFill;
+        _fallbackSurfaceBrush.HorizontalAlignmentRatio = 0.5f;
+        _fallbackSurfaceBrush.VerticalAlignmentRatio = 0.5f;
+
+        var blurEffect = new GaussianBlurEffect
+        {
+            Name = "ArtistHeroAvatarBlur",
+            BlurAmount = FallbackBlurAmount,
+            BorderMode = EffectBorderMode.Hard,
+            Source = new CompositionEffectSourceParameter("Source"),
+        };
+        _fallbackBlurFactory = _fallbackCompositor.CreateEffectFactory(blurEffect);
+        _fallbackBlurBrush = _fallbackBlurFactory.CreateBrush();
+        _fallbackBlurBrush.SetSourceParameter("Source", _fallbackSurfaceBrush);
+        _fallbackBlurVisual.Brush = _fallbackBlurBrush;
+
+        _fallbackSharpSurfaceBrush = _fallbackCompositor.CreateSurfaceBrush(_fallbackImageSurface);
+        _fallbackSharpSurfaceBrush.Stretch = CompositionStretch.UniformToFill;
+        _fallbackSharpSurfaceBrush.HorizontalAlignmentRatio = 0.5f;
+        _fallbackSharpSurfaceBrush.VerticalAlignmentRatio = 0.5f;
+        _fallbackSharpVisual.Brush = _fallbackSharpSurfaceBrush;
+        _loadedFallbackImageUrl = normalizedUrl;
+
+        var surface = _fallbackImageSurface;
+        surface.LoadCompleted += (_, args) =>
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!ReferenceEquals(surface, _fallbackImageSurface)
+                    || !string.Equals(normalizedUrl, _requestedFallbackImageUrl, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                if (args.Status != LoadedImageSourceLoadStatus.Success)
+                    ClearFallbackImageSurface(resetLoadedUrl: true);
+            });
+        };
+    }
+
+    private void EnsureFallbackImageComposition()
+    {
+        if (_fallbackContainerVisual is not null)
+            return;
+
+        var visual = ElementCompositionPreview.GetElementVisual(FallbackImageBorder);
+        _fallbackCompositor = visual.Compositor;
+        _fallbackContainerVisual = _fallbackCompositor.CreateContainerVisual();
+        _fallbackContainerVisual.RelativeSizeAdjustment = Vector2.One;
+        // Hard-clip the fallback to the border bounds. Without this the blurred
+        // backdrop (Scale = 1.18) renders ~9% past the hero's bottom edge and
+        // leaks a visible band of the image into the page body below the hero.
+        _fallbackContainerVisual.Clip = _fallbackCompositor.CreateInsetClip(0f, 0f, 0f, 0f);
+
+        _fallbackBlurVisual = _fallbackCompositor.CreateSpriteVisual();
+        _fallbackBlurVisual.RelativeSizeAdjustment = Vector2.One;
+        _fallbackBlurVisual.Scale = new Vector3(FallbackImageScale);
+
+        _fallbackSharpVisual = _fallbackCompositor.CreateSpriteVisual();
+        _fallbackSharpVisual.Opacity = 0.62f;
+
+        _fallbackContainerVisual.Children.InsertAtBottom(_fallbackBlurVisual);
+        _fallbackContainerVisual.Children.InsertAtTop(_fallbackSharpVisual);
+        UpdateFallbackImageLayout();
+
+        ElementCompositionPreview.SetElementChildVisual(FallbackImageBorder, _fallbackContainerVisual);
+        FallbackImageBorder.SizeChanged -= OnFallbackImageBorderSizeChanged;
+        FallbackImageBorder.SizeChanged += OnFallbackImageBorderSizeChanged;
+    }
+
+    private void OnFallbackImageBorderSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateFallbackImageLayout();
+    }
+
+    private void UpdateFallbackImageLayout()
+    {
+        if (_fallbackBlurVisual is null || _fallbackSharpVisual is null)
+            return;
+
+        _fallbackBlurVisual.CenterPoint = new Vector3(
+            (float)(FallbackImageBorder.ActualWidth / 2),
+            (float)(FallbackImageBorder.ActualHeight / 2),
+            0f);
+
+        var width = (float)Math.Max(1, FallbackImageBorder.ActualWidth);
+        var height = (float)Math.Max(1, FallbackImageBorder.ActualHeight);
+        var sharpWidth = Math.Min(width, height);
+        _fallbackSharpVisual.Size = new Vector2(sharpWidth, height);
+        _fallbackSharpVisual.Offset = new Vector3((width - sharpWidth) / 2f, 0f, 0f);
+    }
+
+    private void ClearFallbackImageSurface(bool resetLoadedUrl)
+    {
+        if (_fallbackBlurVisual is not null)
+            _fallbackBlurVisual.Brush = null;
+        if (_fallbackSharpVisual is not null)
+            _fallbackSharpVisual.Brush = null;
+
+        _fallbackBlurBrush?.Dispose();
+        _fallbackBlurBrush = null;
+        _fallbackBlurFactory?.Dispose();
+        _fallbackBlurFactory = null;
+        _fallbackSurfaceBrush?.Dispose();
+        _fallbackSurfaceBrush = null;
+        _fallbackSharpSurfaceBrush?.Dispose();
+        _fallbackSharpSurfaceBrush = null;
+        _fallbackImageSurface?.Dispose();
+        _fallbackImageSurface = null;
+
+        if (resetLoadedUrl)
+            _loadedFallbackImageUrl = null;
+    }
+
+    private int ComputeFallbackImageDecodeSize()
+    {
+        var width = FallbackImageBorder.ActualWidth > 0 ? FallbackImageBorder.ActualWidth : ActualWidth;
+        var height = FallbackImageBorder.ActualHeight > 0 ? FallbackImageBorder.ActualHeight : ActualHeight;
+        var target = (int)Math.Ceiling(Math.Max(width, height) * 1.25);
+        return Math.Clamp(target, 384, 768);
+    }
+
+    private long EstimateFallbackSurfaceBytes()
+    {
+        if (_fallbackImageSurface is null)
+            return 0;
+
+        var decode = ComputeFallbackImageDecodeSize();
+        return (long)decode * decode * 4;
     }
 
     private void PrepareContainerForImageLoad(bool shouldAnimate)
@@ -731,6 +973,12 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
     {
         if (d is HeroHeader header)
             header.LoadImage(e.NewValue as string);
+    }
+
+    private static void OnFallbackImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is HeroHeader header)
+            header.ApplyFallbackImage(e.NewValue as string);
     }
 
     private static void OnColorHexChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

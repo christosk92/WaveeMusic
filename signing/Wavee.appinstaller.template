@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   WaveeMusic .appinstaller manifest. The build pipeline substitutes ${VERSION}
-  with the tag's semver (e.g. 0.1.0.0) and uploads this file to the GitHub
-  Release. Users one-click install Wavee.appinstaller; Windows then auto-pulls
-  subsequent updates from the same URL every 24h on launch.
+  with the MSIX package version (e.g. 0.1.0.1001), ${TAG} with the release tag,
+  and ${APPINSTALLER_URI} with the update-channel URL.
 
-  Both architectures (x64 + ARM64) are listed under MainPackage so the App
-  Installer picks the matching one for the user's hardware.
+  Stable releases use /latest/download for appinstaller update checks.
+  Prerelease alpha/beta tags use the exact tag URL so experimental drafts do
+  not accidentally bind to the stable update channel.
 -->
 <AppInstaller Version="${VERSION}"
-              Uri="https://github.com/christosk92/WaveeMusic/releases/latest/download/Wavee.appinstaller"
+              Uri="${APPINSTALLER_URI}"
               xmlns="http://schemas.microsoft.com/appx/appinstaller/2018">
 
   <MainPackage Name="4f5ca249-aa41-4d46-84ce-62b6098fdb06"

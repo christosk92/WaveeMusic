@@ -11,7 +11,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     x:Uid="MainWindow"
     mc:Ignorable="d"
-    Title="Wavee"
+    Title="Wavee (Alpha)"
     MinWidth="800"
     MinHeight="600"
     PersistenceId="WaveeMainWindow">
@@ -35,13 +35,13 @@
              XamlRoot to forward keyboard input to its flyouts. -->
         <tb:TaskbarIcon
             x:Name="TrayIcon"
-            ToolTipText="Wavee"
+            ToolTipText="Wavee (Alpha)"
             Visibility="Collapsed"
             NoLeftClickDelay="True"
             LeftClickCommand="{x:Bind TrayShowCommand, Mode=OneTime}">
             <tb:TaskbarIcon.ContextFlyout>
                 <MenuFlyout>
-                    <MenuFlyoutItem x:Uid="MainWindow__Auto_600" Text="Show Wavee" Click="TrayShow_Click">
+                    <MenuFlyoutItem x:Uid="MainWindow__Auto_600" Text="Show Wavee (Alpha)" Click="TrayShow_Click">
                         <MenuFlyoutItem.Icon>
                             <FontIcon Glyph="&#xE740;"/>
                         </MenuFlyoutItem.Icon>
@@ -63,7 +63,7 @@
                         </MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
                     <MenuFlyoutSeparator/>
-                    <MenuFlyoutItem x:Uid="MainWindow__Auto_604" Text="Quit Wavee" Click="TrayQuit_Click">
+                    <MenuFlyoutItem x:Uid="MainWindow__Auto_604" Text="Quit Wavee (Alpha)" Click="TrayQuit_Click">
                         <MenuFlyoutItem.Icon>
                             <FontIcon Glyph="&#xE7E8;"/>
                         </MenuFlyoutItem.Icon>

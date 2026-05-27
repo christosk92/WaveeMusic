@@ -394,7 +394,7 @@
         <!-- Error -->
         <controls1:ErrorStateView
 
-            Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}"
+            Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
 

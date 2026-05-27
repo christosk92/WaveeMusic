@@ -34,6 +34,10 @@
   Where to drop the signed .msix. Defaults to .signed-msix\ under the
   repo root (gitignored).
 
+.PARAMETER VersionTag
+  Release tag to stamp into the project and manifest. Defaults to the
+  current exact git tag, or v0.1.0-alpha.1 for local alpha dry runs.
+
 .PARAMETER ReleasePublisherSubject
   Subject Name from the cert profile in Azure Artifact Signing. Defaults
   to the cproducts profile that issued the existing certs.
@@ -76,6 +80,7 @@ param(
   [ValidateSet('ARM64','x64','x86')]
   [string]$Platform = 'ARM64',
   [string]$OutputDir,
+  [string]$VersionTag,
   [string]$ReleasePublisherSubject = 'CN=cproducts, O=cproducts, L=Utrecht, S=Utrecht, C=NL',
   [switch]$SkipInstall,
   [string]$ClientSecret
@@ -86,6 +91,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDir) { $OutputDir = Join-Path $repoRoot '.signed-msix' }
 $logDir = Join-Path $OutputDir 'logs'
 New-Item -ItemType Directory -Force -Path $OutputDir, $logDir | Out-Null
+. (Join-Path $PSScriptRoot 'Versioning.ps1')
 
 Write-Host "==========================================================="
 Write-Host "Wavee local signing — Platform=$Platform"
@@ -111,6 +117,16 @@ if (-not (Test-Path $metadata)) { throw "$metadata missing. Copy metadata.templa
 
 $proj = Join-Path $repoRoot 'src\Wavee.UI.WinUI\Wavee.UI.WinUI.csproj'
 $manifestPath = Join-Path $repoRoot 'src\Wavee.UI.WinUI\Package.appxmanifest'
+
+if (-not $VersionTag) {
+  $VersionTag = Get-WaveeReleaseTag -DefaultTag 'v0.1.0-alpha.1'
+}
+
+Write-Host "[0/6] Stamping release version..."
+$releaseVersion = Set-WaveeVersion -Tag $VersionTag -ProjectPath $proj -ManifestPath $manifestPath
+Write-Host "      tag  = $($releaseVersion.InformationalVersion)"
+Write-Host "      msix = $($releaseVersion.PackageVersion)"
+Write-Host ""
 
 Write-Host "  msbuild   : $msbuild"
 Write-Host "  signtool  : $signtool"

@@ -24,6 +24,7 @@ public sealed partial class Omnibar : Control
     private Popup? _popup;
     private SearchFlyoutPanel? _flyoutPanel;
     private bool _hasFocus;
+    private bool _isSuggestionContextMenuOpen;
 
     /// <summary>
     /// When true, the suggestions flyout is suppressed (e.g., when already on SearchPage).
@@ -58,6 +59,8 @@ public sealed partial class Omnibar : Control
             _flyoutPanel.ItemClicked -= FlyoutPanel_ItemClicked;
             _flyoutPanel.ActionClicked -= FlyoutPanel_ActionClicked;
             _flyoutPanel.RetryRequested -= FlyoutPanel_RetryRequested;
+            _flyoutPanel.SuggestionContextMenuOpened -= FlyoutPanel_SuggestionContextMenuOpened;
+            _flyoutPanel.SuggestionContextMenuClosed -= FlyoutPanel_SuggestionContextMenuClosed;
         }
 
         _searchBox = GetTemplateChild("PART_SearchBox") as AutoSuggestBox;
@@ -76,6 +79,8 @@ public sealed partial class Omnibar : Control
         _flyoutPanel.ItemClicked += FlyoutPanel_ItemClicked;
         _flyoutPanel.ActionClicked += FlyoutPanel_ActionClicked;
         _flyoutPanel.RetryRequested += FlyoutPanel_RetryRequested;
+        _flyoutPanel.SuggestionContextMenuOpened += FlyoutPanel_SuggestionContextMenuOpened;
+        _flyoutPanel.SuggestionContextMenuClosed += FlyoutPanel_SuggestionContextMenuClosed;
 
         _popup = new Popup
         {
@@ -193,7 +198,7 @@ public sealed partial class Omnibar : Control
 
         // Only close if focus didn't return to the search box (e.g., user clicked
         // a flyout item which programmatically refocuses, or tabbed back)
-        if (!_hasFocus)
+        if (!_hasFocus && !_isSuggestionContextMenuOpen)
         {
             HidePopup();
         }
@@ -242,6 +247,18 @@ public sealed partial class Omnibar : Control
         }
 
         RetryRequested?.Invoke(this, new RoutedEventArgs());
+    }
+
+    private void FlyoutPanel_SuggestionContextMenuOpened(object? sender, EventArgs e)
+    {
+        _isSuggestionContextMenuOpen = true;
+    }
+
+    private void FlyoutPanel_SuggestionContextMenuClosed(object? sender, EventArgs e)
+    {
+        _isSuggestionContextMenuOpen = false;
+        if (!_hasFocus)
+            HidePopup();
     }
 
     // ── Popup management ──

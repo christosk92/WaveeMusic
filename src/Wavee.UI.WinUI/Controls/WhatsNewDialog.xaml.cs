@@ -30,7 +30,7 @@ public sealed partial class WhatsNewDialog : ContentDialog
     {
         var latestRelease = ChangelogData.Releases.FirstOrDefault();
         Features = latestRelease?.Features ?? [];
-        ReleaseTitle = latestRelease?.ReleaseTitle ?? "What's new in Wavee";
+        ReleaseTitle = latestRelease?.ReleaseTitle ?? "Wavee release notes";
         VersionDisplay = latestRelease?.Version ?? "0.0.0";
         Announcement = latestRelease?.Announcement;
         HasAnnouncement = string.IsNullOrEmpty(Announcement) ? Visibility.Collapsed : Visibility.Visible;
@@ -127,10 +127,10 @@ public sealed partial class WhatsNewDialog : ContentDialog
         var activityService = Ioc.Default.GetService<IActivityService>();
         activityService?.Post(
             category: "app",
-            title: $"Wavee updated to v{currentVersion}",
+            title: $"Wavee (Alpha) release notes",
             iconGlyph: "\uE789",
             status: ActivityStatus.Info,
-            message: "Tap to see what's new");
+            message: $"Tap to view notes for v{currentVersion}");
 
         // Show the dialog
         try

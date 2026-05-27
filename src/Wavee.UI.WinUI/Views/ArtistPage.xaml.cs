@@ -1240,6 +1240,9 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private void PopularReleasesRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
         if (args.Element is not PopularReleaseRow row) return;
+
+        ClearPopularReleaseRow(row);
+
         if (row.DataContext is not LazyReleaseItem lri || lri.Data is not Wavee.UI.WinUI.ViewModels.ArtistReleaseVm vm) return;
 
         row.Title = vm.Name ?? string.Empty;
@@ -1267,6 +1270,25 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         row.Meta = string.Join(" · ", meta);
 
         Wavee.UI.WinUI.Behaviors.CardHoverScaleBehavior.SetEnable(row, true);
+    }
+
+    private void PopularReleasesRepeater_ElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
+    {
+        if (args.Element is PopularReleaseRow row)
+            ClearPopularReleaseRow(row);
+    }
+
+    private static void ClearPopularReleaseRow(PopularReleaseRow row)
+    {
+        row.Title = string.Empty;
+        row.CoverImageUrl = null;
+        row.Rank = 0;
+        row.Meta = string.Empty;
+        row.IsFeatured = false;
+        row.Tag = null;
+        row.NavigationUri = null;
+        row.NavigationTotalTracks = 0;
+        row.Subtitle = null;
     }
 
     private void ConcertsRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
@@ -1386,7 +1408,16 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private void AppearsOnRepeater_ElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
     {
         if (args.Element is ContentCard card)
+        {
+            card.Title = string.Empty;
+            card.Subtitle = string.Empty;
+            card.ImageUrl = null;
+            card.NavigationUri = null;
+            card.NavigationTotalTracks = 0;
+            card.Tag = null;
+            card.IsLoading = false;
             card.ReleaseImage();
+        }
     }
 
     // Gentle clipped-scroll: when the freshly-expanded panel's bottom falls

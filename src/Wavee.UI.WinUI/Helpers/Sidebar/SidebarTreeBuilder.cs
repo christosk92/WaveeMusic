@@ -128,7 +128,7 @@ internal static class SidebarTreeBuilder
                 IsEnabled = AppFeatureFlags.LocalFilesEnabled,
                 ToolTip = AppFeatureFlags.LocalFilesEnabled
                     ? AppLocalization.GetString("Shell_SidebarLocalFiles")
-                    : "Coming soon after the initial beta release",
+                    : "Coming soon after the initial alpha release",
                 ItemDecorator = AppFeatureFlags.LocalFilesEnabled ? null : createComingSoonBadge()
             },
         };

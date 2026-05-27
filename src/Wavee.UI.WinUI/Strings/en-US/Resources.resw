@@ -16,7 +16,7 @@
     <value>A music player for Spotify.</value>
   </data>
   <data name="AppDisplayName" xml:space="preserve">
-    <value>Wavee</value>
+    <value>Wavee (Alpha)</value>
   </data>
   <data name="BrowseAll_Eyebrow_Top" xml:space="preserve">
     <value>TOP</value>
@@ -280,10 +280,10 @@
     <value>Retry</value>
   </data>
   <data name="Controls_Settings_AboutSettingsSection__SettingsCard_10.Description" xml:space="preserve">
-    <value>See the latest features and improvements</value>
+    <value>Read alpha tester notes, known limitations, and reporting guidance</value>
   </data>
   <data name="Controls_Settings_AboutSettingsSection__SettingsCard_10.Header" xml:space="preserve">
-    <value>What's new</value>
+    <value>Release notes</value>
   </data>
   <data name="Controls_Settings_AboutSettingsSection__SettingsCard_12.Description" xml:space="preserve">
     <value>Report bugs, request features, or share your thoughts</value>
@@ -313,7 +313,7 @@
     <value>Check for updates</value>
   </data>
   <data name="Controls_Settings_AboutSettingsSection__TextBlock_1.Text" xml:space="preserve">
-    <value>Wavee</value>
+    <value>Wavee (Alpha)</value>
   </data>
   <data name="Controls_Settings_AboutSettingsSection__TextBlock_11.Text" xml:space="preserve">
     <value>Help</value>
@@ -743,10 +743,10 @@ Aggressive</value>
     <value>Date Added</value>
   </data>
   <data name="Controls_WhatsNewDialog__Button_2.Content" xml:space="preserve">
-    <value>Start exploring</value>
+    <value>Got it</value>
   </data>
   <data name="Controls_WhatsNewDialog__HyperlinkButton_1.Content" xml:space="preserve">
-    <value>View full changelog on GitHub</value>
+    <value>View full release notes on GitHub</value>
   </data>
   <data name="Error_ContentNotFound" xml:space="preserve">
     <value>Content not found.</value>
@@ -1825,11 +1825,11 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="AudioPipeline_OutOfProcess" xml:space="preserve">
     <value>Out-of-Process</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_Equalizer_Detail" xml:space="preserve">
-    <value>Take full control of your audio with a 10-band graphic equalizer. Choose from presets like Bass Boost, Treble Boost, Vocal, and Radio, or create your own custom profile.</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Limitations_Detail" xml:space="preserve">
+    <value>Some areas are intentionally unfinished in this alpha. Local files are still hidden behind the internal feature flag, localization is incomplete, and performance or memory growth may still need tuning. Treat rough edges as reportable alpha feedback.</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_AudioCaching_DetailTitle" xml:space="preserve">
-    <value>Local Audio Cache</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Channel_DetailTitle" xml:space="preserve">
+    <value>Install and Update Path</value>
   </data>
   <data name="Connect_SyncingLikedSongs" xml:space="preserve">
     <value>Syncing liked songs...</value>
@@ -1837,14 +1837,14 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Connect_ErrorPairingCodeExpired" xml:space="preserve">
     <value>The pairing code expired. Please try again.</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_HomeFeed_Detail" xml:space="preserve">
-    <value>The redesigned home feed surfaces your recently played tracks, personalized mixes, and curated recommendations. Pin your favorite sections and reorder them to your liking.</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Start_Detail" xml:space="preserve">
+    <value>This is the first experimental Wavee alpha, so there is no previous public build to compare against. The goal is to validate install, sign-in, playback, library sync, Spotify Connect, and general day-to-day stability before a broader release.</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_AudioCaching_Detail" xml:space="preserve">
-    <value>Frequently played tracks are cached locally so they start instantly and work even when your connection is spotty. Configure the cache size in Settings.</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Channel_Detail" xml:space="preserve">
+    <value>The app is named Wavee (Alpha) for this release, and the MSIX package version is 0.1.0.1001. Future alpha, beta, and stable builds use higher package versions so Windows can update forward cleanly.</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_AudioCaching_Short" xml:space="preserve">
-    <value>Listen offline with local caching</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Channel_Short" xml:space="preserve">
+    <value>Experimental channel and versioning</value>
   </data>
   <data name="Connect_SyncingAlbums" xml:space="preserve">
     <value>Syncing albums...</value>
@@ -1852,11 +1852,11 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Connect_SyncingArtists" xml:space="preserve">
     <value>Syncing artists...</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_Equalizer_Short" xml:space="preserve">
-    <value>Fine-tune your sound with precision</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Limitations_Short" xml:space="preserve">
+    <value>Known gaps in the first alpha</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_CanvasLyrics_Detail" xml:space="preserve">
-    <value>Experience lyrics like never before. When a track has a Spotify Canvas video, it plays as a beautiful backdrop behind synced lyrics, bringing your music to life with immersive visuals.</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Report_Detail" xml:space="preserve">
+    <value>The best reports come from Settings &gt; About &gt; Report an issue on GitHub. That flow packages recent app logs and crash details, opens the issue page, and gives enough context to reproduce startup, playback, navigation, or sync problems.</value>
   </data>
   <data name="Update_CheckFailed" xml:space="preserve">
     <value>Update check failed - check your connection</value>
@@ -1867,17 +1867,17 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Connect_LoadingPlaylists" xml:space="preserve">
     <value>Loading playlists...</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_SmartReconnect_DetailTitle" xml:space="preserve">
-    <value>Auto-Reconnect</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Test_DetailTitle" xml:space="preserve">
+    <value>Suggested Test Areas</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_HomeFeed_DetailTitle" xml:space="preserve">
-    <value>Your Personalized Home</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Start_DetailTitle" xml:space="preserve">
+    <value>First Alpha Build</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_CanvasLyrics_Short" xml:space="preserve">
-    <value>Spotify Canvas visuals behind your lyrics</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Report_Short" xml:space="preserve">
+    <value>Logs make alpha feedback actionable</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_SmartReconnect_Short" xml:space="preserve">
-    <value>Seamless recovery from connection drops</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Test_Short" xml:space="preserve">
+    <value>Core workflows to exercise</value>
   </data>
   <data name="Connect_ErrorNetwork" xml:space="preserve">
     <value>Network error. Check your connection and try again.</value>
@@ -1885,11 +1885,11 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Connect_ErrorGeneric" xml:space="preserve">
     <value>Something went wrong: {0}</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_HomeFeed_Short" xml:space="preserve">
-    <value>A personalized home experience</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Start_Short" xml:space="preserve">
+    <value>Initial experimental release</value>
   </data>
-  <data name="Changelog_1_0_0_Title" xml:space="preserve">
-    <value>What's new in Wavee</value>
+  <data name="Changelog_0_1_0_Alpha_1_Title" xml:space="preserve">
+    <value>Wavee (Alpha) release notes</value>
   </data>
   <data name="Update_AvailableMessage" xml:space="preserve">
     <value>Wavee v{0} is available</value>
@@ -1906,26 +1906,26 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Connect_ErrorAuthorizationDenied" xml:space="preserve">
     <value>Authorization was denied. Please try again.</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_CanvasLyrics_DetailTitle" xml:space="preserve">
-    <value>Canvas Lyrics Overlay</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Report_DetailTitle" xml:space="preserve">
+    <value>How to Report Issues</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_HomeFeed_Title" xml:space="preserve">
-    <value>Home Feed</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Start_Title" xml:space="preserve">
+    <value>Start here</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_Equalizer_Title" xml:space="preserve">
-    <value>10-Band Equalizer</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Limitations_Title" xml:space="preserve">
+    <value>Known limitations</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_SmartReconnect_Title" xml:space="preserve">
-    <value>Smart Reconnect</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Test_Title" xml:space="preserve">
+    <value>What to test</value>
   </data>
-  <data name="Changelog_1_0_0_Announcement" xml:space="preserve">
-    <value>Thanks for using Wavee! This release brings some of the most requested features. If you run into any issues, please send feedback from Settings.</value>
+  <data name="Changelog_0_1_0_Alpha_1_Announcement" xml:space="preserve">
+    <value>This is an experimental alpha release. These notes are a tester checklist, not a feature tour from an older version.</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_AudioCaching_Title" xml:space="preserve">
-    <value>Audio Caching</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Channel_Title" xml:space="preserve">
+    <value>Release channel</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_Equalizer_DetailTitle" xml:space="preserve">
-    <value>Graphic Equalizer</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Limitations_DetailTitle" xml:space="preserve">
+    <value>Known Limitations</value>
   </data>
   <data name="Playlist_AddTracksFailed" xml:space="preserve">
     <value>Failed to add tracks to playlist</value>
@@ -1936,11 +1936,11 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Playlist_AddTracksSucceeded" xml:space="preserve">
     <value>Added {0} tracks to playlist</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_SmartReconnect_Detail" xml:space="preserve">
-    <value>Wavee now automatically reconnects when your network drops. Audio playback resumes right where you left off with no manual intervention required.</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Test_Detail" xml:space="preserve">
+    <value>Please focus on the main Spotify workflows: OAuth sign-in, Home, Search, Library, playlists, albums, artists, shows, queue edits, Spotify Connect device transfer, lyrics, music videos, Settings, and crash recovery.</value>
   </data>
-  <data name="Changelog_1_0_0_Feature_CanvasLyrics_Title" xml:space="preserve">
-    <value>Canvas Lyrics</value>
+  <data name="Changelog_0_1_0_Alpha_1_Section_Report_Title" xml:space="preserve">
+    <value>Report issues</value>
   </data>
   <data name="Connect_FinishingUp" xml:space="preserve">
     <value>Finishing up...</value>
@@ -1961,7 +1961,7 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Search: {0}</value>
   </data>
   <data name="MainWindow.Title" xml:space="preserve">
-    <value>Wavee</value>
+    <value>Wavee (Alpha)</value>
   </data>
   <!-- SpotifyConnectDialog real-progress phase strings (added with the
        message-driven progress refactor; see SpotifyConnectViewModel). -->
@@ -2836,10 +2836,10 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>:(</value>
   </data>
   <data name="Views_CrashRecoveryPage__TextBlock_2.Text" xml:space="preserve">
-    <value>Wavee ran into a problem and recorded a crash report.</value>
+    <value>Wavee saved a recovery report.</value>
   </data>
   <data name="Views_CrashRecoveryPage__TextBlock_3.Text" xml:space="preserve">
-    <value>You can continue using the app, or report the issue with the diagnostic logs attached.</value>
+    <value>You can jump back in now, or send the details if this keeps happening.</value>
   </data>
   <data name="Views_CrashRecoveryPage__TextBlock_4.Text" xml:space="preserve">
     <value>Stop code</value>
@@ -2851,13 +2851,13 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Recorded</value>
   </data>
   <data name="Views_CrashRecoveryPage__TextBlock_7.Text" xml:space="preserve">
-    <value>Crash reports stay on this PC. Reporting opens GitHub and prepares a zip with local Wavee logs for you to attach.</value>
+    <value>The report stays on this PC. Reporting opens GitHub and prepares a zip with local Wavee logs for you to attach.</value>
   </data>
   <data name="Views_CrashRecoveryPage__TextBlock_8.Text" xml:space="preserve">
-    <value>Crash report stacktrace</value>
+    <value>Technical details</value>
   </data>
   <data name="Views_CrashRecoveryPage__Button_9.Content" xml:space="preserve">
-    <value>Continue to Wavee</value>
+    <value>Keep using Wavee</value>
   </data>
   <data name="Views_CrashRecoveryPage__Button_10.Content" xml:space="preserve">
     <value>Report issue</value>
@@ -4209,7 +4209,7 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Podcasts</value>
   </data>
   <data name="MainWindow__Auto_600.Text" xml:space="preserve">
-    <value>Show Wavee</value>
+    <value>Show Wavee (Alpha)</value>
   </data>
   <data name="MainWindow__Auto_601.Text" xml:space="preserve">
     <value>Play / pause</value>
@@ -4221,7 +4221,7 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Previous track</value>
   </data>
   <data name="MainWindow__Auto_604.Text" xml:space="preserve">
-    <value>Quit Wavee</value>
+    <value>Quit Wavee (Alpha)</value>
   </data>
   <data name="Controls_HeartButton__Button_1.AutomationProperties.Name" xml:space="preserve">
     <value>Save to Liked Songs</value>
@@ -4875,7 +4875,7 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Dismiss</value>
   </data>
   <data name="Controls_Splash_BootSplash__Auto_600.Text" xml:space="preserve">
-    <value>Wavee</value>
+    <value>Wavee (Alpha)</value>
   </data>
   <data name="Controls_TabBar_TabBar__Auto_600.Text" xml:space="preserve">
     <value>Pin</value>

@@ -28,7 +28,7 @@
   Override the Azure.CodeSigning.Dlib.dll location. Auto-detected by default.
 
 .EXAMPLE
-  .\Sign-Msix.ps1 -Path ..\Wavee.UI.WinUI\AppPackages\Wavee.UI.WinUI_0.1.0.0_x64.msix
+  .\Sign-Msix.ps1 -Path ..\Wavee.UI.WinUI\AppPackages\Wavee.UI.WinUI_0.1.0.1001_x64.msix
 
 .EXAMPLE
   .\Sign-Msix.ps1 -Path ..\Wavee.UI.WinUI\AppPackages

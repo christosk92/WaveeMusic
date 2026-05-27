@@ -401,10 +401,13 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         if (wasTrimmed)
         {
             // The current VM writes below can be missed while compiled x:Bind
-            // tracking is detached; one queued Update catches the graph up
-            // after navigation returns without charging the cost to
-            // page.album.onEntered.
-            ScheduleBindingsUpdate("load-trimmed");
+            // tracking is detached, so reattach synchronously before Activate /
+            // PrefillFrom replay album and footer-section PropertyChanged events.
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate.load-trimmed"))
+            {
+                Bindings?.Update();
+            }
+            RebuildHeaderArtistsText();
         }
         System.Diagnostics.Debug.WriteLine(
             $"[diag-album] LoadNewContent.enter mode={mode} wasTrimmed={wasTrimmed} vm.AlbumId={ViewModel.AlbumId} " +
@@ -426,7 +429,7 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             ResetScrollPositionForNavigation();
             _footerRevealed = false;
             _footerRevealGeneration++;
-            FooterShimmerGate.Reset(() => null, () => FooterContent);
+            FooterShimmerGate.Reset(() => null, () => FooterContent, FrameworkLayer.Xaml);
         }
         else
         {
@@ -617,6 +620,7 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
 
         await FooterShimmerGate.RunCrossfadeAsync(
             null, content,
+            FrameworkLayer.Xaml,
             continuePredicate: () =>
                 _footerRevealed &&
                 !_isDisposed &&

@@ -180,7 +180,8 @@
                         <Grid x:Name="HeroPhotoLayer"
                               MinHeight="420">
                             <hero:HeroHeader x:Name="HeroGrid"
-                                             ImageUrl="{x:Bind ViewModel.Header.HeaderImageUrl, Mode=OneWay}"
+                                             ImageUrl="{x:Bind ViewModel.Header.HeaderBackdropImageUrl, Mode=OneWay}"
+                                             FallbackImageUrl="{x:Bind ViewModel.Header.HeaderFallbackImageUrl, Mode=OneWay}"
                                              ColorHex="{x:Bind ViewModel.Header.HeaderHeroColorHex, Mode=OneWay}"
                                              MinHeight="420"
                                              InitialScale="1.0"
@@ -687,7 +688,8 @@
                                     <Grid>
                                         <ItemsRepeater x:Name="PopularReleasesRepeater"
                                                ItemsSource="{x:Bind ViewModel.PopularReleasesDisplayed, Mode=OneWay}"
-                                               ElementPrepared="PopularReleasesRepeater_ElementPrepared">
+                                               ElementPrepared="PopularReleasesRepeater_ElementPrepared"
+                                               ElementClearing="PopularReleasesRepeater_ElementClearing">
                                             <ItemsRepeater.Layout>
                                                 <StackLayout Orientation="Vertical" Spacing="2"/>
                                             </ItemsRepeater.Layout>
@@ -917,11 +919,12 @@
                                                 <cards:ContentCard
                                             Width="170"
                                             IsCircularImage="False"
-                                            Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
-                                            Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
-                                            ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
-                                            NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
-                                            NavigationTotalTracks="{x:Bind Data.TrackCount, Mode=OneWay}"/>
+                                            IsLoading="{x:Bind IsLoading, Mode=OneWay}"
+                                            Subtitle="{x:Bind SubtitleDetail, Mode=OneWay}"
+                                            Title="{x:Bind Name, Mode=OneWay}"
+                                            ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                            NavigationUri="{x:Bind Uri, Mode=OneWay}"
+                                            NavigationTotalTracks="{x:Bind TrackCount, Mode=OneWay}"/>
                                             </DataTemplate>
                                         </ItemsRepeater.ItemTemplate>
                                     </ItemsRepeater>

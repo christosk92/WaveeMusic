@@ -6,7 +6,11 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Input;
+using Windows.Foundation;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Omnibar;
@@ -25,6 +29,15 @@ public sealed partial class SearchFlyoutPanel : UserControl
     public event EventHandler<SearchSuggestionItem>? ItemClicked;
     public event EventHandler<SearchSuggestionItem>? ActionClicked;
     public event EventHandler? RetryRequested;
+    public event EventHandler? SuggestionContextMenuOpened;
+    public event EventHandler? SuggestionContextMenuClosed;
+
+    private static readonly DependencyProperty EntityDragAttachedProperty =
+        DependencyProperty.RegisterAttached(
+            "EntityDragAttached",
+            typeof(bool),
+            typeof(SearchFlyoutPanel),
+            new PropertyMetadata(false));
 
     public SearchFlyoutPanel()
     {
@@ -227,6 +240,49 @@ public sealed partial class SearchFlyoutPanel : UserControl
     private void RetryButton_Click(object sender, RoutedEventArgs e)
     {
         RetryRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EntityRoot_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement root)
+            return;
+        if (root.GetValue(EntityDragAttachedProperty) is true)
+            return;
+
+        root.SetValue(EntityDragAttachedProperty, true);
+        ManualDragAttachment.AttachWithPackageWriter(
+            root,
+            () => SearchSuggestionInteraction.BuildDragPayload(root.DataContext as SearchSuggestionItem));
+    }
+
+    private void EntityRoot_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement root && ShowEntityContextMenu(root, e.GetPosition(root)))
+            e.Handled = true;
+    }
+
+    private void EntityRoot_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        if (e.HoldingState != Microsoft.UI.Input.HoldingState.Started)
+            return;
+
+        if (sender is FrameworkElement root && ShowEntityContextMenu(root, e.GetPosition(root)))
+            e.Handled = true;
+    }
+
+    private bool ShowEntityContextMenu(FrameworkElement root, Point position)
+    {
+        if (root.DataContext is not SearchSuggestionItem item)
+            return false;
+
+        var items = SearchSuggestionInteraction.BuildContextMenu(item);
+        if (items.Count == 0)
+            return false;
+
+        SuggestionContextMenuOpened?.Invoke(this, EventArgs.Empty);
+        var flyout = ContextMenuHost.Show(root, items, position);
+        flyout.Closed += (_, _) => SuggestionContextMenuClosed?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     // Called after the ListView renders items to apply bold matching on text suggestions

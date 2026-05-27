@@ -18,15 +18,16 @@
         <DataTemplate x:Key="DiscographyCardTemplate" x:DataType="vm:LazyReleaseItem">
             <cards:ContentCard
                 IsCircularImage="False"
-                Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
-                Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
-                ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
-                NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
-                NavigationTotalTracks="{x:Bind Data.TrackCount, Mode=OneWay}"
+                IsLoading="{x:Bind IsLoading, Mode=OneWay}"
+                Title="{x:Bind Name, Mode=OneWay}"
+                Subtitle="{x:Bind SubtitleDetail, Mode=OneWay}"
+                ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                NavigationUri="{x:Bind Uri, Mode=OneWay}"
+                NavigationTotalTracks="{x:Bind TrackCount, Mode=OneWay}"
                 AutoNavigateOnTap="False"
                 SecondaryActionVisible="True"
                 SecondaryActionTooltip="Open album page"
-                Tag="{x:Bind Data.Uri, Mode=OneWay}"
+                Tag="{x:Bind Uri, Mode=OneWay}"
                 CardClick="OnCardClick"/>
         </DataTemplate>
     </UserControl.Resources>

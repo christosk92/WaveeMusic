@@ -55,7 +55,10 @@
 
         <!-- Entity (artist, track, album, playlist) - reused for both Spotify and local. -->
         <DataTemplate x:Key="EntityTemplate" x:DataType="contracts:SearchSuggestionItem">
-            <Grid Padding="12,8" ColumnSpacing="12">
+            <Grid Padding="12,8" ColumnSpacing="12"
+                  Loaded="EntityRoot_Loaded"
+                  RightTapped="EntityRoot_RightTapped"
+                  Holding="EntityRoot_Holding">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="48"/>
                     <ColumnDefinition Width="*"/>

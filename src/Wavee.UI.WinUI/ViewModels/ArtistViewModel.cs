@@ -454,6 +454,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             {
                 ArtistImageUrl = null,
                 HeaderImageUrl = null,
+                GalleryHeroUrl = null,
                 LatestRelease = artist.LatestRelease is null
                     ? null
                     : artist.LatestRelease with { ImageUrl = null },
@@ -572,6 +573,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             Name: overview.Name ?? fallbackName,
             ArtistImageUrl: overview.ImageUrl ?? fallbackImageUrl,
             HeaderImageUrl: overview.HeaderImageUrl,
+            GalleryHeroUrl: overview.GalleryHeroUrl,
             HeaderHeroColorHex: overview.HeroColorHex,
             Palette: overview.Palette,
             MonthlyListeners: overview.MonthlyListeners > 0
@@ -615,6 +617,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             HeaderImageUrl = string.IsNullOrEmpty(Header.Artist.HeaderImageUrl)
                 ? overview.HeaderImageUrl
                 : Header.Artist.HeaderImageUrl,
+            GalleryHeroUrl = string.IsNullOrEmpty(Header.Artist.GalleryHeroUrl)
+                ? overview.GalleryHeroUrl
+                : Header.Artist.GalleryHeroUrl,
             LatestRelease = latest,
             PinnedItem = Header.Artist.PinnedItem ?? overview.PinnedItem
         };
@@ -655,6 +660,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             Name: null,
             ArtistImageUrl: null,
             HeaderImageUrl: null,
+            GalleryHeroUrl: null,
             HeaderHeroColorHex: null,
             Palette: null,
             MonthlyListeners: null,

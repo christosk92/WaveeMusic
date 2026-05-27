@@ -10,6 +10,7 @@ public sealed record ArtistView(
     string? Name,
     string? ArtistImageUrl,
     string? HeaderImageUrl,
+    string? GalleryHeroUrl,
     string? HeaderHeroColorHex,
     ArtistPalette? Palette,
     string? MonthlyListeners,

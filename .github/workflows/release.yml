@@ -12,6 +12,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Version tag to stamp for the dry run'
+        required: false
+        default: 'v0.1.0-alpha.1'
 
 jobs:
   build-sign:
@@ -26,6 +31,7 @@ jobs:
       DOTNET_NOLOGO: 1
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       Configuration: Release
+      ReleaseTag: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version_tag }}
 
     steps:
       - name: Checkout
@@ -40,6 +46,10 @@ jobs:
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
+
+      - name: Stamp release version
+        shell: pwsh
+        run: ./signing/Set-Version.ps1 -Tag "$env:ReleaseTag"
 
       - name: Set release Publisher in manifest
         shell: pwsh
@@ -133,3 +143,4 @@ jobs:
             artifacts/Wavee.appinstaller
           generate_release_notes: true
           draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

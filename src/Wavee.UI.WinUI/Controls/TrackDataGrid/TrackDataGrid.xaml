@@ -361,6 +361,20 @@
                                             VerticalContentAlignment="Stretch"
                                             MinHeight="0" CanUserInvoke="UserCannotInvoke"
                                             IsSelected="False">
+                                            <ItemContainer.Resources>
+                                                <!-- The footer must keep child controls hit-testable, but the
+                                                     synthetic ItemsView row itself should not paint row chrome. -->
+                                                <SolidColorBrush x:Key="ItemContainerPointerOverBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerPressedBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectedBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectedPointerOverBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectedPressedBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerPointerOverBorderBrush" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerPressedBorderBrush" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectionVisualPointerOverBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectionVisualPressedBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectedInnerBorderBrush" Color="Transparent"/>
+                                            </ItemContainer.Resources>
                                             <ContentPresenter
                                                 Content="{x:Bind Content}"
                                                 HorizontalContentAlignment="Stretch" />

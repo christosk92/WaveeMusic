@@ -22,21 +22,24 @@ Once everything in this folder is set up (see **First-time setup** below):
 That script encapsulates the entire procedure that was hand-verified on
 2026-05-04. It:
 
-1. Captures the source manifest publisher (`CN=ckara`) and swaps to the
+1. Stamps the WinUI project and MSIX manifest from the release tag
+   (`v0.1.0-alpha.1` -> package version `0.1.0.1001`).
+2. Captures the source manifest publisher (`CN=ckara`) and swaps to the
    release subject (`CN=cproducts, O=cproducts, …`).
-2. Builds a Release-configuration MSIX via msbuild — without
+3. Builds a Release-configuration MSIX via msbuild — without
    `RuntimeIdentifier` (that flag triggers WMC9999 in the WinUI XAML
    compiler) and with `UapAppxPackageBuildMode=SideloadOnly`,
    `AppxBundle=Never`, `AppxPackageSigningEnabled=false`.
-3. Signs the produced `.msix` with the Artifact Signing dlib + the
+4. Signs the produced `.msix` with the Artifact Signing dlib + the
    metadata.json profile.
-4. Verifies the chain via `signtool verify /pa`.
-5. Installs the package locally via `Add-AppxPackage`.
-6. **Restores the source manifest publisher even if you Ctrl-C** —
+5. Verifies the chain via `signtool verify /pa`.
+6. Installs the package locally via `Add-AppxPackage`.
+7. **Restores the source manifest publisher even if you Ctrl-C** —
    the swap-restore is wrapped in a try/finally.
 
-Pass `-Platform x64` to build the Intel variant; `-SkipInstall` to
-leave the package on disk without registering it.
+Pass `-VersionTag v0.1.0-alpha.1` to stamp a specific tag, `-Platform x64`
+to build the Intel variant, and `-SkipInstall` to leave the package on disk
+without registering it.
 
 ---
 

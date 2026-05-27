@@ -21,7 +21,7 @@
             RetryCommand="{x:Bind ViewModel.LoadCommand}"
             Canvas.ZIndex="10"
             Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-        <Grid Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}">
+        <Grid Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- filter chip row -->
             <RowDefinition Height="*"/>      <!-- TrackDataGrid -->

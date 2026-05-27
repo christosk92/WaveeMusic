@@ -88,7 +88,7 @@
                 <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_11" Text="Help" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8" Tag="help"/>
 
                 <!-- Hidden until the in-app feedback destination is built; the
-                     "Report on GitHub" card below replaces it for the initial beta. -->
+                     "Report on GitHub" card below replaces it for the initial alpha. -->
                 <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__SettingsCard_12" Header="Send feedback"
                                        Description="Report bugs, request features, or share your thoughts"
                                        IsClickEnabled="True"

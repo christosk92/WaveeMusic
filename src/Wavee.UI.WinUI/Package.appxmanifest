@@ -13,7 +13,7 @@
   <Identity
     Name="4f5ca249-aa41-4d46-84ce-62b6098fdb06"
     Publisher="CN=ckara"
-    Version="0.1.0.0" />
+    Version="0.1.0.1001" />
 
   <mp:PhoneIdentity PhoneProductId="4f5ca249-aa41-4d46-84ce-62b6098fdb06" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
@@ -70,7 +70,7 @@
         </desktop:Extension>
         <com:Extension Category="windows.comServer">
           <com:ComServer>
-            <com:ExeServer Executable="Wavee.UI.WinUI.exe" DisplayName="Wavee" Arguments="----AppNotificationActivated:">
+            <com:ExeServer Executable="Wavee.UI.WinUI.exe" DisplayName="Wavee (Alpha)" Arguments="----AppNotificationActivated:">
               <com:Class Id="173C9CEA-F703-437A-86F9-B1E4BEAB5F90" />
             </com:ExeServer>
           </com:ComServer>

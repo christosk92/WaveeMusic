@@ -188,8 +188,24 @@ public sealed partial class LazyReleaseItem : ObservableObject
     public string Id { get; init; } = "";
 
     [ObservableProperty] private int _index;
-    [ObservableProperty] private bool _isLoaded;
-    [ObservableProperty] private ArtistReleaseVm? _data;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLoading))]
+    private bool _isLoaded;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Uri))]
+    [NotifyPropertyChangedFor(nameof(Name))]
+    [NotifyPropertyChangedFor(nameof(ImageUrl))]
+    [NotifyPropertyChangedFor(nameof(SubtitleDetail))]
+    [NotifyPropertyChangedFor(nameof(TrackCount))]
+    private ArtistReleaseVm? _data;
+
+    public bool IsLoading => !IsLoaded;
+    public string? Uri => Data?.Uri;
+    public string Name => Data?.Name ?? string.Empty;
+    public string? ImageUrl => Data?.ImageUrl;
+    public string SubtitleDetail => Data?.SubtitleDetail ?? string.Empty;
+    public int TrackCount => Data?.TrackCount ?? 0;
 
     public void Populate(ArtistReleaseVm data)
     {

@@ -19,6 +19,10 @@
             Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}">
             <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
 
+            <Border x:Name="FallbackImageBorder"
+                    Opacity="0.78"
+                    IsHitTestVisible="False"/>
+
             <Border>
                 <Border.Background>
                     <RadialGradientBrush Center="0.18,0.08" GradientOrigin="0.18,0.08" RadiusX="1.18" RadiusY="0.96">
@@ -35,6 +39,21 @@
                         <GradientStop Color="{ThemeResource ArtistHeroFallbackShadowTopColor}" Offset="0"/>
                         <GradientStop Color="{ThemeResource ArtistHeroFallbackShadowMidColor}" Offset="0.5"/>
                         <GradientStop Color="{ThemeResource ArtistHeroFallbackShadowBottomColor}" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+
+            <!-- Extra bottom fade applied only when the avatar fallback is in use,
+                 so the blurred photo dissolves into the page body instead of
+                 leaving a hard horizontal seam at the hero's bottom edge. -->
+            <Border IsHitTestVisible="False"
+                    Visibility="{x:Bind FallbackImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#00000000" Offset="0"/>
+                        <GradientStop Color="#00000000" Offset="0.45"/>
+                        <GradientStop Color="#66000000" Offset="0.82"/>
+                        <GradientStop Color="#FF000000" Offset="1"/>
                     </LinearGradientBrush>
                 </Border.Background>
             </Border>
