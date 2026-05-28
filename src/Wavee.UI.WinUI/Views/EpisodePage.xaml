@@ -353,7 +353,7 @@
                                         Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                         BorderThickness="0"
                                         ToolTipService.ToolTip="Add to queue">
-                                    <FontIcon Glyph="&#xE823;" FontSize="14"/>
+                                    <FontIcon Glyph="&#xE8FD;" FontSize="14"/>
                                 </Button>
                                 <Button x:Uid="Views_EpisodePage__Auto_606" Command="{x:Bind ViewModel.ShareCommand}"
                                         Click="ShareButton_Click"

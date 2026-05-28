@@ -464,7 +464,7 @@
                                             Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                             BorderThickness="0">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <FontIcon Glyph="&#xE768;" FontSize="12"/>
+                                            <FontIcon Glyph="&#xE893;" FontSize="12"/>
                                             <TextBlock x:Uid="Views_ShowPage__PlayNextText" Text="Play next" FontSize="12" FontWeight="SemiBold"/>
                                         </StackPanel>
                                     </Button>

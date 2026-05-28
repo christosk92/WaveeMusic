@@ -192,7 +192,7 @@ public sealed partial class PlaylistTrackListViewModel
     public bool IsSortingByAlbum => CurrentSortColumn == PlaylistSortColumn.Album;
     public bool IsSortingByAddedAt => CurrentSortColumn == PlaylistSortColumn.AddedAt;
 
-    public string SortChevronGlyph => IsSortDescending ? "" : "";
+    public string SortChevronGlyph => IsSortDescending ? Styles.FluentGlyphs.ChevronDown : Styles.FluentGlyphs.ChevronUp;
 
     public int VideoTrackCount => _allTracks.Count(static track => track.HasVideo);
     public bool HasVideoTracks => VideoTrackCount > 0;

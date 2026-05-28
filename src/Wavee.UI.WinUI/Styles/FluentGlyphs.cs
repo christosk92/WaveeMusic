@@ -30,10 +30,12 @@ public static class FluentGlyphs
     public const string Volume2 = "";
     /// <summary>Volume3 (high) — E995.</summary>
     public const string Volume3 = "";
-    /// <summary>Next — E893 (play-next glyph historically E71A Forward; we keep E71A).</summary>
-    public const string PlayNext = "";
-    /// <summary>Add (plus) — E710. Used for "Add to queue".</summary>
-    public const string AddToQueue = "";
+    /// <summary>Next \u2014 E893. Canonical "Play next" glyph for FontIcon surfaces
+    /// (track / card / episode / album / playlist / sidebar context menus, the
+    /// floating multi-select bar, and the page-header SplitButton dropdowns). The
+    /// AccentIcon-rendered counterpart in context-menu primary rows is
+    /// <c>App.AccentIcons.Media.PlayNext</c>.</summary>
+    public const string PlayNext = "\uE893";
     /// <summary>Shuffle — E8B1.</summary>
     public const string Shuffle = "";
 
@@ -144,6 +146,28 @@ public static class FluentGlyphs
     /// <summary>Setting / cogwheel — E713. Used for "Set up X" deep-link CTAs.</summary>
     public const string SettingsGear = "";
 
+    // —— Additional canonical glyphs —————————————————————————
+    /// <summary>More \u2014 E712. Horizontal-dots "..." overflow glyph.</summary>
+    public const string More = "\uE712";
+    /// <summary>Library \u2014 E895. Book-stack glyph for library / collection surfaces.</summary>
+    public const string Library = "\uE895";
+    /// <summary>Search \u2014 E721. Magnifying-glass search affordance.</summary>
+    public const string Search = "\uE721";
+    /// <summary>Forward \u2014 E71B. Arc-arrow forward navigation (paired with <see cref="ChromeBack"/>).</summary>
+    public const string Forward = "\uE71B";
+    /// <summary>ChromeBack \u2014 E142. Window-chrome back arrow used by the navigation toolbar.</summary>
+    public const string ChromeBack = "\uE142";
+    /// <summary>SortDown \u2014 ED1E. Down-pointing sort indicator on column headers.</summary>
+    public const string SortDown = "\uED1E";
+    /// <summary>Error \u2014 E783. Inline error glyph for failed-load placeholders and toasts.</summary>
+    public const string Error = "\uE783";
+    /// <summary>Accept \u2014 E8FB. Checkmark-in-circle; used as the completion glyph on activity entries.</summary>
+    public const string Accept = "\uE8FB";
+    /// <summary>PartyPopper \u2014 EA1F. Festival / celebration glyph used by the rhythm-break / tour banners.</summary>
+    public const string PartyPopper = "\uEA1F";
+    /// <summary>MusicSharing \u2014 E93E. Music-note-with-sharing-arrow glyph used as the EpisodePage navigation icon.</summary>
+    public const string MusicSharing = "\uE93E";
+
     /// <summary>Devices2 — remote-device cluster icon (E703).</summary>
     // ---- Chart status (chart-format playlists) -------------------------
     /// <summary>ClosedCaption \u2014 E7F0. Subtitles / CC track picker on video items.</summary>
@@ -174,8 +198,10 @@ public static class FluentGlyphs
     public const string Undo = "\uE7A7";
     /// <summary>SelectAll - E762. Multi-select / selection-mode affordance.</summary>
     public const string SelectAll = "\uE762";
-    /// <summary>List - E8FD. "Add to queue" icon \u2014 matches the album / playlist
-    /// pages' secondary-action cluster (distinct from the "+" used for playlist).</summary>
+    /// <summary>List \u2014 E8FD. Canonical "Add to queue" glyph for FontIcon surfaces.
+    /// Distinct from the "+" used for "Add to playlist" (<see cref="Add"/>) and
+    /// paired with the AccentIcon-rendered <c>App.AccentIcons.Media.PlayAfter</c>
+    /// in context-menu primary rows.</summary>
     public const string Queue = "\uE8FD";
     /// <summary>ErrorBadge - EA39. Severity glyph for error notifications/toasts.</summary>
     public const string ErrorBadge = "\uEA39";

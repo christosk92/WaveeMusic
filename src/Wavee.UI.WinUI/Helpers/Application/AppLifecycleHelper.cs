@@ -1479,7 +1479,7 @@ public static class AppLifecycleHelper
                     activityService?.Post(
                         category: "playback",
                         title: title,
-                        iconGlyph: "",
+                        iconGlyph: Styles.FluentGlyphs.Accept,
                         status: Data.Models.ActivityStatus.Completed,
                         message: message);
                 });

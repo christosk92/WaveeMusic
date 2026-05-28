@@ -179,7 +179,7 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         CollapsedRoot.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
         // Glyph: ChevronUp (E70E) when expanded — clicking will collapse.
         // ChevronDown (E70D) when collapsed — clicking will expand.
-        ChevronGlyph.Glyph = collapsed ? "" : "";
+        ChevronGlyph.Glyph = collapsed ? Styles.FluentGlyphs.ChevronDown : Styles.FluentGlyphs.ChevronUp;
         ChevronTooltip.Text = collapsed ? "Expand" : "Collapse";
     }
 

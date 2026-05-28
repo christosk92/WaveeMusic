@@ -692,10 +692,10 @@ public static class NavigationHelpers
             return new SymbolIconSource { Symbol = Symbol.Audio };
 
         if (pageType == typeof(ShowPage))
-            return new FontIconSource { Glyph = "" };
+            return new FontIconSource { Glyph = Styles.FluentGlyphs.Radio };
 
         if (pageType == typeof(EpisodePage))
-            return new FontIconSource { Glyph = "" };
+            return new FontIconSource { Glyph = Styles.FluentGlyphs.MusicSharing };
 
         if (pageType == typeof(PodcastBrowsePage))
             return new FontIconSource { Glyph = "\uEC05" };

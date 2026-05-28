@@ -514,7 +514,7 @@
                                                     Command="{x:Bind ViewModel.TrackList.PlayPlaylistNextCommand}"
                                                     ToolTipService.ToolTip="Plays right after the current track.">
                                         <MenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE768;"/>
+                                            <FontIcon Glyph="&#xE893;"/>
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem x:Uid="Views_PlaylistPage__MenuAddToQueue"
@@ -543,7 +543,7 @@
                             x:Uid="Views_PlaylistPage__StartRadioButton"
                             ToolTipService.ToolTip="Start a radio seeded from this playlist">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <FontIcon Glyph="&#xE9E9;" FontSize="12"/>
+                            <FontIcon Glyph="&#xEC05;" FontSize="12"/>
                             <TextBlock x:Uid="Views_PlaylistPage__StartRadioText" Text="Start radio" FontSize="13"/>
                         </StackPanel>
                     </Button>

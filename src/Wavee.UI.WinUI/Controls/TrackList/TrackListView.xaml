@@ -309,10 +309,10 @@
                         <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_600" Icon="{ui:FontIcon Glyph=&#xE768;}"
                                       Label="Play selected"
                                       Command="{x:Bind ViewModel.PlaySelectedCommand, Mode=OneWay}"/>
-                        <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_601" Icon="{ui:FontIcon Glyph=&#xE768;}"
+                        <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_601" Icon="{ui:FontIcon Glyph=&#xE893;}"
                                       Label="Play after"
                                       Command="{x:Bind ViewModel.PlayAfterCommand, Mode=OneWay}"/>
-                        <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_602" Icon="{ui:FontIcon Glyph=&#xE90B;}"
+                        <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_602" Icon="{ui:FontIcon Glyph=&#xE8FD;}"
                                       Label="Add to queue"
                                       Command="{x:Bind ViewModel.AddSelectedToQueueCommand, Mode=OneWay}"/>
                         <AppBarSeparator/>

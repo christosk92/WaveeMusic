@@ -251,7 +251,7 @@
                                                     Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
                                                     CornerRadius="12" Width="24" Height="24"
                                                     ToolTipService.ToolTip="Remove">
-                                                <FontIcon Glyph="&#xE711;" FontSize="10"/>
+                                                <FontIcon Glyph="&#xE894;" FontSize="10"/>
                                             </Button>
                                         </Grid>
                                     </Border>

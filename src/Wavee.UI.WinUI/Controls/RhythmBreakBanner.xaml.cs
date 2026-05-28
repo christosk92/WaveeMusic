@@ -59,7 +59,7 @@ public sealed partial class RhythmBreakBanner : UserControl
     /// </summary>
     public static readonly DependencyProperty IconGlyphProperty =
         DependencyProperty.Register(nameof(IconGlyph), typeof(string), typeof(RhythmBreakBanner),
-            new PropertyMetadata("", OnIconGlyphChanged));
+            new PropertyMetadata(Styles.FluentGlyphs.PartyPopper, OnIconGlyphChanged));
 
     public string Eyebrow { get => (string)GetValue(EyebrowProperty); set => SetValue(EyebrowProperty, value); }
     public string Headline { get => (string)GetValue(HeadlineProperty); set => SetValue(HeadlineProperty, value); }
