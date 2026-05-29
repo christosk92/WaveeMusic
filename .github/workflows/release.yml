@@ -1,36 +1,100 @@
 name: Release MSIX
 
-# Builds Wavee.UI.WinUI for x64 + ARM64 (each on a same-arch runner), signs both
-# MSIX packages with Azure Artifact Signing on an x64 runner, and (on a tag push)
-# attaches them to a draft GitHub Release with an auto-update .appinstaller.
+# Branch-triggered release pipeline:
+#   push/merge to experimental -> pre-release (v<BASE>-<LABEL>.N, e.g. v0.1.0-alpha.2)
+#   push/merge to master       -> production release (v<BASE>, draft)
 #
-# Pipeline: build (matrix, per-arch) -> sign (x64, both) -> release (tag only)
+# Pipeline: version (compute + tag) -> build (matrix, per-arch) -> sign (x64) -> release
 #
-# Trigger:
-#   - tag push matching v*  (e.g. v0.1.0, v1.2.3-beta)
-#   - manual workflow_dispatch (dry run: build + sign, no release)
+# - The version comes from RELEASE_BASE + RELEASE_PRERELEASE in the `version`
+#   job (bump those DELIBERATELY in a PR when changing phase). The per-build
+#   counter auto-increments from existing tags, and the tag is pushed for you.
+# - Add "[skip release]" to a commit / merge message to land changes on a
+#   release branch WITHOUT cutting a release (used for the bootstrap merge).
+# - workflow_dispatch with an explicit version_tag is the manual re-cut / fallback.
+#
+# Why per-arch then sign-on-x64: a self-contained WinUI build resolves its RID
+# from the host (arm64 cross-build on x64 -> NETSDK1032), so each arch builds on
+# a matching runner; signing is architecture-agnostic and the Azure toolchain
+# fails under arm64 emulation, so both packages are signed in one x64 job.
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [master, experimental]
   workflow_dispatch:
     inputs:
       version_tag:
-        description: 'Version tag to stamp for the dry run'
+        description: 'Explicit version tag (manual re-cut / fallback, e.g. v0.2.0-beta.1)'
         required: false
-        default: 'v0.1.0-alpha.1'
 
 jobs:
+  version:
+    name: Compute version
+    runs-on: ubuntu-latest
+    # Skip the whole release when a commit/merge opts out (e.g. infra/bootstrap).
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip release]') }}
+    permissions:
+      contents: write
+    env:
+      # SINGLE SOURCE OF TRUTH for the release version. Bump these DELIBERATELY
+      # in a PR when changing phase — the per-build counter is automatic:
+      #   RELEASE_BASE        X.Y.Z core version (bump for 0.2.0, 1.0.0, ...).
+      #   RELEASE_PRERELEASE  experimental channel label: alpha -> beta -> rc.
+      # experimental merges publish v<RELEASE_BASE>-<RELEASE_PRERELEASE>.<N>;
+      # master merges publish v<RELEASE_BASE> (no label, production).
+      RELEASE_BASE: "0.1.0"
+      RELEASE_PRERELEASE: "alpha"
+    outputs:
+      tag: ${{ steps.out.outputs.tag }}
+      prerelease: ${{ steps.out.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve channel tag
+        id: out
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin >/dev/null 2>&1 || true
+          if [ -n "${{ inputs.version_tag }}" ]; then
+            # Manual override (re-cut / fallback).
+            TAG="${{ inputs.version_tag }}"
+            case "$TAG" in *-*) PRE=true ;; *) PRE=false ;; esac
+          elif [ "${{ github.ref_name }}" = "experimental" ]; then
+            # Continue the current pre-release line: next counter = (max existing) + 1,
+            # so v${RELEASE_BASE}-${RELEASE_PRERELEASE}.1 is followed by .2, .3, ...
+            # (robust to deleted/gapped tags; starts at .1 for a fresh base/label).
+            LAST=$(git tag -l "v${RELEASE_BASE}-${RELEASE_PRERELEASE}.*" \
+                   | sed -E "s/.*\.([0-9]+)$/\1/" | sort -n | tail -1)
+            N=$(( ${LAST:-0} + 1 ))
+            TAG="v${RELEASE_BASE}-${RELEASE_PRERELEASE}.${N}"; PRE=true
+          else
+            # master -> production, no pre-release label.
+            TAG="v${RELEASE_BASE}"; PRE=false
+          fi
+          echo "Resolved tag=$TAG (prerelease=$PRE)"
+          echo "tag=$TAG"        | tee -a "$GITHUB_OUTPUT"
+          echo "prerelease=$PRE" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Push tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.out.outputs.tag }}"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists — reusing."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
   build:
     name: Build (${{ matrix.platform }})
-    # Build each architecture on a host of the SAME architecture. A self-contained
-    # WinUI build resolves its RuntimeIdentifier from the host, so building arm64
-    # on the x64 windows-latest runner collides PlatformTarget=arm64 with the
-    # inferred win-x64 RID (NETSDK1032). windows-11-arm is a free GitHub-hosted
-    # arm64 runner for public repos. Signing is a SEPARATE x64 job: the Azure
-    # signing toolchain fails under arm64 emulation (signtool exit 3), and signing
-    # is architecture-agnostic, so signing both packages on x64 is correct.
+    needs: version
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -45,7 +109,7 @@ jobs:
       DOTNET_NOLOGO: 1
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       Configuration: Release
-      ReleaseTag: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version_tag }}
+      ReleaseTag: ${{ needs.version.outputs.tag }}
 
     steps:
       - name: Checkout
@@ -131,8 +195,6 @@ jobs:
         run: |
           # IMPORTANT: do NOT pass /p:RuntimeIdentifier — that flag triggers
           # WMC9999 in the WinUI XAML compiler. Platform alone is enough.
-          # UapAppxPackageBuildMode=SideloadOnly + AppxBundle=Never matches
-          # what signing/Sign-Release.ps1 was verified against locally.
           # AppxPackageSigningEnabled=false leaves the .msix unsigned for the
           # separate sign job.
           msbuild src/Wavee.UI.WinUI/Wavee.UI.WinUI.csproj `
@@ -190,9 +252,8 @@ jobs:
           retention-days: 14
 
   release:
-    # Only attach to a GitHub Release when triggered by a tag push.
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: sign
+    name: Publish release
+    needs: [version, sign]
     runs-on: windows-latest
     permissions:
       contents: write
@@ -209,16 +270,21 @@ jobs:
       - name: Generate .appinstaller for auto-update
         shell: pwsh
         run: |
+          $channel = if ('${{ needs.version.outputs.prerelease }}' -eq 'true') { 'experimental' } else { 'stable' }
           pwsh ./signing/Generate-AppInstaller.ps1 `
-            -Tag "${{ github.ref_name }}" `
+            -Tag "${{ needs.version.outputs.tag }}" `
+            -Channel $channel `
             -OutputDirectory ./artifacts
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
           files: |
             artifacts/**/*.msix
-            artifacts/Wavee.appinstaller
+            artifacts/*.appinstaller
           generate_release_notes: true
-          draft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          # Production (master) publishes as a DRAFT for review; experimental
+          # auto-publishes the pre-release for a fast tester loop.
+          draft: ${{ needs.version.outputs.prerelease != 'true' }}
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
