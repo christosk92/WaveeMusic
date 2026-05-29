@@ -25,7 +25,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $Tag,
-    [Parameter(Mandatory)] [string] $OutputDirectory
+    [Parameter(Mandatory)] [string] $OutputDirectory,
+    # 'stable' -> Wavee.appinstaller tracking the latest production release.
+    # 'experimental' -> Wavee.Experimental.appinstaller pinned to this pre-release.
+    [ValidateSet('stable', 'experimental')] [string] $Channel = 'stable'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,10 +43,19 @@ if (-not (Test-Path $templatePath)) {
 $releaseVersion = ConvertTo-WaveePackageVersion -Tag $Tag
 $cleanTag = $releaseVersion.CleanTag
 $version = $releaseVersion.PackageVersion
-$appInstallerUri = if ($cleanTag.Contains('-')) {
-    "https://github.com/christosk92/WaveeMusic/releases/download/v$cleanTag/Wavee.appinstaller"
+
+$fileName = if ($Channel -eq 'experimental') { 'Wavee.Experimental.appinstaller' } else { 'Wavee.appinstaller' }
+
+# Update-check URI baked into the .appinstaller:
+#  - stable: the 'latest release' alias always serves the newest production build.
+#  - experimental: GitHub has no 'latest pre-release' alias, so we pin to this
+#    release's asset. The build installs fine; seamless experimental -> next-
+#    experimental auto-update is a known limitation (testers grab the newest
+#    pre-release manually for now). See docs/superpowers/specs/2026-05-29-release-pipeline-design.md.
+$appInstallerUri = if ($Channel -eq 'experimental') {
+    "https://github.com/christosk92/WaveeMusic/releases/download/v$cleanTag/$fileName"
 } else {
-    "https://github.com/christosk92/WaveeMusic/releases/latest/download/Wavee.appinstaller"
+    "https://github.com/christosk92/WaveeMusic/releases/latest/download/$fileName"
 }
 
 if (-not (Test-Path $OutputDirectory)) {
@@ -55,7 +67,7 @@ $content = $content.Replace('${VERSION}', $version)
 $content = $content.Replace('${TAG}', $cleanTag)
 $content = $content.Replace('${APPINSTALLER_URI}', $appInstallerUri)
 
-$outputPath = Join-Path $OutputDirectory 'Wavee.appinstaller'
+$outputPath = Join-Path $OutputDirectory $fileName
 Set-Content -Path $outputPath -Value $content -Encoding utf8
 
-Write-Host "Generated $outputPath (Version=$version, Tag=$cleanTag)"
+Write-Host "Generated $outputPath (Version=$version, Tag=$cleanTag, Channel=$Channel)"
