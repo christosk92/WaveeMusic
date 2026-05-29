@@ -10,22 +10,36 @@ Codex, …) exactly as it does to humans.
 | Branch | Purpose | Merging here publishes… |
 |---|---|---|
 | `master` | Production | a **production** release (`vX.Y.Z`, draft → you review + Publish) |
-| `experimental` | Staging / alpha | an **experimental pre-release** (`vX.Y.Z-beta.N`, auto-published) |
+| `experimental` | Staging / alpha | an **experimental pre-release** (`v0.1.0-alpha.N` while in alpha, auto-published) |
 | `feature/<slug>` | New features | — (PR'd into a release branch) |
 | `fix/<slug>` | Bug fixes / hotfixes | — (PR'd into a release branch) |
 
 Default target for everyday work is **`experimental`**. `master` only receives
 changes via promotion (`experimental → master`) or urgent hotfixes.
 
-## Commit messages drive the version (conventional commits)
+## Versioning (set deliberately; the counter is automatic)
 
-The next version is computed automatically from commits since the last tag:
+The release version has a **single source of truth**: two values in the
+`version` job of `.github/workflows/release.yml`:
 
-- `feat: …` → **minor** bump (`0.2.0` → `0.3.0`)
-- `fix: …` (or any other prefix: `chore:`, `docs:`, `ci:`, `refactor:`, …) → **patch** bump
-- `feat!: …` or a `BREAKING CHANGE:` / `(MAJOR)` line in the body → **major** bump
+    RELEASE_BASE: "0.1.0"        # the X.Y.Z core version
+    RELEASE_PRERELEASE: "alpha"  # experimental channel label: alpha -> beta -> rc
 
-So write honest conventional-commit subjects — they decide the release number.
+- **experimental** merges publish `v$RELEASE_BASE-$RELEASE_PRERELEASE.<N>`; the
+  counter `<N>` auto-increments from existing tags, so `v0.1.0-alpha.1` is
+  followed by `v0.1.0-alpha.2`, `…alpha.3`, … No manual tagging.
+- **master** merges publish `v$RELEASE_BASE` (no label) as a production release.
+
+Change phase by editing those two values **in a PR**:
+- mature alpha → beta: set `RELEASE_PRERELEASE: "beta"` (counter restarts at `beta.1`);
+- start a new version: bump `RELEASE_BASE` (e.g. `0.2.0`);
+- go stable: merge to `master` (drops the label) → `v0.1.0`.
+
+These map onto the `signing/Versioning.ps1` bands (`alpha`→1000+N, `beta`→2000+N,
+`rc`→3000+N, stable→10000), so auto-update version ordering stays correct.
+
+Use conventional-commit subjects (`feat:` / `fix:` / `docs:` / `ci:` …) for a
+readable history — they no longer pick the version (the two values above do).
 
 ## Workflow
 
@@ -42,14 +56,11 @@ git push -u origin feature/<slug>
 gh pr create --base experimental --fill
 #   hotfix / promotion:  gh pr create --base master --fill
 
-# 4. Make the required check "PR Build & Test" pass (x64 compile + xUnit).
-gh pr checks --watch
-
-# 5. Merge. The release publishes AUTOMATICALLY on merge — no manual tagging.
+# 4. Merge the PR. The release publishes AUTOMATICALLY on merge — no manual tagging.
 gh pr merge --squash --delete-branch
 ```
 
-- Merge → `experimental` ⇒ pre-release `vX.Y.Z-beta.N` (auto-published).
+- Merge → `experimental` ⇒ pre-release `v0.1.0-alpha.N` (auto-published).
 - Merge → `master` ⇒ production `vX.Y.Z` (published as a **draft** — review, then
   hit Publish in GitHub Releases).
 - Promote a tested batch with a PR `experimental → master`.
@@ -59,14 +70,11 @@ gh pr merge --squash --delete-branch
 - **Don't push to `master` / `experimental`** — it's rejected by branch rules.
 - **Don't push tags by hand** — the `version` job in `release.yml` tags
   automatically from the computed version.
-- **Don't bypass the `PR Build & Test` check.**
 - To land a change on a release branch **without** cutting a release (e.g. a
   pure-infra/docs change), put `[skip release]` in the merge commit message.
 
 ## Releases reference
 
-- **CI gate:** `.github/workflows/ci.yml` — runs on every PR + on `feature/**` /
-  `fix/**` pushes. Job name (and the required status check) is **`PR Build & Test`**.
 - **Release pipeline:** `.github/workflows/release.yml` — `version` (compute +
   tag) → `build` (x64 on `windows-latest`, arm64 on `windows-11-arm`) → `sign`
   (both, on x64, Azure Artifact Signing) → `release` (GitHub Release + `.appinstaller`).

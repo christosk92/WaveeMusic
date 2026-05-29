@@ -119,9 +119,10 @@ back to `az login`.
 
 **Releases are branch-triggered.** A push / merge to `experimental` cuts a
 pre-release; a push / merge to `master` cuts a production release (draft). The
-`version` job computes the next version from conventional commits and tags it
-automatically, then builds x64 + ARM64 on matching runners, signs both on an
-x64 job, and publishes the GitHub Release with the channel's `.appinstaller`.
+`version` job derives the tag from `RELEASE_BASE` + `RELEASE_PRERELEASE` (set in
+the workflow; bump deliberately when changing phase) with an auto-incrementing
+per-build counter, tags it, then builds x64 + ARM64 on matching runners, signs
+both on an x64 job, and publishes the GitHub Release with the channel's `.appinstaller`.
 Manual `workflow_dispatch` with an explicit `version_tag` is the re-cut /
 fallback. Add `[skip release]` to a commit / merge message to land changes on a
 release branch without cutting a release. See
