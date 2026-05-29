@@ -8,10 +8,22 @@ A modern, open-source Spotify desktop client for Windows — built with .NET 10 
 
 ![Wavee](screenshots/screenshot-1.jpg)
 
-## Big todo issues
-- Memory leaks
-- Waiting for WinUI 3 Performance improvements (specifically related to allocations)
-- Snappiness of the app.
+## 🎉 My first release
+
+This is the first time I've ever actually *shipped* this thing — and it's been a long time coming.
+
+I started Wavee back in **2020**, originally for **UWP**. It was my playground: a place to properly learn C# and XAML, to try every new technique I could get my hands on, and to see how far I could push a "real" app on my own. I never managed to publish it. Spotify kept deprecating the APIs I'd reverse-engineered, UWP slowly faded out, WinUI 3's rough early days made me lose faith more than once, and life moved on. The project sat in a drawer for years.
+
+What finally got it over the line was **AI** — building alongside **Claude Code** let me untangle years of half-finished ideas and actually push a release out the door. So here it is: a very, *very* experimental first cut.
+
+**Fair warning:** this is alpha software in the truest sense. Things **will** break. Some features are rough, some are missing, and there's a real chance it won't even launch on your machine. That's okay — that's what an alpha is for. If you hit something, I'd genuinely love the bug report.
+
+Thanks for taking a look. 🧡
+
+### Known rough edges (this alpha)
+- Memory usage / leaks under heavy navigation
+- Waiting on WinUI 3 performance improvements (especially around allocations)
+- General snappiness / responsiveness
 
 ## What it is
 
