@@ -54,7 +54,12 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($b64)) {
             throw "PLAYBACK_SOURCES_ZIP_B64 secret is empty. Run signing/Pack-PlaybackSources.ps1 -SetSecret. Refusing to build an audio-disabled stub release."
           }
-          $bytes = [Convert]::FromBase64String($b64.Trim())
+          # Strip any whitespace/newlines a secret-setter may have injected into
+          # the base64 (e.g. PowerShell console-width line wrapping). Base64 has
+          # no internal whitespace, so this is always safe and makes decoding
+          # independent of how the secret was uploaded.
+          $b64 = ($b64 -replace '\s', '')
+          $bytes = [Convert]::FromBase64String($b64)
           $zipPath = Join-Path $env:RUNNER_TEMP 'playback-sources.zip'
           [System.IO.File]::WriteAllBytes($zipPath, $bytes)
           Expand-Archive -Path $zipPath -DestinationPath $env:GITHUB_WORKSPACE -Force
