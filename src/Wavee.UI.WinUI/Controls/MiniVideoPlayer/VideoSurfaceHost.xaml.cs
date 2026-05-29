@@ -172,7 +172,7 @@ public sealed partial class VideoSurfaceHost : UserControl, INavCacheSurfacePart
         // Release the Win2D-backed brush + LoadedImageSurface.
         // Sets _posterEffectBrush / _posterSurfaceBrush / _posterSurface to null.
         DisposePosterResources();
-        AlbumArtLayer.Source = null;
+        AlbumArtLayer.ImageUrl = null;
 
         // Finally drop the SpriteVisual itself. Null _compositor so the next
         // EnsureComposition sees a fresh slate (idempotent — it rebuilds).
@@ -302,23 +302,12 @@ public sealed partial class VideoSurfaceHost : UserControl, INavCacheSurfacePart
 
     private void ApplyAlbumArt(string? url)
     {
-        if (string.IsNullOrEmpty(url))
-        {
-            AlbumArtLayer.Source = null;
-            return;
-        }
-        try
-        {
-            AlbumArtLayer.Source = new BitmapImage(new Uri(url))
-            {
-                DecodePixelWidth = ComputeArtworkDecodeSize(),
-                DecodePixelType = DecodePixelType.Logical
-            };
-        }
-        catch
-        {
-            AlbumArtLayer.Source = null;
-        }
+        // Cache-backed CompositionImage instead of a fresh BitmapImage per video
+        // track — the old per-track BitmapImage stranded its native decode buffer
+        // until GC finalization. CompositionImage resolves/validates the URL and
+        // treats null/empty as "no image".
+        AlbumArtLayer.DecodePixelSize = ComputeArtworkDecodeSize();
+        AlbumArtLayer.ImageUrl = url;
     }
 
     private void ApplyPosterUrl(string? url)
