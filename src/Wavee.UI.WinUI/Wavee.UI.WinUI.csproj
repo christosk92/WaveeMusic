@@ -58,15 +58,22 @@
 		     time and the AI types fail to load. -->
 		<AppxOSMinVersionReplaceManifestVersion>false</AppxOSMinVersionReplaceManifestVersion>
 		<AppxOSMaxVersionTestedReplaceManifestVersion>false</AppxOSMaxVersionTestedReplaceManifestVersion>
-		<PublishAot>true</PublishAot>
+		<!-- Native AOT is DISABLED: the dependency closure is not AOT-compatible.
+		     The vendored Lyricify.Lyrics.Helper serialises via Newtonsoft.Json
+		     (RequiresUnreferencedCode + RequiresDynamicCode — reflection plus
+		     Reflection.Emit), and FontAwesome6.Svg.WinUI / Newtonsoft.Json /
+		     Microsoft.CSharp / System.Linq.Expressions emit IL2104 / IL3053.
+		     ILC fails (1700+ warnings-as-errors); suppressing them would instead
+		     crash at runtime in the lyrics web-providers / icon rendering. Release
+		     therefore ships SELF-CONTAINED JIT (bundles .NET + WinAppSDK, no AOT),
+		     which is the same runtime mode used for local Debug. Re-enable once
+		     the deps are AOT-clean (replace Newtonsoft with STJ source-gen, swap
+		     FontAwesome for an AOT-annotated icon source). -->
+		<PublishAot>false</PublishAot>
 
-		<!-- Native AOT analyzers — on for every configuration so AOT warnings
-		     surface during normal Debug builds too. Actual PublishAot is gated
-		     to Release configurations below; the analyzers themselves are cheap
-		     and run at compile time. WinAppSDK 1.6+ ships Native AOT support for
-		     WinUI 3; CommunityToolkit.Mvvm 8.4 / CommunityToolkit.WinUI 8.3+ /
-		     ComputeSharp.D2D1.WinUI 3.x / WinUIEx 2.4.1+ / H.NotifyIcon.WinUI
-		     are all trim/AOT annotated today, so this set is realistic. -->
+		<!-- Trim/AOT analyzers stay on for every configuration so first-party
+		     reflection / dynamic-code lapses still surface at compile time
+		     (Debug included), even though we don't AOT-publish today. -->
 		<IsAotCompatible>true</IsAotCompatible>
 		<EnableTrimAnalyzer>true</EnableTrimAnalyzer>
 		<EnableAotAnalyzer>true</EnableAotAnalyzer>
@@ -194,32 +201,21 @@
 		<HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
 	</PropertyGroup>
 
-	<!-- Native AOT publish for Release configurations only.
+	<!-- Self-contained Release (packaged MSIX + sideload Release-Unpackaged).
 
-	     - Debug keeps JIT so XAML Hot Reload, EnC, and fast F5 cycles work
-	       normally. The IL2xxx / IL3xxx analyzers still run in Debug because
-	       <IsAotCompatible>true</> is set unconditionally above — that's what
-	       catches new reflection / dynamic-code lapses at compile time before
-	       they ever reach an AOT publish.
-	     - Release (packaged MSIX and sideload Release-Unpackaged) uses
-	       PublishAot + SelfContained + WindowsAppSDKSelfContained. The
-	       resulting MSIX has no .NET runtime or WinAppSDK framework
-	       dependency. AppX size goes up versus framework-dependent today, but
-	       AOT cuts the runtime portion roughly in half (per the
-	       Microsoft-published WinAppSDK 1.6 Contoso Camera numbers: ~2x
-	       package size reduction in self-contained mode, ~8x in
-	       framework-mode but that doesn't apply here).
-	     - PublishReadyToRun is incompatible with PublishAot — disabled
-	       explicitly so a stale solution-level PublishReadyToRun=true cannot
-	       contradict the AOT publish. -->
+	     - Debug keeps the framework-dependent JIT default for fast F5 / Hot
+	       Reload / EnC.
+	     - Release bundles the .NET runtime + WinAppSDK (SelfContained +
+	       WindowsAppSDKSelfContained) so the MSIX installs with no framework
+	       dependency on the target machine. JIT, not AOT — see the PublishAot
+	       note above for why AOT is off. Payload is larger than a
+	       framework-dependent build, but it runs anywhere.
+	     - No trimming (PublishTrimmed unset) so Newtonsoft.Json-based vendored
+	       code keeps working; PublishReadyToRun stays off (pure JIT, matching
+	       Debug behaviour). -->
 	<PropertyGroup Condition="'$(Configuration)' == 'Release' or '$(Configuration)' == 'Release-Unpackaged'">
 		<SelfContained>true</SelfContained>
 		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-		<!-- Optimise for size — desktop app payload is already large; trading
-		     some throughput for smaller native binary is the right tradeoff. -->
-		<IlcOptimizationPreference>Size</IlcOptimizationPreference>
-		<IlcTrimMetadata>true</IlcTrimMetadata>
-		<StripSymbols>true</StripSymbols>
 		<PublishReadyToRun>false</PublishReadyToRun>
 	</PropertyGroup>
 
