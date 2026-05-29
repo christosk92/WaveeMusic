@@ -9,6 +9,10 @@ not here.
 
 Read the relevant guide before changing that area:
 
+- **Contributing & releases** — branch model (`feature/*` / `fix/*` → PR →
+  `experimental` / `master`), never push to protected branches, conventional-commit
+  versioning, and how experimental / production releases auto-publish on merge.
+  `.agents/guides/contributing-and-releases.md`
 - **Track and episode UI** — every track/episode row, list, card, search cell,
   omnibar suggestion, queue row, home episode card, and now-playing surface.
   `.agents/guides/track-and-episode-ui.md`

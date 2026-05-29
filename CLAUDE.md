@@ -17,6 +17,10 @@ Component-specific, LLM-friendly guides live in `.agents/guides/`. Read the rele
 
 When adding a new component guide, follow the frontmatter, Quick-find table, and authoring conventions in `AGENTS.md` (single source of truth), and update the index in both `AGENTS.md` and this file.
 
+## Contributing & releases
+
+**Never push to `master` or `experimental` directly — they are protected.** Do all work on `feature/<slug>` or `fix/<slug>` branches and open a PR (`gh pr create --base experimental` by default; `--base master` for hotfixes / promotion). **Releases publish automatically on merge**: merging to `experimental` cuts a pre-release (`v0.1.0-alpha.N` while in alpha, auto-published), merging to `master` cuts a production release (`vX.Y.Z`, draft → review → Publish). The version is set by `RELEASE_BASE` / `RELEASE_PRERELEASE` in `release.yml` (bump deliberately in a PR when changing phase: `alpha` → `beta` → `rc`, or a new base); the per-build counter auto-increments. Use conventional-commit subjects for a readable history. Never tag by hand; add `[skip release]` to a merge commit to land changes on a release branch without cutting a release. Full playbook: `.agents/guides/contributing-and-releases.md`.
+
 ## Repository at a glance
 
 WaveeMusic is a clean-room Spotify desktop client for Windows: a .NET 10 reimplementation of Spotify's Access Point, Mercury, Connect (Dealer WebSocket), SpClient (protobuf/HTTPS), and Pathfinder (GraphQL) protocols, wrapped in a WinUI 3 app. Requires a Spotify Premium account.

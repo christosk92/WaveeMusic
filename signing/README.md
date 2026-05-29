@@ -117,9 +117,16 @@ back to `az login`.
 
 ## CI: GitHub Actions (`release.yml`)
 
-Tag push (`v*`) or manual dispatch fires `.github/workflows/release.yml`.
-It does the same six steps as the local script, in parallel for x64 and
-ARM64, and uploads signed `.msix` artefacts to a draft GitHub Release.
+**Releases are branch-triggered.** A push / merge to `experimental` cuts a
+pre-release; a push / merge to `master` cuts a production release (draft). The
+`version` job derives the tag from `RELEASE_BASE` + `RELEASE_PRERELEASE` (set in
+the workflow; bump deliberately when changing phase) with an auto-incrementing
+per-build counter, tags it, then builds x64 + ARM64 on matching runners, signs
+both on an x64 job, and publishes the GitHub Release with the channel's `.appinstaller`.
+Manual `workflow_dispatch` with an explicit `version_tag` is the re-cut /
+fallback. Add `[skip release]` to a commit / merge message to land changes on a
+release branch without cutting a release. See
+`.agents/guides/contributing-and-releases.md` for the full branch/PR workflow.
 
 Required repository secrets (*Settings → Secrets and variables →
 Actions*):
