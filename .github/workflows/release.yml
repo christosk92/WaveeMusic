@@ -1,11 +1,14 @@
 name: Release MSIX
 
-# Builds Wavee.UI.WinUI for x64 + ARM64, signs the resulting MSIX packages
-# with Azure Artifact Signing, and uploads them as workflow artifacts.
+# Builds Wavee.UI.WinUI for x64 + ARM64 (each on a same-arch runner), signs both
+# MSIX packages with Azure Artifact Signing on an x64 runner, and (on a tag push)
+# attaches them to a draft GitHub Release with an auto-update .appinstaller.
+#
+# Pipeline: build (matrix, per-arch) -> sign (x64, both) -> release (tag only)
 #
 # Trigger:
 #   - tag push matching v*  (e.g. v0.1.0, v1.2.3-beta)
-#   - manual workflow_dispatch (for dry runs)
+#   - manual workflow_dispatch (dry run: build + sign, no release)
 
 on:
   push:
@@ -19,12 +22,15 @@ on:
         default: 'v0.1.0-alpha.1'
 
 jobs:
-  build-sign:
-    name: Build & sign (${{ matrix.platform }})
-    # Build each architecture on a host of the SAME architecture. WinUI + Native
-    # AOT does not cleanly cross-compile arm64 from an x64 host: RID inference
-    # picks the host's win-x64 and collides with PlatformTarget=arm64 (NETSDK1032).
-    # windows-11-arm is a free GitHub-hosted arm64 runner for public repos.
+  build:
+    name: Build (${{ matrix.platform }})
+    # Build each architecture on a host of the SAME architecture. A self-contained
+    # WinUI build resolves its RuntimeIdentifier from the host, so building arm64
+    # on the x64 windows-latest runner collides PlatformTarget=arm64 with the
+    # inferred win-x64 RID (NETSDK1032). windows-11-arm is a free GitHub-hosted
+    # arm64 runner for public repos. Signing is a SEPARATE x64 job: the Azure
+    # signing toolchain fails under arm64 emulation (signtool exit 3), and signing
+    # is architecture-agnostic, so signing both packages on x64 is correct.
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -120,13 +126,15 @@ jobs:
       - name: Restore
         run: dotnet restore src/Wavee.UI.WinUI/Wavee.UI.WinUI.csproj
 
-      - name: Build & package MSIX
+      - name: Build & package MSIX (unsigned)
         shell: pwsh
         run: |
           # IMPORTANT: do NOT pass /p:RuntimeIdentifier — that flag triggers
           # WMC9999 in the WinUI XAML compiler. Platform alone is enough.
           # UapAppxPackageBuildMode=SideloadOnly + AppxBundle=Never matches
           # what signing/Sign-Release.ps1 was verified against locally.
+          # AppxPackageSigningEnabled=false leaves the .msix unsigned for the
+          # separate sign job.
           msbuild src/Wavee.UI.WinUI/Wavee.UI.WinUI.csproj `
             /p:Configuration=Release `
             /p:Platform=${{ matrix.platform }} `
@@ -137,16 +145,25 @@ jobs:
             /p:AppxPackageDir="$env:GITHUB_WORKSPACE\AppPackages\\" `
             /restore
 
-      - name: Build Artifact Signing metadata
-        shell: pwsh
-        run: |
-          $meta = @{
-            Endpoint               = "${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}"
-            CodeSigningAccountName = "${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}"
-            CertificateProfileName = "${{ secrets.AZURE_ARTIFACT_SIGNING_PROFILE }}"
-          } | ConvertTo-Json
-          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\signing" | Out-Null
-          Set-Content -Encoding utf8 -Path "$env:GITHUB_WORKSPACE\signing\metadata.json" -Value $meta
+      - name: Upload unsigned MSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: wavee-${{ matrix.platform }}-msix-unsigned
+          path: AppPackages/**/*.msix
+          if-no-files-found: error
+          retention-days: 14
+
+  sign:
+    name: Sign MSIX (x64)
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - name: Download unsigned MSIX (both arches)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wavee-*-msix-unsigned
+          path: AppPackages
+          merge-multiple: true
 
       - name: Sign MSIX with Azure Artifact Signing
         uses: azure/trusted-signing-action@v0
@@ -167,7 +184,7 @@ jobs:
       - name: Upload signed MSIX
         uses: actions/upload-artifact@v4
         with:
-          name: wavee-${{ matrix.platform }}-msix
+          name: wavee-signed-msix
           path: AppPackages/**/*.msix
           if-no-files-found: error
           retention-days: 14
@@ -175,7 +192,7 @@ jobs:
   release:
     # Only attach to a GitHub Release when triggered by a tag push.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build-sign
+    needs: sign
     runs-on: windows-latest
     permissions:
       contents: write
@@ -186,8 +203,8 @@ jobs:
       - name: Download signed artifacts
         uses: actions/download-artifact@v4
         with:
+          name: wavee-signed-msix
           path: artifacts
-          merge-multiple: true
 
       - name: Generate .appinstaller for auto-update
         shell: pwsh
