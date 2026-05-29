@@ -6,7 +6,8 @@ A modern, open-source Spotify desktop client for Windows — built with .NET 10 
 ![WinUI](https://img.shields.io/badge/WinUI-3-0078D4?logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-![Wavee](screenshots/screenshot-1.jpg)
+<img width="1306" height="871" alt="image" src="https://github.com/user-attachments/assets/68608f86-7fb9-46ad-99c5-c5a94220ad71" />
+
 
 ## 🎉 My first release
 
