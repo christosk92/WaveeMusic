@@ -34,6 +34,13 @@ x64/
 [Bb]in/
 [Oo]bj/
 
+# Re-include SOURCE folders whose names collide with the build-output rules
+# above. ViewModels/Debug holds real source (PathfinderCatalog etc.), not a
+# Debug build output — the [Dd]ebug/ rule was silently dropping it from commits,
+# which broke CI (DebugViewModel `using ...ViewModels.Debug;` failed to compile).
+!src/Wavee.UI.WinUI/ViewModels/Debug/
+!src/Wavee.UI.WinUI/ViewModels/Debug/**
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*

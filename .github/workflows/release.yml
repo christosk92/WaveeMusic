@@ -21,11 +21,19 @@ on:
 jobs:
   build-sign:
     name: Build & sign (${{ matrix.platform }})
-    runs-on: windows-latest
+    # Build each architecture on a host of the SAME architecture. WinUI + Native
+    # AOT does not cleanly cross-compile arm64 from an x64 host: RID inference
+    # picks the host's win-x64 and collides with PlatformTarget=arm64 (NETSDK1032).
+    # windows-11-arm is a free GitHub-hosted arm64 runner for public repos.
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        platform: [x64, arm64]
+        include:
+          - platform: x64
+            runner: windows-latest
+          - platform: arm64
+            runner: windows-11-arm
 
     env:
       DOTNET_NOLOGO: 1
