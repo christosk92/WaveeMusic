@@ -136,6 +136,30 @@ Actions*):
 
 These are populated as of 2026-05-04 for `christosk92/WaveeMusic`.
 
+### Functional vs. stub builds — `PLAYBACK_SOURCES_ZIP_B64`
+
+The Spotify playback sources (`AudioDecryptStream.cs`, `PlayPlayConstants.cs`,
+`AudioRuntimeProvisioner.cs`, `RuntimeManifest.cs`, `PlayPlayKeyEmulator.cs`)
+are gitignored, so a plain `actions/checkout` of the public repo lacks them.
+Without them the build defines `WAVEE_SPOTIFY_PLAYBACK_STUBS` and ships a
+player that **cannot decrypt audio** —
+`SpotifyPlaybackCapabilities.DefaultLocalSpotifyPlaybackEnabled` flips to
+`false` and the app reports *"Spotify Playback is not enabled right now."*
+
+To produce a functional release, `release.yml` restores these files on the
+runner *before* msbuild from one extra secret:
+
+| Secret | How to set |
+|---|---|
+| `PLAYBACK_SOURCES_ZIP_B64` | `./signing/Pack-PlaybackSources.ps1 -SetSecret` |
+
+`Pack-PlaybackSources.ps1` zips the five files (with repo-relative paths) and
+uploads the base64 to that secret — the bytes never enter git history. The
+*Restore proprietary playback sources* step fails the build **loudly** if the
+secret is missing or any file is absent after extraction, so an audio-disabled
+stub build can never be released by accident. Re-run the script whenever any of
+those files change; the next tagged release then picks up the update.
+
 ---
 
 ## Why the manifest publisher gets swapped
@@ -204,6 +228,7 @@ See:
 | `Sign-Release.ps1` | The full pipeline. Default entry point. |
 | `Sign-Msix.ps1` | Lower-level wrapper around just the signtool step. Useful when you've already got an unsigned MSIX. |
 | `Set-Publisher.ps1` | Standalone publisher-swap helper. Used by CI. |
+| `Pack-PlaybackSources.ps1` | Bundles the gitignored playback sources into the `PLAYBACK_SOURCES_ZIP_B64` Actions secret so CI builds are audio-enabled. |
 | `metadata.template.json` | Committed template for `metadata.json`. |
 | `metadata.json` | **Gitignored.** Your account-specific values. |
 | `README.md` | This file. |

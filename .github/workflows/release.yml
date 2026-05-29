@@ -39,6 +39,37 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Restore proprietary playback sources
+        shell: pwsh
+        env:
+          PLAYBACK_SOURCES_ZIP_B64: ${{ secrets.PLAYBACK_SOURCES_ZIP_B64 }}
+        run: |
+          # The public repo deliberately omits the Spotify playback sources
+          # (gitignored). Without them the build defines
+          # WAVEE_SPOTIFY_PLAYBACK_STUBS and the MSIX cannot decrypt audio.
+          # signing/Pack-PlaybackSources.ps1 stores them in this secret; we
+          # restore them here BEFORE restore/build and FAIL LOUDLY if absent,
+          # so an audio-disabled stub build can never be released.
+          $b64 = $env:PLAYBACK_SOURCES_ZIP_B64
+          if ([string]::IsNullOrWhiteSpace($b64)) {
+            throw "PLAYBACK_SOURCES_ZIP_B64 secret is empty. Run signing/Pack-PlaybackSources.ps1 -SetSecret. Refusing to build an audio-disabled stub release."
+          }
+          $bytes = [Convert]::FromBase64String($b64.Trim())
+          $zipPath = Join-Path $env:RUNNER_TEMP 'playback-sources.zip'
+          [System.IO.File]::WriteAllBytes($zipPath, $bytes)
+          Expand-Archive -Path $zipPath -DestinationPath $env:GITHUB_WORKSPACE -Force
+          Remove-Item $zipPath -Force
+          $required = @(
+            'src/Wavee/Core/Crypto/AudioDecryptStream.cs',
+            'src/Wavee/Core/Audio/PlayPlayConstants.cs',
+            'src/Wavee/Core/Audio/AudioRuntimeProvisioner.cs',
+            'src/Wavee/Core/Audio/RuntimeManifest.cs',
+            'src/Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs'
+          )
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $env:GITHUB_WORKSPACE $_)) }
+          if ($missing) { throw "Playback sources missing after restore: $($missing -join ', ')" }
+          Write-Host "Restored $($required.Count) proprietary playback sources (audio-enabled build)."
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
