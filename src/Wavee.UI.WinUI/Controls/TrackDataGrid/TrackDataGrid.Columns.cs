@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
-using System.Reflection;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -459,28 +458,10 @@ public sealed partial class TrackDataGrid
         "artist" => item.ArtistName,
         "album" => item.AlbumName,
         "duration" => item.Duration.Ticks,
-        "added" => ReflectNullableDateTime(item, "AddedAt"),
-        "playcount" => ReflectNullableLong(item, "PlayCount"),
+        "added" => item.AddedAtValue,
+        "playcount" => item.PlayCountValue,
         _ => null,
     };
-
-    private static DateTime? ReflectNullableDateTime(object item, string property)
-    {
-        var prop = item.GetType().GetProperty(property, BindingFlags.Public | BindingFlags.Instance);
-        return prop?.GetValue(item) as DateTime?;
-    }
-
-    private static long? ReflectNullableLong(object item, string property)
-    {
-        var prop = item.GetType().GetProperty(property, BindingFlags.Public | BindingFlags.Instance);
-        var value = prop?.GetValue(item);
-        return value switch
-        {
-            long l => l,
-            int i => i,
-            _ => null,
-        };
-    }
 
     private static int CompareObjects(object? a, object? b)
     {

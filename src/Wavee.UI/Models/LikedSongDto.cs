@@ -28,6 +28,9 @@ public sealed partial record LikedSongDto : ITrackItem
 
     public TimeSpan Duration { get; init; }
     public DateTime AddedAt { get; init; }
+
+    /// <summary>Raw added-at for sorting the Date Added column (ITrackItem.AddedAtValue).</summary>
+    public DateTime? AddedAtValue => AddedAt;
     public bool IsExplicit { get; init; }
     public int OriginalIndex { get; init; }
     public bool IsLoaded => true;

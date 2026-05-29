@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
-using System.Reflection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -41,7 +40,6 @@ public sealed partial class TrackListView : UserControl, IReorderHost
     private readonly List<MenuFlyoutItem> _dynamicPlaylistMenuItems = [];
     private readonly List<UIElement> _scrollableCustomHeaderElements = [];
     private readonly List<UIElement> _stickyCustomHeaderElements = [];
-    private readonly Dictionary<(Type, string), PropertyInfo?> _propertyCache = [];
 
     private readonly ThemeColorService? _themeColors;
     private readonly DragStateService? _dragStateService;
@@ -772,25 +770,8 @@ public sealed partial class TrackListView : UserControl, IReorderHost
 
     private int CustomColumnCount => CustomColumns?.Count ?? 0;
 
-    private string GetCustomColumnValue(object item, TrackListColumnDefinition col)
-    {
-        if (col.ValueSelector != null)
-            return col.ValueSelector(item);
-
-        if (col.PropertyName != null)
-        {
-            var type = item.GetType();
-            var key = (type, col.PropertyName);
-            if (!_propertyCache.TryGetValue(key, out var prop))
-            {
-                prop = type.GetProperty(col.PropertyName);
-                _propertyCache[key] = prop;
-            }
-            return prop?.GetValue(item)?.ToString() ?? "";
-        }
-
-        return "";
-    }
+    private static string GetCustomColumnValue(object item, TrackListColumnDefinition col)
+        => col.ValueSelector?.Invoke(item) ?? "";
 
     private static ScrollViewer? FindScrollViewer(DependencyObject parent)
     {

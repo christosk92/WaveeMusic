@@ -63,6 +63,9 @@ public sealed partial record AlbumTrackDto : ITrackItem
     public bool IsLiked { get; set; }
     public long PlayCount { get; init; }
 
+    /// <summary>Raw play count for sorting the Plays column (ITrackItem.PlayCountValue).</summary>
+    public long? PlayCountValue => PlayCount;
+
     /// <summary>
     /// Per-track artists with URIs preserved. Empty for cached payloads written
     /// before this field existed; TrackItem falls back to <c>ArtistName</c> +

@@ -29,6 +29,9 @@ public sealed partial record LibraryEpisodeDto : ITrackItem
     public IReadOnlyList<string> MediaTypes { get; init; } = [];
     public TimeSpan Duration { get; init; }
     public DateTime AddedAt { get; init; }
+
+    /// <summary>Raw added-at for sorting the Date Added column (ITrackItem.AddedAtValue).</summary>
+    public DateTime? AddedAtValue => AddedAt;
     public bool IsExplicit { get; init; }
     public bool HasVideo => MediaTypes.Any(static type =>
         string.Equals(type, "video", StringComparison.OrdinalIgnoreCase));

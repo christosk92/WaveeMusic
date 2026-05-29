@@ -36,6 +36,9 @@ public sealed partial record PlaylistTrackDto : ITrackItem
     /// non-null value.
     /// </summary>
     public DateTime? AddedAt { get; init; }
+
+    /// <summary>Raw added-at for sorting the Date Added column (ITrackItem.AddedAtValue).</summary>
+    public DateTime? AddedAtValue => AddedAt;
     public string? AddedBy { get; init; }
 
     /// <summary>

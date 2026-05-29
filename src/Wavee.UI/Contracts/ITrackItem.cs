@@ -134,6 +134,20 @@ public interface ITrackItem : INotifyPropertyChanged
     string PlayCountFormatted => string.Empty;
 
     /// <summary>
+    /// Raw "added on" timestamp used to SORT the Date Added column. Null when the
+    /// source doesn't track it. Parallels <see cref="AddedAtFormatted"/> (display).
+    /// Replaces the old per-DTO reflection in TrackDataGrid so the sort path is
+    /// AOT/trim-safe.
+    /// </summary>
+    DateTime? AddedAtValue => null;
+
+    /// <summary>
+    /// Raw play count used to SORT the Plays column. Null when the source doesn't
+    /// track it. Parallels <see cref="PlayCountFormatted"/> (display).
+    /// </summary>
+    long? PlayCountValue => null;
+
+    /// <summary>
     /// Optional playback progress from 0.0 to 1.0. Podcast episodes can populate
     /// this from Spotify's <c>playedState.playPositionMilliseconds</c>.
     /// </summary>

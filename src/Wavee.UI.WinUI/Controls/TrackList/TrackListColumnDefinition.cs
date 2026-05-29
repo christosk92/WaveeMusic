@@ -4,8 +4,8 @@ using Microsoft.UI.Xaml;
 namespace Wavee.UI.WinUI.Controls.TrackList;
 
 /// <summary>
-/// Defines a custom column for TrackListView.
-/// Supports XAML declaration via PropertyName or code-behind via ValueSelector.
+/// Defines a custom column for TrackListView. Cell text is produced by the
+/// <see cref="ValueSelector"/> delegate (set in code-behind).
 /// </summary>
 public sealed partial class TrackListColumnDefinition : DependencyObject
 {
@@ -36,22 +36,7 @@ public sealed partial class TrackListColumnDefinition : DependencyObject
             new PropertyMetadata(new GridLength(80)));
 
     /// <summary>
-    /// Property name on the track item to display. Resolved via reflection.
-    /// Ignored if ValueSelector is set.
-    /// </summary>
-    public string? PropertyName
-    {
-        get => (string?)GetValue(PropertyNameProperty);
-        set => SetValue(PropertyNameProperty, value);
-    }
-
-    public static readonly DependencyProperty PropertyNameProperty =
-        DependencyProperty.Register(nameof(PropertyName), typeof(string), typeof(TrackListColumnDefinition),
-            new PropertyMetadata(null));
-
-    /// <summary>
     /// Custom value selector function. Takes the track item and returns display text.
-    /// Takes priority over PropertyName when set.
     /// </summary>
     public Func<object, string>? ValueSelector { get; set; }
 
