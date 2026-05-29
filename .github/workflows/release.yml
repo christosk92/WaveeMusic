@@ -75,6 +75,23 @@ jobs:
           if ($missing) { throw "Playback sources missing after restore: $($missing -join ', ')" }
           Write-Host "Restored $($required.Count) proprietary playback sources (audio-enabled build)."
 
+      - name: Clone Klankhuis.Hero (hero carousel control)
+        shell: pwsh
+        run: |
+          # Klankhuis.Hero lives in a separate PUBLIC repo and is referenced by
+          # Wavee.UI.WinUI.csproj via $(KlankhuisHeroProject), which defaults to
+          # a local sibling checkout that doesn't exist on the runner. Clone it
+          # and point the property at the clone via GITHUB_ENV so both the
+          # restore and build steps resolve the ProjectReference.
+          $dest = Join-Path $env:RUNNER_TEMP 'hero-carousel-winui'
+          git clone --depth 1 https://github.com/christosk92/hero-carousel-winui.git $dest
+          if ($LASTEXITCODE -ne 0) { throw "Failed to clone hero-carousel-winui" }
+          $proj = Join-Path $dest 'src/Klankhuis.Hero/Klankhuis.Hero.csproj'
+          if (-not (Test-Path $proj)) { throw "Klankhuis.Hero.csproj not found at $proj after clone" }
+          $sha = (git -C $dest rev-parse HEAD).Trim()
+          Write-Host "Cloned hero-carousel-winui @ $sha"
+          "KlankhuisHeroProject=$proj" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
