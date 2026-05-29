@@ -1,6 +1,7 @@
 namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 
-public sealed class TrackDataGridFooterRow
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class TrackDataGridFooterRow
 {
     public required object Content { get; init; }
 }

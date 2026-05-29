@@ -13,15 +13,18 @@ namespace Wavee.UI.Contracts;
 /// the same rootlist snapshot the sidebar uses, so a folder you see in the
 /// sidebar appears identically in every menu rendered against this tree.
 /// </summary>
-public sealed record UserPlaylistTree(IReadOnlyList<UserPlaylistTreeNode> Children);
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record UserPlaylistTree(IReadOnlyList<UserPlaylistTreeNode> Children);
 
-public abstract record UserPlaylistTreeNode;
+[global::WinRT.GeneratedBindableCustomProperty]
+public abstract partial record UserPlaylistTreeNode;
 
 /// <summary>
 /// A user-defined rootlist folder. <paramref name="Children"/> is in arrival
 /// order — a playlist between two sub-folders stays between them.
 /// </summary>
-public sealed record UserPlaylistFolderNode(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record UserPlaylistFolderNode(
     string Id,
     string Name,
     IReadOnlyList<UserPlaylistTreeNode> Children)
@@ -31,5 +34,6 @@ public sealed record UserPlaylistFolderNode(
 /// A playlist leaf inside the rootlist tree. The DTO carries everything menus
 /// need — id, display name, owner flag, collaborator flag, cover.
 /// </summary>
-public sealed record UserPlaylistLeafNode(Models.PlaylistSummaryDto Playlist)
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record UserPlaylistLeafNode(Models.PlaylistSummaryDto Playlist)
     : UserPlaylistTreeNode;

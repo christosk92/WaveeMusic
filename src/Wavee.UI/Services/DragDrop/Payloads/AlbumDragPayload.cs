@@ -15,6 +15,7 @@ public sealed class AlbumDragPayload : IDragPayload
     public DragPayloadKind Kind => DragPayloadKind.Album;
     public string InternalFormat => DragFormats.Album;
     public int ItemCount => 1;
+    public string? DisplayTitle => Name;
     public IReadOnlyList<string> HttpsUrls => Wavee.UI.Helpers.SpotifyUriHelper.ToHttps(AlbumUri) is { } u
         ? [u]
         : Array.Empty<string>();

@@ -14,6 +14,7 @@ using Wavee.Protocol.Metadata;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Stores;
+using Wavee.UI.WinUI.Helpers;
 using MetadataAlbum = Wavee.Protocol.Metadata.Album;
 using MetadataImage = Wavee.Protocol.Metadata.Image;
 
@@ -260,11 +261,7 @@ public sealed partial class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
             parts.Add(date);
 
         if (totalTracks > 0)
-        {
-            parts.Add(totalTracks == 1
-                ? AppLocalization.GetString("Count_Track_One")
-                : AppLocalization.Format("Count_Track_Many", totalTracks.ToString("N0", CultureInfo.CurrentCulture)));
-        }
+            parts.Add(TrackCountFormatter.FormatTrackCount(totalTracks));
 
         return parts.Count == 0 ? null : string.Join(" \u00B7 ", parts);
     }

@@ -48,9 +48,9 @@ public sealed partial class ContentCard
         if (uri.StartsWith("spotify:album:", StringComparison.Ordinal))
             return new AlbumDragPayload(uri, title, imageUrl);
         if (uri.StartsWith("spotify:playlist:", StringComparison.Ordinal))
-            return new PlaylistDragPayload(uri, title);
+            return new PlaylistDragPayload(uri, title, imageUrl: imageUrl);
         if (uri.StartsWith("spotify:artist:", StringComparison.Ordinal))
-            return new ArtistDragPayload(uri, title);
+            return new ArtistDragPayload(uri, title, imageUrl);
         if (uri.StartsWith("spotify:show:", StringComparison.Ordinal))
             return new ShowDragPayload(uri, title, imageUrl);
         // "spotify:collection" or "spotify:collection:tracks" → the user's

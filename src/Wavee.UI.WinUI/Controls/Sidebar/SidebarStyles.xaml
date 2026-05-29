@@ -7,6 +7,32 @@
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Sidebar">
 
+    <!-- Theme-aware brushes for the SidebarItem hover-play overlay. Mirrors
+         the same brush keys TrackItem.xaml declares locally for its compact
+         play overlay (translucent black scrim + white glyph in Light/Dark, an
+         alpha'd system-window colour for HighContrast). They're scoped per
+         file because each control owns its own resources — the dictionary
+         keys are intentionally namespaced ("SidebarPlayOverlay…") so the
+         lookup can't accidentally collide with TrackItem's near-identical
+         brushes if both controls ever share a merged dictionary scope. -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="SidebarPlayOverlayScrimBrush" Color="#33000000"/>
+            <SolidColorBrush x:Key="SidebarPlayOverlayGlyphBrush" Color="White"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="SidebarPlayOverlayScrimBrush" Color="#66000000"/>
+            <SolidColorBrush x:Key="SidebarPlayOverlayGlyphBrush" Color="White"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="SidebarPlayOverlayScrimBrush"
+                             Color="{ThemeResource SystemColorWindowColor}"
+                             Opacity="0.65"/>
+            <SolidColorBrush x:Key="SidebarPlayOverlayGlyphBrush"
+                             Color="{ThemeResource SystemColorButtonTextColor}"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
     <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     <converters:BoolToVisibilityConverter x:Key="SidebarBoolToVisibilityConverter" />
 
@@ -41,41 +67,12 @@
                         </Grid.RowDefinitions>
 
                         <!--
-                            Drag Target Indicators — pair of rounded pills hugging
-                            the row's top/bottom edges. Both stay Visibility=Visible
-                            so VSM transitions can crossfade their Opacity smoothly
-                            from invisible (no drag) → faint (drag in progress, any
-                            row) → bright (hovered insert position). The negative
-                            top / bottom Thickness lets the pill sit *in* the gap
-                            between rows rather than eating into row content.
+                            Reorder feedback is the composition row-displacement gap
+                            (SidebarView.OpenReorderGap) — rows part to show where the
+                            dragged item lands. No insertion-line pills: they were
+                            redundant with the gap and painted on every droppable row.
+                            The center "drop INTO" cue is the DragOnTop accent outline.
                         -->
-                        <Rectangle
-                            x:Name="DragTargetIndicator"
-                            Grid.Row="1"
-                            Grid.ColumnSpan="3"
-                            Height="2"
-                            Margin="4,-2"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Top"
-                            AutomationProperties.AccessibilityView="Raw"
-                            Fill="{ThemeResource AccentFillColorDefaultBrush}"
-                            Opacity="0"
-                            RadiusX="4"
-                            RadiusY="4" />
-                        <Rectangle
-                            x:Name="DragTargetIndicatorBottom"
-                            Grid.Row="1"
-                            Grid.ColumnSpan="3"
-                            Height="2"
-                            Margin="4,-2"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Bottom"
-                            AutomationProperties.AccessibilityView="Raw"
-                            Fill="{ThemeResource AccentFillColorDefaultBrush}"
-                            Opacity="0"
-                            RadiusX="4"
-                            RadiusY="4" />
-
                         <Border
                             x:Name="CompactSectionSeparator"
                             Grid.Row="0"
@@ -146,6 +143,51 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+
+                                <!-- Hover-play overlay — same cell as the icon
+                                     so the existing compact-mode visual states
+                                     (which retarget IconPresenter only) leave
+                                     the row layout alone, and the overlay
+                                     piggybacks on the icon's cell. Visual
+                                     language deliberately matches
+                                     TrackItem.CompactPlayButton: 4-px corners
+                                     (rectangular like the rest of the app),
+                                     CompactPlayOverlayScrimBrush translucent
+                                     scrim, white glyph from
+                                     CompactPlayOverlayGlyphBrush. Normally
+                                     collapsed; SidebarItem.cs reveals it when
+                                     Item is a playable playlist URI in
+                                     Expanded display mode AND the pointer is
+                                     over the row. Click fires
+                                     IPlaybackService.PlayContextAsync(uri). -->
+                                <Button
+                                    x:Name="HoverPlayButton"
+                                    Grid.Column="1"
+                                    Width="24" Height="24"
+                                    Margin="8,0,0,0"
+                                    Padding="0"
+                                    CornerRadius="4"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Opacity="0"
+                                    Visibility="Collapsed"
+                                    IsHitTestVisible="False"
+                                    AutomationProperties.Name="Play">
+                                    <Grid>
+                                        <Border CornerRadius="4"
+                                                Background="{ThemeResource SidebarPlayOverlayScrimBrush}"/>
+                                        <FontIcon
+                                            x:Name="HoverPlayGlyph"
+                                            FontFamily="Segoe Fluent Icons"
+                                            Glyph="&#xE768;"
+                                            FontSize="11"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource SidebarPlayOverlayGlyphBrush}"/>
+                                    </Grid>
+                                </Button>
 
                                 <!--  Text  -->
                                 <TextBlock
@@ -656,46 +698,8 @@
                                     hover feel sluggish.
                                 -->
                                 <VisualStateGroup.Transitions>
-                                    <VisualTransition To="DragAvailable" GeneratedDuration="0:0:0.18">
-                                        <VisualTransition.GeneratedEasingFunction>
-                                            <CubicEase EasingMode="EaseOut" />
-                                        </VisualTransition.GeneratedEasingFunction>
-                                    </VisualTransition>
-                                    <VisualTransition From="DragAvailable" GeneratedDuration="0:0:0.18">
-                                        <VisualTransition.GeneratedEasingFunction>
-                                            <CubicEase EasingMode="EaseIn" />
-                                        </VisualTransition.GeneratedEasingFunction>
-                                    </VisualTransition>
-                                    <VisualTransition To="DragReorderable" GeneratedDuration="0:0:0.18">
-                                        <VisualTransition.GeneratedEasingFunction>
-                                            <CubicEase EasingMode="EaseOut" />
-                                        </VisualTransition.GeneratedEasingFunction>
-                                    </VisualTransition>
-                                    <VisualTransition From="DragReorderable" GeneratedDuration="0:0:0.18">
-                                        <VisualTransition.GeneratedEasingFunction>
-                                            <CubicEase EasingMode="EaseIn" />
-                                        </VisualTransition.GeneratedEasingFunction>
-                                    </VisualTransition>
-                                    <VisualTransition To="DragInsertAbove" GeneratedDuration="0:0:0.14">
-                                        <VisualTransition.GeneratedEasingFunction>
-                                            <CubicEase EasingMode="EaseOut" />
-                                        </VisualTransition.GeneratedEasingFunction>
-                                    </VisualTransition>
-                                    <VisualTransition From="DragInsertAbove" GeneratedDuration="0:0:0.14">
-                                        <VisualTransition.GeneratedEasingFunction>
-                                            <CubicEase EasingMode="EaseIn" />
-                                        </VisualTransition.GeneratedEasingFunction>
-                                    </VisualTransition>
-                                    <VisualTransition To="DragInsertBelow" GeneratedDuration="0:0:0.14">
-                                        <VisualTransition.GeneratedEasingFunction>
-                                            <CubicEase EasingMode="EaseOut" />
-                                        </VisualTransition.GeneratedEasingFunction>
-                                    </VisualTransition>
-                                    <VisualTransition From="DragInsertBelow" GeneratedDuration="0:0:0.14">
-                                        <VisualTransition.GeneratedEasingFunction>
-                                            <CubicEase EasingMode="EaseIn" />
-                                        </VisualTransition.GeneratedEasingFunction>
-                                    </VisualTransition>
+                                    <!-- Only the center "drop INTO" cue (DragOnTop) animates now;
+                                         edge reorder is shown by the composition gap, not a row state. -->
                                     <VisualTransition To="DragOnTop" GeneratedDuration="0:0:0.14">
                                         <VisualTransition.GeneratedEasingFunction>
                                             <CubicEase EasingMode="EaseOut" />
@@ -740,62 +744,18 @@
                                 </VisualState>
 
                                 <!--
-                                    Drag states grow ElementBorder from 44 → 56 so realised rows
-                                    push apart during a drag, and paint BOTH top + bottom drop
-                                    pills at faint opacity (0.35) so the user sees every valid
-                                    insert position at a glance — no hover required. Hover then
-                                    just brightens the relevant pill to 1.0. DragAvailable adds
-                                    the blue center-drop outline; DragReorderable is the
-                                    edge-only variant for non-editable Spotify playlists, so
-                                    they don't visually promise an add-tracks affordance they
-                                    would then reject. Transitions on the PointerStates group
-                                    (below) animate Height / Opacity smoothly between states.
+                                    Reorder feedback is the composition row-displacement gap
+                                    (SidebarView.OpenReorderGap) — no per-row "make room" growth
+                                    or insertion pills. The single remaining drag state is the
+                                    center "drop INTO" cue (nest into folder / add tracks to
+                                    playlist): an accent outline + fill, no row growth.
                                 -->
-                                <VisualState x:Name="DragInsertAbove">
-                                    <VisualState.Setters>
-                                        <Setter Target="ElementBorder.Height" Value="56" />
-                                        <Setter Target="DragTargetIndicator.Opacity" Value="1" />
-                                        <Setter Target="DragTargetIndicatorBottom.Opacity" Value="0.35" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                                <VisualState x:Name="DragInsertBelow">
-                                    <VisualState.Setters>
-                                        <Setter Target="ElementBorder.Height" Value="56" />
-                                        <Setter Target="DragTargetIndicator.Opacity" Value="0.35" />
-                                        <Setter Target="DragTargetIndicatorBottom.Opacity" Value="1" />
-                                    </VisualState.Setters>
-                                </VisualState>
                                 <VisualState x:Name="DragOnTop">
                                     <VisualState.Setters>
-                                        <Setter Target="ElementBorder.Height" Value="56" />
                                         <Setter Target="ElementGrid.Background" Value="{ThemeResource AccentFillColorTertiaryBrush}" />
                                         <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
                                         <Setter Target="ElementGrid.BorderThickness" Value="2" />
                                         <Setter Target="SelectionIndicator.Opacity" Value="1" />
-                                        <!--
-                                            User is targeting the center of the row (drop INTO),
-                                            so the edge pills become noise. Fade them out to keep
-                                            the row reading as one solid drop target.
-                                        -->
-                                        <Setter Target="DragTargetIndicator.Opacity" Value="0" />
-                                        <Setter Target="DragTargetIndicatorBottom.Opacity" Value="0" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                                <VisualState x:Name="DragAvailable">
-                                    <VisualState.Setters>
-                                        <Setter Target="ElementBorder.Height" Value="56" />
-                                        <Setter Target="ElementGrid.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
-                                        <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource AccentFillColorTertiaryBrush}" />
-                                        <Setter Target="ElementGrid.BorderThickness" Value="1" />
-                                        <Setter Target="DragTargetIndicator.Opacity" Value="0.35" />
-                                        <Setter Target="DragTargetIndicatorBottom.Opacity" Value="0.35" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                                <VisualState x:Name="DragReorderable">
-                                    <VisualState.Setters>
-                                        <Setter Target="ElementBorder.Height" Value="56" />
-                                        <Setter Target="DragTargetIndicator.Opacity" Value="0.35" />
-                                        <Setter Target="DragTargetIndicatorBottom.Opacity" Value="0.35" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>

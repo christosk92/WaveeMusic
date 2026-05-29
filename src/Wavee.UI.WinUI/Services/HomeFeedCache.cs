@@ -343,8 +343,8 @@ public sealed partial class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFe
         SetStringPreservingExisting(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
         SetStringPreservingExisting(target.SubtitleNavigationUri, source.SubtitleNavigationUri, v => target.SubtitleNavigationUri = v);
         SetStringPreservingExisting(target.SubtitleNavigationTitle, source.SubtitleNavigationTitle, v => target.SubtitleNavigationTitle = v);
-        SetStringPreservingExisting(target.AlbumMetadataSubtitle, source.AlbumMetadataSubtitle, v => target.AlbumMetadataSubtitle = v);
-        if (target.AlbumTotalTracks <= 0 && source.AlbumTotalTracks > 0) target.AlbumTotalTracks = source.AlbumTotalTracks;
+        SetStringPreservingExisting(target.MetadataSubtitle, source.MetadataSubtitle, v => target.MetadataSubtitle = v);
+        if (target.TotalTracks <= 0 && source.TotalTracks > 0) target.TotalTracks = source.TotalTracks;
         SetStringPreservingExisting(target.ImageUrl, source.ImageUrl, v => target.ImageUrl = v);
         SetStringPreservingExisting(target.ImageSmallUrl, source.ImageSmallUrl, v => target.ImageSmallUrl = v);
         SetStringPreservingExisting(target.ImageMediumUrl, source.ImageMediumUrl, v => target.ImageMediumUrl = v);
@@ -426,9 +426,9 @@ public sealed partial class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFe
         SetMissingString(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
         SetMissingString(target.SubtitleNavigationUri, source.SubtitleNavigationUri, v => target.SubtitleNavigationUri = v);
         SetMissingString(target.SubtitleNavigationTitle, source.SubtitleNavigationTitle, v => target.SubtitleNavigationTitle = v);
-        SetMissingString(target.AlbumMetadataSubtitle, source.AlbumMetadataSubtitle, v => target.AlbumMetadataSubtitle = v);
-        if (target.AlbumTotalTracks <= 0 && source.AlbumTotalTracks > 0)
-            target.AlbumTotalTracks = source.AlbumTotalTracks;
+        SetMissingString(target.MetadataSubtitle, source.MetadataSubtitle, v => target.MetadataSubtitle = v);
+        if (target.TotalTracks <= 0 && source.TotalTracks > 0)
+            target.TotalTracks = source.TotalTracks;
         SetMissingString(target.ImageUrl, source.ImageUrl, v => target.ImageUrl = v);
         SetMissingString(target.ImageSmallUrl, source.ImageSmallUrl, v => target.ImageSmallUrl = v);
         SetMissingString(target.ImageMediumUrl, source.ImageMediumUrl, v => target.ImageMediumUrl = v);

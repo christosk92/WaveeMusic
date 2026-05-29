@@ -34,7 +34,9 @@ public static class DropTargetBehavior
         Func<DragEventArgs, string?>? targetIdResolver = null,
         Func<DragEventArgs, (DropPosition pos, int? index)>? positionResolver = null,
         Action<DropResult>? onDropped = null,
-        Action<DragEventArgs, IDragPayload>? onDragOver = null)
+        Action<DragEventArgs, IDragPayload>? onDragOver = null,
+        FrameworkElement? highlightTarget = null,
+        DropHighlight.Intensity highlightIntensity = DropHighlight.Intensity.Into)
     {
         ArgumentNullException.ThrowIfNull(element);
 
@@ -43,6 +45,11 @@ public static class DropTargetBehavior
 
         element.AllowDrop = true;
 
+        // When a highlight target is supplied, the surface itself lights up on a
+        // valid drag-over (replacing caption-only feedback) and clears on
+        // leave / drop. Defaults to the element being attached.
+        var hl = highlightTarget ?? element as FrameworkElement;
+
         async void OnDragOver(object sender, DragEventArgs e)
         {
             try
@@ -50,8 +57,9 @@ public static class DropTargetBehavior
                 var payload = await DragPackageReader.ReadAsync(e.DataView, service);
                 if (payload is null) return;
                 var targetId = targetIdResolver?.Invoke(e);
-                if (!service.CanDrop(payload, kind, targetId)) return;
+                if (!service.CanDrop(payload, kind, targetId)) { if (hl is not null) DropHighlight.Clear(hl); return; }
                 e.AcceptedOperation = DataPackageOperation.Copy;
+                if (hl is not null) DropHighlight.Apply(hl, highlightIntensity);
                 onDragOver?.Invoke(e, payload);
             }
             catch (Exception ex)
@@ -64,8 +72,14 @@ public static class DropTargetBehavior
             }
         }
 
+        void OnDragLeave(object sender, DragEventArgs e)
+        {
+            if (hl is not null) DropHighlight.Clear(hl);
+        }
+
         async void OnDrop(object sender, DragEventArgs e)
         {
+            if (hl is not null) DropHighlight.Clear(hl);
             var deferral = e.GetDeferral();
             try
             {
@@ -104,6 +118,7 @@ public static class DropTargetBehavior
         }
 
         element.DragOver += OnDragOver;
+        element.DragLeave += OnDragLeave;
         element.Drop += OnDrop;
     }
 

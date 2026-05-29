@@ -27,7 +27,8 @@ namespace Wavee.UI.WinUI.ViewModels.Home;
 /// XAML can statically reference <c>SideCards[0]</c>..<c>[2]</c> without
 /// running through an <c>ItemsRepeater</c>.
 /// </summary>
-public sealed class SideCardItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class SideCardItem
 {
     public string Label { get; init; } = "";
     public string Eyebrow { get; init; } = "";

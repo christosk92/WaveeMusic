@@ -5,7 +5,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents a track within an album in the library.
 /// </summary>
-public sealed record LibraryAlbumTrackDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibraryAlbumTrackDto
 {
     public required string Id { get; init; }
     public int TrackNumber { get; init; }

@@ -79,8 +79,11 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
 
         _messenger.Send(new NotificationRequestedMessage(notification));
 
-        // Also post to the activity bell so it persists in history
-        PostToActivityBell(notification);
+        // Also post to the activity bell so it persists in history (unless the
+        // caller opted out — transient confirmations like "Added to queue" stay
+        // toast-only so they don't flood the bell).
+        if (notification.PostToActivityBell)
+            PostToActivityBell(notification);
 
         // Auto-dismiss is the default for the new floating-toast UX. If the
         // caller didn't pick a duration, give actionable toasts a longer window

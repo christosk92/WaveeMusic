@@ -7,7 +7,6 @@ public enum DropTargetKind
 {
     PlaylistRow,
     FolderRow,
-    SidebarRoot,
     PlaylistTrackList,
     Queue,
     NowPlaying,

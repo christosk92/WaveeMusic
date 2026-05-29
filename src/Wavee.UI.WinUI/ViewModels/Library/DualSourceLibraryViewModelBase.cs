@@ -139,7 +139,13 @@ public abstract partial class DualSourceLibraryViewModelBase<TSaved, TLiked> : L
 
         OnSourceModeChangedCore(oldValue, newValue);
         SavePreferences();
-        ApplyFilterCore();
+        // Defer the filter rebuild off the SourceMode setter / SelectionChanged call
+        // stack. ApplyFilterCore clears + repopulates the bound ItemsSource collection;
+        // doing that synchronously while the Saved / Liked grids toggle visibility on
+        // this same SourceMode change throws COMException E_FAIL inside the native
+        // CollectionChanged handler. The recents-refresh paths hop the dispatcher for
+        // the same reason.
+        DispatcherQueue.TryEnqueue(ApplyFilterCore);
     }
 
     private void ApplyActivePrefsToBindings()

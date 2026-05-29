@@ -3,7 +3,8 @@ using System.Globalization;
 
 namespace Wavee.UI.Models;
 
-public sealed record TimelineHoverPreviewItem(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record TimelineHoverPreviewItem(
     string Title,
     string? Subtitle,
     long StartMilliseconds,

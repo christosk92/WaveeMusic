@@ -27,7 +27,8 @@ public sealed record HomeDebugSectionViewModel(
     int ItemCount,
     HomeDebugSectionItem[] Items);
 
-public sealed record HomeDebugSectionItem(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record HomeDebugSectionItem(
     int Index,
     string? Uri,
     string? Title,

@@ -119,7 +119,7 @@
 		<PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
 		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
 		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.1.4-experimental8" />
-		<PackageReference Include="FluentIcons.WinUI" Version="2.1.326" />
+		<PackageReference Include="FluentIcons.WinUI" Version="2.1.328" />
 		<PackageReference Include="FontAwesome6.Svg.WinUI" Version="2.5.1" />
 		<PackageReference Include="QRCoder" Version="1.8.0" />
 		<PackageReference Include="Serilog" Version="4.3.2-dev-02430" />
@@ -130,7 +130,7 @@
 		<!-- Window management -->
 		<PackageReference Include="WinUIEx" Version="2.9.0" />
 		<!-- System-tray notification icon for minimize-to-tray + headless control. -->
-		<PackageReference Include="H.NotifyIcon.WinUI" Version="2.3.0" />
+		<PackageReference Include="H.NotifyIcon.WinUI" Version="2.4.1" />
 		<!-- MVVM and DI -->
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.7" />
@@ -140,7 +140,7 @@
 		<PackageReference Include="CommunityToolkit.WinUI.Extensions" Version="8.3.260402-preview2" />
 		<PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.3.260402-preview2" />
 		<!-- Reactive Extensions (System.Reactive used directly by WinUI and Connect/Core layer) -->
-		<PackageReference Include="System.Reactive" Version="7.0.0-preview.15" />
+		<PackageReference Include="System.Reactive" Version="7.0.0-preview.16" />
 	</ItemGroup>
 
 	<ItemGroup>

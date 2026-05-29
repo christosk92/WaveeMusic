@@ -86,7 +86,7 @@ public sealed partial class MockLibraryDataService : ILibraryDataService
     private readonly List<LikedSongsFilterDto> _mockLikedSongFilters;
     private readonly Dictionary<string, List<PlaylistTrackDto>> _mockPlaylistTracks;
 
-    // MovePlaylistIntoFolderAsync / MovePlaylistOutOfFolderAsync moved to IRootlistService.
+    // MovePlaylistIntoFolderAsync moved to IRootlistService.
 
 
     public void RequestSyncIfEmpty()
@@ -259,6 +259,17 @@ public sealed partial class MockLibraryDataService : ILibraryDataService
         }
         return Task.FromResult<IReadOnlyList<PlaylistTrackDto>>([]);
     }
+
+    // Mock doesn't stream — empty skeletons make the cold-open path fall through
+    // to the blocking GetPlaylistTracksAsync above.
+    public Task<IReadOnlyList<PlaylistTrackSkeleton>> GetPlaylistTrackSkeletonsAsync(string playlistId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<PlaylistTrackSkeleton>>([]);
+
+    public Task StreamPlaylistTrackMetadataAsync(
+        IReadOnlyList<PlaylistTrackSkeleton> skeletons,
+        Action<PlaylistTrackDto> onResolved,
+        CancellationToken ct = default)
+        => Task.CompletedTask;
 
     public Task<long> GetPlaylistFollowerCountAsync(string playlistId, CancellationToken ct = default)
         => Task.FromResult(0L);

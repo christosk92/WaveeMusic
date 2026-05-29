@@ -20,6 +20,7 @@ public sealed class ShowDragPayload : IDragPayload
     public DragPayloadKind Kind => DragPayloadKind.Show;
     public string InternalFormat => DragFormats.Show;
     public int ItemCount => 1;
+    public string? DisplayTitle => Name;
     public IReadOnlyList<string> HttpsUrls => Wavee.UI.Helpers.SpotifyUriHelper.ToHttps(ShowUri) is { } u
         ? [u]
         : Array.Empty<string>();

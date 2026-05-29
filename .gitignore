@@ -160,6 +160,17 @@ perf-traces/
 *.etl
 *.etl.cab
 
+# Diagnostic / profiling dumps — heap & GC dumps, CPU traces, counter CSVs,
+# and dump-analysis text reports. Transient session output, never source.
+*.gcdump
+*.nettrace
+*.speedscope.json
+*.dmp
+*counters*.csv
+*dump*.txt
+*-report.txt
+empty-files-list.txt
+
 # PlayPlay (Spotify property — kept out of the public repository).
 # Wavee follows strict guidelines (proper user-agents, playback events, no
 # abuse). Tracks are chunked per user request and not stored to disk.

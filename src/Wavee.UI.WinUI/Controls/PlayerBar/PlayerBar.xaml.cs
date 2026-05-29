@@ -190,6 +190,24 @@ public sealed partial class PlayerBar : UserControl
         var showNarrowModes = false;
         var showNarrowVolume = true;
 
+        // Podcast-only transport extras (-15 / +15 / 1× speed) sit between the
+        // music-canonical Shuffle/Prev/Play/Next/Repeat cluster. In Narrow
+        // (520–860 px) the inline row only has ~340 px of cluster space, which
+        // squishes the progress bar to a sliver — so we trim those three
+        // affordances out of the inline row and surface them in the overflow
+        // menu instead. Music tracks never see this because they don't render
+        // the buttons at all. VeryNarrow uses the two-row NarrowLayoutRoot,
+        // which has its own (full) transport cluster.
+        var trimEpisodeExtras = state == "Narrow" && ViewModel.IsCurrentItemEpisode;
+        var showInlineEpisodeExtras = !trimEpisodeExtras && ViewModel.IsCurrentItemEpisode;
+        SkipBackwardButton.Visibility = showInlineEpisodeExtras ? Visibility.Visible : Visibility.Collapsed;
+        SkipForwardButton.Visibility = showInlineEpisodeExtras ? Visibility.Visible : Visibility.Collapsed;
+        PlaybackSpeedButton.Visibility = showInlineEpisodeExtras ? Visibility.Visible : Visibility.Collapsed;
+        OverflowSkipBackwardItem.Visibility = trimEpisodeExtras ? Visibility.Visible : Visibility.Collapsed;
+        OverflowSkipForwardItem.Visibility = trimEpisodeExtras ? Visibility.Visible : Visibility.Collapsed;
+        OverflowPlaybackSpeedItem.Visibility = trimEpisodeExtras ? Visibility.Visible : Visibility.Collapsed;
+        OverflowEpisodeExtrasSeparator.Visibility = trimEpisodeExtras ? Visibility.Visible : Visibility.Collapsed;
+
         WideLayoutRoot.Visibility = showWide ? Visibility.Visible : Visibility.Collapsed;
         NarrowLayoutRoot.Visibility = showWide ? Visibility.Collapsed : Visibility.Visible;
 
@@ -295,8 +313,13 @@ public sealed partial class PlayerBar : UserControl
         }
 
         if (e.PropertyName is nameof(PlayerBarViewModel.IsAlbumArtExpanded)
-            or nameof(PlayerBarViewModel.IsPlayingRemotely))
+            or nameof(PlayerBarViewModel.IsPlayingRemotely)
+            or nameof(PlayerBarViewModel.IsCurrentItemEpisode))
         {
+            // IsCurrentItemEpisode changes which transport affordances belong
+            // in the inline row vs. the overflow menu — see the trim block
+            // in ApplyLayoutState. Window width hasn't changed so the layout
+            // *state* is the same; re-apply directly.
             ApplyLayoutState(_currentLayoutState ?? "Wide");
         }
     }
@@ -680,6 +703,9 @@ public sealed partial class PlayerBar : UserControl
             var shift = Microsoft.UI.Input.InputKeyboardSource
                 .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
                 .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+            // Light up the whole bar so the target reads as "drop here"; caption is
+            // the secondary hint (incl. the Shift = Play next modifier).
+            Wavee.UI.WinUI.DragDrop.DropHighlight.Apply(PlayerBarLayoutRoot);
             e.DragUIOverride.Caption = shift ? "Play next" : "Add to queue";
             e.DragUIOverride.IsCaptionVisible = true;
             e.DragUIOverride.IsGlyphVisible = true;
@@ -711,11 +737,12 @@ public sealed partial class PlayerBar : UserControl
 
     private void PlayerBarRoot_DragLeave(object sender, Microsoft.UI.Xaml.DragEventArgs e)
     {
-        // No persistent overlay on the bar — the cursor caption is enough.
+        Wavee.UI.WinUI.DragDrop.DropHighlight.Clear(PlayerBarLayoutRoot);
     }
 
     private async void PlayerBarRoot_Drop(object sender, Microsoft.UI.Xaml.DragEventArgs e)
     {
+        Wavee.UI.WinUI.DragDrop.DropHighlight.Clear(PlayerBarLayoutRoot);
         // Wavee internal drag — route through the drop registry as Queue (or
         // NowPlaying for context payloads). The registry's handler enqueues
         // tracks or switches the active context as appropriate.

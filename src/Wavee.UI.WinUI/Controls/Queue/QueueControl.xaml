@@ -288,8 +288,8 @@
         </StackPanel>
 
         <!-- Scrolling content -->
-        <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto">
-          <Grid>
+        <ScrollView x:Name="QueueScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+          <Grid x:Name="QueueScrollContent">
             <StackPanel Spacing="0" Padding="0,0,0,160">
 
                 <!-- Playing-from breadcrumb. Borderless / fill-less single line; the
@@ -399,14 +399,18 @@
                                          Padding="6,2"
                                          Click="ClearQueueButton_Click"/>
                     </Grid>
+                    <!-- AllowDrop + UserQueue_* handlers remain only for the external
+                         enqueue drop (drag a track/album/playlist INTO the queue).
+                         Intra-section reorder is owned by the rbd ReorderController. -->
                     <ListView x:Name="UserQueueRepeater"
                               ItemTemplate="{StaticResource TrackTemplate}"
                               ItemContainerStyle="{StaticResource QueueRowContainerStyle}"
                               SelectionMode="None"
                               IsItemClickEnabled="False"
                               AllowDrop="True"
-                              DragOver="Section_DragOver"
-                              Drop="Section_Drop"
+                              DragOver="UserQueue_DragOver"
+                              DragLeave="UserQueue_DragLeave"
+                              Drop="UserQueue_Drop"
                               ScrollViewer.VerticalScrollMode="Disabled"
                               ScrollViewer.VerticalScrollBarVisibility="Disabled"
                               ScrollViewer.HorizontalScrollMode="Disabled"
@@ -424,9 +428,6 @@
                               ItemContainerStyle="{StaticResource QueueRowContainerStyle}"
                               SelectionMode="None"
                               IsItemClickEnabled="False"
-                              AllowDrop="True"
-                              DragOver="Section_DragOver"
-                              Drop="Section_Drop"
                               ScrollViewer.VerticalScrollMode="Disabled"
                               ScrollViewer.VerticalScrollBarVisibility="Disabled"
                               ScrollViewer.HorizontalScrollMode="Disabled"
@@ -449,9 +450,6 @@
                               ItemContainerStyle="{StaticResource QueueRowContainerStyle}"
                               SelectionMode="None"
                               IsItemClickEnabled="False"
-                              AllowDrop="True"
-                              DragOver="Section_DragOver"
-                              Drop="Section_Drop"
                               ScrollViewer.VerticalScrollMode="Disabled"
                               ScrollViewer.VerticalScrollBarVisibility="Disabled"
                               ScrollViewer.HorizontalScrollMode="Disabled"
@@ -474,9 +472,6 @@
                               ItemContainerStyle="{StaticResource QueueRowContainerStyle}"
                               SelectionMode="None"
                               IsItemClickEnabled="False"
-                              AllowDrop="True"
-                              DragOver="Section_DragOver"
-                              Drop="Section_Drop"
                               ScrollViewer.VerticalScrollMode="Disabled"
                               ScrollViewer.VerticalScrollBarVisibility="Disabled"
                               ScrollViewer.HorizontalScrollMode="Disabled"
@@ -495,10 +490,6 @@
                 </StackPanel>
 
             </StackPanel>
-
-            <!-- Drag-reorder insertion line overlay. Hit-test-invisible so drag
-                 events still reach the section ListViews underneath. -->
-            <Canvas x:Name="DropIndicatorOverlay" IsHitTestVisible="False"/>
           </Grid>
         </ScrollView>
 

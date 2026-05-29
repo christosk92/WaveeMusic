@@ -11,7 +11,8 @@ public enum PodcastBrowseItemKind
     Show
 }
 
-public sealed record PodcastBrowsePageDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastBrowsePageDto
 {
     public string Uri { get; init; } = "";
     public string Title { get; init; } = "";
@@ -33,7 +34,8 @@ public sealed record PodcastBrowsePageDto
         Sections.Where(static section => section.Items.Any(static item => item.Kind is PodcastBrowseItemKind.Category or PodcastBrowseItemKind.Section));
 }
 
-public sealed record PodcastBrowseSectionDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastBrowseSectionDto
 {
     public string Uri { get; init; } = "";
     public string Title { get; init; } = "";
@@ -48,7 +50,8 @@ public sealed record PodcastBrowseSectionDto
     public bool HasCategories => Items.Any(static item => item.Kind is PodcastBrowseItemKind.Category or PodcastBrowseItemKind.Section);
 }
 
-public sealed record PodcastBrowseItemDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastBrowseItemDto
 {
     public string Uri { get; init; } = "";
     public string Title { get; init; } = "";

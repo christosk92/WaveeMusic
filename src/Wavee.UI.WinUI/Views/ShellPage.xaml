@@ -18,6 +18,7 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:notifications="using:Wavee.UI.WinUI.Controls.Notifications"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:addtoplaylist="using:Wavee.UI.WinUI.Controls.AddToPlaylist"
     xmlns:inpf="using:Wavee.UI.WinUI.Controls.InPageFilter"
     xmlns:minivideo="using:Wavee.UI.WinUI.Controls.MiniVideoPlayer"
@@ -30,7 +31,8 @@
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
     </UserControl.Resources>
 
-    <!-- F12 debug shortcut removed — use Settings > Diagnostics instead -->
+    <!-- F12 → DebugPage (always-on, Release too). Ctrl+F12 opens in a new tab.
+         Wired in ShellPage.xaml.cs OnProcessKeyboardAccelerators. -->
 
     <!-- Keyboard shortcuts handled in ProcessKeyboardAccelerators to avoid tooltip flyouts -->
 
@@ -141,6 +143,22 @@
             IsActionEnabled="{x:Bind ViewModel.IsNotificationActionEnabled, Mode=OneWay}"
             ActionClick="NotificationAction_Click"
             CloseRequested="Notification_CloseRequested"/>
+
+        <!-- Browser-style zoom HUD. Pops in top-center on Ctrl+/-/0 (or when
+             dragging a pip in Settings → Display scale). Inline −/+/Reset
+             buttons route back through ShellPage's StepZoomIndex helpers,
+             which mutate SettingsViewModel.ZoomLevelIndex so the slider and
+             tile selection stay in sync. Self-dismisses after 2 s. -->
+        <playback:ZoomHud
+            x:Name="ZoomHudOverlay"
+            Grid.Row="2"
+            Canvas.ZIndex="6"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="0,64,0,0"
+            ZoomInRequested="ZoomHud_ZoomInRequested"
+            ZoomOutRequested="ZoomHud_ZoomOutRequested"
+            ResetRequested="ZoomHud_ResetRequested"/>
 
         <!-- App-wide "Adding to playlist…" floating bar. Mounted once at the
              shell level so it survives navigation between Browse, album,

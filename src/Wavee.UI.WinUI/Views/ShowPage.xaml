@@ -464,7 +464,7 @@
                                             Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                             BorderThickness="0">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <FontIcon Glyph="&#xE893;" FontSize="12"/>
+                                            <PathIcon Style="{StaticResource App.PathIcons.Media.PlayNext}" Data="M 5,4 L 14.5,4 L 14.5,5.5 L 5,5.5 Z M 5,7.25 L 14.5,7.25 L 14.5,8.75 L 5,8.75 Z M 5,10.5 L 11,10.5 L 11,12 L 5,12 Z M 1.5,6.5 L 4,8 L 1.5,9.5 Z" Width="14" Height="14"/>
                                             <TextBlock x:Uid="Views_ShowPage__PlayNextText" Text="Play next" FontSize="12" FontWeight="SemiBold"/>
                                         </StackPanel>
                                     </Button>

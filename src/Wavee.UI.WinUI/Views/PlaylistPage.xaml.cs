@@ -147,7 +147,8 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
                 ? profile.DisplayName
                 : "@" + dto.AddedBy;
             var avatarUrl = hasProfile ? profile?.AvatarUrl : null;
-            System.Diagnostics.Debug.WriteLine($"[addedby-fmt] addedBy={dto.AddedBy} display={(profile?.DisplayName ?? "<null>")} avatar={(string.IsNullOrEmpty(avatarUrl) ? "<null>" : "set")}");
+            if (Wavee.UI.WinUI.Services.AppFeatureFlags.VerboseUiDiagnostics)
+                System.Diagnostics.Debug.WriteLine($"[addedby-fmt] addedBy={dto.AddedBy} display={(profile?.DisplayName ?? "<null>")} avatar={(string.IsNullOrEmpty(avatarUrl) ? "<null>" : "set")}");
             return new Controls.TrackDataGrid.AddedByCellInfo(label, avatarUrl);
         };
 

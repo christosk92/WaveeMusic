@@ -107,10 +107,6 @@ public sealed partial class QueueControl : UserControl
     private readonly ITrackColorHintService? _colorHintService;
     private readonly ILogger? _logger;
 
-    // Source of an in-flight queue-internal reorder drag (null when no drag, or
-    // when the drag came from outside the queue). Set by the row's drag payload
-    // factory; consumed by Section_DragOver / Section_Drop.
-    private (ListView List, QueueReorderTarget Target, int SourceIndex, QueueDisplayItem Item)? _reorderSource;
     // Rows that already have a ManualDragAttachment (guards against re-attaching
     // on container recycle).
     private readonly HashSet<UIElement> _dragAttachedRows = new();
@@ -118,6 +114,9 @@ public sealed partial class QueueControl : UserControl
     // Refresh on the UI thread. Each Refresh re-materializes ~80 ItemsRepeater
     // containers; not deduping caused a 697ms flush on every playback transition.
     private bool _refreshQueued;
+    // Set when a refresh-worthy playback change arrives while the queue tab is
+    // hidden; flushed by SizeChanged when the tab is re-shown.
+    private bool _pendingRefresh;
     private RepeatMode _repeatVisualMode = RepeatMode.Off;
 
     public QueueControl()
@@ -143,6 +142,18 @@ public sealed partial class QueueControl : UserControl
         Unloaded += (_, _) => WeakReferenceMessenger.Default.UnregisterAll(this);
 
         Loaded += (_, _) => Refresh();
+        // The queue tab is collapsed (but kept loaded + subscribed) when another
+        // right-panel tab is shown. SizeChanged fires when a collapsed ancestor
+        // re-arranges us back into view — that's our cue to apply any refresh we
+        // deferred while hidden, so the queue is never stale when reopened.
+        SizeChanged += (_, _) =>
+        {
+            if (_pendingRefresh && IsEffectivelyVisible())
+            {
+                _pendingRefresh = false;
+                Refresh();
+            }
+        };
     }
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -156,6 +167,17 @@ public sealed partial class QueueControl : UserControl
             or nameof(IPlaybackStateService.IsShuffle)
             or nameof(IPlaybackStateService.RepeatMode))
         {
+            // The queue panel re-materializes ~80 ItemsRepeater containers per
+            // Refresh. Doing that on every track change while the tab is hidden was
+            // pure waste (a chunk of the 477–806ms PlaybackStateFlush). Defer until
+            // the tab is actually visible; SizeChanged above flushes the pending
+            // refresh on reopen, so this is a visibility gate, not a stale hack.
+            if (!IsEffectivelyVisible())
+            {
+                _pendingRefresh = true;
+                return;
+            }
+
             if (_refreshQueued) return;
             _refreshQueued = true;
             DispatcherQueue.TryEnqueue(() =>
@@ -164,6 +186,26 @@ public sealed partial class QueueControl : UserControl
                 Refresh();
             });
         }
+    }
+
+    /// <summary>
+    /// True only when this control and every ancestor are <see cref="Visibility.Visible"/>
+    /// and it's in the live tree. Catches the right-panel collapsing the queue tab
+    /// (an ancestor goes Collapsed) without coupling to the panel's view model.
+    /// </summary>
+    private bool IsEffectivelyVisible()
+    {
+        if (!IsLoaded || Visibility != Visibility.Visible || XamlRoot is null)
+            return false;
+
+        DependencyObject? node = VisualTreeHelper.GetParent(this);
+        while (node is not null)
+        {
+            if (node is FrameworkElement { Visibility: Visibility.Collapsed })
+                return false;
+            node = VisualTreeHelper.GetParent(node);
+        }
+        return true;
     }
 
     private void Refresh()
@@ -550,6 +592,8 @@ public sealed partial class QueueControl : UserControl
             var shift = InputKeyboardSource
                 .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
                 .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+            // Light up the queue panel as a drop zone; caption is the secondary hint.
+            Wavee.UI.WinUI.DragDrop.DropHighlight.Apply(QueueScrollContent, Wavee.UI.WinUI.DragDrop.DropHighlight.Intensity.Zone);
             // Hint the modifier in the non-shift caption so first-time users can
             // discover the alternate route without reading docs. The ? glyph is in
             // the base Unicode plane so it round-trips fine through XAML/code.
@@ -557,10 +601,18 @@ public sealed partial class QueueControl : UserControl
             e.DragUIOverride.IsCaptionVisible = true;
             e.DragUIOverride.IsGlyphVisible = true;
         }
+        else
+        {
+            Wavee.UI.WinUI.DragDrop.DropHighlight.Clear(QueueScrollContent);
+        }
     }
+
+    private void UserQueue_DragLeave(object sender, DragEventArgs e)
+        => Wavee.UI.WinUI.DragDrop.DropHighlight.Clear(QueueScrollContent);
 
     private async void UserQueue_Drop(object sender, DragEventArgs e)
     {
+        Wavee.UI.WinUI.DragDrop.DropHighlight.Clear(QueueScrollContent);
         var dropService = Ioc.Default.GetService<Wavee.UI.Services.DragDrop.IDragDropService>();
         if (dropService is null) return;
 
@@ -631,16 +683,12 @@ public sealed partial class QueueControl : UserControl
     }
 
     // -- Drag-reorder --------------------------------------------------------
-    //   Rows drag via ManualDragAttachment � it tracks pointer events even
-    //   through the title/artist HyperlinkButtons, which would otherwise
-    //   swallow a CanDragItems gesture. The drag carries a TrackDragPayload so a
-    //   queue row can also be dropped on a playlist; the queue-internal reorder
-    //   runs off _reorderSource and previews the shared ReorderDropIndicator
-    //   insertion line.
-
-    private ReorderDropIndicator? _dropIndicator;
-    private ReorderDropIndicator DropIndicator =>
-        _dropIndicator ??= new ReorderDropIndicator(DropIndicatorOverlay);
+    //   Intra-section reorder is owned by the react-beautiful-dnd ReorderController
+    //   (one per section ListView; see QueueControl.Reorder.cs). It captures the row
+    //   press, lifts the row, displaces neighbours, springs the drop, and hands off
+    //   to OLE when the pointer leaves the list. Cross-surface drag-out (queue row →
+    //   playlist) is still served by ManualDragAttachment, but only when reorder is
+    //   disabled (remote playback) — otherwise the engine's own handoff covers it.
 
     private QueueReorderTarget? SectionTargetFor(ListView list)
     {
@@ -668,7 +716,11 @@ public sealed partial class QueueControl : UserControl
 
         Wavee.UI.WinUI.DragDrop.ManualDragAttachment.AttachWithPackageWriter(
             row, () => BuildQueueDragPayload(row));
-        row.DropCompleted += OnRowDropCompleted;
+
+        // rbd reorder engine owns the in-section reorder gesture (incl. its own OLE
+        // handoff). Attaches to the row's ListViewItem container; self-gates on
+        // QueueReorderEnabled, so it's inert during remote playback.
+        AttachReorderToRow(row);
     }
 
     // Runs at drag-start (pointer past the threshold). Records the reorder
@@ -676,25 +728,13 @@ public sealed partial class QueueControl : UserControl
     // playlist.
     private Wavee.UI.Services.DragDrop.IDragPayload? BuildQueueDragPayload(FrameworkElement row)
     {
+        // When reorder is active the ReorderController owns the gesture (including
+        // its own OLE handoff for cross-surface drops), so suppress this OLE path
+        // to avoid two drag systems competing on the same press. During remote
+        // playback (reorder disabled) this is the only way to drag a queue row out.
+        if (QueueReorderEnabled) return null;
         if (row.DataContext is not QueueDisplayItem item || string.IsNullOrEmpty(item.TrackUri))
             return null;
-
-        // Locate the section ListView this row belongs to.
-        DependencyObject? node = row;
-        ListView? list = null;
-        while (node is not null)
-        {
-            node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node);
-            if (node is ListView lv) { list = lv; break; }
-        }
-        if (list is null || SectionTargetFor(list) is not { } target)
-            return null;
-
-        var index = list.Items.IndexOf(item);
-        if (index < 0)
-            return null;
-
-        _reorderSource = (list, target, index, item);
 
         // SourceContextUri null: the queue is not a playlist context, so a drop
         // on a playlist routes to "add tracks", never the intra-list reorder.
@@ -702,115 +742,9 @@ public sealed partial class QueueControl : UserControl
             new[] { item.TrackUri }, sourceContextUri: null, sourceStartIndex: null);
     }
 
-    private void OnRowDropCompleted(UIElement sender, DropCompletedEventArgs args)
-    {
-        _dropIndicator?.Hide();
-        _reorderSource = null;
-    }
-
-    private void Section_DragOver(object sender, DragEventArgs e)
-    {
-        if (_reorderSource is { } src)
-        {
-            if (ReferenceEquals(sender, src.List) && sender is ListView list
-                && !(_playbackCommandService?.IsPlayingRemotely ?? false))
-            {
-                e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
-                var rows = BuildRowBounds(list);
-                var slot = ReorderDropIndicator.ResolveSlotIndex(
-                    e.GetPosition(DropIndicatorOverlay).Y, rows, list.Items.Count);
-                DropIndicator.Show(slot, rows, list.Items.Count, DropIndicatorOverlay.ActualWidth);
-            }
-            else
-            {
-                _dropIndicator?.Hide();
-            }
-            return;
-        }
-
-        // A drag from outside the queue � the user-queue section accepts an enqueue.
-        if (ReferenceEquals(sender, UserQueueRepeater))
-            UserQueue_DragOver(sender, e);
-    }
-
-    private void Section_Drop(object sender, DragEventArgs e)
-    {
-        if (_reorderSource is { } src)
-        {
-            if (ReferenceEquals(sender, src.List) && sender is ListView list
-                && !(_playbackCommandService?.IsPlayingRemotely ?? false))
-            {
-                var rows = BuildRowBounds(list);
-                var slot = ReorderDropIndicator.ResolveSlotIndex(
-                    e.GetPosition(DropIndicatorOverlay).Y, rows, list.Items.Count);
-                HandleReorderDrop(src, slot);
-            }
-            // Session cleanup runs in OnRowDropCompleted (fires for drop + cancel).
-            return;
-        }
-
-        // A drag from outside the queue � the user-queue section accepts an enqueue.
-        if (ReferenceEquals(sender, UserQueueRepeater))
-            UserQueue_Drop(sender, e);
-    }
-
-    /// <summary>Walks a section's realized rows into row-bounds (overlay-Canvas space).</summary>
-    private List<ReorderDropIndicator.RowBounds> BuildRowBounds(ListView list)
-    {
-        var rows = new List<ReorderDropIndicator.RowBounds>(list.Items.Count);
-        for (var i = 0; i < list.Items.Count; i++)
-        {
-            if (list.ContainerFromIndex(i) is not FrameworkElement container)
-                continue;
-            double top;
-            try
-            {
-                top = container.TransformToVisual(DropIndicatorOverlay)
-                    .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
-            }
-            catch { continue; }
-            rows.Add(new ReorderDropIndicator.RowBounds(container, top, container.ActualHeight, i));
-        }
-        return rows;
-    }
-
-    // Translates a resolved gap slot in the dragged section to a backend
-    // (from, to) move and dispatches it. Context sections map the gap to an
-    // absolute context-tail index via QueueDisplayItem.ContextTailIndex.
-    private void HandleReorderDrop(
-        (ListView List, QueueReorderTarget Target, int SourceIndex, QueueDisplayItem Item) src,
-        int slot)
-    {
-        var count = src.List.Items.Count;
-        if (count == 0 || slot < 0)
-            return;
-
-        int from, to;
-        if (src.Target == QueueReorderTarget.ContextUpcoming)
-        {
-            from = src.Item.ContextTailIndex;
-            int gapAbs;
-            if (slot < count && src.List.Items[slot] is QueueDisplayItem atSlot)
-                gapAbs = atSlot.ContextTailIndex;
-            else if (src.List.Items[count - 1] is QueueDisplayItem last)
-                gapAbs = last.ContextTailIndex + 1;
-            else
-                return;
-            // Plain remove+insert: a gap past the source shifts down by one.
-            to = gapAbs > from ? gapAbs - 1 : gapAbs;
-        }
-        else
-        {
-            from = src.SourceIndex;
-            to = slot > from ? slot - 1 : slot;
-            to = Math.Clamp(to, 0, count - 1);
-        }
-
-        if (from < 0 || to < 0 || from == to)
-            return;
-
-        _ = ReorderAsync(src.Target, from, to);
-    }
+    // The user-queue section is the only OLE drop target left (external enqueue).
+    // Its DragOver/Drop bind directly to UserQueue_DragOver / UserQueue_Drop in XAML;
+    // intra-section reorder no longer routes through here.
 
     private async Task ReorderAsync(QueueReorderTarget target, int from, int to)
     {

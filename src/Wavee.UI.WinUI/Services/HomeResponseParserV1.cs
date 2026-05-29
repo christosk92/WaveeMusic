@@ -201,6 +201,10 @@ public sealed partial class HomeResponseParserV1 : IHomeResponseParser
 
         var colorHex = data.Images?.Items?.FirstOrDefault()?.ExtractedColors?.ColorDark?.Hex;
 
+        // Inline track count from PlaylistItemsPage.totalCount — render "N tracks"
+        // immediately when present (mirrors MapV1Playlist in the V2 parser).
+        var totalTracks = data.Content?.TotalCount ?? 0;
+
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
@@ -210,7 +214,9 @@ public sealed partial class HomeResponseParserV1 : IHomeResponseParser
                 : data.OwnerV2?.Data?.Name,
             ImageUrl = imageUrl,
             ContentType = HomeContentType.Playlist,
-            ColorHex = colorHex
+            ColorHex = colorHex,
+            TotalTracks = totalTracks,
+            MetadataSubtitle = totalTracks > 0 ? TrackCountFormatter.FormatTrackCount(totalTracks) : null
         };
     }
 

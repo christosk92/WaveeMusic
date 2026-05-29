@@ -2,11 +2,16 @@ using System.Collections.Generic;
 
 namespace Wavee.UI.WinUI.Data.Models;
 
+// `required` is intentionally NOT used on these models. The WinUI XAML type-
+// info generator emits a parameterless `new ChangelogFeature()` for every
+// `x:DataType` registration, which fails to compile when the type has
+// `required` members. Defaults (`= ""`) keep nullability happy while still
+// surfacing missing data visibly at runtime if a release entry is incomplete.
 public sealed class ChangelogRelease
 {
-    public required string Version { get; init; }
-    public required string ReleaseTitle { get; init; }
-    public required IReadOnlyList<ChangelogFeature> Features { get; init; }
+    public string Version { get; init; } = "";
+    public string ReleaseTitle { get; init; } = "";
+    public IReadOnlyList<ChangelogFeature> Features { get; init; } = [];
 
     /// <summary>
     /// Optional developer announcement shown at the top of the dialog.
@@ -21,10 +26,10 @@ public sealed class ChangelogRelease
 
 public sealed class ChangelogFeature
 {
-    public required string Title { get; init; }
-    public required string ShortDescription { get; init; }
-    public required string Glyph { get; init; }
-    public required string DetailTitle { get; init; }
-    public required string DetailDescription { get; init; }
-    public string? ImageAssetPath { get; init; }
+    public string Title { get; set; } = "";
+    public string ShortDescription { get; set; } = "";
+    public string Glyph { get; set; } = "";
+    public string DetailTitle { get; set; } = "";
+    public string DetailDescription { get; set; } = "";
+    public string? ImageAssetPath { get; set; }
 }

@@ -841,7 +841,16 @@ public static class AppLifecycleHelper
                     client.DefaultRequestHeaders.Add("X-Api-Key", "CHANGE_ME_AFTER_DEPLOY");
                 })
                     .Services
-                .AddTransient<SettingsViewModel>(sp =>
+                // Singleton — not Transient. SettingsViewModel exposes events
+                // (ZoomChanged, theme broadcasts) that ShellPage subscribes
+                // to once at construction. With Transient, every consumer
+                // (ShellPage + each Settings page open + each hotkey
+                // resolution) got a different instance, so a setter on the
+                // Settings page's VM fired ZoomChanged into the void while
+                // ShellPage was listening to a stale instance. The VM is a
+                // pure facade over Singleton services — no per-page state
+                // worth scoping per instance — so sharing is correct.
+                .AddSingleton<SettingsViewModel>(sp =>
                     new SettingsViewModel(
                         sp.GetRequiredService<ISettingsService>(),
                         sp.GetRequiredService<IThemeService>(),
@@ -1008,10 +1017,7 @@ public static class AppLifecycleHelper
                             (c, ct) => SidebarReorderHandler.ReorderAsync(lib, c, ct))
                         .Register(DragPayloadKind.SidebarItem, DropTargetKind.FolderRow,
                             canDrop: null,
-                            (c, ct) => SidebarReorderHandler.NestOrReorderAsync(lib, c, ct))
-                        .Register(DragPayloadKind.SidebarItem, DropTargetKind.SidebarRoot,
-                            canDrop: null,
-                            (c, ct) => SidebarReorderHandler.MoveToRootAsync(lib, c, ct));
+                            (c, ct) => SidebarReorderHandler.NestOrReorderAsync(lib, c, ct));
                 })
 
                 // Utilities

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -15,7 +16,7 @@ namespace Wavee.UI.WinUI.Controls.Settings;
 [global::WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchFilter
 {
-    private static readonly IReadOnlyList<ThirdPartyNoticeItem> s_thirdPartyNotices =
+    private static readonly ObservableCollection<ThirdPartyNoticeItem> s_thirdPartyNotices =
     [
         ThirdPartyNoticeItem.Brand(
             "WinUI 3 / Windows App SDK",
@@ -253,7 +254,7 @@ public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchF
     ];
 
     public SettingsViewModel ViewModel { get; }
-    public IReadOnlyList<ThirdPartyNoticeItem> ThirdPartyNotices => s_thirdPartyNotices;
+    public ObservableCollection<ThirdPartyNoticeItem> ThirdPartyNotices => s_thirdPartyNotices;
 
     public AboutSettingsSection(SettingsViewModel viewModel)
     {

@@ -14,19 +14,22 @@ public interface ITrackCreditsService
 
 // ── Domain result types ──
 
-public sealed record TrackCreditsResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record TrackCreditsResult
 {
     public required List<CreditGroupResult> Groups { get; init; }
     public string? RecordLabel { get; init; }
 }
 
-public sealed record CreditGroupResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record CreditGroupResult
 {
     public required string RoleName { get; init; }
     public required List<CreditContributorResult> Contributors { get; init; }
 }
 
-public sealed record CreditContributorResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record CreditContributorResult
 {
     public string? Name { get; init; }
     public string? ArtistUri { get; init; }

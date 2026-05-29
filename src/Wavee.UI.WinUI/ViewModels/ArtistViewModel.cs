@@ -838,7 +838,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         if (!IsCurrentLoad(artistId, generation))
             return;
 
-        await RunOnDispatcherAsync(() =>
+        // Below-the-fold sections (Fans-also-like, Extras): dispatch at Low
+        // priority so each runs AFTER the prior slice's layout/render presents.
+        // Without this the slices bunch into adjacent frames and the page is
+        // unresponsive through the whole secondary-section apply.
+        await RunOnDispatcherAsync(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             if (IsCurrentLoad(artistId, generation))
                 RelatedArtists.ApplyOverview(overview);
@@ -849,7 +853,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         if (!IsCurrentLoad(artistId, generation))
             return;
 
-        await RunOnDispatcherAsync(() =>
+        await RunOnDispatcherAsync(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             if (!IsCurrentLoad(artistId, generation))
                 return;
@@ -866,9 +870,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     }
 
     private Task RunOnDispatcherAsync(Action action)
+        => RunOnDispatcherAsync(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, action);
+
+    private Task RunOnDispatcherAsync(Microsoft.UI.Dispatching.DispatcherQueuePriority priority, Action action)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_dispatcherQueue.TryEnqueue(() =>
+        if (!_dispatcherQueue.TryEnqueue(priority, () =>
             {
                 try
                 {

@@ -28,7 +28,7 @@ namespace Wavee.UI.WinUI.Controls.Sidebar;
 
 public sealed partial class SidebarItem : Control
 {
-	private const double DROP_REPOSITION_THRESHOLD = 0.3; // Percentage of top/bottom at which we consider a drop to be a reposition/insertion. Wider zones (was 0.2) pair with the row-spacing growth applied during drag — see DragAvailable / DragReorderable visual states.
+	private const double DROP_REPOSITION_THRESHOLD = 0.3; // Top/bottom fraction of a row that counts as an edge reorder (vs center "drop INTO"). The remaining middle band is the center zone.
 
 	public bool HasChildren => Item?.Children is IList enumerable && enumerable.Count > 0;
 	public bool IsGroupHeader => Item?.Children is not null;
@@ -112,9 +112,68 @@ public sealed partial class SidebarItem : Control
 		if (_pinButton is not null)
 			_pinButton.Click += PinButton_Click;
 
+		if (_hoverPlayButton is not null)
+			_hoverPlayButton.Click -= HoverPlayButton_Click;
+		_hoverPlayButton = GetTemplateChild("HoverPlayButton") as Button;
+		if (_hoverPlayButton is not null)
+			_hoverPlayButton.Click += HoverPlayButton_Click;
+
 		UpdateIconPresenter();
 		UpdateCompactSectionSeparator();
 		UpdatePinButton();
+		UpdateHoverPlayOverlay();
+	}
+
+	private Button? _hoverPlayButton;
+
+	// Sidebar playlist rows host a small play button on top of the cover-art
+	// icon that surfaces on hover when in Expanded display mode. The button
+	// is a sibling of IconPresenter inside the IconCell grid; visibility is
+	// driven imperatively (cheaper than a VisualState combinator across the
+	// three independent gates: hover, mode, playable URI).
+	private void UpdateHoverPlayOverlay()
+	{
+		if (_hoverPlayButton is null) return;
+
+		// Tag lives on the concrete SidebarItemModel — ISidebarItemModel
+		// doesn't surface it because the interface predates the
+		// playlist-URI tagging convention used by ShellPage's sidebar
+		// context-menu router. Cast is null-safe.
+		var playable = IsPlayablePlaylistTag((Item as SidebarItemModel)?.Tag);
+		var expanded = DisplayMode == SidebarDisplayMode.Expanded;
+		var show = playable && expanded && isPointerOver;
+
+		if (show)
+		{
+			_hoverPlayButton.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+			_hoverPlayButton.IsHitTestVisible = true;
+			_hoverPlayButton.Opacity = 1;
+		}
+		else
+		{
+			_hoverPlayButton.IsHitTestVisible = false;
+			_hoverPlayButton.Opacity = 0;
+			_hoverPlayButton.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+		}
+	}
+
+	private static bool IsPlayablePlaylistTag(string? tag) =>
+		!string.IsNullOrEmpty(tag) && tag.StartsWith("spotify:playlist:", StringComparison.Ordinal);
+
+	private void HoverPlayButton_Click(object sender, RoutedEventArgs e)
+	{
+		var tag = (Item as SidebarItemModel)?.Tag;
+		if (!IsPlayablePlaylistTag(tag)) return;
+
+		var playback = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+			.GetService<Wavee.UI.Contracts.IPlaybackService>();
+		if (playback is null) return;
+		_ = playback.PlayContextAsync(tag!);
+
+		// Button.Click doesn't expose Handled (RoutedEventArgs is the base
+		// without that flag). Bubbling isn't an issue here because Button
+		// absorbs the pointer-pressed before the outer ElementBorder sees
+		// it — clicking the play overlay won't also navigate the row.
 	}
 
 	private void UpdatePinButton()
@@ -300,6 +359,13 @@ public sealed partial class SidebarItem : Control
 			border.Drop += ItemBorder_Drop;
 			border.AllowDrop = IsItemEnabled;
 			border.IsTabStop = false;
+			System.Diagnostics.Debug.WriteLine(
+				$"[sbreorder] Loaded tag={(Item as SidebarItemModel)?.Tag} borderFound=true enabled={IsItemEnabled} allowDrop={border.AllowDrop}");
+		}
+		else
+		{
+			System.Diagnostics.Debug.WriteLine(
+				$"[sbreorder] Loaded tag={(Item as SidebarItemModel)?.Tag} borderFound=FALSE (drag handlers NOT attached)");
 		}
 
 		if (GetTemplateChild("ChildrenPresenter") is ItemsRepeater repeater)
@@ -314,18 +380,8 @@ public sealed partial class SidebarItem : Control
 
 		HandleItemChange();
 
-		// Reorder/copy edges (Top/Bottom = rootlist reorder, Center = copy
-		// tracks into target playlist) only resolve when UseReorderDrop is
-		// true. Default is false on section-header rows / generic items.
-		// Playlists and folders both want edge semantics so the drag-over
-		// indicator can paint "insert above / below" lines.
-		if (Item is SidebarItemModel m && !m.IsSectionHeader && (m.IsFolder
-			|| (m.Tag?.StartsWith("spotify:playlist:", System.StringComparison.Ordinal) ?? false)
-			|| (m.Tag?.StartsWith("folder:", System.StringComparison.Ordinal) ?? false)
-			|| (m.Tag?.StartsWith("spotify:start-group:", System.StringComparison.Ordinal) ?? false)))
-		{
-			UseReorderDrop = true;
-		}
+		// (UseReorderDrop is evaluated inside HandleItemChange — it must track the
+		// current Item across every realize/recycle, not be set once here.)
 
 		_dragStateService = Ioc.Default.GetService<DragStateService>();
 		if (_dragStateService != null)
@@ -368,6 +424,26 @@ public sealed partial class SidebarItem : Control
 		UpdateCompactSectionSeparator();
 		UpdatePinButton();
 		UpdateEnabledState();
+		// Item identity changed (likely a virtualization recycle to a new
+		// tag) — re-evaluate the hover-play overlay so a row that just
+		// became a playable playlist row gets the button, and one that
+		// stopped being playable loses it.
+		UpdateHoverPlayOverlay();
+
+		// Reorder/copy edges (Top/Bottom = rootlist reorder, Center = copy tracks
+		// into target playlist) only resolve when UseReorderDrop is true; when it's
+		// false, DetermineDropTargetPosition returns Center for every pointer
+		// position and the reorder gap never opens. This MUST be set here, not in
+		// Loaded: Item arrives via {Binding} (deferred, often after Loaded), and the
+		// ItemProperty change callback routes back through HandleItemChange — so this
+		// is the one place guaranteed to see the real Item on first bind AND on every
+		// recycle. Setting it in Loaded left UseReorderDrop=false (Item still null at
+		// Loaded time) and the gap never opened.
+		UseReorderDrop = Item is SidebarItemModel reorderModel
+			&& !reorderModel.IsSectionHeader
+			&& IsPlaylistOrFolderRow(reorderModel);
+		System.Diagnostics.Debug.WriteLine(
+			$"[sbreorder] HandleItemChange tag={(Item as SidebarItemModel)?.Tag} isSection={(Item as SidebarItemModel)?.IsSectionHeader} useReorder={UseReorderDrop}");
 	}
 
 	/// <summary>
@@ -600,7 +676,12 @@ public sealed partial class SidebarItem : Control
 			sourceUri: model.Tag!,
 			itemKind: isFolder
 				? Wavee.UI.Services.DragDrop.Payloads.SidebarItemKind.Folder
-				: Wavee.UI.Services.DragDrop.Payloads.SidebarItemKind.Playlist);
+				: Wavee.UI.Services.DragDrop.Payloads.SidebarItemKind.Playlist)
+		{
+			// Drag-chip display (art + title), not serialized.
+			DisplayTitle = model.Text,
+			ImageUrl = model.ImageUrl,
+		};
 	}
 
 	private void SidebarItem_DragStarting(UIElement sender, DragStartingEventArgs args)
@@ -788,6 +869,10 @@ public sealed partial class SidebarItem : Control
 		// Display-mode changes can touch many realized rows at once. Keep those
 		// row state changes instant; user-initiated group expand/collapse still
 		// animates through UpdateExpansionState().
+		// Hover-play overlay is gated on Expanded mode — re-evaluate so a
+		// collapse-to-Compact hides the overlay even if the pointer is still
+		// inside the row's bounding box.
+		UpdateHoverPlayOverlay();
 		var useAnimations = useAnimationsOverride ?? false;
 		switch (DisplayMode)
 		{
@@ -1147,6 +1232,7 @@ public sealed partial class SidebarItem : Control
 
 		isPointerOver = true;
 		UpdatePointerState();
+		UpdateHoverPlayOverlay();
 	}
 
 	private void ItemBorder_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
@@ -1154,6 +1240,7 @@ public sealed partial class SidebarItem : Control
 		isPointerOver = false;
 		isClicking = false;
 		UpdatePointerState();
+		UpdateHoverPlayOverlay();
 	}
 
 	private void ItemBorder_PointerCanceled(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
@@ -1195,6 +1282,8 @@ public sealed partial class SidebarItem : Control
 
 	private void ItemBorder_DragOver(object sender, DragEventArgs e)
 	{
+		System.Diagnostics.Debug.WriteLine(
+			$"[sbreorder] DragOver fired tag={(Item as SidebarItemModel)?.Tag} enabled={IsItemEnabled} useReorder={UseReorderDrop} dragStateNull={_dragStateService is null} payload={_dragStateService?.CurrentPayload?.Kind}");
 		if (!IsItemEnabled)
 			return;
 
@@ -1204,20 +1293,41 @@ public sealed partial class SidebarItem : Control
 			&& CanDropAtPosition(model, payload, pos))
 		{
 			e.AcceptedOperation = DataPackageOperation.Copy;
+			System.Diagnostics.Debug.WriteLine(
+				$"[sbreorder] DragOver ACCEPT tag={(Item as SidebarItemModel)?.Tag} pos={pos}");
 			switch (pos)
 			{
 				case SidebarItemDropPosition.Top:
-					VisualStateManager.GoToState(this, "DragInsertAbove", true);
-					break;
 				case SidebarItemDropPosition.Bottom:
-					VisualStateManager.GoToState(this, "DragInsertBelow", true);
+					// Edge = rootlist reorder. The composition displacement gap (rows
+					// part to show where it lands) is the entire affordance — the row
+					// itself stays in its neutral resting visual, no insert line. The
+					// gap is resolved by SidebarView in resting space from the raw
+					// pointer, so it tracks smoothly and can't oscillate.
+					UpdatePointerState();
+					Owner?.UpdateReorderGap(this, e, edgeOnly: true);
 					break;
 				default:
+					// Center = nest into folder / copy tracks → no gap, show the
+					// drop-into outline.
 					VisualStateManager.GoToState(this, "DragOnTop", true);
+					Owner?.UpdateReorderGap(this, e, edgeOnly: false);
 					break;
 			}
 
-			Owner?.RaiseItemDragOver(this, pos, e);
+			// Mark handled so the scroll-viewer gap fallback (handledEventsToo)
+			// knows a row owns the pointer and stays out of the way; it only acts
+			// when the pointer is in the displaced-row hit-test gap.
+			e.Handled = true;
+			// Hovering a center-droppable folder arms a dwell timer to auto-expand;
+			// moving to an edge (reorder) or off the row cancels it. Prevents the
+			// every-DragOver expand/collapse flicker the old immediate expand caused.
+			if (HasChildren && pos == SidebarItemDropPosition.Center && !IsExpanded)
+				ArmAutoExpandDwell();
+			else
+				CancelAutoExpandDwell();
+			// Auto-scroll the sidebar when the drag nears its top/bottom edge.
+			Owner?.UpdateReorderAutoScroll(e);
 			return;
 		}
 
@@ -1227,18 +1337,41 @@ public sealed partial class SidebarItem : Control
 		// the invalid center of a non-editable playlist) is cleared, instead
 		// of leaving a stale "insert here" line until DragLeave fires.
 		e.AcceptedOperation = DataPackageOperation.None;
+		System.Diagnostics.Debug.WriteLine(
+			$"[sbreorder] DragOver REJECT tag={(Item as SidebarItemModel)?.Tag} pos={pos} payload={_dragStateService?.CurrentPayload?.Kind}");
+		CancelAutoExpandDwell();
+		Owner?.ClearReorderGap(animate: true);
 		if (Item is ISidebarItemModel ambientModel
 			&& _dragStateService?.CurrentPayload is { } ambientPayload)
 		{
 			ApplyAmbientDragState(ambientModel, ambientPayload);
 		}
-
-		// Auto-expand folders on hover so the user can drop "into" them.
-		if (HasChildren)
-		{
-			IsExpanded = true;
-		}
+		Owner?.UpdateReorderAutoScroll(e);
 	}
+
+	// ── Auto-expand dwell (debounce) ──────────────────────────────────────
+	// Folders expand on a short hover-dwell during drag, not on every DragOver
+	// tick. ~550 ms matches the rbd "intentional hover" threshold and kills the
+	// rapid expand/collapse flicker the previous immediate-expand produced.
+	private DispatcherTimer? _autoExpandTimer;
+
+	private void ArmAutoExpandDwell()
+	{
+		if (_autoExpandTimer is null)
+		{
+			_autoExpandTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(550) };
+			_autoExpandTimer.Tick += (_, _) =>
+			{
+				CancelAutoExpandDwell();
+				if (HasChildren && _dragStateService?.IsDragging == true)
+					IsExpanded = true;
+			};
+		}
+		if (!_autoExpandTimer.IsEnabled)
+			_autoExpandTimer.Start();
+	}
+
+	private void CancelAutoExpandDwell() => _autoExpandTimer?.Stop();
 
 	private void ItemBorder_ContextRequested(UIElement sender, Microsoft.UI.Xaml.Input.ContextRequestedEventArgs args)
 	{
@@ -1260,6 +1393,7 @@ public sealed partial class SidebarItem : Control
 
 	private void ItemBorder_DragLeave(object sender, DragEventArgs e)
 	{
+		CancelAutoExpandDwell();
 		if (_dragStateService?.IsDragging == true
 			&& Item is ISidebarItemModel model
 			&& _dragStateService.CurrentPayload is { } payload)
@@ -1274,25 +1408,30 @@ public sealed partial class SidebarItem : Control
 
 	/// <summary>
 	/// Picks the row's visual state when a drag is active but the pointer is
-	/// NOT over this row (drag-just-started, or pointer left this row). Three
-	/// tiers, all explicitly distinct so the user reads each row correctly:
+	/// NOT over this row (drag-just-started, or pointer left this row). Two tiers:
 	/// <list type="bullet">
-	///   <item><c>DragAvailable</c> — center-drop is valid (folder, or playlist
-	///   the user can edit). Paints the blue outline.</item>
-	///   <item><c>DragReorderable</c> — only edge-reorder is valid (non-editable
-	///   playlist target). Grows row height for spacing but NO outline, so the
-	///   user isn't misled into thinking they can drop tracks "into" the row.</item>
+	///   <item>Droppable (center-drop or edge-reorder valid) → <c>Normal</c>. No
+	///   ambient outline or insertion pill — the row stays neutral until the
+	///   pointer is actually over it; reorder feedback is the displacement gap,
+	///   the center "drop INTO" outline only paints under the pointer.</item>
 	///   <item>Faded (opacity 0.3) — drag has nothing to do with this row.</item>
 	/// </list>
 	/// </summary>
 	private void ApplyAmbientDragState(ISidebarItemModel model, IDragPayload payload)
 	{
-		if (CanCenterDropOnRow(model, payload))
-			VisualStateManager.GoToState(this, "DragAvailable", true);
-		else if (CanReorderAroundRow(model, payload))
-			VisualStateManager.GoToState(this, "DragReorderable", true);
+		var droppable = CanCenterDropOnRow(model, payload) || CanReorderAroundRow(model, payload);
+		if (droppable)
+		{
+			if (_elementBorder != null) _elementBorder.Opacity = 1.0;
+			// Neutral resting visual — reorder feedback is the displacement gap,
+			// and the center "drop INTO" outline only paints under the pointer.
+			// UpdatePointerState clears any stale DragOnTop chrome from a prior tick.
+			UpdatePointerState();
+		}
 		else if (_elementBorder != null)
+		{
 			_elementBorder.Opacity = 0.3;
+		}
 	}
 
 	private void ItemBorder_Drop(object sender, DragEventArgs e)
@@ -1309,8 +1448,15 @@ public sealed partial class SidebarItem : Control
 			return;
 		}
 
+		CancelAutoExpandDwell();
+		Owner?.StopReorderAutoScroll();
+		// Close the gap instantly — the rootlist rebuilds from the committed order
+		// right after, so an animated close would fight the relayout.
+		Owner?.ClearReorderGap(animate: false);
 		UpdatePointerState();
 		Owner?.RaiseItemDropped(this, pos, e);
+		// Mark handled so the scroll-viewer gap-fallback Drop doesn't also fire.
+		e.Handled = true;
 	}
 
 	private void OnGlobalDragStateChanged(bool isDragging)
@@ -1362,19 +1508,17 @@ public sealed partial class SidebarItem : Control
 	}
 
 	/// <summary>
-	/// During a drag, each playlist/folder row in the sidebar grows from 44 →
-	/// 56 px via its Drag* visual state to create visible spacing for reorder
-	/// targets. If THIS row is an expanded section/folder, its
-	/// <c>ChildrenPresenter</c> has a fixed MaxHeight set by the expand
-	/// storyboard at <c>count × childHeight</c> (~44 each). Without lifting
-	/// that ceiling, the now-taller children get clipped off the bottom.
+	/// During a drag, the reorder gap pushes the rows at/below the insertion
+	/// point down by one row height (composition Translation). If THIS row is an
+	/// expanded section/folder, its <c>ChildrenPresenter</c> has a fixed MaxHeight
+	/// set by the expand storyboard at <c>count × childHeight</c> (~44 each).
+	/// Without lifting that ceiling, the displaced bottom child gets clipped off.
 	///
 	/// We leave MaxHeight at PositiveInfinity even after the drag ends rather
-	/// than snapping it back: the post-drag shrink animation (56 → 44 over
-	/// ~180 ms) needs the clip out of the way too, otherwise the last child
-	/// rows get briefly cropped on the way down. The collapse storyboard's
-	/// first keyframe re-snapshots MaxHeight on its own, so leaving it open
-	/// here doesn't break the next expand/collapse cycle.
+	/// than snapping it back: the gap's close animation needs the clip out of the
+	/// way too, otherwise the last child rows get briefly cropped on the way back.
+	/// The collapse storyboard's first keyframe re-snapshots MaxHeight on its own,
+	/// so leaving it open here doesn't break the next expand/collapse cycle.
 	/// </summary>
 	private void AdjustChildrenClipForDrag(bool isDragging)
 	{
@@ -1472,22 +1616,29 @@ public sealed partial class SidebarItem : Control
 
 	private SidebarItemDropPosition DetermineDropTargetPosition(DragEventArgs args)
 	{
-		if (UseReorderDrop)
+		if (!UseReorderDrop || GetTemplateChild("ElementGrid") is not Grid grid)
+			return SidebarItemDropPosition.Center;
+
+		var y = args.GetPosition(grid).Y;
+		var h = grid.ActualHeight;
+		if (h <= 0) return SidebarItemDropPosition.Center;
+
+		// Only rows that actually accept a center drop (folders → nest, editable
+		// playlists → copy tracks) get a Center band; everything else is a pure
+		// above/below midpoint reorder split. Without this, non-editable playlists
+		// had a wide dead Center band where the drop was rejected and the gap
+		// flickered — the gap (midpoint rule) and this classifier now agree.
+		var centerAccepts = Item is ISidebarItemModel model
+			&& _dragStateService?.CurrentPayload is { } payload
+			&& CanCenterDropOnRow(model, payload);
+
+		if (centerAccepts)
 		{
-			if (GetTemplateChild("ElementGrid") is Grid grid)
-			{
-				var position = args.GetPosition(grid);
-				if (position.Y < grid.ActualHeight * DROP_REPOSITION_THRESHOLD)
-				{
-					return SidebarItemDropPosition.Top;
-				}
-				if (position.Y > grid.ActualHeight * (1 - DROP_REPOSITION_THRESHOLD))
-				{
-					return SidebarItemDropPosition.Bottom;
-				}
-				return SidebarItemDropPosition.Center;
-			}
+			if (y < h * DROP_REPOSITION_THRESHOLD) return SidebarItemDropPosition.Top;
+			if (y > h * (1 - DROP_REPOSITION_THRESHOLD)) return SidebarItemDropPosition.Bottom;
+			return SidebarItemDropPosition.Center;
 		}
-		return SidebarItemDropPosition.Center;
+
+		return y < h / 2 ? SidebarItemDropPosition.Top : SidebarItemDropPosition.Bottom;
 	}
 }

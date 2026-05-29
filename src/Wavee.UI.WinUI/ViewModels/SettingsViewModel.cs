@@ -259,8 +259,21 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     private void OnUpdateServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(Services.UpdateStatus) || e.PropertyName == "Status")
+        if (e.PropertyName != nameof(Services.UpdateStatus) && e.PropertyName != "Status")
+            return;
+
+        // UpdateService raises PropertyChanged on whatever thread its async
+        // CheckForUpdateAsync continuation completes on, which is rarely the
+        // UI thread. Re-raising HasUpdateError synchronously from here makes
+        // x:Bind's generated PropertyChanged handler call back into
+        // Application.Current.Resources (LookupConverter), which is thread-
+        // affine and throws RPC_E_WRONG_THREAD (0x8001010E) → finalizer
+        // rethrow → TaskSchedulerUnobservedTaskException. Marshal explicitly.
+        var dispatcher = _dispatcherQueue;
+        if (dispatcher is null || dispatcher.HasThreadAccess)
             OnPropertyChanged(nameof(HasUpdateError));
+        else
+            dispatcher.TryEnqueue(() => OnPropertyChanged(nameof(HasUpdateError)));
     }
 
     private void OnPlaybackStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -447,34 +460,32 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     private static readonly double[] ZoomStops = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3];
 
+    /// <summary>Number of valid <see cref="ZoomLevelIndex"/> values (7).
+    /// Exposed so ShellPage's keyboard / HUD step helpers can clamp without
+    /// duplicating the stop table.</summary>
+    public static int ZoomStopCount => ZoomStops.Length;
+
+    /// <summary>Default <see cref="ZoomLevelIndex"/> (3 → 100%). Used by the
+    /// Ctrl+0 reset path and the in-Settings Reset button.</summary>
+    public const int ZoomDefaultIndex = 3;
+
     public event EventHandler<double>? ZoomChanged;
 
     [ObservableProperty]
-    public partial int ZoomLevelIndex { get; set; } = 3; // default 100%
-
-    public string ZoomLevelDisplay => $"{(int)(ZoomStops[ZoomLevelIndex] * 100)}%";
-
-    public string ZoomPreviewLabel => ZoomStops[ZoomLevelIndex] switch
-    {
-        <= 0.8 => AppLocalization.GetString("Settings_Zoom_Compact"),
-        <= 1.1 => AppLocalization.GetString("Settings_Zoom_Default"),
-        _ => AppLocalization.GetString("Settings_Zoom_Spacious")
-    };
+    public partial int ZoomLevelIndex { get; set; } = ZoomDefaultIndex;
 
     partial void OnZoomLevelIndexChanged(int value)
     {
         if (value < 0 || value >= ZoomStops.Length) return;
         var zoom = ZoomStops[value];
         _settingsService.Update(s => s.ZoomLevel = zoom);
-        OnPropertyChanged(nameof(ZoomLevelDisplay));
-        OnPropertyChanged(nameof(ZoomPreviewLabel));
         ZoomChanged?.Invoke(this, zoom);
     }
 
     [RelayCommand]
     private void ResetZoom()
     {
-        ZoomLevelIndex = 3; // 100%
+        ZoomLevelIndex = ZoomDefaultIndex;
     }
 
     // ── Caching profile ──

@@ -7,7 +7,8 @@ using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls;
 
-public sealed record PlayActionResult(PlayAction Action, bool AskEveryTime, string? TapMode);
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PlayActionResult(PlayAction Action, bool AskEveryTime, string? TapMode);
 
 public enum PlayAction
 {

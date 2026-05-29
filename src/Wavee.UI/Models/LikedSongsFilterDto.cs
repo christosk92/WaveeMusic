@@ -6,7 +6,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// UI-facing liked-songs filter definition derived from Spotify content filters.
 /// </summary>
-public sealed record LikedSongsFilterDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LikedSongsFilterDto
 {
     private const string TagsContainsPrefix = "tags contains ";
 

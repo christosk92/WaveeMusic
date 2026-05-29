@@ -138,7 +138,8 @@ public sealed class LibrarySyncCompletedMessage(LibrarySyncSummary summary)
 /// Summary of what changed during library sync (delta, not totals).
 /// Exposes changes as a list for WinUI rendering.
 /// </summary>
-public sealed record LibrarySyncSummary(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibrarySyncSummary(
     int TracksAdded = 0,
     int TracksRemoved = 0,
     int AlbumsAdded = 0,

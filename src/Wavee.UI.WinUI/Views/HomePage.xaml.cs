@@ -52,6 +52,14 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     // generation check in EndScrollRestore is preserved — if the real End
     // already fired and bumped the generation, this is a no-op.
     private const int ScrollRestoreWatchdogMs = 3000;
+    private const double HeroRailMinWidth = 240;
+    private const double HeroRailMaxWidth = 320;
+    private const double HeroRailWidthRatio = 0.24;
+    private const double HeroRailGapMin = 12;
+    private const double HeroRailGapMax = 20;
+    private const double HeroRailGapRatio = 0.016;
+    private const double HeroWideMinHeroColumnWidth = 520;
+    private const double HeroStackedNarrowWidth = 720;
     private bool _isRestoringScroll;
     private int _scrollRestoreGeneration;
     private int _layoutRecoveryGeneration;
@@ -241,6 +249,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         // paint already reads cohesively rather than waiting for the first
         // tracker tick.
         ViewModel.UpdatePageBleedFromCarousel(HomeHero.CurrentAccent);
+        ApplyHeroBandLayout(HeroBand?.ActualWidth ?? 0);
     }
 
     private void UnwireHeroBand()
@@ -272,11 +281,53 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     /// jammed the side rail next to a too-narrow hero. We now branch on the band's
     /// own width so the layout matches what the user actually sees.
     /// </summary>
-    private string? _currentHeroBandState;
-
     private void HeroBand_SizeChanged(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
+        => ApplyHeroBandLayout(e.NewSize.Width);
+
+    private void ContentContainer_SizeChanged(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
+        => ApplyHeroBandLayout(HeroBand?.ActualWidth ?? 0);
+
+    private void ApplyHeroBandLayout(double width)
     {
-        var width = e.NewSize.Width;
+        if (width <= 0 || HeroColumn is null || RailColumn is null)
+            return;
+
+        // HeroRow.Height is intentionally not set from code-behind. The row
+        // is XAML-declared as Auto so the Grid sizes it to the tallest child
+        // (HeroCarousel content vs WideSideRail MinHeights), and HomeHero
+        // carries its own MaxHeight cap. Setting a fixed pixel height here
+        // was clipping the carousel's CTAs / PipsPager at the bottom.
+        var railWidth = Clamp(width * HeroRailWidthRatio, HeroRailMinWidth, HeroRailMaxWidth);
+        var railGap = Clamp(width * HeroRailGapRatio, HeroRailGapMin, HeroRailGapMax);
+        var resolvedWideHeroWidth = width - railWidth - railGap;
+        var useWideRail = resolvedWideHeroWidth >= HeroWideMinHeroColumnWidth;
+
+        if (useWideRail)
+        {
+            HeroColumn.Width = new GridLength(1, GridUnitType.Star);
+            RailColumn.Width = new GridLength(railWidth);
+            WideSideRail.Visibility = Visibility.Visible;
+            WideSideRail.Margin = new Thickness(railGap, 0, 0, 0);
+            StackedShortcuts.Visibility = Visibility.Collapsed;
+            Grid.SetColumnSpan(HomeHero, 1);
+            Grid.SetColumnSpan(HaloBackdrop, 1);
+            return;
+        }
+
+        HeroColumn.Width = new GridLength(1, GridUnitType.Star);
+        RailColumn.Width = new GridLength(0);
+        WideSideRail.Visibility = Visibility.Collapsed;
+        WideSideRail.Margin = new Thickness(0);
+        StackedShortcuts.Visibility = Visibility.Visible;
+        Grid.SetColumnSpan(HomeHero, 2);
+        Grid.SetColumnSpan(HaloBackdrop, 2);
+
+        var useNarrowStack = width < HeroStackedNarrowWidth;
+        var shortcutHeight = ComputeShortcutRowHeight(width, useNarrowStack);
+        StackedShortcutRow0.Height = new GridLength(shortcutHeight);
+        StackedShortcutRow1.Height = new GridLength(shortcutHeight);
+        ApplyStackedShortcutLayout(useNarrowStack);
+
         // Thresholds:
         //   ≥900   WideState         — hero + WideSideRail (320 px) side-by-side
         //   ≥720   StackedMedium     — hero full-row + StackedShortcuts (1 big + 2 stacked)
@@ -287,18 +338,53 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         // 900 lets the hero shrink to ~560 px (still wide enough for Klankhuis
         // to render 2-3 word title lines without char-by-char wrapping)
         // while the 320 px side rail keeps the shortcut cards alongside.
-        string nextState;
-        if (width >= 900)
-            nextState = "HeroBandWideState";
-        else if (width >= 720)
-            nextState = "HeroBandStackedMediumState";
-        else
-            nextState = "HeroBandStackedNarrowState";
-
-        if (nextState == _currentHeroBandState) return;
-        _currentHeroBandState = nextState;
-        VisualStateManager.GoToState(this, nextState, useTransitions: false);
     }
+
+    private static double ComputeShortcutRowHeight(double width, bool narrow)
+    {
+        var widthBased = width * (narrow ? 0.13 : 0.15);
+        return Clamp(widthBased, narrow ? 86 : 96, narrow ? 112 : 128);
+    }
+
+    private void ApplyStackedShortcutLayout(bool narrow)
+    {
+        if (narrow)
+        {
+            Grid.SetRow(StackedCard0, 0);
+            Grid.SetColumn(StackedCard0, 0);
+            Grid.SetColumnSpan(StackedCard0, 6);
+            Grid.SetRowSpan(StackedCard0, 1);
+
+            Grid.SetRow(StackedCard1, 1);
+            Grid.SetColumn(StackedCard1, 0);
+            Grid.SetColumnSpan(StackedCard1, 3);
+            Grid.SetRowSpan(StackedCard1, 1);
+
+            Grid.SetRow(StackedCard2, 1);
+            Grid.SetColumn(StackedCard2, 3);
+            Grid.SetColumnSpan(StackedCard2, 3);
+            Grid.SetRowSpan(StackedCard2, 1);
+            return;
+        }
+
+        Grid.SetRow(StackedCard0, 0);
+        Grid.SetColumn(StackedCard0, 0);
+        Grid.SetColumnSpan(StackedCard0, 4);
+        Grid.SetRowSpan(StackedCard0, 2);
+
+        Grid.SetRow(StackedCard1, 0);
+        Grid.SetColumn(StackedCard1, 4);
+        Grid.SetColumnSpan(StackedCard1, 2);
+        Grid.SetRowSpan(StackedCard1, 1);
+
+        Grid.SetRow(StackedCard2, 1);
+        Grid.SetColumn(StackedCard2, 4);
+        Grid.SetColumnSpan(StackedCard2, 2);
+        Grid.SetRowSpan(StackedCard2, 1);
+    }
+
+    private static double Clamp(double value, double min, double max) =>
+        Math.Min(Math.Max(value, min), max);
 
     // Click router for Klankhuis SideCard (3 in WideSideRail + 3 in StackedShortcuts).
     // Mirrors ContentCard.NavigateToUri's URI-prefix switch so the smaller hero-band

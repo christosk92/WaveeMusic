@@ -1,6 +1,7 @@
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed record ArtistTopCityVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistTopCityVm
 {
     public required string City { get; init; }
     public string? Country { get; init; }

@@ -39,8 +39,11 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 /// details) and a column header row that shares widths with <c>TrackItem</c>'s internal
 /// Row grid.
 /// </summary>
-public sealed partial class TrackDataGrid : UserControl, IDisposable
+public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHost
 {
+    private ReorderController? _reorder;
+    private ReorderController EnsureReorder() => _reorder ??= new ReorderController(this);
+
     // Default count when no page binds LoadingRowCount (or binds it as 0). Below
     // the album-length median, so the typical case grows rows downward (additive,
     // calm) rather than collapsing on load.
@@ -315,11 +318,15 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         // Attach manual drag once per realized row. WinUI 3's ItemContainer/
         // CanDrag pipeline doesn't fire DragStarting when an inner control
         // captures pointer for selection; the helper drives StartDragAsync
-        // from a movement threshold instead.
+        // from a movement threshold instead. The factory returns null when
+        // CanReorder is on — then the rbd reorder engine owns the gesture
+        // (including its own OLE handoff when the pointer leaves the list),
+        // so the two drag systems never compete on the same row.
         if (_itemsViewRowsWithManualDrag.Add(row))
         {
             ManualDragAttachment.AttachWithPackageWriter(row, () =>
             {
+                if (CanReorder) return null;
                 var t = row.Track;
                 if (t is null) return null;
                 var selected = RowsItemsView.SelectedItems?.OfType<ITrackItem>().ToList()
@@ -335,6 +342,12 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                     sourceStartIndex: sourceIndex >= 0 ? sourceIndex : null);
             });
         }
+
+        // Reorder engine attaches to the row's ItemContainer (full-row bounds +
+        // pointer surface). Its press handler self-gates on CanReorder, so this is
+        // inert until the playlist's owner-edit + Custom-sort gate resolves true.
+        if (FindParent<ItemContainer>(row) is { } reorderContainer)
+            EnsureReorder().AttachRow(reorderContainer);
     }
 
     private void RowsItemsViewTrackItem_Unloaded(object sender, RoutedEventArgs e)
@@ -816,7 +829,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         var grid = (TrackDataGrid)d;
         var newVisible = (bool)e.NewValue;
-        System.Diagnostics.Debug.WriteLine($"[addedby-grid] AddedByVisible: {e.OldValue} -> {e.NewValue}");
+        if (Wavee.UI.WinUI.Services.AppFeatureFlags.VerboseUiDiagnostics)
+            System.Diagnostics.Debug.WriteLine($"[addedby-grid] AddedByVisible: {e.OldValue} -> {e.NewValue}");
 
         // Toggle the AddedBy column's IsVisible so the HEADER also collapses,
         // not just the per-row cells. The column's PropertyChanged flows into
@@ -1204,6 +1218,12 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void QueueProjectionDiagnostic(int sourceCount, int visibleCount)
     {
+        // Off by default (even in DEBUG): the Debug.WriteLine below is a
+        // synchronous UI-thread Output write that fires on every reprojection
+        // and filter/sort keystroke. Opt in via WAVEE_VERBOSE_UI_DIAGNOSTICS.
+        if (!AppFeatureFlags.VerboseUiDiagnostics)
+            return;
+
         var generation = ++_projectionDiagnosticGeneration;
         if (DispatcherQueue is null)
             return;
@@ -1667,110 +1687,103 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     /// </summary>
     public event Action<int, int, int>? TracksReorderRequested;
 
-    private DragStateService? _dragState;
+    // Per-row drag-out wiring lives on the inner TrackItem via ManualDragAttachment
+    // in RowsItemsViewTrackItem_Loaded (cross-surface drops). Intra-list reorder is
+    // owned by the rbd ReorderController (IReorderHost below), which attaches to each
+    // realized ItemContainer and self-gates on CanReorder.
 
-    private DragStateService? ResolveDragState() =>
-        _dragState ??= Ioc.Default.GetService<DragStateService>();
+    // ── IReorderHost ───────────────────────────────────────────────────────
 
-    // RowsItemsView drag-source wiring lives on the inner TrackItem (per row)
-    // via ManualDragAttachment in RowsItemsViewTrackItem_Loaded. ItemContainer's
-    // CanDrag pipeline gets swallowed by its selection pointer handling, so the
-    // framework-driven DragStarting event was never firing for that path.
+    // Coordinate root = the scrolling content inside the ItemsView's ScrollView, so
+    // a row's Top is stable under scroll and a stationary pointer's content-Y grows
+    // by the scroll delta during edge auto-scroll (what ReorderController assumes).
+    FrameworkElement IReorderHost.ReorderCoordinateRoot =>
+        RowsScrollView?.Content as FrameworkElement ?? (FrameworkElement)RowsHostCell;
 
-    private ReorderDropIndicator? _dropIndicator;
-    private ReorderDropIndicator DropIndicator => _dropIndicator ??= new ReorderDropIndicator(DropIndicatorOverlay);
+    FrameworkElement IReorderHost.ViewportElement =>
+        (FrameworkElement?)RowsScrollView ?? RowsHostCell;
 
-    private void RowsItemsViewHost_DragOver(object sender, DragEventArgs e)
+    int IReorderHost.ItemCount
     {
-        if (!CanReorder) { _dropIndicator?.Hide(); return; }
-        if (ResolveDragState()?.CurrentPayload is not TrackDragPayload p
-            || string.IsNullOrEmpty(ContextUri)
-            || !string.Equals(p.SourceContextUri, ContextUri, StringComparison.Ordinal))
+        get
         {
-            _dropIndicator?.Hide();
-            return;
+            var n = 0;
+            foreach (var r in _visibleRows) if (r is ITrackItem) n++;
+            return n;
         }
-
-        e.AcceptedOperation = DataPackageOperation.Move;
-        e.DragUIOverride.IsCaptionVisible = true;
-        e.DragUIOverride.IsGlyphVisible = true;
-        e.DragUIOverride.Caption = p.ItemCount == 1 ? "Move 1 track" : $"Move {p.ItemCount} tracks";
-
-        var rows = BuildRowBounds();
-        var slot = ReorderDropIndicator.ResolveSlotIndex(
-            e.GetPosition(RowsHostCell).Y, rows, _visibleRows.Count);
-        DropIndicator.Show(slot, rows, _visibleRows.Count, RowsHostCell.ActualWidth);
     }
 
-    private void RowsItemsViewHost_DragLeave(object sender, DragEventArgs e) => _dropIndicator?.Hide();
-
-    private void RowsItemsViewHost_Drop(object sender, DragEventArgs e)
+    IReadOnlyList<ReorderRow> IReorderHost.GetRealizedRows()
     {
-        _dropIndicator?.Hide();
-        if (!TryReadIntraListReorder(e, out var fromIndex, out var length))
-            return;
-        var rows = BuildRowBounds();
-        var slot = ReorderDropIndicator.ResolveSlotIndex(
-            e.GetPosition(RowsHostCell).Y, rows, _visibleRows.Count);
-        if (slot < 0) return;
-        TracksReorderRequested?.Invoke(fromIndex, length, slot);
-    }
-
-    /// <summary>
-    /// Walks the realized rows into <see cref="ReorderDropIndicator.RowBounds"/>
-    /// in <c>RowsHostCell</c> coordinate space. ItemsView's row containers can't
-    /// be reached by a downward VisualTreeHelper walk, so the tracked-rows set
-    /// (<see cref="_itemsViewRows"/>) is the source; the bounds anchor is each
-    /// row's ItemContainer (full row incl. its margin) when reachable.
-    /// </summary>
-    private List<ReorderDropIndicator.RowBounds> BuildRowBounds()
-    {
-        var rows = new List<ReorderDropIndicator.RowBounds>(_itemsViewRows.Count);
+        var root = ((IReorderHost)this).ReorderCoordinateRoot;
+        var rows = new List<ReorderRow>(_itemsViewRows.Count);
         foreach (var row in _itemsViewRows)
         {
             var item = row.Track;
             if (item is null) continue;
+            // Custom-sort playlists (the only reorder-enabled case) have no group
+            // markers, so the ITrackItem's _visibleRows index is its model index.
             var modelIndex = _visibleRows.IndexOf(item);
             if (modelIndex < 0) continue;
+            if (FindParent<ItemContainer>(row) is not { } container) continue;
 
-            FrameworkElement boundsSource = FindParent<ItemContainer>(row) ?? (FrameworkElement)row;
             double top;
-            try
-            {
-                top = boundsSource.TransformToVisual(RowsHostCell)
-                    .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
-            }
+            try { top = container.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, 0)).Y; }
             catch { continue; }
-
-            rows.Add(new ReorderDropIndicator.RowBounds(boundsSource, top, boundsSource.ActualHeight, modelIndex));
+            rows.Add(new ReorderRow(container, modelIndex, top, container.ActualHeight));
         }
+        rows.Sort(static (a, b) => a.ModelIndex.CompareTo(b.ModelIndex));
         return rows;
     }
 
-    private void WriteTrackPayload(DataPackage data, IReadOnlyList<ITrackItem> tracks, int sourceStartIndex)
+    bool IReorderHost.CanReorder => CanReorder;
+
+    (int From, int Length) IReorderHost.GetReorderSpan(int pressedIndex)
     {
-        var uris = tracks.Select(t => t.Id).ToArray();
-        var payload = new TrackDragPayload(
-            uris,
-            sourceContextUri: ContextUri,
-            sourceStartIndex: sourceStartIndex >= 0 ? sourceStartIndex : null);
-        DragPackageWriter.Write(data, payload);
-        ResolveDragState()?.StartDrag(payload);
+        var selected = RowsItemsView.SelectedItems?.OfType<ITrackItem>().ToList();
+        if (selected is { Count: > 1 })
+        {
+            int min = int.MaxValue, max = int.MinValue;
+            foreach (var s in selected)
+            {
+                var idx = _visibleRows.IndexOf(s);
+                if (idx < 0) continue;
+                if (idx < min) min = idx;
+                if (idx > max) max = idx;
+            }
+            if (min <= pressedIndex && pressedIndex <= max && (max - min + 1) == selected.Count)
+                return (min, selected.Count);
+        }
+        return (pressedIndex, 1);
     }
 
-    private bool TryReadIntraListReorder(DragEventArgs e, out int fromIndex, out int length)
+    string IReorderHost.GetItemLabel(int index) =>
+        index >= 0 && index < _visibleRows.Count && _visibleRows[index] is ITrackItem t
+            ? (t.Title ?? string.Empty) : string.Empty;
+
+    // Per-frame auto-scroll must be instant: the default animated ScrollBy
+    // retargets a running animation every frame, which lags and compounds.
+    private static readonly ScrollingScrollOptions InstantReorderScroll =
+        new(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore);
+
+    void IReorderHost.ScrollBy(double deltaPixels) =>
+        RowsScrollView?.ScrollBy(0, deltaPixels, InstantReorderScroll);
+
+    IDragPayload? IReorderHost.BuildPayload(int from, int length)
     {
-        fromIndex = -1;
-        length = 0;
-        if (!CanReorder) return false;
-        if (ResolveDragState()?.CurrentPayload is not TrackDragPayload p) return false;
-        if (string.IsNullOrEmpty(ContextUri)
-            || !string.Equals(p.SourceContextUri, ContextUri, StringComparison.Ordinal))
-            return false;
-        if (p.SourceStartIndex is not int from || p.ItemCount <= 0) return false;
-        fromIndex = from;
-        length = p.ItemCount;
+        var uris = new List<string>(length);
+        for (int i = from; i < from + length && i < _visibleRows.Count; i++)
+            if (_visibleRows[i] is ITrackItem t) uris.Add(t.Id);
+        if (uris.Count == 0) return null;
+        return new TrackDragPayload(uris.ToArray(), sourceContextUri: ContextUri, sourceStartIndex: from);
+    }
+
+    bool IReorderHost.CommitMove(int from, int length, int toGapSlot)
+    {
+        // Gap-slot coordinates pass straight through: TracksReorderRequested →
+        // PlaylistTrackListViewModel.ReorderTracksAsync does the gap→insert mapping
+        // and the optimistic local move + backend write itself.
+        TracksReorderRequested?.Invoke(from, length, toGapSlot);
         return true;
     }
-
 }

@@ -7,7 +7,8 @@ namespace Wavee.UI.Models;
 /// Represents a podcast/show in the user's library, either followed directly
 /// or inferred from saved/listen-later episodes.
 /// </summary>
-public sealed record LibraryPodcastShowDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibraryPodcastShowDto
 {
     public required string Id { get; init; }
     public required string Name { get; init; }

@@ -15,7 +15,8 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 /// <para>The selection, sort, filter, and drag-reorder helpers in the grid
 /// filter <c>is ITrackItem</c> so they ignore header rows automatically.</para>
 /// </summary>
-public sealed class TrackDataGridGroupRow
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class TrackDataGridGroupRow
 {
     /// <summary>The header content the consumer's <c>GroupHeaderSelector</c>
     /// produced for this bucket (typically a string like "Disc 1" or a

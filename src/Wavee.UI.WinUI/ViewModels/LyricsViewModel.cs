@@ -111,7 +111,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                         ApplyStyleForCurrentItem();
                 }
                 if (HasActiveConsumers)
-                    _ = DeferredLoadLyricsAsync();
+                    QueueLyricsLoad();
                 else
                     ReleaseInactiveLyricsState();
                 break;
@@ -128,7 +128,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                     && !string.IsNullOrEmpty(_playbackState.CurrentTrackTitle))
                 {
                     _loadedTrackId = null; // allow the early-exit guard to proceed
-                    _ = DeferredLoadLyricsAsync();
+                    QueueLyricsLoad();
                 }
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArtColor):
@@ -165,7 +165,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         if (active)
         {
             if (_activeConsumers.Add(consumer) && _activeConsumers.Count == 1)
-                _ = DeferredLoadLyricsAsync();
+                QueueLyricsLoad();
             return;
         }
 
@@ -189,6 +189,33 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
             interpolated = duration;
 
         return TimeSpan.FromMilliseconds(interpolated);
+    }
+
+    /// <summary>
+    /// The single fire-and-forget entry point for loading lyrics. Callers (track
+    /// changes, consumer activation, panel invalidation) never await the load, so
+    /// any exception that escapes it would become an unobserved Task exception that
+    /// the finalizer rethrows — capable of tearing down the process. This wrapper
+    /// observes and logs instead, so a load fault degrades to "no lyrics", not a crash.
+    /// </summary>
+    private void QueueLyricsLoad(bool deferred = true)
+    {
+        _ = RunLyricsLoadGuardedAsync(deferred);
+    }
+
+    private async Task RunLyricsLoadGuardedAsync(bool deferred)
+    {
+        try
+        {
+            if (deferred)
+                await DeferredLoadLyricsAsync();
+            else
+                await LoadLyricsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Unhandled exception during lyrics load");
+        }
     }
 
     private async Task DeferredLoadLyricsAsync()
@@ -316,7 +343,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     {
         _loadedTrackId = null;
         if (HasActiveConsumers)
-            _ = LoadLyricsAsync();
+            QueueLyricsLoad(deferred: false);
     }
 
     private void ReleaseInactiveLyricsState()

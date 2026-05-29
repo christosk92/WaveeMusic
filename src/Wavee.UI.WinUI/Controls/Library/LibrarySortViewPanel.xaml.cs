@@ -173,7 +173,7 @@ public sealed partial class LibrarySortViewPanel : UserControl
         }
 
         if (allowed.Count == 0)
-            allowed = new HashSet<LibrarySortBy>((LibrarySortBy[])Enum.GetValues(typeof(LibrarySortBy)));
+            allowed = new HashSet<LibrarySortBy>(Enum.GetValues<LibrarySortBy>());
 
         return allowed;
     }

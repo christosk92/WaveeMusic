@@ -5,7 +5,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// A library item (track, album, artist, etc.) for display in the UI.
 /// </summary>
-public sealed record LibraryItemDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibraryItemDto
 {
     public required string Id { get; init; }
     public required string Title { get; init; }

@@ -85,6 +85,7 @@
                 RenderTransformOrigin="0.5,0.5"
                 AllowDrop="True"
                 DragOver="MediaFrame_DragOver"
+                DragLeave="MediaFrame_DragLeave"
                 Drop="MediaFrame_Drop"
                 PointerEntered="MediaFrame_PointerEntered"
                 PointerExited="MediaFrame_PointerExited">

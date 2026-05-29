@@ -2123,7 +2123,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogDebug(
+            _logger?.LogTrace(
                 "Cached extension: uri={Uri} kind={Kind} locale={Locale} ttl={TTL}s expiresAt={ExpiresAt} bytes={Bytes} hasEtag={HasEtag}",
                 entityUri,
                 extensionKind,

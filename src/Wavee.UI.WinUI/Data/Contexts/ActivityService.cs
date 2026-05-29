@@ -150,7 +150,7 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
             IconGlyph = iconGlyph ?? GetCategoryStyle(category)?.DefaultIconGlyph,
             Status = status,
             Message = message,
-            Actions = actions,
+            Actions = ToActionList(actions),
             IsRead = silent
         };
 
@@ -412,14 +412,14 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
         bool isUndone,
         DateTimeOffset timestamp)
     {
-        IReadOnlyList<ActivityAction>? actions = null;
+        ObservableCollection<ActivityAction>? actions = null;
         if (!isUndone && descriptor is not null)
         {
-            actions =
-            [
+            actions = new ObservableCollection<ActivityAction>
+            {
                 new ActivityAction(undoLabel, null, () =>
                     Ioc.Default.GetRequiredService<IUserActionRunner>().UndoAsync(id, descriptor))
-            ];
+            };
         }
 
         return new NotificationActivityItem
@@ -729,19 +729,47 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
         }
     }
 
+    // Action payloads are serialized via WaveeUiJsonContext, which sets
+    // JsonKnownNamingPolicy.CamelCase — so a payload field like ItemUri lands
+    // on the wire as "itemUri". JsonElement.TryGetProperty is case-sensitive,
+    // so a literal "ItemUri" lookup quietly returns null and the activity bell
+    // renders "Removed 'item'" with no image and a default verb. All payload
+    // reads route through this case-insensitive helper instead so a future
+    // JsonContext rename can't silently break the activity surface again.
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            value = default;
+            return false;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
     private static string? GetString(JsonElement element, string propertyName) =>
-        element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
+        TryGetPropertyIgnoreCase(element, propertyName, out var property) && property.ValueKind == JsonValueKind.String
             ? property.GetString()
             : null;
 
     private static bool GetBool(JsonElement element, string propertyName) =>
-        element.TryGetProperty(propertyName, out var property)
+        TryGetPropertyIgnoreCase(element, propertyName, out var property)
         && property.ValueKind is JsonValueKind.True or JsonValueKind.False
         && property.GetBoolean();
 
     private static SavedItemType GetSavedItemType(JsonElement element, string propertyName)
     {
-        if (!element.TryGetProperty(propertyName, out var property))
+        if (!TryGetPropertyIgnoreCase(element, propertyName, out var property))
             return SavedItemType.Track;
 
         if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var value))
@@ -758,7 +786,7 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
 
     private static IReadOnlyList<string> GetStringArray(JsonElement element, string propertyName)
     {
-        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.Array)
+        if (!TryGetPropertyIgnoreCase(element, propertyName, out var property) || property.ValueKind != JsonValueKind.Array)
             return Array.Empty<string>();
 
         var values = new List<string>();
@@ -910,6 +938,9 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
 
     private static string? FirstNonWhiteSpace(params string?[] values) =>
         values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
+
+    private static ObservableCollection<ActivityAction> ToActionList(IReadOnlyList<ActivityAction> actions) =>
+        new(actions);
 
     private static ActivityOutcome OutcomeFor(bool isUndone, ActivityOutcome outcome) =>
         isUndone ? ActivityOutcome.Undo : outcome;

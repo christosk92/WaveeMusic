@@ -34,6 +34,9 @@ public sealed class TrackDragPayload : IDragPayload
     public DragPayloadKind Kind => DragPayloadKind.Tracks;
     public string InternalFormat => DragFormats.Tracks;
     public int ItemCount => TrackUris.Count;
+    // Track URIs only — no names available here. The drag chip shows a count
+    // caption ("3 songs") plus a music-note glyph; a single track reads "1 song".
+    public string? DisplayTitle => TrackUris.Count == 1 ? "1 song" : $"{TrackUris.Count} songs";
 
     public IReadOnlyList<string> HttpsUrls => TrackUris
         .Select(Wavee.UI.Helpers.SpotifyUriHelper.ToHttps)

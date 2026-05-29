@@ -1,7 +1,10 @@
 using System;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.WinUI.Data.Stores;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
@@ -635,6 +638,29 @@ public sealed partial class ContentCard
         var card = (ContentCard)d;
         card.ResetPlaybackVisualStateForNewItem();
         card.SyncInitialPlaybackState();
+        card.TryApplyCachedPlaylistTrackCount(e.NewValue as string);
+    }
+
+    // When a playlist card binds without an inline track count (Badge still empty),
+    // read PlaylistStore synchronously — any playlist the user already opened has its
+    // real count cached there. Free, no network; an uncached playlist just shows no
+    // badge. Badge is bound BEFORE NavigationUri in the card's x:Bind declaration
+    // order (HomePage.xaml), so by the time this fires an inline count (if the home
+    // response carried one) is already in Badge and we skip — and because no later
+    // binding re-pushes Badge, the value we set here survives. We deliberately do NOT
+    // touch NavigationTotalTracks: its binding is declared after NavigationUri, so the
+    // x:Bind push of the (still-zero) source would clobber it immediately. The header
+    // prefill is best-effort anyway — the playlist page fetches the real count on open.
+    private void TryApplyCachedPlaylistTrackCount(string? navUri)
+    {
+        if (!string.IsNullOrEmpty(Badge)) return;
+        if (string.IsNullOrEmpty(navUri)
+            || !navUri.StartsWith("spotify:playlist:", StringComparison.Ordinal))
+            return;
+
+        var cached = Ioc.Default.GetService<PlaylistStore>()?.PeekCached(navUri);
+        if (cached is { TrackCount: > 0 } c)
+            Badge = TrackCountFormatter.FormatTrackCount(c.TrackCount);
     }
 
     private static void OnSubtitleNavigationChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

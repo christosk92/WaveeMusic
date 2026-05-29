@@ -30,7 +30,6 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 
 	public event EventHandler<ItemInvokedEventArgs>? ItemInvoked;
 	public event EventHandler<ItemContextInvokedArgs>? ItemContextInvoked;
-	public event EventHandler<ItemDragOverEventArgs>? ItemDragOver;
 	public event EventHandler<ItemDroppedEventArgs>? ItemDropped;
 	public event EventHandler<SidebarItemModel>? PinButtonClicked;
 	public event PropertyChangedEventHandler? PropertyChanged;
@@ -72,12 +71,6 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 	{
 		if (sideBarItem.Item is null) return;
 		ItemDropped?.Invoke(this, new(sideBarItem.Item, rawEvent.DataView, dropPosition, rawEvent));
-	}
-
-	internal void RaiseItemDragOver(SidebarItem sideBarItem, SidebarItemDropPosition dropPosition, DragEventArgs rawEvent)
-	{
-		if (sideBarItem.Item is null) return;
-		ItemDragOver?.Invoke(this, new(sideBarItem.Item, rawEvent.DataView, dropPosition, rawEvent));
 	}
 
 	internal void RaisePinButtonClicked(SidebarItemModel model)
@@ -224,6 +217,10 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 		if (_dragStateService != null)
 			_dragStateService.DragStateChanged += OnDragStateChanged;
 
+		// Scroll viewer owns the gap's drop fallback so the displaced-row hit-test
+		// hole is still droppable (see SidebarView.Reorder.cs).
+		AttachReorderSurface();
+
 		Unloaded += SidebarView_Unloaded;
 
 		// Arm the transition - every later display-mode toggle now gets motion.
@@ -241,8 +238,36 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 		DispatcherQueue.TryEnqueue(() =>
 		{
 			ContentCardBorder.Opacity = isDragging ? 0.3 : 1.0;
+			if (!isDragging)
+			{
+				StopReorderAutoScroll();
+				// Authoritative drag-end: clear any gap left open if the drag ended
+				// off any row (cancel, drop on empty space) where no row's Drop fired.
+				ClearReorderGap(animate: false);
+			}
 		});
 	}
+
+	// ── Reorder auto-scroll (rbd quadratic edge ramp) ─────────────────────
+	// The sidebar reorder gesture stays OLE-driven (it must hit-test across rows
+	// for nest / drop-onto-playlist / move-to-root), but it adopts the same
+	// edge auto-scroll the in-list ReorderController uses. SidebarItem.DragOver
+	// forwards the raw event here; we project the pointer into the scroll
+	// viewport and drive ReorderAutoScroller.
+
+	private Reorder.ReorderAutoScroller? _reorderAutoScroller;
+
+	internal void UpdateReorderAutoScroll(DragEventArgs e)
+	{
+		if (MenuItemHostScrollViewer is not { } sv) return;
+		_reorderAutoScroller ??= new Reorder.ReorderAutoScroller(
+			delta => sv.ChangeView(null, sv.VerticalOffset + delta, null, true),
+			_ => { /* OLE re-raises DragOver as content shifts; no manual re-project needed */ });
+		var y = e.GetPosition(sv).Y;
+		_reorderAutoScroller.Update(y, sv.ActualHeight);
+	}
+
+	internal void StopReorderAutoScroll() => _reorderAutoScroller?.Stop();
 
 	private void SidebarResizer_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
 	{

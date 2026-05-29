@@ -10,7 +10,6 @@ namespace Wavee.UI.Services.DragDrop.Handlers;
 /// <list type="bullet">
 ///   <item><c>(SidebarItem, PlaylistRow)</c> — reorder before / after the target.</item>
 ///   <item><c>(SidebarItem, FolderRow)</c> — drop inside the folder, or reorder if before/after.</item>
-///   <item><c>(SidebarItem, SidebarRoot)</c> — move a row out of its current folder to the top level.</item>
 ///   <item><c>(Playlist, FolderRow)</c> — nest a playlist card into a folder.</item>
 /// </list>
 /// </summary>
@@ -148,29 +147,6 @@ public static class SidebarReorderHandler
         {
             await mediator.MovePlaylistInRootlistAsync(p.PlaylistUri, ctx.TargetId, ctx.Position, ct).ConfigureAwait(false);
             return DropResult.Ok(1, "Sidebar reordered");
-        }
-        catch (Exception ex)
-        {
-            return DropResult.Failed(ex.Message);
-        }
-    }
-
-    /// <summary>
-    /// Move a sidebar row to the top level. <see cref="DropContext.TargetIndex"/>
-    /// supplies the destination 0-based top-level index.
-    /// </summary>
-    public static async Task<DropResult> MoveToRootAsync(
-        IPlaylistDragDropMediator mediator,
-        DropContext ctx,
-        CancellationToken ct)
-    {
-        if (ctx.Payload is not SidebarReorderPayload p) return DropResult.NoHandler;
-        var destIdx = ctx.TargetIndex ?? 0;
-
-        try
-        {
-            await mediator.MovePlaylistOutOfFolderAsync(p.SourceUri, destIdx, ct).ConfigureAwait(false);
-            return DropResult.Ok(1, "Moved out of folder");
         }
         catch (Exception ex)
         {

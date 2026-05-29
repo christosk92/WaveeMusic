@@ -263,9 +263,9 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
                 continue;
 
             if (!string.IsNullOrWhiteSpace(message.DisplaySubtitle))
-                item.AlbumMetadataSubtitle = message.DisplaySubtitle;
+                item.MetadataSubtitle = message.DisplaySubtitle;
             if (message.TotalTracks > 0)
-                item.AlbumTotalTracks = message.TotalTracks;
+                item.TotalTracks = message.TotalTracks;
             if (!string.IsNullOrWhiteSpace(message.ArtistName))
             {
                 item.Subtitle = message.ArtistName;

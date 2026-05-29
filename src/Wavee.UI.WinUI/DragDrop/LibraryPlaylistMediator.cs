@@ -38,9 +38,6 @@ internal sealed class LibraryPlaylistMediator(
     public Task MovePlaylistIntoFolderAsync(string playlistUri, string folderStartUri, CancellationToken ct = default)
         => rootlist.MovePlaylistIntoFolderAsync(playlistUri, folderStartUri, ct);
 
-    public Task MovePlaylistOutOfFolderAsync(string playlistUri, int destinationRootIndex, CancellationToken ct = default)
-        => rootlist.MovePlaylistOutOfFolderAsync(playlistUri, destinationRootIndex, ct);
-
     // ── Context-track resolvers ────────────────────────────────────────────
 
     public async Task<IReadOnlyList<string>> GetPlaylistTrackUrisAsync(string playlistUri, CancellationToken ct = default)

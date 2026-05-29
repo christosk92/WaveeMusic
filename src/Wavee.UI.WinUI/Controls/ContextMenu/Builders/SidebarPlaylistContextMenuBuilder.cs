@@ -23,6 +23,7 @@ public sealed class SidebarPlaylistMenuContext
     public bool IsInLibrary { get; init; }
     public bool IsOwner { get; init; }
 
+    public Action? PlayAction { get; init; }
     public ICommand? AddToQueueCommand { get; init; }
     public Action? AddToProfileAction { get; init; }
     public Action? ReportAction { get; init; }
@@ -44,6 +45,18 @@ public static class SidebarPlaylistContextMenuBuilder
         var uri = "spotify:playlist:" + ctx.PlaylistId;
 
         // ── Quick actions ─────────────────────────────────────────────────
+        // Play comes first — Spotify-desktop parity. Default behavior fires
+        // IPlaybackService.PlayContextAsync(uri); hosts can override via
+        // PlayAction (e.g. to add play-origin / preserve cluster context).
+        items.Add(new ContextMenuItemModel
+        {
+            Text = AppLocalization.GetString("TrackMenu_Play"),
+            Glyph = FluentGlyphs.Play,
+            AccentIconStyleKey = "App.AccentIcons.Media.Play",
+            IsPrimary = true,
+            Invoke = ctx.PlayAction ?? (() => PlayContextDefault(uri))
+        });
+
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("SidebarMenu_AddToQueue"),
@@ -168,6 +181,13 @@ public static class SidebarPlaylistContextMenuBuilder
         }
 
         return items;
+    }
+
+    private static void PlayContextDefault(string uri)
+    {
+        var playback = Ioc.Default.GetService<IPlaybackService>();
+        if (playback is null) return;
+        _ = playback.PlayContextAsync(uri);
     }
 
     private static async void ToggleLibraryDefault(string uri, bool wasSaved)

@@ -3,7 +3,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents detailed album metadata.
 /// </summary>
-public sealed record AlbumDetailDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumDetailDto
 {
     public required string Id { get; init; }
     public required string Name { get; init; }

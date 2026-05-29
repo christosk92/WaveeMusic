@@ -410,7 +410,8 @@ public sealed partial class TrackDataGrid
             ti.EndBatchUpdate();
             walked++;
         }
-        System.Diagnostics.Debug.WriteLine($"[addedby-grid] RefreshRowShowFlags: walked={walked} addedByShow={addedByShow} (AddedByVisible={AddedByVisible} colVisible={ColumnVisible("AddedBy")})");
+        if (Wavee.UI.WinUI.Services.AppFeatureFlags.VerboseUiDiagnostics)
+            System.Diagnostics.Debug.WriteLine($"[addedby-grid] RefreshRowShowFlags: walked={walked} addedByShow={addedByShow} (AddedByVisible={AddedByVisible} colVisible={ColumnVisible("AddedBy")})");
     }
 
     /// <summary>
@@ -522,7 +523,8 @@ public sealed partial class TrackDataGrid
     {
         if (AddedByFormatter is null)
         {
-            System.Diagnostics.Debug.WriteLine("[addedby] RefreshAddedByCells: formatter null, no-op");
+            if (Wavee.UI.WinUI.Services.AppFeatureFlags.VerboseUiDiagnostics)
+                System.Diagnostics.Debug.WriteLine("[addedby] RefreshAddedByCells: formatter null, no-op");
             return;
         }
         var walked = 0;
@@ -536,6 +538,7 @@ public sealed partial class TrackDataGrid
             ti.AddedByAvatarUrl = info.AvatarUrl;
             refreshed++;
         }
-        System.Diagnostics.Debug.WriteLine($"[addedby] RefreshAddedByCells: walked={walked} refreshed={refreshed}");
+        if (Wavee.UI.WinUI.Services.AppFeatureFlags.VerboseUiDiagnostics)
+            System.Diagnostics.Debug.WriteLine($"[addedby] RefreshAddedByCells: walked={walked} refreshed={refreshed}");
     }
 }

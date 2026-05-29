@@ -12,6 +12,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.Services;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -239,6 +240,51 @@ public sealed partial class BaselineHomeCard : UserControl
             HomeContentType.Podcast => AppLocalization.GetString("ContentType_Podcast"),
             _ => AppLocalization.GetString("ContentType_MadeForYou")
         };
+
+        // Secondary metadata line — "Jun 27, 2025 · 17 tracks" for albums, "50 tracks"
+        // for playlists. Albums resolve it via IAlbumPrefetcher on viewport entry;
+        // playlists usually carry it inline from the home response (content.totalCount).
+        // When a playlist card arrives without an inline count, fall back to a free
+        // synchronous read of PlaylistStore — any playlist the user already opened has a
+        // real count cached there. No network: an uncached, count-less playlist simply
+        // shows no line. Setting the property re-enqueues UpdateFromItem (async, via
+        // Item_PropertyChanged), but TotalTracks > 0 then skips this block, so it's a
+        // one-shot repaint, not a loop.
+        if (item.ContentType == HomeContentType.Playlist
+            && item.TotalTracks <= 0
+            && !string.IsNullOrEmpty(item.Uri)
+            && item.Uri.StartsWith("spotify:playlist:", StringComparison.Ordinal))
+        {
+            var cached = Ioc.Default.GetService<PlaylistStore>()?.PeekCached(item.Uri);
+            if (cached is { TrackCount: > 0 } c)
+            {
+                item.TotalTracks = c.TrackCount;
+                item.MetadataSubtitle = TrackCountFormatter.FormatTrackCount(c.TrackCount);
+            }
+        }
+
+        var metadata = item.MetadataSubtitle;
+        if (!string.IsNullOrWhiteSpace(metadata))
+        {
+            MetadataText.Text = metadata;
+            MetadataText.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            MetadataText.Text = "";
+            MetadataText.Visibility = Visibility.Collapsed;
+        }
+
+        // Kick the album prefetcher for album entities so the metadata line
+        // populates without the user having to hover. The prefetcher dedupes
+        // session-wide, so re-entries (PropertyChanged, recycle) are cheap.
+        if (item.ContentType == HomeContentType.Album
+            && !string.IsNullOrWhiteSpace(item.Uri)
+            && item.Uri.StartsWith("spotify:album:", StringComparison.Ordinal)
+            && string.IsNullOrWhiteSpace(metadata))
+        {
+            Ioc.Default.GetService<IAlbumPrefetcher>()?.EnqueueAlbumPrefetch(item.Uri);
+        }
 
         var previewTrackName = activePreviewTrack?.Name;
         PreviewEyebrowText.Visibility = string.IsNullOrWhiteSpace(previewTrackName)

@@ -3,7 +3,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Library statistics for sidebar badges.
 /// </summary>
-public sealed record LibraryStatsDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibraryStatsDto
 {
     public int AlbumCount { get; init; }
     public int ArtistCount { get; init; }

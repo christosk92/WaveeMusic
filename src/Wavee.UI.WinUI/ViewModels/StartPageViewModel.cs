@@ -57,7 +57,8 @@ public sealed partial class StartPageViewModel : ObservableObject
     }
 }
 
-public class QuickAccessItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public partial class QuickAccessItem
 {
     public required string Title { get; init; }
     public required string Glyph { get; init; }

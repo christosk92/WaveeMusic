@@ -191,30 +191,6 @@ public sealed class RootlistService : IRootlistService
         return MovePlaylistInRootlistAsync(playlistUri, folderStartUri, DropPosition.Inside, ct);
     }
 
-    public async Task MovePlaylistOutOfFolderAsync(
-        string playlistUri,
-        int destinationRootIndex,
-        CancellationToken ct = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
-        if (destinationRootIndex < 0) throw new ArgumentOutOfRangeException(nameof(destinationRootIndex));
-
-        var userData = _session.GetUserData()
-            ?? throw new InvalidOperationException("MovePlaylistOutOfFolderAsync requires an authenticated session");
-        var username = userData.Username;
-
-        var rootlist = await _playlistCache.GetRootlistAsync(ct: ct);
-        var fromIndex = RootlistGraph.FindRootlistPlaylistIndex(rootlist, playlistUri);
-        if (fromIndex < 0)
-        {
-            rootlist = await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
-            fromIndex = RootlistGraph.FindRootlistPlaylistIndex(rootlist, playlistUri);
-        }
-        if (fromIndex < 0) throw new InvalidOperationException($"Playlist '{playlistUri}' is not in the current user's rootlist.");
-
-        await PostRootlistMovAsync(username, rootlist, fromIndex, 1, destinationRootIndex, ct);
-    }
-
     /// <summary>
     /// Inserts a single playlist into the user's rootlist at <paramref name="toIndex"/>
     /// (= follow + place in one delta).

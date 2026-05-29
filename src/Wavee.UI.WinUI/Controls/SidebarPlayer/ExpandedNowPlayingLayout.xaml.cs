@@ -793,14 +793,23 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
             || e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Artist))
         {
             e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+            Wavee.UI.WinUI.DragDrop.DropHighlight.Apply(MediaFrame);
             e.DragUIOverride.Caption = "Play this";
             e.DragUIOverride.IsCaptionVisible = true;
             e.DragUIOverride.IsGlyphVisible = true;
         }
+        else
+        {
+            Wavee.UI.WinUI.DragDrop.DropHighlight.Clear(MediaFrame);
+        }
     }
+
+    private void MediaFrame_DragLeave(object sender, DragEventArgs e)
+        => Wavee.UI.WinUI.DragDrop.DropHighlight.Clear(MediaFrame);
 
     private async void MediaFrame_Drop(object sender, DragEventArgs e)
     {
+        Wavee.UI.WinUI.DragDrop.DropHighlight.Clear(MediaFrame);
         var dropService = Ioc.Default.GetService<Wavee.UI.Services.DragDrop.IDragDropService>();
         if (dropService is null) return;
 

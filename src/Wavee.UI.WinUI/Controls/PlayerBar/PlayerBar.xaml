@@ -387,12 +387,13 @@
                         </playback:TransportModeButton>
                         <Button
                             x:Uid="Controls_PlayerBar_PlayerBar__Button_105"
+                            x:Name="SkipBackwardButton"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="34"
                             Height="32"
                             Padding="0"
+                            Visibility="Collapsed"
                             Command="{x:Bind ViewModel.SkipBackwardCommand}"
-                            Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                             ToolTipService.ToolTip="Back 15 seconds">
                             <TextBlock Text="-15" FontSize="11" FontWeight="SemiBold" />
                         </Button>
@@ -448,22 +449,24 @@
                         </playback:TransportModeButton>
                         <Button
                             x:Uid="Controls_PlayerBar_PlayerBar__Button_110"
+                            x:Name="SkipForwardButton"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="34"
                             Height="32"
                             Padding="0"
+                            Visibility="Collapsed"
                             Command="{x:Bind ViewModel.SkipForwardCommand}"
-                            Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                             ToolTipService.ToolTip="Forward 15 seconds">
                             <TextBlock Text="+15" FontSize="11" FontWeight="SemiBold" />
                         </Button>
                         <Button
                             x:Uid="Controls_PlayerBar_PlayerBar__Button_111"
+                            x:Name="PlaybackSpeedButton"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="42"
                             Height="32"
                             Padding="0"
-                            Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            Visibility="Collapsed"
                             ToolTipService.ToolTip="Playback speed">
                             <Button.Flyout>
                                 <MenuFlyout>
@@ -667,6 +670,36 @@
                             ToolTipService.ToolTip="More">
                             <Button.Flyout>
                                 <MenuFlyout Opening="OverflowFlyout_Opening">
+                                    <!-- Podcast-only transport extras. Made visible by ApplyLayoutState
+                                         only when the bar is in Narrow state and the current item is an
+                                         episode — i.e., we've trimmed -15 / +15 / Speed from the inline
+                                         transport cluster to keep the progress bar readable. -->
+                                    <MenuFlyoutItem
+                                        x:Name="OverflowSkipBackwardItem"
+                                        Visibility="Collapsed"
+                                        Text="Back 15 seconds"
+                                        Command="{x:Bind ViewModel.SkipBackwardCommand}" />
+                                    <MenuFlyoutItem
+                                        x:Name="OverflowSkipForwardItem"
+                                        Visibility="Collapsed"
+                                        Text="Forward 15 seconds"
+                                        Command="{x:Bind ViewModel.SkipForwardCommand}" />
+                                    <MenuFlyoutSubItem
+                                        x:Name="OverflowPlaybackSpeedItem"
+                                        Visibility="Collapsed"
+                                        Text="Playback speed">
+                                        <MenuFlyoutItem Text="0.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="0.5" />
+                                        <MenuFlyoutItem Text="0.75x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="0.75" />
+                                        <MenuFlyoutItem Text="1x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1" />
+                                        <MenuFlyoutItem Text="1.25x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.25" />
+                                        <MenuFlyoutItem Text="1.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.5" />
+                                        <MenuFlyoutItem Text="1.75x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.75" />
+                                        <MenuFlyoutItem Text="2x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="2" />
+                                        <MenuFlyoutItem Text="2.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="2.5" />
+                                        <MenuFlyoutItem Text="3x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="3" />
+                                    </MenuFlyoutSubItem>
+                                    <MenuFlyoutSeparator x:Name="OverflowEpisodeExtrasSeparator" Visibility="Collapsed" />
+
                                     <MenuFlyoutItem
                                         x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_120"
                                         x:Name="WideLikeMenuItem"

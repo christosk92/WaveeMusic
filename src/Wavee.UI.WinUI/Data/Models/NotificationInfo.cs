@@ -26,6 +26,13 @@ public sealed record NotificationInfo
     /// Use for fire-and-forget sync actions or awaitable async operations.
     /// </summary>
     public Func<Task>? Action { get; init; }
+
+    /// <summary>
+    /// When <c>true</c> (default), the notification is also recorded in the
+    /// activity-bell history. Set <c>false</c> for high-frequency transient
+    /// confirmations (e.g. "Added to queue") that would otherwise flood the bell.
+    /// </summary>
+    public bool PostToActivityBell { get; init; } = true;
 }
 
 /// <summary>

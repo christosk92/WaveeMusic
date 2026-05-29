@@ -353,7 +353,7 @@
                                         Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                         BorderThickness="0"
                                         ToolTipService.ToolTip="Add to queue">
-                                    <FontIcon Glyph="&#xE8FD;" FontSize="14"/>
+                                    <PathIcon Style="{StaticResource App.PathIcons.Media.AddToQueue}" Data="M 2,4 L 12,4 L 12,5.5 L 2,5.5 Z M 2,7.25 L 12,7.25 L 12,8.75 L 2,8.75 Z M 2,10.5 L 8,10.5 L 8,12 L 2,12 Z M 12,10 L 13,10 L 13,11.5 L 14.5,11.5 L 14.5,12.5 L 13,12.5 L 13,14 L 12,14 L 12,12.5 L 10.5,12.5 L 10.5,11.5 L 12,11.5 Z" Width="16" Height="16"/>
                                 </Button>
                                 <Button x:Uid="Views_EpisodePage__Auto_606" Command="{x:Bind ViewModel.ShareCommand}"
                                         Click="ShareButton_Click"

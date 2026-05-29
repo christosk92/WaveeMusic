@@ -3,10 +3,8 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
-using Windows.Graphics.Imaging;
 using Wavee.UI.Services.DragDrop;
 
 namespace Wavee.UI.WinUI.DragDrop;
@@ -88,6 +86,8 @@ public static class ManualDragAttachment
         state.DragInFlight = true;
         var dragState = Ioc.Default.GetService<DragStateService>();
         dragState?.StartDrag(payload);
+        System.Diagnostics.Debug.WriteLine(
+            $"[sbreorder] StartDrag kind={payload.Kind} dragStateNull={dragState is null}");
         try
         {
             // StartDragAsync raises DragStarting on the element; the lambda below
@@ -107,16 +107,16 @@ public static class ManualDragAttachment
     /// <summary>
     /// Convenience: <see cref="Attach"/> + register a <c>DragStarting</c> handler
     /// that writes the payload through <see cref="DragPackageWriter"/>.
-    /// When <paramref name="useSmallPreview"/> is true (default), the framework's
-    /// default drag visual (which captures the source element at its actual size
-    /// — way too big for content cards / track rows, and obscures sidebar drop
-    /// regions) is replaced by a downscaled bitmap of the same element capped at
-    /// <see cref="SmallPreviewMaxWidth"/> × <see cref="SmallPreviewMaxHeight"/>.
+    /// When <paramref name="useChip"/> is true (default), the framework's default
+    /// drag visual (a full-size capture of the source element — way too big for
+    /// content cards / track rows, and it obscures drop regions) is replaced by a
+    /// compact payload-driven pill (<see cref="DragChip"/>): art thumbnail + title
+    /// + count badge.
     /// </summary>
     public static void AttachWithPackageWriter(
         UIElement element,
         Func<IDragPayload?> payloadFactory,
-        bool useSmallPreview = true)
+        bool useChip = true)
     {
         IDragPayload? captured = null;
 
@@ -143,71 +143,8 @@ public static class ManualDragAttachment
             args.Data.RequestedOperation =
                 DataPackageOperation.Copy | DataPackageOperation.Link | DataPackageOperation.Move;
 
-            if (useSmallPreview && sender is FrameworkElement fe)
-                _ = ApplySmallDragPreviewAsync(args, fe);
+            if (useChip)
+                _ = DragChip.ApplyAsync(args, captured, (sender as FrameworkElement)?.XamlRoot);
         };
-    }
-
-    /// <summary>
-    /// Outer bounding box for the rendered drag preview. Both axes are capped
-    /// independently and the aspect-preserving scale is the harsher of the two,
-    /// so any source — portrait content card (~200×280), landscape track row
-    /// (~800×56), wide media card — folds down to something the user can read
-    /// without obscuring drop regions.
-    /// </summary>
-    private const double SmallPreviewMaxWidth = 260;
-    private const double SmallPreviewMaxHeight = 96;
-
-    /// <summary>
-    /// Renders <paramref name="source"/> off-screen at a capped size using
-    /// <see cref="RenderTargetBitmap"/> and feeds the result back into
-    /// <see cref="DragStartingEventArgs.DragUI"/>. Held under a deferral so
-    /// WinUI waits for the bitmap before showing the cursor preview.
-    /// </summary>
-    private static async System.Threading.Tasks.Task ApplySmallDragPreviewAsync(
-        DragStartingEventArgs args,
-        FrameworkElement source)
-    {
-        var deferral = args.GetDeferral();
-        try
-        {
-            var actualW = source.ActualWidth;
-            var actualH = source.ActualHeight;
-            if (actualW <= 0 || actualH <= 0) return;
-
-            var scale = Math.Min(1.0, Math.Min(SmallPreviewMaxWidth / actualW, SmallPreviewMaxHeight / actualH));
-            // Source already fits — skip the round-trip and let WinUI use its
-            // default capture, which is identical pixel-for-pixel.
-            if (scale >= 1.0) return;
-
-            var w = Math.Max(1, (int)Math.Round(actualW * scale));
-            var h = Math.Max(1, (int)Math.Round(actualH * scale));
-
-            var rtb = new RenderTargetBitmap();
-            await rtb.RenderAsync(source, w, h);
-            var pixels = await rtb.GetPixelsAsync();
-            var softwareBitmap = SoftwareBitmap.CreateCopyFromBuffer(
-                pixels,
-                BitmapPixelFormat.Bgra8,
-                rtb.PixelWidth,
-                rtb.PixelHeight,
-                BitmapAlphaMode.Premultiplied);
-
-            // Anchor at (0, 0): bitmap's top-left sits at the cursor, so the
-            // chip floats below-right of the pointer (Explorer-style) and
-            // leaves the area the user is reaching toward unobscured. A
-            // centered anchor (PixelWidth/2, PixelHeight/2) was tried first
-            // and made the chip swallow the row directly under the cursor.
-            args.DragUI.SetContentFromSoftwareBitmap(softwareBitmap, new Point(0, 0));
-        }
-        catch
-        {
-            // Best-effort. If RenderAsync fails (element not in tree, GPU
-            // device lost, etc.) WinUI just falls back to the default visual.
-        }
-        finally
-        {
-            deferral.Complete();
-        }
     }
 }

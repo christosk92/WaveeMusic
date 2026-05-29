@@ -67,6 +67,19 @@ public sealed partial class PlaylistTrackListViewModel
 
     private List<PlaylistTrackDto> _allTracks = [];
 
+    // Cold-open enrichment coalescing. All per-track TrackV4 fetches resolve from
+    // one debounced POST, so their results land in a burst. Buffer them and drain
+    // in small Low-priority batches so the row rebinds spread across frames instead
+    // of locking the UI thread in a single tick.
+    private const int EnrichDrainBatchSize = 12;
+    private readonly object _enrichGate = new();
+    private List<PlaylistTrackDto>? _enrichBuffer;
+    private bool _enrichDrainScheduled;
+    // UI-thread only: set once the stream signals no more results are coming, so
+    // the drain that empties the buffer runs the finalize step.
+    private bool _enrichStreamComplete;
+    private Action? _onStreamingEnrichComplete;
+
     /// <summary>Latest track snapshot — used by sibling VMs (header /
     /// mutations) via the snapshot accessor passed in from the parent.</summary>
     public IReadOnlyList<PlaylistTrackDto> AllTracks => _allTracks;
@@ -172,6 +185,14 @@ public sealed partial class PlaylistTrackListViewModel
     [ObservableProperty]
     public partial bool IsLoadingTracks { get; set; }
 
+    /// <summary>
+    /// True while a cold open is streaming per-row TrackV4 metadata into
+    /// placeholder rows. Suppresses filter/sort reprojection (which would replace
+    /// the shimmer <see cref="LazyTrackItem"/>s wholesale) and gates drag-reorder.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsStreamingEnrich { get; set; }
+
     [ObservableProperty]
     public partial int TotalTracks { get; set; }
 
@@ -217,7 +238,7 @@ public sealed partial class PlaylistTrackListViewModel
     /// <summary>True when the user is allowed to drag-reorder tracks within this
     /// list. We gate on owner-edit AND on "no sort applied" — applying a sort
     /// makes manual position meaningless, so the gesture is hidden in that mode.</summary>
-    public bool CanReorderTracks => _canEditItemsProvider() && CurrentSortColumn == PlaylistSortColumn.Custom;
+    public bool CanReorderTracks => _canEditItemsProvider() && CurrentSortColumn == PlaylistSortColumn.Custom && !IsStreamingEnrich;
 
     private bool _parentIsLoading;
     private bool _parentHasError;
@@ -314,6 +335,9 @@ public sealed partial class PlaylistTrackListViewModel
         MaybeLoadEmptyPlaylistGenres();
     }
 
+    partial void OnIsStreamingEnrichChanged(bool value)
+        => OnPropertyChanged(nameof(CanReorderTracks));
+
     // ── Selection ────────────────────────────────────────────────────────────
 
     protected override void OnSelectionChanged()
@@ -330,6 +354,13 @@ public sealed partial class PlaylistTrackListViewModel
 
     private void ApplyFilterAndSort()
     {
+        // While streaming, FilteredTracks holds shimmer LazyTrackItem placeholders
+        // that EnrichRow populates in place. A reproject here would ReplaceWith the
+        // (mostly-blank) _allTracks DTOs and blow away the placeholders. The pending
+        // search/sort is re-applied once in CompleteStreamingEnrich.
+        if (IsStreamingEnrich)
+            return;
+
         using var _ = UiOperationProfiler.Instance?.Profile("playlist.tracks.project");
         FilteredTracks.ReplaceWith(BuildFilteredAndSortedTracks().Cast<ITrackItem>());
     }
@@ -397,6 +428,191 @@ public sealed partial class PlaylistTrackListViewModel
             return AppLocalization.Format("Duration_HoursMinutes", (int)ts.TotalHours, ts.Minutes);
         return AppLocalization.Format("Duration_Minutes", ts.Minutes);
     }
+
+    /// <summary>
+    /// Cold-open entry point: paint clickable shimmer rows immediately from the
+    /// playlist's metadata-free skeletons. Seeds <see cref="_allTracks"/> with
+    /// skeleton-backed DTOs (URI / added-at / index known, display fields blank)
+    /// so Play-All / aggregates have URIs up front; FilteredTracks gets one
+    /// <see cref="LazyTrackItem"/> placeholder per row. Rows fill in via
+    /// <see cref="EnrichRow"/> as their TrackV4 metadata streams in.
+    /// </summary>
+    public void ApplySkeletons(IReadOnlyList<PlaylistTrackSkeleton> skeletons)
+    {
+        // Discard enrich results still buffered from a previous playlist's stream —
+        // their OriginalIndex would otherwise be applied to this playlist's rows.
+        lock (_enrichGate)
+        {
+            _enrichBuffer = null;
+            _enrichDrainScheduled = false;
+        }
+        _enrichStreamComplete = false;
+        _onStreamingEnrichComplete = null;
+
+        IsStreamingEnrich = true;
+        // Stay in playlist order while rows fill — sorting blank rows reflows.
+        CurrentSortColumn = PlaylistSortColumn.Custom;
+
+        _allTracks = skeletons.Select(BuildSkeletonDto).ToList();
+        HasAnyAddedAt = _allTracks.Any(static t => t.AddedAt.HasValue);
+        NotifyVideoFilterProperties();
+        UpdateAggregates();
+
+        FilteredTracks.ReplaceWith(
+            skeletons.Select(static s => (ITrackItem)LazyTrackItem.Placeholder(s.Id, s.Index)));
+        TracksChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Per-row enrichment callback for the streaming cold open. Replaces the
+    /// matching snapshot slot with the full DTO and populates the bound
+    /// placeholder in place (no collection reset). Matched by 1-based position
+    /// (<see cref="PlaylistTrackDto.OriginalIndex"/>), unique per row even when
+    /// the playlist contains the same track twice.
+    /// </summary>
+    /// <summary>
+    /// Thread-safe entry point for the streaming cold open: buffers a resolved DTO
+    /// (called off the UI thread) and schedules a coalesced drain. Collapses the
+    /// post-POST burst of ~N callbacks into a few Low-priority batches.
+    /// </summary>
+    public void EnqueueEnrich(PlaylistTrackDto dto)
+    {
+        bool schedule;
+        lock (_enrichGate)
+        {
+            (_enrichBuffer ??= new List<PlaylistTrackDto>()).Add(dto);
+            schedule = !_enrichDrainScheduled;
+            if (schedule) _enrichDrainScheduled = true;
+        }
+
+        if (schedule)
+            _dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, DrainEnrichBuffer);
+    }
+
+    private void DrainEnrichBuffer()
+    {
+        List<PlaylistTrackDto>? batch = null;
+        var more = false;
+        lock (_enrichGate)
+        {
+            if (_enrichBuffer is { Count: > 0 })
+            {
+                if (_enrichBuffer.Count <= EnrichDrainBatchSize)
+                {
+                    batch = _enrichBuffer;
+                    _enrichBuffer = null;
+                }
+                else
+                {
+                    batch = _enrichBuffer.GetRange(0, EnrichDrainBatchSize);
+                    _enrichBuffer.RemoveRange(0, EnrichDrainBatchSize);
+                    more = true;
+                }
+            }
+            _enrichDrainScheduled = more;
+        }
+
+        if (batch is not null)
+            foreach (var dto in batch)
+                EnrichRow(dto);
+
+        if (more)
+            _dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, DrainEnrichBuffer);
+        else if (_enrichStreamComplete)
+            CompleteStreamingEnrich();
+    }
+
+    public void EnrichRow(PlaylistTrackDto dto)
+    {
+        var idx = dto.OriginalIndex - 1;
+        if (idx < 0) return;
+
+        if (idx < _allTracks.Count)
+            _allTracks[idx] = dto;
+
+        if (idx < FilteredTracks.Count && FilteredTracks[idx] is LazyTrackItem { IsLoaded: false } lazy)
+            lazy.Populate(dto);
+    }
+
+    /// <summary>
+    /// Signals that the stream has produced all its results. The finalize step runs
+    /// when the enrich buffer next drains empty (so it doesn't pre-empt the capped
+    /// Low-priority drains and re-burst the tail). If nothing is pending, finalizes
+    /// immediately. <paramref name="onComplete"/> is the parent VM's finalize
+    /// (video-availability fetch, mosaic, added-by), run on the UI thread once the
+    /// last row has been applied.
+    /// </summary>
+    public void MarkStreamingEnrichComplete(Action onComplete)
+    {
+        _onStreamingEnrichComplete = onComplete;
+        _enrichStreamComplete = true;
+
+        bool empty;
+        var needDrain = false;
+        lock (_enrichGate)
+        {
+            empty = _enrichBuffer is null or { Count: 0 };
+            if (!empty && !_enrichDrainScheduled)
+            {
+                _enrichDrainScheduled = true;
+                needDrain = true;
+            }
+        }
+
+        if (empty)
+            CompleteStreamingEnrich();
+        else if (needDrain)
+            _dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, DrainEnrichBuffer);
+    }
+
+    /// <summary>
+    /// Closes out a streaming cold open: re-derives aggregates / video-filter state
+    /// now durations + HasVideo have landed, re-enables drag-reorder, applies any
+    /// search/sort the user set mid-stream (suppressed until now), then invokes the
+    /// parent VM's finalize. Leaves populated placeholders in place — no reset.
+    /// </summary>
+    private void CompleteStreamingEnrich()
+    {
+        if (!_enrichStreamComplete) return;
+        _enrichStreamComplete = false;
+        var onComplete = _onStreamingEnrichComplete;
+        _onStreamingEnrichComplete = null;
+
+        IsStreamingEnrich = false;
+        UpdateAggregates();
+        NotifyVideoFilterProperties();
+        OnPropertyChanged(nameof(CanReorderTracks));
+
+        if (!string.IsNullOrEmpty(SearchQuery) ||
+            CurrentSortColumn != PlaylistSortColumn.Custom ||
+            ShowOnlyVideoTracks)
+        {
+            ApplyFilterAndSort();
+        }
+
+        onComplete?.Invoke();
+    }
+
+    private static PlaylistTrackDto BuildSkeletonDto(PlaylistTrackSkeleton s) => new()
+    {
+        Id = s.Id,
+        Uri = s.Uri,
+        Title = "",
+        ArtistName = "",
+        ArtistId = "",
+        AlbumName = "",
+        AlbumId = "",
+        ImageUrl = null,
+        ImageSmallUrl = null,
+        Duration = TimeSpan.Zero,
+        AddedAt = s.AddedAt,
+        AddedBy = s.AddedBy,
+        IsExplicit = false,
+        OriginalIndex = s.Index,
+        Uid = s.Uid,
+        FormatAttributes = s.FormatAttributes,
+        HasVideo = false
+    };
 
     /// <summary>
     /// Replace the track snapshot with a freshly-loaded list. Re-numbers

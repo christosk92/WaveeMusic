@@ -432,12 +432,10 @@ public sealed class PathfinderClient : IPathfinderClient
             Facet = facet ?? ""
         };
 
-        var hash = PathfinderOperations.HomeWithFacetHash;
-
         return await QueryAsync(
             variables,
             PathfinderOperations.Home,
-            hash,
+            PathfinderOperations.HomeHash,
             HomeJsonContext.Default.HomeResponse,
             ct);
     }

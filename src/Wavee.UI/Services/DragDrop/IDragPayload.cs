@@ -30,4 +30,18 @@ public interface IDragPayload
 
     /// <summary>Serialize this payload to a string the registry can later deserialize back.</summary>
     string Serialize();
+
+    /// <summary>
+    /// Human title for the drag chip that follows the cursor (e.g. track / album /
+    /// playlist name). Null when the payload carries no single title (e.g. a
+    /// multi-track drag) — the chip falls back to a count caption.
+    /// </summary>
+    string? DisplayTitle => null;
+
+    /// <summary>
+    /// Artwork URL for the drag chip thumbnail. Null when the payload has no image
+    /// (track drags, playlists without a cover) — the chip falls back to a
+    /// kind-based glyph.
+    /// </summary>
+    string? ImageUrl => null;
 }

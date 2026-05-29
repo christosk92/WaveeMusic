@@ -10,5 +10,4 @@ namespace Wavee.UI.WinUI.Controls.Sidebar;
 
 public record ItemInvokedEventArgs(PointerUpdateKind PointerUpdateKind) { }
 public record ItemDroppedEventArgs(object DropTarget, DataPackageView DroppedItem, SidebarItemDropPosition dropPosition, DragEventArgs RawEvent) { }
-public record ItemDragOverEventArgs(object DropTarget, DataPackageView DroppedItem, SidebarItemDropPosition dropPosition, DragEventArgs RawEvent) { }
 public record ItemContextInvokedArgs(object? Item, Point Position) { }

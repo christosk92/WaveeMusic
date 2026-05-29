@@ -6,7 +6,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents an artist in the user's library.
 /// </summary>
-public sealed record LibraryArtistDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibraryArtistDto
 {
     public required string Id { get; init; }
     public required string Name { get; init; }
@@ -47,7 +48,8 @@ public sealed record LibraryArtistDto
 /// <summary>
 /// Represents an artist surfaced by grouping the user's Liked Songs by artist.
 /// </summary>
-public sealed record LikedArtistDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LikedArtistDto
 {
     public required string Id { get; init; }
     public required string Name { get; init; }

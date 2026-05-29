@@ -66,6 +66,17 @@ public sealed partial class NonVirtualizingStackLayout : NonVirtualizingLayout
         {
             return _lastSize;
         }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // ItemsRepeater can briefly hand us a Children IVectorView whose
+            // backing children-collection has been mutated mid-iteration —
+            // "ItemsRepeater's child not found in its Children collection."
+            // Under CsWinRT AOT the WinRT HRESULT comes through as
+            // COMException, not ArgumentException. Either way the layout
+            // race recovers on the next measure pass; return the previous
+            // size so the host frame doesn't collapse.
+            return _lastSize;
+        }
     }
 
     protected override Size ArrangeOverride(NonVirtualizingLayoutContext context, Size finalSize)
@@ -87,6 +98,12 @@ public sealed partial class NonVirtualizingStackLayout : NonVirtualizingLayout
         catch (ArgumentException)
         {
             // Collection mutated during layout; next pass will recover.
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // Same race as MeasureOverride — recovers on the next arrange
+            // pass. Under CsWinRT AOT the HRESULT surfaces as COMException
+            // rather than ArgumentException.
         }
 
         return finalSize;

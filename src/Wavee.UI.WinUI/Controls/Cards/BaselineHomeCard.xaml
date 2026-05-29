@@ -368,15 +368,27 @@
                         TextTrimming="CharacterEllipsis"
                         Visibility="Collapsed"/>
 
-                    <TextBlock
-                        x:Name="SubtitleText"
-                        Grid.Row="3"
-                        Margin="0,6,0,0"
-                        FontSize="13"
-                        Foreground="{ThemeResource HomeBaselineCardOverlaySecondaryTextBrush}"
-                        MaxLines="2"
-                        TextWrapping="Wrap"
-                        TextTrimming="CharacterEllipsis"/>
+                    <StackPanel Grid.Row="3" Margin="0,6,0,0">
+                        <TextBlock
+                            x:Name="SubtitleText"
+                            FontSize="13"
+                            Foreground="{ThemeResource HomeBaselineCardOverlaySecondaryTextBrush}"
+                            MaxLines="2"
+                            TextWrapping="Wrap"
+                            TextTrimming="CharacterEllipsis"/>
+                        <!-- Album metadata (release date · track count). Populated
+                             by IAlbumPrefetcher once the card enters viewport;
+                             collapsed when the active item isn't an album or the
+                             prefetch hasn't resolved yet. -->
+                        <TextBlock
+                            x:Name="MetadataText"
+                            Margin="0,2,0,0"
+                            FontSize="12"
+                            Foreground="{ThemeResource HomeBaselineCardOverlayTertiaryTextBrush}"
+                            MaxLines="1"
+                            TextTrimming="CharacterEllipsis"
+                            Visibility="Collapsed"/>
+                    </StackPanel>
                 </Grid>
             </Grid>
         </Border>

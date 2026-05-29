@@ -760,7 +760,8 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
     }
 }
 
-public sealed record ArtistAskAiRecommendationVm(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistAskAiRecommendationVm(
     ArtistAiRecommendationKind Kind,
     string Title,
     string? Subtitle,

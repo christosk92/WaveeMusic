@@ -402,6 +402,21 @@ public sealed class HomePlaylistData
 
     [JsonPropertyName("ownerV2")]
     public HomeOwnerV2? OwnerV2 { get; set; }
+
+    // Inline track count. The current home query selects the playlist's
+    // PlaylistItemsPage with its totalCount, so most playlist cards arrive
+    // already knowing how many tracks they hold — no follow-up fetch needed.
+    [JsonPropertyName("content")]
+    public HomePlaylistContent? Content { get; set; }
+}
+
+public sealed class HomePlaylistContent
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; set; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; set; }
 }
 
 public sealed class HomeOwnerV2
@@ -639,6 +654,7 @@ public sealed class HomeImageSource
 // V1 typed data
 [JsonSerializable(typeof(HomeArtistData))]
 [JsonSerializable(typeof(HomePlaylistData))]
+[JsonSerializable(typeof(HomePlaylistContent))]
 [JsonSerializable(typeof(HomeAlbumData))]
 [JsonSerializable(typeof(HomePodcastData))]
 [JsonSerializable(typeof(HomeImagesContainer))]

@@ -129,7 +129,15 @@ public sealed partial class ShellPage : UserControl
         UpdateUserButton();
     }
 
-    private void OnSettingsZoomChanged(object? sender, double zoom) => ApplyZoom(zoom);
+    private void OnSettingsZoomChanged(object? sender, double zoom)
+    {
+        ApplyZoom(zoom);
+        // Surface the same browser-style HUD on every zoom change so a user
+        // dragging a pip / clicking a preset in Settings gets confirmation,
+        // and hotkey changes route through here too (StepZoomIndex below
+        // mutates ZoomLevelIndex, which fires this event).
+        ZoomHudOverlay?.ShowFor(zoom);
+    }
 
     private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
     {
@@ -577,20 +585,27 @@ public sealed partial class ShellPage : UserControl
         // tab. Subsequent tab switches go through OnViewModelPropertyChanged.
         ObserveFilterTab(ViewModel.SelectedTabItem);
 
-        // FPS overlay — always available, toggled with Ctrl+Shift+F
-        _uiHealthMonitor = new Services.UiHealthMonitor(DispatcherQueue, Ioc.Default.GetService<ILogger<Services.UiHealthMonitor>>());
-        _uiHealthMonitor.Degraded += OnUiHealthDegraded;
-        // Keep the monitor alive while the UI is visible so NavigationDiagnostics'
-        // [gc] ring fills, but shut down the 16 ms sampler while minimized.
-        UpdateUiHealthMonitorState();
+        // FPS overlay + 16 ms health sampler (Ctrl+Shift+F). Continuous UI-thread
+        // instrumentation, so it's gated to DEBUG / opt-in — never runs in a normal
+        // Release build (see AppFeatureFlags.PerfDiagnosticsEnabled). The fields stay
+        // null otherwise; UpdateUiHealthMonitorState / the hotkey / Unloaded all
+        // null-guard, so the rest of ShellPage is unaffected.
+        if (Services.AppFeatureFlags.PerfDiagnosticsEnabled)
+        {
+            _uiHealthMonitor = new Services.UiHealthMonitor(DispatcherQueue, Ioc.Default.GetService<ILogger<Services.UiHealthMonitor>>());
+            _uiHealthMonitor.Degraded += OnUiHealthDegraded;
+            // Keep the monitor alive while the UI is visible so NavigationDiagnostics'
+            // [gc] ring fills, but shut down the 16 ms sampler while minimized.
+            UpdateUiHealthMonitorState();
 
-        _uiHealthOverlay = new Controls.Diagnostics.UiHealthOverlay();
-        _uiHealthOverlay.Attach(_uiHealthMonitor);
-        _uiHealthOverlay.Visibility = Visibility.Collapsed;
+            _uiHealthOverlay = new Controls.Diagnostics.UiHealthOverlay();
+            _uiHealthOverlay.Attach(_uiHealthMonitor);
+            _uiHealthOverlay.Visibility = Visibility.Collapsed;
 
-        Microsoft.UI.Xaml.Controls.Grid.SetRowSpan(_uiHealthOverlay, 4);
-        Microsoft.UI.Xaml.Controls.Canvas.SetZIndex(_uiHealthOverlay, 9999);
-        RootLayoutGrid.Children.Add(_uiHealthOverlay);
+            Microsoft.UI.Xaml.Controls.Grid.SetRowSpan(_uiHealthOverlay, 4);
+            Microsoft.UI.Xaml.Controls.Canvas.SetZIndex(_uiHealthOverlay, 9999);
+            RootLayoutGrid.Children.Add(_uiHealthOverlay);
+        }
 
         // Keep expanded album art square when sidebar is resized
         UpdateExpandedArtSize();
@@ -1025,6 +1040,12 @@ public sealed partial class ShellPage : UserControl
             TitleBarGrid.Opacity = opacity;
             NavToolbar.Opacity = opacity;
             PlayerBarControl.Opacity = opacity;
+
+            // Safety net: when the drag ends, hide any drop highlight that didn't
+            // get cleared by its target's Drop/DragLeave (drag cancelled, released
+            // over empty space, etc.) so nothing stays lit.
+            if (!isDragging)
+                Wavee.UI.WinUI.DragDrop.DropHighlight.ClearAll();
         });
     }
 
@@ -1201,13 +1222,36 @@ public sealed partial class ShellPage : UserControl
         var dropPosition = MapDropPosition(e.dropPosition);
         var modifiers = DragModifiersCapture.Current();
 
+        // Optimistic reorder: when an edge-drop reorders a playlist next to another
+        // playlist row, move the sidebar row to its new spot immediately and revert
+        // if the server write fails — the reorder feels instant instead of waiting
+        // for the rootlist round-trip. (Center/nest/copy drops keep server timing.)
+        System.Action? revertOptimistic = null;
+        if (targetKind == DropTargetKind.PlaylistRow
+            && e.dropPosition is SidebarItemDropPosition.Top or SidebarItemDropPosition.Bottom)
+        {
+            var sourceUri = payload switch
+            {
+                PlaylistDragPayload p => p.PlaylistUri,
+                SidebarReorderPayload s => s.SourceUri,
+                _ => null,
+            };
+            if (!string.IsNullOrEmpty(sourceUri))
+                revertOptimistic = ViewModel.Sidebar.TryOptimisticReorder(
+                    sourceUri!, targetId, insertAfter: e.dropPosition == SidebarItemDropPosition.Bottom);
+        }
+
         var ctx = new DropContext(payload, targetKind, targetId, dropPosition, TargetIndex: null, modifiers);
         var result = await service.DropAsync(ctx);
 
-        if (!result.Success && result.UserMessage is not null)
+        if (!result.Success)
         {
-            _logger?.LogWarning("Sidebar drop failed: {Message}", result.UserMessage);
-            ViewModel.ShowNotification(result.UserMessage);
+            revertOptimistic?.Invoke();
+            if (result.UserMessage is not null)
+            {
+                _logger?.LogWarning("Sidebar drop failed: {Message}", result.UserMessage);
+                ViewModel.ShowNotification(result.UserMessage);
+            }
             return;
         }
         if (result.Success)
@@ -1225,8 +1269,10 @@ public sealed partial class ShellPage : UserControl
                     AppLocalization.Format(messageKey, result.ItemsAffected),
                     InfoBarSeverity.Success);
             }
-            else if (result.UserMessage is not null)
+            else if (result.UserMessage is not null && revertOptimistic is null)
             {
+                // A reorder we already reflected optimistically needs no toast — the
+                // row visibly moved. Other drops (copy tracks, nest, move-out) toast.
                 ViewModel.ShowNotification(result.UserMessage, InfoBarSeverity.Success);
             }
         }
@@ -1308,6 +1354,53 @@ public sealed partial class ShellPage : UserControl
         _settingsService?.Update(s => s.ZoomLevel = zoom);
     }
 
+    // ── Index-driven zoom (hotkeys + HUD inline buttons) ──
+    //
+    // Mutates SettingsViewModel.ZoomLevelIndex rather than calling ApplyZoom
+    // directly. The VM's OnZoomLevelIndexChanged fires ZoomChanged, which
+    // OnSettingsZoomChanged catches → ApplyZoom + ZoomHud.ShowFor. Routing
+    // every entry point through the index means the Settings pip row, the
+    // active-tile selection, and the actual zoom can't drift apart.
+
+    private void StepZoomIndex(int delta)
+    {
+        var vm = Ioc.Default.GetService<SettingsViewModel>();
+        if (vm is null)
+        {
+            // Fallback for the unlikely case the VM isn't resolvable yet
+            // (very early in startup) — keep zoom functional.
+            ApplyZoom(Math.Round(ZoomControl.Zoom + delta * ZoomStep, 2));
+            ZoomHudOverlay?.ShowFor(ZoomControl.Zoom);
+            return;
+        }
+
+        var next = Math.Clamp(vm.ZoomLevelIndex + delta, 0, SettingsViewModel.ZoomStopCount - 1);
+        if (next == vm.ZoomLevelIndex)
+        {
+            // Already pinned at min/max — still flash the HUD so the user
+            // gets feedback that the keystroke was received.
+            ZoomHudOverlay?.ShowFor(ZoomControl.Zoom);
+            return;
+        }
+        vm.ZoomLevelIndex = next;
+    }
+
+    private void ResetZoomIndex()
+    {
+        var vm = Ioc.Default.GetService<SettingsViewModel>();
+        if (vm is null)
+        {
+            ApplyZoom(1.0);
+            ZoomHudOverlay?.ShowFor(1.0);
+            return;
+        }
+        vm.ZoomLevelIndex = SettingsViewModel.ZoomDefaultIndex;
+    }
+
+    private void ZoomHud_ZoomInRequested(object? sender, EventArgs e) => StepZoomIndex(+1);
+    private void ZoomHud_ZoomOutRequested(object? sender, EventArgs e) => StepZoomIndex(-1);
+    private void ZoomHud_ResetRequested(object? sender, EventArgs e) => ResetZoomIndex();
+
     protected override void OnProcessKeyboardAccelerators(ProcessKeyboardAcceleratorEventArgs args)
     {
         // Theatre / Fullscreen shortcuts — F11 toggles fullscreen, Esc exits
@@ -1331,29 +1424,53 @@ public sealed partial class ShellPage : UserControl
                     return;
                 }
             }
+            // F12 → DebugPage. Always-on (Release too) so production builds
+            // can pull state for diagnostic reports without redeploying a
+            // debug-only build. Settings > About > "Report an issue" stays
+            // the recommended path for end users; F12 is the dev / power-
+            // user shortcut for direct access.
+            if (args.Key == VirtualKey.F12)
+            {
+                NavigationHelpers.OpenDebug();
+                args.Handled = true;
+                return;
+            }
+        }
+
+        // Ctrl+F12 → DebugPage in a new tab (so the user can flip back to
+        // whatever they were doing without losing context).
+        if (args.Modifiers == VirtualKeyModifiers.Control && args.Key == VirtualKey.F12)
+        {
+            NavigationHelpers.OpenDebug(openInNewTab: true);
+            args.Handled = true;
+            return;
         }
 
         if (args.Modifiers == VirtualKeyModifiers.Control)
         {
             switch (args.Key)
             {
-                // Numpad + or OemPlus (=+ key, VirtualKey 187)
+                // Numpad + or OemPlus (=+ key, VirtualKey 187). Step through
+                // the SettingsViewModel.ZoomStops table via ZoomLevelIndex so
+                // the Settings pip selection and the actual zoom stay in lock-
+                // step. The previous direct ApplyZoom path used free-form 0.1
+                // increments and silently desync'd the slider.
                 case VirtualKey.Add:
                 case (VirtualKey)187:
-                    ApplyZoom(Math.Round(ZoomControl.Zoom + ZoomStep, 2));
+                    StepZoomIndex(+1);
                     args.Handled = true;
                     return;
 
                 // Numpad - or OemMinus (-_ key, VirtualKey 189)
                 case VirtualKey.Subtract:
                 case (VirtualKey)189:
-                    ApplyZoom(Math.Round(ZoomControl.Zoom - ZoomStep, 2));
+                    StepZoomIndex(-1);
                     args.Handled = true;
                     return;
 
                 // Numpad 0 → reset zoom
                 case VirtualKey.Number0:
-                    ApplyZoom(1.0);
+                    ResetZoomIndex();
                     args.Handled = true;
                     return;
 

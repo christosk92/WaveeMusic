@@ -1643,6 +1643,7 @@ internal sealed record ShowArchivePreview(
     IReadOnlyList<LibraryEpisodeDto> Episodes,
     int TotalEpisodes);
 
-public sealed record PodcastEpisodeHeaderRow(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastEpisodeHeaderRow(
     string Title,
     string? ImageUrl);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -18,7 +19,11 @@ namespace Wavee.UI.WinUI.Controls;
 
 public sealed partial class WhatsNewDialog : ContentDialog
 {
-    public IReadOnlyList<ChangelogFeature> Features { get; }
+    // ObservableCollection<T> rather than IReadOnlyList<T> because CsWinRT
+    // cannot project IReadOnlyList<T> as an IBindableVector across the WinRT
+    // ABI — ItemsControl.set_ItemsSource throws otherwise. See
+    // reference_winrt_itemssource_ireadonlylist_crash.md.
+    public ObservableCollection<ChangelogFeature> Features { get; }
     public string ReleaseTitle { get; }
     public string VersionDisplay { get; }
     public string? Announcement { get; }
@@ -29,7 +34,7 @@ public sealed partial class WhatsNewDialog : ContentDialog
     public WhatsNewDialog()
     {
         var latestRelease = ChangelogData.Releases.FirstOrDefault();
-        Features = latestRelease?.Features ?? [];
+        Features = new ObservableCollection<ChangelogFeature>(latestRelease?.Features ?? []);
         ReleaseTitle = latestRelease?.ReleaseTitle ?? "Wavee release notes";
         VersionDisplay = latestRelease?.Version ?? "0.0.0";
         Announcement = latestRelease?.Announcement;

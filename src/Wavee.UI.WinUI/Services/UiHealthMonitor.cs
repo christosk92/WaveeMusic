@@ -230,7 +230,16 @@ internal sealed partial class UiHealthMonitor : IDisposable
                 if (gen2Delta > 0)
                 {
                     _gen2DuringStallCount += gen2Delta;
-                    _logger?.LogError("UI CRITICAL STALL: {ElapsedMs:F0}ms (frame #{Frame}) — Gen2 GC detected!", elapsedMs, _totalFrames);
+                    // gen2Delta>0 only means a Gen2 count incremented somewhere in
+                    // this ~16ms window — NOT that the GC blocked the UI thread.
+                    // Report the GC's REAL stop-the-world pause + whether it was a
+                    // concurrent (background) collection, so a coincident background
+                    // GC isn't mistaken for the cause of the stall.
+                    var (gcBlockedMs, concurrent, gcGen) = LatestGcPause();
+                    _logger?.LogError(
+                        "UI CRITICAL STALL: {ElapsedMs:F0}ms (frame #{Frame}) — Gen2 GC coincided (concurrent={Concurrent}, gcGen={GcGen}, gcBlockedMs={GcBlockedMs:F1}; GC accounts for {Pct:F0}% of the stall)",
+                        elapsedMs, _totalFrames, concurrent, gcGen, gcBlockedMs,
+                        elapsedMs > 0 ? Math.Min(100.0, gcBlockedMs / elapsedMs * 100.0) : 0);
                 }
                 else
                 {
@@ -247,7 +256,10 @@ internal sealed partial class UiHealthMonitor : IDisposable
                 if (gen2Delta > 0)
                 {
                     _gen2DuringStallCount += gen2Delta;
-                    _logger?.LogWarning("UI stall: {ElapsedMs:F0}ms (frame #{Frame}) — Gen2 GC detected", elapsedMs, _totalFrames);
+                    var (gcBlockedMs, concurrent, gcGen) = LatestGcPause();
+                    _logger?.LogWarning(
+                        "UI stall: {ElapsedMs:F0}ms (frame #{Frame}) — Gen2 GC coincided (concurrent={Concurrent}, gcGen={GcGen}, gcBlockedMs={GcBlockedMs:F1})",
+                        elapsedMs, _totalFrames, concurrent, gcGen, gcBlockedMs);
                 }
                 else
                 {
@@ -256,7 +268,7 @@ internal sealed partial class UiHealthMonitor : IDisposable
             }
             else if (gen2Delta > 0)
             {
-                _logger?.LogDebug("Gen2 GC detected (frame #{Frame}, tick={ElapsedMs:F1}ms)", _totalFrames, elapsedMs);
+                _logger?.LogDebug("Gen2 GC observed (frame #{Frame}, tick={ElapsedMs:F1}ms, no stall)", _totalFrames, elapsedMs);
             }
 
             degradedArgs = EvaluateDegradationLocked(elapsedMs, now);
@@ -266,6 +278,32 @@ internal sealed partial class UiHealthMonitor : IDisposable
             Degraded?.Invoke(this, degradedArgs);
 
         SampleShimmerLeakIndicator(now);
+    }
+
+    /// <summary>
+    /// Real stop-the-world pause of the most recent GC, plus whether it ran
+    /// concurrently (background) and which generation. <see cref="GCMemoryInfo.PauseDurations"/>
+    /// is the actual time the runtime suspended managed threads — for a background
+    /// Gen2 under ServerGC these are typically sub-millisecond, so a 100ms+ tick
+    /// gap tagged "Gen2" is almost always something else (layout, our own code, or
+    /// — under the debugger — synchronous Output writes / first-chance overhead),
+    /// not the collection. Lets the log show what fraction of a stall the GC can
+    /// actually account for instead of blaming it on coincidence.
+    /// </summary>
+    private static (double BlockedMs, bool Concurrent, int Generation) LatestGcPause()
+    {
+        try
+        {
+            var info = GC.GetGCMemoryInfo();
+            double pauseMs = 0;
+            foreach (var p in info.PauseDurations)
+                pauseMs += p.TotalMilliseconds;
+            return (pauseMs, info.Concurrent, info.Generation);
+        }
+        catch
+        {
+            return (0, false, -1);
+        }
     }
 
     private void SampleShimmerLeakIndicator(long timestamp)

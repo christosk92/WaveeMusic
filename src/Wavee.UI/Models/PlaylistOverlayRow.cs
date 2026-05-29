@@ -6,7 +6,8 @@ namespace Wavee.UI.Models;
 /// future kinds. Position is the merged-view position used to interleave
 /// with Spotify rows during rendering.
 /// </summary>
-public sealed record PlaylistOverlayRow(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PlaylistOverlayRow(
     string TrackUri,
     int Position,
     long AddedAt,

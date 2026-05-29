@@ -72,13 +72,13 @@
                 SubtitleMaxLines="{x:Bind SubtitleMaxLines, Mode=OneWay}"
                 SubtitleNavigationUri="{x:Bind SubtitleNavigationUri, Mode=OneWay}"
                 SubtitleNavigationTitle="{x:Bind SubtitleNavigationTitle, Mode=OneWay}"
-                Badge="{x:Bind AlbumMetadataSubtitle, Mode=OneWay}"
+                Badge="{x:Bind MetadataSubtitle, Mode=OneWay}"
                 BadgeForeground="{ThemeResource TextFillColorTertiaryBrush}"
                 PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
                 IsCircularImage="False"
                 NavigationUri="{x:Bind Uri, Mode=OneWay}"
                 NavigationTitle="{x:Bind Title, Mode=OneWay}"
-                NavigationTotalTracks="{x:Bind AlbumTotalTracks, Mode=OneWay}"/>
+                NavigationTotalTracks="{x:Bind TotalTracks, Mode=OneWay}"/>
             </DataTemplate>
 
             <!-- Artist card: circular image, centered text -->
@@ -323,51 +323,6 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Hero-band responsive states.
-             Originally split across two inline VSMs (HeroBand + StackedShortcuts) and
-             triggered by `AdaptiveTrigger MinWindowWidth=…` which reads *window* width.
-             With the Queue panel open the HomePage area shrinks well below the
-             window's reported width, so the wide-state trigger stayed active and the
-             side rail never collapsed beneath the hero. Switched to code-behind in
-             HomePage.HeroBand_SizeChanged: states are driven off HeroBand.ActualWidth
-             so the layout responds to the actual content rectangle. -->
-        <VisualStateManager.VisualStateGroups>
-            <VisualStateGroup x:Name="HeroBandStates">
-                <VisualState x:Name="HeroBandWideState"/>
-                <VisualState x:Name="HeroBandStackedMediumState">
-                    <VisualState.Setters>
-                        <!-- Collapsing the side rail. The hero spans both
-                             columns and stretches into a wide landscape
-                             rectangle — Microsoft Store hero rail
-                             proportions. The BakeImageHero path uses
-                             UniformToFill so the cover art fills the
-                             entire card edge-to-edge regardless of the
-                             resulting aspect ratio. -->
-                        <Setter Target="HomeHero.(Grid.ColumnSpan)" Value="2"/>
-                        <Setter Target="HaloBackdrop.(Grid.ColumnSpan)" Value="2"/>
-                        <Setter Target="WideSideRail.Visibility" Value="Collapsed"/>
-                        <Setter Target="StackedShortcuts.Visibility" Value="Visible"/>
-                    </VisualState.Setters>
-                </VisualState>
-                <VisualState x:Name="HeroBandStackedNarrowState">
-                    <VisualState.Setters>
-                        <Setter Target="HomeHero.(Grid.ColumnSpan)" Value="2"/>
-                        <Setter Target="HaloBackdrop.(Grid.ColumnSpan)" Value="2"/>
-                        <Setter Target="WideSideRail.Visibility" Value="Collapsed"/>
-                        <Setter Target="StackedShortcuts.Visibility" Value="Visible"/>
-                        <Setter Target="StackedCard0.(Grid.ColumnSpan)" Value="6"/>
-                        <Setter Target="StackedCard0.(Grid.RowSpan)" Value="1"/>
-                        <Setter Target="StackedCard1.(Grid.Row)" Value="1"/>
-                        <Setter Target="StackedCard1.(Grid.Column)" Value="0"/>
-                        <Setter Target="StackedCard1.(Grid.ColumnSpan)" Value="3"/>
-                        <Setter Target="StackedCard2.(Grid.Row)" Value="1"/>
-                        <Setter Target="StackedCard2.(Grid.Column)" Value="3"/>
-                        <Setter Target="StackedCard2.(Grid.ColumnSpan)" Value="3"/>
-                    </VisualState.Setters>
-                </VisualState>
-            </VisualStateGroup>
-        </VisualStateManager.VisualStateGroups>
-
         <controls1:PageErrorState
             x:Uid="Views_HomePage__PageErrorState_1"
             Title="Couldn't load Home"
@@ -402,6 +357,7 @@
         <ScrollView x:Name="ContentContainer" VerticalScrollBarVisibility="Auto"
                     Margin="0,0,-28,0"
                     Padding="0,0,0,0"
+                    SizeChanged="ContentContainer_SizeChanged"
                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <StackPanel Padding="32,24,32,24" Spacing="20">
                 <!-- Greeting band: avatar + greeting/subtitle + chips on the left,
@@ -486,41 +442,30 @@
                     </Button>
                 </Grid>
 
-                <!-- Hero band — three responsive layouts (thresholds in
-                     HomePage.HeroBand_SizeChanged):
-                       Wide   ≥900 px  : HeroCarousel left (Width=*, full
-                                         Row 0 height) + WideSideRail right
-                                         (320 px, 3 cards stacked vertically,
-                                         2*/1*/1* row weights). Wide kicks in
-                                         earlier than the original 1100 px so
-                                         shortcut cards stay alongside the
-                                         hero on common window+queue layouts;
-                                         hero shrinks to ~560 px text column
-                                         which Klankhuis handles with 2-3
-                                         word title lines.
-                       Medium ≥720 px  : hero spans the full row 0; below it,
-                                         StackedShortcuts shows the 1-big +
-                                         2-stacked layout (Image 5 reference).
-                       Narrow <720 px  : hero spans the full row 0; below it,
-                                         StackedShortcuts collapses Card0 to
-                                         a full-width banner with Card1 +
-                                         Card2 side-by-side underneath
-                                         (Image 6 reference).
-                     The two rail variants (WideSideRail vs StackedShortcuts)
-                     coexist in markup; the outer VSM swaps Visibility +
-                     spans Hero across both columns when collapsing. The
-                     duplicated SideCard markup is intentional — both sets
-                     bind to the same SideCard0/1/2 view-model properties so
-                     data stays single-source. -->
+                <!-- Hero band. Code-behind sizes this from the actual HomePage
+                     content rectangle: the rail column gets a clamped width,
+                     the carousel row height follows the resolved hero column,
+                     and stacked shortcut rows shrink with the available width.
+                     This avoids window-width visual states and keeps queue /
+                     small-window layouts proportional. -->
                 <Grid x:Name="HeroBand" Margin="0,4,0,12"
                       Visibility="{x:Bind ViewModel.Feed.IsLocalChipActive, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                       SizeChanged="HeroBand_SizeChanged">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition x:Name="HeroColumn" Width="*"/>
+                        <ColumnDefinition x:Name="RailColumn" Width="0"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="480"/>
+                        <!-- HeroRow is Auto so the row sizes to whichever
+                             child is tallest: HeroCarousel's intrinsic
+                             content (chip + title + subtitle + CTAs + pips +
+                             32 px top/bottom padding ≈ 380-440) or the
+                             WideSideRail's stacked SideCard MinHeights
+                             (140 + 104 + 104 + 24 gaps = 372). HomeHero's
+                             MaxHeight caps the upper bound; the row never
+                             gets a fixed pixel value from code-behind so
+                             the carousel can't clip its CTAs / PipsPager. -->
+                        <RowDefinition x:Name="HeroRow" Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
@@ -545,39 +490,44 @@
                     <hero:HeroCarousel x:Name="HomeHero"
                         Grid.Row="0"
                         Grid.Column="0"
+                        MaxHeight="440"
                         HorizontalAlignment="Stretch"
                         VerticalAlignment="Stretch"
                         Autoplay="True"
                         AutoplayInterval="0:0:7"
                         ItemsSource="{x:Bind ViewModel.HeroAdapter.HeroSlides, Mode=OneWay}"/>
 
-                    <!-- Wide-only side rail: original 320 px, 3 cards
-                         stacked vertically next to the hero. -->
+                    <!-- Wide-only side rail: 3 cards stacked vertically next to
+                         the hero. Per-card MinHeight values keep the eyebrow
+                         chip + label readable above the cover art even when
+                         the hero shrinks; the row weights (1.4*:1*:1*) give a
+                         modest hierarchy without flattening the smalls into
+                         banners. -->
                     <Grid x:Name="WideSideRail"
                           Grid.Row="0"
                           Grid.Column="1"
-                          Width="320"
+                          HorizontalAlignment="Stretch"
                           Margin="20,0,0,0">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="2*"/>
+                            <RowDefinition Height="1.4*"/>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
-                        <hero:SideCard Grid.Row="0" Big="True" Margin="0,0,0,6"
+                        <hero:SideCard Grid.Row="0" Big="True" Margin="0,0,0,6" MinHeight="140"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard0.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard0.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard0.Accent, Mode=OneWay}"
                                        ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard0.ImageUri, Mode=OneWay}"
                                        Tag="{x:Bind ViewModel.HeroAdapter.SideCard0.NavigationUri, Mode=OneWay}"
                                        Click="SideCard_Click"/>
-                        <hero:SideCard Grid.Row="1" Margin="0,6,0,6" MinHeight="0"
+                        <hero:SideCard Grid.Row="1" Margin="0,6,0,6" MinHeight="104"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard1.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard1.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard1.Accent, Mode=OneWay}"
                                        ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard1.ImageUri, Mode=OneWay}"
                                        Tag="{x:Bind ViewModel.HeroAdapter.SideCard1.NavigationUri, Mode=OneWay}"
                                        Click="SideCard_Click"/>
-                        <hero:SideCard Grid.Row="2" Margin="0,6,0,0" MinHeight="0"
+                        <hero:SideCard Grid.Row="2" Margin="0,6,0,0" MinHeight="104"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard2.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard2.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard2.Accent, Mode=OneWay}"
@@ -610,14 +560,15 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="140"/>
-                            <RowDefinition Height="140"/>
+                            <RowDefinition x:Name="StackedShortcutRow0" Height="110"/>
+                            <RowDefinition x:Name="StackedShortcutRow1" Height="110"/>
                         </Grid.RowDefinitions>
 
                         <hero:SideCard x:Name="StackedCard0"
                                        Grid.Row="0" Grid.Column="0"
                                        Grid.ColumnSpan="4" Grid.RowSpan="2"
                                        Big="True"
+                                       MinHeight="140"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard0.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard0.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard0.Accent, Mode=OneWay}"
@@ -626,7 +577,7 @@
                                        Click="SideCard_Click"/>
                         <hero:SideCard x:Name="StackedCard1"
                                        Grid.Row="0" Grid.Column="4" Grid.ColumnSpan="2"
-                                       MinHeight="0"
+                                       MinHeight="104"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard1.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard1.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard1.Accent, Mode=OneWay}"
@@ -635,7 +586,7 @@
                                        Click="SideCard_Click"/>
                         <hero:SideCard x:Name="StackedCard2"
                                        Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2"
-                                       MinHeight="0"
+                                       MinHeight="104"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard2.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard2.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard2.Accent, Mode=OneWay}"

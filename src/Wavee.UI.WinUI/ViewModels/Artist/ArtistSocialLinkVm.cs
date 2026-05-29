@@ -1,6 +1,7 @@
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed record ArtistSocialLinkVm
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistSocialLinkVm
 {
     public required string Name { get; init; }
     public required string Url { get; init; }

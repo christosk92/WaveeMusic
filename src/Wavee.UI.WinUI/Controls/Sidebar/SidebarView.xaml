@@ -86,6 +86,7 @@
 				<ScrollViewer
 					x:Name="MenuItemHostScrollViewer"
 					Padding="0,8,0,0"
+					Background="Transparent"
 					ContextRequested="MenuItemHostScrollViewer_ContextRequested"
 					HorizontalScrollMode="Disabled"
 					VerticalScrollBarVisibility="Auto"

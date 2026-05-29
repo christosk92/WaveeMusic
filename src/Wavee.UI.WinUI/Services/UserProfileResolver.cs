@@ -15,7 +15,8 @@ namespace Wavee.UI.WinUI.Services;
 /// profile lookup fails, and <see cref="AvatarUrl"/> is null for users who haven't
 /// uploaded a profile picture.
 /// </summary>
-public sealed record UserProfileSummary(string? DisplayName, string? AvatarUrl);
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record UserProfileSummary(string? DisplayName, string? AvatarUrl);
 
 /// <summary>
 /// Resolves a <c>spotify:user:{id}</c> URI (or a bare user id) to a human-readable

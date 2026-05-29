@@ -8,7 +8,8 @@ namespace Wavee.UI.Contracts;
 /// owner is included in this list when present (with <see cref="Role"/> =
 /// <see cref="PlaylistMemberRole.Owner"/>).
 /// </summary>
-public sealed record PlaylistMemberResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PlaylistMemberResult
 {
     /// <summary>Bare Spotify user id (no <c>spotify:user:</c> prefix).</summary>
     public required string UserId { get; init; }

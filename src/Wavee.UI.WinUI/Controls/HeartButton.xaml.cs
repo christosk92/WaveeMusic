@@ -1,5 +1,6 @@
 using System.Windows.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace Wavee.UI.WinUI.Controls;
@@ -34,6 +35,20 @@ public sealed partial class HeartButton : UserControl
             typeof(HeartButton),
             new PropertyMetadata(null));
 
+    public static readonly DependencyProperty SavedToolTipProperty =
+        DependencyProperty.Register(
+            nameof(SavedToolTip),
+            typeof(string),
+            typeof(HeartButton),
+            new PropertyMetadata("Remove from Liked Songs", OnToolTipTextChanged));
+
+    public static readonly DependencyProperty UnsavedToolTipProperty =
+        DependencyProperty.Register(
+            nameof(UnsavedToolTip),
+            typeof(string),
+            typeof(HeartButton),
+            new PropertyMetadata("Save to Liked Songs", OnToolTipTextChanged));
+
     public bool IsLiked
     {
         get => (bool)GetValue(IsLikedProperty);
@@ -52,6 +67,22 @@ public sealed partial class HeartButton : UserControl
         set => SetValue(CommandParameterProperty, value);
     }
 
+    /// <summary>Tooltip + accessible name when <see cref="IsLiked"/> is true. Defaults to the
+    /// Liked Songs copy; playlist/album surfaces set "Remove from Your Library".</summary>
+    public string SavedToolTip
+    {
+        get => (string)GetValue(SavedToolTipProperty);
+        set => SetValue(SavedToolTipProperty, value);
+    }
+
+    /// <summary>Tooltip + accessible name when <see cref="IsLiked"/> is false. Defaults to the
+    /// Liked Songs copy; playlist/album surfaces set "Save to Your Library".</summary>
+    public string UnsavedToolTip
+    {
+        get => (string)GetValue(UnsavedToolTipProperty);
+        set => SetValue(UnsavedToolTipProperty, value);
+    }
+
     public HeartButton()
     {
         InitializeComponent();
@@ -63,11 +94,18 @@ public sealed partial class HeartButton : UserControl
         ((HeartButton)d).UpdateVisualState((bool)e.NewValue);
     }
 
+    private static void OnToolTipTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var btn = (HeartButton)d;
+        btn.UpdateVisualState(btn.IsLiked);
+    }
+
     private void UpdateVisualState(bool isLiked)
     {
         HeartIcon.Glyph = isLiked ? FilledHeartGlyph : OutlineHeartGlyph;
-        ToolTipService.SetToolTip(InternalButton,
-            isLiked ? "Remove from Liked Songs" : "Save to Liked Songs");
+        var label = isLiked ? SavedToolTip : UnsavedToolTip;
+        ToolTipService.SetToolTip(InternalButton, label);
+        AutomationProperties.SetName(InternalButton, label);
     }
 
     private void OnClick(object sender, RoutedEventArgs e)

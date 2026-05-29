@@ -10,7 +10,8 @@ public interface IConcertService
     Task<ConcertDetailResult> GetDetailAsync(string concertUri, CancellationToken ct = default);
 }
 
-public sealed record ConcertDetailResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ConcertDetailResult
 {
     public string? Title { get; init; }
     public string? Uri { get; init; }
@@ -34,7 +35,8 @@ public sealed record ConcertDetailResult
     public required List<ConcertFeaturedPlaylistResult> FeaturedPlaylists { get; init; }
 }
 
-public sealed record ConcertFeaturedPlaylistResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ConcertFeaturedPlaylistResult
 {
     public string? Uri { get; init; }
     public string? Name { get; init; }
@@ -43,7 +45,8 @@ public sealed record ConcertFeaturedPlaylistResult
     public string? OwnerName { get; init; }
 }
 
-public sealed record ConcertArtistResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ConcertArtistResult
 {
     public string? Uri { get; init; }
     public string? Name { get; init; }
@@ -79,7 +82,8 @@ public sealed record ConcertPaletteTier
     public byte TextAccentB { get; init; }
 }
 
-public sealed record ConcertPopularAlbumResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ConcertPopularAlbumResult
 {
     public string? Name { get; init; }
     public string? Uri { get; init; }
@@ -87,7 +91,8 @@ public sealed record ConcertPopularAlbumResult
     public string? ArtistName { get; init; }
 }
 
-public sealed record ConcertOfferResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ConcertOfferResult
 {
     public string? ProviderName { get; init; }
     public string? ProviderImageUrl { get; init; }
@@ -95,7 +100,8 @@ public sealed record ConcertOfferResult
     public string? SaleType { get; init; }
 }
 
-public sealed record ConcertRelatedResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ConcertRelatedResult
 {
     public string? Title { get; init; }
     public string? Uri { get; init; }

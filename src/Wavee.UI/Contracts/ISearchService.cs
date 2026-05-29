@@ -48,7 +48,8 @@ public interface ISearchService
 /// <summary>
 /// One page of chip results, plus pagination hints from the server.
 /// </summary>
-public sealed record ChipPageResult(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ChipPageResult(
     IReadOnlyList<Wavee.Core.Http.Pathfinder.SearchResultItem> Items,
     int TotalCount,
     bool HasMore);
@@ -98,7 +99,8 @@ public enum SearchSuggestionType
     LinkAction,
 }
 
-public sealed record SearchSuggestionItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record SearchSuggestionItem
 {
     public required string Title { get; init; }
     public string? Subtitle { get; init; }

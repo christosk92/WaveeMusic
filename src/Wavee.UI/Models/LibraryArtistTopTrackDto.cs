@@ -5,7 +5,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents a top track of an artist in the library view.
 /// </summary>
-public sealed record LibraryArtistTopTrackDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibraryArtistTopTrackDto
 {
     public required string Id { get; init; }
     public int Index { get; init; }

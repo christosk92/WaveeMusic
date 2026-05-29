@@ -9,7 +9,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents a saved podcast episode in the user's library.
 /// </summary>
-public sealed record LibraryEpisodeDto : ITrackItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibraryEpisodeDto : ITrackItem
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 

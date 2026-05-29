@@ -25,7 +25,8 @@ public interface ILocationService
     bool IsNearUser(string? concertCity);
 }
 
-public sealed record LocationSearchResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LocationSearchResult
 {
     public string? Name { get; init; }
     public string? FullName { get; init; }

@@ -57,7 +57,17 @@ public sealed partial class TrackItem
         else item.WireRowHandlers();
 
         item.ApplyMode();
-        item.ResetHoverVisualState();
+        // Don't reset _isHovered here. Mode is an internal layout switch
+        // triggered by the DataTemplate's DP cascade right after realize —
+        // if the pointer is already over this row (which happens often when
+        // ItemsRepeater realizes an item under the cursor), wiping
+        // _isHovered=false means UpdateOverlayState below sees no hover
+        // and the play button stays collapsed until the user moves the
+        // pointer off and back on (the "first hover doesn't show, second
+        // does" bug). Just repaint the active mode's background against
+        // the existing _isHovered flag.
+        if (compact) item.ApplyCompactBackground();
+        else item.ApplyRowBackground();
         item.SyncLoadingStateFromTrack();
         item.BindTrackData();
         item.UpdateOverlayState();

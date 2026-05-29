@@ -413,6 +413,11 @@ public sealed partial class HomeResponseParserV2 : IHomeResponseParser
         if (data == null) return null;
         var firstImage = data.Images?.Items?.FirstOrDefault();
         var (small, medium, large) = SpotifyImageHelper.BucketSources(firstImage?.Sources, s => s.Url, s => s.Width);
+        // The home query selects PlaylistItemsPage.totalCount inline for playlist
+        // cards, so render the "N tracks" metadata line straight away — no follow-up
+        // fetch. Cards that arrive without it fall back to a cached read in the card
+        // (see BaselineHomeCard / ContentCard).
+        var totalTracks = data.Content?.TotalCount ?? 0;
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
@@ -424,7 +429,9 @@ public sealed partial class HomeResponseParserV2 : IHomeResponseParser
             ImageMediumUrl = medium,
             ImageLargeUrl = large,
             ContentType = HomeContentType.Playlist,
-            ColorHex = firstImage?.ExtractedColors?.ColorDark?.Hex
+            ColorHex = firstImage?.ExtractedColors?.ColorDark?.Hex,
+            TotalTracks = totalTracks,
+            MetadataSubtitle = totalTracks > 0 ? TrackCountFormatter.FormatTrackCount(totalTracks) : null
         };
     }
 

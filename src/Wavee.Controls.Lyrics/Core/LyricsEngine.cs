@@ -284,11 +284,17 @@ namespace Wavee.Controls.Lyrics.Core
             _canvasTargetScrollOffset = 0;
 
             if (lyricsData == null)
-            {
-                DisposeRenderLyricsLines();
                 _renderContextReady = false;
-            }
 
+            // _renderLyricsLines and their Win2D resources (CanvasGeometry / CanvasTextLayout)
+            // are owned exclusively by the render thread: they are created and disposed inside
+            // TriggerRelayout, which only ever runs from Update on the CanvasAnimatedControl
+            // game-loop thread. SetLyricsData runs on the UI thread. Disposing here would free
+            // COM objects the render loop may be reading in Draw — or that the render thread is
+            // concurrently disposing in its own TriggerRelayout — a cross-thread / double free
+            // that surfaces as SEHException (0x80004005). Defer instead: the Layout dirty flag
+            // below makes the render thread run TriggerRelayout on its next tick, which disposes
+            // the old lines and rebuilds (or clears, when null) entirely on the owning thread.
             Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout);
             System.Diagnostics.Debug.WriteLine(
                 $"[LyricsEngine] SetLyricsData lines={lyricsData?.LyricsLines.Count ?? 0} " +

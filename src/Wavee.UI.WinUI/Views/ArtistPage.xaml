@@ -657,6 +657,14 @@
                                             </ItemsRepeater.Layout>
                                             <ItemsRepeater.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:LazyTrackItem">
+                                                    <!-- PlayCommand is intentionally NOT bound here. {Binding
+                                                         ViewModel.TopTracks.PlayTrackCommand,
+                                                         ElementName=ArtistPageRoot} is a reflection-based
+                                                         ElementName chain that fails / races under Native
+                                                         AOT — PlayCommand stays null on first realize and
+                                                         the play button click becomes a silent no-op.
+                                                         Wired imperatively in
+                                                         TopTracksRepeater_ElementPrepared instead. -->
                                                     <track:TrackItem
                                                 Mode="Compact"
                                                 Track="{x:Bind Mode=OneWay}"
@@ -664,8 +672,7 @@
                                                 IsLoading="{x:Bind IsLoaded, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
                                                 IsSelected="{x:Bind IsSelected, Mode=OneWay}"
                                                 ShowPlayCount="True"
-                                                PlayCountText="{x:Bind PlayCountFormatted, Mode=OneWay}"
-                                                PlayCommand="{Binding ViewModel.TopTracks.PlayTrackCommand, ElementName=ArtistPageRoot}"/>
+                                                PlayCountText="{x:Bind PlayCountFormatted, Mode=OneWay}"/>
                                                 </DataTemplate>
                                             </ItemsRepeater.ItemTemplate>
                                         </ItemsRepeater>

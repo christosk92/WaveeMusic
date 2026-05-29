@@ -454,7 +454,12 @@ public sealed partial class CompositionProgressBar : UserControl
         }
 
         var remainingMs = Math.Max(0, DurationMs - PositionMs);
-        if (remainingMs <= 0)
+        // Sub-millisecond remainder can happen at end-of-track due to the
+        // 1 Hz position interpolation tick crossing DurationMs in a small
+        // fractional step. WinUI Composition rejects Duration<1ms (and >24 d)
+        // outright, so anything inside that window is treated as "already
+        // finished" and the bar is snapped to full.
+        if (remainingMs < 1)
         {
             visual.Scale = new Vector3(1f, 1f, 1f);
             return;
@@ -465,13 +470,22 @@ public sealed partial class CompositionProgressBar : UserControl
         var anim = _compositor.CreateScalarKeyFrameAnimation();
         anim.InsertKeyFrame(0f, ratio);
         anim.InsertKeyFrame(1f, 1f, _compositor.CreateLinearEasingFunction());
-        anim.Duration = TimeSpan.FromMilliseconds(remainingMs);
+        anim.Duration = TimeSpan.FromMilliseconds(ClampAnimationMs(remainingMs));
         anim.IterationBehavior = AnimationIterationBehavior.Count;
         anim.IterationCount = 1;
         anim.StopBehavior = AnimationStopBehavior.LeaveCurrentValue;
 
         visual.StartAnimation("Scale.X", anim);
     }
+
+    // WinUI Composition requires KeyFrameAnimation.Duration in [1ms, 24d].
+    // Outside that range the setter throws ArgumentException with no useful
+    // call context, so callers funnel through this clamp instead of feeding
+    // raw millisecond math directly.
+    private const double MinAnimationMs = 1.0;
+    private const double MaxAnimationMs = 24.0 * 24.0 * 60.0 * 60.0 * 1000.0;
+    private static double ClampAnimationMs(double ms) =>
+        Math.Clamp(ms, MinAnimationMs, MaxAnimationMs);
 
     private void ApplySegmentFill(Visual visual, double segStartMs, double segStopMs)
     {
@@ -505,7 +519,10 @@ public sealed partial class CompositionProgressBar : UserControl
         }
 
         var remainingInSegment = Math.Max(0, segStopMs - PositionMs);
-        if (remainingInSegment <= 0)
+        // Same sub-millisecond guard as ApplyGlobalFill — a fractional remainder
+        // crossing the segment boundary would otherwise hit Composition's
+        // <1ms Duration ceiling and throw.
+        if (remainingInSegment < 1)
         {
             visual.Scale = new Vector3(1f, 1f, 1f);
             return;
@@ -516,7 +533,7 @@ public sealed partial class CompositionProgressBar : UserControl
         var anim = _compositor.CreateScalarKeyFrameAnimation();
         anim.InsertKeyFrame(0f, inSegmentRatio);
         anim.InsertKeyFrame(1f, 1f, _compositor.CreateLinearEasingFunction());
-        anim.Duration = TimeSpan.FromMilliseconds(remainingInSegment);
+        anim.Duration = TimeSpan.FromMilliseconds(ClampAnimationMs(remainingInSegment));
         anim.IterationBehavior = AnimationIterationBehavior.Count;
         anim.IterationCount = 1;
         anim.StopBehavior = AnimationStopBehavior.LeaveCurrentValue;

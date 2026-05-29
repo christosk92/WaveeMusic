@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -20,7 +21,7 @@ public enum ActivityOutcome { None, Positive, Negative, Undo }
 // `Callback` is intentionally INTERNAL because it's a Func<Task> — a delegate
 // type that CsWinRT can't project across the WinRT ABI. If it were public,
 // the CsWinRT AOT optimizer would refuse to generate the IBindableVector CCW
-// for any IReadOnlyList<ActivityAction>, breaking the ActivityBell's
+// for ActivityAction collections, breaking the ActivityBell's
 // `ItemsSource="{x:Bind Actions}"` binding (manifests at runtime as
 // `ArgumentException: 'source' is not a supported vector.`). Keeping Callback
 // internal hides it from the CCW dispatch while still letting in-assembly
@@ -41,7 +42,8 @@ public sealed partial class ActivityAction
     }
 }
 
-public sealed record ActivityDetailRow(string Label, string Value);
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ActivityDetailRow(string Label, string Value);
 
 // â”€â”€ Category styling â”€â”€
 
@@ -65,7 +67,7 @@ public interface IActivityItem : INotifyPropertyChanged
     bool IsRead { get; set; }
     bool IsPersistent { get; }
     ActivityNotificationType ActivityType { get; }
-    IReadOnlyList<ActivityAction>? Actions { get; }
+    ObservableCollection<ActivityAction>? Actions { get; }
 }
 
 // â”€â”€ Base: shared implementation â”€â”€
@@ -85,7 +87,7 @@ public abstract partial class ActivityItemBase : ObservableObject, IActivityItem
     public string? IconGlyph { get; init; }
     public virtual bool IsPersistent => false;
     public virtual ActivityNotificationType ActivityType { get; init; } = ActivityNotificationType.System;
-    public IReadOnlyList<ActivityAction>? Actions { get; init; }
+    public ObservableCollection<ActivityAction>? Actions { get; init; }
 }
 
 // â”€â”€ Concrete: progress-aware items (sync, download, import) â”€â”€

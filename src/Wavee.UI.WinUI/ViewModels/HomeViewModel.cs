@@ -921,7 +921,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             Title = item.Title,
             Subtitle = item.Subtitle,
             ImageUrl = item.ImageUrl,
-            TotalTracks = item.AlbumTotalTracks > 0 ? item.AlbumTotalTracks : null
+            TotalTracks = item.TotalTracks > 0 ? item.TotalTracks : null
         };
 
         switch (type)
@@ -1293,8 +1293,8 @@ public sealed partial class HomeSectionItem : ObservableObject
     private string? _uri;
     private string? _title;
     private string? _subtitle;
-    private string? _albumMetadataSubtitle;
-    private int _albumTotalTracks;
+    private string? _metadataSubtitle;
+    private int _totalTracks;
     private string? _subtitleNavigationUri;
     private string? _subtitleNavigationTitle;
     private string? _imageUrl;
@@ -1336,16 +1336,21 @@ public sealed partial class HomeSectionItem : ObservableObject
         }
     }
 
-    public string? AlbumMetadataSubtitle
+    // Secondary metadata line shown under the card subtitle — "Jun 27, 2025 · 17 tracks"
+    // for albums, "50 tracks" for playlists. Content-agnostic: whichever parse / prefetch
+    // path resolved a count or release line writes it here.
+    public string? MetadataSubtitle
     {
-        get => _albumMetadataSubtitle;
-        set => SetProperty(ref _albumMetadataSubtitle, value);
+        get => _metadataSubtitle;
+        set => SetProperty(ref _metadataSubtitle, value);
     }
 
-    public int AlbumTotalTracks
+    // Raw track total, used both to seed the destination page's header prefill on
+    // navigation and as the "do we already have a count?" gate for the cached fallback.
+    public int TotalTracks
     {
-        get => _albumTotalTracks;
-        set => SetProperty(ref _albumTotalTracks, value);
+        get => _totalTracks;
+        set => SetProperty(ref _totalTracks, value);
     }
 
     public string? DisplaySubtitle => _subtitle;

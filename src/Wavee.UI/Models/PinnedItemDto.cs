@@ -16,7 +16,8 @@ public enum PinnedItemKind
 /// URI kinds — this DTO is filtered to the four surfaces Wavee currently
 /// renders (playlist / album / artist / show).
 /// </summary>
-public sealed record PinnedItemDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PinnedItemDto
 {
     public required string Uri { get; init; }
     public required string Title { get; init; }

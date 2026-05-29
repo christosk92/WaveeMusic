@@ -3,7 +3,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents an album by an artist in the library artist detail view.
 /// </summary>
-public sealed record LibraryArtistAlbumDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibraryArtistAlbumDto
 {
     public required string Id { get; init; }
     public required string Name { get; init; }

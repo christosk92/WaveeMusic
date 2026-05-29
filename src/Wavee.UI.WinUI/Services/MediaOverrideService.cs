@@ -40,7 +40,8 @@ public interface IMediaOverrideService
         CancellationToken ct = default);
 }
 
-public sealed record ResolvedMediaOverrideResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ResolvedMediaOverrideResult
 {
     public string? EffectiveAssetUrl { get; init; }
     public string? UpstreamAssetUrl { get; init; }

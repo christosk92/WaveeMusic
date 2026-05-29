@@ -4,7 +4,8 @@ using System.Linq;
 
 namespace Wavee.UI.Models;
 
-public sealed record PodcastEpisodeDetailDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastEpisodeDetailDto
 {
     public required string Uri { get; init; }
     public required string Title { get; init; }
@@ -115,7 +116,8 @@ public sealed record PodcastEpisodeDetailDto
     }
 }
 
-public sealed record PodcastEpisodeRecommendationDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastEpisodeRecommendationDto
 {
     public string Uri { get; init; } = "";
     public string Title { get; init; } = "";
@@ -164,7 +166,8 @@ public sealed record PodcastEpisodeRecommendationDto
     }
 }
 
-public sealed record PodcastEpisodeCommentDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastEpisodeCommentDto
 {
     public required string Uri { get; init; }
     public required string Text { get; init; }
@@ -231,13 +234,15 @@ public sealed record PodcastEpisodeCommentDto
     }
 }
 
-public sealed record PodcastCommentAvatarDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastCommentAvatarDto
 {
     public required string Name { get; init; }
     public string? ImageUrl { get; init; }
 }
 
-public sealed record PodcastEpisodeCommentReplyDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastEpisodeCommentReplyDto
 {
     public required string Uri { get; init; }
     public required string Text { get; init; }
@@ -275,14 +280,16 @@ public sealed record PodcastEpisodeCommentReplyDto
     };
 }
 
-public sealed record PodcastCommentRepliesPageDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastCommentRepliesPageDto
 {
     public required IReadOnlyList<PodcastEpisodeCommentReplyDto> Items { get; init; }
     public string? NextPageToken { get; init; }
     public int TotalCount { get; init; }
 }
 
-public sealed record PodcastCommentReactionDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastCommentReactionDto
 {
     public string? AuthorName { get; init; }
     public string? AuthorImageUrl { get; init; }
@@ -306,28 +313,32 @@ public sealed record PodcastCommentReactionDto
     }
 }
 
-public sealed record PodcastCommentReactionCountDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastCommentReactionCountDto
 {
     public required string ReactionUnicode { get; init; }
     public int Count { get; init; }
     public string CountFormatted => Count.ToString("N0");
 }
 
-public sealed record PodcastCommentReactionsPageDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastCommentReactionsPageDto
 {
     public required IReadOnlyList<PodcastCommentReactionDto> Items { get; init; }
     public required IReadOnlyList<PodcastCommentReactionCountDto> ReactionCounts { get; init; }
     public string? NextPageToken { get; init; }
 }
 
-public sealed record PodcastEpisodeCommentsPageDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastEpisodeCommentsPageDto
 {
     public required IReadOnlyList<PodcastEpisodeCommentDto> Items { get; init; }
     public string? NextPageToken { get; init; }
     public int TotalCount { get; init; }
 }
 
-public sealed record PodcastEpisodeProgressDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PodcastEpisodeProgressDto
 {
     public const string ErrorState = "PROGRESS_ERROR";
 

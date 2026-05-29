@@ -6,7 +6,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents a single item in the playback queue.
 /// </summary>
-public sealed record QueueItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record QueueItem
 {
     public required string TrackId { get; init; }
     public required string Title { get; init; }

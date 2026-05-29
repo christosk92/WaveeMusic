@@ -5,6 +5,8 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Extensions;
@@ -105,7 +107,55 @@ public static class ObservableCollectionExtensions
 
         Accessors<T>.RaisePropertyChanged(collection, new PropertyChangedEventArgs(nameof(Collection<T>.Count)));
         Accessors<T>.RaisePropertyChanged(collection, new PropertyChangedEventArgs("Item[]"));
-        Accessors<T>.RaiseCollectionChanged(collection, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+        RaiseResetResilient(collection);
+    }
+
+    private static readonly NotifyCollectionChangedEventArgs ResetArgs = new(NotifyCollectionChangedAction.Reset);
+
+    /// <summary>
+    /// Raise the <see cref="NotifyCollectionChangedAction.Reset"/> that re-syncs
+    /// bound controls, surviving a transient native rejection.
+    ///
+    /// <para>The notification re-enters subscribers synchronously. An
+    /// <c>ItemsRepeater</c> that is mid-layout during a page cross-fade — or whose
+    /// composition surfaces were dropped by the nav cache — can reject the Reset
+    /// with a native <c>E_FAIL</c> (<see cref="COMException"/> 0x80004005). The
+    /// backing list has already been updated by the time we get here, so on that
+    /// specific transient failure we re-raise the Reset once on the next dispatcher
+    /// tick (Low priority), by when the control has settled. Without this, the
+    /// exception would unwind the caller's whole section-apply and strand the shelf
+    /// in shimmer forever (e.g. album "More by artist" / artist "Fans also like").
+    /// Only <see cref="COMException"/> is caught — genuine managed binding/template
+    /// errors still propagate so they aren't masked.</para>
+    /// </summary>
+    private static void RaiseResetResilient<T>(ObservableCollection<T> collection)
+    {
+        try
+        {
+            Accessors<T>.RaiseCollectionChanged(collection, ResetArgs);
+        }
+        catch (COMException ex)
+        {
+            var dispatcher = DispatcherQueue.GetForCurrentThread();
+            if (dispatcher is null)
+                throw; // off the UI thread — not the transient-control case; surface it.
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[ReplaceWith] bound control rejected Reset (HRESULT 0x{ex.HResult:X8}); retrying next tick. {ex.Message}");
+
+            dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                try
+                {
+                    Accessors<T>.RaiseCollectionChanged(collection, ResetArgs);
+                }
+                catch (COMException)
+                {
+                    // Second failure (control torn down / still transitioning): give up.
+                    // The backing list is correct, so a later re-show / re-bind shows it.
+                }
+            });
+        }
     }
 
     public static void ClearWithoutNotify<T>(this ObservableCollection<T> collection)

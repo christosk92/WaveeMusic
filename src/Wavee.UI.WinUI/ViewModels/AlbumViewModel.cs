@@ -179,6 +179,10 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
     private void RaiseAlbumEnvelopeDependents()
     {
+        // Drop the cached AllDistinctArtists view so the next x:Bind read after
+        // the property-changed burst rebuilds against the new Album envelope.
+        _allDistinctArtistsView = null;
+
         foreach (var propertyName in AlbumEnvelopeDependentProperties)
             OnPropertyChanged(propertyName);
     }
@@ -249,12 +253,26 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     /// </summary>
     public IReadOnlyList<AlbumArtistResult> Artists => Album?.Artists ?? [];
 
+    private ObservableCollection<AlbumArtistResult>? _allDistinctArtistsView;
+
     /// <summary>
     /// Every distinct artist on the album: billed artists first, then track-only
     /// contributors deduped by URI. Drives the artists Flyout opened from the
     /// avatar stack so users can navigate to featured guests not in the billing.
     /// </summary>
-    public IReadOnlyList<AlbumArtistResult> AllDistinctArtists => Album?.AllDistinctArtists ?? [];
+    /// <remarks>
+    /// Exposed as <see cref="ObservableCollection{T}"/> rather than
+    /// <c>IReadOnlyList&lt;T&gt;</c> because CsWinRT cannot project a raw
+    /// <c>IReadOnlyList&lt;T&gt;</c> through the WinRT ABI as
+    /// <c>IBindableVector</c>, which causes
+    /// <c>ItemsControl.set_ItemsSource</c> to throw "Value does not fall within
+    /// the expected range." The cached view is invalidated in
+    /// <see cref="RaiseAlbumEnvelopeDependents"/> so x:Bind re-reads on every
+    /// <see cref="Album"/> swap.
+    /// </remarks>
+    public ObservableCollection<AlbumArtistResult> AllDistinctArtists =>
+        _allDistinctArtistsView ??= new ObservableCollection<AlbumArtistResult>(
+            Album?.AllDistinctArtists ?? []);
 
     /// <summary>
     /// Avatar items for the header <c>AvatarStack</c>, projected from

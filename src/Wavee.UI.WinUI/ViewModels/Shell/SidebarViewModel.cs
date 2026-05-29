@@ -1147,6 +1147,59 @@ public sealed partial class SidebarViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Optimistically move a playlist row next to a target row in the sidebar
+    /// before the server confirms, so the reorder feels instant. Searches the
+    /// Playlists section and any folder children for both rows; only moves when
+    /// both live in the SAME parent collection (cross-folder moves wait for the
+    /// server refresh). Returns an <see cref="System.Action"/> that reverts the
+    /// move (call it if the server write fails), or null when nothing moved.
+    /// </summary>
+    public System.Action? TryOptimisticReorder(string sourceUri, string targetUri, bool insertAfter)
+    {
+        var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
+        if (playlistsSection?.Children is not ObservableCollection<SidebarItemModel> roots)
+            return null;
+
+        if (!TryLocate(roots, sourceUri, out var list, out var fromIndex)) return null;
+        if (!TryLocate(roots, targetUri, out var targetList, out var targetIndex)) return null;
+        if (!ReferenceEquals(list, targetList)) return null; // different parents → let the server settle it
+
+        var toIndex = insertAfter ? targetIndex + 1 : targetIndex;
+        // Account for the source's own removal shifting indices when it sits above.
+        if (fromIndex < toIndex) toIndex--;
+        toIndex = System.Math.Clamp(toIndex, 0, list!.Count - 1);
+        if (toIndex == fromIndex) return null;
+
+        list.Move(fromIndex, toIndex);
+        // Revert restores the source to its original slot.
+        return () =>
+        {
+            if (TryLocate(roots, sourceUri, out var l, out var cur)
+                && ReferenceEquals(l, list) && fromIndex < list.Count)
+                list.Move(cur, fromIndex);
+        };
+
+        static bool TryLocate(ObservableCollection<SidebarItemModel> roots, string uri,
+            out ObservableCollection<SidebarItemModel>? owner, out int index)
+        {
+            for (int i = 0; i < roots.Count; i++)
+            {
+                if (string.Equals(roots[i].Tag, uri, StringComparison.OrdinalIgnoreCase))
+                {
+                    owner = roots; index = i; return true;
+                }
+                if (roots[i].Children is ObservableCollection<SidebarItemModel> nested)
+                    for (int j = 0; j < nested.Count; j++)
+                        if (string.Equals(nested[j].Tag, uri, StringComparison.OrdinalIgnoreCase))
+                        {
+                            owner = nested; index = j; return true;
+                        }
+            }
+            owner = null; index = -1; return false;
+        }
+    }
+
     private void UpdatePlaylistMutableFields(SidebarItemModel current, PlaylistTargetNode t, int depth)
     {
         // SetProperty short-circuits on equality, so PropertyChanged only fires

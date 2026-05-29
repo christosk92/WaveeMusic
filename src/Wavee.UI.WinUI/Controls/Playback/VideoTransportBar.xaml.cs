@@ -282,17 +282,12 @@ public sealed partial class VideoTransportBar : UserControl
     {
         if (Surface == VideoTransportSurface.Popout)
         {
-            // Floating popout: toggle the popout window's own AppWindow
-            // between Overlapped and FullScreen — don't touch MainWindow.
-            var window = (Microsoft.UI.Xaml.Window?)XamlRoot?.Content?.GetType()
-                .GetProperty("Window")?.GetValue(XamlRoot.Content);
-            // The simpler path is to walk the visual tree to the host Window
-            // via Window.Current — but WinUI 3 removed that. The popout passes
-            // its AppWindow through a static helper instead: see
-            // PlayerFloatingWindow.cs for the actual popout-fullscreen toggle.
-            // Keep this branch as a no-op fallback when the surface is set
-            // wrong; the popout's FullScreenButton in its own chrome handles
-            // it directly.
+            // Floating popout fullscreen is handled by the popout's own
+            // FullScreenButton (see PlayerFloatingWindow.cs), which toggles its
+            // AppWindow between Overlapped and FullScreen directly. This branch is
+            // a no-op fallback for when the surface is set wrong. (Previously it
+            // reflected a "Window" property off XamlRoot.Content into an unused
+            // local — dead code, and an AOT-unsafe reflection call to boot.)
             return;
         }
         _presentation?.ToggleFullscreen();

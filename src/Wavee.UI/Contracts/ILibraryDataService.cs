@@ -128,6 +128,24 @@ public interface ILibraryDataService
     Task<IReadOnlyList<PlaylistTrackDto>> GetPlaylistTracksAsync(string playlistId, CancellationToken ct = default);
 
     /// <summary>
+    /// Gets the metadata-free skeletons for a playlist's tracks — URI / position /
+    /// added-at/by / uid only, no TrackV4 fetch. Lets the page paint clickable
+    /// shimmer rows immediately on a cold open before metadata streams in.
+    /// </summary>
+    Task<IReadOnlyList<PlaylistTrackSkeleton>> GetPlaylistTrackSkeletonsAsync(string playlistId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams full <see cref="PlaylistTrackDto"/>s for the given skeletons, invoking
+    /// <paramref name="onResolved"/> (off the UI thread) once per track as its TrackV4
+    /// metadata resolves. All per-track requests still coalesce into the store's single
+    /// batched POST. No-op when the streaming store isn't wired.
+    /// </summary>
+    Task StreamPlaylistTrackMetadataAsync(
+        IReadOnlyList<PlaylistTrackSkeleton> skeletons,
+        Action<PlaylistTrackDto> onResolved,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Fetches the playlist's follower count via the popcount endpoint.
     /// Held out of <see cref="GetPlaylistAsync"/> so the detail load isn't blocked
     /// on a stat-only round trip — the VM fires this in parallel and shimmers
@@ -172,7 +190,8 @@ public interface ILibraryDataService
 /// <see cref="ITrackItem.ArtistName"/>) co-exist — the interface members are
 /// explicit projections of the wire-side fields.
 /// </summary>
-public sealed class RecommendedTrackResult : ITrackItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class RecommendedTrackResult : ITrackItem
 {
     // Not `required` — XAML's compile-time TypeInfo generator emits a
     // parameterless `new RecommendedTrackResult()` for x:DataType templates

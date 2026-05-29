@@ -18,7 +18,8 @@ namespace Wavee.UI.WinUI.Controls.AvatarStack;
 /// <see cref="SpotifyImageHelper.ToHttpsUrl"/>. Null/empty image falls back to
 /// initials via <see cref="PersonPicture.DisplayName"/>.
 /// </summary>
-public sealed record AvatarStackItem(string DisplayName, string? ImageUrl);
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AvatarStackItem(string DisplayName, string? ImageUrl);
 
 /// <summary>
 /// Reusable stacked-avatar strip with optional "+N" overflow badge. Replaces

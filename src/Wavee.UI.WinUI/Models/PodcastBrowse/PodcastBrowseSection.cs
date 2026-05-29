@@ -91,7 +91,8 @@ public sealed partial class PodcastBrowseSection : ObservableObject
 /// the colored-tile renderer needs (artwork + bg color hex) plus the URI to
 /// drill into when tapped.
 /// </summary>
-public sealed class PodcastBrowseTile
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class PodcastBrowseTile
 {
     public string Title { get; init; } = string.Empty;
     public string? Subtitle { get; init; }
@@ -134,7 +135,8 @@ public sealed class PodcastBrowseCategoryGroup
 /// these so drilling Podcasts → Comedy → "All charts" produces a click-able
 /// trail back to any rung.
 /// </summary>
-public sealed class BreadcrumbItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class BreadcrumbItem
 {
     public string Title { get; init; } = string.Empty;
     public string Uri { get; init; } = string.Empty;

@@ -7,7 +7,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents a track within a playlist.
 /// </summary>
-public sealed record PlaylistTrackDto : ITrackItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PlaylistTrackDto : ITrackItem
 {
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     public required string Id { get; init; }

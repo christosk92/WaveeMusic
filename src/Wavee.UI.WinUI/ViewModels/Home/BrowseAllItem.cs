@@ -11,7 +11,8 @@ namespace Wavee.UI.WinUI.ViewModels.Home;
 /// response (<c>title.transformedLabel</c> + <c>backgroundColor.hex</c>);
 /// the URI is what the chip click navigates to.
 /// </summary>
-public sealed class BrowseAllItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial class BrowseAllItem
 {
     public string Label { get; init; } = "";
     public string AccentHex { get; init; } = "";

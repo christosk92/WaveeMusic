@@ -14,7 +14,8 @@ public enum CloseTabsDialogChoice
     Cancel,
 }
 
-public sealed record CloseTabsDialogResult(CloseTabsDialogChoice Choice, bool AlwaysAsk);
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record CloseTabsDialogResult(CloseTabsDialogChoice Choice, bool AlwaysAsk);
 
 public static class CloseTabsDialog
 {

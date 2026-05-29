@@ -27,7 +27,8 @@ public interface IArtistService
 
 // ── Domain result types (clean boundary — no Pathfinder types leak to ViewModel) ──
 
-public sealed record ArtistOverviewResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistOverviewResult
 {
     public string? Name { get; init; }
     public string? ImageUrl { get; init; }
@@ -119,13 +120,15 @@ public sealed record ArtistOverviewResult
     public List<ArtistMusicVideoMappingResult> MusicVideoMappings { get; init; } = new();
 }
 
-public sealed record ArtistMusicVideoMappingResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistMusicVideoMappingResult
 {
     public required string AudioTrackUri { get; init; }
     public required string VideoTrackUri { get; init; }
 }
 
-public sealed record ArtistMusicVideoResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistMusicVideoResult
 {
     public required string TrackUri { get; init; }
     public string? Title { get; init; }
@@ -135,7 +138,8 @@ public sealed record ArtistMusicVideoResult
     public bool IsExplicit { get; init; }
 }
 
-public sealed record ArtistMerchResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistMerchResult
 {
     /// <summary>Display name (Spotify ships under <c>nameV2</c>).</summary>
     public string? Name { get; init; }
@@ -151,13 +155,15 @@ public sealed record ArtistMerchResult
     public string? ShopUrl { get; init; }
 }
 
-public sealed record ArtistSocialLinkResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistSocialLinkResult
 {
     public required string Name { get; init; }
     public required string Url { get; init; }
 }
 
-public sealed record ArtistTopCityResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistTopCityResult
 {
     public required string City { get; init; }
     public string? Country { get; init; }
@@ -184,7 +190,8 @@ public sealed record ArtistPaletteTier
     public byte TextAccentB { get; init; }
 }
 
-public sealed record ArtistLatestReleaseResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistLatestReleaseResult
 {
     public string? Name { get; init; }
     public string? ImageUrl { get; init; }
@@ -194,7 +201,8 @@ public sealed record ArtistLatestReleaseResult
     public string? FormattedDate { get; init; }
 }
 
-public sealed record ArtistTopTrackResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistTopTrackResult
 {
     public required string Id { get; init; }
     public string? Title { get; init; }
@@ -210,7 +218,8 @@ public sealed record ArtistTopTrackResult
     public bool HasVideo { get; init; }
 }
 
-public sealed record ArtistReleaseResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistReleaseResult
 {
     public required string Id { get; init; }
     public string? Uri { get; init; }
@@ -223,7 +232,8 @@ public sealed record ArtistReleaseResult
     public int Year { get; init; }
 }
 
-public sealed record RelatedArtistResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record RelatedArtistResult
 {
     public string? Id { get; init; }
     public string? Uri { get; init; }
@@ -231,7 +241,8 @@ public sealed record RelatedArtistResult
     public string? ImageUrl { get; init; }
 }
 
-public sealed record ArtistPlaylistResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistPlaylistResult
 {
     public required string Uri { get; init; }
     public string? Name { get; init; }
@@ -240,7 +251,8 @@ public sealed record ArtistPlaylistResult
     public string? Subtitle { get; init; }
 }
 
-public sealed record ArtistPinnedItemResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistPinnedItemResult
 {
     public string? Title { get; init; }
     public string? Subtitle { get; init; }
@@ -251,13 +263,15 @@ public sealed record ArtistPinnedItemResult
     public string? Type { get; init; }
 }
 
-public sealed record ArtistWatchFeedResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistWatchFeedResult
 {
     public string? ThumbnailUrl { get; init; }
     public string? VideoUrl { get; init; }
 }
 
-public sealed record ArtistConcertResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record ArtistConcertResult
 {
     public string? Title { get; init; }
     public string? Venue { get; init; }

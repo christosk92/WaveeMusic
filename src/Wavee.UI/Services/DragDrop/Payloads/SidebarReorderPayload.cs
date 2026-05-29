@@ -27,6 +27,12 @@ public sealed class SidebarReorderPayload : IDragPayload
     public string InternalFormat => DragFormats.SidebarItem;
     public int ItemCount => 1;
 
+    // Display-only (drag chip): set at drag-start from the source row, not
+    // serialized — the chip is rendered locally from this same instance, so these
+    // don't need to round-trip through the DataPackage.
+    public string? DisplayTitle { get; init; }
+    public string? ImageUrl { get; init; }
+
     public IReadOnlyList<string> HttpsUrls => ItemKind == SidebarItemKind.Folder
         || Wavee.UI.Helpers.SpotifyUriHelper.ToHttps(SourceUri) is not { } u
         ? Array.Empty<string>()

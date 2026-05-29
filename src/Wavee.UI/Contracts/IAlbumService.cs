@@ -79,7 +79,8 @@ public interface IAlbumService
         string albumUri, CancellationToken ct = default);
 }
 
-public sealed record AlbumSimilarResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumSimilarResult
 {
     public string? Uri { get; init; }
     public string? Name { get; init; }
@@ -91,7 +92,8 @@ public sealed record AlbumSimilarResult
     public int Year { get; init; }
 }
 
-public sealed record AlbumArtistContextResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumArtistContextResult
 {
     public string? BioExcerpt { get; init; }
     public required List<RelatedArtistResult> SimilarArtists { get; init; }
@@ -103,7 +105,8 @@ public sealed record AlbumArtistContextResult
 /// because Spotify ships partial responses; the card hides individual
 /// sub-elements when their backing field is empty.
 /// </summary>
-public sealed record AlbumArtistNpvResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumArtistNpvResult
 {
     /// <summary>First-sentence or ~200-char snippet of the artist biography.</summary>
     public string? BioExcerpt { get; init; }
@@ -124,7 +127,8 @@ public sealed record AlbumArtistNpvResult
 /// the source is <c>getTrack</c> (singles/EPs) or <c>queryArtistOverview</c>
 /// (full albums).
 /// </summary>
-public sealed record AlbumSingleTrackContextResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumSingleTrackContextResult
 {
     /// <summary>Sentinel video URI (equals the source track URI when the track
     /// has at least one <c>videoAssociations</c> entry; null otherwise). Same
@@ -134,7 +138,8 @@ public sealed record AlbumSingleTrackContextResult
     public required List<RelatedArtistResult> RelatedArtists { get; init; }
 }
 
-public sealed record AlbumDetailResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumDetailResult
 {
     public string? Name { get; init; }
     public string? Uri { get; init; }
@@ -185,7 +190,8 @@ public sealed record AlbumDetailResult
     public bool IsPartial { get; init; }
 }
 
-public sealed record AlbumAlternateReleaseResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumAlternateReleaseResult
 {
     public string? Id { get; init; }
     public string? Uri { get; init; }
@@ -215,13 +221,15 @@ public sealed record AlbumPaletteTier
     public byte TextAccentB { get; init; }
 }
 
-public sealed record AlbumCopyrightResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumCopyrightResult
 {
     public string? Text { get; init; }
     public string? Type { get; init; }
 }
 
-public sealed record AlbumArtistResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumArtistResult
 {
     public string? Id { get; init; }
     public string? Uri { get; init; }
@@ -229,7 +237,8 @@ public sealed record AlbumArtistResult
     public string? ImageUrl { get; init; }
 }
 
-public sealed record AlbumRelatedResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumRelatedResult
 {
     public string? Id { get; init; }
     public string? Uri { get; init; }
@@ -239,7 +248,8 @@ public sealed record AlbumRelatedResult
     public int Year { get; init; }
 }
 
-public sealed record AlbumMerchItemResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumMerchItemResult
 {
     public string? Name { get; init; }
     public string? Description { get; init; }
@@ -248,7 +258,8 @@ public sealed record AlbumMerchItemResult
     public string? ShopUrl { get; init; }
 }
 
-public sealed record AlbumTrackResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record AlbumTrackResult
 {
     public required string Id { get; init; }
     public string? Uid { get; init; }

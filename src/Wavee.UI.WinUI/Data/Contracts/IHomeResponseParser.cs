@@ -24,7 +24,8 @@ public interface IHomeResponseParser
 /// <summary>
 /// The result of parsing a home feed response.
 /// </summary>
-public sealed record HomeParseResult(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record HomeParseResult(
     string? Greeting,
     List<HomeSection> Sections,
     List<HomeChipViewModel> Chips);

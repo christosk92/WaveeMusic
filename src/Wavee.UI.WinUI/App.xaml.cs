@@ -171,7 +171,10 @@ public partial class App : Application
 
         // Start background cache cleanup
         Ioc.Default.GetRequiredService<CacheCleanupService>().Start();
-        Ioc.Default.GetRequiredService<MemoryBudgetService>().Start();
+        // MemoryBudgetService is warn-only diagnostics (a 10s poller + a UI-thread
+        // attribution walk when over budget). Skip it in normal Release builds.
+        if (Services.AppFeatureFlags.PerfDiagnosticsEnabled)
+            Ioc.Default.GetRequiredService<MemoryBudgetService>().Start();
 
         // Local file library: point the image pipeline at the cache directory
         // and kick off the indexer (initial scan + watcher + periodic loop).
@@ -256,13 +259,19 @@ public partial class App : Application
             () =>
             {
                 // LibrarySyncOrchestrator + IActivityService register IMessenger
-                // handlers in their ctors; UiOperationProfiler sets a static
-                // Instance for hot-path access. All three are subscribers, not
-                // producers — being live ~50 ms after first paint is safe.
+                // handlers in their ctors — functional, always needed.
                 Ioc.Default.GetRequiredService<Data.Contexts.LibrarySyncOrchestrator>();
                 Ioc.Default.GetRequiredService<Wavee.UI.WinUI.Data.Contracts.IActivityService>();
-                Ioc.Default.GetRequiredService<Services.UiOperationProfiler>();
-                Ioc.Default.GetRequiredService<Diagnostics.NavigationDiagnostics>();
+
+                // UiOperationProfiler / NavigationDiagnostics set static Instances
+                // for hot-path nav/GC profiling. Diagnostics only — leave their
+                // Instances null in normal Release builds so every `Instance?.`
+                // call site no-ops (zero per-nav overhead).
+                if (Services.AppFeatureFlags.PerfDiagnosticsEnabled)
+                {
+                    Ioc.Default.GetRequiredService<Services.UiOperationProfiler>();
+                    Ioc.Default.GetRequiredService<Diagnostics.NavigationDiagnostics>();
+                }
             });
 
         // Post-startup forced Gen2 compact removed. It produced one of the ~65

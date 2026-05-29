@@ -17,7 +17,8 @@ namespace Wavee.UI.WinUI.Controls.AvatarStack;
 /// <see cref="CompositionImage"/> control. Null/empty falls back to the
 /// music-note placeholder.
 /// </summary>
-public sealed record StackedThumbnailItem(string? ImageUrl, string? Tooltip = null);
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record StackedThumbnailItem(string? ImageUrl, string? Tooltip = null);
 
 /// <summary>
 /// Square-tile cousin of <see cref="AvatarStack"/>. Same overlap geometry

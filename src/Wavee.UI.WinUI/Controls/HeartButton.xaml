@@ -10,9 +10,10 @@
             BorderThickness="0"
             Padding="0"
             Width="32" Height="32"
-            MinWidth="0" MinHeight="0"
-            AutomationProperties.Name="Save to Liked Songs"
-            ToolTipService.ToolTip="Save to Liked Songs">
+            MinWidth="0" MinHeight="0">
+        <!-- Tooltip + AutomationProperties.Name are set in code (UpdateVisualState)
+             from SavedToolTip/UnsavedToolTip so the copy tracks IsLiked and the
+             consumer-configured library vs Liked-Songs wording. -->
         <FontIcon x:Name="HeartIcon"
                   Glyph="&#xEB51;"
                   FontSize="14"/>

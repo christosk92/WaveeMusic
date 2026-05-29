@@ -68,42 +68,6 @@
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
 
-            <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__Auto_600" Header="Private session"
-                                   Description="Hides this session from Recently Played, friend activity, and recommendations until you turn it off."
-                                   Tag="queue">
-                <controls:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE72E;"/>
-                </controls:SettingsCard.HeaderIcon>
-                <ToggleSwitch IsOn="{x:Bind ViewModel.IsPrivateSession, Mode=TwoWay}"
-                              OnContent="" OffContent=""/>
-            </controls:SettingsCard>
-
-            <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__Auto_601" Header="Close minimizes to tray"
-                                   Description="When on, the X button hides Wavee into the system tray and keeps playback going. Closes the app when off."
-                                   Tag="player">
-                <controls:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE7E8;"/>
-                </controls:SettingsCard.HeaderIcon>
-                <ToggleSwitch IsOn="{x:Bind ViewModel.MinimizeToTrayOnClose, Mode=TwoWay}"
-                              OnContent="" OffContent=""/>
-            </controls:SettingsCard>
-
-            <settings:SettingsGroupHeader x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_103"
-                                          Title="Player"
-                                          Description="Control how the persistent player behaves while another player view is open."
-                                          IconGlyph="&#xE8A7;"
-                                          Tag="player"/>
-            <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsCard_104"
-                                   Header="Keep docked player visible"
-                                   Description="Show the bottom or sidebar player while the player is popped out"
-                                   Tag="player">
-                <controls:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE8A7;"/>
-                </controls:SettingsCard.HeaderIcon>
-                <ToggleSwitch IsOn="{x:Bind ViewModel.ShowDockedPlayerWithFloatingPlayer, Mode=TwoWay}"
-                              OnContent="" OffContent=""/>
-            </controls:SettingsCard>
-
             <settings:SettingsGroupHeader x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_105"
                                           Title="Streaming audio"
                                           Description="Choose network quality and loudness handling for streamed tracks."

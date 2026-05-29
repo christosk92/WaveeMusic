@@ -1826,10 +1826,10 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Out-of-Process</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Limitations_Detail" xml:space="preserve">
-    <value>Some areas are intentionally unfinished in this alpha. Local files are still hidden behind the internal feature flag, localization is incomplete, and performance or memory growth may still need tuning. Treat rough edges as reportable alpha feedback.</value>
+    <value>Local files are still behind a feature flag — they work, I just haven't pulled the toggle out yet. The UI is English-only for now. Memory can drift up on very long sessions, especially after a lot of image-heavy navigation; I'm still tuning the GC for that. The PlayReady path for music videos is finicky on some PCs. If something looks half-built, it probably is.</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Channel_DetailTitle" xml:space="preserve">
-    <value>Install and Update Path</value>
+    <value>Install path &amp; version numbers</value>
   </data>
   <data name="Connect_SyncingLikedSongs" xml:space="preserve">
     <value>Syncing liked songs...</value>
@@ -1838,13 +1838,13 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>The pairing code expired. Please try again.</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Start_Detail" xml:space="preserve">
-    <value>This is the first experimental Wavee alpha, so there is no previous public build to compare against. The goal is to validate install, sign-in, playback, library sync, Spotify Connect, and general day-to-day stability before a broader release.</value>
+    <value>Wavee is a Spotify desktop client I've been writing from scratch in C# / WinUI 3 on .NET 10. Every protocol it talks (Access Point, Connect, Mercury, Pathfinder, SpClient) is a clean-room reimplementation — no Spotify code, no scraped binaries. The audio engine runs in its own process so a decoder crash can't take the UI down with it. You'll need a Spotify Premium account to sign in.</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Channel_Detail" xml:space="preserve">
-    <value>The app is named Wavee (Alpha) for this release, and the MSIX package version is 0.1.0.1001. Future alpha, beta, and stable builds use higher package versions so Windows can update forward cleanly.</value>
+    <value>This build ships as "Wavee (Alpha)" with MSIX package version 0.1.0.1001. Future alpha, beta and stable builds will use higher package versions so Windows can update over the top without any sideload dance. Don't pin a shortcut to anything you'd be sad to re-create.</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Channel_Short" xml:space="preserve">
-    <value>Experimental channel and versioning</value>
+    <value>Why it's called "Wavee (Alpha)"</value>
   </data>
   <data name="Connect_SyncingAlbums" xml:space="preserve">
     <value>Syncing albums...</value>
@@ -1853,10 +1853,10 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Syncing artists...</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Limitations_Short" xml:space="preserve">
-    <value>Known gaps in the first alpha</value>
+    <value>What's not finished yet</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Report_Detail" xml:space="preserve">
-    <value>The best reports come from Settings &gt; About &gt; Report an issue on GitHub. That flow packages recent app logs and crash details, opens the issue page, and gives enough context to reproduce startup, playback, navigation, or sync problems.</value>
+    <value>Settings &gt; About &gt; "Report an issue on GitHub" bundles the recent app logs and a redacted crash trace, then opens a pre-filled GitHub issue. The attached log is the difference between me guessing and me finding the bug in one commit — "it crashed" on its own is almost always a dead end.</value>
   </data>
   <data name="Update_CheckFailed" xml:space="preserve">
     <value>Update check failed - check your connection</value>
@@ -1868,16 +1868,16 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Loading playlists...</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Test_DetailTitle" xml:space="preserve">
-    <value>Suggested Test Areas</value>
+    <value>Drive it like a normal day</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Start_DetailTitle" xml:space="preserve">
-    <value>First Alpha Build</value>
+    <value>A quick orientation</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Report_Short" xml:space="preserve">
-    <value>Logs make alpha feedback actionable</value>
+    <value>Logs make a huge difference</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Test_Short" xml:space="preserve">
-    <value>Core workflows to exercise</value>
+    <value>Use it like you'd use Spotify</value>
   </data>
   <data name="Connect_ErrorNetwork" xml:space="preserve">
     <value>Network error. Check your connection and try again.</value>
@@ -1886,10 +1886,10 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Something went wrong: {0}</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Start_Short" xml:space="preserve">
-    <value>Initial experimental release</value>
+    <value>What Wavee actually is</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Title" xml:space="preserve">
-    <value>Wavee (Alpha) release notes</value>
+    <value>Wavee — first public alpha</value>
   </data>
   <data name="Update_AvailableMessage" xml:space="preserve">
     <value>Wavee v{0} is available</value>
@@ -1907,25 +1907,25 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Authorization was denied. Please try again.</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Report_DetailTitle" xml:space="preserve">
-    <value>How to Report Issues</value>
+    <value>How to file something I can actually fix</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Start_Title" xml:space="preserve">
     <value>Start here</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Limitations_Title" xml:space="preserve">
-    <value>Known limitations</value>
+    <value>Rough edges</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Test_Title" xml:space="preserve">
-    <value>What to test</value>
+    <value>What to try</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Announcement" xml:space="preserve">
-    <value>This is an experimental alpha release. These notes are a tester checklist, not a feature tour from an older version.</value>
+    <value>First time anyone outside my dev box is running this build. Things will break — when they do, see the "Report issues" section so I can actually fix it.</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Channel_Title" xml:space="preserve">
-    <value>Release channel</value>
+    <value>Naming &amp; updates</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Limitations_DetailTitle" xml:space="preserve">
-    <value>Known Limitations</value>
+    <value>Things I haven't polished yet</value>
   </data>
   <data name="Playlist_AddTracksFailed" xml:space="preserve">
     <value>Failed to add tracks to playlist</value>
@@ -1937,7 +1937,7 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Added {0} tracks to playlist</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Test_Detail" xml:space="preserve">
-    <value>Please focus on the main Spotify workflows: OAuth sign-in, Home, Search, Library, playlists, albums, artists, shows, queue edits, Spotify Connect device transfer, lyrics, music videos, Settings, and crash recovery.</value>
+    <value>There's no special test plan — just use it. Sign in, browse Home, search for something, open an album, queue a few tracks, transfer playback to your phone with Connect, scroll through your library, pop open lyrics, watch a music video, drag tracks around the queue. The worst bugs hide in the boring workflows you do without thinking, so if anything feels weird while you're just listening, that's worth a report.</value>
   </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Report_Title" xml:space="preserve">
     <value>Report issues</value>

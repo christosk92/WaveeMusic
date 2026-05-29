@@ -1827,11 +1827,13 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         {
             if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] AddToQueue FAILED: trackId={TrackId}", trackId);
         });
+        ShowQueueToast(1, playNext: false);
     }
 
     public void AddToQueue(IEnumerable<string> trackIds)
     {
-        foreach (var trackId in trackIds)
+        var ids = trackIds as IReadOnlyList<string> ?? trackIds.ToList();
+        foreach (var trackId in ids)
         {
             _logger?.LogInformation("[Cmd] AddToQueue: trackId={TrackId}", trackId);
             _ = _playbackService.AddToQueueAsync(trackId).ContinueWith(t =>
@@ -1839,6 +1841,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] AddToQueue FAILED: trackId={TrackId}", trackId);
             });
         }
+        ShowQueueToast(ids.Count, playNext: false);
     }
 
     public void PlayNext(string trackId)
@@ -1848,6 +1851,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         {
             if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] PlayNext FAILED: trackId={TrackId}", trackId);
         });
+        ShowQueueToast(1, playNext: true);
     }
 
     public void PlayNext(IEnumerable<string> trackIds)
@@ -1856,14 +1860,35 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         // REVERSE order means the first track in `trackIds` lands at slot 0 (plays
         // right after the current track), the second at slot 1, and so on — natural
         // "play these next, in order" semantics for a bulk Play-Next bind.
-        foreach (var trackId in trackIds.Reverse())
+        var ids = trackIds as IReadOnlyList<string> ?? trackIds.ToList();
+        for (var i = ids.Count - 1; i >= 0; i--)
         {
+            var trackId = ids[i];
             _logger?.LogInformation("[Cmd] PlayNext: trackId={TrackId}", trackId);
             _ = _playbackService.PlayNextAsync(trackId).ContinueWith(t =>
             {
                 if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] PlayNext FAILED: trackId={TrackId}", trackId);
             });
         }
+        ShowQueueToast(ids.Count, playNext: true);
+    }
+
+    // Transient "Added to queue" / "Playing next" confirmation toast for user-driven
+    // queue commands. Toast-only (PostToActivityBell = false) so high-frequency queue
+    // taps don't flood the activity-bell history. Optimistic — shown when the command
+    // is issued; failures are rare and already logged on the fire-and-forget task.
+    // Verb phrasing mirrors EnqueueTracksHandler (the drag-drop queue path).
+    private void ShowQueueToast(int count, bool playNext)
+    {
+        if (count <= 0) return;
+        var verb = playNext ? "Playing next" : "Added to queue";
+        _notificationService?.Show(new NotificationInfo
+        {
+            Message = count == 1 ? verb : $"{verb}: {count} tracks",
+            Severity = NotificationSeverity.Success,
+            PostToActivityBell = false,
+            AutoDismissAfter = TimeSpan.FromSeconds(3),
+        });
     }
 
     public void LoadQueue(IReadOnlyList<QueueItem> items, PlaybackContextInfo context, int startIndex = 0)

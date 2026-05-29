@@ -7,7 +7,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents a liked/saved song in the user's library.
 /// </summary>
-public sealed record LikedSongDto : ITrackItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LikedSongDto : ITrackItem
 {
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     public required string Id { get; init; }

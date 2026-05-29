@@ -24,13 +24,17 @@ using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 using Windows.Foundation;
+using Wavee.UI.WinUI.Controls.Reorder;
 namespace Wavee.UI.WinUI.Controls.TrackList;
 
 /// <summary>
 /// A reusable track list control with sorting, selection, sticky headers, and command bar.
 /// </summary>
-public sealed partial class TrackListView : UserControl
+public sealed partial class TrackListView : UserControl, IReorderHost
 {
+    private ReorderController? _reorder;
+    private ReorderController EnsureReorder() => _reorder ??= new ReorderController(this);
+
     private const int DurationColumnIndex = 7; // Base index of Duration column before custom columns (0=#, 1=Heart, 2=Art, 3=Title, 4=Artist, 5=Album, 6=DateAdded, 7=Duration)
     private ScrollViewer? _scrollViewer;
     private INotifyCollectionChanged? _currentCollection;
@@ -141,7 +145,22 @@ public sealed partial class TrackListView : UserControl
 
     public static readonly DependencyProperty CanReorderProperty =
         DependencyProperty.Register(nameof(CanReorder), typeof(bool), typeof(TrackListView),
-            new PropertyMetadata(false));
+            new PropertyMetadata(false, OnCanReorderChanged));
+
+    private static void OnCanReorderChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not TrackListView c || c.InternalListView is null) return;
+        var on = (bool)e.NewValue;
+        // The engine owns the press-drag gesture on reorderable lists (it hands off
+        // to OLE when the pointer leaves the list); on non-reorderable lists OLE
+        // CanDragItems keeps cross-surface drag-out working.
+        c.InternalListView.CanDragItems = !on;
+        if (!on) return;
+        var ctrl = c.EnsureReorder();
+        for (int i = 0; i < c.InternalListView.Items.Count; i++)
+            if (c.InternalListView.ContainerFromIndex(i) is FrameworkElement fe)
+                ctrl.AttachRow(fe);
+    }
 
     private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -840,6 +859,8 @@ public sealed partial class TrackListView : UserControl
             lvi.AddHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler, true);
             lvi.RemoveHandler(UIElement.TappedEvent, _containerTappedHandler);
             lvi.AddHandler(UIElement.TappedEvent, _containerTappedHandler, true);
+
+            if (CanReorder) EnsureReorder().AttachRow(lvi);
         }
 
         if (args.ItemContainer?.ContentTemplateRoot is TrackItem trackItem)
@@ -954,49 +975,74 @@ public sealed partial class TrackListView : UserControl
     /// </summary>
     public event System.Action<int, int, int>? TracksReorderRequested;
 
-    private void InternalListView_DragOver(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    // ── IReorderHost (react-beautiful-dnd reorder engine) ──────────────────
+
+    FrameworkElement IReorderHost.ReorderCoordinateRoot =>
+        (FrameworkElement?)InternalListView.ItemsPanelRoot ?? InternalListView;
+
+    FrameworkElement IReorderHost.ViewportElement =>
+        (FrameworkElement?)_scrollViewer ?? InternalListView;
+
+    int IReorderHost.ItemCount => InternalListView.Items.Count;
+
+    IReadOnlyList<ReorderRow> IReorderHost.GetRealizedRows()
     {
-        if (!CanReorder) return;
-        // Only intra-list reorder is accepted here; cross-list track drops route
-        // through the sidebar / playerbar / queue targets instead.
-        if (_dragStateService?.CurrentPayload is TrackDragPayload p
-            && !string.IsNullOrEmpty(ContextUri)
-            && string.Equals(p.SourceContextUri, ContextUri, System.StringComparison.Ordinal))
+        var root = ((IReorderHost)this).ReorderCoordinateRoot;
+        var rows = new List<ReorderRow>();
+        for (int i = 0; i < InternalListView.Items.Count; i++)
         {
-            e.AcceptedOperation = DataPackageOperation.Move;
+            if (InternalListView.ContainerFromIndex(i) is not FrameworkElement c) continue;
+            double top;
+            try { top = c.TransformToVisual(root).TransformPoint(new Point(0, 0)).Y; }
+            catch { continue; }
+            rows.Add(new ReorderRow(c, i, top, c.ActualHeight));
         }
+        return rows;
     }
 
-    private void InternalListView_Drop(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    (int From, int Length) IReorderHost.GetReorderSpan(int pressedIndex)
     {
-        if (!CanReorder) return;
-        if (_dragStateService?.CurrentPayload is not TrackDragPayload p) return;
-        if (string.IsNullOrEmpty(ContextUri)
-            || !string.Equals(p.SourceContextUri, ContextUri, System.StringComparison.Ordinal))
-            return;
-
-        var fromIndex = p.SourceStartIndex ?? -1;
-        var length = p.ItemCount;
-        if (fromIndex < 0 || length <= 0) return;
-
-        // Resolve drop target = nearest ListViewItem under the drop point.
-        var toIndex = ComputeReorderTargetIndex(e);
-        if (toIndex < 0) return;
-
-        TracksReorderRequested?.Invoke(fromIndex, length, toIndex);
+        var sel = InternalListView.SelectedItems;
+        if (sel.Count > 1)
+        {
+            int min = int.MaxValue, max = int.MinValue;
+            foreach (var it in sel)
+            {
+                var idx = InternalListView.Items.IndexOf(it);
+                if (idx < 0) continue;
+                if (idx < min) min = idx;
+                if (idx > max) max = idx;
+            }
+            if (min <= pressedIndex && pressedIndex <= max && (max - min + 1) == sel.Count)
+                return (min, sel.Count);
+        }
+        return (pressedIndex, 1);
     }
 
-    private int ComputeReorderTargetIndex(Microsoft.UI.Xaml.DragEventArgs e)
+    string IReorderHost.GetItemLabel(int index) =>
+        index >= 0 && index < InternalListView.Items.Count
+            && InternalListView.Items[index] is ITrackItem t ? (t.Title ?? string.Empty) : string.Empty;
+
+    void IReorderHost.ScrollBy(double deltaPixels) =>
+        _scrollViewer?.ChangeView(null, _scrollViewer.VerticalOffset + deltaPixels, null, true);
+
+    IDragPayload? IReorderHost.BuildPayload(int from, int length)
     {
-        // Walk up from the original source to find the containing ListViewItem,
-        // then ask the ListView for its index. When the user drops in empty
-        // space below the last row, append to the end.
-        var element = e.OriginalSource as DependencyObject;
-        while (element is not null and not ListViewItem)
-            element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
-        if (element is ListViewItem lvi)
-            return InternalListView.IndexFromContainer(lvi);
-        return InternalListView.Items.Count;
+        var uris = new List<string>(length);
+        for (int i = from; i < from + length && i < InternalListView.Items.Count; i++)
+            if (InternalListView.Items[i] is ITrackItem t) uris.Add(t.Id);
+        if (uris.Count == 0) return null;
+        return new TrackDragPayload(uris.ToArray(), sourceContextUri: ContextUri, sourceStartIndex: from);
+    }
+
+    bool IReorderHost.CommitMove(int from, int length, int toGapSlot)
+    {
+        // Pass the gap slot through unchanged: TracksReorderRequested consumers
+        // (PlaylistTrackListViewModel.ReorderTracksAsync) take gap-slot coordinates
+        // and do the gap→insert-index conversion themselves. Same contract the
+        // legacy drop handler used.
+        TracksReorderRequested?.Invoke(from, length, toGapSlot);
+        return true;
     }
 
     #endregion

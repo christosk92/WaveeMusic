@@ -125,7 +125,8 @@ public sealed class LinkPreviewCoordinator
 /// against its <c>_activeSearchText</c> for staleness), and the resolved
 /// metadata to upgrade the placeholder card with.
 /// </summary>
-public sealed record LinkPreviewResult(
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LinkPreviewResult(
     SpotifyLink Link,
     string RawText,
     LinkPreview Preview);

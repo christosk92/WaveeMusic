@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
@@ -94,7 +95,12 @@ public sealed partial class DebugViewModel : ObservableObject
     [ObservableProperty] public partial string EntityUris { get; set; } = "";
 
     // ── Pathfinder fields ──
-    public PathfinderCatalog.Operation[] PathfinderOperations { get; } = PathfinderCatalog.All;
+    // ObservableCollection<T> rather than T[] because CsWinRT cannot project
+    // raw arrays (or IReadOnlyList<T>) as IBindableVector across the WinRT
+    // ABI — ItemsControl.set_ItemsSource throws otherwise. See
+    // reference_winrt_itemssource_ireadonlylist_crash.md.
+    public ObservableCollection<PathfinderCatalog.Operation> PathfinderOperations { get; } =
+        new ObservableCollection<PathfinderCatalog.Operation>(PathfinderCatalog.All);
     [ObservableProperty] public partial int SelectedPathfinderOperationIndex { get; set; }
     [ObservableProperty] public partial string PathfinderOperationName { get; set; } = "";
     [ObservableProperty] public partial string PathfinderHash { get; set; } = "";
@@ -134,7 +140,7 @@ public sealed partial class DebugViewModel : ObservableObject
         // valid starting point. Direct call (not property assignment) because
         // SelectedPathfinderOperationIndex defaults to 0 already and a no-op
         // assignment doesn't fire the source-generator's changed handler.
-        if (PathfinderOperations.Length > 0)
+        if (PathfinderOperations.Count > 0)
             OnSelectedPathfinderOperationIndexChanged(0);
     }
 
@@ -159,7 +165,7 @@ public sealed partial class DebugViewModel : ObservableObject
 
     partial void OnSelectedPathfinderOperationIndexChanged(int value)
     {
-        if (value < 0 || value >= PathfinderOperations.Length) return;
+        if (value < 0 || value >= PathfinderOperations.Count) return;
         var op = PathfinderOperations[value];
         PathfinderOperationName = op.Name;
         PathfinderHash = op.Hash;

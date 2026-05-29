@@ -82,7 +82,7 @@
                 <Border Width="40" Height="40" CornerRadius="6"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <Grid>
-                        <Image Source="{Binding ImageUrl, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=64}"
+                        <Image Source="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=64}"
                                Stretch="UniformToFill"
                                Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                         <FontIcon Glyph="{x:Bind IconGlyph}" FontSize="14"

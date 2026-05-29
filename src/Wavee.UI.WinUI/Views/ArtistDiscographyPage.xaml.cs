@@ -19,7 +19,8 @@ namespace Wavee.UI.WinUI.Views;
 /// artist); the trailing crumb (current page) leaves it null so the click
 /// handler short-circuits.
 /// </summary>
-public sealed record DiscographyBreadcrumbItem(string Label, string? ArtistUri);
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record DiscographyBreadcrumbItem(string Label, string? ArtistUri);
 
 /// <summary>
 /// "See all albums / singles" destination page. Hosts a single full grid of

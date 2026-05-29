@@ -31,9 +31,6 @@ public interface IPlaylistDragDropMediator
     /// <summary>Move a playlist into a folder identified by its start-group URI.</summary>
     Task MovePlaylistIntoFolderAsync(string playlistUri, string folderStartUri, CancellationToken ct = default);
 
-    /// <summary>Move a playlist currently inside a folder out to a top-level rootlist index.</summary>
-    Task MovePlaylistOutOfFolderAsync(string playlistUri, int destinationRootIndex, CancellationToken ct = default);
-
     // ── Context-track resolvers ───────────────────────────────────────────
     // For drag-drop of an album / artist / playlist / liked-songs / show onto
     // a playlist row: resolve the source into its track URIs so the drop

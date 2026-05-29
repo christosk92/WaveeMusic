@@ -24,7 +24,8 @@ public enum PlaylistBasePermission
 /// flowing through the cache, the derivation can become a real per-field map.
 /// </para>
 /// </summary>
-public sealed record PlaylistCapabilitiesDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PlaylistCapabilitiesDto
 {
     public bool CanView { get; init; } = true;
     public bool CanEditItems { get; init; }
@@ -46,7 +47,8 @@ public sealed record PlaylistCapabilitiesDto
 /// <summary>
 /// Represents detailed playlist metadata.
 /// </summary>
-public sealed record PlaylistDetailDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PlaylistDetailDto
 {
     public required string Id { get; init; }
     public required string Name { get; init; }

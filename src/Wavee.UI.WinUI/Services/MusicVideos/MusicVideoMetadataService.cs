@@ -14,7 +14,11 @@ namespace Wavee.UI.WinUI.Services;
 internal sealed partial class MusicVideoMetadataService : IMusicVideoMetadataService
 {
     private const int BatchSize = 200;
-    private const long NegativeCacheTtlSeconds = 24 * 60 * 60;
+    // Music-video availability is near-static, and a "no video" answer almost
+    // never flips. A long negative TTL keeps the separate player_mdata POST off
+    // the common cold open (it re-runs only after ~3 weeks or on a fresh session
+    // where the process-lifetime catalog cache is cold).
+    private const long NegativeCacheTtlSeconds = 21L * 24 * 60 * 60;
 
     private readonly ExtendedMetadataStore _extendedMetadataStore;
     private readonly IExtendedMetadataClient _extendedMetadataClient;
@@ -119,14 +123,18 @@ internal sealed partial class MusicVideoMetadataService : IMusicVideoMetadataSer
                 ApplyAvailability(key.Uri, entry.Value, result);
             }
 
+            var negativeUris = new List<string>(batch.Length);
             foreach (var uri in batch)
             {
                 if (returnedUris.Contains(uri)) continue;
 
                 result[uri] = false;
                 _catalogCache.NoteHasVideo(uri, false);
-                await WriteNegativeCacheAsync(uri, cancellationToken).ConfigureAwait(false);
+                negativeUris.Add(uri);
             }
+
+            if (negativeUris.Count > 0)
+                await WriteNegativeCacheBulkAsync(negativeUris, cancellationToken).ConfigureAwait(false);
         }
 
         return result;
@@ -310,19 +318,25 @@ internal sealed partial class MusicVideoMetadataService : IMusicVideoMetadataSer
         _catalogCache.NoteHasVideo(audioUri, false);
     }
 
-    private async Task WriteNegativeCacheAsync(string uri, CancellationToken cancellationToken)
+    private async Task WriteNegativeCacheBulkAsync(IReadOnlyList<string> uris, CancellationToken cancellationToken)
     {
         try
         {
-            await _database
-                .SetExtensionAsync(
+            // One transaction + one write-lock acquisition for the whole batch,
+            // instead of a SetExtensionAsync per "no video" track. Empty data is
+            // the established "known absent" negative-cache marker.
+            var records = new List<ExtensionWriteRecord>(uris.Count);
+            foreach (var uri in uris)
+            {
+                records.Add(new ExtensionWriteRecord(
                     uri,
                     ExtensionKind.VideoAssociations,
                     Array.Empty<byte>(),
-                    etag: null,
-                    NegativeCacheTtlSeconds,
-                    cancellationToken)
-                .ConfigureAwait(false);
+                    Etag: null,
+                    NegativeCacheTtlSeconds));
+            }
+
+            await _database.SetExtensionsBulkAsync(records, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -330,7 +344,7 @@ internal sealed partial class MusicVideoMetadataService : IMusicVideoMetadataSer
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug(ex, "Failed to write negative video-association cache for {Uri}", uri);
+            _logger?.LogDebug(ex, "Failed to bulk-write negative video-association cache ({Count} uris)", uris.Count);
         }
     }
 

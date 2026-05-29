@@ -1106,16 +1106,16 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
 
     // ── Follow toggle ───────────────────────────────────────────────────────
 
-    /// <summary>True if the current user follows this playlist (heart filled).
-    /// Toggled by <see cref="ToggleFollowAsync"/>; backend wire-up is pending.</summary>
+    /// <summary>True if the playlist is in the current user's library/rootlist (heart
+    /// filled). Seeded on navigation by <see cref="RefreshFollowedStateAsync"/> and
+    /// toggled by <see cref="ToggleFollowAsync"/>.</summary>
     [ObservableProperty]
     public partial bool IsFollowed { get; set; }
 
     /// <summary>
-    /// Toggles whether the current user follows this playlist. Visual flip is
-    /// optimistic — backend wire-up via
-    /// <see cref="ILibraryDataService.SetPlaylistFollowedAsync"/> is currently
-    /// stubbed; the call shape exists so the page chrome behaves correctly.
+    /// Toggles whether the playlist is in the current user's library. The visual flip
+    /// is optimistic and reverted if the rootlist write (<c>SetPlaylistFollowedAsync</c>)
+    /// fails.
     /// </summary>
     [RelayCommand]
     private async Task ToggleFollowAsync()
@@ -1135,6 +1135,36 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
             // for now so this is mostly a safety net for the future wire-up.
             _logger?.LogDebug(ex, "ToggleFollowAsync failed for {PlaylistId} — reverting", PlaylistId);
             IsFollowed = !nextValue;
+        }
+    }
+
+    /// <summary>
+    /// Seeds <see cref="IsFollowed"/> from the user's library/rootlist membership so the
+    /// heart reflects saved-state on navigation (it is otherwise only written by
+    /// <see cref="ToggleFollowAsync"/>, leaving an already-saved playlist showing as
+    /// unsaved). Cache-first to avoid a network hop on every nav; bails if the user
+    /// navigated to a different playlist while the lookup was in flight.
+    /// </summary>
+    public async Task RefreshFollowedStateAsync(string playlistId)
+    {
+        if (string.IsNullOrEmpty(playlistId)) return;
+        try
+        {
+            var list = await _libraryDataService.TryGetUserPlaylistsFromCacheAsync().ConfigureAwait(true)
+                       ?? await _libraryDataService.GetUserPlaylistsAsync().ConfigureAwait(true);
+            if (!string.Equals(PlaylistId, playlistId, StringComparison.Ordinal)) return;
+
+            static string BareId(string uri)
+            {
+                var i = uri.LastIndexOf(':');
+                return i >= 0 ? uri[(i + 1)..] : uri;
+            }
+            var target = BareId(playlistId);
+            IsFollowed = list.Any(p => string.Equals(BareId(p.Id), target, StringComparison.Ordinal));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "RefreshFollowedStateAsync failed for {PlaylistId}", playlistId);
         }
     }
 

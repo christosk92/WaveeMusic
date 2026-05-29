@@ -478,41 +478,152 @@ public sealed partial class LibraryDataService : ILibraryDataService
                 .ConfigureAwait(false);
 
         var tracks = new List<PlaylistTrackDto>(trackItems.Length);
-        foreach (var item in trackItems)
+        for (int i = 0; i < trackItems.Length; i++)
         {
+            var item = trackItems[i];
             if (!parsedTracks.TryGetValue(item.Uri, out var track))
                 continue;
 
-            tracks.Add(new PlaylistTrackDto
-            {
-                Id = Helpers.PlaylistUriHelpers.ExtractBareId(item.Uri, "spotify:track:"),
-                Uri = item.Uri,
-                Title = track.Name ?? "Unknown",
-                ArtistName = track.Artist.Count > 0
-                    ? string.Join(", ", track.Artist.Select(static artist => artist.Name))
-                    : "",
-                ArtistId = GetSpotifyUri(track.Artist.Count > 0 ? track.Artist[0].Gid : null, SpotifyIdType.Artist) ?? "",
-                AlbumName = track.Album?.Name ?? "",
-                AlbumId = GetSpotifyUri(track.Album?.Gid, SpotifyIdType.Album) ?? "",
-                ImageUrl = GetImageUrl(track.Album, Image.Types.Size.Default),
-                // 48 px row art reads ImageSmallUrl first; the Small flavor is
-                // a distinct CDN image-id (~80 px), ~10× smaller bytes than Default.
-                ImageSmallUrl = GetImageUrl(track.Album, Image.Types.Size.Small),
-                Duration = TimeSpan.FromMilliseconds(track.Duration),
-                AddedAt = item.AddedAt?.LocalDateTime,
-                AddedBy = item.AddedBy,
-                IsExplicit = track.Explicit,
-                OriginalIndex = tracks.Count + 1,
-                // Spotify's on-wire uid: lower-case hex of the 8-byte itemId. Matches
-                // the format web/mobile clients publish for skip-to-uid round-trip.
-                Uid = item.ItemId is { Length: > 0 } id ? Convert.ToHexString(id).ToLowerInvariant() : null,
-                FormatAttributes = item.FormatAttributes.Count > 0 ? item.FormatAttributes : null,
-                HasVideo = cachedVideoAvailability.TryGetValue(item.Uri, out var hasVideo) && hasVideo
-            });
+            var hasVideo = cachedVideoAvailability.TryGetValue(item.Uri, out var v) && v;
+            tracks.Add(BuildPlaylistTrackDto(BuildSkeleton(item, i + 1), track, hasVideo));
         }
 
         return tracks;
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PlaylistTrackSkeleton>> GetPlaylistTrackSkeletonsAsync(string playlistId, CancellationToken ct = default)
+    {
+        // Skeletons are only useful if we can subsequently stream per-row metadata
+        // through the batching store. Without it, return empty so the caller falls
+        // through to the blocking GetPlaylistTracksAsync (which has its own
+        // direct-client fallback) rather than painting rows that never enrich.
+        if (_extendedMetadataStore is null)
+            return Array.Empty<PlaylistTrackSkeleton>();
+
+        var playlist = await _playlistCache.GetPlaylistAsync(playlistId, ct: ct);
+        var trackItems = playlist.Items
+            .Where(static item => item.Uri.StartsWith("spotify:track:", StringComparison.Ordinal))
+            .ToArray();
+
+        if (trackItems.Length == 0)
+            return Array.Empty<PlaylistTrackSkeleton>();
+
+        // Streaming pays for itself only when enough rows would otherwise block on
+        // the network. It adds a placeholder-materialize + per-row enrich on top of
+        // the normal build, so when most TrackV4 metadata is already cached the
+        // direct GetPlaylistTracksAsync build (one materialize, no enrich churn,
+        // far less allocation) is faster — which matters under rapid playlist
+        // switching where the extra allocation otherwise drives Gen2 GC. Probe the
+        // cache and only stream when a large fraction is genuinely uncached.
+        var uris = trackItems.Select(static i => i.Uri).ToList();
+        var cachedTrackV4 = await _database
+            .GetExtensionsBulkWithEtagAsync(uris, ExtensionKind.TrackV4, ct)
+            .ConfigureAwait(false);
+        var missing = trackItems.Length - cachedTrackV4.Count;
+        if (missing < trackItems.Length / 2)
+            return Array.Empty<PlaylistTrackSkeleton>();
+
+        var skeletons = new List<PlaylistTrackSkeleton>(trackItems.Length);
+        for (int i = 0; i < trackItems.Length; i++)
+            skeletons.Add(BuildSkeleton(trackItems[i], i + 1));
+        return skeletons;
+    }
+
+    /// <inheritdoc />
+    public async Task StreamPlaylistTrackMetadataAsync(
+        IReadOnlyList<PlaylistTrackSkeleton> skeletons,
+        Action<PlaylistTrackDto> onResolved,
+        CancellationToken ct = default)
+    {
+        // Streaming requires the batching store (so per-track GetOnceAsync calls
+        // still collapse into one POST). Without it, callers fall back to the
+        // blocking GetPlaylistTracksAsync.
+        if (_extendedMetadataStore is null || skeletons.Count == 0)
+            return;
+
+        // One cache-only read up front so HasVideo is correct from the first paint
+        // for tracks whose availability is already known (no network here).
+        var cachedVideo = _musicVideoMetadata is null
+            ? new Dictionary<string, bool>(StringComparer.Ordinal)
+            : await _musicVideoMetadata
+                .GetCachedAvailabilityAsync(skeletons.Select(static s => s.Uri), ct)
+                .ConfigureAwait(false);
+
+        var tasks = new List<Task>(skeletons.Count);
+        foreach (var skeleton in skeletons)
+        {
+            var s = skeleton;
+            tasks.Add(Task.Run(async () =>
+            {
+                byte[]? bytes;
+                try
+                {
+                    bytes = await _extendedMetadataStore
+                        .GetOnceAsync(s.Uri, ExtensionKind.TrackV4, ct)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { return; }
+
+                if (ct.IsCancellationRequested || bytes is null or { Length: 0 })
+                    return;
+
+                Track track;
+                try
+                {
+                    track = Track.Parser.ParseFrom(bytes);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Failed to parse Track for {Uri}", s.Uri);
+                    return;
+                }
+
+                var hasVideo = cachedVideo.TryGetValue(s.Uri, out var v) && v;
+                onResolved(BuildPlaylistTrackDto(s, track, hasVideo));
+            }, CancellationToken.None));
+        }
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    private static PlaylistTrackSkeleton BuildSkeleton(CachedPlaylistItem item, int index) => new()
+    {
+        Id = Helpers.PlaylistUriHelpers.ExtractBareId(item.Uri, "spotify:track:"),
+        Uri = item.Uri,
+        Index = index,
+        AddedAt = item.AddedAt?.LocalDateTime,
+        AddedBy = item.AddedBy,
+        // Spotify's on-wire uid: lower-case hex of the 8-byte itemId. Matches
+        // the format web/mobile clients publish for skip-to-uid round-trip.
+        Uid = item.ItemId is { Length: > 0 } id ? Convert.ToHexString(id).ToLowerInvariant() : null,
+        FormatAttributes = item.FormatAttributes.Count > 0 ? item.FormatAttributes : null
+    };
+
+    private static PlaylistTrackDto BuildPlaylistTrackDto(PlaylistTrackSkeleton s, Track track, bool hasVideo) => new()
+    {
+        Id = s.Id,
+        Uri = s.Uri,
+        Title = track.Name ?? "Unknown",
+        ArtistName = track.Artist.Count > 0
+            ? string.Join(", ", track.Artist.Select(static artist => artist.Name))
+            : "",
+        ArtistId = GetSpotifyUri(track.Artist.Count > 0 ? track.Artist[0].Gid : null, SpotifyIdType.Artist) ?? "",
+        AlbumName = track.Album?.Name ?? "",
+        AlbumId = GetSpotifyUri(track.Album?.Gid, SpotifyIdType.Album) ?? "",
+        ImageUrl = GetImageUrl(track.Album, Image.Types.Size.Default),
+        // 48 px row art reads ImageSmallUrl first; the Small flavor is
+        // a distinct CDN image-id (~80 px), ~10× smaller bytes than Default.
+        ImageSmallUrl = GetImageUrl(track.Album, Image.Types.Size.Small),
+        Duration = TimeSpan.FromMilliseconds(track.Duration),
+        AddedAt = s.AddedAt,
+        AddedBy = s.AddedBy,
+        IsExplicit = track.Explicit,
+        OriginalIndex = s.Index,
+        Uid = s.Uid,
+        FormatAttributes = s.FormatAttributes,
+        HasVideo = hasVideo
+    };
 
 
 

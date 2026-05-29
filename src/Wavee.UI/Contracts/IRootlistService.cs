@@ -39,15 +39,6 @@ public interface IRootlistService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Lifts a playlist out of whatever folder it sits in and inserts it at
-    /// the supplied absolute root index.
-    /// </summary>
-    Task MovePlaylistOutOfFolderAsync(
-        string playlistUri,
-        int destinationRootIndex,
-        CancellationToken ct = default);
-
-    /// <summary>
     /// Renames a sidebar folder. Targets the <c>spotify:start-group:…</c>
     /// marker that opens the folder in the rootlist.
     /// </summary>

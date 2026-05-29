@@ -548,7 +548,11 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
                     Value = ByteString.CopyFrom(entry.Data)
                 };
                 target.Header ??= new EntityExtensionDataHeader();
-                if (string.IsNullOrWhiteSpace(target.Header.Etag))
+                // entry.Etag is nullable (the cached `etag` column is NULL for
+                // extensions the server returns without one — e.g. a VideoAssociations
+                // row for a track with no video). The protobuf Etag setter calls
+                // CheckNotNull and throws on null, so only copy a real cached etag.
+                if (string.IsNullOrWhiteSpace(target.Header.Etag) && !string.IsNullOrWhiteSpace(entry.Etag))
                 {
                     target.Header.Etag = entry.Etag;
                 }

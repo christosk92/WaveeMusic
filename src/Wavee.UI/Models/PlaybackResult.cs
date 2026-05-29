@@ -3,7 +3,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Result of a playback command execution.
 /// </summary>
-public sealed record PlaybackResult
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PlaybackResult
 {
     public bool IsSuccess { get; init; }
     public PlaybackErrorKind? ErrorKind { get; init; }

@@ -671,6 +671,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         {
             _ = Header.LoadFollowerCountAsync(PlaylistId);
             _ = Header.LoadPaletteAsync(PlaylistId);
+            // Seed the heart's saved-state from library membership — without this the
+            // heart defaults to unsaved even for a playlist already in the sidebar/rootlist.
+            _ = Header.RefreshFollowedStateAsync(PlaylistId);
         }
 
         _logger?.LogInformation(
@@ -943,6 +946,77 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             // cross-playlist swaps still show the shimmer (Activate seeded it).
             if (_tracksLoadedFor != playlistId)
                 TrackList.IsLoadingTracks = true;
+
+            // COLD open: paint clickable shimmer rows from the playlist skeletons
+            // immediately, then stream TrackV4 metadata per-row instead of blocking
+            // the whole list on the full batch. Warm revisits keep the diff-based
+            // full apply below (TracksAreEquivalent / scroll preservation).
+            if (!isWarmHit)
+            {
+                var skeletons = await _libraryDataService
+                    .GetPlaylistTrackSkeletonsAsync(playlistId, ct)
+                    .ConfigureAwait(false);
+                if (skeletons.Count > 0)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    _dispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (_disposed || PlaylistId != playlistId)
+                            return;
+                        TrackList.ApplySkeletons(skeletons);
+                        TrackList.IsLoadingTracks = false;
+                        TrackList.ClearPendingSignalChip();
+                    });
+
+                    await _libraryDataService.StreamPlaylistTrackMetadataAsync(
+                        skeletons,
+                        dto =>
+                        {
+                            // Called off the UI thread per resolved track. EnqueueEnrich
+                            // buffers + schedules a coalesced Low-priority drain, so the
+                            // post-POST burst doesn't fire N dispatches in one frame.
+                            if (_disposed || PlaylistId != playlistId || ct.IsCancellationRequested)
+                                return;
+                            TrackList.EnqueueEnrich(dto);
+                        },
+                        ct).ConfigureAwait(false);
+
+                    ct.ThrowIfCancellationRequested();
+                    _dispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (_disposed || PlaylistId != playlistId)
+                            return;
+
+                        // Finalize runs after the last enrich batch drains (drain-driven),
+                        // so it doesn't pre-empt the capped drains and re-burst the tail.
+                        TrackList.MarkStreamingEnrichComplete(() =>
+                        {
+                            if (_disposed || PlaylistId != playlistId)
+                                return;
+
+                            ScheduleVideoAvailabilityFetch(playlistId, ct);
+                            _tracksLoadedFor = playlistId;
+                            _logger?.LogInformation(
+                                "Tracks streamed: {Count} tracks for '{PlaylistId}' first3={First3}",
+                                TrackList.AllTracks.Count, playlistId,
+                                string.Join(",", TrackList.AllTracks.Take(3).Select(t => t.Id)));
+
+                            if (string.Equals(_pendingFallbackMosaicPlaylistId, playlistId, StringComparison.Ordinal) &&
+                                string.IsNullOrWhiteSpace(Header.PlaylistImageUrl))
+                            {
+                                _pendingFallbackMosaicPlaylistId = null;
+                                _ = ApplyMosaicHeroFromTracksAsync(playlistId, TrackList.AllTracks.ToArray());
+                            }
+
+                            if (Header.ShouldShowAddedByColumn)
+                                _ = Header.ResolveAddedByUsernamesAsync(playlistId, ct);
+                        });
+                    });
+                    return;
+                }
+                // Empty playlist or no streaming store: fall through to the full apply.
+            }
+
             var tracks = await _libraryDataService.GetPlaylistTracksAsync(playlistId, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
 

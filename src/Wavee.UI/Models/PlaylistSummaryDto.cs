@@ -3,7 +3,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Summary of a playlist for display in sidebar/lists.
 /// </summary>
-public sealed record PlaylistSummaryDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record PlaylistSummaryDto
 {
     public required string Id { get; init; }
     public required string Name { get; init; }

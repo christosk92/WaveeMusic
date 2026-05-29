@@ -1236,6 +1236,17 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         row.SetAlternatingBorder(args.Index % 2 != 0, useCardRow: false);
         row.RowHoverBackgroundBrush =
             (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+
+        // PlayCommand was previously wired via
+        // {Binding ViewModel.TopTracks.PlayTrackCommand, ElementName=ArtistPageRoot}
+        // in the DataTemplate. That ElementName chain is reflection-based and
+        // races under Native AOT — on the first realize the command resolved
+        // to null and TrackItem.ExecutePlayCommandWithPending's
+        // `PlayCommand?.CanExecute(track) != true` guard turned every click
+        // into a silent no-op. Wiring imperatively here removes the race +
+        // the reflection. Mirrors how PopularReleasesRepeater_ElementPrepared
+        // sets row data directly.
+        row.PlayCommand = ViewModel.TopTracks.PlayTrackCommand;
     }
 
     private void PopularReleasesRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)

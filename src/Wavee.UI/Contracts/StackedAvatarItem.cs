@@ -1,6 +1,7 @@
 namespace Wavee.UI.Contracts;
 
-public sealed record StackedAvatarItem
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record StackedAvatarItem
 {
     public required string DisplayName { get; init; }
     public string? AvatarUrl { get; init; }

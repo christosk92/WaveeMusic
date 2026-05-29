@@ -31,8 +31,13 @@ internal static class PathfinderOperations
     public const string FetchExtractedColorsHash = "36e90fcaea00d47c695fce31874efeb2519b97d4cd0ee1abfb4f8dc9348596ea";
 
     public const string Home = "home";
-    public const string HomeHash = "3e8e118c033b10353783ec0404451de66ed44e5cb5e0caefc65e4fab7b9e0aef";
-    public const string HomeWithFacetHash = "23e37f2e58d82d567f27080101d36609009d8c3676457b1086cb0acc55b72a5d";
+    // Persisted-query hash for the "home" operation. Spotify rotates this whenever
+    // the query's selection set changes server-side; this hash is the live web-player
+    // one (captured 2026-05-28) whose response carries playlist content.totalCount.
+    // If a future rotation invalidates it the request returns HTTP 400
+    // "PersistedQueryNotFound" — recapture from DevTools and update here. The facet
+    // is a normal variable now, so there's a single hash (no separate facet variant).
+    public const string HomeHash = "40c1423fc26ea0d68cd8f212e79ca47df7968fc40d83d184e756af54fd043143";
     public const string FeedBaselineLookup = "feedBaselineLookup";
     public const string FeedBaselineLookupHash = "a950fb7c4ecdcaf2aad2f3ca9ee9c3aa4b9c43c97e1d07d05148c4d355bea7fc";
 

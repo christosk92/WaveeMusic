@@ -296,30 +296,18 @@
                  visible-rows collection interleaves TrackDataGridGroupRow
                  markers between buckets, and the ItemTemplate selector routes
                  markers to GroupHeaderTemplate and tracks to RowTemplate. -->
-            <!-- AllowDrop is unconditional; the DragOver handler gates on CanReorder.
-                 An x:Bind from AllowDrop to a same-class DependencyProperty was
-                 latching false on first render (CanReorderTracks gets fired later,
-                 once the playlist's owner-edit gate resolves) and never re-binding,
-                 so DragOver simply never fired. Always-true here means the routed
-                 event is delivered, the handler reads the current CanReorder DP
-                 value, and rejects the drop unambiguously when ineligible. -->
+            <!-- Intra-list reorder is owned by the rbd ReorderController (pointer
+                 capture + composition lift/displacement); it attaches per realized
+                 ItemContainer and self-gates on CanReorder. Cross-surface drag-out
+                 still flows through each row's ManualDragAttachment. No host-level
+                 AllowDrop/DragOver is needed for reorder anymore. -->
             <Grid x:Name="RowsItemsViewHost"
-                  Grid.Row="2"
-                  AllowDrop="True"
-                  DragOver="RowsItemsViewHost_DragOver"
-                  DragLeave="RowsItemsViewHost_DragLeave"
-                  Drop="RowsItemsViewHost_Drop">
+                  Grid.Row="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- ItemsView + drop-indicator overlay share one cell so the
-                     2-px insertion line can be positioned absolutely against
-                     the rendered rows without disturbing the layout. The
-                     Canvas sits above the ItemsView in z-order and is
-                     hit-test-invisible so drag events still reach the
-                     host's DragOver/Drop handlers. -->
                 <Grid x:Name="RowsHostCell" Grid.Row="0">
                     <ItemsView
                         x:Name="RowsItemsView"
@@ -384,17 +372,6 @@
                             </local:TrackDataGridItemTemplateSelector>
                         </ItemsView.ItemTemplate>
                     </ItemsView>
-
-                    <!-- Drop-indicator pool. Rectangles are allocated lazily in
-                         code-behind (one per realized row + one for the end-of-list
-                         anchor), parked at Opacity=0 in the rest state, and animated
-                         via UIElement.OpacityTransition + ScaleTransition on every
-                         DragOver tick. Keeping Visibility="Visible" and using opacity
-                         for show/hide is intentional — Visibility=Collapsed kills the
-                         implicit transition because the element drops out of the
-                         visual tree. -->
-                    <Canvas x:Name="DropIndicatorOverlay"
-                            IsHitTestVisible="False"/>
                 </Grid>
 
                 <!-- Footer slot. Default placement mirrors the pre-refactor

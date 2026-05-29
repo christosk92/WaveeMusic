@@ -6,7 +6,8 @@ namespace Wavee.UI.Models;
 /// <summary>
 /// Represents an album in the user's library.
 /// </summary>
-public sealed record LibraryAlbumDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LibraryAlbumDto
 {
     public required string Id { get; init; }
     public required string Name { get; init; }
@@ -36,7 +37,8 @@ public sealed record LibraryAlbumDto
 /// Albums tab: a virtual album-shaped grouping of liked tracks that share the
 /// same parent <see cref="LikedSongDto.AlbumId"/>.
 /// </summary>
-public sealed record LikedAlbumDto
+[global::WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LikedAlbumDto
 {
     public required string Id { get; init; }
     public required string Name { get; init; }
