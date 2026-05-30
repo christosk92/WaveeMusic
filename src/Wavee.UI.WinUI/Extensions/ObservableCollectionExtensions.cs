@@ -119,13 +119,17 @@ public static class ObservableCollectionExtensions
     /// <para>The notification re-enters subscribers synchronously. An
     /// <c>ItemsRepeater</c> that is mid-layout during a page cross-fade — or whose
     /// composition surfaces were dropped by the nav cache — can reject the Reset
-    /// with a native <c>E_FAIL</c> (<see cref="COMException"/> 0x80004005). The
-    /// backing list has already been updated by the time we get here, so on that
-    /// specific transient failure we re-raise the Reset once on the next dispatcher
-    /// tick (Low priority), by when the control has settled. Without this, the
+    /// with a native <c>E_FAIL</c> (<see cref="COMException"/> 0x80004005), or, once
+    /// it has been torn down, with an <see cref="ObjectDisposedException"/> from the
+    /// CsWinRT projection. The backing list has already been updated by the time we
+    /// get here, so on that specific transient failure we re-raise the Reset once on
+    /// the next dispatcher tick (Low priority), by when the control has settled. Without this, the
     /// exception would unwind the caller's whole section-apply and strand the shelf
     /// in shimmer forever (e.g. album "More by artist" / artist "Fans also like").
-    /// Only <see cref="COMException"/> is caught — genuine managed binding/template
+    /// Both the native <c>E_FAIL</c> form (<see cref="COMException"/>) and the
+    /// CsWinRT <see cref="ObjectDisposedException"/> form (a disposed
+    /// <c>IObjectReference</c> for an already-torn-down control) are caught — same
+    /// teardown condition surfaced two ways. Genuine managed binding/template
     /// errors still propagate so they aren't masked.</para>
     /// </summary>
     private static void RaiseResetResilient<T>(ObservableCollection<T> collection)
@@ -134,14 +138,22 @@ public static class ObservableCollectionExtensions
         {
             Accessors<T>.RaiseCollectionChanged(collection, ResetArgs);
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or ObjectDisposedException)
         {
+            // A bound control rejected the Reset because it is mid-teardown / still
+            // transitioning. The runtime surfaces this two ways for the same cause:
+            // COMException (E_FAIL) from a live-but-failing native call, or
+            // ObjectDisposedException from CsWinRT's IObjectReference.ThrowIfDisposed
+            // when the native control is already disposed (e.g. an ItemsRepeater
+            // inside an x:Load shelf clearing realized elements during navigation).
+            // Treat both identically: retry once next tick, then give up — the
+            // backing list is already correct, so a later re-show / re-bind renders it.
             var dispatcher = DispatcherQueue.GetForCurrentThread();
             if (dispatcher is null)
                 throw; // off the UI thread — not the transient-control case; surface it.
 
             System.Diagnostics.Debug.WriteLine(
-                $"[ReplaceWith] bound control rejected Reset (HRESULT 0x{ex.HResult:X8}); retrying next tick. {ex.Message}");
+                $"[ReplaceWith] bound control rejected Reset ({ex.GetType().Name} 0x{ex.HResult:X8}); retrying next tick. {ex.Message}");
 
             dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
             {
@@ -149,7 +161,7 @@ public static class ObservableCollectionExtensions
                 {
                     Accessors<T>.RaiseCollectionChanged(collection, ResetArgs);
                 }
-                catch (COMException)
+                catch (Exception retryEx) when (retryEx is COMException or ObjectDisposedException)
                 {
                     // Second failure (control torn down / still transitioning): give up.
                     // The backing list is correct, so a later re-show / re-bind shows it.

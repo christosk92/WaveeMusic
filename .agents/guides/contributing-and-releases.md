@@ -14,8 +14,9 @@ Codex, …) exactly as it does to humans.
 | `feature/<slug>` | New features | — (PR'd into a release branch) |
 | `fix/<slug>` | Bug fixes / hotfixes | — (PR'd into a release branch) |
 
-Default target for everyday work is **`experimental`**. `master` only receives
-changes via promotion (`experimental → master`) or urgent hotfixes.
+Default target for everyday work is **`experimental`** — it is also the repo's
+**GitHub default branch**. `master` only receives changes via promotion
+(`experimental → master`) or urgent hotfixes.
 
 ## Versioning (set deliberately; the counter is automatic)
 
@@ -67,7 +68,7 @@ gh pr merge --squash --delete-branch
 
 ## Don't
 
-- **Don't push to `master` / `experimental`** — it's rejected by branch rules.
+- **Don't push to `master` / `experimental`** — it's rejected by the active branch ruleset ("Protect release branches": require-PR + block force-push / deletion).
 - **Don't push tags by hand** — the `version` job in `release.yml` tags
   automatically from the computed version.
 - To land a change on a release branch **without** cutting a release (e.g. a
@@ -78,5 +79,12 @@ gh pr merge --squash --delete-branch
 - **Release pipeline:** `.github/workflows/release.yml` — `version` (compute +
   tag) → `build` (x64 on `windows-latest`, arm64 on `windows-11-arm`) → `sign`
   (both, on x64, Azure Artifact Signing) → `release` (GitHub Release + `.appinstaller`).
+  The experimental `.appinstaller` auto-update assets (`Wavee.Experimental.<arch>.appinstaller`)
+  are attached to each release and to the rolling **`experimental-latest`** release.
+- **Branch protection:** an active GitHub **ruleset** ("Protect release branches") on
+  `master` + `experimental` requires a PR and blocks force-push / deletion. It does
+  **not** require a CI status check, and there is currently **no `ci.yml`** in the repo
+  (the "CI" entry in `gh workflow list` is an orphan from run history) — so PRs merge
+  with **no automated build/test gate**. Add `ci.yml` + a required-check rule if you want one.
 - **Signing details:** `signing/README.md`.
 - **Design rationale:** `docs/superpowers/specs/2026-05-29-release-pipeline-design.md` (local notes).
