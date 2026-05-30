@@ -785,6 +785,14 @@ internal sealed partial class ConnectCommandExecutor : IPlaybackCommandExecutor,
     public Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct)
         => SendQueueMutationAsync(trackUri, atHead: true, ct);
 
+    /// <summary>Batch "Add to Queue" — one local queue mutation / one remote set_queue for all tracks.</summary>
+    public Task<PlaybackResult> AddToQueueBatchAsync(IReadOnlyList<string> trackUris, CancellationToken ct)
+        => SendQueueMutationBatchAsync(trackUris, atHead: false, ct);
+
+    /// <summary>Batch "Play Next" — one local queue mutation / one remote set_queue for all tracks.</summary>
+    public Task<PlaybackResult> PlayNextBatchAsync(IReadOnlyList<string> trackUris, CancellationToken ct)
+        => SendQueueMutationBatchAsync(trackUris, atHead: true, ct);
+
     /// <summary>
     /// Drag-reorder of one item within a queue bucket. Local playback only —
     /// the queue wire format (set_queue) cannot express post-context or
@@ -917,6 +925,79 @@ internal sealed partial class ConnectCommandExecutor : IPlaybackCommandExecutor,
     }
 
     /// <summary>
+    /// Batch counterpart of <see cref="SendQueueMutationAsync"/>: enqueues many tracks with a
+    /// SINGLE local queue mutation (one PutState) or a SINGLE remote set_queue — never one
+    /// command per track. Looping the single path floods the cluster publisher and freezes the
+    /// UI on a large selection (issue #4 follow-up).
+    /// </summary>
+    private async Task<PlaybackResult> SendQueueMutationBatchAsync(
+        IReadOnlyList<string> trackUris, bool atHead, CancellationToken ct)
+    {
+        var uris = new List<string>(trackUris?.Count ?? 0);
+        if (trackUris != null)
+            foreach (var u in trackUris)
+                if (!string.IsNullOrEmpty(u)) uris.Add(u);
+        if (uris.Count == 0)
+            return PlaybackResult.Success();
+        if (uris.Count == 1)
+            return await SendQueueMutationAsync(uris[0], atHead, ct).ConfigureAwait(false);
+
+        var target = GetTargetDeviceId();
+        var selfId = _session.Config.DeviceId;
+        var op = atHead ? "play_next" : "add_to_queue";
+        var isLocalRoute = string.IsNullOrEmpty(target) || target == selfId;
+
+        // LOCAL — one batch mutation on the orchestrator's queue (the orchestrator filters
+        // hidden / Spotify-disabled tracks once and publishes a single PutState).
+        if (isLocalRoute)
+        {
+            if (_localEngine is not Wavee.Audio.PlaybackOrchestrator orchestrator)
+            {
+                _logger?.LogWarning("[Executor] {Op} (batch): no local orchestrator — command dropped", op);
+                return PlaybackResult.Failure(
+                    PlaybackErrorKind.DeviceUnavailable,
+                    "No active device and no local playback engine available.");
+            }
+
+            try
+            {
+                _logger?.LogInformation("[Executor] {Op} (batch): routing LOCAL → {Count} tracks", op, uris.Count);
+                if (atHead)
+                    await orchestrator.PlayNextBatchAsync(uris, ct).ConfigureAwait(false);
+                else
+                    await orchestrator.EnqueueBatchAsync(uris, ct).ConfigureAwait(false);
+                return PlaybackResult.Success();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[Executor] {Op} (batch) FAILED (local engine threw)", op);
+                return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+            }
+        }
+
+        // REMOTE — a single set_queue carrying all new tracks.
+        var body = BuildSetQueueBodyBatch(uris, atHead);
+        _logger?.LogInformation(
+            "[Executor] {Op} (batch): routing REMOTE set_queue → device={Target}, queueSize={Size}",
+            op, target, ((System.Collections.ICollection)body["next_tracks"]).Count);
+
+        var result = await _client.SendCommandAsync(
+            target,
+            "set_queue",
+            body,
+            waitForAck: false,
+            ackTimeout: TimeSpan.FromMilliseconds(2000),
+            ct: ct).ConfigureAwait(false);
+
+        if (result.IsSuccess)
+            _logger?.LogInformation("[Executor] {Op} (batch) OK (remote set_queue)", op);
+        else
+            _logger?.LogWarning("[Executor] {Op} (batch) FAILED (remote set_queue): {Error}", op, result.ErrorMessage);
+
+        return ToPlaybackResult(result);
+    }
+
+    /// <summary>
     /// Builds the JSON body for set_queue: a full snapshot of the remote
     /// user queue with the new track inserted at index 0 (Play Next) or
     /// appended at the tail (Add to Queue). Existing queued entries are
@@ -961,6 +1042,54 @@ internal sealed partial class ConnectCommandExecutor : IPlaybackCommandExecutor,
         {
             nextTracks.AddRange(existingQueued);
             nextTracks.Add(newEntry);
+        }
+
+        return new Dictionary<string, object>
+        {
+            ["next_tracks"] = nextTracks
+        };
+    }
+
+    /// <summary>Batch counterpart of <see cref="BuildSetQueueBody"/> — all new tracks in one snapshot.</summary>
+    private Dictionary<string, object> BuildSetQueueBodyBatch(IReadOnlyList<string> trackUris, bool atHead)
+    {
+        var clusterNext = _session.PlaybackState?.CurrentState.NextTracks
+                          ?? (IReadOnlyList<TrackReference>)System.Array.Empty<TrackReference>();
+
+        var existingQueued = new List<object>();
+        foreach (var t in clusterNext)
+        {
+            if (!t.IsUserQueued) continue;
+            existingQueued.Add(new Dictionary<string, object>
+            {
+                ["uri"] = t.Uri,
+                ["provider"] = "queue",
+                ["metadata"] = new Dictionary<string, string> { ["is_queued"] = "true" }
+            });
+        }
+
+        var newEntries = new List<object>(trackUris.Count);
+        for (var i = 0; i < trackUris.Count; i++)
+        {
+            newEntries.Add(new Dictionary<string, object>
+            {
+                ["uri"] = trackUris[i],
+                ["uid"] = $"q{i}",
+                ["provider"] = "queue",
+                ["metadata"] = new Dictionary<string, string> { ["is_queued"] = "true" }
+            });
+        }
+
+        var nextTracks = new List<object>(existingQueued.Count + newEntries.Count);
+        if (atHead)
+        {
+            nextTracks.AddRange(newEntries);
+            nextTracks.AddRange(existingQueued);
+        }
+        else
+        {
+            nextTracks.AddRange(existingQueued);
+            nextTracks.AddRange(newEntries);
         }
 
         return new Dictionary<string, object>

@@ -1900,6 +1900,15 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Update_View" xml:space="preserve">
     <value>View</value>
   </data>
+  <data name="Update_RestartReadyTitle" xml:space="preserve">
+    <value>Update ready</value>
+  </data>
+  <data name="Update_RestartReadyMessage" xml:space="preserve">
+    <value>A new version of Wavee has been downloaded. Restart to apply it.</value>
+  </data>
+  <data name="Update_RestartNow" xml:space="preserve">
+    <value>Restart now</value>
+  </data>
   <data name="Connect_RequestingPairingCode" xml:space="preserve">
     <value>Requesting pairing code...</value>
   </data>

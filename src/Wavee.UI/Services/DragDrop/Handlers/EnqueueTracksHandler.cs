@@ -21,27 +21,20 @@ public static class EnqueueTracksHandler
         if (ctx.Payload is not TrackDragPayload tracks) return DropResult.NoHandler;
 
         var playNext = (ctx.Modifiers & DropModifiers.Shift) != 0;
-        var added = 0;
+        var uris = tracks.TrackUris;
+        if (uris.Count == 0) return DropResult.Ok(0, "No tracks");
         try
         {
-            // Walk in reverse for "Play next" so the visible order matches the
-            // payload order (each insertion at the head pushes the previous one down).
+            // One batch call — the orchestrator enqueues every track in a single mutation and
+            // publishes ONE PutState. Looping the single overload published one PutState per
+            // track, flooding the cluster publisher and freezing the UI on a big selection
+            // (issue #4). The batch insert preserves payload order for "Play next", so no reverse.
             if (playNext)
-            {
-                for (var i = tracks.TrackUris.Count - 1; i >= 0; i--)
-                {
-                    await playback.PlayNextAsync(tracks.TrackUris[i], ct).ConfigureAwait(false);
-                    added++;
-                }
-            }
+                await playback.PlayNextAsync(uris, ct).ConfigureAwait(false);
             else
-            {
-                foreach (var uri in tracks.TrackUris)
-                {
-                    await playback.AddToQueueAsync(uri, ct).ConfigureAwait(false);
-                    added++;
-                }
-            }
+                await playback.AddToQueueAsync(uris, ct).ConfigureAwait(false);
+
+            var added = uris.Count;
             var verb = playNext ? "Playing next" : "Added to queue";
             return DropResult.Ok(added, $"{verb}: {added} track{(added == 1 ? string.Empty : "s")}");
         }

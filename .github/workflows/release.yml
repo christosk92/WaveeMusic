@@ -288,3 +288,28 @@ jobs:
           # auto-publishes the pre-release for a fast tester loop.
           draft: ${{ needs.version.outputs.prerelease != 'true' }}
           prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
+
+      - name: Update experimental-latest rolling release (auto-update channel)
+        if: needs.version.outputs.prerelease == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROLLING=experimental-latest
+          # GitHub has no "latest pre-release" download alias, so the experimental
+          # .appinstaller auto-update channel points at a FIXED rolling release. Ensure it
+          # exists, drop its old versioned MSIX (so they don't accumulate), then upload this
+          # build's assets so the stable URLs always serve the newest version. The per-tag
+          # v<ver>-alpha.N release above stays as the changelog/history archive.
+          if ! gh release view "$ROLLING" >/dev/null 2>&1; then
+            gh release create "$ROLLING" \
+              --prerelease \
+              --title "Experimental (latest)" \
+              --notes "Rolling pointer to the newest experimental build, consumed by the .appinstaller auto-update channel. Managed by CI — do not delete."
+          fi
+          for asset in $(gh release view "$ROLLING" --json assets --jq '.assets[] | select(.name | endswith(".msix")) | .name'); do
+            gh release delete-asset "$ROLLING" "$asset" -y || true
+          done
+          ASSETS=$(find artifacts -type f \( -name '*.msix' -o -name '*.appinstaller' \))
+          gh release upload "$ROLLING" $ASSETS --clobber

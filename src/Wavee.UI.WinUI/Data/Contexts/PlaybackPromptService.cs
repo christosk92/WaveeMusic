@@ -29,6 +29,26 @@ internal sealed partial class PlaybackPromptService : IPlaybackPromptService
                 : PlayAction.PlayAndClear;
         }
 
+        // The prompt reads Window.Content / XamlRoot and shows a ContentDialog — both
+        // UI-thread-only. PlayContextAsync is frequently invoked from a background
+        // Task.Run (home cards, browse, hero), so a direct off-thread Window.Content read
+        // throws RPC_E_WRONG_THREAD and silently faults the play. Marshal the whole UI
+        // interaction onto the UI thread.
+        var dispatcher = MainWindow.Instance?.DispatcherQueue;
+        if (dispatcher is null || dispatcher.HasThreadAccess)
+            return await ShowPromptAndPersistAsync();
+
+        var tcs = new TaskCompletionSource<PlayAction>();
+        dispatcher.TryEnqueue(async () =>
+        {
+            try { tcs.SetResult(await ShowPromptAndPersistAsync()); }
+            catch (Exception) { tcs.TrySetResult(PlayAction.PlayAndClear); }
+        });
+        return await tcs.Task;
+    }
+
+    private async Task<PlayAction> ShowPromptAndPersistAsync()
+    {
         var xamlRoot = MainWindow.Instance.Content?.XamlRoot;
         if (xamlRoot == null) return PlayAction.PlayAndClear;
 

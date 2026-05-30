@@ -94,6 +94,19 @@ public interface IPlaybackService : INotifyPropertyChanged
     Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct = default);
 
     /// <summary>
+    /// Batch "Add to Queue" — appends many tracks with a SINGLE queue mutation / PutState.
+    /// Prefer this over looping the single overload for multi-selections: per-track publishing
+    /// floods the cluster publisher and freezes the UI on large lists (issue #4 follow-up).
+    /// </summary>
+    Task<PlaybackResult> AddToQueueAsync(IReadOnlyList<string> trackUris, CancellationToken ct = default);
+
+    /// <summary>
+    /// Batch "Play Next" — inserts many tracks at the head of the user queue (order preserved)
+    /// with a SINGLE queue mutation / PutState.
+    /// </summary>
+    Task<PlaybackResult> PlayNextAsync(IReadOnlyList<string> trackUris, CancellationToken ct = default);
+
+    /// <summary>
     /// Drag-reorder of one item within a single queue bucket. Local playback
     /// only — rejected when playing on a remote device.
     /// </summary>

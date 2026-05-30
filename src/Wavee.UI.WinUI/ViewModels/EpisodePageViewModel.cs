@@ -410,11 +410,13 @@ public sealed partial class EpisodePageViewModel : ObservableObject, ITabBarItem
         FullDescription = null;
         DescriptionHtml = null;
         ShareUrl = null;
-        Chapters.Clear();
+        // Resilient resets during navigation — raw Clear() on these bound rails throws
+        // COMException E_FAIL mid-layout (issue #6).
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Chapters, []);
         OnPropertyChanged(nameof(HasChapters));
-        MoreFromShow.Clear();
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(MoreFromShow, []);
         OnPropertyChanged(nameof(HasMoreFromShow));
-        Comments.Clear();
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Comments, []);
         _commentsNextPageToken = null;
         _commentsTotalCount = 0;
         CommentDraft = "";

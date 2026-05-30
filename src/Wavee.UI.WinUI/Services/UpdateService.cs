@@ -36,6 +36,7 @@ public sealed partial class UpdateService : IUpdateService
     private string? _errorMessage;
     private DateTimeOffset? _lastChecked;
     private bool _isUpdateAvailable;
+    private bool _isRestartUpdateReady;
 
     public UpdateService(
         IHttpClientFactory httpClientFactory,
@@ -54,24 +55,39 @@ public sealed partial class UpdateService : IUpdateService
         // Restore last checked time
         _lastChecked = _settingsService.Settings.LastUpdateCheck;
 
-        // Fire-and-forget initial check after a short delay to let the app settle
+        // Fire-and-forget initial check after a short delay to let the app settle.
         _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(async _ =>
         {
+            // GitHub-sourced version/changelog drives the Settings "what's new" surface
+            // regardless of how the app was installed.
             await CheckForUpdateAsync();
-            if (IsUpdateAvailable && Distribution != DistributionMode.Store)
+
+            switch (Distribution)
             {
-                _notificationService?.Show(new NotificationInfo
-                {
-                    Message = AppLocalization.Format("Update_AvailableMessage", LatestVersion),
-                    Severity = NotificationSeverity.Informational,
-                    AutoDismissAfter = TimeSpan.FromSeconds(8),
-                    ActionLabel = AppLocalization.GetString("Update_View"),
-                    Action = async () =>
+                case DistributionMode.Sideloaded:
+                    // Real auto-update path: Windows App Installer silently downloads + stages
+                    // the new MSIX from the .appinstaller; this nudges the user to restart.
+                    await CheckPackageUpdateAsync();
+                    break;
+                case DistributionMode.Unpackaged:
+                    // Dev build — no in-place update channel; point at the release page if newer.
+                    if (IsUpdateAvailable)
                     {
-                        if (ReleaseUrl != null)
-                            await Windows.System.Launcher.LaunchUriAsync(new Uri(ReleaseUrl));
+                        _notificationService?.Show(new NotificationInfo
+                        {
+                            Message = AppLocalization.Format("Update_AvailableMessage", LatestVersion),
+                            Severity = NotificationSeverity.Informational,
+                            AutoDismissAfter = TimeSpan.FromSeconds(8),
+                            ActionLabel = AppLocalization.GetString("Update_View"),
+                            Action = async () =>
+                            {
+                                if (ReleaseUrl != null)
+                                    await Windows.System.Launcher.LaunchUriAsync(new Uri(ReleaseUrl));
+                            }
+                        });
                     }
-                });
+                    break;
+                // Store: the Microsoft Store handles updates; no in-app nudge.
             }
         }, TaskScheduler.Default);
     }
@@ -126,6 +142,12 @@ public sealed partial class UpdateService : IUpdateService
     {
         get => _isUpdateAvailable;
         private set => SetField(ref _isUpdateAvailable, value);
+    }
+
+    public bool IsRestartUpdateReady
+    {
+        get => _isRestartUpdateReady;
+        private set => SetField(ref _isRestartUpdateReady, value);
     }
 
     public async Task CheckForUpdateAsync(CancellationToken ct = default)
@@ -233,6 +255,92 @@ public sealed partial class UpdateService : IUpdateService
         {
             _checkLock.Release();
         }
+    }
+
+    public async Task CheckPackageUpdateAsync(CancellationToken ct = default)
+    {
+        // Only sideloaded (.appinstaller) installs have a Windows-managed update channel.
+        // Store updates itself; unpackaged dev builds have no package at all.
+        if (Distribution != DistributionMode.Sideloaded)
+            return;
+
+        PackageUpdateAvailability availability;
+        try
+        {
+            // CheckUpdateAvailabilityAsync inspects the install's .appinstaller channel and
+            // reports whether App Installer has staged (or can fetch) a newer package. It needs
+            // NO package-management capability — unlike the PackageManager add/stage APIs.
+            var result = await Package.Current.CheckUpdateAvailabilityAsync();
+            ct.ThrowIfCancellationRequested();
+            availability = result.Availability;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Throws when the package wasn't installed from an .appinstaller, or the channel is
+            // unreachable. Treat as "no in-place update" — the GitHub check still covers "what's new".
+            _logger?.LogDebug(ex, "CheckUpdateAvailabilityAsync failed (treating as no update)");
+            return;
+        }
+
+        var ready = availability is PackageUpdateAvailability.Available
+                                 or PackageUpdateAvailability.Required;
+        if (!ready)
+        {
+            _logger?.LogDebug("Package update check: none staged (availability={Availability})", availability);
+            return;
+        }
+
+        if (IsRestartUpdateReady)
+            return; // already nudged this session
+
+        _logger?.LogInformation(
+            "MSIX update staged via .appinstaller; prompting restart (availability={Availability})",
+            availability);
+
+        // Setting IsRestartUpdateReady raises PropertyChanged that an x:Bind on the Settings
+        // About page consumes, and Show posts a toast — both touch XAML. This method is usually
+        // resumed on a threadpool thread (the post-launch check enters without a UI
+        // SynchronizationContext), so off-thread XAML access would throw RPC_E_WRONG_THREAD.
+        // Marshal to the UI thread (matches the documented hazard in SettingsViewModel).
+        var dispatcher = MainWindow.Instance?.DispatcherQueue;
+        if (dispatcher is null || dispatcher.HasThreadAccess)
+            ShowRestartReadyNudge();
+        else
+            dispatcher.TryEnqueue(ShowRestartReadyNudge);
+    }
+
+    private void ShowRestartReadyNudge()
+    {
+        IsRestartUpdateReady = true;
+        _notificationService?.Show(new NotificationInfo
+        {
+            Message = AppLocalization.GetString("Update_RestartReadyMessage"),
+            Severity = NotificationSeverity.Informational,
+            AutoDismissAfter = TimeSpan.FromSeconds(12),
+            ActionLabel = AppLocalization.GetString("Update_RestartNow"),
+            Action = RestartToApplyUpdateAsync
+        });
+    }
+
+    public Task RestartToApplyUpdateAsync()
+    {
+        try
+        {
+            // Full process restart so Windows applies the staged MSIX on relaunch. This is a
+            // hard process replacement (distinct from UiRestartCoordinator's UI-only restart) —
+            // on success it terminates the current process and never returns.
+            var reason = Microsoft.Windows.AppLifecycle.AppInstance.Restart(string.Empty);
+            _logger?.LogWarning("AppInstance.Restart returned without restarting ({Reason})", reason);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Restart to apply update failed");
+        }
+        return Task.CompletedTask;
     }
 
     private void ReportNoUpdate(string reason)

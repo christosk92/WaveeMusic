@@ -568,7 +568,9 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
     private async Task PopulateSectionsChunkedAsync(IList<HomeSection> ordered, int chunkSize = 4)
     {
         // Start from empty: we only call this when Sections.Count == 0, but guard anyway.
-        if (Sections.Count > 0) Sections.Clear();
+        // Resilient reset — a raw Clear() on the bound home shelf mid-layout can E_FAIL (issue #6).
+        if (Sections.Count > 0)
+            Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Sections, []);
 
         var isDark = _isDarkThemeProvider();
 

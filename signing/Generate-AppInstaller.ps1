@@ -1,33 +1,38 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Generates Wavee.appinstaller from the template, substituting the release
-    version + tag.
+    Generates per-architecture Wavee .appinstaller files from the template.
 
 .DESCRIPTION
-    Reads signing/Wavee.appinstaller.template, replaces ${VERSION} (4-part
-    numeric, e.g. 0.1.0.1001), ${TAG} (the GitHub tag without 'v', e.g.
-    0.1.0-alpha.1), and ${APPINSTALLER_URI}, then writes the resulting
-    Wavee.appinstaller to the OutputDirectory.
+    Emits ONE .appinstaller PER ARCHITECTURE (x64 + arm64) so that each arch's install
+    auto-updates from its own arch's MSIX — the previous single x64-only file left ARM64
+    installs unable to update.
 
-    Designed to be called from the release pipeline after MSIX signing.
+    Reads signing/Wavee.appinstaller.template and substitutes ${VERSION} (4-part numeric),
+    ${ARCH}, ${APPINSTALLER_URI} (the stable self-URL Windows polls), and ${MSIX_URI}.
+
+    Stable channel polls the /latest alias; experimental polls a fixed `experimental-latest`
+    rolling release whose assets the pipeline re-uploads each build (GitHub has no
+    "latest pre-release" alias). Designed to be called from the release pipeline after signing.
 
 .PARAMETER Tag
-    The git tag, with or without the leading 'v' (e.g. 'v0.1.0-alpha.1' or
-    '0.1.0-alpha.1'). The 4-part numeric Version is derived from this.
+    The git tag, with or without the leading 'v' (e.g. 'v0.1.0-alpha.1'). The 4-part numeric
+    version is derived from it via ConvertTo-WaveePackageVersion.
 
 .PARAMETER OutputDirectory
-    Where to write the resulting Wavee.appinstaller. Created if missing.
+    Where to write the resulting .appinstaller files. Created if missing.
+
+.PARAMETER Channel
+    'stable' -> Wavee.<arch>.appinstaller tracking the latest production release.
+    'experimental' -> Wavee.Experimental.<arch>.appinstaller tracking the rolling pre-release.
 
 .EXAMPLE
-    pwsh signing/Generate-AppInstaller.ps1 -Tag v0.1.0-alpha.1 -OutputDirectory ./artifacts
+    pwsh signing/Generate-AppInstaller.ps1 -Tag v0.1.0-alpha.1 -Channel experimental -OutputDirectory ./artifacts
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $Tag,
     [Parameter(Mandatory)] [string] $OutputDirectory,
-    # 'stable' -> Wavee.appinstaller tracking the latest production release.
-    # 'experimental' -> Wavee.Experimental.appinstaller pinned to this pre-release.
     [ValidateSet('stable', 'experimental')] [string] $Channel = 'stable'
 )
 
@@ -42,32 +47,41 @@ if (-not (Test-Path $templatePath)) {
 
 $releaseVersion = ConvertTo-WaveePackageVersion -Tag $Tag
 $cleanTag = $releaseVersion.CleanTag
-$version = $releaseVersion.PackageVersion
-
-$fileName = if ($Channel -eq 'experimental') { 'Wavee.Experimental.appinstaller' } else { 'Wavee.appinstaller' }
-
-# Update-check URI baked into the .appinstaller:
-#  - stable: the 'latest release' alias always serves the newest production build.
-#  - experimental: GitHub has no 'latest pre-release' alias, so we pin to this
-#    release's asset. The build installs fine; seamless experimental -> next-
-#    experimental auto-update is a known limitation (testers grab the newest
-#    pre-release manually for now). See docs/superpowers/specs/2026-05-29-release-pipeline-design.md.
-$appInstallerUri = if ($Channel -eq 'experimental') {
-    "https://github.com/christosk92/WaveeMusic/releases/download/v$cleanTag/$fileName"
-} else {
-    "https://github.com/christosk92/WaveeMusic/releases/latest/download/$fileName"
-}
+$version  = $releaseVersion.PackageVersion
 
 if (-not (Test-Path $OutputDirectory)) {
     New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 }
 
-$content = Get-Content -Raw -Path $templatePath
-$content = $content.Replace('${VERSION}', $version)
-$content = $content.Replace('${TAG}', $cleanTag)
-$content = $content.Replace('${APPINSTALLER_URI}', $appInstallerUri)
+$template = Get-Content -Raw -Path $templatePath
+$repo = 'https://github.com/christosk92/WaveeMusic/releases'
 
-$outputPath = Join-Path $OutputDirectory $fileName
-Set-Content -Path $outputPath -Value $content -Encoding utf8
+foreach ($arch in @('x64', 'arm64')) {
+    $msixName = "Wavee.UI.WinUI_${version}_${arch}.msix"
 
-Write-Host "Generated $outputPath (Version=$version, Tag=$cleanTag, Channel=$Channel)"
+    if ($Channel -eq 'experimental') {
+        # GitHub has no "latest pre-release" download alias, so experimental polls a fixed
+        # rolling release whose assets are re-uploaded each build (stable URL, moving content).
+        $fileName        = "Wavee.Experimental.$arch.appinstaller"
+        $appInstallerUri = "$repo/download/experimental-latest/$fileName"
+        $msixUri         = "$repo/download/experimental-latest/$msixName"
+    }
+    else {
+        # Stable polls the /latest alias (always the newest published production release).
+        $fileName        = "Wavee.$arch.appinstaller"
+        $appInstallerUri = "$repo/latest/download/$fileName"
+        $msixUri         = "$repo/download/v$cleanTag/$msixName"
+    }
+
+    # .NET strings are immutable, so each Replace returns a new string and $template
+    # stays pristine for the next architecture in the loop.
+    $content = $template
+    $content = $content.Replace('${VERSION}', $version)
+    $content = $content.Replace('${ARCH}', $arch)
+    $content = $content.Replace('${APPINSTALLER_URI}', $appInstallerUri)
+    $content = $content.Replace('${MSIX_URI}', $msixUri)
+
+    $outputPath = Join-Path $OutputDirectory $fileName
+    Set-Content -Path $outputPath -Value $content -Encoding utf8
+    Write-Host "Generated $outputPath (Version=$version, Arch=$arch, Channel=$Channel)"
+}

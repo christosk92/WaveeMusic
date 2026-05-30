@@ -1833,14 +1833,15 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     public void AddToQueue(IEnumerable<string> trackIds)
     {
         var ids = trackIds as IReadOnlyList<string> ?? trackIds.ToList();
-        foreach (var trackId in ids)
+        if (ids.Count == 0) return;
+        // One batch call — the orchestrator enqueues all tracks in a single mutation and
+        // publishes ONE PutState. Looping the single overload here published one PutState per
+        // track, flooding the cluster publisher and freezing the UI on large lists (issue #4).
+        _logger?.LogInformation("[Cmd] AddToQueue (batch): {Count} tracks", ids.Count);
+        _ = _playbackService.AddToQueueAsync(ids).ContinueWith(t =>
         {
-            _logger?.LogInformation("[Cmd] AddToQueue: trackId={TrackId}", trackId);
-            _ = _playbackService.AddToQueueAsync(trackId).ContinueWith(t =>
-            {
-                if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] AddToQueue FAILED: trackId={TrackId}", trackId);
-            });
-        }
+            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] AddToQueue (batch) FAILED: {Count} tracks", ids.Count);
+        });
         ShowQueueToast(ids.Count, playNext: false);
     }
 
@@ -1856,20 +1857,16 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void PlayNext(IEnumerable<string> trackIds)
     {
-        // Each PlayNextAsync inserts at the head of the user queue, so iterating in
-        // REVERSE order means the first track in `trackIds` lands at slot 0 (plays
-        // right after the current track), the second at slot 1, and so on — natural
-        // "play these next, in order" semantics for a bulk Play-Next bind.
         var ids = trackIds as IReadOnlyList<string> ?? trackIds.ToList();
-        for (var i = ids.Count - 1; i >= 0; i--)
+        if (ids.Count == 0) return;
+        // One batch call — the batch insert preserves order (first track plays next), so no
+        // reverse loop is needed, and the orchestrator publishes ONE PutState for the whole
+        // selection instead of one per track (issue #4: a 1777-track bulk add froze the UI).
+        _logger?.LogInformation("[Cmd] PlayNext (batch): {Count} tracks", ids.Count);
+        _ = _playbackService.PlayNextAsync(ids).ContinueWith(t =>
         {
-            var trackId = ids[i];
-            _logger?.LogInformation("[Cmd] PlayNext: trackId={TrackId}", trackId);
-            _ = _playbackService.PlayNextAsync(trackId).ContinueWith(t =>
-            {
-                if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] PlayNext FAILED: trackId={TrackId}", trackId);
-            });
-        }
+            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] PlayNext (batch) FAILED: {Count} tracks", ids.Count);
+        });
         ShowQueueToast(ids.Count, playNext: true);
     }
 
