@@ -117,16 +117,17 @@ back to `az login`.
 
 ## CI: GitHub Actions (`release.yml`)
 
-**Releases are branch-triggered.** A push / merge to `experimental` cuts a
-pre-release; a push / merge to `master` cuts a production release (draft). The
-`version` job derives the tag from `RELEASE_BASE` + `RELEASE_PRERELEASE` (set in
-the workflow; bump deliberately when changing phase) with an auto-incrementing
-per-build counter, tags it, then builds x64 + ARM64 on matching runners, signs
-both on an x64 job, and publishes the GitHub Release with the channel's `.appinstaller`.
-Manual `workflow_dispatch` with an explicit `version_tag` is the re-cut /
-fallback. Add `[skip release]` to a commit / merge message to land changes on a
-release branch without cutting a release. See
-`.agents/guides/contributing-and-releases.md` for the full branch/PR workflow.
+**Releases are cut deliberately via `workflow_dispatch`** (not on merge). Run the
+workflow on a `release/<X.Y.Z>-<label>` branch to cut a pre-release
+`v<X.Y.Z>-<label>.N` (auto-published; refreshes the `experimental-latest` rolling
+`.appinstaller` channel), or on `master` with an explicit `version_tag` (e.g.
+`v0.1.0`) to cut a production release (published as a draft). The `version` job
+derives the tag from the **branch name** (no version env vars) with an
+auto-incrementing per-build counter, tags it, then builds x64 + ARM64 on matching
+runners, signs both on an x64 job, and publishes the GitHub Release with the
+channel's `.appinstaller`. An explicit `version_tag` input overrides the ref
+(re-cut / fallback). See `.agents/guides/contributing-and-releases.md` for the full
+branch/PR workflow.
 
 Required repository secrets (*Settings → Secrets and variables →
 Actions*):

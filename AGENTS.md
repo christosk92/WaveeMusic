@@ -9,10 +9,11 @@ not here.
 
 Read the relevant guide before changing that area:
 
-- **Contributing & releases** — branch model (`feature/*` / `fix/*` → PR →
-  `experimental` / `master`), never push to protected branches, conventional-commit
-  versioning, and how experimental / production releases auto-publish on merge.
-  `.agents/guides/contributing-and-releases.md`
+- **Contributing & releases** — release-train flow: work PRs into the **active
+  `release/<X.Y.Z>-<label>` branch**; pre-releases are deliberate milestone drops
+  (`gh workflow run release.yml --ref release/…`); promote `release/* → master` to ship
+  production. `master` is the default/production branch; never push directly to it or a
+  `release/*` branch (ruleset-enforced). `.agents/guides/contributing-and-releases.md`
 - **Track and episode UI** — every track/episode row, list, card, search cell,
   omnibar suggestion, queue row, home episode card, and now-playing surface.
   `.agents/guides/track-and-episode-ui.md`
