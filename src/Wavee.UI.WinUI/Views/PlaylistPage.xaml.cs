@@ -27,8 +27,10 @@ using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Helpers;
@@ -40,7 +42,7 @@ using Wavee.UI.WinUI.ViewModels.Playlist;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryParticipant, INavCacheSurfaceParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
+public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, INavCacheSurfaceParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────
     string IInPageFilterable.FilterQuery
@@ -96,6 +98,25 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     public ContentPageController PageController { get; }
 
     public ShimmerLoadGate ShimmerGate => PageController.ShimmerGate;
+
+    public TabItemParameter? TabItemParameter
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(ViewModel.PlaylistId))
+                return null;
+
+            return new TabItemParameter(NavigationPageType.Playlist, ViewModel.PlaylistId)
+            {
+                InitialPageType = typeof(PlaylistPage),
+                Title = string.IsNullOrWhiteSpace(ViewModel.Header.PlaylistName)
+                    ? "Playlist"
+                    : ViewModel.Header.PlaylistName
+            };
+        }
+    }
+
+    public event EventHandler<TabItemParameter>? ContentChanged;
 
     // ── IContentPageHost ─────────────────────────────────────────────────────
     FrameworkElement? IContentPageHost.ShimmerContainer => ShimmerContainer;
@@ -489,6 +510,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             UpdateSelectionRemoveCommand();
         else if (ev.PropertyName == nameof(PlaylistHeaderViewModel.PlaylistName))
         {
+            RaiseContentChanged();
             // Warm-cache / fresh-create path: PlaylistStore emits Ready directly,
             // IsLoading never transitions false→true→false, OnIsLoadingChanged
             // never schedules the crossfade. The initial TryShowContentNow in
@@ -500,6 +522,12 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             if (!string.IsNullOrEmpty(ViewModel.Header.PlaylistName))
                 PageController.TryShowContentNow();
         }
+    }
+
+    private void RaiseContentChanged()
+    {
+        if (TabItemParameter is { } parameter)
+            ContentChanged?.Invoke(this, parameter);
     }
 
     private void ViewModel_TrackList_PropertyChanged(object? sender, PropertyChangedEventArgs ev)
@@ -755,7 +783,22 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onEntered");
+        EnterPlaylist(parameter, mode);
+    }
 
+    // Same-tab navigation between two playlists reuses this Page instance and
+    // never fires OnEntered — TabBarItem.Navigate routes through this method
+    // instead. Without this override, clicking a different playlist from the
+    // player bar / sidebar / search while PlaylistPage is the active tab content
+    // silently drops the new parameter.
+    public void RefreshWithParameter(object? parameter)
+    {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.refreshWithParameter");
+        EnterPlaylist(parameter, PageHostNavigationMode.Refresh);
+    }
+
+    private void EnterPlaylist(object? parameter, PageHostNavigationMode mode)
+    {
         // Suppress the shy-header evaluator through the entire navigation
         // reset. Without this, TrackGrid row-scroll events queued by the
         // scroll-to-top below can fire while _isPinned still reads true from
@@ -797,13 +840,6 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         _ = ReleaseShyHeaderSuppressionAsync(navigationRevision);
     }
 
-    // Same-tab navigation between two playlists reuses this Page instance and
-    // never fires OnNavigatedTo — TabBarItem.Navigate routes through this method
-    // instead. Without this override, clicking a different playlist from the
-    // player bar / sidebar / search while PlaylistPage is the active tab content
-    // silently drops the new parameter.
-    public void RefreshWithParameter(object? parameter) => LoadParameter(parameter, PageHostNavigationMode.Refresh);
-
     private async void LoadParameter(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
         // Snapshot the nav revision so a follow-on navigation that re-enters
@@ -841,9 +877,20 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         // good pixels.
         var hasPendingPlaylistArtAnimation =
             ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt);
+        var navParameter = parameter as Data.Parameters.ContentNavigationParameter;
+        var useSoftPlaylistSwap =
+            mode == PageHostNavigationMode.Refresh &&
+            PageController.IsShowingContent &&
+            navParameter is not null &&
+            HasUsablePlaylistPrefill(navParameter) &&
+            !hasPendingPlaylistArtAnimation;
 
-        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
+        if (mode != PageHostNavigationMode.Back &&
+            mode != PageHostNavigationMode.Forward &&
+            !useSoftPlaylistSwap)
+        {
             PageController.ResetForNewLoad();
+        }
 
         // Yield once between the shimmer flip and the Activate / PrefillFrom
         // / data-fetch chain below. The framework runs OnNavigatedTo →
@@ -860,15 +907,12 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         string? playlistId = null;
         Data.Parameters.ContentNavigationParameter? connectedAnimationNav = null;
 
-        if (parameter is Data.Parameters.ContentNavigationParameter nav)
+        if (navParameter is { } nav)
         {
             _logger?.LogInformation(
                 "PlaylistPage.LoadParameter: ContentNavigationParameter Uri='{Uri}', Title='{Title}', Subtitle='{Subtitle}', ImageUrl='{ImageUrl}'",
                 nav.Uri, nav.Title, nav.Subtitle, nav.ImageUrl);
             playlistId = nav.Uri;
-            // Activate first so its new-playlist clear-down runs BEFORE PrefillFrom
-            // writes the nav values — otherwise the clear would wipe the prefill and
-            // the UI would stay blank until the store's Ready push arrives.
             if (hasPendingPlaylistArtAnimation)
             {
                 // Keep the destination cover/title materialized so TryStart can run
@@ -878,13 +922,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             }
             else
             {
-                ViewModel.Activate(nav.Uri);
-                // clearMissing: true → if nav lacks ImageUrl/Subtitle those
-                // fields go null/empty rather than keeping the previous
-                // playlist's values. Prevents stale-cover-with-new-tracks
-                // bleed-through when navigating between two playlists whose
-                // source cards don't carry every prefill field.
-                ViewModel.PrefillFrom(nav, clearMissing: true);
+                ViewModel.Activate(nav.Uri, prefill: nav);
             }
         }
         else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
@@ -907,7 +945,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
                 // hide tracks on Playlist B. Sort + column widths intentionally persist.
                 TrackGrid.ResetFilter();
                 _lastPlaylistId = playlistId;
-                if (!hasPendingPlaylistArtAnimation)
+                if (useSoftPlaylistSwap)
                     AnimatePlaylistSwap();
             }
             RestorePlaylistPanelWidth(playlistId);
@@ -920,7 +958,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
                 var uri = connectedAnimationNav.Uri;
                 await Task.Yield();
                 if (!PageController.IsNavigatingAway)
-                    ViewModel.Activate(uri, preserveHeaderPrefill: true);
+                    ViewModel.Activate(uri, preserveHeaderPrefill: true, prefill: connectedAnimationNav);
             }
 
             return;
@@ -932,12 +970,18 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         // stayed false), so TryShowContentNow can fire ScheduleCrossfade for the
         // same-id case where the IsLoading=false write was a no-op.
         if (connectedAnimationNav is not null)
-            ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true);
+            ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true, prefill: connectedAnimationNav);
 
         await Task.Yield();
         if (PageController.IsNavigatingAway) return;
         PageController.TryShowContentNow();
     }
+
+    private static bool HasUsablePlaylistPrefill(Data.Parameters.ContentNavigationParameter nav)
+        => (!string.IsNullOrEmpty(nav.Title)
+            && !string.Equals(nav.Title, "Playlist", StringComparison.OrdinalIgnoreCase))
+           || (!string.IsNullOrEmpty(nav.ImageUrl)
+               && !SpotifyImageHelper.IsMosaicUri(nav.ImageUrl));
 
     /// <summary>
     /// Short cross-panel fade on playlist change. Without this, cached-page

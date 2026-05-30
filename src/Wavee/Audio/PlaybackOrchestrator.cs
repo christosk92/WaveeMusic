@@ -89,6 +89,15 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     // false for user-initiated play. Sticks until the next PlayAsync flips it.
     private bool _isSystemInitiated;
 
+    // AudioHost and UI playback engines can both surface the same natural finish
+    // during handoff / autoplay edges. Drop same-track duplicates in a short
+    // window so the queue advances once.
+    private static readonly TimeSpan DuplicateTrackFinishedWindow = TimeSpan.FromSeconds(2);
+    private readonly object _trackFinishedGate = new();
+    private string? _lastFinishedTrackUri;
+    private string? _lastFinishedReason;
+    private long _lastFinishedTimestamp;
+
     // Prefetch dedup: remembers which upcoming track URI we've already kicked a
     // prefetch for during the current track. Reset on track change / play / skip.
     // Spotify's PortAudio buffer underruns at transitions all trace back to the
@@ -1815,6 +1824,14 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     {
         try
         {
+            if (ShouldDropDuplicateTrackFinished(msg))
+            {
+                _logger?.LogDebug(
+                    "Dropping duplicate TrackFinished: {Uri} reason={Reason}",
+                    msg.TrackUri, msg.Reason);
+                return;
+            }
+
             // Auto-advance (or repeat-track rollover) is system-initiated — flip the
             // latch so the next publish carries is_system_initiated=true until the
             // user next calls PlayAsync.
@@ -1852,6 +1869,27 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Error advancing to next track");
+        }
+    }
+
+    private bool ShouldDropDuplicateTrackFinished(Playback.Contracts.TrackFinishedMessage msg)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        lock (_trackFinishedGate)
+        {
+            if (string.Equals(_lastFinishedTrackUri, msg.TrackUri, StringComparison.Ordinal) &&
+                string.Equals(_lastFinishedReason, msg.Reason, StringComparison.Ordinal) &&
+                _lastFinishedTimestamp != 0)
+            {
+                var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(_lastFinishedTimestamp, now);
+                if (elapsed <= DuplicateTrackFinishedWindow)
+                    return true;
+            }
+
+            _lastFinishedTrackUri = msg.TrackUri;
+            _lastFinishedReason = msg.Reason;
+            _lastFinishedTimestamp = now;
+            return false;
         }
     }
 
