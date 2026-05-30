@@ -256,10 +256,27 @@ public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchF
     public SettingsViewModel ViewModel { get; }
     public ObservableCollection<ThirdPartyNoticeItem> ThirdPartyNotices => s_thirdPartyNotices;
 
+    // Localized strings for the "restart to apply staged update" InfoBar. These share the
+    // Update_Restart* resource keys with the equivalent notification raised by UpdateService,
+    // so the wording stays in one place across both surfaces.
+    public string RestartReadyTitle => AppLocalization.GetString("Update_RestartReadyTitle");
+    public string RestartReadyMessage => AppLocalization.GetString("Update_RestartReadyMessage");
+    public string RestartNowLabel => AppLocalization.GetString("Update_RestartNow");
+
     public AboutSettingsSection(SettingsViewModel viewModel)
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         InitializeComponent();
+        Loaded += OnAboutLoaded;
+    }
+
+    private async void OnAboutLoaded(object sender, RoutedEventArgs e)
+    {
+        // Re-check whether the background update task staged a newer MSIX while the app has been
+        // running, so the "restart to apply" InfoBar can appear without waiting for the next
+        // launch. Entered on the UI thread, so the property/toast update needs no marshalling.
+        if (ViewModel.UpdateService is { } updateService)
+            await updateService.CheckPackageUpdateAsync();
     }
 
     public void ApplySearchFilter(string? groupKey)
@@ -291,6 +308,12 @@ public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchF
     private async void ReportProblem_Click(object sender, RoutedEventArgs e)
     {
         await DiagnosticsReporter.ReportAsync(XamlRoot);
+    }
+
+    private async void RestartToUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.UpdateService is { } updateService)
+            await updateService.RestartToApplyUpdateAsync();
     }
 }
 
