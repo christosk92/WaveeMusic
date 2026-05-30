@@ -26,6 +26,8 @@ internal interface IPlaybackCommandExecutor
     Task<PlaybackResult> SetVolumeAsync(int volumePercent, CancellationToken ct);
     Task<PlaybackResult> AddToQueueAsync(string trackUri, CancellationToken ct);
     Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct);
+    Task<PlaybackResult> AddToQueueBatchAsync(IReadOnlyList<string> trackUris, CancellationToken ct);
+    Task<PlaybackResult> PlayNextBatchAsync(IReadOnlyList<string> trackUris, CancellationToken ct);
     Task<PlaybackResult> ReorderQueueAsync(Wavee.Audio.Queue.QueueReorderTarget target, int oldIndex, int newIndex, CancellationToken ct);
     Task<PlaybackResult> SkipToQueueItemAsync(int upcomingIndex, CancellationToken ct);
     Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying, CancellationToken ct);

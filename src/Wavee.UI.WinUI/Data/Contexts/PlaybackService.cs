@@ -279,6 +279,12 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
     public Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct)
         => ExecuteWithRetryAsync(c => _executor.PlayNextAsync(trackUri, c), nameof(PlayNextAsync), ct, maxRetries: 0);
 
+    public Task<PlaybackResult> AddToQueueAsync(IReadOnlyList<string> trackUris, CancellationToken ct)
+        => ExecuteWithRetryAsync(c => _executor.AddToQueueBatchAsync(trackUris, c), nameof(AddToQueueAsync), ct, maxRetries: 0);
+
+    public Task<PlaybackResult> PlayNextAsync(IReadOnlyList<string> trackUris, CancellationToken ct)
+        => ExecuteWithRetryAsync(c => _executor.PlayNextBatchAsync(trackUris, c), nameof(PlayNextAsync), ct, maxRetries: 0);
+
     public Task<PlaybackResult> ReorderQueueAsync(
         Wavee.Audio.Queue.QueueReorderTarget target, int oldIndex, int newIndex, CancellationToken ct)
         => ExecuteWithRetryAsync(

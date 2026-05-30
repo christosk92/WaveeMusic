@@ -443,7 +443,11 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
     /// (recommendations + auto-trigger guard).</summary>
     public void ResetForNewPlaylist()
     {
-        _recommendedTracks.Clear();
+        // Resilient reset: a raw Clear() here runs synchronously during navigation while the
+        // bound ItemsRepeater is mid-layout, which throws COMException E_FAIL and hangs the
+        // page swap. ReplaceWith mutates the backing list then raises a Reset that retries on a
+        // Low-priority dispatcher tick if the control rejects it (same helper used at line ~398).
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_recommendedTracks, []);
         HasRecommendedTracks = false;
         RecommendationsLoadFailed = false;
         _recommendationsAutoTriggeredFor = null;
@@ -451,6 +455,6 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
 
     public void Dispose()
     {
-        _recommendedTracks.Clear();
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_recommendedTracks, []);
     }
 }

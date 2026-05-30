@@ -86,6 +86,11 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     // State publisher (bidirectional mode only)
     private AsyncWorker<PutStateRequest>? _statePublisher;
 
+    // Last published full-state snapshot (FormatStateSnapshot). Used to skip submitting a
+    // PutState identical to the previous one — a defensive backstop against per-mutation
+    // publish storms (issue #4). Only ever suppresses literal duplicate re-emissions.
+    private string? _lastPublishKey;
+
     // PutState debounce — position-only updates are debounced, critical changes flush immediately
     private CancellationTokenSource? _debounceCts;
     private PlaybackState? _pendingState;
@@ -961,6 +966,19 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
         try
         {
+            // Defense-in-depth dedup (issue #4): skip a PutState whose full snapshot is identical
+            // to the one we just published. FormatStateSnapshot captures status / track / position /
+            // queue-revision / timestamp — all of which change on any genuine update — so this only
+            // ever suppresses literal duplicate re-emissions (the storm signature), never a real
+            // change. Backstops any future per-mutation storm before the clone + cluster round-trip.
+            var publishKey = FormatStateSnapshot(state);
+            if (string.Equals(publishKey, _lastPublishKey, StringComparison.Ordinal))
+            {
+                _logger?.LogTrace("PutState SKIP (identical to last published)");
+                return;
+            }
+            _lastPublishKey = publishKey;
+
             var now = (ulong)(_session?.Clock.NowMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
             // Track when playback started (reset on track change or when becoming active)

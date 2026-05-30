@@ -801,6 +801,78 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     }
 
     /// <summary>
+    /// Batch "Play Next" — inserts all tracks at the head of the user queue with a SINGLE
+    /// queue mutation + SINGLE <see cref="PublishQueueState"/>. Looping <see cref="PlayNextAsync"/>
+    /// per track publishes one PutState each, which floods the cluster publisher and freezes the
+    /// UI on a large selection (issue #4 follow-up).
+    /// </summary>
+    public Task PlayNextBatchAsync(IReadOnlyList<string> trackUris, CancellationToken ct = default)
+    {
+        var tracks = BuildQueueTracksForBatch(trackUris, HiddenFilterSurface.PlayNext);
+        if (tracks.Count == 0)
+            return Task.CompletedTask;
+
+        _queue.PlayNextBatch(tracks);
+        _logger?.LogInformation("Orchestrator: PlayNext batch → {Count} tracks", tracks.Count);
+        PublishQueueState();
+        PrimeQueueContinuationIfNeeded();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Batch "Add to Queue" — appends all tracks to the post-context bucket with a SINGLE
+    /// queue mutation + SINGLE <see cref="PublishQueueState"/> (see <see cref="PlayNextBatchAsync"/>).
+    /// </summary>
+    public Task EnqueueBatchAsync(IReadOnlyList<string> trackUris, CancellationToken ct = default)
+    {
+        var tracks = BuildQueueTracksForBatch(trackUris, HiddenFilterSurface.AddToQueue);
+        if (tracks.Count == 0)
+            return Task.CompletedTask;
+
+        _queue.EnqueueAfterContextBatch(tracks);
+        _logger?.LogInformation("Orchestrator: Enqueue batch (post-context) → {Count} tracks", tracks.Count);
+        PublishQueueState();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Filters a batch of URIs once (empty / Spotify-disabled / hidden) and projects the
+    /// survivors to <see cref="QueueTrack"/>. Emits at most one error event and one
+    /// hidden-filtered event for the whole batch — never one per track.
+    /// </summary>
+    private List<QueueTrack> BuildQueueTracksForBatch(IReadOnlyList<string> trackUris, HiddenFilterSurface surface)
+    {
+        var result = new List<QueueTrack>(trackUris.Count);
+        var hidden = 0;
+        var spotifyBlocked = 0;
+        foreach (var uri in trackUris)
+        {
+            if (string.IsNullOrEmpty(uri))
+                continue;
+            if (!_localSpotifyPlaybackEnabled && SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(uri))
+            {
+                spotifyBlocked++;
+                continue;
+            }
+            if (_contentFilter?.IsTrackHidden(uri) == true)
+            {
+                hidden++;
+                continue;
+            }
+            result.Add(new QueueTrack(uri));
+        }
+
+        if (spotifyBlocked > 0)
+        {
+            _logger?.LogWarning("Batch enqueue: {Count} Spotify track(s) blocked (local Spotify playback disabled)", spotifyBlocked);
+            _errorSubject.OnNext(new PlaybackError(PlaybackErrorType.Unknown, SpotifyPlaybackCapabilities.DisabledMessage));
+        }
+        if (hidden > 0)
+            _hiddenTracksFilteredSubject.OnNext(new HiddenTracksFilteredEvent(surface, hidden));
+        return result;
+    }
+
+    /// <summary>
     /// Drag-reorder of one item within a single queue bucket. Publishes the new
     /// queue state (cluster + UI) only if the move was actually applied.
     /// </summary>
