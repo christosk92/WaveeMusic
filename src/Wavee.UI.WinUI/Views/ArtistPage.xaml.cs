@@ -40,6 +40,7 @@ using Wavee.UI.WinUI.ViewModels.Artist;
 using Windows.UI;
 using Wavee.Core.Http;
 using ColorAnimation = Microsoft.UI.Xaml.Media.Animation.ColorAnimation;
+using Microsoft.UI.Dispatching;
 
 namespace Wavee.UI.WinUI.Views;
 
@@ -232,17 +233,33 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         if (artistChanged)
             _selectedBiographySource = BiographySource.Spotify;
 
-        if (!string.IsNullOrEmpty(uri))
-            ViewModel.Initialize(uri);
-
-        // Re-evaluate every compiled x:Bind on the page so the freshly-reset
-        // VM state is picked up. Same-artist returns skip this for perf â€”
-        // nothing in the binding graph actually changed in that case.
-        if (artistChanged)
+        // Defer the heavy VM init (top-tracks enrich, discography query,
+        // extracted colors, video prewarm, bio) off the navigation's
+        // synchronous path - it ran ~270 ms inline and blocked the page
+        // entrance animation + every other UI-thread consumer for that span.
+        // A Low-priority tick lets the just-armed shimmer + page fade animate
+        // first; the nav-revision guard supersedes it if the user navigates on.
+        // Bindings.Update (re-evaluates compiled x:Bind so the freshly-reset VM
+        // state is picked up) and the warm-cache reveal run in the same tick so
+        // they observe the initialized VM. Same-artist returns skip the rebind.
+        void InitializeArtistDeferred()
         {
-            Bindings?.Update();
-            _lastRestoredArtistId = uri;
+            if (_isDisposed || _isNavigatingAway || navigationRevision != _navigationRevision)
+                return;
+            if (!string.IsNullOrEmpty(uri))
+                ViewModel.Initialize(uri);
+            if (artistChanged)
+            {
+                Bindings?.Update();
+                _lastRestoredArtistId = uri;
+            }
+            ProbeWarmCacheReveal(navigationRevision, uri);
         }
+
+        if (DispatcherQueue is not null)
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, InitializeArtistDeferred);
+        else
+            InitializeArtistDeferred();
 
         ApplyPopularReleasesColumnWidth();
         UpdateResponsivePageChrome();
@@ -282,7 +299,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             _ = ReleaseShyHeaderSuppressionAsync(navigationRevision);
         }
 
-        ProbeWarmCacheReveal(navigationRevision, uri);
     }
 
     private async Task ReleaseShyHeaderSuppressionAsync(int navigationRevision)

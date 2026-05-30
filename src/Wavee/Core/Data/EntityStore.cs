@@ -44,6 +44,7 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
     private long _stampSeq;
     private long _touchSeq;
     private int _evictionScheduled; // 0 = idle, 1 = pending; debounces concurrent eviction kicks
+    private int _slotCount;         // mirrors _slots.Count without ConcurrentDictionary.Count's O(n) all-bucket lock
     private volatile bool _disposed;
 
     protected EntityStore(IEqualityComparer<TKey>? comparer = null, ILogger? logger = null)
@@ -52,6 +53,26 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
             ? new ConcurrentDictionary<TKey, Slot>()
             : new ConcurrentDictionary<TKey, Slot>(comparer);
         _logger = logger;
+    }
+
+    // GetOrAdd that maintains _slotCount. ConcurrentDictionary.Count is O(n)
+    // (it locks every bucket); the hot paths (Observe/Push/Hint) only need the
+    // size for the eviction trigger, so we mirror it in an interlocked counter
+    // and bump it exactly once per real insert.
+    private Slot GetOrAddSlot(TKey key)
+    {
+        while (true)
+        {
+            if (_slots.TryGetValue(key, out var existing))
+                return existing;
+            var slot = new Slot();
+            if (_slots.TryAdd(key, slot))
+            {
+                Interlocked.Increment(ref _slotCount);
+                return slot;
+            }
+            // Lost the race to a concurrent insert — loop and return the winner.
+        }
     }
 
     // ── Subclass hooks ──────────────────────────────────────────────────
@@ -91,6 +112,11 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
     // hundreds of releases + concerts).
     protected virtual int MaxSlots => 64;
 
+    // Eviction target: when slot count exceeds MaxSlots, drop back to this
+    // low-water mark in a single pass (hysteresis) so a burst of inserts past
+    // the cap triggers ONE larger eviction instead of one pass per insert.
+    protected virtual int EvictionLowWater => MaxSlots - Math.Max(1, MaxSlots / 5);
+
     // ── Public API ──────────────────────────────────────────────────────
 
     public IObservable<EntityState<TValue>> Observe(TKey key)
@@ -99,7 +125,7 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
 
         return Observable.Create<EntityState<TValue>>(observer =>
         {
-            var slot = _slots.GetOrAdd(key, _ => new Slot());
+            var slot = GetOrAddSlot(key);
             Interlocked.Increment(ref slot.RefCount);
             slot.LastTouchedTicks = Interlocked.Increment(ref _touchSeq);
             MaybeScheduleEviction();
@@ -171,7 +197,7 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        var slot = _slots.GetOrAdd(key, _ => new Slot());
+        var slot = GetOrAddSlot(key);
         slot.LastTouchedTicks = Interlocked.Increment(ref _touchSeq);
         MaybeScheduleEviction();
         var stamp = Interlocked.Increment(ref _stampSeq);
@@ -213,7 +239,7 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        var slot = _slots.GetOrAdd(key, _ => new Slot());
+        var slot = GetOrAddSlot(key);
         slot.LastTouchedTicks = Interlocked.Increment(ref _touchSeq);
         MaybeScheduleEviction();
 
@@ -266,6 +292,7 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
         }
 
         _slots.Clear();
+        Interlocked.Exchange(ref _slotCount, 0);
     }
 
     // ── Materialization ─────────────────────────────────────────────────
@@ -459,7 +486,7 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
 
     private void MaybeScheduleEviction()
     {
-        if (_slots.Count <= MaxSlots) return;
+        if (Volatile.Read(ref _slotCount) <= MaxSlots) return;
         // Debounce: at most one eviction pass in flight at a time. The
         // CompareExchange ensures concurrent Observe/Push callers don't queue
         // a swarm of redundant passes when the store is hot.
@@ -484,7 +511,10 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
                 candidates.Add((kv.Key, s, Volatile.Read(ref s.LastTouchedTicks)));
             }
 
-            int overflow = _slots.Count - MaxSlots;
+            // Hysteresis: evict down to the low-water mark, not just back to
+            // MaxSlots, so one pass clears a whole burst instead of one pass
+            // per insert.
+            int overflow = Volatile.Read(ref _slotCount) - EvictionLowWater;
             if (overflow <= 0 || candidates.Count == 0) return;
 
             candidates.Sort((a, b) => a.Touched.CompareTo(b.Touched));
@@ -507,11 +537,12 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
                 if (!shouldEvict) continue;
 
                 if (!_slots.TryRemove(new KeyValuePair<TKey, Slot>(key, slot))) continue;
+                Interlocked.Decrement(ref _slotCount);
 
                 try { slot.Subject.OnCompleted(); } catch { /* already completed */ }
                 slot.Subject.Dispose();
 
-                _logger?.LogTrace("Evicted slot for key {Key} (LRU, slot count now {Count})", key, _slots.Count);
+                _logger?.LogTrace("Evicted slot for key {Key} (LRU, slot count now {Count})", key, Volatile.Read(ref _slotCount));
             }
         }
         catch (Exception ex)
@@ -524,7 +555,7 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
 
             // If the store is still over budget (a flood of new Observes raced
             // us), schedule another pass. Cheap when nothing to do.
-            if (_slots.Count > MaxSlots)
+            if (Volatile.Read(ref _slotCount) > MaxSlots)
                 MaybeScheduleEviction();
         }
     }
@@ -532,4 +563,5 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
     // ── Testing hooks ────────────────────────────────────────────────────
 
     internal int SlotCountForTests => _slots.Count;
+    internal int TrackedSlotCountForTests => Volatile.Read(ref _slotCount);
 }

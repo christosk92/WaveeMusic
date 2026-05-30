@@ -1076,7 +1076,7 @@ public sealed partial class RightPanelView : UserControl
             TrackDetailsDuration.Text = string.Empty;
             TrackDetailsAdded.Text = string.Empty;
             TrackDetailsPlays.Text = string.Empty;
-            TrackDetailsArtwork.Source = null;
+            TrackDetailsArtwork.ImageUrl = null;
             return;
         }
 
@@ -1086,16 +1086,10 @@ public sealed partial class RightPanelView : UserControl
         TrackDetailsDuration.Text = track.DurationFormatted;
         TrackDetailsAdded.Text = track.AddedAtFormatted;
         TrackDetailsPlays.Text = track.PlayCountFormatted;
-        TrackDetailsArtwork.Source = string.IsNullOrEmpty(track.ImageUrl)
-            ? null
-            : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
-            {
-                UriSource = new Uri(track.ImageUrl),
-                DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical,
-                // Border is 180×180 — cap decode at 360 (×2 for HiDPI) so we don't
-                // hold a full-source ~1.6 MB pixel buffer per track.
-                DecodePixelWidth = 360,
-            };
+        // Cache-backed CompositionImage (refcounted LoadedImageSurface, decode
+        // bucketed near 360) instead of a fresh BitmapImage per track — the old
+        // per-track BitmapImage stranded its native surface until GC finalization.
+        TrackDetailsArtwork.ImageUrl = track.ImageUrl;
     }
 
     private void EnsureDetailsTreeLoaded()

@@ -55,7 +55,13 @@ internal static class LyricsCacheConverter
             IsSectionHeader: line.IsSectionHeader
         )).ToList();
 
-        return new CachedLyricsDto(lines, data.LanguageCode);
+        // Read the raw (already-resolved) code — never trigger NTextCat from this
+        // cache-write path. At silent startup lyrics are fetched + cached in the
+        // background before the lyrics view is ever shown; forcing detection here
+        // loaded the whole language profile off the boot hot path. If the view has
+        // already displayed (and computed the code), it's persisted; otherwise it's
+        // recomputed lazily on first display.
+        return new CachedLyricsDto(lines, data.LanguageCodeOrNull);
     }
 
     public static ControlsLyricsData FromDto(CachedLyricsDto dto)

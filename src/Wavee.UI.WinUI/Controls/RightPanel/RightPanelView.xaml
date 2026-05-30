@@ -14,6 +14,7 @@
     xmlns:local="using:Wavee.UI.WinUI.Controls.RightPanel"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -204,7 +205,7 @@
                                 HorizontalAlignment="Center"
                                 CornerRadius="8"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                            <Image x:Name="TrackDetailsArtwork" Stretch="UniformToFill"/>
+                            <imaging:CompositionImage x:Name="TrackDetailsArtwork" Stretch="UniformToFill" DecodePixelSize="180"/>
                         </Border>
                         <StackPanel Spacing="4" HorizontalAlignment="Center">
                             <TextBlock x:Name="TrackDetailsTitle"

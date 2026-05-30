@@ -171,6 +171,7 @@ public sealed partial class DetailsTabHost : UserControl
     private static readonly long CanvasFrameMinIntervalTicks = Stopwatch.Frequency / 30;
     private int _blurredAlbumArtRenderWidth;
     private int _blurredAlbumArtRenderHeight;
+    private CanvasTextFormat? _detailsLyricsTextFormat;
 
     public DetailsTabHost()
     {
@@ -1949,7 +1950,9 @@ public sealed partial class DetailsTabHost : UserControl
 
         _detailsLyricsTextLayout?.Dispose();
 
-        var format = new CanvasTextFormat
+        // Reuse one CanvasTextFormat (it never varies) instead of allocating an
+        // undisposed IDisposable per lyric line. Disposed in TeardownDetailsLyricsComposition.
+        _detailsLyricsTextFormat ??= new CanvasTextFormat
         {
             FontSize = DetailsOverlayFontSize,
             FontWeight = new Windows.UI.Text.FontWeight { Weight = 900 },
@@ -1961,7 +1964,7 @@ public sealed partial class DetailsTabHost : UserControl
         _detailsLyricsTextLayout = new CanvasTextLayout(
             _detailsLyricsCanvasDevice,
             text,
-            format,
+            _detailsLyricsTextFormat,
             maxWidth,
             2000f)
         {
@@ -2114,6 +2117,8 @@ public sealed partial class DetailsTabHost : UserControl
 
         _detailsLyricsTextLayout?.Dispose();
         _detailsLyricsTextLayout = null;
+        _detailsLyricsTextFormat?.Dispose();
+        _detailsLyricsTextFormat = null;
         _detailsLyricsCharacterRegions = null;
         _detailsLyricsLayoutText = null;
         _detailsLyricsLayoutWidth = 0;
@@ -2433,11 +2438,29 @@ public sealed partial class DetailsTabHost : UserControl
             using var bitmap = await CanvasBitmap.LoadAsync(
                 _canvasDevice, new Uri(albumArt));
 
+            // A newer track/mode change may have raced in during the async load —
+            // bail before drawing into the (possibly reused) live surface.
+            if (_activeBackgroundMode != DetailsBackgroundMode.BlurredAlbumArt
+                || _currentAlbumArtUrl != albumArt
+                || generation != _detailsBackgroundGeneration)
+            {
+                return;
+            }
+
             // Render at panel size (half res for perf)
             var w = Math.Max(1, (int)ActualWidth / 2);
             var h = Math.Max(1, (int)ActualHeight / 2);
 
-            var imageSource = new CanvasImageSource(_canvasDevice, w, h, 96);
+            // Reuse the existing backdrop surface when the panel size is unchanged;
+            // only allocate a new CanvasImageSource on first use or resize. Without
+            // this, every track stranded a full-panel native surface (the old
+            // DisposeCanvasImageSource was a no-op). Mirrors RenderCanvasFrame.
+            var reuse = _blurredAlbumArtImageSource != null
+                && _blurredAlbumArtImageSource.SizeInPixels.Width == w
+                && _blurredAlbumArtImageSource.SizeInPixels.Height == h;
+            var imageSource = reuse
+                ? _blurredAlbumArtImageSource!
+                : CreateTrackedCanvasImageSource(_canvasDevice, w, h);
             try
             {
                 using (var ds = imageSource.CreateDrawingSession(Colors.Transparent))
@@ -2475,24 +2498,19 @@ public sealed partial class DetailsTabHost : UserControl
                     ds.DrawImage(saturation, new Vector2(offsetX, offsetY));
                 }
 
-                // Verify we're still in blurred album art mode and same URL
-                if (_activeBackgroundMode != DetailsBackgroundMode.BlurredAlbumArt
-                    || _currentAlbumArtUrl != albumArt
-                    || generation != _detailsBackgroundGeneration)
+                if (!reuse)
                 {
-                    DisposeCanvasImageSource(imageSource);
-                    return;
+                    ReplaceBlurredAlbumArtSource(imageSource);
+                    DetailsCanvasImage.Source = imageSource;
                 }
-
-                ReplaceBlurredAlbumArtSource(imageSource);
-                DetailsCanvasImage.Source = imageSource;
                 _blurredAlbumArtRenderWidth = w;
                 _blurredAlbumArtRenderHeight = h;
                 UpdateBackgroundMediaVisibility();
             }
             catch
             {
-                DisposeCanvasImageSource(imageSource);
+                if (!reuse)
+                    DisposeCanvasImageSource(imageSource);
                 throw;
             }
         }
@@ -2897,7 +2915,7 @@ public sealed partial class DetailsTabHost : UserControl
                 if (ReferenceEquals(DetailsCanvasImage.Source, _canvasImageSource))
                     DetailsCanvasImage.Source = null;
                 DisposeCanvasImageSource(ref _canvasImageSource);
-                _canvasImageSource = new CanvasImageSource(_canvasDevice, w, h, 96);
+                _canvasImageSource = CreateTrackedCanvasImageSource(_canvasDevice, w, h);
                 DetailsCanvasImage.Source = _canvasImageSource;
             }
 
@@ -2974,10 +2992,38 @@ public sealed partial class DetailsTabHost : UserControl
         Interlocked.Exchange(ref _lastCanvasFrameRenderTimestamp, 0);
     }
 
+    // CanvasImageSource is not IDisposable in this Win2D projection — its native
+    // D3D surface is released only on GC finalization. The managed wrapper is
+    // tiny, so without help the GC never feels the pressure and the finalizer
+    // effectively never runs, leaking system RAM (GPU memory is shared on UMA).
+    // Pair AddMemoryPressure at creation with RemoveMemoryPressure here so the GC
+    // accounts for the native surface and reclaims dropped ones promptly. The hot
+    // path also reuses surfaces (see RenderCanvasFrame / SetupBlurredAlbumArt) so
+    // this only fires on first-use, resize, mode-switch, and teardown.
+    private static CanvasImageSource CreateTrackedCanvasImageSource(CanvasDevice device, int width, int height)
+    {
+        GC.AddMemoryPressure(EstimateCanvasImageSourceBytes(width, height));
+        return new CanvasImageSource(device, width, height, 96);
+    }
+
+    private static long EstimateCanvasImageSourceBytes(int width, int height)
+        => (long)Math.Max(1, width) * Math.Max(1, height) * 4;
+
     private static void DisposeCanvasImageSource(CanvasImageSource? source)
     {
-        // CanvasImageSource is not IDisposable in this Win2D projection.
-        // Callers detach Image.Source before dropping the reference.
+        if (source is null)
+            return;
+
+        try
+        {
+            GC.RemoveMemoryPressure(EstimateCanvasImageSourceBytes(
+                (int)source.SizeInPixels.Width, (int)source.SizeInPixels.Height));
+        }
+        catch
+        {
+            // SizeInPixels can throw if the device was lost; the accounting is
+            // reconciled when the next surface is created/dropped.
+        }
     }
 
     private static void DisposeCanvasImageSource(ref CanvasImageSource? source)

@@ -48,7 +48,7 @@
 		<Content Include="Assets\AlbumArtPlaceholder.png">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
-		<Content Include="Assets\Wiki82.profile.xml">
+		<Content Include="Assets\Core14.profile.xml">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
 	</ItemGroup>

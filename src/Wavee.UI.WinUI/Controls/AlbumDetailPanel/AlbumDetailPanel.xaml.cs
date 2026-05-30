@@ -25,6 +25,8 @@ namespace Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfaceParticipant
 {
     private CompositionSurfaceBrush? _surfaceBrush;
+    private CompositionLinearGradientBrush? _gradientBrush;
+    private CompositionMaskBrush? _maskBrush;
     private SpriteVisual? _spriteVisual;
     private Compositor? _compositor;
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
@@ -150,6 +152,26 @@ public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfacePart
         _imageSurface?.Dispose();
         _imageSurface = null;
 
+        // Detach the child visual first, then dispose the composition chain we
+        // own in deterministic order: sprite → mask brush → its leaf brushes
+        // (surface + gradient). The gradient brush was previously leaked — only
+        // the mask brush (reached via _spriteVisual.Brush) was disposed.
+        if (_spriteVisual != null)
+        {
+            ElementCompositionPreview.SetElementChildVisual(ImageArea, null);
+            _spriteVisual.Brush = null;
+            _spriteVisual.Dispose();
+            _spriteVisual = null;
+        }
+
+        if (_maskBrush != null)
+        {
+            _maskBrush.Source = null;
+            _maskBrush.Mask = null;
+            _maskBrush.Dispose();
+            _maskBrush = null;
+        }
+
         if (_surfaceBrush != null)
         {
             _surfaceBrush.Surface = null;
@@ -157,12 +179,10 @@ public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfacePart
             _surfaceBrush = null;
         }
 
-        if (_spriteVisual != null)
+        if (_gradientBrush != null)
         {
-            ElementCompositionPreview.SetElementChildVisual(ImageArea, null);
-            _spriteVisual.Brush?.Dispose();
-            _spriteVisual.Dispose();
-            _spriteVisual = null;
+            _gradientBrush.Dispose();
+            _gradientBrush = null;
         }
 
         _compositor = null;
@@ -179,12 +199,12 @@ public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfacePart
 
         // Gradient mask: transparent on left → opaque on right
         // This makes the image fade in from the left edge (where the color bg is)
-        var gradientBrush = _compositor.CreateLinearGradientBrush();
-        gradientBrush.StartPoint = new Vector2(0f, 0.5f); // left
-        gradientBrush.EndPoint = new Vector2(1f, 0.5f);   // right
-        gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
+        _gradientBrush = _compositor.CreateLinearGradientBrush();
+        _gradientBrush.StartPoint = new Vector2(0f, 0.5f); // left
+        _gradientBrush.EndPoint = new Vector2(1f, 0.5f);   // right
+        _gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
             Windows.UI.Color.FromArgb(0, 255, 255, 255)));     // transparent (image hidden)
-        gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0.4f,
+        _gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0.4f,
             Windows.UI.Color.FromArgb(255, 255, 255, 255)));   // fully opaque (image visible)
 
         // Surface brush for the album art
@@ -194,13 +214,13 @@ public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfacePart
         _surfaceBrush.VerticalAlignmentRatio = 0.5f;
 
         // Mask brush: image × gradient
-        var maskBrush = _compositor.CreateMaskBrush();
-        maskBrush.Source = _surfaceBrush;
-        maskBrush.Mask = gradientBrush;
+        _maskBrush = _compositor.CreateMaskBrush();
+        _maskBrush.Source = _surfaceBrush;
+        _maskBrush.Mask = _gradientBrush;
 
         // Sprite visual fills the ImageArea
         _spriteVisual = _compositor.CreateSpriteVisual();
-        _spriteVisual.Brush = maskBrush;
+        _spriteVisual.Brush = _maskBrush;
         _spriteVisual.RelativeSizeAdjustment = Vector2.One;
 
         ElementCompositionPreview.SetElementChildVisual(ImageArea, _spriteVisual);

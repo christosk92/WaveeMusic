@@ -23,6 +23,12 @@ public enum ChangeScope
     Pins = 2,
     /// <summary>Podcast episode progress changed (resume position written).</summary>
     PodcastProgress = 3,
+    /// <summary>A single playlist's <em>content</em> changed (tracks added / removed /
+    /// reordered via dealer push or edit) without altering the sidebar's playlist
+    /// tree. Does NOT affect library badge counts, so it must not trigger a
+    /// library-stats recompute. Page-level VMs that render a playlist's tracks can
+    /// subscribe; the sidebar ignores it.</summary>
+    PlaylistContent = 4,
 }
 
 /// <summary>

@@ -1265,8 +1265,12 @@ public sealed class SpClient : ISpClient
 
         response.EnsureSuccessStatusCode();
 
-        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        var pageResponse = PageResponse.Parser.ParseFrom(responseBytes);
+        // Stream-parse instead of buffering into a byte[] — collection pages
+        // (full discographies / large libraries) can exceed the 85 KB LOH
+        // boundary; ParseResponseAsync reads the protobuf incrementally off the
+        // decompressed stream (same path as GetPlaylistAsync above).
+        var pageResponse = await ExtendedMetadataClient.ParseResponseAsync(
+            PageResponse.Parser, response, cancellationToken);
 
         _logger?.LogDebug("Collection page fetched: {Set}, items={Count}, hasMore={HasMore}",
             set, pageResponse.Items.Count, !string.IsNullOrEmpty(pageResponse.NextPageToken));
@@ -1329,8 +1333,11 @@ public sealed class SpClient : ISpClient
 
         response.EnsureSuccessStatusCode();
 
-        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        var deltaResponse = DeltaResponse.Parser.ParseFrom(responseBytes);
+        // Stream-parse instead of buffering into a byte[] — a full (non-delta)
+        // collection snapshot can exceed the 85 KB LOH boundary; ParseResponseAsync
+        // reads the protobuf incrementally off the decompressed stream.
+        var deltaResponse = await ExtendedMetadataClient.ParseResponseAsync(
+            DeltaResponse.Parser, response, cancellationToken);
 
         _logger?.LogDebug("Collection delta fetched: {Set}, deltaUpdatePossible={DeltaUpdatePossible}, changes={Count}",
             set, deltaResponse.DeltaUpdatePossible, deltaResponse.Items.Count);
@@ -1651,7 +1658,7 @@ public sealed class SpClient : ISpClient
             var revB64 = content.Revision?.Length > 0
                 ? Convert.ToBase64String(content.Revision.ToByteArray())
                 : "<none>";
-            _logger?.LogInformation(
+            _logger?.LogDebug(
                 "[rootlist] SpClient.GetPlaylistAsync(rootlist) ok url={Url} responseRev={Rev} length={Length} contentItems={Items}",
                 url, revB64, content.Length, content.Contents?.Items?.Count ?? 0);
         }
@@ -1697,7 +1704,7 @@ public sealed class SpClient : ISpClient
         request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
 
         _logger?.LogDebug("Fetching playlist diff: {Uri}, revision={Revision}", playlistUri, revisionStr);
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[playlist-diff] GET {Url} sentRev={Rev}",
             url, revisionStr);
 
@@ -1715,7 +1722,7 @@ public sealed class SpClient : ISpClient
                 // UpToDate=true and an empty op list. Synthesize that shape so
                 // the caller takes the no-change branch instead of falling
                 // back to a full re-fetch.
-                _logger?.LogInformation(
+                _logger?.LogDebug(
                     "[playlist-diff] 304 Not Modified — synthesizing UpToDate response for {Uri} rev={Rev}",
                     playlistUri, revisionStr);
                 return new Protocol.Playlist.SelectedListContent
@@ -1763,7 +1770,7 @@ public sealed class SpClient : ISpClient
             : "<none>";
         var diffOpsCount = diffContent.Diff?.Ops?.Count ?? 0;
         var diffContentsItems = diffContent.Contents?.Items?.Count ?? 0;
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[playlist-diff] response status={Code} bytes={Bytes} upToDate={UpToDate} newRev={New} ops={Ops} contents.items={CI} length={Length}",
             (int)response.StatusCode, responseBytes.Length, diffContent.UpToDate,
             diffNewRevB64, diffOpsCount, diffContentsItems, diffContent.Length);

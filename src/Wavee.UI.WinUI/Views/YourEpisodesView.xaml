@@ -15,6 +15,7 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:trackbehaviors="using:Wavee.UI.WinUI.Controls.Track.Behaviors"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:media="using:Microsoft.UI.Xaml.Media"
     mc:Ignorable="d"
     Background="Transparent">
@@ -41,13 +42,11 @@
                             Opacity="0.35"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"/>
-                        <Image
-                            Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='64'}"
+                        <imaging:CompositionImage
+                            ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                            DecodePixelSize="64"
                             Stretch="UniformToFill"
-                            Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
-                            behaviors:ImageFallbackBehavior.HideOnError="True"
-                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                            behaviors:ImageFallbackBehavior.DecodePixelWidth="64"/>
+                            Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"/>
                     </Grid>
                 </Border>
 
@@ -112,13 +111,11 @@
                                 Opacity="0.35"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"/>
-                            <Image
-                                Source="{Binding Header.ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='72'}"
+                            <imaging:CompositionImage
+                                ImageUrl="{Binding Header.ImageUrl}"
+                                DecodePixelSize="72"
                                 Stretch="UniformToFill"
-                                Visibility="{Binding Header.ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
-                                behaviors:ImageFallbackBehavior.HideOnError="True"
-                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                behaviors:ImageFallbackBehavior.DecodePixelWidth="72"/>
+                                Visibility="{Binding Header.ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"/>
                         </Grid>
                     </Border>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
@@ -167,13 +164,11 @@
                                 Opacity="0.35"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"/>
-                                <Image
-                                Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='72'}"
+                                <imaging:CompositionImage
+                                ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                DecodePixelSize="72"
                                 Stretch="UniformToFill"
-                                Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
-                                behaviors:ImageFallbackBehavior.HideOnError="True"
-                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                behaviors:ImageFallbackBehavior.DecodePixelWidth="72"/>
+                                Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"/>
                             </Grid>
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
@@ -238,13 +233,11 @@
                                         Opacity="0.35"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"/>
-                                    <Image
-                                        Source="{x:Bind SelectedEpisodeImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='128'}"
+                                    <imaging:CompositionImage
+                                        ImageUrl="{x:Bind SelectedEpisodeImageUrl, Mode=OneWay}"
+                                        DecodePixelSize="128"
                                         Stretch="UniformToFill"
-                                        Visibility="{x:Bind SelectedEpisodeImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                        behaviors:ImageFallbackBehavior.HideOnError="True"
-                                        behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="128"/>
+                                        Visibility="{x:Bind SelectedEpisodeImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                                 </Grid>
                             </Border>
 
@@ -574,13 +567,11 @@
                                 Opacity="0.35"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"/>
-                            <Image
-                                Source="{x:Bind ViewModel.SelectedShowImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='96'}"
+                            <imaging:CompositionImage
+                                ImageUrl="{x:Bind ViewModel.SelectedShowImageUrl, Mode=OneWay}"
+                                DecodePixelSize="96"
                                 Stretch="UniformToFill"
-                                Visibility="{x:Bind ViewModel.SelectedShowImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                behaviors:ImageFallbackBehavior.HideOnError="True"
-                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                behaviors:ImageFallbackBehavior.DecodePixelWidth="96"/>
+                                Visibility="{x:Bind ViewModel.SelectedShowImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                         </Grid>
                     </Border>
 

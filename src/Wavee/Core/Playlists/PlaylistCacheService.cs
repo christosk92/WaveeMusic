@@ -238,12 +238,12 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 // concurrent caller doesn't queue a second refresh.
                 if (_staleSchemaUris.TryRemove(playlistUri, out _))
                 {
-                    _logger?.LogInformation(
+                    _logger?.LogDebug(
                         "[caps] Hot-cache stale-schema for '{Uri}'; forcing network refresh", playlistUri);
                     return await GetOrCreatePlaylistRefreshTask(playlistUri, emitChange: true).WaitAsync(ct);
                 }
 
-                _logger?.LogInformation(
+                _logger?.LogDebug(
                     "[caps] GetPlaylistAsync hot hit '{Uri}': BasePerm={Base} Caps=[EditItems={EI},EditMeta={EM},Admin={AD}]",
                     playlistUri, hot.BasePermission,
                     hot.Capabilities.CanEditItems, hot.Capabilities.CanEditMetadata, hot.Capabilities.CanAdministratePermissions);
@@ -262,7 +262,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             var persisted = await _database.GetPlaylistCacheEntryAsync(playlistUri, touchAccess: false, ct);
             if (persisted != null)
             {
-                _logger?.LogInformation(
+                _logger?.LogDebug(
                     "[caps] GetPlaylistAsync disk hit '{Uri}' (rowSchemaV{V} vs currentV{C})",
                     playlistUri, persisted.CacheSchemaVersion, CurrentCacheSchemaVersion);
                 // Stale schema: the row was written before this build's version
@@ -272,7 +272,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 // first load post-upgrade.
                 if (persisted.CacheSchemaVersion < CurrentCacheSchemaVersion)
                 {
-                    _logger?.LogInformation(
+                    _logger?.LogDebug(
                         "[caps] Cache schema stale for '{Id}' (row v{Row}, current v{Current}); forcing network refresh",
                         playlistUri, persisted.CacheSchemaVersion, CurrentCacheSchemaVersion);
                     return await GetOrCreatePlaylistRefreshTask(playlistUri, emitChange: false).WaitAsync(ct);
@@ -602,7 +602,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                     var refreshed = previous with { FetchedAt = DateTimeOffset.UtcNow };
                     await PersistRootlistAsync(rootlistUri, refreshed, ct);
                     _hotRootlist = refreshed;
-                    _logger?.LogInformation(
+                    _logger?.LogDebug(
                         "[rootlist] /diff up-to-date — no rebuild needed");
                     return refreshed;
                 }
@@ -624,7 +624,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                             Kind = PlaylistChangeKind.Replaced
                         });
                     }
-                    _logger?.LogInformation(
+                    _logger?.LogDebug(
                         "[rootlist] /diff returned fresh contents — snapshot rebuilt ({Count} items)",
                         diffSnapshot.Items.Count);
                     return diffSnapshot;
@@ -632,12 +632,12 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
 
                 // Ops-only rootlist diffs — RootlistEntry has no DiffApplier
                 // equivalent yet. Fall through to the full GET below.
-                _logger?.LogInformation(
+                _logger?.LogDebug(
                     "[rootlist] /diff returned ops without Contents — falling back to full GET");
             }
             catch (Exception ex)
             {
-                _logger?.LogInformation(
+                _logger?.LogDebug(
                     "[rootlist] /diff failed, falling back to full GET: {Reason}", ex.Message);
             }
         }
@@ -660,7 +660,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             });
         }
 
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[rootlist] full GET fetched ({Count} items)",
             snapshot.Items.Count);
 
@@ -711,7 +711,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             var cachedRevB64 = existing.Revision.Length > 0
                 ? Convert.ToBase64String(existing.Revision)
                 : "<none>";
-            _logger?.LogInformation(
+            _logger?.LogDebug(
                 "[playlist-diff] cache miss-or-stale, attempting diff for {Uri} cachedRev={Rev}",
                 playlistUri, cachedRevB64);
             try
@@ -719,7 +719,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 var diff = await _session.SpClient.GetPlaylistDiffAsync(playlistUri, existing.Revision, ct);
                 if (diff.UpToDate || RevisionsEqual(existing.Revision, diff.Revision?.ToByteArray() ?? []))
                 {
-                    _logger?.LogInformation(
+                    _logger?.LogDebug(
                         "[playlist-diff] up-to-date {Uri} (no ops applied)",
                         playlistUri);
                     var refreshed = existing with
@@ -792,7 +792,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                         var appliedRevB64 = mergedFromOps.Revision.Length > 0
                             ? Convert.ToBase64String(mergedFromOps.Revision)
                             : "<none>";
-                        _logger?.LogInformation(
+                        _logger?.LogDebug(
                             "[playlist-diff] applied {N} ops for {Uri} -> newRev={Rev} items={Count}",
                             deltaDiff.Ops.Count, playlistUri, appliedRevB64, mergedFromOps.Items.Count);
 
@@ -841,7 +841,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             }
             catch (Exception ex)
             {
-                _logger?.LogInformation(
+                _logger?.LogDebug(
                     "[playlist-diff] FALLBACK to full GetPlaylist for {Uri} (diff failed or ops did not apply): {Reason}",
                     playlistUri, ex.Message);
                 _logger?.LogWarning(ex, "Playlist diff fetch failed for {Uri}, falling back to full fetch", playlistUri);
@@ -968,7 +968,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             },
             ct);
 
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[caps] Persisted '{Uri}' at v{Ver}: BasePerm={Base} Caps=[View={V},EditItems={EI},EditMeta={EM},Admin={AD}] CapsJsonLen={Len}",
             playlist.Uri, CurrentCacheSchemaVersion, playlist.BasePermission,
             playlist.Capabilities.CanView, playlist.Capabilities.CanEditItems,
@@ -1155,7 +1155,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 ?? CachedPlaylistCapabilities.ViewOnly;
         }
 
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[caps] Deserialize '{Uri}' (rowSchemaV{V}): BasePerm={Base} Caps=[View={CV},EditItems={EI},EditMeta={EM},Admin={AD}] CapsJson={Has}",
             entry.Uri, entry.CacheSchemaVersion, entry.BasePermission,
             capabilities.CanView, capabilities.CanEditItems, capabilities.CanEditMetadata, capabilities.CanAdministratePermissions,
@@ -1277,7 +1277,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             }
             else if (existing is null || !existing.HasContentsSnapshot)
             {
-                _logger?.LogInformation(
+                _logger?.LogDebug(
                     "[playlist-diff] Mercury ops no cached baseline for {Uri} — will fall back to /diff",
                     playlistUri);
                 return false; // No baseline AND not a brand-new playlist — caller falls back to fetch.
@@ -1290,7 +1290,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 var fromRevB64 = fromRevision.Length > 0
                     ? Convert.ToBase64String(fromRevision)
                     : "<none>";
-                _logger?.LogInformation(
+                _logger?.LogDebug(
                     "[playlist-diff] Mercury ops revision mismatch {Uri} cached={Cached} fromRev={From} — will fall back to /diff",
                     playlistUri, cachedRevB64, fromRevB64);
                 return false; // We missed an intermediate revision — fall back to fetch.
@@ -1331,7 +1331,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 });
             }
 
-            _logger?.LogInformation(
+            _logger?.LogDebug(
                 "[playlist-diff] applied Mercury ops directly {Uri} ops={N} (no /diff round-trip)",
                 playlistUri, ops.Count);
             return true;

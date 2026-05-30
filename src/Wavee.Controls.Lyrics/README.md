@@ -14,7 +14,7 @@ A WinUI 3 control library for displaying time-synchronized lyrics with shader ef
 | Audio I/O (preview)         | `NAudio.Wasapi`                                                                        |
 | DirectX interop             | `Vortice.Direct3D11`                                                                   |
 | Win32 P/Invoke              | `Vanara.PInvoke.User32`                                                                |
-| **Language detection**      | `NTextCat` with `Wiki82.profile.xml` (~14.6 MB language model bundled as Content)      |
+| **Language detection**      | `NTextCat` with `Core14.profile.xml` (~2.4 MB, 14-language model bundled as Content)   |
 | Pinyin romanization         | `csharp-pinyin`                                                                        |
 | Kana romanization           | `WanaKana-net`                                                                         |
 | MVVM                        | `CommunityToolkit.Mvvm`                                                                |
@@ -25,7 +25,7 @@ A WinUI 3 control library for displaying time-synchronized lyrics with shader ef
 ```
 Wavee.Controls.Lyrics/
 ├── Abstractions/           # Interfaces consumed by the host app
-├── Assets/                 # AlbumArtPlaceholder.png, Wiki82.profile.xml (NTextCat language model)
+├── Assets/                 # AlbumArtPlaceholder.png, Core14.profile.xml (NTextCat language model)
 ├── ColorThief/             # Dominant-color / palette extraction from album art
 ├── Constants/
 ├── Controls/               # XAML controls (ImageSwitcher, NowPlayingCanvas, ShadowImage, …)
@@ -48,7 +48,7 @@ The `EnsureIntermediateControlXaml` MSBuild target copies `Controls/ImageSwitche
 
 ## Asset placement
 
-`Assets/Wiki82.profile.xml` and `Assets/AlbumArtPlaceholder.png` are emitted as `Content` with `CopyToOutputDirectory=Always`. The host WinUI app's `RemoveDuplicateReferencedProjectAssets` build target deletes the duplicate copies that AppX packaging makes — see [Wavee.UI.WinUI/README.md](../Wavee.UI.WinUI/README.md) for why.
+`Assets/Core14.profile.xml` and `Assets/AlbumArtPlaceholder.png` are emitted as `Content` with `CopyToOutputDirectory=Always`. The host WinUI app's `RemoveDuplicateReferencedProjectAssets` build target deletes the duplicate copies that AppX packaging makes — see [Wavee.UI.WinUI/README.md](../Wavee.UI.WinUI/README.md) for why.
 
 ## Consumed by
 

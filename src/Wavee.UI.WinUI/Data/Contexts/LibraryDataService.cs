@@ -110,8 +110,20 @@ public sealed partial class LibraryDataService : ILibraryDataService
                 "LibraryDataService: playlist cache change for {Uri} (rootlistUpdate={IsRootlist})",
                 evt.Uri, isRootlistUpdate);
             if (isRootlistUpdate)
+            {
+                // Sidebar shape changed → refresh the playlist tree + library badges.
                 _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Playlists);
-            _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Library);
+                _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Library);
+            }
+            else
+            {
+                // Content-only change (dealer push / item edit): doesn't touch the
+                // sidebar tree OR the library badge counts. Publish the narrow scope
+                // so the prefetch storm stops recomputing library stats on every
+                // playlist diff — pages that render a playlist's tracks listen via
+                // PlaylistStore, not this bus.
+                _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.PlaylistContent);
+            }
         });
     }
 
@@ -161,10 +173,10 @@ public sealed partial class LibraryDataService : ILibraryDataService
         if (string.IsNullOrWhiteSpace(_session.GetUserData()?.Username))
             return Array.Empty<PlaylistSummaryDto>();
 
-        _logger?.LogInformation("[rootlist] GetUserPlaylistsAsync read (sidebar refresh trigger)");
+        _logger?.LogDebug("[rootlist] GetUserPlaylistsAsync read (sidebar refresh trigger)");
         var snapshot = await _playlistCache.GetRootlistAsync(ct: ct);
         var summaries = await BuildPlaylistSummariesAsync(snapshot, ct);
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[rootlist] GetUserPlaylistsAsync returned {Count} playlists",
             summaries.Count);
         return summaries;
@@ -178,12 +190,12 @@ public sealed partial class LibraryDataService : ILibraryDataService
         var snapshot = await _playlistCache.TryGetRootlistFromCacheAsync(ct);
         if (snapshot is null)
         {
-            _logger?.LogInformation("[rootlist] TryGetUserPlaylistsFromCacheAsync source=cache MISS");
+            _logger?.LogDebug("[rootlist] TryGetUserPlaylistsFromCacheAsync source=cache MISS");
             return null;
         }
 
         var summaries = await BuildPlaylistSummariesAsync(snapshot, ct);
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[rootlist] TryGetUserPlaylistsFromCacheAsync source=cache HIT returned {Count} playlists",
             summaries.Count);
         return summaries;
@@ -715,7 +727,7 @@ public sealed partial class LibraryDataService : ILibraryDataService
     private async Task<PlaylistDetailDto> GetPlaylistCoreAsync(string playlistId, CancellationToken ct)
     {
         var playlist = await _playlistCache.GetPlaylistAsync(playlistId, ct: ct);
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[session-signals] GetPlaylistCoreAsync: playlist={Id} AvailableSignals.Count={Count} first={First}",
             playlistId, playlist.AvailableSignals?.Count ?? -1,
             playlist.AvailableSignals?.Count > 0 ? playlist.AvailableSignals[0] : "<none>");
@@ -834,7 +846,7 @@ public sealed partial class LibraryDataService : ILibraryDataService
             CanCancelMembership = value.CanCancelMembership,
             CanAbuseReport = value.CanAbuseReport
         };
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[caps] MapCapabilities: isOwner={IsOwner} | raw=[CanView={V},EditItems={EI},EditMeta={EM},Admin={AD},Cancel={CC},Abuse={AB}] | dto=[EditItems={DEI},EditMeta={DEM},Delete={DD},Admin={DAD}]",
             isOwner,
             value.CanView, value.CanEditItems, value.CanEditMetadata, value.CanAdministratePermissions,

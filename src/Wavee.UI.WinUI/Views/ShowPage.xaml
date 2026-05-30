@@ -16,6 +16,7 @@
     xmlns:dtos="using:Wavee.UI.Models"
     xmlns:showEpisode="using:Wavee.UI.WinUI.Controls.ShowEpisode"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:helpers="using:Wavee.UI.WinUI.Helpers"
     helpers:PageEntranceFade.Fade="True"
@@ -218,7 +219,8 @@
                                     <FontIcon Glyph="&#xE93E;" FontSize="64" Opacity="0.3"
                                               HorizontalAlignment="Center" VerticalAlignment="Center"
                                               Visibility="{x:Bind ViewModel.CoverArtUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                    <Image Source="{x:Bind ViewModel.CoverArtUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
+                                    <imaging:CompositionImage ImageUrl="{x:Bind ViewModel.CoverArtUrl, Mode=OneWay}"
+                                           DecodePixelSize="280"
                                            Stretch="UniformToFill"
                                            Visibility="{x:Bind ViewModel.CoverArtUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                                 </Grid>

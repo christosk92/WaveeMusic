@@ -325,6 +325,13 @@ public sealed partial class BaselineHomeCard
 
     private void StopPreviewAudio()
     {
+        // Idempotent: nothing started for this owner means nothing to cancel.
+        // Multiple teardown paths (StopHoverMedia, OnItemChanged, Card_Unloaded,
+        // SetSubscribedItem) all funnel here; without this guard each fired a
+        // redundant CancelOwner on cards that never played a preview.
+        if (!_isPreviewAudioPlaying && !_isPreviewAudioPending)
+            return;
+
         TraceCard("StopPreviewAudio");
         _isPreviewAudioPlaying = false;
         StopPreviewVisualization();

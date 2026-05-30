@@ -58,6 +58,13 @@ public sealed partial class ExtendedMetadataStore : EntityStore<ExtensionRequest
     // a subscribed slot refetches. 1h parity keeps the two tiers in sync.
     protected override TimeSpan Ttl { get; } = TimeSpan.FromHours(1);
 
+    // Startup fans out metadata fetches for hundreds of entities (every library
+    // track plus each opened playlist/artist). The default 64-slot cap caused
+    // constant evict→refetch thrash (the O(n) Count + full eviction sort showed
+    // up in the profile); size the cap to hold the realistic working set. Each
+    // slot holds a small extended-metadata byte[], so ~512 is a few MB.
+    protected override int MaxSlots => 512;
+
     protected override ValueTask<byte[]?> ReadHotAsync(ExtensionRequestKey key)
         => new((byte[]?)null);
 
