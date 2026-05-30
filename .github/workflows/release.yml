@@ -8,8 +8,9 @@ name: Release MSIX
 #       (published as a DRAFT for review — you click Publish to go live).
 #   An explicit version_tag input overrides the ref either way (re-cut / fallback).
 #
-# Merging into a release branch does NOT publish — ci.yml gates merges; a release
-# is cut HERE, deliberately. The version comes from the BRANCH NAME, so there are
+# Merging into a release branch does NOT publish; release branches are PR-gated
+# by the repository ruleset, and a release is cut HERE, deliberately.
+# The version comes from the BRANCH NAME, so there are
 # no version env vars to edit: start a line with release/<X.Y.Z>-<label>, change
 # phase with release/<X.Y.Z>-beta / -rc, ship production by running on master.
 #

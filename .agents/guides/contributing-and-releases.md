@@ -77,7 +77,7 @@ git commit -m "feat: add the thing"
 # 3. Push + PR into the active release branch (NOT master)
 git push -u origin feature/<slug>
 gh pr create --base release/0.1.0-alpha --fill
-gh pr merge --squash --delete-branch          # CI must be green; merge does NOT publish
+gh pr merge --squash --delete-branch          # merge does NOT publish
 
 # 4. Cut a milestone pre-release when it's worth a tester build (DELIBERATE)
 gh workflow run release.yml --ref release/0.1.0-alpha
@@ -105,7 +105,7 @@ forward-merge `master` into `release/0.2.0-alpha` so the fix isn't lost.
 | Publish (go-live) | "Publish draft `vX.Y.Z` now? It goes live to stable and rolls experimental testers onto it." |
 | Hotfix | "Hotfix which shipped version, and what patch tag (`vX.Y.Z+1`)?" |
 
-Routine work — feature/fix PRs into the active release branch and CI — needs **no** gate.
+Routine work — feature/fix PRs into the active release branch — needs **no** release gate.
 Everything that **publishes or changes what testers/users receive** is gated.
 
 ## Don't
@@ -122,8 +122,8 @@ Everything that **publishes or changes what testers/users receive** is gated.
   `windows-11-arm`) → `sign` (both, on x64, Azure Artifact Signing) → `release`
   (GitHub Release + `.appinstaller`; pre-release auto-publishes + refreshes
   `experimental-latest`, production publishes as a draft).
-- **CI:** `.github/workflows/ci.yml` — `PR Build` on PRs into `master` / `release/**`
-  and pushes to work branches (x64 unsigned build). **Tests are omitted for now**; re-add
-  a `dotnet test` step and wire it as a required check on the ruleset when ready.
+- **PR validation:** no branch/PR build workflow is configured. The GitHub ruleset
+  gates `master` and `release/**` by requiring pull requests and blocking force-push /
+  deletion; review/build verification is manual until a useful CI gate is reintroduced.
 - **Signing details:** `signing/README.md`.
 - **Design:** `docs/superpowers/specs/2026-05-30-release-train-design.md`.
