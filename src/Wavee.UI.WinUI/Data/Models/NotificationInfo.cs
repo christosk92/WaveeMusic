@@ -28,6 +28,15 @@ public sealed record NotificationInfo
     public Func<Task>? Action { get; init; }
 
     /// <summary>
+    /// Optional label for a SECONDARY action button, rendered next to <see cref="ActionLabel"/>
+    /// (e.g. a "Report a problem" button shown alongside a primary "Retry"). Rendered only when set.
+    /// </summary>
+    public string? SecondaryActionLabel { get; init; }
+
+    /// <summary>Optional async callback invoked when the secondary action button is clicked.</summary>
+    public Func<Task>? SecondaryAction { get; init; }
+
+    /// <summary>
     /// When <c>true</c> (default), the notification is also recorded in the
     /// activity-bell history. Set <c>false</c> for high-frequency transient
     /// confirmations (e.g. "Added to queue") that would otherwise flood the bell.

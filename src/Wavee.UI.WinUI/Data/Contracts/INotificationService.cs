@@ -15,6 +15,7 @@ public interface INotificationService : INotifyPropertyChanged
     string? Message { get; }
     NotificationSeverity Severity { get; }
     string? ActionLabel { get; }
+    string? SecondaryActionLabel { get; }
     bool IsActionBusy { get; }
 
     /// <summary>
@@ -37,4 +38,9 @@ public interface INotificationService : INotifyPropertyChanged
     /// Invokes the action callback asynchronously. The button is disabled while busy.
     /// </summary>
     Task InvokeActionAsync();
+
+    /// <summary>
+    /// Invokes the secondary action callback asynchronously. The buttons are disabled while busy.
+    /// </summary>
+    Task InvokeSecondaryActionAsync();
 }

@@ -288,9 +288,9 @@ public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchF
         await Launcher.LaunchUriAsync(new Uri("https://github.com/christosk92/WaveeMusic/blob/master/LICENSE"));
     }
 
-    private async void ReportOnGitHub_Click(object sender, RoutedEventArgs e)
+    private async void ReportProblem_Click(object sender, RoutedEventArgs e)
     {
-        await CrashReportPackager.OpenIssueReportAsync();
+        await DiagnosticsReporter.ReportAsync(XamlRoot);
     }
 }
 

@@ -368,6 +368,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
     public string? NotificationMessage => _notificationService.Message;
     public string? NotificationActionLabel => _notificationService.ActionLabel;
+    public string? NotificationSecondaryActionLabel => _notificationService.SecondaryActionLabel;
     public bool HasNotificationAction => _notificationService.ActionLabel != null;
     public bool IsNotificationActionEnabled => !_notificationService.IsActionBusy;
 
@@ -557,6 +558,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             case nameof(INotificationService.ActionLabel):
                 OnPropertyChanged(nameof(NotificationActionLabel));
                 OnPropertyChanged(nameof(HasNotificationAction));
+                break;
+            case nameof(INotificationService.SecondaryActionLabel):
+                OnPropertyChanged(nameof(NotificationSecondaryActionLabel));
                 break;
             case nameof(INotificationService.IsActionBusy):
                 OnPropertyChanged(nameof(IsNotificationActionEnabled));

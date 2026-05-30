@@ -101,10 +101,10 @@
                     <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
                 </controls:SettingsCard>
 
-                <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__SettingsCard_100" Header="Report an issue on GitHub"
-                                       Description="Packages your recent logs into a zip and opens GitHub Issues"
+                <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__SettingsCard_100" Header="Report a problem / export logs"
+                                       Description="Bundles your logs (including the audio engine) into a zip you can send via GitHub or email"
                                        IsClickEnabled="True"
-                                       Click="ReportOnGitHub_Click"
+                                       Click="ReportProblem_Click"
                                        Tag="help">
                     <controls:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE943;"/>

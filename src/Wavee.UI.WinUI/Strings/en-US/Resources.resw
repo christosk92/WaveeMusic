@@ -2878,10 +2878,31 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Wavee recorded a crash marker, but no stacktrace could be loaded.</value>
   </data>
   <data name="Controls_Settings_AboutSettingsSection__SettingsCard_100.Header" xml:space="preserve">
-    <value>Report an issue on GitHub</value>
+    <value>Report a problem / export logs</value>
   </data>
   <data name="Controls_Settings_AboutSettingsSection__SettingsCard_100.Description" xml:space="preserve">
-    <value>Packages your recent logs into a zip and opens GitHub Issues</value>
+    <value>Bundles your logs (including the audio engine) into a zip you can send via GitHub or email</value>
+  </data>
+  <data name="Diagnostics_Report" xml:space="preserve">
+    <value>Report a problem</value>
+  </data>
+  <data name="Diagnostics_ReportTitle" xml:space="preserve">
+    <value>Report a problem</value>
+  </data>
+  <data name="Diagnostics_ReportBody" xml:space="preserve">
+    <value>Your logs (including the audio engine) are bundled and File Explorer has opened with the zip selected. Choose how to send it — then attach the zip.</value>
+  </data>
+  <data name="Diagnostics_ReportBody_NoLogs" xml:space="preserve">
+    <value>No logs were found to bundle yet. You can still open a GitHub issue or email.</value>
+  </data>
+  <data name="Diagnostics_ReportGitHub" xml:space="preserve">
+    <value>Report on GitHub</value>
+  </data>
+  <data name="Diagnostics_ReportEmail" xml:space="preserve">
+    <value>Email logs</value>
+  </data>
+  <data name="Diagnostics_ReportDone" xml:space="preserve">
+    <value>Done</value>
   </data>
   <data name="Controls_Settings_AboutSettingsSection__SettingsExpander_102.Header" xml:space="preserve">
     <value>Privacy</value>

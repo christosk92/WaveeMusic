@@ -35,6 +35,18 @@ public sealed class AudioProcessManager : IAsyncDisposable
     /// </summary>
     public static bool UseVerboseLogging { get; set; }
 
+    /// <summary>
+    /// TEST HOOK — when non-empty, the next AudioHost launch is short-circuited into a
+    /// simulated startup failure so the failure UX (Retry + Report a problem) and the
+    /// diagnostics bundle can be exercised without a real audio fault. Defaults from the
+    /// <c>WAVEE_SIMULATE_AUDIO_FAILURE</c> environment variable. Recognized values:
+    /// <c>"provisioning"</c> (default — mimics the issue #4 native-dependency failure:
+    /// exit code 3 + a bass-win-x64.failure.json marker), <c>"timeout"</c>, <c>"missing-exe"</c>.
+    /// Leave null/empty in production. Remove before shipping.
+    /// </summary>
+    public static string? SimulateStartupFailure { get; set; } =
+        Environment.GetEnvironmentVariable("WAVEE_SIMULATE_AUDIO_FAILURE");
+
     private readonly ILogger? _logger;
     private readonly string _audioHostPath;
     private readonly CancellationTokenSource _cts = new();
@@ -53,6 +65,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private int _restartInProgress; // 0 = idle, 1 = restarting (guards against double-trigger)
     private int _handoffInProgress; // 1 while this UI is handing AudioHost to a replacement UI process
     private Timer? _heartbeatTimer;
+    private int? _lastExitCode; // exit code of the most recent AudioHost exit (diagnostics)
 
     // Demand-driven readiness gate. EnsureConnectedAsync awaits this TCS so callers
     // (e.g. ConnectCommandExecutor at play-time) can join an in-flight restart and
@@ -93,6 +106,16 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private const int HeartbeatTimeoutMs = 10000;
     private long _lastPongTimestamp;
 
+    /// <summary>
+    /// How long the UI waits for a freshly-launched AudioHost to open its pipe. Generous on
+    /// purpose: a cold first run provisions native audio deps (downloads bass.dll, up to a 30s
+    /// HTTP timeout) BEFORE opening the pipe, so the old 10s ceiling killed the host mid-download
+    /// and surfaced "connection timed out" on first run (issue #4 — works once cached, which is
+    /// why already-provisioned machines never see it). A healthy/cached start still connects in
+    /// well under a second. The adopt path uses its own 90s default (see AttachAsync).
+    /// </summary>
+    private static readonly TimeSpan FirstLaunchConnectTimeout = TimeSpan.FromSeconds(60);
+
     private sealed record AudioHostLaunchContext(
         int ParentProcessId,
         string SessionId,
@@ -127,6 +150,25 @@ public sealed class AudioProcessManager : IAsyncDisposable
     /// True if the audio process is running and pipe is connected.
     /// </summary>
     public bool IsRunning => _process is { HasExited: false } && (_proxy?.IsConnected ?? false);
+
+    /// <summary>
+    /// Resolved path to the Wavee.AudioHost executable — the first existing candidate, or the
+    /// primary expected path if none was found. Surfaced for diagnostics bundles.
+    /// </summary>
+    public string AudioHostPath => _audioHostPath;
+
+    /// <summary>
+    /// True if <see cref="AudioHostPath"/> exists on disk. A missing executable is a common
+    /// "cannot connect to the audio engine" root cause. Surfaced for diagnostics bundles.
+    /// </summary>
+    public bool AudioHostExists => !string.IsNullOrEmpty(_audioHostPath) && File.Exists(_audioHostPath);
+
+    /// <summary>
+    /// Exit code of the most recent AudioHost process exit, or null if it has not exited / the
+    /// code could not be read. Exit code 3 is a deterministic native-dependency provisioning
+    /// failure. Surfaced for diagnostics bundles + failure messages.
+    /// </summary>
+    public int? LastExitCode => _lastExitCode;
 
     public AudioProcessManager(ILogger? logger = null)
     {
@@ -400,6 +442,10 @@ public sealed class AudioProcessManager : IAsyncDisposable
     {
         SetState(AudioProcessState.Connecting, "Starting audio engine...");
 
+        // TEST HOOK: simulate a startup failure (issue #4 repro) before any real launch.
+        if (!string.IsNullOrWhiteSpace(SimulateStartupFailure))
+            SimulateStartupFailureAndThrow(SimulateStartupFailure!);
+
         _pipeName = $"WaveeAudio_{Environment.ProcessId}_{Guid.NewGuid():N}";
         _launchContext = new AudioHostLaunchContext(
             Environment.ProcessId,
@@ -465,12 +511,12 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
         try
         {
-            _logger?.LogDebug("Connecting to audio host pipe...");
-            await pipeClient.ConnectAsync((int)TimeSpan.FromSeconds(10).TotalMilliseconds, ct);
+            _logger?.LogDebug("Connecting to audio host pipe (timeout {Seconds}s)...", FirstLaunchConnectTimeout.TotalSeconds);
+            await pipeClient.ConnectAsync((int)FirstLaunchConnectTimeout.TotalMilliseconds, ct);
         }
         catch (TimeoutException)
         {
-            _logger?.LogError("Pipe connection timed out after 10s");
+            _logger?.LogError("Pipe connection timed out after {Seconds}s", FirstLaunchConnectTimeout.TotalSeconds);
             SetState(AudioProcessState.Failed, "Audio engine connection timed out");
             await KillProcessAsync();
             throw;
@@ -575,6 +621,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
         var exitCode = -1;
         try { exitCode = _process?.ExitCode ?? -1; } catch { }
+        _lastExitCode = exitCode;
 
         _logger?.LogWarning("Audio host process exited (code={ExitCode}, restarts={Restarts}/{Max})",
             exitCode, _restartCount, MaxRestartAttempts);
@@ -656,6 +703,54 @@ public sealed class AudioProcessManager : IAsyncDisposable
         {
             _logger?.LogDebug(ex, "Error scanning native-deps failure markers");
             return null;
+        }
+    }
+
+    // ── TEST HOOK: simulated startup failure (remove before shipping) ──
+
+    private void SimulateStartupFailureAndThrow(string mode)
+    {
+        _logger?.LogWarning("[SIMULATION] Forcing AudioHost startup failure (mode={Mode})", mode);
+        string message;
+        switch (mode.Trim().ToLowerInvariant())
+        {
+            case "timeout":
+                _lastExitCode = null;
+                message = "Audio engine connection timed out";
+                break;
+            case "missing-exe":
+                _lastExitCode = null;
+                message = $"Audio host not found: {_audioHostPath}";
+                break;
+            default: // "provisioning" (and any other value) — mimic the issue #4 native-dep failure
+                WriteSimulatedProvisioningMarker();
+                _lastExitCode = ProvisioningFailedExitCode;
+                message = "Windows x64 BASS setup failed: Download failed (network) [SIMULATED]. Check your connection and click Retry.";
+                break;
+        }
+        SetState(AudioProcessState.Failed, message);
+        SignalReadiness(false);
+        throw new InvalidOperationException($"[SIMULATION] AudioHost startup failure: {mode}");
+    }
+
+    /// <summary>Writes a native-dep failure marker (left on disk) so the diagnostics bundle picks it up.</summary>
+    private void WriteSimulatedProvisioningMarker()
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Wavee", "NativeDeps");
+            Directory.CreateDirectory(dir);
+            var json =
+                "{\"displayName\":\"Windows x64 BASS\",\"libraryName\":\"bass\"," +
+                "\"reason\":\"Download failed (network) [SIMULATED]\"," +
+                $"\"timestampUtc\":\"{DateTime.UtcNow:O}\",\"simulated\":true}}";
+            File.WriteAllText(Path.Combine(dir, "bass-win-x64.failure.json"), json);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "[SIMULATION] failed to write provisioning marker");
         }
     }
 
