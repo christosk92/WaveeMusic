@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
@@ -36,6 +37,14 @@ public static class NavCacheSurfaces
     // tabs, not the cumulative session count.
     private static readonly object _registryLock = new();
     private static readonly List<WeakReference<Shimmer>> _shimmerRegistry = new(64);
+
+    // Per-page applied-state cache so a nav doesn't re-walk a page's entire
+    // realized visual tree when it's already in the requested release/restore
+    // state. Keyed weakly on the page so eviction drops the entry. (The full
+    // tree walk — VisualTreeHelper traversal of every cached page on every nav —
+    // showed up as ~1.4% CPU / 266 samples in the homepage profile.)
+    private sealed class PageSurfaceState { public bool HasState; public bool Released; }
+    private static readonly ConditionalWeakTable<DependencyObject, PageSurfaceState> _pageStates = new();
 
     /// <summary>
     /// Walks the realized visual tree under <paramref name="root"/> and invokes
@@ -87,12 +96,36 @@ public static class NavCacheSurfaces
     }
 
     /// <summary>Releases every participant under <paramref name="root"/> and
-    /// silences every <see cref="Shimmer"/> animation.</summary>
-    public static int ReleaseAll(DependencyObject? root) => Walk(root, release: true);
+    /// silences every <see cref="Shimmer"/> animation. Skips the tree walk when
+    /// the page is already in the released state.</summary>
+    public static int ReleaseAll(DependencyObject? root)
+    {
+        if (root is null)
+            return 0;
+        var state = _pageStates.GetOrCreateValue(root);
+        if (state.HasState && state.Released)
+            return 0; // already released — don't re-walk the whole tree
+        var count = Walk(root, release: true);
+        state.HasState = true;
+        state.Released = true;
+        return count;
+    }
 
     /// <summary>Restores every participant under <paramref name="root"/> and
-    /// re-activates every <see cref="Shimmer"/> animation.</summary>
-    public static int RestoreAll(DependencyObject? root) => Walk(root, release: false);
+    /// re-activates every <see cref="Shimmer"/> animation. Skips the tree walk
+    /// when the page is already in the restored state.</summary>
+    public static int RestoreAll(DependencyObject? root)
+    {
+        if (root is null)
+            return 0;
+        var state = _pageStates.GetOrCreateValue(root);
+        if (state.HasState && !state.Released)
+            return 0; // already restored — don't re-walk the whole tree
+        var count = Walk(root, release: false);
+        state.HasState = true;
+        state.Released = false;
+        return count;
+    }
 
     /// <summary>
     /// Sums <see cref="INavCacheSurfaceParticipant.EstimatedSurfaceBytes"/> over

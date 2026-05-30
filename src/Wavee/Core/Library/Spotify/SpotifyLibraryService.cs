@@ -431,7 +431,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
             );
 
             await _database.UpsertPlaylistAsync(spotifyPlaylist, ct);
-            _logger?.LogInformation(
+            _logger?.LogDebug(
                 "[rootlist] db.UpsertPlaylist {Uri} title=\"{Title}\"",
                 uri, decoration?.Name ?? "<unknown>");
             processed++;
@@ -1349,7 +1349,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     {
         try
         {
-            _logger?.LogInformation(
+            _logger?.LogDebug(
                 "[playlist-diff] OnPlaylistChangedAsync {Uri} reason=dealer-push",
                 changeEvent.PlaylistUri);
 
@@ -1361,7 +1361,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
             var refetchedRevB64 = playlist.Revision?.Length > 0
                 ? Convert.ToBase64String(playlist.Revision.ToByteArray())
                 : "<none>";
-            _logger?.LogInformation(
+            _logger?.LogDebug(
                 "[playlist-diff] OnPlaylistChangedAsync re-fetched {Uri} rev={Rev} length={Length}",
                 changeEvent.PlaylistUri, refetchedRevB64, playlist.Length);
 
@@ -1393,7 +1393,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
 
             await _database.UpsertPlaylistAsync(spotifyPlaylist);
 
-            _logger?.LogInformation(
+            _logger?.LogDebug(
                 "[playlist-diff] OnPlaylistChangedAsync db.UpsertPlaylist {Uri} name=\"{Name}\" tracks={TrackCount}",
                 changeEvent.PlaylistUri, spotifyPlaylist.Name, spotifyPlaylist.TrackCount);
         }

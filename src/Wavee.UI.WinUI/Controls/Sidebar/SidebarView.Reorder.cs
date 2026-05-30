@@ -62,7 +62,7 @@ public sealed partial class SidebarView
     {
         if (!edgeOnly) { ClearReorderGap(animate: true); return; }
         var repeater = FindParentRepeater(targetRow);
-        System.Diagnostics.Debug.WriteLine(
+        Wavee.UI.Diagnostics.UiTrace.Line(
             $"[sbreorder] UpdateReorderGap edgeOnly={edgeOnly} parentRepeaterNull={repeater is null}");
         if (repeater is null) { ClearReorderGap(animate: true); return; }
         double pointerY;
@@ -75,7 +75,7 @@ public sealed partial class SidebarView
 
     private void OnSurfaceDragOver(object sender, DragEventArgs e)
     {
-        System.Diagnostics.Debug.WriteLine(
+        Wavee.UI.Diagnostics.UiTrace.Line(
             $"[sbreorder] SurfaceDragOver handled={e.Handled} reorderable={IsReorderablePayload()} gapRepeaterNull={_gapRepeater is null}");
         // A row under the pointer already handled it (over-row case) → nothing to do.
         if (e.Handled) return;
@@ -166,7 +166,7 @@ public sealed partial class SidebarView
         if (rows.Count == 0) return;
 
         var insertion = ResolveInsertionIndex(pointerY, rows);
-        System.Diagnostics.Debug.WriteLine(
+        Wavee.UI.Diagnostics.UiTrace.Line(
             $"[sbreorder] OpenGap rows={rows.Count} insertion={insertion} prev={_reorderGapInsertion}");
         if (insertion == _reorderGapInsertion) return; // idempotent — no re-spring per tick
         _reorderGapInsertion = insertion;

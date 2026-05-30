@@ -33,6 +33,7 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
     [Conditional("DEBUG")]
     private void TraceCanvas(string message)
     {
+        if (!Wavee.UI.Diagnostics.UiTrace.Verbose) return;
         Debug.WriteLine(
             $"[SharedCardCanvasPreviewService] {message} | " +
             $"activeLease={_activeLease?.Id.ToString() ?? "<null>"} " +
@@ -220,9 +221,12 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
         // holds a single reference and will drop it if the card is unrealized.
         // (Do NOT Dispose the internal MediaPlayer either — it's owned by the
         //  element and disposing externally crashes the renderer.)
-
-        _activeLease = null;
-        _activeHost = null;
+        //
+        // Deliberately KEEP _activeLease / _activeHost. Nulling them here defeated
+        // AcquireOnUi's resume fast-path, so re-hovering the SAME card recreated
+        // the MediaSource (100–300ms MediaFoundation init) on every exit→re-enter.
+        // Leaving them set lets a re-hover just resume the paused player; a
+        // different host or URL overwrites them in AcquireOnUi.
     }
 
     private void EnsurePlayerElementOnUi()

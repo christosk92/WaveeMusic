@@ -20,6 +20,12 @@ public static class ImageFallbackBehavior
     // ConditionalWeakTable to store callback tokens without preventing GC of Image controls
     private static readonly ConditionalWeakTable<Image, CallbackTokenHolder> _callbackTokens = new();
 
+    // Tracks the one-shot Loaded retry handler per Image so repeated AnimateFadeIn
+    // calls (recycled virtualized containers re-assign Source before they load)
+    // don't stack duplicate handlers — each would re-fire the fade when Loaded
+    // finally arrives. Weakly keyed so it never roots the Image.
+    private static readonly ConditionalWeakTable<Image, RoutedEventHandler> _pendingLoadedRetries = new();
+
     // Helper class to hold the callback token
     private sealed class CallbackTokenHolder
     {
@@ -138,6 +144,14 @@ public static class ImageFallbackBehavior
                 {
                     image.UnregisterPropertyChangedCallback(Image.SourceProperty, holder.Token);
                     _callbackTokens.Remove(image);
+                }
+
+                // Drop any pending one-shot Loaded retry so it can't fire on a
+                // detached / recycled image.
+                if (_pendingLoadedRetries.TryGetValue(image, out var pendingLoaded))
+                {
+                    image.Loaded -= pendingLoaded;
+                    _pendingLoadedRetries.Remove(image);
                 }
 
                 // Reset opacity to ensure image is visible
@@ -262,12 +276,22 @@ public static class ImageFallbackBehavior
         // If it isn't yet, hook Loaded once and retry from there.
         if (!image.IsLoaded || image.XamlRoot is null)
         {
-            void OnLoaded(object sender, RoutedEventArgs e)
+            // Already waiting on Loaded for this image — don't stack a second
+            // handler. Recycled list containers re-enter here (new Source before
+            // they're loaded); without this guard every pass added another
+            // handler and they ALL re-fired the fade once Loaded arrived.
+            if (_pendingLoadedRetries.TryGetValue(image, out _))
+                return;
+
+            RoutedEventHandler? handler = null;
+            handler = (sender, e) =>
             {
-                image.Loaded -= OnLoaded;
+                image.Loaded -= handler;
+                _pendingLoadedRetries.Remove(image);
                 AnimateFadeIn(image);
-            }
-            image.Loaded += OnLoaded;
+            };
+            _pendingLoadedRetries.AddOrUpdate(image, handler);
+            image.Loaded += handler;
             return;
         }
 

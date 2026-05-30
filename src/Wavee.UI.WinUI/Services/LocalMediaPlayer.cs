@@ -79,7 +79,7 @@ public sealed partial class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IV
         _positionTimer = _dispatcher.CreateTimer();
         _positionTimer.Interval = TimeSpan.FromMilliseconds(PositionPublishIntervalMs);
         _positionTimer.IsRepeating = true;
-        _positionTimer.Tick += (_, _) => PublishStateFromSession();
+        _positionTimer.Tick += OnPositionTimerTick;
     }
 
     /// <summary>The underlying MediaPlayer. Bind a MediaPlayerElement's
@@ -574,6 +574,9 @@ public sealed partial class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IV
         return tcs.Task;
     }
 
+    private void OnPositionTimerTick(DispatcherQueueTimer sender, object args)
+        => PublishStateFromSession();
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -581,6 +584,7 @@ public sealed partial class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IV
         try
         {
             _positionTimer.Stop();
+            _positionTimer.Tick -= OnPositionTimerTick;
             _player.PlaybackSession.PlaybackStateChanged -= OnPlaybackStateChanged;
             _player.PlaybackSession.NaturalDurationChanged -= OnDurationChanged;
             _player.MediaEnded -= OnMediaEnded;
@@ -595,5 +599,11 @@ public sealed partial class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IV
         _stateSubject.OnCompleted();
         _trackFinishedSubject.OnCompleted();
         _errorSubject.OnCompleted();
+        _surfaceChangesSubject.OnCompleted();
+
+        _stateSubject.Dispose();
+        _trackFinishedSubject.Dispose();
+        _errorSubject.Dispose();
+        _surfaceChangesSubject.Dispose();
     }
 }

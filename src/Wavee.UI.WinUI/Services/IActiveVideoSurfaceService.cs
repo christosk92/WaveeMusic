@@ -23,7 +23,7 @@ namespace Wavee.UI.WinUI.Services;
 /// glitch-free.
 /// </para>
 /// </remarks>
-public interface IActiveVideoSurfaceService
+public interface IActiveVideoSurfaceService : IDisposable
 {
     /// <summary>The active provider, or null if no provider is currently active.</summary>
     IVideoSurfaceProvider? ActiveProvider { get; }

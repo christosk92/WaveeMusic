@@ -763,7 +763,7 @@ public sealed partial class PlaylistTrackListViewModel
         if (options is { Count: > 0 })
         {
             var chipDump = string.Join(" | ", options.Select(o => $"{o.OptionKey}[{o.DisplayName}]→{o.SignalIdentifier ?? "<null>"}"));
-            _logger?.LogInformation(
+            _logger?.LogDebug(
                 "[session-control-chips] playlist={PlaylistId} options: {Chips}",
                 PlaylistId, chipDump);
         }

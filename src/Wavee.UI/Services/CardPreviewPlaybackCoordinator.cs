@@ -75,6 +75,7 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
     [Conditional("DEBUG")]
     private void TraceCoordinator(string message)
     {
+        if (!Wavee.UI.Diagnostics.UiTrace.Verbose) return;
         Debug.WriteLine(
             $"[CardPreviewPlaybackCoordinator] {message} | " +
             $"pendingOwner={_pendingOwnerId?.ToString() ?? "<null>"} pendingVersion={_pendingOwnerVersion} " +

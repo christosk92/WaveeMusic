@@ -109,6 +109,7 @@ public sealed partial class BaselineHomeCard : UserControl
     [Conditional("DEBUG")]
     private void TraceCard(string message)
     {
+        if (!Wavee.UI.Diagnostics.UiTrace.Verbose) return;
         Debug.WriteLine(
             $"[BaselineHomeCard:{GetHashCode():x8}] {message} | " +
             $"title='{Item?.Title ?? "<null>"}' loaded={IsLoaded} pointer={_isPointerOver} " +
@@ -123,8 +124,9 @@ public sealed partial class BaselineHomeCard : UserControl
         card.SetSubscribedItem(e.OldValue as HomeSectionItem, e.NewValue as HomeSectionItem);
         card._previewTrackIndex = 0;
         card.CancelPreviewTransition(resetMotionHosts: true);
+        // StopHoverMedia already calls StopPreviewAudio — no second call needed
+        // (the StopPreviewAudio guard makes any stray duplicate a cheap no-op).
         card.StopHoverMedia(deferCanvasTeardown: false);
-        card.StopPreviewAudio();
         card.UpdateFromItem();
         if (card._highlightService != null)
         {

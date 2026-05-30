@@ -676,7 +676,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             _ = Header.RefreshFollowedStateAsync(PlaylistId);
         }
 
-        _logger?.LogInformation(
+        _logger?.LogDebug(
             "[caps] VM ApplyDetail '{Id}': IsOwner={IsOwner} BasePerm={Base} | dto.Caps=[EditItems={EI},EditMeta={EM},Delete={DD},Admin={AD}] | VM gates=[CanEditName={CEN},CanEditDescription={CED},CanEditPicture={CEP},CanEditCollab={CEC},CanDelete={CD}]",
             PlaylistId, Header.IsOwner, Header.BasePermission,
             detail.Capabilities.CanEditItems, detail.Capabilities.CanEditMetadata,

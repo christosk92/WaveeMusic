@@ -45,6 +45,12 @@
 		     throughput. -->
 		<ServerGarbageCollection>false</ServerGarbageCollection>
 		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+		<!-- Keep freed GC segments mapped instead of decommitting them to the OS
+		     between collections. Navigation traces show large per-nav page-fault
+		     deltas (pageFaultsDelta in the [nav] stage logs); retaining the VM
+		     avoids the decommit -> re-fault churn that lengthens the tail of every
+		     GC pause on this image-heavy, bursty-allocation workload. -->
+		<RetainVMGarbageCollection>true</RetainVMGarbageCollection>
 
 		<!-- Required by Microsoft's official Windows AI APIs guide:
 		     https://learn.microsoft.com/en-us/windows/ai/apis/get-started
@@ -309,10 +315,10 @@
 	</Target>
 
 	<!-- WinUI AppX packaging copies <Content> items from referenced projects twice:
-	     once flattened to the AppX root (e.g. AppX\Assets\Wiki82.profile.xml) which
+	     once flattened to the AppX root (e.g. AppX\Assets\Core14.profile.xml) which
 	     PathHelper reads via AppContext.BaseDirectory\Assets\*, and once preserved
 	     under the per-project subfolder (e.g. AppX\Wavee.Controls.Lyrics\Assets\...).
-	     The nested Assets copies are dead weight — ~14.6 MB for Wiki82.profile.xml alone.
+	     The nested Assets copies are dead weight — ~2.4 MB for Core14.profile.xml alone.
 
 	     IMPORTANT: do NOT delete the entire AppX\Wavee.Controls.Lyrics\ folder. That
 	     folder also contains the compiled per-assembly XAML (.xbf files for
@@ -323,9 +329,9 @@
 	     safe to delete. -->
 	<Target Name="RemoveDuplicateReferencedProjectAssets" AfterTargets="CopyFilesToOutputDirectory;_GenerateProjectPriFileCore">
 		<ItemGroup>
-			<_OrphanAssetFiles Include="$(OutputPath)Wavee.Controls.Lyrics\Assets\Wiki82.profile.xml" />
+			<_OrphanAssetFiles Include="$(OutputPath)Wavee.Controls.Lyrics\Assets\Core14.profile.xml" />
 			<_OrphanAssetFiles Include="$(OutputPath)Wavee.Controls.Lyrics\Assets\AlbumArtPlaceholder.png" />
-			<_OrphanAssetFiles Include="$(OutputPath)AppX\Wavee.Controls.Lyrics\Assets\Wiki82.profile.xml" />
+			<_OrphanAssetFiles Include="$(OutputPath)AppX\Wavee.Controls.Lyrics\Assets\Core14.profile.xml" />
 			<_OrphanAssetFiles Include="$(OutputPath)AppX\Wavee.Controls.Lyrics\Assets\AlbumArtPlaceholder.png" />
 		</ItemGroup>
 		<Delete Files="@(_OrphanAssetFiles)" Condition="Exists('%(Identity)')" />
