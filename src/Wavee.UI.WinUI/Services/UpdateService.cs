@@ -55,41 +55,63 @@ public sealed partial class UpdateService : IUpdateService
         // Restore last checked time
         _lastChecked = _settingsService.Settings.LastUpdateCheck;
 
-        // Fire-and-forget initial check after a short delay to let the app settle.
-        _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(async _ =>
+        // Fire-and-forget initial check after a short delay to let the app settle. The work
+        // lives in an async method (not Task.Delay(...).ContinueWith(async _ => ...)) so the
+        // inner task's exceptions are observed there instead of being rethrown by the finalizer
+        // as an unobserved task exception.
+        _ = RunStartupUpdateChecksAsync();
+    }
+
+    private async Task RunStartupUpdateChecksAsync()
+    {
+        // Detached startup flow. Every fault is caught and logged here so it can never escape
+        // as an unobserved task exception. UI-affecting work marshals to the UI thread on its own
+        // (PropertyChanged via SetField, toasts via NotificationService.Show), so the awaits
+        // intentionally do not capture context.
+        try
         {
+            // Let the app settle before the first check.
+            await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+
             // GitHub-sourced version/changelog drives the Settings "what's new" surface
             // regardless of how the app was installed.
-            await CheckForUpdateAsync();
+            await CheckForUpdateAsync().ConfigureAwait(false);
 
             switch (Distribution)
             {
                 case DistributionMode.Sideloaded:
                     // Real auto-update path: Windows App Installer silently downloads + stages
                     // the new MSIX from the .appinstaller; this nudges the user to restart.
-                    await CheckPackageUpdateAsync();
+                    await CheckPackageUpdateAsync().ConfigureAwait(false);
                     break;
                 case DistributionMode.Unpackaged:
                     // Dev build — no in-place update channel; point at the release page if newer.
                     if (IsUpdateAvailable)
-                    {
-                        _notificationService?.Show(new NotificationInfo
-                        {
-                            Message = AppLocalization.Format("Update_AvailableMessage", LatestVersion),
-                            Severity = NotificationSeverity.Informational,
-                            AutoDismissAfter = TimeSpan.FromSeconds(8),
-                            ActionLabel = AppLocalization.GetString("Update_View"),
-                            Action = async () =>
-                            {
-                                if (ReleaseUrl != null)
-                                    await Windows.System.Launcher.LaunchUriAsync(new Uri(ReleaseUrl));
-                            }
-                        });
-                    }
+                        ShowUpdateAvailableNudge();
                     break;
                 // Store: the Microsoft Store handles updates; no in-app nudge.
             }
-        }, TaskScheduler.Default);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Startup update check failed");
+        }
+    }
+
+    private void ShowUpdateAvailableNudge()
+    {
+        _notificationService?.Show(new NotificationInfo
+        {
+            Message = AppLocalization.Format("Update_AvailableMessage", LatestVersion),
+            Severity = NotificationSeverity.Informational,
+            AutoDismissAfter = TimeSpan.FromSeconds(8),
+            ActionLabel = AppLocalization.GetString("Update_View"),
+            Action = async () =>
+            {
+                if (ReleaseUrl != null)
+                    await Windows.System.Launcher.LaunchUriAsync(new Uri(ReleaseUrl));
+            }
+        });
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -242,6 +264,8 @@ public sealed partial class UpdateService : IUpdateService
             Status = UpdateStatus.Error;
             ErrorMessage = ex.Message;
 
+            // Safe from the startup threadpool continuation: NotificationService.Show marshals
+            // to the UI thread itself.
             _notificationService?.Show(new NotificationInfo
             {
                 Message = AppLocalization.GetString("Update_CheckFailed"),
@@ -301,16 +325,10 @@ public sealed partial class UpdateService : IUpdateService
             "MSIX update staged via .appinstaller; prompting restart (availability={Availability})",
             availability);
 
-        // Setting IsRestartUpdateReady raises PropertyChanged that an x:Bind on the Settings
-        // About page consumes, and Show posts a toast — both touch XAML. This method is usually
-        // resumed on a threadpool thread (the post-launch check enters without a UI
-        // SynchronizationContext), so off-thread XAML access would throw RPC_E_WRONG_THREAD.
-        // Marshal to the UI thread (matches the documented hazard in SettingsViewModel).
-        var dispatcher = MainWindow.Instance?.DispatcherQueue;
-        if (dispatcher is null || dispatcher.HasThreadAccess)
-            ShowRestartReadyNudge();
-        else
-            dispatcher.TryEnqueue(ShowRestartReadyNudge);
+        // Safe from the threadpool continuation: ShowRestartReadyNudge sets IsRestartUpdateReady
+        // (its PropertyChanged is marshalled to the UI thread by SetField) and posts a toast
+        // (NotificationService.Show marshals itself).
+        ShowRestartReadyNudge();
     }
 
     private void ShowRestartReadyNudge()
@@ -482,7 +500,26 @@ public sealed partial class UpdateService : IUpdateService
     {
         if (Equals(field, value)) return false;
         field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        RaisePropertyChanged(propertyName);
         return true;
+    }
+
+    // PropertyChanged feeds x:Bind on the Settings About page, so it must reach those bindings
+    // on the UI thread. The startup update check runs as a detached continuation on the thread
+    // pool (no UI SynchronizationContext); raising the event there would set DependencyObject
+    // properties (e.g. SettingsExpander.Description bound to Status) off-thread and throw
+    // RPC_E_WRONG_THREAD (0x8001010E). Marshal when not already on the UI thread. (Before
+    // MainWindow exists nothing is bound, so a direct raise is harmless.)
+    private void RaisePropertyChanged(string? propertyName)
+    {
+        var handler = PropertyChanged;
+        if (handler is null)
+            return;
+
+        var dispatcher = MainWindow.Instance?.DispatcherQueue;
+        if (dispatcher is null || dispatcher.HasThreadAccess)
+            handler(this, new PropertyChangedEventArgs(propertyName));
+        else
+            dispatcher.TryEnqueue(() => handler(this, new PropertyChangedEventArgs(propertyName)));
     }
 }
