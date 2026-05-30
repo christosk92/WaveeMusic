@@ -88,8 +88,11 @@ internal sealed class NativeLibraryProvisioner
             try { File.Delete(cachePath); } catch { /* will fail later if the file is locked */ }
         }
 
-        // 4-7. Download + extract + verify, with one retry on hash mismatch.
-        const int maxAttempts = 2;
+        // 4-7. Download + extract + verify, retrying transient failures (network / HTTP / hash
+        // mismatch). First-run provisioning is the only window where this runs, and a single
+        // transient blip here means the audio engine never comes up at all (issue #4), so a few
+        // backed-off retries are worth it.
+        const int maxAttempts = 3;
         Exception? lastException = null;
         string? lastReason = null;
 
@@ -109,12 +112,18 @@ internal sealed class NativeLibraryProvisioner
             lastException = ex;
             lastReason = reason;
 
-            // Only retry on integrity-mismatch (deterministic enough that one more pull might help
-            // if the CDN served a stale response). Network errors get one attempt.
-            if (attempt < maxAttempts && reason == FailureReasons.IntegrityMismatch)
+            // Retry transient failures: an integrity mismatch (CDN served a stale/partial response)
+            // or a network/HTTP error (a first-run blip, a slow link, a momentarily blocked host).
+            // Layout/extract/move errors are deterministic and not worth retrying.
+            var transient = reason is FailureReasons.IntegrityMismatch
+                or FailureReasons.NetworkError
+                or FailureReasons.HttpError;
+            if (attempt < maxAttempts && transient)
             {
-                _logger.LogWarning("Retrying native dependency download after integrity failure (attempt {N}/{Max})",
-                    attempt + 1, maxAttempts);
+                _logger.LogWarning("Retrying native dependency download after transient failure '{Reason}' (attempt {N}/{Max})",
+                    reason, attempt + 1, maxAttempts);
+                try { await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
                 continue;
             }
             break;

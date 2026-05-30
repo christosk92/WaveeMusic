@@ -69,13 +69,22 @@
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                            FontSize="14"/>
 
-                <Button x:Name="ActionButton"
-                        Grid.Column="2"
-                        VerticalAlignment="Center"
-                        MinHeight="32"
-                        Padding="12,4"
-                        Visibility="Collapsed"
-                        Click="OnActionClick"/>
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Center">
+                    <Button x:Name="SecondaryActionButton"
+                            MinHeight="32"
+                            Padding="12,4"
+                            Visibility="Collapsed"
+                            Style="{ThemeResource SubtleButtonStyle}"
+                            Click="OnSecondaryActionClick"/>
+                    <Button x:Name="ActionButton"
+                            MinHeight="32"
+                            Padding="12,4"
+                            Visibility="Collapsed"
+                            Click="OnActionClick"/>
+                </StackPanel>
 
                 <Button x:Uid="Controls_Notifications_NotificationToast__Auto_600" x:Name="CloseButton"
                         Grid.Column="3"

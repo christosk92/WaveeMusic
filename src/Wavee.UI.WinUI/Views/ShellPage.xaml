@@ -140,8 +140,10 @@
             Message="{x:Bind ViewModel.NotificationMessage, Mode=OneWay}"
             Severity="{x:Bind ViewModel.NotificationSeverity, Mode=OneWay}"
             ActionLabel="{x:Bind ViewModel.NotificationActionLabel, Mode=OneWay}"
+            SecondaryActionLabel="{x:Bind ViewModel.NotificationSecondaryActionLabel, Mode=OneWay}"
             IsActionEnabled="{x:Bind ViewModel.IsNotificationActionEnabled, Mode=OneWay}"
             ActionClick="NotificationAction_Click"
+            SecondaryActionClick="NotificationSecondaryAction_Click"
             CloseRequested="Notification_CloseRequested"/>
 
         <!-- Browser-style zoom HUD. Pops in top-center on Ctrl+/-/0 (or when

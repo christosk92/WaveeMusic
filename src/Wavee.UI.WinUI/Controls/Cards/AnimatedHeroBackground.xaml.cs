@@ -51,6 +51,11 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
     // the DP, which throws when accessed off the dispatcher.
     private float _clipRadius;
     private bool _navCacheReleased;
+    private bool _renderFailed;
+    // Cached on the UI thread (construction) so the render-thread OnDraw failure path can
+    // marshal back without touching DependencyObject.DispatcherQueue off-thread (which throws).
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcher =
+        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
     public Color PrimaryColor
     {
@@ -196,39 +201,62 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
 
     private void OnDraw(ICanvasAnimatedControl sender, CanvasAnimatedDrawEventArgs args)
     {
-        var width = (int)sender.ConvertDipsToPixels((float)sender.Size.Width, CanvasDpiRounding.Round);
-        var height = (int)sender.ConvertDipsToPixels((float)sender.Size.Height, CanvasDpiRounding.Round);
-        if (width <= 0 || height <= 0)
+        if (_renderFailed)
             return;
 
-        _effect.ConstantBuffer = new MeshGradientShader(
-            (float)args.Timing.TotalTime.TotalSeconds,
-            new int2(width, height),
-            _primary,
-            _accent);
-
-        // Clip the shader output to the rounded card shape inside Win2D itself.
-        // SwapChainPanel content (CanvasAnimatedControl's swap chain) does NOT honour
-        // composition clips applied to ancestors OR to its own visual — the swap chain
-        // is presented separately by DComp on top of the WinUI tree. The only reliable
-        // way to round the shader is to draw it inside a CanvasDrawingSession layer
-        // bound by a rounded-rect CanvasGeometry, so the back buffer itself is rounded
-        // (corners stay transparent from ClearColor=Transparent and blend with the
-        // page background). _clipRadius is cached on the UI thread — reading the DP
-        // from this render-thread callback would throw.
-        var radius = _clipRadius;
-        if (radius > 0)
+        try
         {
-            var rect = new Rect(0, 0, sender.Size.Width, sender.Size.Height);
-            using var clipGeometry = CanvasGeometry.CreateRoundedRectangle(args.DrawingSession, rect, radius, radius);
-            using (args.DrawingSession.CreateLayer(1f, clipGeometry))
+            var width = (int)sender.ConvertDipsToPixels((float)sender.Size.Width, CanvasDpiRounding.Round);
+            var height = (int)sender.ConvertDipsToPixels((float)sender.Size.Height, CanvasDpiRounding.Round);
+            if (width <= 0 || height <= 0)
+                return;
+
+            _effect.ConstantBuffer = new MeshGradientShader(
+                (float)args.Timing.TotalTime.TotalSeconds,
+                new int2(width, height),
+                _primary,
+                _accent);
+
+            // Clip the shader output to the rounded card shape inside Win2D itself.
+            // SwapChainPanel content (CanvasAnimatedControl's swap chain) does NOT honour
+            // composition clips applied to ancestors OR to its own visual — the swap chain
+            // is presented separately by DComp on top of the WinUI tree. The only reliable
+            // way to round the shader is to draw it inside a CanvasDrawingSession layer
+            // bound by a rounded-rect CanvasGeometry, so the back buffer itself is rounded
+            // (corners stay transparent from ClearColor=Transparent and blend with the
+            // page background). _clipRadius is cached on the UI thread — reading the DP
+            // from this render-thread callback would throw.
+            var radius = _clipRadius;
+            if (radius > 0)
+            {
+                var rect = new Rect(0, 0, sender.Size.Width, sender.Size.Height);
+                using var clipGeometry = CanvasGeometry.CreateRoundedRectangle(args.DrawingSession, rect, radius, radius);
+                using (args.DrawingSession.CreateLayer(1f, clipGeometry))
+                {
+                    args.DrawingSession.DrawImage(_effect);
+                }
+            }
+            else
             {
                 args.DrawingSession.DrawImage(_effect);
             }
         }
-        else
+        catch (System.Exception ex)
         {
-            args.DrawingSession.DrawImage(_effect);
+            // No usable graphics device / shader pipeline (GPU-less VM, RDP, driver fault).
+            // Disable the animated layer and fall back to whatever the consumer paints behind
+            // it, rather than letting the failure escape the Win2D render thread and crash the
+            // process with a stowed exception. One-shot: stop the loop and collapse the surface.
+            _renderFailed = true;
+            System.Diagnostics.Debug.WriteLine($"[AnimatedHeroBackground] shader render failed, disabling: {ex}");
+            _dispatcher?.TryEnqueue(() =>
+            {
+                if (PART_Canvas is { } canvas)
+                {
+                    canvas.Paused = true;
+                    canvas.Visibility = Visibility.Collapsed;
+                }
+            });
         }
     }
 

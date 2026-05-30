@@ -1091,6 +1091,12 @@ public static class AppLifecycleHelper
     {
         try
         {
+            // TEST: uncomment to simulate the issue #4 audio-engine failure so the
+            // failure toast (Retry + Report a problem) and the diagnostics bundle can be
+            // exercised. Re-comment (or clear) to restore real audio. Also settable via the
+            // WAVEE_SIMULATE_AUDIO_FAILURE env var ("provisioning" | "timeout" | "missing-exe").
+            //Wavee.AudioIpc.AudioProcessManager.SimulateStartupFailure = "provisioning";
+
             InitializeTrackMetadataEnricher(session, logger);
 
             _audioProcessManager = new Wavee.AudioIpc.AudioProcessManager(logger);
@@ -1156,6 +1162,7 @@ public static class AppLifecycleHelper
                             break;
 
                         case Wavee.AudioIpc.AudioProcessState.Failed:
+                            var audioFailureMessage = message;
                             notifService?.Show(new Data.Models.NotificationInfo
                             {
                                 Message = message,
@@ -1168,7 +1175,13 @@ public static class AppLifecycleHelper
                                         await _audioProcessManager.StopAsync();
                                         await InitializeOutOfProcessAudioAsync(session, logger);
                                     }
-                                }
+                                },
+                                // One-click path to a complete diagnostics bundle (incl. the
+                                // AudioHost log) so this exact failure can be reported. The
+                                // failure text seeds the issue/email description.
+                                SecondaryActionLabel = AppLocalization.GetString("Diagnostics_Report"),
+                                SecondaryAction = () => Wavee.UI.WinUI.Services.DiagnosticsReporter.ReportAsync(
+                                    context: $"Audio engine failure: {audioFailureMessage}")
                             });
                             if (audioActivityId != null)
                                 actSvc?.Fail(audioActivityId.Value, message);

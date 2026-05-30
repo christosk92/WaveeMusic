@@ -558,6 +558,21 @@ public sealed partial class ShellPage : UserControl
         }
     }
 
+    private async void NotificationSecondaryAction_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var notificationService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>();
+            if (notificationService != null)
+                await notificationService.InvokeSecondaryActionAsync();
+        }
+        catch (System.Exception ex)
+        {
+            _logger?.LogWarning(ex, "NotificationSecondaryAction_Click failed");
+        }
+    }
+
     private void Notification_CloseRequested(object sender, RoutedEventArgs e)
     {
         CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
