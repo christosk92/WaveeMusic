@@ -147,9 +147,6 @@ public sealed partial class BaselineHomeCard : UserControl
             ApplyHighlight(contextUri, albumUri, playing);
         }
 
-        if (_sharedCanvasPreviewService != null)
-            _ = _sharedCanvasPreviewService.EnsureInitializedAsync();
-
         // A virtualized card can unload/reload with the same Item instance, so
         // the Item DP does not refire. Re-apply the current URLs on Loaded so
         // CompositionImage gets a fresh chance to attach/reload after fast

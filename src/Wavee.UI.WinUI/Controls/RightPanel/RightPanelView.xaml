@@ -205,7 +205,7 @@
                                 HorizontalAlignment="Center"
                                 CornerRadius="8"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                            <imaging:CompositionImage x:Name="TrackDetailsArtwork" Stretch="UniformToFill" DecodePixelSize="360"/>
+                            <imaging:CompositionImage x:Name="TrackDetailsArtwork" Stretch="UniformToFill" DecodePixelSize="180"/>
                         </Border>
                         <StackPanel Spacing="4" HorizontalAlignment="Center">
                             <TextBlock x:Name="TrackDetailsTitle"
