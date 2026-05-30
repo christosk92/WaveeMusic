@@ -35,18 +35,6 @@ public sealed class AudioProcessManager : IAsyncDisposable
     /// </summary>
     public static bool UseVerboseLogging { get; set; }
 
-    /// <summary>
-    /// TEST HOOK — when non-empty, the next AudioHost launch is short-circuited into a
-    /// simulated startup failure so the failure UX (Retry + Report a problem) and the
-    /// diagnostics bundle can be exercised without a real audio fault. Defaults from the
-    /// <c>WAVEE_SIMULATE_AUDIO_FAILURE</c> environment variable. Recognized values:
-    /// <c>"provisioning"</c> (default — mimics the issue #4 native-dependency failure:
-    /// exit code 3 + a bass-win-x64.failure.json marker), <c>"timeout"</c>, <c>"missing-exe"</c>.
-    /// Leave null/empty in production. Remove before shipping.
-    /// </summary>
-    public static string? SimulateStartupFailure { get; set; } =
-        Environment.GetEnvironmentVariable("WAVEE_SIMULATE_AUDIO_FAILURE");
-
     private readonly ILogger? _logger;
     private readonly string _audioHostPath;
     private readonly CancellationTokenSource _cts = new();
@@ -442,10 +430,6 @@ public sealed class AudioProcessManager : IAsyncDisposable
     {
         SetState(AudioProcessState.Connecting, "Starting audio engine...");
 
-        // TEST HOOK: simulate a startup failure (issue #4 repro) before any real launch.
-        if (!string.IsNullOrWhiteSpace(SimulateStartupFailure))
-            SimulateStartupFailureAndThrow(SimulateStartupFailure!);
-
         _pipeName = $"WaveeAudio_{Environment.ProcessId}_{Guid.NewGuid():N}";
         _launchContext = new AudioHostLaunchContext(
             Environment.ProcessId,
@@ -703,54 +687,6 @@ public sealed class AudioProcessManager : IAsyncDisposable
         {
             _logger?.LogDebug(ex, "Error scanning native-deps failure markers");
             return null;
-        }
-    }
-
-    // ── TEST HOOK: simulated startup failure (remove before shipping) ──
-
-    private void SimulateStartupFailureAndThrow(string mode)
-    {
-        _logger?.LogWarning("[SIMULATION] Forcing AudioHost startup failure (mode={Mode})", mode);
-        string message;
-        switch (mode.Trim().ToLowerInvariant())
-        {
-            case "timeout":
-                _lastExitCode = null;
-                message = "Audio engine connection timed out";
-                break;
-            case "missing-exe":
-                _lastExitCode = null;
-                message = $"Audio host not found: {_audioHostPath}";
-                break;
-            default: // "provisioning" (and any other value) — mimic the issue #4 native-dep failure
-                WriteSimulatedProvisioningMarker();
-                _lastExitCode = ProvisioningFailedExitCode;
-                message = "Windows x64 BASS setup failed: Download failed (network) [SIMULATED]. Check your connection and click Retry.";
-                break;
-        }
-        SetState(AudioProcessState.Failed, message);
-        SignalReadiness(false);
-        throw new InvalidOperationException($"[SIMULATION] AudioHost startup failure: {mode}");
-    }
-
-    /// <summary>Writes a native-dep failure marker (left on disk) so the diagnostics bundle picks it up.</summary>
-    private void WriteSimulatedProvisioningMarker()
-    {
-        try
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Wavee", "NativeDeps");
-            Directory.CreateDirectory(dir);
-            var json =
-                "{\"displayName\":\"Windows x64 BASS\",\"libraryName\":\"bass\"," +
-                "\"reason\":\"Download failed (network) [SIMULATED]\"," +
-                $"\"timestampUtc\":\"{DateTime.UtcNow:O}\",\"simulated\":true}}";
-            File.WriteAllText(Path.Combine(dir, "bass-win-x64.failure.json"), json);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "[SIMULATION] failed to write provisioning marker");
         }
     }
 

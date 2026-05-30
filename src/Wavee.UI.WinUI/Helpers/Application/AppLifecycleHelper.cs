@@ -1091,12 +1091,6 @@ public static class AppLifecycleHelper
     {
         try
         {
-            // TEST: uncomment to simulate the issue #4 audio-engine failure so the
-            // failure toast (Retry + Report a problem) and the diagnostics bundle can be
-            // exercised. Re-comment (or clear) to restore real audio. Also settable via the
-            // WAVEE_SIMULATE_AUDIO_FAILURE env var ("provisioning" | "timeout" | "missing-exe").
-            //Wavee.AudioIpc.AudioProcessManager.SimulateStartupFailure = "provisioning";
-
             InitializeTrackMetadataEnricher(session, logger);
 
             _audioProcessManager = new Wavee.AudioIpc.AudioProcessManager(logger);
