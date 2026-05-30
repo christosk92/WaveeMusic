@@ -394,12 +394,14 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
     private void DispatchResults(IReadOnlyList<SearchResultItem> items)
     {
-        Tracks.Clear();
-        AdaptedTracks.Clear();
-        Artists.Clear();
-        Albums.Clear();
-        Playlists.Clear();
-        Sections.Clear();
+        // Resilient resets — raw Clear() on these bound result collections can E_FAIL when the
+        // search page rebinds mid-layout (issue #6). The repopulating Adds below are unchanged.
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Tracks, []);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(AdaptedTracks, []);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Artists, []);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Albums, []);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Playlists, []);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Sections, []);
 
         foreach (var item in items)
         {
