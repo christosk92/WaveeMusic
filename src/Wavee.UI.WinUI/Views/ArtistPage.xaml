@@ -18,6 +18,7 @@
     xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     xmlns:waveeControls="using:Wavee.UI.WinUI.Controls"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:waveePlayback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:transitions="using:CommunityToolkit.WinUI"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
@@ -1338,7 +1339,8 @@
                                                                 </Grid.ColumnDefinitions>
 
                                                                 <Border Width="44" Height="44" CornerRadius="6" Background="{ThemeResource ControlAltFillColorTertiaryBrush}">
-                                                                    <Image Source="{Binding ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='64'}"
+                                                                    <imaging:CompositionImage ImageUrl="{Binding ImageUrl}"
+                                                                           DecodePixelSize="64"
                                                                            Stretch="UniformToFill"/>
                                                                 </Border>
 

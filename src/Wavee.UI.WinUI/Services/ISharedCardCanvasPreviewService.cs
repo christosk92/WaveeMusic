@@ -6,7 +6,6 @@ namespace Wavee.UI.WinUI.Services;
 
 public interface ISharedCardCanvasPreviewService
 {
-    Task EnsureInitializedAsync(CancellationToken ct = default);
     Task<CanvasPreviewLease?> AcquireAsync(Panel host, string canvasUrl, CancellationToken ct = default);
     Task ReleaseAsync(CanvasPreviewLease? lease, CancellationToken ct = default);
     Task ReleaseHostAsync(Panel host, CancellationToken ct = default);

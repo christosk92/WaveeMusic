@@ -738,6 +738,56 @@ public sealed class PlaybackQueue : IDisposable
     }
 
     /// <summary>
+    /// Batch "Play Next" — inserts all tracks at the HEAD of the user queue, preserving
+    /// their order (first item plays next), with a SINGLE <see cref="StateChanged"/>
+    /// notification. Use this instead of calling <see cref="PlayNext"/> in a loop: each
+    /// single call publishes a full PutState, so a large multi-selection floods the
+    /// cluster publisher and freezes the UI.
+    /// </summary>
+    public void PlayNextBatch(IEnumerable<QueueTrack> tracks)
+    {
+        var staged = new List<QueueTrack>();
+        lock (_lock)
+        {
+            foreach (var track in tracks)
+            {
+                var queueUid = $"q{_queueUidCounter++}";
+                staged.Add(track with { Uid = queueUid, IsUserQueued = true, IsPostContext = false });
+            }
+            if (staged.Count == 0) return;
+            _userQueue.InsertRange(0, staged);
+            _logger?.LogDebug("Play Next (batch): inserted {Count} at head of user queue, queue size={Size}",
+                staged.Count, _userQueue.Count);
+        }
+
+        NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Batch "Add to Queue" — appends all tracks to the post-context bucket in order,
+    /// with a SINGLE <see cref="StateChanged"/> notification (see
+    /// <see cref="PlayNextBatch"/> for why per-track loops are avoided).
+    /// </summary>
+    public void EnqueueAfterContextBatch(IEnumerable<QueueTrack> tracks)
+    {
+        var added = 0;
+        lock (_lock)
+        {
+            foreach (var track in tracks)
+            {
+                var uid = $"p{_postContextUidCounter++}";
+                _postContextQueue.Add(track with { Uid = uid, IsUserQueued = true, IsPostContext = true });
+                added++;
+            }
+            if (added == 0) return;
+            _logger?.LogDebug("Add to Queue (batch): appended {Count} to post-context, bucket size={Size}",
+                added, _postContextQueue.Count);
+        }
+
+        NotifyStateChanged();
+    }
+
+    /// <summary>
     /// Removes a track from the user queue.
     /// </summary>
     /// <param name="index">Index in user queue to remove.</param>

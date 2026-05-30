@@ -616,12 +616,15 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             {
                 if (tab.IsSleeping)
                     continue;
-                total += tab.ContentHost.CachedPageCount;
-                // Drop from the least-recently-activated tab that has a
-                // collapsed page to spare (CachedPageCount > 1 keeps its
-                // active page). The active tab has the newest
+                // Count only EVICTABLE (non-pinned) pages toward the ceiling.
+                // Pinned pages are created once and reused for the tab's lifetime,
+                // so they must not be force-evicted by cross-tab pressure (they
+                // still shed GPU surfaces off-screen — see PageRegistry.IsPinned).
+                total += tab.ContentHost.EvictableCachedPageCount;
+                // Drop from the least-recently-activated tab that has a non-pinned
+                // collapsed page to spare. The active tab has the newest
                 // LastActivatedAtUtc, so this naturally favours background tabs.
-                if (tab.ContentHost.CachedPageCount > 1
+                if (tab.ContentHost.EvictableCollapsedCount > 0
                     && tab.LastActivatedAtUtc < victimActivatedAt)
                 {
                     victimActivatedAt = tab.LastActivatedAtUtc;

@@ -19,10 +19,12 @@ namespace Wavee.Controls.Lyrics.Helper
         private static readonly Lazy<ILocalizationService> _lazyLocalizationService = new(() => Ioc.Default.GetRequiredService<ILocalizationService>());
         private static ILocalizationService _localizationService => _lazyLocalizationService.Value;
 
-        // Lazy-loaded: defers ~14.6 MB Wiki82.profile.xml parse (≈45-75 MB resident object graph)
+        // Lazy-loaded: defers the ~2.4 MB Core14.profile.xml parse (≈10-15 MB resident object graph)
         // until the first call that actually needs statistical language detection. Most sessions
         // never hit this — phonetic detection (pinyin/jyutping/romaji) and CJK range checks cover
-        // the common cases via TryDetectTransliteration() and the various IsXxx() helpers.
+        // the common cases via TryDetectTransliteration() and the various IsXxx() helpers. Core14
+        // covers 14 languages (da/de/en/fr/it/ja/ko/nl/no/pt/ru/es/sv/zh); rarer scripts resolve
+        // to whichever of those scores closest.
         private static readonly Lazy<RankedLanguageIdentifier> _lazyIdentifier = new(
             static () => new RankedLanguageIdentifierFactory().Load(PathHelper.LanguageProfilePath),
             LazyThreadSafetyMode.ExecutionAndPublication);
@@ -94,7 +96,7 @@ namespace Wavee.Controls.Lyrics.Helper
             if (IsLatinOnly(text) && EnglishBlockerRegex().IsMatch(text))
                 return EnglishCode;
 
-            // First touch here triggers the ~14.6 MB Wiki82 profile load (see _lazyIdentifier above).
+            // First touch here triggers the ~2.4 MB Core14 profile load (see _lazyIdentifier above).
             var guessList = _lazyIdentifier.Value.Identify(text);
             var bestMatch = guessList?.FirstOrDefault();
 
@@ -114,7 +116,7 @@ namespace Wavee.Controls.Lyrics.Helper
         public static string? DetectLanguageCode(IEnumerable<string> lines)
         {
             // Previous impl ran NTextCat.Identify() once per line — for a 50-line
-            // song that's 50× the n-gram statistical analysis on the same Wiki82
+            // song that's 50× the n-gram statistical analysis on the same Core14
             // language profile, with the per-line-majority vote rarely changing
             // the answer vs the joined-text identification. Collapsing into one
             // call cuts the language-detection cost ~50× per song change.

@@ -13,6 +13,7 @@
     xmlns:dto="using:Wavee.UI.Models"
     xmlns:primitives="using:CommunityToolkit.WinUI.Controls"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -117,12 +118,10 @@
                                     Opacity="0.3"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"/>
-                                <Image
-                                    Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='200'}"
-                                    Stretch="UniformToFill"
-                                    behaviors:ImageFallbackBehavior.HideOnError="True"
-                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
+                                <imaging:CompositionImage
+                                    ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                    DecodePixelSize="200"
+                                    Stretch="UniformToFill"/>
                                 <ToolTipService.ToolTip>
                                     <TextBlock>
                                         <Run Text="{x:Bind Name}"/>
@@ -151,12 +150,10 @@
                                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                                     <FontIcon Glyph="&#xE93C;" FontSize="16" Opacity="0.3"
                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    <Image
-                                        Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='80'}"
-                                        Stretch="UniformToFill"
-                                        behaviors:ImageFallbackBehavior.HideOnError="True"
-                                        behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="80"/>
+                                    <imaging:CompositionImage
+                                        ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                        DecodePixelSize="80"
+                                        Stretch="UniformToFill"/>
                                 </Grid>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                     <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
@@ -250,13 +247,11 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                <Image
-                                    Source="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='100'}"
+                                <imaging:CompositionImage
+                                    ImageUrl="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay}"
+                                    DecodePixelSize="200"
                                     Stretch="UniformToFill"
-                                    Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                    behaviors:ImageFallbackBehavior.HideOnError="True"
-                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
+                                    Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                             </Grid>
 
                             <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="4" VerticalAlignment="Center">
@@ -387,12 +382,10 @@
                                     Opacity="0.3"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"/>
-                                <Image
-                                    Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='200'}"
-                                    Stretch="UniformToFill"
-                                    behaviors:ImageFallbackBehavior.HideOnError="True"
-                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
+                                <imaging:CompositionImage
+                                    ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                    DecodePixelSize="200"
+                                    Stretch="UniformToFill"/>
                                 <ToolTipService.ToolTip>
                                     <TextBlock>
                                         <Run Text="{x:Bind Name}"/>
@@ -421,12 +414,10 @@
                                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                                     <FontIcon Glyph="&#xE93C;" FontSize="16" Opacity="0.3"
                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    <Image
-                                        Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='80'}"
-                                        Stretch="UniformToFill"
-                                        behaviors:ImageFallbackBehavior.HideOnError="True"
-                                        behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="80"/>
+                                    <imaging:CompositionImage
+                                        ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                        DecodePixelSize="80"
+                                        Stretch="UniformToFill"/>
                                 </Grid>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                     <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
@@ -521,13 +512,11 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                <Image
-                                    Source="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='100'}"
+                                <imaging:CompositionImage
+                                    ImageUrl="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay}"
+                                    DecodePixelSize="200"
                                     Stretch="UniformToFill"
-                                    Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                    behaviors:ImageFallbackBehavior.HideOnError="True"
-                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
+                                    Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                             </Grid>
 
                             <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="4" VerticalAlignment="Center">
@@ -855,13 +844,11 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                <Image
-                                    Source="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='100'}"
+                                <imaging:CompositionImage
+                                    ImageUrl="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay}"
+                                    DecodePixelSize="200"
                                     Stretch="UniformToFill"
-                                    Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                    behaviors:ImageFallbackBehavior.HideOnError="True"
-                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
+                                    Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                             </Grid>
 
                             <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="4" VerticalAlignment="Center">
@@ -960,13 +947,11 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                <Image
-                                    Source="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='100'}"
+                                <imaging:CompositionImage
+                                    ImageUrl="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay}"
+                                    DecodePixelSize="200"
                                     Stretch="UniformToFill"
-                                    Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                    behaviors:ImageFallbackBehavior.HideOnError="True"
-                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
+                                    Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                             </Grid>
 
                             <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="4" VerticalAlignment="Center">

@@ -57,9 +57,12 @@ public static class ManualDragAttachment
 
     private static void OnPointerPressed(UIElement element, DragState state, PointerRoutedEventArgs e)
     {
-        // Only mouse-left / pen / touch initiate a drag. Right-click, middle-click
-        // and the keyboard "context menu" key should still bubble through to the
-        // owning control's existing handlers (right-click context menus etc.).
+        // Only mouse-left / pen initiate a drag. Touch must scroll the list — a finger
+        // pan would otherwise cross the threshold and start a drag (issue #4) — so it
+        // is excluded here; touch users use the long-press context menu instead.
+        // Right-click and middle-click still bubble through to the owning control's
+        // existing handlers (right-click context menus etc.).
+        if (PointerInput.IsTouch(e)) return;
         var pp = e.GetCurrentPoint(element);
         if (pp.Properties.IsRightButtonPressed || pp.Properties.IsMiddleButtonPressed) return;
 

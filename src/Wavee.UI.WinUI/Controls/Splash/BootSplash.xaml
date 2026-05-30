@@ -4,7 +4,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:branding="using:Wavee.UI.WinUI.Controls.Branding"
-    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -19,15 +18,21 @@
             <SolidColorBrush Color="#FF0F0F0F"/>
         </Grid.Background>
 
-        <!-- Animated mesh gradient: same shader stack used by the home cards.
-             PrimaryColor stays close to the base so the gradient feels like a
-             slow shimmer rather than two competing colours. -->
-        <cards:AnimatedHeroBackground
-            x:Name="PART_Background"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch"
-            PrimaryColor="#FF0E1B12"
-            AccentColor="#FF1DB954"/>
+        <!-- Static gradient backdrop. The cold-start splash must NEVER depend on a graphics
+             device: a Win2D / ComputeSharp shader here crashes unrecoverably on GPU-less
+             environments (e.g. Windows Sandbox, some VMs / RDP) before any crash handler can
+             run or log it (stowed exception in the composition layer). A static radial glow
+             reads near-identically for the ~700ms splash; the animated mesh still renders on
+             the home / playlist surfaces once the app is up. -->
+        <Rectangle HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Rectangle.Fill>
+                <RadialGradientBrush Center="0.35,0.4" GradientOrigin="0.35,0.4" RadiusX="0.9" RadiusY="0.9">
+                    <GradientStop Color="#FF143824" Offset="0.0"/>
+                    <GradientStop Color="#FF0E1B12" Offset="0.55"/>
+                    <GradientStop Color="#FF0B0F0C" Offset="1.0"/>
+                </RadialGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
 
         <!-- Vignette so the wordmark stays legible everywhere across the gradient.
              Centre is fully transparent; edges fade toward the base. -->

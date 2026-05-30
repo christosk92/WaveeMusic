@@ -76,12 +76,56 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
                 _ => NotificationSeverity.Error
             };
 
-            _notificationService.Show(new NotificationInfo
+            // This is the toast a user actually hits at play-time when the out-of-process
+            // audio engine isn't available (issue #4): "No active device and no local
+            // playback engine available." Gate on the engine not running — covers Failed,
+            // Disconnected, and a stuck restart — rather than State==Failed alone (a down
+            // engine is frequently Disconnected, which is why the button never appeared).
+            // Normal remote-control DeviceUnavailable messages ("device not found", "reorder
+            // only on local device") happen while the local engine IS running, so they stay plain.
+            var apm = Wavee.UI.WinUI.Helpers.Application.AppLifecycleHelper.AudioProcessManager;
+            var engineFailed = error.Kind == PlaybackErrorKind.DeviceUnavailable
+                && apm is not null
+                && !apm.IsRunning;
+
+            NotificationInfo info;
+            if (engineFailed)
             {
-                Message = error.Message,
-                Severity = severity,
-                AutoDismissAfter = TimeSpan.FromSeconds(5)
-            });
+                info = new NotificationInfo
+                {
+                    Message = error.Message,
+                    Severity = severity,
+                    AutoDismissAfter = TimeSpan.FromSeconds(10),
+                    ActionLabel = Wavee.UI.WinUI.Services.AppLocalization.GetString("Retry"),
+                    Action = async () =>
+                    {
+                        try
+                        {
+                            await apm!.StopAsync();
+                            await Wavee.UI.WinUI.Helpers.Application.AppLifecycleHelper
+                                .InitializeOutOfProcessAudioAsync(_session, _logger);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning(ex, "Audio engine retry from playback toast failed");
+                        }
+                    },
+                    SecondaryActionLabel = Wavee.UI.WinUI.Services.AppLocalization.GetString("Diagnostics_Report"),
+                    SecondaryAction = () => Wavee.UI.WinUI.Services.DiagnosticsReporter.ReportAsync(
+                        context: $"Playback failed — audio engine not running: {error.Message}")
+                };
+            }
+            else
+            {
+                info = new NotificationInfo
+                {
+                    Message = error.Message,
+                    Severity = severity,
+                    AutoDismissAfter = TimeSpan.FromSeconds(5)
+                };
+            }
+
+            _notificationService.Show(info);
         });
     }
 
@@ -234,6 +278,12 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
 
     public Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct)
         => ExecuteWithRetryAsync(c => _executor.PlayNextAsync(trackUri, c), nameof(PlayNextAsync), ct, maxRetries: 0);
+
+    public Task<PlaybackResult> AddToQueueAsync(IReadOnlyList<string> trackUris, CancellationToken ct)
+        => ExecuteWithRetryAsync(c => _executor.AddToQueueBatchAsync(trackUris, c), nameof(AddToQueueAsync), ct, maxRetries: 0);
+
+    public Task<PlaybackResult> PlayNextAsync(IReadOnlyList<string> trackUris, CancellationToken ct)
+        => ExecuteWithRetryAsync(c => _executor.PlayNextBatchAsync(trackUris, c), nameof(PlayNextAsync), ct, maxRetries: 0);
 
     public Task<PlaybackResult> ReorderQueueAsync(
         Wavee.Audio.Queue.QueueReorderTarget target, int oldIndex, int newIndex, CancellationToken ct)

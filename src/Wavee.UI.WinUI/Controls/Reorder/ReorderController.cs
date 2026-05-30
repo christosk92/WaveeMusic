@@ -92,6 +92,11 @@ public sealed class ReorderController
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (sender is not FrameworkElement row || !_host.CanReorder) return;
+        // Touch must scroll the list, never drag-reorder: a finger pan crosses the
+        // 6px threshold and would otherwise lift the row (issue #4). Reorder stays on
+        // mouse/pen (press-drag) and keyboard (Space + arrows); touch users reorder
+        // via the row context menu / cross-surface actions.
+        if (PointerInput.IsTouch(e)) return;
         var pp = e.GetCurrentPoint(row);
         if (pp.Properties.IsRightButtonPressed || pp.Properties.IsMiddleButtonPressed) return;
 

@@ -58,7 +58,7 @@ public sealed partial class HomeResponseParserV2 : IHomeResponseParser
     {
         var sections = new List<HomeSection>();
         var apiSections = response.Data?.Home?.SectionContainer?.Sections?.Items;
-        System.Diagnostics.Debug.WriteLine($"[V2Parser] apiSections={apiSections?.Count ?? -1}");
+        Wavee.UI.Diagnostics.UiTrace.Line($"[V2Parser] apiSections={apiSections?.Count ?? -1}");
         if (apiSections == null) return sections;
 
         var rawSections = HomeRawJsonHelper.GetRawSectionJsonByIndex(response);
@@ -67,7 +67,7 @@ public sealed partial class HomeResponseParserV2 : IHomeResponseParser
         foreach (var entry in apiSections)
         {
             sectionIndex++;
-            System.Diagnostics.Debug.WriteLine($"[V2Parser] Section: type={entry.Data?.TypeName}, items={entry.SectionItems?.Items?.Count ?? -1}");
+            Wavee.UI.Diagnostics.UiTrace.Line($"[V2Parser] Section: type={entry.Data?.TypeName}, items={entry.SectionItems?.Items?.Count ?? -1}");
             var sectionType = GetSectionType(entry.Data?.TypeName);
             var rawTitle = entry.Data?.Title?.TransformedLabel;
             var title = !string.IsNullOrWhiteSpace(rawTitle)
@@ -120,7 +120,7 @@ public sealed partial class HomeResponseParserV2 : IHomeResponseParser
             {
                 foreach (var itemEntry in entry.SectionItems.Items)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[V2Parser]   Item: uri={itemEntry.Uri}, content={itemEntry.Content?.TypeName}, entity={itemEntry.Entity != null}, contentData={itemEntry.Content?.Data?.ValueKind}");
+                    Wavee.UI.Diagnostics.UiTrace.Line($"[V2Parser]   Item: uri={itemEntry.Uri}, content={itemEntry.Content?.TypeName}, entity={itemEntry.Entity != null}, contentData={itemEntry.Content?.Data?.ValueKind}");
                     // Check if this is a ListResponseWrapper (Recents section)
                     if (itemEntry.Content?.TypeName == "ListResponseWrapper")
                     {
@@ -186,23 +186,23 @@ public sealed partial class HomeResponseParserV2 : IHomeResponseParser
         var results = new List<HomeSectionItem>();
         if (listContent.Data is not { } rawData || rawData.ValueKind != JsonValueKind.Object)
         {
-            System.Diagnostics.Debug.WriteLine($"[V2Parser] UnwrapListItems: Data is null or not object (kind={listContent.Data?.ValueKind})");
+            Wavee.UI.Diagnostics.UiTrace.Line($"[V2Parser] UnwrapListItems: Data is null or not object (kind={listContent.Data?.ValueKind})");
             return results;
         }
 
         // Navigate: data.items.items[] — each has "entity" + "formatListAttributes"
         if (!rawData.TryGetProperty("items", out var itemsWrapper))
         {
-            System.Diagnostics.Debug.WriteLine($"[V2Parser] UnwrapListItems: no 'items' property. Keys: {string.Join(", ", rawData.EnumerateObject().Select(p => p.Name))}");
+            Wavee.UI.Diagnostics.UiTrace.Line($"[V2Parser] UnwrapListItems: no 'items' property. Keys: {string.Join(", ", rawData.EnumerateObject().Select(p => p.Name))}");
             return results;
         }
         if (!itemsWrapper.TryGetProperty("items", out var itemsArray))
         {
-            System.Diagnostics.Debug.WriteLine($"[V2Parser] UnwrapListItems: no 'items.items'. Wrapper kind={itemsWrapper.ValueKind}");
+            Wavee.UI.Diagnostics.UiTrace.Line($"[V2Parser] UnwrapListItems: no 'items.items'. Wrapper kind={itemsWrapper.ValueKind}");
             return results;
         }
         if (itemsArray.ValueKind != JsonValueKind.Array) return results;
-        System.Diagnostics.Debug.WriteLine($"[V2Parser] UnwrapListItems: found {itemsArray.GetArrayLength()} nested items");
+        Wavee.UI.Diagnostics.UiTrace.Line($"[V2Parser] UnwrapListItems: found {itemsArray.GetArrayLength()} nested items");
 
         foreach (var listItem in itemsArray.EnumerateArray())
         {

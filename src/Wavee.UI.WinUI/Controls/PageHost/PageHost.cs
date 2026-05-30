@@ -83,6 +83,47 @@ public sealed partial class PageHost : ContentControl
     public int CachedPageCount => _container.Children.Count;
 
     /// <summary>
+    /// Count of cached pages eligible for eviction — i.e. non-pinned. Pinned
+    /// pages (<see cref="PageRegistry.IsPinned"/>) are created once and reused for
+    /// the tab's lifetime, so they do not count against <see cref="CacheSize"/>
+    /// or the cross-tab ceiling. Drives the eviction budget here and in
+    /// <c>TabBarItem.EnforceGlobalCachedPageLimit</c>.
+    /// </summary>
+    public int EvictableCachedPageCount
+    {
+        get
+        {
+            var count = 0;
+            foreach (var type in _lru)
+            {
+                if (!PageRegistry.IsPinned(type))
+                    count++;
+            }
+            return count;
+        }
+    }
+
+    /// <summary>
+    /// Count of non-pinned, non-active cached pages — exactly the pages
+    /// <see cref="EvictOldestCollapsed"/> can drop. Used for cross-tab victim
+    /// selection so the ceiling never picks a tab whose only spare pages are
+    /// pinned (it would loop without freeing anything).
+    /// </summary>
+    public int EvictableCollapsedCount
+    {
+        get
+        {
+            var count = 0;
+            foreach (var type in _lru)
+            {
+                if (type != _currentPageType && !PageRegistry.IsPinned(type))
+                    count++;
+            }
+            return count;
+        }
+    }
+
+    /// <summary>
     /// Cached pages ordered oldest-first — the last entry is the active page,
     /// the second-last is the prime back-target. Drives the nav-cache
     /// surface-retention pass in <c>TabBarItem</c>.
@@ -108,7 +149,9 @@ public sealed partial class PageHost : ContentControl
         Type? victimType = null;
         foreach (var type in _lru)
         {
-            if (type != _currentPageType)
+            // Never evict the active page or a pinned page (pinned pages are
+            // reused for the tab's lifetime — see PageRegistry.IsPinned).
+            if (type != _currentPageType && !PageRegistry.IsPinned(type))
             {
                 victimType = type;
                 break;
@@ -137,7 +180,9 @@ public sealed partial class PageHost : ContentControl
         var collapsed = new List<Type>();
         foreach (var type in _lru)
         {
-            if (type != _currentPageType && _cache.ContainsKey(type))
+            // Pinned pages are never evicted — they're reused for the tab's
+            // lifetime (see PageRegistry.IsPinned).
+            if (type != _currentPageType && !PageRegistry.IsPinned(type) && _cache.ContainsKey(type))
                 collapsed.Add(type);
         }
 
@@ -361,28 +406,30 @@ public sealed partial class PageHost : ContentControl
 
     private void EvictLruIfNeeded()
     {
-        while (_container.Children.Count > _cacheSize && _lru.Count > 0)
+        // CacheSize bounds only the NON-PINNED (LRU) pages. Pinned pages are kept
+        // for the tab's lifetime — created once, reused on every revisit — so
+        // heavy browsing never pays repeated construction. The active page is
+        // never evicted regardless of pin state.
+        while (EvictableCachedPageCount > _cacheSize && TryEvictOldestEvictable())
         {
-            // Never evict the currently-active page.
-            var victimType = _lru.First!.Value;
-            if (victimType == _currentPageType)
-            {
-                if (_lru.Count == 1) break;
-                // Walk forward looking for a non-active entry.
-                var node = _lru.First.Next;
-                while (node is not null && node.Value == _currentPageType)
-                    node = node.Next;
-                if (node is null) break;
-                victimType = node.Value;
-                _lru.Remove(node);
-            }
-            else
-            {
-                _lru.RemoveFirst();
-            }
-
-            EvictPage(victimType);
         }
+    }
+
+    /// <summary>
+    /// Evicts the oldest non-pinned, non-active cached page. Returns false when
+    /// none remains (only pinned + the active page are left), which also breaks
+    /// <see cref="EvictLruIfNeeded"/>'s loop so it can never spin.
+    /// </summary>
+    private bool TryEvictOldestEvictable()
+    {
+        foreach (var type in _lru) // oldest-first
+        {
+            if (type == _currentPageType || PageRegistry.IsPinned(type))
+                continue;
+            EvictPage(type); // mutates _lru — safe: we return before the next MoveNext
+            return true;
+        }
+        return false;
     }
 
     private bool EvictPage(Type pageType)

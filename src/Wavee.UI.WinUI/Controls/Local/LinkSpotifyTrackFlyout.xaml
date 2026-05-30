@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Local"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:pathfinder="using:Wavee.Core.Http.Pathfinder"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
@@ -32,10 +33,9 @@
                         Width="40" Height="40"
                         CornerRadius="6"
                         Background="{ThemeResource ControlFillColorSecondaryBrush}">
-                    <Image Stretch="UniformToFill"
-                           behaviors:ImageFallbackBehavior.HideOnError="True"
-                           behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                           Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=96}"/>
+                    <imaging:CompositionImage ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                              DecodePixelSize="96"
+                                              Stretch="UniformToFill"/>
                 </Border>
 
                 <!-- Title + subtitle -->

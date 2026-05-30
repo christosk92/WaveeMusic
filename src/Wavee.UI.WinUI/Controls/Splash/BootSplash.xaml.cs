@@ -18,17 +18,10 @@ public sealed partial class BootSplash : UserControl
     {
         InitializeComponent();
         Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
         => _ = ShowRingAfterDelayAsync();
-
-    private void OnUnloaded(object sender, RoutedEventArgs e)
-    {
-        if (PART_Background is { } bg)
-            bg.IsPaused = true;
-    }
 
     private async Task ShowRingAfterDelayAsync()
     {
@@ -45,9 +38,6 @@ public sealed partial class BootSplash : UserControl
     {
         if (_faded) return Task.CompletedTask;
         _faded = true;
-
-        // Stop spending GPU on a splash that's about to disappear.
-        PART_Background.IsPaused = true;
 
         var visual = ElementCompositionPreview.GetElementVisual(this);
         var compositor = visual.Compositor;

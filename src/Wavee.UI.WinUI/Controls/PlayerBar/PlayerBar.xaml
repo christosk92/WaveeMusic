@@ -9,6 +9,7 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -24,7 +25,6 @@
             <converters:RepeatModeToGlyphConverter x:Key="RepeatGlyphConverter" />
             <converters:RepeatModeToCheckedConverter x:Key="RepeatCheckedConverter" />
             <converters:RepeatModeToSymbolConverter x:Key="RepeatSymbolConverter" />
-            <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True" />
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
@@ -286,15 +286,13 @@
                                 <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0" />
                                 <animations:ScaleAnimation Duration="0:0:0.15" From="1,1,1" To="0.8,0.8,1" />
                             </animations:Implicit.HideAnimations>
-                            <Image
+                            <imaging:CompositionImage
                                 Width="48"
                                 Height="48"
                                 IsHitTestVisible="False"
-                                Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"
-                                Stretch="UniformToFill"
-                                behaviors:ImageFallbackBehavior.HideOnError="True"
-                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                behaviors:ImageFallbackBehavior.DecodePixelWidth="96" />
+                                ImageUrl="{x:Bind ViewModel.AlbumArt, Mode=OneWay}"
+                                DecodePixelSize="96"
+                                Stretch="UniformToFill" />
                             <FontIcon
                                 Glyph="&#xE8D6;"
                                 FontSize="18"
@@ -845,15 +843,13 @@
                             Tapped="AlbumArt_Tapped"
                             RightTapped="NowPlaying_RightTapped"
                             Visibility="{x:Bind ViewModel.IsAlbumArtExpanded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                            <Image
+                            <imaging:CompositionImage
                                 Width="40"
                                 Height="40"
                                 IsHitTestVisible="False"
-                                Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"
-                                Stretch="UniformToFill"
-                                behaviors:ImageFallbackBehavior.HideOnError="True"
-                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                behaviors:ImageFallbackBehavior.DecodePixelWidth="96" />
+                                ImageUrl="{x:Bind ViewModel.AlbumArt, Mode=OneWay}"
+                                DecodePixelSize="96"
+                                Stretch="UniformToFill" />
                             <FontIcon
                                 Glyph="&#xE8D6;"
                                 FontSize="16"

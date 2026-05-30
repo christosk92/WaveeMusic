@@ -6,6 +6,7 @@
     xmlns:local="using:Wavee.UI.WinUI.Controls.Omnibar"
     xmlns:contracts="using:Wavee.UI.Contracts"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls">
 
     <UserControl.Resources>
@@ -69,8 +70,9 @@
                 <Border Grid.Column="0" Width="48" Height="48"
                         CornerRadius="{x:Bind local:SearchFlyoutPanel.GetImageCornerRadius(Type)}"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <Image Stretch="UniformToFill"
-                           Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"/>
+                    <imaging:CompositionImage ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                              DecodePixelSize="48"
+                                              Stretch="UniformToFill"/>
                 </Border>
 
                 <!-- Title + Subtitle -->

@@ -1156,6 +1156,7 @@ public static class AppLifecycleHelper
                             break;
 
                         case Wavee.AudioIpc.AudioProcessState.Failed:
+                            var audioFailureMessage = message;
                             notifService?.Show(new Data.Models.NotificationInfo
                             {
                                 Message = message,
@@ -1168,7 +1169,13 @@ public static class AppLifecycleHelper
                                         await _audioProcessManager.StopAsync();
                                         await InitializeOutOfProcessAudioAsync(session, logger);
                                     }
-                                }
+                                },
+                                // One-click path to a complete diagnostics bundle (incl. the
+                                // AudioHost log) so this exact failure can be reported. The
+                                // failure text seeds the issue/email description.
+                                SecondaryActionLabel = AppLocalization.GetString("Diagnostics_Report"),
+                                SecondaryAction = () => Wavee.UI.WinUI.Services.DiagnosticsReporter.ReportAsync(
+                                    context: $"Audio engine failure: {audioFailureMessage}")
                             });
                             if (audioActivityId != null)
                                 actSvc?.Fail(audioActivityId.Value, message);

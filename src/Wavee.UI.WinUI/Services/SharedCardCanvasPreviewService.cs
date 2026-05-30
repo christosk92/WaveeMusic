@@ -23,6 +23,13 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
     private Panel? _activeHost;
     private CanvasPreviewLease? _activeLease;
     private long _nextLeaseId;
+    private DispatcherQueueTimer? _idleTeardownTimer;
+
+    // Reclaim the shared player's MediaFoundation + GPU video decode surface
+    // (~25-40 MB) when no card has been previewed for this long. The keep-lease
+    // resume path otherwise holds that surface for the rest of the session after
+    // any hover; the next hover after idle re-creates the element.
+    private static readonly TimeSpan IdleTeardownDelay = TimeSpan.FromSeconds(90);
 
     public SharedCardCanvasPreviewService(ILogger<SharedCardCanvasPreviewService>? logger = null)
     {
@@ -33,6 +40,7 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
     [Conditional("DEBUG")]
     private void TraceCanvas(string message)
     {
+        if (!Wavee.UI.Diagnostics.UiTrace.Verbose) return;
         Debug.WriteLine(
             $"[SharedCardCanvasPreviewService] {message} | " +
             $"activeLease={_activeLease?.Id.ToString() ?? "<null>"} " +
@@ -40,35 +48,6 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
             $"hasElement={_playerElement != null}");
     }
 
-    private int _initialized;
-
-    // Eagerly create the shared MediaPlayerElement so the first hover doesn't pay
-    // the 100–300ms MediaFoundation + DirectX surface setup cost on the UI thread.
-    // Without this, the first pointer-exit while a preview is mid-start visibly
-    // hangs the UI — the in-flight creation is still saturating the dispatcher
-    // queue when the exit animations + teardown try to run. Subsequent exits are
-    // fast because the element already exists.
-    public async Task EnsureInitializedAsync(CancellationToken ct = default)
-    {
-        if (Interlocked.Exchange(ref _initialized, 1) == 1)
-            return;
-
-        try
-        {
-            await RunOnUiAsync(() =>
-            {
-                EnsurePlayerElementOnUi();
-                TraceCanvas("EnsureInitializedAsync warmed player element");
-            }, ct).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            // Warmup is best-effort. If it fails, AcquireOnUi will create the
-            // element on first use (paying the original latency cost).
-            Interlocked.Exchange(ref _initialized, 0);
-            _logger?.LogDebug(ex, "Shared canvas preview warmup failed");
-        }
-    }
 
     public async Task<CanvasPreviewLease?> AcquireAsync(Panel host, string canvasUrl, CancellationToken ct = default)
     {
@@ -102,6 +81,7 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
                     return;
 
                 TeardownOnUi();
+                RestartIdleTeardownTimer();
             }, ct).ConfigureAwait(false);
         }
         finally
@@ -123,6 +103,7 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
                     return;
 
                 TeardownOnUi();
+                RestartIdleTeardownTimer();
             }, ct).ConfigureAwait(false);
         }
         finally
@@ -139,6 +120,9 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
             TraceCanvas($"AcquireOnUi host not ready");
             return null;
         }
+
+        // Activity — cancel any pending idle teardown of the shared player.
+        StopIdleTeardownTimer();
 
         // Same host + same URL + element still parented → just resume
         if (_activeLease != null &&
@@ -220,9 +204,12 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
         // holds a single reference and will drop it if the card is unrealized.
         // (Do NOT Dispose the internal MediaPlayer either — it's owned by the
         //  element and disposing externally crashes the renderer.)
-
-        _activeLease = null;
-        _activeHost = null;
+        //
+        // Deliberately KEEP _activeLease / _activeHost. Nulling them here defeated
+        // AcquireOnUi's resume fast-path, so re-hovering the SAME card recreated
+        // the MediaSource (100–300ms MediaFoundation init) on every exit→re-enter.
+        // Leaving them set lets a re-hover just resume the paused player; a
+        // different host or URL overwrites them in AcquireOnUi.
     }
 
     private void EnsurePlayerElementOnUi()
@@ -251,6 +238,7 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
 
     private void DisposePlayerElementOnUi()
     {
+        StopIdleTeardownTimer();
         TeardownOnUi();
 
         if (_currentPlayer != null)
@@ -270,6 +258,36 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
         }
 
         _playerElement = null;
+    }
+
+    // Idle teardown (UI thread). Started when a preview is released, cancelled
+    // when a new one is acquired; on fire it fully disposes the shared element so
+    // its video surface stops being a permanent baseline cost.
+    private void RestartIdleTeardownTimer()
+    {
+        _idleTeardownTimer ??= CreateIdleTeardownTimer();
+        _idleTeardownTimer.Stop();
+        _idleTeardownTimer.Start();
+    }
+
+    private void StopIdleTeardownTimer() => _idleTeardownTimer?.Stop();
+
+    private DispatcherQueueTimer CreateIdleTeardownTimer()
+    {
+        var timer = _dispatcherQueue.CreateTimer();
+        timer.Interval = IdleTeardownDelay;
+        timer.IsRepeating = false;
+        timer.Tick += OnIdleTeardownTick;
+        return timer;
+    }
+
+    private void OnIdleTeardownTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (_playerElement is null)
+            return;
+        TraceCanvas("idle teardown - releasing shared player element");
+        DisposePlayerElementOnUi();
     }
 
     private void OnMediaPlayerMediaOpened(MediaPlayer sender, object args)

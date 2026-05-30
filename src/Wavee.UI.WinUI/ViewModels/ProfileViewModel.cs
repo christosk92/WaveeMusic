@@ -302,11 +302,13 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
         ProfileImageUrl = null;
         PageBleedBrush = null;
 
-        _recentArtists.Clear();
-        _publicPlaylists.Clear();
-        _followingArtists.Clear();
-        _topTracks.Clear();
-        _topTrackItems.Clear();
+        // Resilient resets on hibernate — raw Clear() on these bound profile collections can
+        // E_FAIL while the cached page's surfaces are dropped by the nav cache (issue #6).
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_recentArtists, []);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_publicPlaylists, []);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_followingArtists, []);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_topTracks, []);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_topTrackItems, []);
     }
 
     public void ResumeFromHibernate()

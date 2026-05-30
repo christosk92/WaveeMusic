@@ -7,6 +7,7 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
@@ -655,10 +656,12 @@
                                                                   HorizontalAlignment="Center"
                                                                   VerticalAlignment="Center"/>
                                                         <!-- Prefer the landscape hero; fall back to square avatar stretched if missing -->
-                                                        <Image Source="{x:Bind HeaderImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=800}"
+                                                        <imaging:CompositionImage ImageUrl="{x:Bind HeaderImageUrl, Mode=OneWay}"
+                                                               DecodePixelSize="800"
                                                                Stretch="UniformToFill"
                                                                Visibility="{x:Bind HeaderImageUrl, Converter={StaticResource NullToVisibilityConverter}}"/>
-                                                        <Image Source="{x:Bind AvatarUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=640}"
+                                                        <imaging:CompositionImage ImageUrl="{x:Bind AvatarUrl, Mode=OneWay}"
+                                                               DecodePixelSize="640"
                                                                Stretch="UniformToFill"
                                                                Visibility="{x:Bind HeaderImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                                         <!-- Bottom gradient for name readability -->

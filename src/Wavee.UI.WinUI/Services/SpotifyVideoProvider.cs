@@ -101,7 +101,7 @@ public sealed partial class SpotifyVideoProvider
         _positionTimer = _dispatcher.CreateTimer();
         _positionTimer.Interval = TimeSpan.FromMilliseconds(PositionPublishIntervalMs);
         _positionTimer.IsRepeating = true;
-        _positionTimer.Tick += (_, _) => PublishStateFromSession();
+        _positionTimer.Tick += OnPositionTimerTick;
     }
 
     // ── ISpotifyVideoPlayback ──────────────────────────────────────────────
@@ -1661,6 +1661,9 @@ public sealed partial class SpotifyVideoProvider
         return tcs.Task;
     }
 
+    private void OnPositionTimerTick(DispatcherQueueTimer sender, object args)
+        => PublishStateFromSession();
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -1668,6 +1671,7 @@ public sealed partial class SpotifyVideoProvider
         try
         {
             _positionTimer.Stop();
+            _positionTimer.Tick -= OnPositionTimerTick;
             CleanupPlayer();
         }
         catch (Exception ex)
@@ -1677,5 +1681,11 @@ public sealed partial class SpotifyVideoProvider
         _stateSubject.OnCompleted();
         _trackFinishedSubject.OnCompleted();
         _errorSubject.OnCompleted();
+        _surfaceChangesSubject.OnCompleted();
+
+        _stateSubject.Dispose();
+        _trackFinishedSubject.Dispose();
+        _errorSubject.Dispose();
+        _surfaceChangesSubject.Dispose();
     }
 }

@@ -36,9 +36,17 @@ Alpha builds are pre-release builds. The MSIX package version for
 `v0.1.0-alpha.1` is `0.1.0.1001`; later alpha, beta, and stable packages use a
 higher numeric MSIX version so Windows can update forward.
 
-The in-app update checker reports newer GitHub releases. For this alpha, manual
-MSIX installation is the expected path unless a `Wavee.appinstaller` asset is
-included in the release.
+Every experimental release now ships `.appinstaller` auto-update manifests, so
+there are two ways to stay current:
+
+- **Automatic (recommended):** install from `Wavee.Experimental.<arch>.appinstaller`
+  (attached to each release and to the rolling
+  [`experimental-latest`](https://github.com/christosk92/WaveeMusic/releases/tag/experimental-latest)
+  release). Windows App Installer then silently checks for, downloads, and stages
+  newer builds in the background (no prompt) and applies them on the next restart;
+  **Settings → About** shows a "restart to apply" nudge once a build is staged.
+- **Manual:** download the newer `Wavee.UI.WinUI_<version>_<arch>.msix` and install
+  it over the old one. Package versions only increase, so Windows updates forward.
 
 ## What's included
 

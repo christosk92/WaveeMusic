@@ -86,6 +86,11 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     // State publisher (bidirectional mode only)
     private AsyncWorker<PutStateRequest>? _statePublisher;
 
+    // Last published full-state snapshot (FormatStateSnapshot). Used to skip submitting a
+    // PutState identical to the previous one — a defensive backstop against per-mutation
+    // publish storms (issue #4). Only ever suppresses literal duplicate re-emissions.
+    private string? _lastPublishKey;
+
     // PutState debounce — position-only updates are debounced, critical changes flush immediately
     private CancellationTokenSource? _debounceCts;
     private PlaybackState? _pendingState;
@@ -961,6 +966,19 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
         try
         {
+            // Defense-in-depth dedup (issue #6): skip a PutState whose full snapshot is identical to
+            // the one we last SUBMITTED. The key must capture everything that affects the wire body —
+            // FormatStateSnapshot omits the queue, so QueueRevision is appended explicitly; otherwise
+            // an add-to-queue (same track/pos/status, only the queue changed) would be wrongly deduped
+            // and never reach the cluster. The key is committed only on a successful submit (below),
+            // so a dropped/failed publish is still retried. Only ever suppresses literal duplicates.
+            var publishKey = FormatStateSnapshot(state) + "|qr=" + (state.QueueRevision ?? string.Empty);
+            if (string.Equals(publishKey, _lastPublishKey, StringComparison.Ordinal))
+            {
+                _logger?.LogTrace("PutState SKIP (identical to last submitted)");
+                return;
+            }
+
             var now = (ulong)(_session?.Clock.NowMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
             // Track when playback started (reset on track change or when becoming active)
@@ -1053,6 +1071,9 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             }
             else if (_statePublisher != null)
             {
+                // Commit the dedup key only now that the state actually reached the publisher —
+                // a dropped submit (above) leaves the key unchanged so the state is retried.
+                _lastPublishKey = publishKey;
                 Interlocked.Increment(ref _publishSubmittedCount);
                 _logger?.LogTrace("PutState queued: corrId={MessageId}, queueDepth={Depth}", request.MessageId, _statePublisher.PendingCount);
             }

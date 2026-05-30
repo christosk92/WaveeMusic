@@ -23,6 +23,7 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
     private readonly IActivityService? _activityService;
     private DispatcherTimer? _autoDismissTimer;
     private Func<Task>? _currentAction;
+    private Func<Task>? _currentSecondaryAction;
 
     [ObservableProperty]
     public partial bool IsOpen { get; set; }
@@ -35,6 +36,9 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
 
     [ObservableProperty]
     public partial string? ActionLabel { get; set; }
+
+    [ObservableProperty]
+    public partial string? SecondaryActionLabel { get; set; }
 
     [ObservableProperty]
     public partial bool IsActionBusy { get; set; }
@@ -73,7 +77,9 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
         Message = notification.Message;
         Severity = notification.Severity;
         ActionLabel = notification.ActionLabel;
+        SecondaryActionLabel = notification.SecondaryActionLabel;
         _currentAction = notification.Action;
+        _currentSecondaryAction = notification.SecondaryAction;
         IsActionBusy = false;
         IsOpen = true;
 
@@ -89,7 +95,7 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
         // caller didn't pick a duration, give actionable toasts a longer window
         // so the user can read + reach the action button before it closes.
         var dismissAfter = notification.AutoDismissAfter
-            ?? (notification.ActionLabel != null
+            ?? (notification.ActionLabel != null || notification.SecondaryActionLabel != null
                 ? TimeSpan.FromSeconds(8)
                 : TimeSpan.FromSeconds(5));
 
@@ -138,7 +144,9 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
         IsOpen = false;
         Message = null;
         ActionLabel = null;
+        SecondaryActionLabel = null;
         _currentAction = null;
+        _currentSecondaryAction = null;
         IsActionBusy = false;
 
         _messenger.Send(new NotificationDismissedMessage());
@@ -156,6 +164,25 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
         {
             IsActionBusy = true;
             await _currentAction();
+        }
+        finally
+        {
+            IsActionBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Invokes the current notification's secondary async action callback, if any.
+    /// Disables the action buttons while the task is running.
+    /// </summary>
+    public async Task InvokeSecondaryActionAsync()
+    {
+        if (_currentSecondaryAction == null || IsActionBusy) return;
+
+        try
+        {
+            IsActionBusy = true;
+            await _currentSecondaryAction();
         }
         finally
         {

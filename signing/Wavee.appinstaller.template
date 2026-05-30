@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  WaveeMusic .appinstaller manifest. The build pipeline substitutes ${VERSION}
-  with the MSIX package version (e.g. 0.1.0.1001), ${TAG} with the release tag,
-  and ${APPINSTALLER_URI} with the update-channel URL.
+  WaveeMusic .appinstaller manifest. signing/Generate-AppInstaller.ps1 emits ONE file
+  PER ARCHITECTURE and substitutes:
+    ${VERSION}          the 4-part MSIX package version (e.g. 0.1.0.1003)
+    ${ARCH}             x64 | arm64
+    ${APPINSTALLER_URI} the STABLE self-URL Windows polls for updates
+    ${MSIX_URI}         the download URL for this arch's signed MSIX
 
-  Stable releases use /latest/download for appinstaller update checks.
-  Prerelease alpha/beta tags use the exact tag URL so experimental drafts do
-  not accidentally bind to the stable update channel.
+  Stable releases poll /latest/download (a moving alias). Experimental builds poll a fixed
+  `experimental-latest` rolling release (GitHub has no "latest pre-release" alias), whose
+  assets are re-uploaded every build so the URL stays stable while the content moves forward.
 -->
 <AppInstaller Version="${VERSION}"
               Uri="${APPINSTALLER_URI}"
@@ -15,11 +18,15 @@
   <MainPackage Name="4f5ca249-aa41-4d46-84ce-62b6098fdb06"
                Version="${VERSION}"
                Publisher="CN=cproducts, O=cproducts, L=Utrecht, S=Utrecht, C=NL"
-               Uri="https://github.com/christosk92/WaveeMusic/releases/download/v${TAG}/Wavee.UI.WinUI_${VERSION}_x64.msix"
-               ProcessorArchitecture="x64" />
+               Uri="${MSIX_URI}"
+               ProcessorArchitecture="${ARCH}" />
 
+  <!-- Silent auto-update: Windows App Installer checks on launch (no prompt) and via an
+       ~8h background task, silently downloads + stages the new MSIX, and applies it on the
+       next restart. The app surfaces a "restart to update" nudge via
+       Package.CheckUpdateAvailabilityAsync (no package-management capability needed). -->
   <UpdateSettings>
-    <OnLaunch HoursBetweenUpdateChecks="24" ShowPrompt="false" />
+    <OnLaunch HoursBetweenUpdateChecks="8" ShowPrompt="false" />
     <AutomaticBackgroundTask />
   </UpdateSettings>
 

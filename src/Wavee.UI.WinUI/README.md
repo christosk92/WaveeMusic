@@ -132,7 +132,7 @@ Spawns an isolated `dotnet build` subprocess for `Wavee.AudioHost` with `Platfor
 
 ### `RemoveDuplicateReferencedProjectAssets` (AfterTargets: CopyFilesToOutputDirectory;_GenerateProjectPriFileCore)
 
-WinUI AppX packaging copies `<Content>` items from referenced projects twice — once flattened to the AppX root (which is what the runtime reads via `AppContext.BaseDirectory`) and once preserved under the per-project subfolder. Removes the orphan duplicates (~14.6 MB for `Wiki82.profile.xml` alone). Carefully scoped to specific files, **not** the entire `Wavee.Controls.Lyrics/` folder, because that folder also contains compiled per-assembly XAML (`.xbf` for `NowPlayingCanvas`, `ImageSwitcher`, `ShadowImage`) which WinUI resolves at runtime via `ms-appx:///Wavee.Controls.Lyrics/Controls/*.xaml`.
+WinUI AppX packaging copies `<Content>` items from referenced projects twice — once flattened to the AppX root (which is what the runtime reads via `AppContext.BaseDirectory`) and once preserved under the per-project subfolder. Removes the orphan duplicates (~2.4 MB for `Core14.profile.xml` alone). Carefully scoped to specific files, **not** the entire `Wavee.Controls.Lyrics/` folder, because that folder also contains compiled per-assembly XAML (`.xbf` for `NowPlayingCanvas`, `ImageSwitcher`, `ShadowImage`) which WinUI resolves at runtime via `ms-appx:///Wavee.Controls.Lyrics/Controls/*.xaml`.
 
 ### `StripUnusedWindowsAiPayload` (AfterTargets: CopyFilesToOutputDirectory;_GenerateProjectPriFileCore)
 

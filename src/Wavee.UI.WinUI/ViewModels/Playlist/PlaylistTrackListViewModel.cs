@@ -763,7 +763,7 @@ public sealed partial class PlaylistTrackListViewModel
         if (options is { Count: > 0 })
         {
             var chipDump = string.Join(" | ", options.Select(o => $"{o.OptionKey}[{o.DisplayName}]→{o.SignalIdentifier ?? "<null>"}"));
-            _logger?.LogInformation(
+            _logger?.LogDebug(
                 "[session-control-chips] playlist={PlaylistId} options: {Chips}",
                 PlaylistId, chipDump);
         }
@@ -1422,7 +1422,9 @@ public sealed partial class PlaylistTrackListViewModel
         HasAnyAddedAt = false;
 
         _suppressSessionSignal = true;
-        SessionControlChips.Clear();
+        // Resilient reset — raw Clear() on a bound collection during navigation throws
+        // COMException E_FAIL mid-layout (issue #6). ReplaceWith raises a Reset that retries.
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(SessionControlChips, []);
         SelectedSessionControlChip = null;
         _suppressSessionSignal = false;
         OnPropertyChanged(nameof(HasSessionControlChips));
@@ -1431,7 +1433,7 @@ public sealed partial class PlaylistTrackListViewModel
         _sessionSignalCts = null;
 
         if (FilteredTracks.Count > 0)
-            FilteredTracks.Clear();
+            Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(FilteredTracks, []);
 
         TracksChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -1442,12 +1444,15 @@ public sealed partial class PlaylistTrackListViewModel
     public void Hibernate()
     {
         Deactivate();
-        FilteredTracks.Clear();
+        // Cached-page hibernate: raise a (resilient) Reset so the ItemsControl releases its
+        // realized containers; a raw Clear() here can E_FAIL while the page's surfaces are
+        // being dropped by the nav cache (issue #6).
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(FilteredTracks, []);
         _allTracks = new List<PlaylistTrackDto>();
         ShowOnlyVideoTracks = false;
         NotifyVideoFilterProperties();
         _suppressSessionSignal = true;
-        SessionControlChips.Clear();
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(SessionControlChips, []);
         SelectedSessionControlChip = null;
         _suppressSessionSignal = false;
         OnPropertyChanged(nameof(HasSessionControlChips));
@@ -1473,10 +1478,13 @@ public sealed partial class PlaylistTrackListViewModel
     {
         _disposed = true;
         Deactivate();
-        FilteredTracks.Clear();
+        // Permanent teardown: clear the backing lists WITHOUT raising CollectionChanged — the
+        // XAML may already have detached its handlers, and raising then can touch torn-down
+        // UIElementCollection instances (issue #6; same hazard PlaylistHeaderViewModel.Dispose notes).
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ClearWithoutNotify(FilteredTracks);
         _allTracks = new List<PlaylistTrackDto>();
-        SessionControlChips.Clear();
-        EmptyPlaylistGenreItems.Clear();
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ClearWithoutNotify(SessionControlChips);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ClearWithoutNotify(EmptyPlaylistGenreItems);
         SelectedItems = Array.Empty<object>();
         SelectedSessionControlChip = null;
     }

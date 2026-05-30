@@ -359,12 +359,12 @@ public sealed partial class SidebarItem : Control
 			border.Drop += ItemBorder_Drop;
 			border.AllowDrop = IsItemEnabled;
 			border.IsTabStop = false;
-			System.Diagnostics.Debug.WriteLine(
+			Wavee.UI.Diagnostics.UiTrace.Line(
 				$"[sbreorder] Loaded tag={(Item as SidebarItemModel)?.Tag} borderFound=true enabled={IsItemEnabled} allowDrop={border.AllowDrop}");
 		}
 		else
 		{
-			System.Diagnostics.Debug.WriteLine(
+			Wavee.UI.Diagnostics.UiTrace.Line(
 				$"[sbreorder] Loaded tag={(Item as SidebarItemModel)?.Tag} borderFound=FALSE (drag handlers NOT attached)");
 		}
 
@@ -442,7 +442,7 @@ public sealed partial class SidebarItem : Control
 		UseReorderDrop = Item is SidebarItemModel reorderModel
 			&& !reorderModel.IsSectionHeader
 			&& IsPlaylistOrFolderRow(reorderModel);
-		System.Diagnostics.Debug.WriteLine(
+		Wavee.UI.Diagnostics.UiTrace.Line(
 			$"[sbreorder] HandleItemChange tag={(Item as SidebarItemModel)?.Tag} isSection={(Item as SidebarItemModel)?.IsSectionHeader} useReorder={UseReorderDrop}");
 	}
 
@@ -1282,7 +1282,7 @@ public sealed partial class SidebarItem : Control
 
 	private void ItemBorder_DragOver(object sender, DragEventArgs e)
 	{
-		System.Diagnostics.Debug.WriteLine(
+		Wavee.UI.Diagnostics.UiTrace.Line(
 			$"[sbreorder] DragOver fired tag={(Item as SidebarItemModel)?.Tag} enabled={IsItemEnabled} useReorder={UseReorderDrop} dragStateNull={_dragStateService is null} payload={_dragStateService?.CurrentPayload?.Kind}");
 		if (!IsItemEnabled)
 			return;
@@ -1293,7 +1293,7 @@ public sealed partial class SidebarItem : Control
 			&& CanDropAtPosition(model, payload, pos))
 		{
 			e.AcceptedOperation = DataPackageOperation.Copy;
-			System.Diagnostics.Debug.WriteLine(
+			Wavee.UI.Diagnostics.UiTrace.Line(
 				$"[sbreorder] DragOver ACCEPT tag={(Item as SidebarItemModel)?.Tag} pos={pos}");
 			switch (pos)
 			{
@@ -1337,7 +1337,7 @@ public sealed partial class SidebarItem : Control
 		// the invalid center of a non-editable playlist) is cleared, instead
 		// of leaving a stale "insert here" line until DragLeave fires.
 		e.AcceptedOperation = DataPackageOperation.None;
-		System.Diagnostics.Debug.WriteLine(
+		Wavee.UI.Diagnostics.UiTrace.Line(
 			$"[sbreorder] DragOver REJECT tag={(Item as SidebarItemModel)?.Tag} pos={pos} payload={_dragStateService?.CurrentPayload?.Kind}");
 		CancelAutoExpandDwell();
 		Owner?.ClearReorderGap(animate: true);

@@ -61,6 +61,16 @@ public sealed partial class NotificationToast : UserControl
         set => SetValue(ActionLabelProperty, value);
     }
 
+    public static readonly DependencyProperty SecondaryActionLabelProperty =
+        DependencyProperty.Register(nameof(SecondaryActionLabel), typeof(string), typeof(NotificationToast),
+            new PropertyMetadata(null, OnSecondaryActionLabelChanged));
+
+    public string? SecondaryActionLabel
+    {
+        get => (string?)GetValue(SecondaryActionLabelProperty);
+        set => SetValue(SecondaryActionLabelProperty, value);
+    }
+
     public static readonly DependencyProperty IsActionEnabledProperty =
         DependencyProperty.Register(nameof(IsActionEnabled), typeof(bool), typeof(NotificationToast),
             new PropertyMetadata(true, OnIsActionEnabledChanged));
@@ -72,6 +82,7 @@ public sealed partial class NotificationToast : UserControl
     }
 
     public event RoutedEventHandler? ActionClick;
+    public event RoutedEventHandler? SecondaryActionClick;
     public event RoutedEventHandler? CloseRequested;
 
     private static void OnIsOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -103,9 +114,22 @@ public sealed partial class NotificationToast : UserControl
             : Visibility.Visible;
     }
 
+    private static void OnSecondaryActionLabelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var toast = (NotificationToast)d;
+        var label = e.NewValue as string;
+        toast.SecondaryActionButton.Content = label;
+        toast.SecondaryActionButton.Visibility = string.IsNullOrEmpty(label)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
     private static void OnIsActionEnabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        ((NotificationToast)d).ActionButton.IsEnabled = (bool)e.NewValue;
+        var toast = (NotificationToast)d;
+        var enabled = (bool)e.NewValue;
+        toast.ActionButton.IsEnabled = enabled;
+        toast.SecondaryActionButton.IsEnabled = enabled;
     }
 
     private void ApplySeverity(AppNotificationSeverity severity)
@@ -124,5 +148,6 @@ public sealed partial class NotificationToast : UserControl
     }
 
     private void OnActionClick(object sender, RoutedEventArgs e) => ActionClick?.Invoke(this, e);
+    private void OnSecondaryActionClick(object sender, RoutedEventArgs e) => SecondaryActionClick?.Invoke(this, e);
     private void OnCloseClick(object sender, RoutedEventArgs e) => CloseRequested?.Invoke(this, e);
 }

@@ -1221,7 +1221,9 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     {
         _lastCollaboratorSignature = null;
         SetShouldShowAddedByColumn(false);
-        Collaborators.Clear();
+        // Resilient reset during navigation (issue #6) — raw Clear() on the bound Collaborators
+        // list mid-layout throws COMException E_FAIL (the same hazard Dispose() below documents).
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Collaborators, []);
         HasCollaborators = false;
         LatestInviteLink = null;
         PaletteBackdropBrush = null;

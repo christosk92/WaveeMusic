@@ -210,4 +210,20 @@ public sealed partial class ActiveVideoSurfaceService : IActiveVideoSurfaceServi
 
         ActiveSurfaceChanged?.Invoke(this, newSurface);
     }
+
+    public void Dispose()
+    {
+        // Dispose the per-provider SurfaceChanges subscriptions — each holds a
+        // strong reference to OnProviderSurfaceChanged (and thus this service).
+        // Providers fire from background threads, so leaving these live keeps
+        // the service + its consumers reachable after the container tears down.
+        foreach (var sub in _subscriptions)
+        {
+            try { sub.Dispose(); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "[surface] subscription dispose threw"); }
+        }
+        _subscriptions.Clear();
+        _providers.Clear();
+        _currentOwner = null;
+    }
 }

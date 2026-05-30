@@ -29,6 +29,24 @@
                 </StackPanel>
 
                 <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_2" Text="Updates" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8" Tag="updates"/>
+
+                <!-- Shown once Windows App Installer has silently downloaded + staged a newer
+                     MSIX via the .appinstaller channel (IUpdateService.IsRestartUpdateReady).
+                     "Restart now" relaunches the process so Windows swaps in the new version. -->
+                <InfoBar IsOpen="{x:Bind ViewModel.UpdateService.IsRestartUpdateReady, Mode=OneWay}"
+                         IsClosable="False"
+                         Severity="Success"
+                         Title="{x:Bind RestartReadyTitle}"
+                         Message="{x:Bind RestartReadyMessage}"
+                         Margin="0,0,0,12"
+                         Tag="updates">
+                    <InfoBar.ActionButton>
+                        <Button Content="{x:Bind RestartNowLabel}"
+                                Style="{ThemeResource AccentButtonStyle}"
+                                Click="RestartToUpdate_Click"/>
+                    </InfoBar.ActionButton>
+                </InfoBar>
+
                 <controls:SettingsExpander x:Uid="Controls_Settings_AboutSettingsSection__SettingsExpander_3" Header="Check for updates"
                                            Description="{x:Bind ViewModel.UpdateService.Status, Mode=OneWay}"
                                            Tag="updates">
@@ -101,10 +119,10 @@
                     <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
                 </controls:SettingsCard>
 
-                <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__SettingsCard_100" Header="Report an issue on GitHub"
-                                       Description="Packages your recent logs into a zip and opens GitHub Issues"
+                <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__SettingsCard_100" Header="Report a problem / export logs"
+                                       Description="Bundles your logs (including the audio engine) into a zip you can send via GitHub or email"
                                        IsClickEnabled="True"
-                                       Click="ReportOnGitHub_Click"
+                                       Click="ReportProblem_Click"
                                        Tag="help">
                     <controls:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE943;"/>

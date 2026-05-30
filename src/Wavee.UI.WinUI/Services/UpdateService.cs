@@ -17,7 +17,11 @@ namespace Wavee.UI.WinUI.Services;
 
 public sealed partial class UpdateService : IUpdateService
 {
-    private const string GitHubReleasesUrl = "https://api.github.com/repos/christosk92/WaveeMusic/releases/latest";
+    // /releases (list) NOT /releases/latest: the "latest" endpoint silently
+    // excludes pre-releases, and every Wavee build is a pre-release (alpha/beta/rc),
+    // so it always 404'd and the in-app updater never saw a new build. The list
+    // endpoint returns all releases (newest first) including pre-releases.
+    private const string GitHubReleasesUrl = "https://api.github.com/repos/christosk92/WaveeMusic/releases?per_page=30";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ISettingsService _settingsService;
@@ -32,6 +36,7 @@ public sealed partial class UpdateService : IUpdateService
     private string? _errorMessage;
     private DateTimeOffset? _lastChecked;
     private bool _isUpdateAvailable;
+    private bool _isRestartUpdateReady;
 
     public UpdateService(
         IHttpClientFactory httpClientFactory,
@@ -50,26 +55,63 @@ public sealed partial class UpdateService : IUpdateService
         // Restore last checked time
         _lastChecked = _settingsService.Settings.LastUpdateCheck;
 
-        // Fire-and-forget initial check after a short delay to let the app settle
-        _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(async _ =>
+        // Fire-and-forget initial check after a short delay to let the app settle. The work
+        // lives in an async method (not Task.Delay(...).ContinueWith(async _ => ...)) so the
+        // inner task's exceptions are observed there instead of being rethrown by the finalizer
+        // as an unobserved task exception.
+        _ = RunStartupUpdateChecksAsync();
+    }
+
+    private async Task RunStartupUpdateChecksAsync()
+    {
+        // Detached startup flow. Every fault is caught and logged here so it can never escape
+        // as an unobserved task exception. UI-affecting work marshals to the UI thread on its own
+        // (PropertyChanged via SetField, toasts via NotificationService.Show), so the awaits
+        // intentionally do not capture context.
+        try
         {
-            await CheckForUpdateAsync();
-            if (IsUpdateAvailable && Distribution != DistributionMode.Store)
+            // Let the app settle before the first check.
+            await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+
+            // GitHub-sourced version/changelog drives the Settings "what's new" surface
+            // regardless of how the app was installed.
+            await CheckForUpdateAsync().ConfigureAwait(false);
+
+            switch (Distribution)
             {
-                _notificationService?.Show(new NotificationInfo
-                {
-                    Message = AppLocalization.Format("Update_AvailableMessage", LatestVersion),
-                    Severity = NotificationSeverity.Informational,
-                    AutoDismissAfter = TimeSpan.FromSeconds(8),
-                    ActionLabel = AppLocalization.GetString("Update_View"),
-                    Action = async () =>
-                    {
-                        if (ReleaseUrl != null)
-                            await Windows.System.Launcher.LaunchUriAsync(new Uri(ReleaseUrl));
-                    }
-                });
+                case DistributionMode.Sideloaded:
+                    // Real auto-update path: Windows App Installer silently downloads + stages
+                    // the new MSIX from the .appinstaller; this nudges the user to restart.
+                    await CheckPackageUpdateAsync().ConfigureAwait(false);
+                    break;
+                case DistributionMode.Unpackaged:
+                    // Dev build — no in-place update channel; point at the release page if newer.
+                    if (IsUpdateAvailable)
+                        ShowUpdateAvailableNudge();
+                    break;
+                // Store: the Microsoft Store handles updates; no in-app nudge.
             }
-        }, TaskScheduler.Default);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Startup update check failed");
+        }
+    }
+
+    private void ShowUpdateAvailableNudge()
+    {
+        _notificationService?.Show(new NotificationInfo
+        {
+            Message = AppLocalization.Format("Update_AvailableMessage", LatestVersion),
+            Severity = NotificationSeverity.Informational,
+            AutoDismissAfter = TimeSpan.FromSeconds(8),
+            ActionLabel = AppLocalization.GetString("Update_View"),
+            Action = async () =>
+            {
+                if (ReleaseUrl != null)
+                    await Windows.System.Launcher.LaunchUriAsync(new Uri(ReleaseUrl));
+            }
+        });
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -124,6 +166,12 @@ public sealed partial class UpdateService : IUpdateService
         private set => SetField(ref _isUpdateAvailable, value);
     }
 
+    public bool IsRestartUpdateReady
+    {
+        get => _isRestartUpdateReady;
+        private set => SetField(ref _isRestartUpdateReady, value);
+    }
+
     public async Task CheckForUpdateAsync(CancellationToken ct = default)
     {
         if (!await _checkLock.WaitAsync(0, ct))
@@ -143,15 +191,8 @@ public sealed partial class UpdateService : IUpdateService
 
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                // GitHub returns 404 here when the repo has no published releases yet.
-                // Treat that as "no update available" instead of surfacing a startup error.
-                IsUpdateAvailable = false;
-                LatestVersion = null;
-                Changelog = null;
-                ReleaseUrl = null;
-                Status = UpdateStatus.UpToDate;
-                LastChecked = DateTimeOffset.UtcNow;
-                _logger?.LogDebug("Update check skipped because no GitHub releases are published yet");
+                // Repo/endpoint not found — treat as "no update" rather than a startup error.
+                ReportNoUpdate("releases endpoint returned 404");
                 return;
             }
 
@@ -161,30 +202,61 @@ public sealed partial class UpdateService : IUpdateService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            var tagName = root.GetProperty("tag_name").GetString() ?? "";
-            var rawVersion = tagName.TrimStart('v', 'V');
+            // Channel-aware selection over the full release list. A pre-release
+            // build (current version carries a -alpha/-beta/-rc tag) accepts ANY
+            // non-draft release — a stable release ranks above a pre-release of the
+            // same core version, so it's still a valid "newer". A stable build only
+            // accepts stable releases (never offers a pre-release as an update).
+            var currentParsed = TryParseReleaseVersion(CurrentVersion, out var current);
+            var includePrereleases = !currentParsed || current.Prerelease is not null;
+
+            JsonElement best = default;
+            ReleaseVersion bestVersion = default;
+            var haveBest = false;
+            var considered = 0;
+
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var rel in root.EnumerateArray())
+                {
+                    if (rel.TryGetProperty("draft", out var draft) && draft.GetBoolean())
+                        continue;
+
+                    var tag = rel.TryGetProperty("tag_name", out var t) ? t.GetString() ?? "" : "";
+                    if (!TryParseReleaseVersion(tag, out var ver))
+                        continue;
+
+                    if (!includePrereleases && ver.Prerelease is not null)
+                        continue;
+
+                    considered++;
+                    if (!haveBest || CompareReleaseVersions(ver, bestVersion) > 0)
+                    {
+                        best = rel;
+                        bestVersion = ver;
+                        haveBest = true;
+                    }
+                }
+            }
+
+            if (!haveBest)
+            {
+                ReportNoUpdate($"no applicable releases (includePrereleases={includePrereleases})");
+                return;
+            }
+
+            var rawVersion = (best.TryGetProperty("tag_name", out var tn) ? tn.GetString() ?? "" : "").TrimStart('v', 'V');
             LatestVersion = rawVersion;
-            Changelog = root.TryGetProperty("body", out var body) ? body.GetString() : null;
-            ReleaseUrl = root.TryGetProperty("html_url", out var url) ? url.GetString() : null;
+            Changelog = best.TryGetProperty("body", out var body) ? body.GetString() : null;
+            ReleaseUrl = best.TryGetProperty("html_url", out var url) ? url.GetString() : null;
 
-            if (TryParseReleaseVersion(rawVersion, out var latest) &&
-                TryParseReleaseVersion(CurrentVersion, out var current))
-            {
-                IsUpdateAvailable = CompareReleaseVersions(latest, current) > 0;
-                Status = IsUpdateAvailable ? UpdateStatus.UpdateAvailable : UpdateStatus.UpToDate;
-            }
-            else
-            {
-                // Can't parse — treat as up to date
-                IsUpdateAvailable = false;
-                Status = UpdateStatus.UpToDate;
-            }
-
+            IsUpdateAvailable = currentParsed && CompareReleaseVersions(bestVersion, current) > 0;
+            Status = IsUpdateAvailable ? UpdateStatus.UpdateAvailable : UpdateStatus.UpToDate;
             LastChecked = DateTimeOffset.UtcNow;
 
             _logger?.LogInformation(
-                "Update check: current={Current}, latest={Latest}, available={Available}",
-                CurrentVersion, LatestVersion, IsUpdateAvailable);
+                "Update check: current={Current}, latest={Latest}, considered={Considered}, available={Available}",
+                CurrentVersion, LatestVersion, considered, IsUpdateAvailable);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -192,6 +264,8 @@ public sealed partial class UpdateService : IUpdateService
             Status = UpdateStatus.Error;
             ErrorMessage = ex.Message;
 
+            // Safe from the startup threadpool continuation: NotificationService.Show marshals
+            // to the UI thread itself.
             _notificationService?.Show(new NotificationInfo
             {
                 Message = AppLocalization.GetString("Update_CheckFailed"),
@@ -205,6 +279,97 @@ public sealed partial class UpdateService : IUpdateService
         {
             _checkLock.Release();
         }
+    }
+
+    public async Task CheckPackageUpdateAsync(CancellationToken ct = default)
+    {
+        // Only sideloaded (.appinstaller) installs have a Windows-managed update channel.
+        // Store updates itself; unpackaged dev builds have no package at all.
+        if (Distribution != DistributionMode.Sideloaded)
+            return;
+
+        PackageUpdateAvailability availability;
+        try
+        {
+            // CheckUpdateAvailabilityAsync inspects the install's .appinstaller channel and
+            // reports whether App Installer has staged (or can fetch) a newer package. It needs
+            // NO package-management capability — unlike the PackageManager add/stage APIs.
+            var result = await Package.Current.CheckUpdateAvailabilityAsync();
+            ct.ThrowIfCancellationRequested();
+            availability = result.Availability;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Throws when the package wasn't installed from an .appinstaller, or the channel is
+            // unreachable. Treat as "no in-place update" — the GitHub check still covers "what's new".
+            _logger?.LogDebug(ex, "CheckUpdateAvailabilityAsync failed (treating as no update)");
+            return;
+        }
+
+        var ready = availability is PackageUpdateAvailability.Available
+                                 or PackageUpdateAvailability.Required;
+        if (!ready)
+        {
+            _logger?.LogDebug("Package update check: none staged (availability={Availability})", availability);
+            return;
+        }
+
+        if (IsRestartUpdateReady)
+            return; // already nudged this session
+
+        _logger?.LogInformation(
+            "MSIX update staged via .appinstaller; prompting restart (availability={Availability})",
+            availability);
+
+        // Safe from the threadpool continuation: ShowRestartReadyNudge sets IsRestartUpdateReady
+        // (its PropertyChanged is marshalled to the UI thread by SetField) and posts a toast
+        // (NotificationService.Show marshals itself).
+        ShowRestartReadyNudge();
+    }
+
+    private void ShowRestartReadyNudge()
+    {
+        IsRestartUpdateReady = true;
+        _notificationService?.Show(new NotificationInfo
+        {
+            Message = AppLocalization.GetString("Update_RestartReadyMessage"),
+            Severity = NotificationSeverity.Informational,
+            AutoDismissAfter = TimeSpan.FromSeconds(12),
+            ActionLabel = AppLocalization.GetString("Update_RestartNow"),
+            Action = RestartToApplyUpdateAsync
+        });
+    }
+
+    public Task RestartToApplyUpdateAsync()
+    {
+        try
+        {
+            // Full process restart so Windows applies the staged MSIX on relaunch. This is a
+            // hard process replacement (distinct from UiRestartCoordinator's UI-only restart) —
+            // on success it terminates the current process and never returns.
+            var reason = Microsoft.Windows.AppLifecycle.AppInstance.Restart(string.Empty);
+            _logger?.LogWarning("AppInstance.Restart returned without restarting ({Reason})", reason);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Restart to apply update failed");
+        }
+        return Task.CompletedTask;
+    }
+
+    private void ReportNoUpdate(string reason)
+    {
+        IsUpdateAvailable = false;
+        LatestVersion = null;
+        Changelog = null;
+        ReleaseUrl = null;
+        Status = UpdateStatus.UpToDate;
+        LastChecked = DateTimeOffset.UtcNow;
+        _logger?.LogDebug("Update check: up to date ({Reason})", reason);
     }
 
     private void DetectDistribution()
@@ -335,7 +500,26 @@ public sealed partial class UpdateService : IUpdateService
     {
         if (Equals(field, value)) return false;
         field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        RaisePropertyChanged(propertyName);
         return true;
+    }
+
+    // PropertyChanged feeds x:Bind on the Settings About page, so it must reach those bindings
+    // on the UI thread. The startup update check runs as a detached continuation on the thread
+    // pool (no UI SynchronizationContext); raising the event there would set DependencyObject
+    // properties (e.g. SettingsExpander.Description bound to Status) off-thread and throw
+    // RPC_E_WRONG_THREAD (0x8001010E). Marshal when not already on the UI thread. (Before
+    // MainWindow exists nothing is bound, so a direct raise is harmless.)
+    private void RaisePropertyChanged(string? propertyName)
+    {
+        var handler = PropertyChanged;
+        if (handler is null)
+            return;
+
+        var dispatcher = MainWindow.Instance?.DispatcherQueue;
+        if (dispatcher is null || dispatcher.HasThreadAccess)
+            handler(this, new PropertyChangedEventArgs(propertyName));
+        else
+            dispatcher.TryEnqueue(() => handler(this, new PropertyChangedEventArgs(propertyName)));
     }
 }

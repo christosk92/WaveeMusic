@@ -17,6 +17,7 @@
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:notifications="using:Wavee.UI.WinUI.Controls.Notifications"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:addtoplaylist="using:Wavee.UI.WinUI.Controls.AddToPlaylist"
@@ -28,7 +29,6 @@
 
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
-        <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
     </UserControl.Resources>
 
     <!-- F12 → DebugPage (always-on, Release too). Ctrl+F12 opens in a new tab.
@@ -140,8 +140,10 @@
             Message="{x:Bind ViewModel.NotificationMessage, Mode=OneWay}"
             Severity="{x:Bind ViewModel.NotificationSeverity, Mode=OneWay}"
             ActionLabel="{x:Bind ViewModel.NotificationActionLabel, Mode=OneWay}"
+            SecondaryActionLabel="{x:Bind ViewModel.NotificationSecondaryActionLabel, Mode=OneWay}"
             IsActionEnabled="{x:Bind ViewModel.IsNotificationActionEnabled, Mode=OneWay}"
             ActionClick="NotificationAction_Click"
+            SecondaryActionClick="NotificationSecondaryAction_Click"
             CloseRequested="Notification_CloseRequested"/>
 
         <!-- Browser-style zoom HUD. Pops in top-center on Ctrl+/-/0 (or when
@@ -272,11 +274,11 @@
                             <animations:OpacityAnimation Duration="0:0:0.2" From="1" To="0" />
                             <animations:TranslationAnimation Duration="0:0:0.2" From="0" To="0,50,0" />
                         </animations:Implicit.HideAnimations>
-                        <Image
+                        <imaging:CompositionImage
+                            x:Name="ExpandedAlbumArtImage"
                             Stretch="UniformToFill"
-                            Source="{x:Bind PlayerBarControl.ViewModel.AlbumArtLarge, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=300}"
-                            behaviors:ImageFallbackBehavior.HideOnError="True"
-                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True" />
+                            DecodePixelSize="512"
+                            ImageUrl="{x:Bind PlayerBarControl.ViewModel.AlbumArtLarge, Mode=OneWay}" />
                     </Border>
                 </StackPanel>
             </sidebar:SidebarView.Footer>
