@@ -101,8 +101,9 @@ A **Spotify Premium** account is required, and the app is intended for personal 
 
 The experimental alpha ships as a signed MSIX from
 [GitHub Releases](https://github.com/christosk92/WaveeMusic/releases) —
-grab the matching `Wavee.UI.WinUI_{package-version}_{arch}.msix` for your machine.
-See [ALPHA.md](ALPHA.md) for system requirements, installation steps,
+grab the matching `Wavee.UI.WinUI_{package-version}_{arch}.msix` for your machine,
+or install from `Wavee.Experimental.<arch>.appinstaller` to get silent background
+auto-updates. See [ALPHA.md](ALPHA.md) for system requirements, installation steps,
 known limitations, and how to file a useful bug report.
 
 > A Spotify **Premium** account is required. Wavee shows a non-dismissible
