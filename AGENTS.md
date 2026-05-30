@@ -13,7 +13,9 @@ Read the relevant guide before changing that area:
   `release/<X.Y.Z>-<label>` branch**; pre-releases are deliberate milestone drops
   (`gh workflow run release.yml --ref release/…`); promote `release/* → master` to ship
   production. `master` is the default/production branch; never push directly to it or a
-  `release/*` branch (ruleset-enforced). `.agents/guides/contributing-and-releases.md`
+  `release/*` branch (ruleset-enforced). For natural-language release commands, use
+  `eng/release.ps1`; Codex-specific runner notes live in
+  `.agents/skills/wavee-release-runner/SKILL.md`. `.agents/guides/contributing-and-releases.md`
 - **Track and episode UI** — every track/episode row, list, card, search cell,
   omnibar suggestion, queue row, home episode card, and now-playing surface.
   `.agents/guides/track-and-episode-ui.md`

@@ -241,7 +241,10 @@ worker/
 scripts/
 docs/
 .dotnet-cli/
-.claude/
+.claude/*
+!.claude/commands/
+.claude/commands/*
+!.claude/commands/wavee-release.md
 
 # Signing — local Artifact Signing config and any code-signing certificates.
 # metadata.json carries the developer's Azure account/profile names; *.pfx
