@@ -46,6 +46,11 @@ public sealed class ContentPageController
     public bool IsShowingContent => _showingContent;
     public bool IsCrossfadeScheduled => _crossfadeScheduled;
 
+    /// <summary>The page's content container (the element the crossfade reveals).
+    /// Exposed so a page can run a short soft-swap fade on it for same-type
+    /// navigation without reaching into its own named XAML elements.</summary>
+    public FrameworkElement? ContentRoot => _host.ContentContainer;
+
     public bool IsNavigatingAway
     {
         get => _isNavigatingAway;

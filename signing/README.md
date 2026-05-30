@@ -115,7 +115,7 @@ back to `az login`.
 
 ---
 
-## CI: GitHub Actions (`release.yml`)
+## GitHub Actions (`release.yml`)
 
 **Releases are cut deliberately via `workflow_dispatch`** (not on merge). Run the
 workflow on a `release/<X.Y.Z>-<label>` branch to cut a pre-release

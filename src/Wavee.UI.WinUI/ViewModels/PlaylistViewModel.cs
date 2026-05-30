@@ -263,51 +263,18 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             "PrefillFrom: Uri='{Uri}', Title='{Title}', Subtitle='{Subtitle}', ImageUrl='{ImageUrl}'",
             nav.Uri, nav.Title, nav.Subtitle, nav.ImageUrl);
 
-        // Several call sites pass the literal "Playlist" string as a fallback when
-        // the source card has no title. Treat that as no title so the page shows
-        // a shimmer rather than the page-type label.
-        if (!string.IsNullOrEmpty(nav.Title)
-            && !string.Equals(nav.Title, "Playlist", StringComparison.OrdinalIgnoreCase))
-        {
-            Header.PlaylistName = nav.Title;
-        }
-        else if (clearMissing)
-        {
-            Header.PlaylistName = string.Empty;
-        }
-        else
-        {
+        if (!HasUsablePrefillTitle(nav.Title))
             _logger?.LogInformation(
                 "PrefillFrom: skipping nav.Title='{Title}' (empty or generic 'Playlist' fallback)",
                 nav.Title);
-        }
-        // Don't surface mosaic URIs here — the Image converter can't render them, so
-        // writing one into PlaylistImageUrl would flip the shimmer off and show a
-        // blank gray rect until ApplyMosaicHeroAsync composes a real file:// URI.
-        // Leaving the field null keeps the shimmer on until the composed mosaic
-        // arrives and fades in via ImageFallbackBehavior.
-        if (!string.IsNullOrEmpty(nav.ImageUrl)
-            && !SpotifyImageHelper.IsMosaicUri(nav.ImageUrl))
-        {
-            Header.PlaylistImageUrl = nav.ImageUrl;
-        }
-        else if (clearMissing)
-        {
-            Header.PlaylistImageUrl = null;
-        }
 
-        if (!string.IsNullOrEmpty(nav.Subtitle)) Header.OwnerName = nav.Subtitle;
-        else if (clearMissing) Header.OwnerName = string.Empty;
+        Header.SetPlaylist(BuildPrefillEnvelope(
+            nav.Uri,
+            nav,
+            clearMissing ? null : Header.Playlist,
+            clearMissing));
 
-        // Seed TotalTracks so TrackDataGrid.LoadingRowCount renders the right
-        // number of skeleton rows before the playlist contents resolve. Source
-        // cards (sidebar rows, library lists, search hits) carry the count in
-        // nav.TotalTracks; deep links and other sourceless paths fall back to
-        // the grid's DefaultLoadingRowCount.
-        if (nav.TotalTracks is { } prefillTracks && prefillTracks > 0)
-            TrackList.TotalTracks = prefillTracks;
-        else if (clearMissing)
-            TrackList.TotalTracks = 0;
+        ApplyPrefillTrackCount(nav, clearMissing);
     }
 
     /// <summary>
@@ -315,7 +282,10 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
     /// prior subscription (which cancels its inflight fetch). Call Deactivate()
     /// on navigation-away.
     /// </summary>
-    public void Activate(string? playlistId, bool preserveHeaderPrefill = false)
+    public void Activate(
+        string? playlistId,
+        bool preserveHeaderPrefill = false,
+        Data.Parameters.ContentNavigationParameter? prefill = null)
     {
         if (string.IsNullOrEmpty(playlistId))
         {
@@ -338,40 +308,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
 
         if (isNewPlaylist)
         {
-            // Blank display fields so the previous playlist's data doesn't bleed
-            // through while the new one loads. With NavigationCacheMode="Enabled"
-            // the VM is reused across navigations; without this reset, PrefillFrom's
-            // null-guards and ApplyDetail's empty-string guards would leave stale
-            // values visible whenever the new playlist is missing a field (e.g.
-            // editorial playlists with no description).
             var previousEnvelope = Header.Playlist;
-            Header.SetPlaylist(preserveHeaderPrefill && previousEnvelope is not null
-                ? previousEnvelope with
-                {
-                    Description = null,
-                    HeaderImageUrl = null,
-                    OwnerId = null,
-                    OwnerAvatarUrl = null,
-                    FormatAttributes = null,
-                    Revision = null,
-                    SessionControlGroupId = null,
-                    IsOwner = false,
-                    IsPublic = false,
-                    IsCollaborative = false,
-                    BasePermission = PlaylistBasePermission.Viewer,
-                    CanEditItems = false,
-                    CanAdministratePermissions = false,
-                    CanCancelMembership = false,
-                    CanAbuseReport = false,
-                    CanEditMetadata = false,
-                    CanEditName = false,
-                    CanEditDescription = false,
-                    CanEditPicture = false,
-                    CanEditCollaborative = false,
-                    CanDelete = false,
-                    Palette = null
-                }
-                : null);
+            Header.SetPlaylist(BuildActivationEnvelope(playlistId, previousEnvelope, preserveHeaderPrefill, prefill));
 
             Header.ResetForNewPlaylist();
 
@@ -381,7 +319,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             // brief window between Activate and LoadTracksAsync — those would
             // latch into already-materializing ListView containers).
             TrackList.ResetForNewPlaylist();
-            Header.RefreshTrackDerivedState();
+            if (prefill is not null)
+                ApplyPrefillTrackCount(prefill, clearMissing: true);
             _tracksLoadedFor = null;
             _tracksLoadInFlightFor = null;
             _recommendationsAutoLoadGeneration++;
@@ -420,6 +359,126 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         // the playlist hero and first rows have painted.
         _ = LoadRootlistAfterFirstFrameAsync();
     }
+
+    private void ApplyPrefillTrackCount(Data.Parameters.ContentNavigationParameter nav, bool clearMissing)
+    {
+        // Seed TotalTracks so TrackDataGrid.LoadingRowCount renders the right
+        // number of skeleton rows before the playlist contents resolve. Source
+        // cards (sidebar rows, library lists, search hits) carry the count in
+        // nav.TotalTracks; deep links and other sourceless paths fall back to
+        // the grid's DefaultLoadingRowCount.
+        if (nav.TotalTracks is { } prefillTracks && prefillTracks > 0)
+            TrackList.TotalTracks = prefillTracks;
+        else if (clearMissing)
+            TrackList.TotalTracks = 0;
+    }
+
+    private PlaylistView? BuildActivationEnvelope(
+        string playlistId,
+        PlaylistView? previousEnvelope,
+        bool preserveHeaderPrefill,
+        Data.Parameters.ContentNavigationParameter? prefill)
+    {
+        if (prefill is not null)
+            return BuildPrefillEnvelope(playlistId, prefill, existing: null, clearMissing: true);
+
+        if (preserveHeaderPrefill && previousEnvelope is not null)
+            return ResetTransientEnvelope(previousEnvelope, playlistId);
+
+        return null;
+    }
+
+    private static PlaylistView BuildPrefillEnvelope(
+        string playlistId,
+        Data.Parameters.ContentNavigationParameter nav,
+        PlaylistView? existing,
+        bool clearMissing)
+    {
+        var envelope = existing ?? EmptyEnvelopeFor(playlistId);
+
+        var name = HasUsablePrefillTitle(nav.Title)
+            ? nav.Title!
+            : clearMissing ? string.Empty : envelope.Name;
+
+        // Don't surface mosaic URIs here — the Image converter can't render them,
+        // so writing one into PlaylistImageUrl would flip the shimmer off and show
+        // a blank gray rect until ApplyMosaicHeroAsync composes a real file:// URI.
+        var imageUrl = !string.IsNullOrEmpty(nav.ImageUrl) && !SpotifyImageHelper.IsMosaicUri(nav.ImageUrl)
+            ? nav.ImageUrl
+            : clearMissing ? null : envelope.ImageUrl;
+
+        var ownerName = !string.IsNullOrEmpty(nav.Subtitle)
+            ? nav.Subtitle
+            : clearMissing ? string.Empty : envelope.OwnerName;
+
+        return ResetTransientEnvelope(envelope, playlistId) with
+        {
+            Name = name,
+            ImageUrl = imageUrl,
+            OwnerName = ownerName
+        };
+    }
+
+    private static bool HasUsablePrefillTitle(string? title)
+        => !string.IsNullOrEmpty(title)
+           && !string.Equals(title, "Playlist", StringComparison.OrdinalIgnoreCase);
+
+    private static PlaylistView ResetTransientEnvelope(PlaylistView source, string playlistId)
+        => source with
+        {
+            Id = playlistId,
+            Description = null,
+            HeaderImageUrl = null,
+            OwnerId = null,
+            OwnerAvatarUrl = null,
+            FormatAttributes = null,
+            Revision = null,
+            SessionControlGroupId = null,
+            IsOwner = false,
+            IsPublic = false,
+            IsCollaborative = false,
+            BasePermission = PlaylistBasePermission.Viewer,
+            CanEditItems = false,
+            CanAdministratePermissions = false,
+            CanCancelMembership = false,
+            CanAbuseReport = false,
+            CanEditMetadata = false,
+            CanEditName = false,
+            CanEditDescription = false,
+            CanEditPicture = false,
+            CanEditCollaborative = false,
+            CanDelete = false,
+            Palette = null
+        };
+
+    private static PlaylistView EmptyEnvelopeFor(string playlistId)
+        => new(
+            Id: playlistId,
+            Name: string.Empty,
+            Description: null,
+            ImageUrl: null,
+            HeaderImageUrl: null,
+            OwnerName: string.Empty,
+            OwnerId: null,
+            OwnerAvatarUrl: null,
+            FormatAttributes: null,
+            Revision: null,
+            SessionControlGroupId: null,
+            IsOwner: false,
+            IsPublic: false,
+            IsCollaborative: false,
+            BasePermission: PlaylistBasePermission.Viewer,
+            CanEditItems: false,
+            CanAdministratePermissions: false,
+            CanCancelMembership: false,
+            CanAbuseReport: false,
+            CanEditMetadata: false,
+            CanEditName: false,
+            CanEditDescription: false,
+            CanEditPicture: false,
+            CanEditCollaborative: false,
+            CanDelete: false,
+            Palette: null);
 
     public void Deactivate()
     {

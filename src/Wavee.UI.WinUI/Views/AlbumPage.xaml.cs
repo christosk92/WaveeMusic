@@ -389,6 +389,26 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         LoadNewContent(parameter, PageHostNavigationMode.Refresh);
     }
 
+    // Short cross-fade of the page content root for a soft same-type swap (no
+    // shimmer reset). Mirrors PlaylistPage.AnimatePlaylistSwap; uses
+    // ContentPageController.ContentRoot so it needs no page-specific element.
+    private void AnimateContentSwap()
+    {
+        if (PageController.ContentRoot is not { } root)
+            return;
+        var fade = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(200)),
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade, root);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade, "Opacity");
+        var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        sb.Children.Add(fade);
+        sb.Begin();
+    }
+
     private async void LoadNewContent(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
         // If we were trimmed since the last LoadNewContent, the x:Bind graph is
@@ -420,10 +440,25 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
 
         PageController.IsNavigatingAway = false;
 
+        var hasPendingAlbumArtAnimation =
+            ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt);
+
+        // Soft-swap: on same-tab album→album refresh with usable prefill and
+        // content already on screen, skip the full shimmer reset and cross-fade
+        // the content root instead — no skeleton flash over good pixels for warm
+        // revisits. Mirrors PlaylistPage.useSoftPlaylistSwap.
+        var softSwapNav = parameter as ContentNavigationParameter;
+        var useSoftSwap =
+            mode == PageHostNavigationMode.Refresh &&
+            PageController.IsShowingContent &&
+            softSwapNav is not null &&
+            !hasPendingAlbumArtAnimation &&
+            (!string.IsNullOrEmpty(softSwapNav.Title) || !string.IsNullOrEmpty(softSwapNav.ImageUrl));
+
         // Cache-hit nav (Back/Forward): content visual tree is already realised
         // and bindings live; skip shimmer reset to avoid flashing skeleton over
         // already-good pixels. Only New entry needs the full reset.
-        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
+        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward && !useSoftSwap)
         {
             System.Diagnostics.Debug.WriteLine($"[diag-album] LoadNewContent.runReset mode={mode}");
             PageController.ResetForNewLoad();
@@ -432,13 +467,17 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             _footerRevealGeneration++;
             FooterShimmerGate.Reset(() => null, () => FooterContent, FrameworkLayer.Xaml);
         }
+        else if (useSoftSwap)
+        {
+            System.Diagnostics.Debug.WriteLine($"[diag-album] LoadNewContent.softSwap mode={mode}");
+            AnimateContentSwap();
+            // New album → start at the top even though we kept the content layer.
+            ResetScrollPositionForNavigation();
+        }
         else
         {
             System.Diagnostics.Debug.WriteLine($"[diag-album] LoadNewContent.skipReset mode={mode} (cache-hit Back/Forward)");
         }
-
-        var hasPendingAlbumArtAnimation =
-            ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt);
 
         string? albumId = null;
         ContentNavigationParameter? connectedAnimationNav = null;
