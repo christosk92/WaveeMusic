@@ -17,7 +17,11 @@ namespace Wavee.UI.WinUI.Services;
 
 public sealed partial class UpdateService : IUpdateService
 {
-    private const string GitHubReleasesUrl = "https://api.github.com/repos/christosk92/WaveeMusic/releases/latest";
+    // /releases (list) NOT /releases/latest: the "latest" endpoint silently
+    // excludes pre-releases, and every Wavee build is a pre-release (alpha/beta/rc),
+    // so it always 404'd and the in-app updater never saw a new build. The list
+    // endpoint returns all releases (newest first) including pre-releases.
+    private const string GitHubReleasesUrl = "https://api.github.com/repos/christosk92/WaveeMusic/releases?per_page=30";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ISettingsService _settingsService;
@@ -143,15 +147,8 @@ public sealed partial class UpdateService : IUpdateService
 
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                // GitHub returns 404 here when the repo has no published releases yet.
-                // Treat that as "no update available" instead of surfacing a startup error.
-                IsUpdateAvailable = false;
-                LatestVersion = null;
-                Changelog = null;
-                ReleaseUrl = null;
-                Status = UpdateStatus.UpToDate;
-                LastChecked = DateTimeOffset.UtcNow;
-                _logger?.LogDebug("Update check skipped because no GitHub releases are published yet");
+                // Repo/endpoint not found — treat as "no update" rather than a startup error.
+                ReportNoUpdate("releases endpoint returned 404");
                 return;
             }
 
@@ -161,30 +158,61 @@ public sealed partial class UpdateService : IUpdateService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            var tagName = root.GetProperty("tag_name").GetString() ?? "";
-            var rawVersion = tagName.TrimStart('v', 'V');
+            // Channel-aware selection over the full release list. A pre-release
+            // build (current version carries a -alpha/-beta/-rc tag) accepts ANY
+            // non-draft release — a stable release ranks above a pre-release of the
+            // same core version, so it's still a valid "newer". A stable build only
+            // accepts stable releases (never offers a pre-release as an update).
+            var currentParsed = TryParseReleaseVersion(CurrentVersion, out var current);
+            var includePrereleases = !currentParsed || current.Prerelease is not null;
+
+            JsonElement best = default;
+            ReleaseVersion bestVersion = default;
+            var haveBest = false;
+            var considered = 0;
+
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var rel in root.EnumerateArray())
+                {
+                    if (rel.TryGetProperty("draft", out var draft) && draft.GetBoolean())
+                        continue;
+
+                    var tag = rel.TryGetProperty("tag_name", out var t) ? t.GetString() ?? "" : "";
+                    if (!TryParseReleaseVersion(tag, out var ver))
+                        continue;
+
+                    if (!includePrereleases && ver.Prerelease is not null)
+                        continue;
+
+                    considered++;
+                    if (!haveBest || CompareReleaseVersions(ver, bestVersion) > 0)
+                    {
+                        best = rel;
+                        bestVersion = ver;
+                        haveBest = true;
+                    }
+                }
+            }
+
+            if (!haveBest)
+            {
+                ReportNoUpdate($"no applicable releases (includePrereleases={includePrereleases})");
+                return;
+            }
+
+            var rawVersion = (best.TryGetProperty("tag_name", out var tn) ? tn.GetString() ?? "" : "").TrimStart('v', 'V');
             LatestVersion = rawVersion;
-            Changelog = root.TryGetProperty("body", out var body) ? body.GetString() : null;
-            ReleaseUrl = root.TryGetProperty("html_url", out var url) ? url.GetString() : null;
+            Changelog = best.TryGetProperty("body", out var body) ? body.GetString() : null;
+            ReleaseUrl = best.TryGetProperty("html_url", out var url) ? url.GetString() : null;
 
-            if (TryParseReleaseVersion(rawVersion, out var latest) &&
-                TryParseReleaseVersion(CurrentVersion, out var current))
-            {
-                IsUpdateAvailable = CompareReleaseVersions(latest, current) > 0;
-                Status = IsUpdateAvailable ? UpdateStatus.UpdateAvailable : UpdateStatus.UpToDate;
-            }
-            else
-            {
-                // Can't parse — treat as up to date
-                IsUpdateAvailable = false;
-                Status = UpdateStatus.UpToDate;
-            }
-
+            IsUpdateAvailable = currentParsed && CompareReleaseVersions(bestVersion, current) > 0;
+            Status = IsUpdateAvailable ? UpdateStatus.UpdateAvailable : UpdateStatus.UpToDate;
             LastChecked = DateTimeOffset.UtcNow;
 
             _logger?.LogInformation(
-                "Update check: current={Current}, latest={Latest}, available={Available}",
-                CurrentVersion, LatestVersion, IsUpdateAvailable);
+                "Update check: current={Current}, latest={Latest}, considered={Considered}, available={Available}",
+                CurrentVersion, LatestVersion, considered, IsUpdateAvailable);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -205,6 +233,17 @@ public sealed partial class UpdateService : IUpdateService
         {
             _checkLock.Release();
         }
+    }
+
+    private void ReportNoUpdate(string reason)
+    {
+        IsUpdateAvailable = false;
+        LatestVersion = null;
+        Changelog = null;
+        ReleaseUrl = null;
+        Status = UpdateStatus.UpToDate;
+        LastChecked = DateTimeOffset.UtcNow;
+        _logger?.LogDebug("Update check: up to date ({Reason})", reason);
     }
 
     private void DetectDistribution()
