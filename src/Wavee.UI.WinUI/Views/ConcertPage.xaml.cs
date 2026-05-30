@@ -11,6 +11,7 @@ using Wavee.UI.WinUI.Controls.HeroHeader;
 using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
@@ -27,7 +28,8 @@ public sealed partial class ConcertPage : UserControl, ITabBarItemContent, IPage
     private ShyHeaderController? _shyHeader;
 
     public ConcertViewModel ViewModel { get; }
-    public TabItemParameter? TabItemParameter => null;
+    private TabItemParameter? _tabItemParameter;
+    public TabItemParameter? TabItemParameter => _tabItemParameter;
     public event EventHandler<TabItemParameter>? ContentChanged;
 
     public ConcertPage()
@@ -116,6 +118,19 @@ public sealed partial class ConcertPage : UserControl, ITabBarItemContent, IPage
                 : new GridLength(0);
         }
 
+        if (e.PropertyName == nameof(ConcertViewModel.Title))
+        {
+            // Resolved concert title (from the detail load) supersedes the card's
+            // prefill — refresh the tab header if it changed.
+            if (_tabItemParameter is not null
+                && !string.IsNullOrWhiteSpace(ViewModel.Title)
+                && !string.Equals(_tabItemParameter.Title, ViewModel.Title, StringComparison.Ordinal))
+            {
+                _tabItemParameter.Title = ViewModel.Title;
+                ContentChanged?.Invoke(this, _tabItemParameter);
+            }
+        }
+
         if (e.PropertyName == nameof(ConcertViewModel.IsLoading) && !ViewModel.IsLoading && !_showingContent)
         {
             _showingContent = true;
@@ -157,10 +172,12 @@ public sealed partial class ConcertPage : UserControl, ITabBarItemContent, IPage
             if (parameter is ContentNavigationParameter nav)
             {
                 ViewModel.Title = nav.Title;
+                UpdateTabIdentity(nav.Uri, nav.Title);
                 await ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
             }
             else if (parameter is string uri)
             {
+                UpdateTabIdentity(uri, ViewModel.Title);
                 await ViewModel.LoadCommand.ExecuteAsync(uri);
             }
         }
@@ -168,6 +185,22 @@ public sealed partial class ConcertPage : UserControl, ITabBarItemContent, IPage
         {
             System.Diagnostics.Debug.WriteLine($"[ConcertPage] LoadParameter failed: {ex}");
         }
+    }
+
+    // Seed / refresh this page's tab identity so the tab header tracks the
+    // active concert on same-tab concert→concert reuse — TabBarItem reads
+    // TabItemParameter.Title and re-reads it whenever ContentChanged fires.
+    // Mirrors how ArtistViewModel seeds its TabItemParameter on Initialize.
+    private void UpdateTabIdentity(string? uri, string? title)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return;
+
+        _tabItemParameter = new TabItemParameter(NavigationPageType.Concert, uri)
+        {
+            Title = string.IsNullOrWhiteSpace(title) ? "Concert" : title
+        };
+        ContentChanged?.Invoke(this, _tabItemParameter);
     }
 
 

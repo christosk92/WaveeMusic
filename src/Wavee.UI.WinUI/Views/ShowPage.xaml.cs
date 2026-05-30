@@ -183,6 +183,26 @@ public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigat
         LoadNewContent(parameter, PageHostNavigationMode.Refresh);
     }
 
+    // Short cross-fade of the page content root for a soft same-type swap (no
+    // shimmer reset). Mirrors PlaylistPage.AnimatePlaylistSwap; uses
+    // ContentPageController.ContentRoot so it needs no page-specific element.
+    private void AnimateContentSwap()
+    {
+        if (PageController.ContentRoot is not { } root)
+            return;
+        var fade = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(200)),
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade, root);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade, "Opacity");
+        var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        sb.Children.Add(fade);
+        sb.Begin();
+    }
+
     private async void LoadNewContent(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
         // If we were trimmed since the last LoadNewContent, the x:Bind graph is
@@ -204,8 +224,17 @@ public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigat
 
         // Cache-hit nav (Back/Forward): content already realised — skip the
         // shimmer reset to avoid flashing skeleton over good pixels.
-        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
+        var softSwapNav = parameter as ContentNavigationParameter;
+        var useSoftSwap =
+            mode == PageHostNavigationMode.Refresh &&
+            PageController.IsShowingContent &&
+            softSwapNav is not null &&
+            (!string.IsNullOrEmpty(softSwapNav.Title) || !string.IsNullOrEmpty(softSwapNav.ImageUrl));
+
+        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward && !useSoftSwap)
             PageController.ResetForNewLoad();
+        else if (useSoftSwap)
+            AnimateContentSwap();
 
         // Yield once between the shimmer flip and the synchronous Activate
         // / PrefillFrom chain. Without this, OnNavigatedTo runs the whole

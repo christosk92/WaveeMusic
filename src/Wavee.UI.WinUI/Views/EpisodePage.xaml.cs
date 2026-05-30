@@ -200,6 +200,39 @@ public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavi
         LoadNewContent(parameter, PageHostNavigationMode.Refresh);
     }
 
+    // Short cross-fade of the page content root for a soft same-type swap (no
+    // shimmer reset). Mirrors PlaylistPage.AnimatePlaylistSwap; uses
+    // ContentPageController.ContentRoot so it needs no page-specific element.
+    private void AnimateContentSwap()
+    {
+        if (PageController.ContentRoot is not { } root)
+            return;
+        var fade = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(200)),
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade, root);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade, "Opacity");
+        var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        sb.Children.Add(fade);
+        sb.Begin();
+    }
+
+    // True when the nav parameter carries enough to paint the hero immediately,
+    // so a same-type refresh can soft-swap instead of resetting to the shimmer.
+    private static bool EpisodeParamHasPrefill(object? parameter) => parameter switch
+    {
+        EpisodeNavigationParameter ep =>
+            !string.IsNullOrEmpty(ep.EpisodeTitle)
+            || !string.IsNullOrEmpty(ep.EpisodeImageUrl)
+            || !string.IsNullOrEmpty(ep.ShowImageUrl),
+        ContentNavigationParameter cnp =>
+            !string.IsNullOrEmpty(cnp.Title) || !string.IsNullOrEmpty(cnp.ImageUrl),
+        _ => false,
+    };
+
     private async void LoadNewContent(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
         // If we were trimmed since the last LoadNewContent, the x:Bind graph is
@@ -221,7 +254,12 @@ public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavi
 
         // Cache-hit nav (Back/Forward): content already realised — skip the
         // shimmer reset to avoid flashing skeleton over good pixels.
-        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
+        var useSoftSwap =
+            mode == PageHostNavigationMode.Refresh &&
+            PageController.IsShowingContent &&
+            EpisodeParamHasPrefill(parameter);
+
+        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward && !useSoftSwap)
             PageController.ResetForNewLoad();
 
         // Yield once between the shimmer flip and the synchronous Activate
@@ -249,6 +287,8 @@ public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavi
 
         if (episodeParam is null) return;
         ViewModel.Activate(episodeParam);
+        if (useSoftSwap)
+            AnimateContentSwap();
 
         TryHandlePendingPodcastEpisodeArtConnectedAnimation();
 

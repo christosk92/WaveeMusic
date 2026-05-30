@@ -98,7 +98,10 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
-    public bool ReuseForParameterNavigation => false;
+    // Reuse the live instance for artist→artist nav (no page reconstruction).
+    // Safe because ViewModel.Initialize bumps _loadGeneration + ResetForNewArtist
+    // and EnterArtistAsync bumps _navigationRevision; all async applies re-check.
+    public bool ReuseForParameterNavigation => true;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
 
@@ -144,6 +147,24 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     public async void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onEntered");
+        await EnterArtistAsync(parameter, mode);
+    }
+
+    // Same-tab navigation between two artists reuses this Page instance and
+    // never fires OnEntered — once ReuseForParameterNavigation is true,
+    // TabBarItem.Navigate routes through here instead. Without this override the
+    // ITabBarItemContent default no-op would run and the new artist would be
+    // silently dropped. Reuse is safe: EnterArtistAsync bumps _navigationRevision
+    // and ViewModel.Initialize bumps _loadGeneration + ResetForNewArtist, and
+    // every async apply re-checks both, so artist-A work can't land on artist-B.
+    public async void RefreshWithParameter(object? parameter)
+    {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.refreshWithParameter");
+        await EnterArtistAsync(parameter, PageHostNavigationMode.Refresh);
+    }
+
+    private async Task EnterArtistAsync(object? parameter, PageHostNavigationMode mode)
+    {
         _isNavigatingAway = false;
         // Restore from the trimmed (hibernated) state before we re-Initialize
         // the VM â€” matches AlbumPage’s ordering so bindings are alive again
