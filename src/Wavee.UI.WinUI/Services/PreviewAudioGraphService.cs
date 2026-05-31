@@ -25,6 +25,12 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
     private readonly object _stateGate = new();
     private readonly PreviewSpectrumAnalyzer _analyzer = new();
 
+    // The graph + device/frame output nodes are kept alive across snippets and only the per-track
+    // MediaSourceAudioInputNode is swapped — recreating the whole AudioGraph per snippet cost ~0.5 s
+    // and showed up as a swipe→play delay. A short idle timer disposes the graph once nothing is
+    // playing, so we don't hold the render device open forever.
+    private static readonly TimeSpan IdleGraphTeardownDelay = TimeSpan.FromSeconds(6);
+
     private AudioGraph? _graph;
     private MediaSourceAudioInputNode? _sourceNode;
     private AudioDeviceOutputNode? _deviceOutputNode;
@@ -36,6 +42,8 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
     private long _frameSequence;
     private long _sessionVersion;
     private bool _hasLoggedFrameForSession;
+    private CancellationTokenSource? _idleTeardownCts;
+    private bool _isDisposed;
 
     public string? CurrentSessionId { get; private set; }
 
@@ -67,7 +75,8 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
         await _lifecycleGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            StopCurrentSession_NoLock();
+            CancelIdleTeardown_NoLock();
+            StopSourceOnly_NoLock();
 
             var sessionId = Guid.NewGuid().ToString("N");
             ++_sessionVersion;
@@ -104,7 +113,8 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
         try
         {
             ++_sessionVersion;
-            StopCurrentSession_NoLock();
+            StopSourceOnly_NoLock();
+            ScheduleIdleTeardown_NoLock();   // release the (now silent) graph if no new snippet starts soon
         }
         finally
         {
@@ -114,9 +124,20 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
 
     private async Task<bool> TryStartAudioGraphSessionAsync(string previewUrl, CancellationToken ct)
     {
+        if (!await EnsureGraphAsync(ct).ConfigureAwait(false))
+            return false;
+        return await StartSourceOnGraphAsync(previewUrl, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Create the long-lived graph + device/frame output nodes once; reused across snippets.</summary>
+    private async Task<bool> EnsureGraphAsync(CancellationToken ct)
+    {
+        if (_graph != null && _deviceOutputNode != null && _frameOutputNode != null)
+            return true;
+
         try
         {
-            TracePreview("TryStartAudioGraphSessionAsync creating graph");
+            TracePreview("EnsureGraphAsync creating graph");
             var settings = new AudioGraphSettings(AudioRenderCategory.Media);
             var graphResult = await AudioGraph.CreateAsync(settings).AsTask(ct).ConfigureAwait(false);
             if (graphResult.Status != AudioGraphCreationStatus.Success || graphResult.Graph == null)
@@ -141,35 +162,15 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
                 return false;
             }
 
-            var mediaSource = MediaSource.CreateFromUri(new Uri(previewUrl));
-            var sourceResult = await graph.CreateMediaSourceAudioInputNodeAsync(mediaSource).AsTask(ct).ConfigureAwait(false);
-            if (sourceResult.Status != MediaSourceAudioInputNodeCreationStatus.Success || sourceResult.Node == null)
-            {
-                _logger?.LogDebug(
-                    "Preview media source input node creation failed with status {Status} and error {Error}",
-                    sourceResult.Status,
-                    sourceResult.ExtendedError);
-                outputResult.DeviceOutputNode.Dispose();
-                graph.Dispose();
-                return false;
-            }
-
             var frameOutputNode = graph.CreateFrameOutputNode();
-            sourceResult.Node.AddOutgoingConnection(outputResult.DeviceOutputNode);
-            sourceResult.Node.AddOutgoingConnection(frameOutputNode);
-
             graph.QuantumStarted += OnGraphQuantumStarted;
             graph.UnrecoverableErrorOccurred += OnGraphUnrecoverableErrorOccurred;
-            sourceResult.Node.MediaSourceCompleted += OnSourceNodeMediaSourceCompleted;
+            graph.Start();
 
             _graph = graph;
             _deviceOutputNode = outputResult.DeviceOutputNode;
-            _sourceNode = sourceResult.Node;
             _frameOutputNode = frameOutputNode;
-
-            graph.Start();
-            sourceResult.Node.Start();
-            TracePreview("TryStartAudioGraphSessionAsync started graph and source");
+            TracePreview("EnsureGraphAsync graph ready");
             return true;
         }
         catch (OperationCanceledException)
@@ -178,8 +179,47 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            _logger?.LogDebug(ex, "Preview AudioGraph startup failed");
-            StopCurrentSession_NoLock();
+            _logger?.LogDebug(ex, "Preview AudioGraph creation failed");
+            DisposeGraph_NoLock();
+            return false;
+        }
+    }
+
+    /// <summary>Attach a fresh media-source node for <paramref name="previewUrl"/> to the existing graph.</summary>
+    private async Task<bool> StartSourceOnGraphAsync(string previewUrl, CancellationToken ct)
+    {
+        if (_graph == null || _deviceOutputNode == null || _frameOutputNode == null)
+            return false;
+
+        try
+        {
+            var mediaSource = MediaSource.CreateFromUri(new Uri(previewUrl));
+            var sourceResult = await _graph.CreateMediaSourceAudioInputNodeAsync(mediaSource).AsTask(ct).ConfigureAwait(false);
+            if (sourceResult.Status != MediaSourceAudioInputNodeCreationStatus.Success || sourceResult.Node == null)
+            {
+                _logger?.LogDebug(
+                    "Preview media source input node creation failed with status {Status} and error {Error}",
+                    sourceResult.Status,
+                    sourceResult.ExtendedError);
+                return false;
+            }
+
+            sourceResult.Node.AddOutgoingConnection(_deviceOutputNode);
+            sourceResult.Node.AddOutgoingConnection(_frameOutputNode);
+            sourceResult.Node.MediaSourceCompleted += OnSourceNodeMediaSourceCompleted;
+
+            _sourceNode = sourceResult.Node;
+            sourceResult.Node.Start();   // graph is already running → audio begins immediately
+            TracePreview("StartSourceOnGraphAsync started source");
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _logger?.LogDebug(ex, "Preview source node startup failed");
             return false;
         }
     }
@@ -209,14 +249,16 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _logger?.LogDebug(ex, "Preview fallback playback failed");
-            StopCurrentSession_NoLock();
+            StopSourceOnly_NoLock();
             throw;
         }
     }
 
-    private void StopCurrentSession_NoLock()
+    /// <summary>End the current snippet — dispose the per-track source node and clear session state,
+    /// but leave the graph + device/frame output nodes alive for the next snippet.</summary>
+    private void StopSourceOnly_NoLock()
     {
-        TracePreview("StopCurrentSession_NoLock");
+        TracePreview("StopSourceOnly_NoLock");
         if (_fallbackPlayer != null)
         {
             try
@@ -232,36 +274,12 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
         }
 
         if (_sourceNode != null)
+        {
             _sourceNode.MediaSourceCompleted -= OnSourceNodeMediaSourceCompleted;
-
-        if (_graph != null)
-        {
-            _graph.QuantumStarted -= OnGraphQuantumStarted;
-            _graph.UnrecoverableErrorOccurred -= OnGraphUnrecoverableErrorOccurred;
+            try { _sourceNode.Stop(); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { _logger?.LogDebug(ex, "Preview source node stop failed"); }
+            DisposeNode(ref _sourceNode);   // removes its outgoing connections to the (kept) device/frame nodes
         }
-
-        try
-        {
-            _sourceNode?.Stop();
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            _logger?.LogDebug(ex, "Preview source node stop failed");
-        }
-
-        try
-        {
-            _graph?.Stop();
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            _logger?.LogDebug(ex, "Preview AudioGraph stop failed");
-        }
-
-        DisposeNode(ref _frameOutputNode);
-        DisposeNode(ref _sourceNode);
-        DisposeNode(ref _deviceOutputNode);
-        DisposeNode(ref _graph);
 
         _analyzer.Reset();
         _onFrame = null;
@@ -270,6 +288,54 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
         CurrentSessionId = null;
         _frameSequence = 0;
         _hasLoggedFrameForSession = false;
+    }
+
+    /// <summary>Tear down the long-lived graph itself (idle timeout, fatal graph error, or dispose).</summary>
+    private void DisposeGraph_NoLock()
+    {
+        if (_graph != null)
+        {
+            _graph.QuantumStarted -= OnGraphQuantumStarted;
+            _graph.UnrecoverableErrorOccurred -= OnGraphUnrecoverableErrorOccurred;
+            try { _graph.Stop(); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { _logger?.LogDebug(ex, "Preview AudioGraph stop failed"); }
+        }
+
+        DisposeNode(ref _frameOutputNode);
+        DisposeNode(ref _deviceOutputNode);
+        DisposeNode(ref _graph);
+    }
+
+    private void ScheduleIdleTeardown_NoLock()
+    {
+        if (_graph == null) return;
+        CancelIdleTeardown_NoLock();
+        var cts = new CancellationTokenSource();
+        _idleTeardownCts = cts;
+        _ = RunIdleTeardownAsync(cts.Token);
+    }
+
+    private async Task RunIdleTeardownAsync(CancellationToken ct)
+    {
+        try { await Task.Delay(IdleGraphTeardownDelay, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return; }
+
+        await _lifecycleGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_isDisposed || ct.IsCancellationRequested) return;
+            if (_sourceNode != null || _sessionId != null) return;   // a snippet started during the wait
+            DisposeGraph_NoLock();
+            TracePreview("RunIdleTeardownAsync disposed idle graph");
+        }
+        finally { _lifecycleGate.Release(); }
+    }
+
+    private void CancelIdleTeardown_NoLock()
+    {
+        try { _idleTeardownCts?.Cancel(); }
+        catch { }
+        finally { _idleTeardownCts?.Dispose(); _idleTeardownCts = null; }
     }
 
     private void OnGraphQuantumStarted(AudioGraph sender, object args)
@@ -361,11 +427,11 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
                 return;
 
             DispatchCompletedFrame();
-            await NotifyCompletedAndStopAsync().ConfigureAwait(false);
+            await NotifyCompletedAndStopAsync(disposeGraph: true).ConfigureAwait(false);   // graph is dead — rebuild next start
         });
     }
 
-    private async Task NotifyCompletedAndStopAsync()
+    private async Task NotifyCompletedAndStopAsync(bool disposeGraph = false)
     {
         Action? onCompleted;
 
@@ -374,7 +440,9 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
         {
             onCompleted = _onCompleted;
             ++_sessionVersion;
-            StopCurrentSession_NoLock();
+            StopSourceOnly_NoLock();
+            if (disposeGraph) DisposeGraph_NoLock();   // graph itself faulted — rebuild it next time
+            else ScheduleIdleTeardown_NoLock();        // normal completion — keep the graph warm briefly
         }
         finally
         {
@@ -474,13 +542,20 @@ public sealed partial class PreviewAudioGraphService : IPreviewAudioPlaybackEngi
 
     public void Dispose()
     {
+        _isDisposed = true;
+        CancelIdleTeardown_NoLock();
+
+        var acquired = false;
+        try { acquired = _lifecycleGate.Wait(TimeSpan.FromSeconds(2)); }
+        catch { }
         try
         {
-            StopAsync().GetAwaiter().GetResult();
+            ++_sessionVersion;
+            StopSourceOnly_NoLock();
+            DisposeGraph_NoLock();
         }
-        catch
-        {
-        }
+        catch { }
+        finally { if (acquired) { try { _lifecycleGate.Release(); } catch { } } }
 
         if (_fallbackPlayer != null)
         {
