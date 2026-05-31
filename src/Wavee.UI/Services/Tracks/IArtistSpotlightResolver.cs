@@ -28,6 +28,9 @@ public interface IArtistSpotlightResolver
     /// <summary>Spotlight for a track, or null when the artist URI is missing / the query fails.</summary>
     Task<ArtistSpotlight?> ResolveAsync(string trackUri, string? artistUri, CancellationToken ct = default);
 
+    /// <summary>Synchronously return the already-resolved spotlight for a track, or null if not cached yet.</summary>
+    ArtistSpotlight? TryPeek(string trackUri);
+
     /// <summary>Warm the cache for upcoming cards. Never throws per item.</summary>
     Task PrefetchAsync(IReadOnlyList<(string TrackUri, string? ArtistUri)> tracks, CancellationToken ct = default);
 }

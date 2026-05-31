@@ -16,6 +16,7 @@ using Wavee.UI.WinUI.Controls.Swipe;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services;
 using Windows.UI;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -37,6 +38,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
     private readonly IPreviewUrlResolver _previewUrls;
     private readonly ITrackColorResolver _colors;
     private readonly IArtistSpotlightResolver _spotlight;
+    private readonly ISharedCardCanvasPreviewService _canvasService;
     private readonly ICardPreviewPlaybackCoordinator _previews;
     private readonly IRefreshSessionStore _store;
     private readonly ILogger<RefreshPlaylistViewModel>? _logger;
@@ -56,6 +58,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         IPreviewUrlResolver previewUrls,
         ITrackColorResolver colors,
         IArtistSpotlightResolver spotlight,
+        ISharedCardCanvasPreviewService canvasService,
         ICardPreviewPlaybackCoordinator previews,
         IRefreshSessionStore store,
         ILogger<RefreshPlaylistViewModel>? logger = null)
@@ -66,6 +69,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         _previewUrls = previewUrls;
         _colors = colors;
         _spotlight = spotlight;
+        _canvasService = canvasService;
         _previews = previews;
         _store = store;
         _logger = logger;
@@ -424,15 +428,19 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
 
     // ── prefetch (look-ahead so a swipe is never a cold load) ──
 
-    private Task PrefetchAsync()
+    private async Task PrefetchAsync()
     {
-        if (_session is null) return Task.CompletedTask;
+        if (_session is null) return;
         var next = _session.UpNext(3);
-        if (next.Count == 0) return Task.CompletedTask;
+        if (next.Count == 0) return;
         _ = _previewUrls.PrefetchAsync(next.Select(c => c.Uri).ToList());                       // 30s snippet URLs
         _ = _colors.PrefetchAsync(next.Select(c => (c.Uri, c.ImageSmallUrl ?? c.ImageUrl)).ToList());   // background palettes (small art)
-        _ = _spotlight.PrefetchAsync(next.Select(c => (c.Uri, c.ArtistId)).ToList());           // artist spotlight (NPV)
-        return Task.CompletedTask;
+        await _spotlight.PrefetchAsync(next.Select(c => (c.Uri, c.ArtistId)).ToList());         // artist spotlight (NPV) — await so canvas URLs are known
+        foreach (var c in next)                                                                  // warm the upcoming Canvas videos
+        {
+            var canvas = _spotlight.TryPeek(c.Uri)?.CanvasUrl;
+            if (!string.IsNullOrEmpty(canvas)) _ = _canvasService.PreloadAsync(canvas);
+        }
     }
 
     public void Teardown() { _ = _previews.UnregisterOwner(_ownerId); StopClock(); }

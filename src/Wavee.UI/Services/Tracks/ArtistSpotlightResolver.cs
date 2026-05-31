@@ -54,6 +54,9 @@ public sealed class ArtistSpotlightResolver : IArtistSpotlightResolver
         return spotlight;
     }
 
+    public ArtistSpotlight? TryPeek(string trackUri)
+        => !string.IsNullOrEmpty(trackUri) && _cache.TryGetValue(trackUri, out var s) ? s : null;
+
     public async Task PrefetchAsync(IReadOnlyList<(string TrackUri, string? ArtistUri)> tracks, CancellationToken ct = default)
     {
         var tasks = tracks
