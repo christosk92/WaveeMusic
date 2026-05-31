@@ -10,8 +10,14 @@
         <Product>Wavee</Product>
         <Description>Wavee Audio Runtime</Description>
 
-        <!-- Publish as self-contained for process isolation -->
+        <!-- Release / Release-Unpackaged ship to machines that may not have the
+             .NET 10 runtime installed, so bundle it (self-contained), mirroring
+             Wavee.UI.WinUI's SelfContained=true. A framework-dependent apphost
+             dies with host error 0x80008096 ("You must install or update .NET")
+             on any box without .NET 10. Debug / Debug-Unpackaged stay
+             framework-dependent for fast F5 / Hot Reload. -->
         <SelfContained>false</SelfContained>
+        <SelfContained Condition="$(Configuration.StartsWith('Release'))">true</SelfContained>
 
         <!-- Native AOT candidate (future) -->
         <IsAotCompatible>true</IsAotCompatible>
