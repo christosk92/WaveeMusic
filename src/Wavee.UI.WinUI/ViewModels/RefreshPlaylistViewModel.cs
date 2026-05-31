@@ -35,6 +35,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
     private readonly IPlaylistMutationService _mutation;
     private readonly IPreviewUrlResolver _previewUrls;
     private readonly ITrackColorResolver _colors;
+    private readonly IArtistSpotlightResolver _spotlight;
     private readonly ICardPreviewPlaybackCoordinator _previews;
     private readonly IRefreshSessionStore _store;
     private readonly ILogger<RefreshPlaylistViewModel>? _logger;
@@ -53,6 +54,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         IPlaylistMutationService mutation,
         IPreviewUrlResolver previewUrls,
         ITrackColorResolver colors,
+        IArtistSpotlightResolver spotlight,
         ICardPreviewPlaybackCoordinator previews,
         IRefreshSessionStore store,
         ILogger<RefreshPlaylistViewModel>? logger = null)
@@ -62,6 +64,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         _mutation = mutation;
         _previewUrls = previewUrls;
         _colors = colors;
+        _spotlight = spotlight;
         _previews = previews;
         _store = store;
         _logger = logger;
@@ -104,9 +107,21 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
 
     [ObservableProperty] public partial string EmptyMessage { get; set; } = "There are no tracks here to refresh.";
 
+    // ── Artist spotlight (queryArtistNpv) — fills the left panel for the current card ──
+    [ObservableProperty] public partial bool HasArtistSpotlight { get; set; }
+    [ObservableProperty] public partial string SpotlightArtistName { get; set; } = "";
+    [ObservableProperty] public partial string? SpotlightAvatarUrl { get; set; }
+    [ObservableProperty] public partial string SpotlightListeners { get; set; } = "";
+    [ObservableProperty] public partial string? SpotlightBio { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCanvas))]
+    public partial string? SpotlightCanvasUrl { get; set; }
+    public bool HasCanvas => !string.IsNullOrEmpty(SpotlightCanvasUrl);
+
     public ObservableCollection<RefreshCard> RemovedCards { get; } = new();
     public ObservableCollection<RefreshCard> UpNext { get; } = new();
     public ObservableCollection<RefreshHistoryEntry> Previously { get; } = new();
+    public ObservableCollection<ArtistCredit> ArtistCredits { get; } = new();
 
     public bool HasStagedDecisions => _session?.HasStagedDecisions ?? false;
     public bool IsAuditioning => Phase == RefreshPhase.Auditioning && !IsLoading && !IsEmpty && !HasError && CurrentCard is not null;
@@ -218,6 +233,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
             if (_session.Phase == RefreshPhase.Auditioning)
             {
                 _ = UpdateBackgroundAsync(CurrentCard);                 // palette is prefetched → resolves instantly
+                _ = UpdateSpotlightAsync(CurrentCard);                 // artist spotlight (prefetched) for the left panel
                 if (ShowHowItWorks) ResolveAvailability(CurrentCard);   // intro still up — check availability, don't play yet
                 else StartCurrentSnippet();                            // past the intro → snippets autoplay per card
                 _ = PrefetchAsync();
@@ -352,6 +368,27 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         catch (Exception ex) { _logger?.LogDebug(ex, "Background palette failed for {Uri}", card.Uri); }
     }
 
+    private async Task UpdateSpotlightAsync(RefreshCard? card)
+    {
+        SpotlightCanvasUrl = null;   // stop the previous card's Canvas immediately on swipe
+        if (card is null) { HasArtistSpotlight = false; return; }
+        try
+        {
+            var s = await _spotlight.ResolveAsync(card.Uri, card.ArtistId);   // cached + prefetched → usually instant
+            if (_session?.CurrentCard?.Uri != card.Uri) return;               // advanced while resolving
+            if (s is null) { HasArtistSpotlight = false; return; }
+            SpotlightArtistName = s.ArtistName;
+            SpotlightAvatarUrl = s.AvatarUrl;
+            SpotlightListeners = s.MonthlyListeners > 0 ? $"{s.MonthlyListeners:N0} monthly listeners" : "";
+            SpotlightBio = s.Bio;
+            ArtistCredits.Clear();
+            foreach (var c in s.Credits) ArtistCredits.Add(c);
+            SpotlightCanvasUrl = s.CanvasUrl;
+            HasArtistSpotlight = true;
+        }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Artist spotlight failed for {Uri}", card.Uri); HasArtistSpotlight = false; }
+    }
+
     private static Color ParseHex(string? hex, Color fallback)
     {
         if (string.IsNullOrEmpty(hex) || hex[0] != '#' || hex.Length < 7) return fallback;
@@ -374,6 +411,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         if (next.Count == 0) return Task.CompletedTask;
         _ = _previewUrls.PrefetchAsync(next.Select(c => c.Uri).ToList());                       // 30s snippet URLs
         _ = _colors.PrefetchAsync(next.Select(c => (c.Uri, c.ImageSmallUrl ?? c.ImageUrl)).ToList());   // background palettes (small art)
+        _ = _spotlight.PrefetchAsync(next.Select(c => (c.Uri, c.ArtistId)).ToList());           // artist spotlight (NPV)
         return Task.CompletedTask;
     }
 

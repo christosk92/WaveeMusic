@@ -14,7 +14,7 @@ public enum RefreshPhase { Auditioning, Review, Applying, Done, Empty }
 
 /// <summary>One unique song in the refresh deck.</summary>
 public sealed record RefreshCard(
-    string Uri, string Title, string ArtistName,
+    string Uri, string Title, string ArtistName, string? ArtistId,
     string? ImageUrl, string? ImageSmallUrl, TimeSpan Duration);
 
 /// <summary>An audited card plus its decision (<c>null</c> = skipped) — one row of the "Previously" rail.</summary>
@@ -66,7 +66,7 @@ public sealed class RefreshPlaylistSession
         foreach (var t in currentTracks)
         {
             if (string.IsNullOrEmpty(t.Uri) || !seen.Add(t.Uri)) continue;
-            _deck.Add(new RefreshCard(t.Uri, t.Title, t.ArtistName, t.ImageUrl, t.ImageSmallUrl, t.Duration));
+            _deck.Add(new RefreshCard(t.Uri, t.Title, t.ArtistName, t.ArtistId, t.ImageUrl, t.ImageSmallUrl, t.Duration));
         }
 
         if (seeded is not null)

@@ -582,6 +582,7 @@ public static class AppLifecycleHelper
                 // per-track palette for the immersive background, and durable per-playlist session state.
                 .AddSingleton<Wavee.UI.Services.Tracks.IPreviewUrlResolver, Wavee.UI.Services.Tracks.PreviewUrlResolver>()
                 .AddSingleton<Wavee.UI.Services.Tracks.ITrackColorResolver, Services.TrackColorResolver>()
+                .AddSingleton<Wavee.UI.Services.Tracks.IArtistSpotlightResolver, Wavee.UI.Services.Tracks.ArtistSpotlightResolver>()
                 .AddSingleton<Wavee.UI.Services.Playlists.IRefreshSessionStore, Services.RefreshSessionStore>()
                 .AddTransient<ViewModels.RefreshPlaylistViewModel>()
                 .AddSingleton<ISharedCardCanvasPreviewService, SharedCardCanvasPreviewService>()

@@ -8,6 +8,7 @@
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:local="using:Wavee.UI.WinUI.Views"
     xmlns:models="using:Wavee.UI.Services.Playlists"
+    xmlns:tracks="using:Wavee.UI.Services.Tracks"
     mc:Ignorable="d"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -91,12 +92,67 @@
         <!-- Stage -->
         <Grid Grid.Row="2" Margin="24,12,24,24">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
+            <!-- Artist spotlight (queryArtistNpv) -->
+            <Border Grid.Column="0" Width="320" VerticalAlignment="Stretch" Margin="0,0,16,0"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    Visibility="{x:Bind ToVis(ViewModel.HasArtistSpotlight), Mode=OneWay}">
+                <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="14">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <imaging:CompositionImage Width="56" Height="56" CornerRadius="28" Stretch="UniformToFill"
+                                                      DecodePixelSize="128" ImageUrl="{x:Bind ViewModel.SpotlightAvatarUrl, Mode=OneWay}" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind ViewModel.SpotlightArtistName, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind ViewModel.SpotlightListeners, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Border CornerRadius="8" Width="176" Height="276" HorizontalAlignment="Center"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                Visibility="{x:Bind ToVis(ViewModel.HasCanvas), Mode=OneWay}">
+                            <MediaPlayerElement x:Name="CanvasVideo" Stretch="UniformToFill" AreTransportControlsEnabled="False"
+                                                CornerRadius="8" />
+                        </Border>
+
+                        <TextBlock Text="{x:Bind ViewModel.SpotlightBio, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="6"
+                                   TextTrimming="CharacterEllipsis" Visibility="{x:Bind StrVis(ViewModel.SpotlightBio), Mode=OneWay}" />
+
+                        <StackPanel Spacing="6" Visibility="{x:Bind CountVis(ViewModel.ArtistCredits.Count), Mode=OneWay}">
+                            <TextBlock Text="CREDITS" Style="{StaticResource CaptionTextBlockStyle}" CharacterSpacing="100"
+                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.ArtistCredits, Mode=OneWay}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="tracks:ArtistCredit">
+                                        <Grid ColumnSpacing="8" Padding="0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{x:Bind Name}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Role}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
             <!-- Deck + controls -->
-            <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20"
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20"
                         Visibility="{x:Bind ToVis(ViewModel.IsAuditioning), Mode=OneWay}">
                 <Grid Width="320" Height="420">
                     <Border Width="320" Height="420" CornerRadius="12" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
@@ -150,7 +206,7 @@
             </StackPanel>
 
             <!-- Up next + Previously rail -->
-            <Border Grid.Column="1" Width="288" VerticalAlignment="Stretch" Margin="16,0,0,0"
+            <Border Grid.Column="2" Width="288" VerticalAlignment="Stretch" Margin="16,0,0,0"
                     CornerRadius="{StaticResource OverlayCornerRadius}"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
@@ -215,7 +271,7 @@
             </Border>
 
             <!-- Empty / error state -->
-            <StackPanel Grid.Column="0" Grid.ColumnSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center"
+            <StackPanel Grid.Column="0" Grid.ColumnSpan="3" VerticalAlignment="Center" HorizontalAlignment="Center"
                         MaxWidth="360" Spacing="12" Visibility="{x:Bind ToVis(ViewModel.ShowEmptyState), Mode=OneWay}">
                 <FontIcon Glyph="&#xE895;" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                 <TextBlock Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}"
@@ -225,7 +281,7 @@
             </StackPanel>
 
             <!-- Loading -->
-            <ProgressRing Grid.Column="0" Grid.ColumnSpan="2" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+            <ProgressRing Grid.Column="0" Grid.ColumnSpan="3" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                           Visibility="{x:Bind ToVis(ViewModel.IsLoading), Mode=OneWay}"
                           Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Grid>
