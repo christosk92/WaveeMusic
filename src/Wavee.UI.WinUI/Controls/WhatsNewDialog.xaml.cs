@@ -70,6 +70,10 @@ public sealed partial class WhatsNewDialog : ContentDialog
         // Swap content
         DetailTitle.Text = feature.DetailTitle;
         DetailDescription.Text = feature.DetailDescription;
+        NavigationHintText.Text = feature.NavigationHint ?? "";
+        NavigationHintBorder.Visibility = string.IsNullOrWhiteSpace(feature.NavigationHint)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         if (!string.IsNullOrEmpty(feature.ImageAssetPath))
         {
@@ -84,6 +88,7 @@ public sealed partial class WhatsNewDialog : ContentDialog
         }
         else
         {
+            DetailImage.Source = null;
             DetailImageBorder.Visibility = Visibility.Collapsed;
         }
 
