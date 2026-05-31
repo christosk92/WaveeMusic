@@ -57,15 +57,21 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     Visibility="{x:Bind HasAnnouncement, Mode=OneTime}">
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                    <FontIcon Glyph="&#xE789;" FontSize="16"
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Grid.Column="0"
+                              Glyph="&#xE789;" FontSize="16"
                               Foreground="{StaticResource App.Theme.AccentBrush}"
                               VerticalAlignment="Top" Margin="0,2,0,0"/>
-                    <TextBlock Text="{x:Bind Announcement, Mode=OneTime}"
+                    <TextBlock Grid.Column="1"
+                               Text="{x:Bind Announcement, Mode=OneTime}"
                                Style="{StaticResource BodyTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"/>
-                </StackPanel>
+                </Grid>
             </Border>
         </StackPanel>
 

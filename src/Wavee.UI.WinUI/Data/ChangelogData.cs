@@ -49,6 +49,15 @@ public static class ChangelogData
                     NavigationHint = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Spotlight_Nav"),
                     ImageAssetPath = Alpha011AssetRoot + "artist-spotlight-canvas.png",
                 },
+                new ChangelogFeature
+                {
+                    Title = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Fixes_Title"),
+                    ShortDescription = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Fixes_Short"),
+                    Glyph = FluentGlyphs.Accept,
+                    DetailTitle = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Fixes_DetailTitle"),
+                    DetailDescription = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Fixes_Detail"),
+                    NavigationHint = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Fixes_Nav"),
+                },
             ]
         },
         new ChangelogRelease
