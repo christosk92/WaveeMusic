@@ -114,12 +114,18 @@ public sealed class MetadataDatabase : IMetadataDatabase
             Directory.CreateDirectory(directory);
         }
 
-        // Build connection string with WAL mode for better concurrency
+        // Private cache (the default) + WAL is SQLite's recommended high-concurrency
+        // setup: readers get a committed snapshot and never block the single writer,
+        // and the writer never blocks readers. Shared cache (previously set here)
+        // instead routes every connection through process-wide table-level locks, which
+        // — under the startup playlist-prefetch burst (4 concurrent workers + the
+        // rootlist persist) — blocked even single-row writes for ~150ms each and
+        // produced a write-lock-wait storm. WAL already gives cross-connection
+        // visibility for this file-backed DB, so shared cache bought nothing.
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared
+            Mode = SqliteOpenMode.ReadWriteCreate
         };
         _connectionString = builder.ConnectionString;
 
@@ -3455,8 +3461,23 @@ public sealed class MetadataDatabase : IMetadataDatabase
         using var __lease = await AcquireWriteLockAsync(nameof(UpsertPlaylistCacheEntryAsync), 1, cancellationToken);
         using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
+        await ExecuteUpsertPlaylistCacheEntryAsync(connection, null, playlist, cancellationToken);
+    }
 
+    // Core upsert shared by the standalone method above (own connection, autocommit)
+    // and the write-batch path (IWriteBatch.UpsertPlaylistCacheEntryAsync — shared
+    // connection + transaction), mirroring ExecuteUpsertEntityAsync. Lets the rootlist
+    // persist write all playlist rows under ONE transaction instead of one lock
+    // acquisition per row.
+    private async Task ExecuteUpsertPlaylistCacheEntryAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        PlaylistCacheEntry playlist,
+        CancellationToken cancellationToken)
+    {
         using var cmd = connection.CreateCommand();
+        if (transaction != null)
+            cmd.Transaction = transaction;
         cmd.CommandText = """
             INSERT INTO spotify_playlists (
                 id, name, owner_id, owner_name, description, image_url, header_image_url, track_count,
@@ -4649,6 +4670,15 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 trackCount, followerCount, publisher, episodeCount, description,
                 filePath, streamUrl, expiresAt, addedAt,
                 useLocalizedTable, now, cancellationToken);
+        }
+
+        public Task UpsertPlaylistCacheEntryAsync(
+            PlaylistCacheEntry playlist,
+            CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            ArgumentNullException.ThrowIfNull(playlist);
+            return _owner.ExecuteUpsertPlaylistCacheEntryAsync(Connection, Transaction, playlist, cancellationToken);
         }
 
         private void ThrowIfDisposed()

@@ -689,13 +689,24 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             },
             ct);
 
+        // Read + merge each summary first (reads take no write lock), then write them
+        // all under a SINGLE write-batch transaction. Previously this loop took the
+        // write lock once per playlist (103 acquisitions on a typical rootlist), which
+        // flooded the lock and starved foreground metadata writes during startup sync.
+        var mergedEntries = new List<PlaylistCacheEntry>(snapshot.Items.Count);
         foreach (var playlistEntry in snapshot.Items.OfType<RootlistPlaylist>())
         {
             snapshot.Decorations.TryGetValue(playlistEntry.Uri, out var decoration);
             var existing = await _database.GetPlaylistCacheEntryAsync(playlistEntry.Uri, touchAccess: false, ct);
-            var merged = MergeSummaryEntry(playlistEntry.Uri, decoration, existing, snapshot.FetchedAt);
-            await _database.UpsertPlaylistCacheEntryAsync(merged, ct);
+            mergedEntries.Add(MergeSummaryEntry(playlistEntry.Uri, decoration, existing, snapshot.FetchedAt));
         }
+
+        if (mergedEntries.Count == 0)
+            return;
+
+        await using var batch = await _database.BeginWriteBatchAsync(ct);
+        foreach (var entry in mergedEntries)
+            await batch.UpsertPlaylistCacheEntryAsync(entry, ct);
     }
 
     private async Task<CachedPlaylist> FetchPlaylistFromNetworkAsync(
