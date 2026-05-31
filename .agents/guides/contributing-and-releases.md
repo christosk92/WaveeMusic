@@ -46,7 +46,7 @@ by the **monotonic 4-part MSIX version + App Installer's forward-only rule**, no
   the **experimental** channel (rolling `experimental-latest` release; gets every
   milestone drop). `Wavee.<arch>.appinstaller` → the **stable** channel (GitHub `/latest`;
   gets published production only).
-- **"Goes live":** a pre-release drop is live the instant CI re-uploads its assets to
+- **"Goes live":** a pre-release drop is live the instant the release workflow uploads its assets to
   `experimental-latest`. A **production** release is created as a **draft** and only goes
   live when you **Publish** it (the human gate) — `/latest` then flips to it.
 - **Priority (per `X.Y.Z`):** `alpha 1000+N < beta 2000+N < rc 3000+N < stable 10000`;
@@ -65,6 +65,19 @@ by the **monotonic 4-part MSIX version + App Installer's forward-only rule**, no
   identity** (new PFN + Phi-Silica LAF token) — deferred.
 
 ## Workflow (the `gh` commands an agent runs)
+
+Prefer the release runner for natural-language requests:
+
+```powershell
+./eng/release.ps1 publish -Yes
+./eng/release.ps1 "cut milestone on release/0.1.0-alpha" -Yes
+./eng/release.ps1 status
+./eng/release.ps1 watch
+./eng/release.ps1 production -VersionTag v0.1.0 -Yes
+```
+
+Claude Code also has `/wavee-release`, which delegates to the same script. Codex
+runner notes live in `.agents/skills/wavee-release-runner/SKILL.md`.
 
 ```bash
 # 1. Branch off the ACTIVE release line

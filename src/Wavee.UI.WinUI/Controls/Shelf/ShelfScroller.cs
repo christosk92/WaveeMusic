@@ -236,14 +236,14 @@ public sealed partial class ShelfScroller : Control
     // realized then immediately cleared, when the visible area looks blank.
     private void OnRepeaterElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
-        _logger?.LogDebug(
+        _logger?.LogTrace(
             "[home-scroll] shelf.prepare id={Identity} idx={Index}",
             ItemsSourceIdentity?.ToString() ?? "<no-id>", args.Index);
     }
 
     private void OnRepeaterElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
     {
-        _logger?.LogDebug(
+        _logger?.LogTrace(
             "[home-scroll] shelf.clearing id={Identity}",
             ItemsSourceIdentity?.ToString() ?? "<no-id>");
     }

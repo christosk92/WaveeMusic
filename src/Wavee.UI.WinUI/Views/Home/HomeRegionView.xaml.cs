@@ -33,14 +33,14 @@ public sealed partial class HomeRegionView : UserControl
 
     private void OnSectionsRepeaterElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
-        _logger?.LogDebug(
+        _logger?.LogTrace(
             "[home-scroll] region.prepare header=\"{Header}\" idx={Index}",
             Region?.Header ?? string.Empty, args.Index);
     }
 
     private void OnSectionsRepeaterElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
     {
-        _logger?.LogDebug(
+        _logger?.LogTrace(
             "[home-scroll] region.clearing header=\"{Header}\"",
             Region?.Header ?? string.Empty);
     }

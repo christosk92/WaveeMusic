@@ -217,7 +217,7 @@ public sealed partial class SectionStackLayout : VirtualizingLayout
                     }
 
                     if (wasNaN)
-                        _logger?.LogDebug("[home-scroll] outer.firstMeasure i={I} desired={Desired:F0}", i, desired);
+                        _logger?.LogTrace("[home-scroll] outer.firstMeasure i={I} desired={Desired:F0}", i, desired);
                 }
                 else
                 {
@@ -235,7 +235,7 @@ public sealed partial class SectionStackLayout : VirtualizingLayout
                 _lastLoggedFirstRealized = firstRealized;
                 _lastLoggedLastRealized = lastRealized;
                 _lastLoggedSkipped = skipped;
-                _logger?.LogDebug(
+                _logger?.LogTrace(
                     "[home-scroll] outer.measure rect=({Top:F0},{Bottom:F0}) realized=[{First}..{Last}] count={Count} skipped={Skipped}",
                     realization.Top, realization.Bottom, firstRealized, lastRealized, count, skipped);
             }
