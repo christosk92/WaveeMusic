@@ -107,7 +107,9 @@ public sealed class TrackColorResolver : ITrackColorResolver
         var px = provider.DetachPixelData();   // BGRA, edge*edge*4 bytes
 
         // Quantise to 4 bits/channel; score buckets by saturation so vibrant colours win over greys.
-        // [0]=count [1..3]=ΣR,G,B [4]=Σ(score*1000).
+        // [0]=count [1..3]=ΣR,G,B [4]=Σ(score*1000). Also accumulate a plain average of every opaque
+        // pixel as a last-resort fallback so even a near-monochrome cover still yields a real colour.
+        long avgN = 0, avgR = 0, avgG = 0, avgB = 0;
         var buckets = new Dictionary<int, long[]>();
         void Accumulate(bool vibrantOnly)
         {
@@ -117,26 +119,52 @@ public sealed class TrackColorResolver : ITrackColorResolver
                 int b = px[i], g = px[i + 1], r = px[i + 2], a = px[i + 3];
                 if (a < 16) continue;
                 int mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
-                if (mx < 24 || mn > 236) continue;                       // skip near-black / near-white
+                if (mx < 8 || mn > 246) continue;                        // skip true black / true white only
                 var sat = mx == 0 ? 0d : (mx - mn) / (double)mx;
-                if (vibrantOnly && sat < 0.18) continue;
+                if (vibrantOnly && sat < 0.16) continue;
                 var key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
                 if (!buckets.TryGetValue(key, out var e)) { e = new long[5]; buckets[key] = e; }
                 e[0]++; e[1] += r; e[2] += g; e[3] += b; e[4] += (long)((sat + 0.15) * 1000);
             }
         }
 
-        Accumulate(vibrantOnly: true);
-        if (buckets.Count == 0) Accumulate(vibrantOnly: false);   // greyscale art → fall back to any colour
-        if (buckets.Count == 0) return null;
+        for (var i = 0; i + 4 <= px.Length; i += 4)
+        {
+            if (px[i + 3] < 16) continue;
+            avgN++; avgB += px[i]; avgG += px[i + 1]; avgR += px[i + 2];
+        }
 
-        var ranked = buckets.Values.OrderByDescending(e => e[4]).ToList();
-        var primary = BucketColor(ranked[0]);
-        var accent = ranked.Count > 1 ? BucketColor(ranked[1]) : Lighten(primary);
-        return new TrackPalette(Hex(primary), Hex(accent));
+        Accumulate(vibrantOnly: true);
+        if (buckets.Count == 0) Accumulate(vibrantOnly: false);   // low-saturation art → fall back to any colour
+
+        Vector3 primary, accent;
+        if (buckets.Count > 0)
+        {
+            var ranked = buckets.Values.OrderByDescending(e => e[4]).ToList();
+            primary = BucketColor(ranked[0]);
+            accent = ranked.Count > 1 ? BucketColor(ranked[1]) : Lighten(primary);
+        }
+        else if (avgN > 0)
+        {
+            primary = new Vector3(avgR / (float)avgN, avgG / (float)avgN, avgB / (float)avgN);
+            accent = Lighten(primary);
+        }
+        else return null;
+
+        // Lift toward a visible luminance so the low-opacity wash still reads on dark covers.
+        return new TrackPalette(Hex(LiftForBackground(primary)), Hex(LiftForBackground(accent)));
     }
 
     private static Vector3 BucketColor(long[] e) => new(e[1] / (float)e[0], e[2] / (float)e[0], e[3] / (float)e[0]);
+
+    private static Vector3 LiftForBackground(Vector3 c)
+    {
+        var mx = MathF.Max(c.X, MathF.Max(c.Y, c.Z));
+        if (mx < 4f) return new Vector3(64, 56, 78);    // ~black cover → soft neutral so the wash is still visible
+        if (mx >= 110f) return c;
+        var scale = 110f / mx;                          // preserve hue, raise brightness
+        return new Vector3(MathF.Min(c.X * scale, 255f), MathF.Min(c.Y * scale, 255f), MathF.Min(c.Z * scale, 255f));
+    }
 
     private static Vector3 Lighten(Vector3 c) => new(
         Math.Clamp(c.X * 1.25f + 28f, 0, 255),

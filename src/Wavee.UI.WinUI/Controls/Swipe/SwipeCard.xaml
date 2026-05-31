@@ -61,7 +61,7 @@
                 <!-- Album-art thumbnail — only shown in Canvas mode (the card background is then the video) -->
                 <imaging:CompositionImage x:Name="ArtThumb" Grid.Column="0" Width="44" Height="44" CornerRadius="6"
                                           DecodePixelSize="128" Stretch="UniformToFill" VerticalAlignment="Center"
-                                          Opacity="0" Visibility="Collapsed" />
+                                          Visibility="Collapsed" />
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontSize="20" FontWeight="SemiBold"

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -201,6 +202,28 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
     private Task PersistAsync()
         => _session is null ? Task.CompletedTask : _store.SaveAsync(_session.Snapshot(), _session.RemainingCount);
 
+    /// <summary>Update <paramref name="target"/> to match <paramref name="next"/> in place (by key),
+    /// moving/inserting/removing only what changed so the bound ItemsControl reuses unchanged containers.</summary>
+    private static void Reconcile<T>(ObservableCollection<T> target, IReadOnlyList<T> next, Func<T, string> key)
+    {
+        var keep = new HashSet<string>(next.Count);
+        foreach (var n in next) keep.Add(key(n));
+        for (var i = target.Count - 1; i >= 0; i--)
+            if (!keep.Contains(key(target[i]))) target.RemoveAt(i);
+
+        for (var i = 0; i < next.Count; i++)
+        {
+            if (i >= target.Count) { target.Add(next[i]); continue; }
+            if (key(target[i]) == key(next[i])) continue;
+            var found = -1;
+            for (var j = i + 1; j < target.Count; j++)
+                if (key(target[j]) == key(next[i])) { found = j; break; }
+            if (found >= 0) target.Move(found, i);
+            else target.Insert(i, next[i]);
+        }
+        while (target.Count > next.Count) target.RemoveAt(target.Count - 1);
+    }
+
     private void SyncFromSession()
     {
         if (_session is null) return;
@@ -216,12 +239,11 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         RemainingCount = _session.RemainingCount;
         Progress = deck.Count == 0 ? 0 : Math.Clamp((double)cursor / deck.Count, 0, 1);
 
-        RemovedCards.Clear();
-        foreach (var c in _session.RemovedCards) RemovedCards.Add(c);
-        UpNext.Clear();
-        foreach (var c in _session.UpNext(20)) UpNext.Add(c);
-        Previously.Clear();
-        foreach (var e in _session.Previous(20)) Previously.Add(e);
+        // Reconcile in place (keyed) instead of Clear()+re-add so the ItemsControls keep the
+        // containers for unchanged rows — a full rebuild of ~60 thumbnails per swipe is a visible hitch.
+        Reconcile(RemovedCards, _session.RemovedCards, c => c.Uri);
+        Reconcile(UpNext, _session.UpNext(20), c => c.Uri);
+        Reconcile(Previously, _session.Previous(20), e => e.Card.Uri + (e.Decision?.ToString() ?? ""));
 
         if (CurrentCard?.Uri != _currentCardUri)
         {
@@ -367,13 +389,14 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
 
     private async Task UpdateSpotlightAsync(RefreshCard? card)
     {
-        SpotlightCanvasUrl = null;   // stop the previous card's Canvas immediately on swipe
-        if (card is null) { HasArtistSpotlight = false; return; }
+        // No intermediate null — set the canvas URL straight to the resolved value so the card runs a
+        // single album→canvas transition per swipe (the SwipeCard releases the old lease itself).
+        if (card is null) { HasArtistSpotlight = false; SpotlightCanvasUrl = null; return; }
         try
         {
             var s = await _spotlight.ResolveAsync(card.Uri, card.ArtistId);   // cached + prefetched → usually instant
             if (_session?.CurrentCard?.Uri != card.Uri) return;               // advanced while resolving
-            if (s is null) { HasArtistSpotlight = false; return; }
+            if (s is null) { HasArtistSpotlight = false; SpotlightCanvasUrl = null; return; }
             SpotlightArtistName = s.ArtistName;
             SpotlightAvatarUrl = s.AvatarUrl;
             SpotlightListeners = s.MonthlyListeners > 0 ? $"{s.MonthlyListeners:N0} monthly listeners" : "";
@@ -383,7 +406,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
             SpotlightCanvasUrl = s.CanvasUrl;
             HasArtistSpotlight = true;
         }
-        catch (Exception ex) { _logger?.LogDebug(ex, "Artist spotlight failed for {Uri}", card.Uri); HasArtistSpotlight = false; }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Artist spotlight failed for {Uri}", card.Uri); HasArtistSpotlight = false; SpotlightCanvasUrl = null; }
     }
 
     private static Color ParseHex(string? hex, Color fallback)

@@ -18,7 +18,6 @@ public sealed partial class SwipeCard
 {
     private static readonly TimeSpan FadeCanvas = TimeSpan.FromMilliseconds(320);
     private static readonly TimeSpan FadeArt = TimeSpan.FromMilliseconds(300);
-    private static readonly TimeSpan FadeThumb = TimeSpan.FromMilliseconds(260);
 
     private readonly ISharedCardCanvasPreviewService? _canvasService;
     private CanvasPreviewLease? _canvasLease;
@@ -33,7 +32,6 @@ public sealed partial class SwipeCard
 
     private void ApplyCanvasState(string? url)
     {
-        ArtThumb.ImageUrl = ImageUrl;   // keep the thumbnail's bitmap ready before it fades in
         if (string.IsNullOrEmpty(url)) _ = EnterAlbumArtModeAsync();
         else _ = EnterCanvasModeAsync(url);
     }
@@ -66,29 +64,28 @@ public sealed partial class SwipeCard
 
     private async Task EnterAlbumArtModeAsync()
     {
-        var version = ++_canvasVersion;
+        _canvasVersion++;
         var lease = _canvasLease;
         _canvasLease = null;
+        ArtThumb.Visibility = Visibility.Collapsed;   // collapse the column → full-width title (synchronous)
+        AnimationBuilder.Create().Opacity(to: 1d, duration: FadeArt).Start(Art);
+        AnimationBuilder.Create().Opacity(to: 0d, duration: FadeCanvas).Start(CanvasHost);
         if (_canvasService is not null)
         {
             if (lease is not null) await _canvasService.ReleaseAsync(lease);
             else await _canvasService.ReleaseHostAsync(CanvasHost);
         }
-
-        AnimationBuilder.Create().Opacity(to: 1d, duration: FadeArt).Start(Art);
-        AnimationBuilder.Create().Opacity(to: 0d, duration: FadeCanvas).Start(CanvasHost);
-        await AnimationBuilder.Create().Opacity(to: 0d, duration: FadeThumb).StartAsync(ArtThumb);
-        if (version != _canvasVersion) return;   // re-entered Canvas mode during the fade
-        ArtThumb.Visibility = Visibility.Collapsed;
     }
 
     private void ShowCanvasVisuals()
     {
-        ArtThumb.ImageUrl = ImageUrl;
+        // Make the thumb visible (measured) BEFORE setting the URL, then force a load — a
+        // CompositionImage whose ImageUrl is assigned while Collapsed never realizes its surface.
         ArtThumb.Visibility = Visibility.Visible;
+        ArtThumb.ImageUrl = ImageUrl;
+        DispatcherQueue?.TryEnqueue(() => ArtThumb.RefreshCurrentImage());
         AnimationBuilder.Create().Opacity(to: 0d, duration: FadeArt).Start(Art);
         AnimationBuilder.Create().Opacity(to: 1d, duration: FadeCanvas).Start(CanvasHost);
-        AnimationBuilder.Create().Opacity(to: 1d, duration: FadeThumb).Start(ArtThumb);
     }
 
     /// <summary>Page calls this on navigate-away (the page is not host-cached) to stop the video + free the lease.</summary>
