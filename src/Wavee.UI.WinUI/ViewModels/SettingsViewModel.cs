@@ -105,6 +105,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public bool HasUpdateError => _updateService?.Status == UpdateStatus.Error;
 
+    // The auto-update toggle only makes sense for sideloaded (.appinstaller) installs — Store
+    // updates itself; unpackaged dev builds have no package to stage.
+    public bool IsAutoUpdateToggleVisible => _updateService?.Distribution == DistributionMode.Sideloaded;
+
     public string DistributionModeDisplay => _updateService?.Distribution switch
     {
         DistributionMode.Store => AppLocalization.GetString("DistributionMode_Store"),
@@ -200,6 +204,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         MinimizeToTrayOnClose = s.MinimizeToTrayOnClose;
         ShowDockedPlayerWithFloatingPlayer = s.ShowDockedPlayerWithFloatingPlayer;
         ShowLocalFilesOnHome = s.ShowLocalFilesOnHome;
+        AutoUpdateEnabled = s.AutoUpdate;
 
         // Initialize lyrics sources from persisted prefs or defaults
         InitializeLyricsSources(s);
@@ -633,6 +638,19 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         // next end-of-context evaluation with no further plumbing.
         _settingsService.Update(s => s.AutoplayEnabled = value);
         WeakReferenceMessenger.Default.Send(new AutoplayEnabledChangedMessage(value));
+    }
+
+    [ObservableProperty]
+    public partial bool AutoUpdateEnabled { get; set; }
+
+    partial void OnAutoUpdateEnabledChanged(bool value)
+    {
+        // The update service owns persistence (writes AppSettings.AutoUpdate); fall back to a
+        // direct settings write if the service wasn't injected (tests / minimal hosts).
+        if (_updateService is not null)
+            _updateService.IsAutoUpdateEnabled = value;
+        else
+            _settingsService.Update(s => s.AutoUpdate = value);
     }
 
     [ObservableProperty]

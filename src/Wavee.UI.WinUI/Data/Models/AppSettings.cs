@@ -232,6 +232,13 @@ public sealed class AppSettings
     /// </summary>
     public string? LastSeenChangelogVersion { get; set; }
 
+    /// <summary>
+    /// When true, an available MSIX update is downloaded + staged automatically (via
+    /// PackageManager) so it applies on the next restart. Sideloaded installs only.
+    /// Defaults on; a missing key in older settings.json leaves existing users opted in.
+    /// </summary>
+    public bool AutoUpdate { get; set; } = true;
+
     // ── Library (per-tab sort + view preferences) ──
 
     /// <summary>
