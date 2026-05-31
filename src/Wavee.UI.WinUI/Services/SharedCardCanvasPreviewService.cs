@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +25,11 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
     private CanvasPreviewLease? _activeLease;
     private long _nextLeaseId;
     private DispatcherQueueTimer? _idleTeardownTimer;
+
+    // Pre-opened MediaSources for upcoming canvases (warmed via PreloadAsync). AcquireOnUi consumes a
+    // matching one so its first frame is near-instant. All access is on the UI thread (serialised).
+    private const int PreloadCap = 3;
+    private readonly List<(string Url, MediaSource Source)> _preloaded = new();
 
     // Reclaim the shared player's MediaFoundation + GPU video decode surface
     // (~25-40 MB) when no card has been previewed for this long. The keep-lease
@@ -112,6 +118,72 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
         }
     }
 
+    public async Task PreloadAsync(string canvasUrl, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(canvasUrl))
+            return;
+
+        // Decide whether to warm OUTSIDE the gate, and run OpenAsync off the gate so a slow network
+        // open never blocks Acquire/Release. The _preloaded/_activeLease reads+writes all happen on the
+        // UI thread (via RunOnUiAsync), so the UI thread serialises them — no extra lock needed.
+        try
+        {
+            var need = await RunOnUiAsync(() =>
+                !HasPreloaded(canvasUrl) &&
+                !string.Equals(_activeLease?.CanvasUrl, canvasUrl, StringComparison.Ordinal), ct).ConfigureAwait(false);
+            if (!need)
+                return;
+
+            var source = await RunOnUiAsync(() => MediaSource.CreateFromUri(new Uri(canvasUrl)), ct).ConfigureAwait(false);
+            try
+            {
+                await source.OpenAsync().AsTask(ct).ConfigureAwait(false);
+                await RunOnUiAsync(() => CachePreloaded(canvasUrl, source), ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                source.Dispose();
+                throw;
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _logger?.LogDebug(ex, "Canvas preload failed for {Url}", canvasUrl);
+        }
+    }
+
+    private bool HasPreloaded(string url) => _preloaded.Exists(p => string.Equals(p.Url, url, StringComparison.Ordinal));
+
+    private MediaSource? TakePreloaded(string url)
+    {
+        var i = _preloaded.FindIndex(p => string.Equals(p.Url, url, StringComparison.Ordinal));
+        if (i < 0)
+            return null;
+        var source = _preloaded[i].Source;
+        _preloaded.RemoveAt(i);
+        return source;
+    }
+
+    private void CachePreloaded(string url, MediaSource source)
+    {
+        if (HasPreloaded(url)) { source.Dispose(); return; }
+        _preloaded.Add((url, source));
+        while (_preloaded.Count > PreloadCap)
+        {
+            try { _preloaded[0].Source.Dispose(); } catch { }
+            _preloaded.RemoveAt(0);
+        }
+    }
+
+    private void ClearPreloaded()
+    {
+        foreach (var p in _preloaded)
+        {
+            try { p.Source.Dispose(); } catch { }
+        }
+        _preloaded.Clear();
+    }
+
     private CanvasPreviewLease? AcquireOnUi(Panel host, string canvasUrl)
     {
         TraceCanvas($"AcquireOnUi host={host.GetHashCode():x8} url='{canvasUrl}'");
@@ -151,7 +223,7 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
                 !string.Equals(_activeLease?.CanvasUrl, canvasUrl, StringComparison.Ordinal) ||
                 _playerElement?.Source == null;
             if (shouldReloadSource && _playerElement != null)
-                _playerElement.Source = MediaSource.CreateFromUri(new Uri(canvasUrl));
+                _playerElement.Source = TakePreloaded(canvasUrl) ?? MediaSource.CreateFromUri(new Uri(canvasUrl));
 
             _currentPlayer?.Play();
 
@@ -240,6 +312,7 @@ public sealed partial class SharedCardCanvasPreviewService : ISharedCardCanvasPr
     {
         StopIdleTeardownTimer();
         TeardownOnUi();
+        ClearPreloaded();
 
         if (_currentPlayer != null)
         {

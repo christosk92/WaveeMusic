@@ -51,6 +51,7 @@ internal static class PageRegistration
 
         // Composition / wizard
         Register(() => new CreatePlaylistPage(), nameof(CreatePlaylistPage));
+        Register(() => new RefreshPlaylistPage(), nameof(RefreshPlaylistPage));
 
         // Media
         Register(() => new VideoPlayerPage(), nameof(VideoPlayerPage));

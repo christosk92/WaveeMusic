@@ -1945,6 +1945,72 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Changelog_0_1_0_Alpha_1_Announcement" xml:space="preserve">
     <value>First time anyone outside my dev box is running this build. Things will break — when they do, see the "Report issues" section so I can actually fix it.</value>
   </data>
+  <data name="Changelog_0_1_1_Alpha_Title" xml:space="preserve">
+    <value>Refresh your playlists with swipes</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Announcement" xml:space="preserve">
+    <value>This drop adds a fast, tactile way to tidy up a playlist — audition each track and swipe to keep or remove. Nothing changes until you apply.</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Refresh_Title" xml:space="preserve">
+    <value>Refresh with swipes</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Refresh_Short" xml:space="preserve">
+    <value>Swipe keep / remove through a playlist</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Refresh_DetailTitle" xml:space="preserve">
+    <value>Groom a playlist by ear, one swipe at a time</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Refresh_Detail" xml:space="preserve">
+    <value>Open any playlist you can edit and Wavee deals it out like a deck of cards. Each track plays a 30-second preview — swipe right to keep, left to remove (drag the card, tap the remove / heart buttons, or use the ← / → keys; Space toggles the snippet). Nothing changes on Spotify until you review what's leaving and press Apply, so a stray tap can't delete anything.</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Refresh_Nav" xml:space="preserve">
+    <value>Open a playlist you can edit, then choose Refresh with swipes from the playlist header.</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Resume_Title" xml:space="preserve">
+    <value>Pick up where you left off</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Resume_Short" xml:space="preserve">
+    <value>Sessions save, resume, and reconcile</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Resume_DetailTitle" xml:space="preserve">
+    <value>Stop any time — your progress is waiting</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Resume_Detail" xml:space="preserve">
+    <value>Long playlists don't have to be one sitting. Your decisions are saved per playlist, so you can close the page or quit Wavee and the entry button reads "Resume · N left" when you return. If the playlist changed on another device while you were away, the deck reconciles itself — newly-added tracks get auditioned, removed ones drop out, reorders are followed — and a banner tells you what changed.</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Resume_Nav" xml:space="preserve">
+    <value>Return to the same playlist and use the Resume pill beside the Refresh action.</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Spotlight_Title" xml:space="preserve">
+    <value>Know what you're hearing</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Spotlight_Short" xml:space="preserve">
+    <value>Artist, credits, and Canvas on the card</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Spotlight_DetailTitle" xml:space="preserve">
+    <value>Context for every track</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Spotlight_Detail" xml:space="preserve">
+    <value>While you audition, the artist sits beside the deck — avatar, monthly listeners, a short bio, and this song's credits. When a track has a Spotify Canvas, the looping video plays right on the card with the cover art tucked next to the title, and the background glows with colors pulled from the artwork that shift as you swipe.</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Spotlight_Nav" xml:space="preserve">
+    <value>Start a refresh session; the artist panel and Canvas card appear automatically when Spotify has that data.</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Fixes_Title" xml:space="preserve">
+    <value>Bug fixes &amp; polish</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Fixes_Short" xml:space="preserve">
+    <value>Smoother navigation, storage, and swipe playback</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Fixes_DetailTitle" xml:space="preserve">
+    <value>Less waiting, fewer flashes, better recovery</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Fixes_Detail" xml:space="preserve">
+    <value>This release also carries the fix work from the recent PRs: playlist refresh sessions self-heal if the local metadata database skipped the new table, dark artwork no longer collapses the palette background to the default wash, card thumbnails and Canvas preloads avoid the blank / hitchy transition, artist-to-artist navigation no longer flashes the previous artist, and metadata reads/writes are batched so startup and navigation spend less time fighting SQLite locks.</value>
+  </data>
+  <data name="Changelog_0_1_1_Alpha_Section_Fixes_Nav" xml:space="preserve">
+    <value>No action needed — these fixes apply automatically after updating.</value>
+  </data>
   <data name="Changelog_0_1_0_Alpha_1_Section_Channel_Title" xml:space="preserve">
     <value>Naming &amp; updates</value>
   </data>

@@ -31,5 +31,6 @@ public sealed class ChangelogFeature
     public string Glyph { get; set; } = "";
     public string DetailTitle { get; set; } = "";
     public string DetailDescription { get; set; } = "";
+    public string? NavigationHint { get; set; }
     public string? ImageAssetPath { get; set; }
 }

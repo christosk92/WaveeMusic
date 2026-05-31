@@ -236,6 +236,13 @@ public static class NavigationHelpers
         Navigate(typeof(PlaylistPage), parameter, playlistName, CreateIconSource(typeof(PlaylistPage), parameter), openInNewTab);
     }
 
+    /// <summary>Open the "Refresh with swipes" page for an editable playlist.</summary>
+    public static void OpenRefreshPlaylist(RefreshPlaylistParameter parameter, bool openInNewTab = false)
+    {
+        Navigate(typeof(RefreshPlaylistPage), parameter, "Refresh playlist",
+            new FontIconSource { Glyph = FluentGlyphs.RefreshSwipe }, openInNewTab);
+    }
+
     /// <summary>
     /// Navigate to albums library - within tab by default, new tab if openInNewTab=true
     /// </summary>

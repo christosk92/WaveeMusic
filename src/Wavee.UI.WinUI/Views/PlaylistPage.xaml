@@ -478,6 +478,19 @@
                 <controls:WrapPanel Orientation="Horizontal"
                                     HorizontalSpacing="6" VerticalSpacing="6"
                                     Margin="0,4,0,0">
+                    <!-- Refresh with swipes — audition snippets and keep/remove (editable playlists only). -->
+                    <Button Height="36" Padding="14,0" CornerRadius="18"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Command="{x:Bind ViewModel.OpenRefreshWithSwipesCommand}"
+                            Visibility="{x:Bind ViewModel.Header.CanEditItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            ToolTipService.ToolTip="Audition snippets and swipe to keep or remove">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE895;" FontSize="12"/>
+                            <TextBlock Text="Refresh with swipes" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
                     <!-- Add to playlist (flyout — picks the destination from the
                          user's playlists, then copies all tracks of THIS playlist). -->
                     <Button x:Name="AddPlaylistToPlaylistPillButton"

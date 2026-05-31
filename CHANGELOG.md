@@ -3,6 +3,37 @@
 All notable changes to WaveeMusic are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Features
+- **Refresh a playlist with swipes** — a focused, Tinder-style grooming mode for
+  any playlist you can edit. Audition each track's 30-second preview snippet and
+  swipe **right to keep / left to remove** (drag the card, the ✕ / ♥ buttons, or
+  the ← / → keys; Space toggles the snippet), review what's leaving, then apply
+  every removal in one batch — nothing changes on Spotify until you confirm.
+  - **Resume anywhere** — progress is saved per playlist; close the page or quit
+    the app mid-session and the entry pill reads "Resume · N left" so you pick up
+    exactly where you stopped.
+  - **Reconciles cross-device edits** — if the playlist changed on another device
+    while a session was paused, the deck reconciles on resume (newly-added tracks
+    get auditioned, removed tracks drop out, reorders are followed) and a banner
+    reports what changed.
+  - **Artist spotlight + Canvas** — the current track's artist (avatar, monthly
+    listeners, short bio) and this song's credits sit beside the deck, the looping
+    Spotify **Canvas** plays as the card's background with the cover demoted to a
+    thumbnail, and an immersive palette wash behind the deck morphs to each
+    cover's colors as you swipe.
+
+### Engineering
+- 30-second snippets play through the isolated card-preview audio engine (never
+  touch the main queue or count a play); the engine now reuses one AudioGraph
+  across snippets instead of rebuilding it each time.
+- New `RefreshPlaylistSession` state machine (framework-neutral, unit-tested) with
+  per-playlist persistence in `metadata.db` (v24, self-healing) and URI-keyed diff
+  reconciliation; preview URLs, per-track palettes, artist NPV details, and the
+  next cards' Canvas videos are all prefetched a few cards ahead so swipes stay
+  smooth.
+
 ## [0.1.0-alpha.1] — first experimental alpha
 
 Everything below ships in the initial release. There's no shipped predecessor

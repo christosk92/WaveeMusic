@@ -38,6 +38,9 @@ public sealed class AppSettings
     /// </summary>
     public string DefaultPlayAction { get; set; } = "PlayAndClear";
 
+    /// <summary>Whether the "Refresh with swipes" how-it-works overlay has been shown once.</summary>
+    public bool RefreshSwipeHowItWorksSeen { get; set; }
+
     /// <summary>
     /// Whether to show the play action dialog every time a track is played.
     /// </summary>

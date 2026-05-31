@@ -99,6 +99,7 @@
 		<Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
 		<Content Include="Assets\StoreLogo.png" />
 		<Content Include="Assets\Wide310x150Logo.scale-200.png" />
+		<Content Include="Assets\Changelog\**\*.png" />
 		<Content Include="Services\SpotifyVideo\WebEmePlayer.html">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
@@ -159,10 +160,13 @@
 	<PropertyGroup>
 		<!-- Path to the sibling Klankhuis.Hero (hero-carousel-winui) project.
 		     Defaults to the local sibling checkout so VS / local builds work
-		     unchanged. CI (release.yml) clones github.com/christosk92/hero-carousel-winui
+		     unchanged. Anchored at $(USERPROFILE) (absolute, location-independent) rather
+		     than a path relative to this csproj, so the default also resolves from a git
+		     worktree under .claude\worktrees\ — a project-dir-relative path mis-resolves at
+		     that extra depth. CI (release.yml) clones github.com/christosk92/hero-carousel-winui
 		     and overrides this via the KlankhuisHeroProject env var, so the public
 		     repo never needs the out-of-tree path to exist. -->
-		<KlankhuisHeroProject Condition="'$(KlankhuisHeroProject)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\Users\ChristosKarapasias\test\Klankhuis\src\Klankhuis.Hero\Klankhuis.Hero.csproj</KlankhuisHeroProject>
+		<KlankhuisHeroProject Condition="'$(KlankhuisHeroProject)' == ''">$(USERPROFILE)\test\Klankhuis\src\Klankhuis.Hero\Klankhuis.Hero.csproj</KlankhuisHeroProject>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -186,7 +190,7 @@
 		     project — no transitive package conflicts; ComputeSharp.D2D1 resolves at 3.2.0.
 		     Path comes from $(KlankhuisHeroProject): the local sibling checkout by default,
 		     or the CI clone path that release.yml sets on the runner. -->
-		<ProjectReference Include="$(KlankhuisHeroProject)" />
+		<ProjectReference Include="$(KlankhuisHeroProject)" SetPlatform="Platform=AnyCPU" />
 		<!-- Multi-provider lyrics search & parsing (QQ, Kugou, Netease) -->
 		<ProjectReference Include="..\..\vendor\Lyricify.Lyrics.Helper\Lyricify.Lyrics.Helper.csproj" />
 	</ItemGroup>

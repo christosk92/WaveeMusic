@@ -1,0 +1,406 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Views.RefreshPlaylistPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:swipe="using:Wavee.UI.WinUI.Controls.Swipe"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:local="using:Wavee.UI.WinUI.Views"
+    xmlns:models="using:Wavee.UI.Services.Playlists"
+    xmlns:tracks="using:Wavee.UI.Services.Tracks"
+    mc:Ignorable="d"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    IsTabStop="True"
+    KeyDown="Page_KeyDown">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Immersive palette wash — animated mesh gradient driven by the current card's art.
+             AnimateColorTransitions eases the palette between cards (no snap). -->
+        <cards:AnimatedHeroBackground x:Name="HeroBg" Grid.RowSpan="3" Opacity="0.42" IsHitTestVisible="False"
+                                      AnimateColorTransitions="True"
+                                      PrimaryColor="{x:Bind ViewModel.BackgroundPrimary, Mode=OneWay}"
+                                      AccentColor="{x:Bind ViewModel.BackgroundAccent, Mode=OneWay}" />
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="24,20,24,0" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0" Click="Exit_Click" Width="36" Height="36" CornerRadius="18" Padding="0"
+                    VerticalAlignment="Center" AutomationProperties.Name="Back to playlist"
+                    ToolTipService.ToolTip="Back to playlist">
+                <FontIcon Glyph="&#xE72B;" FontSize="16" />
+            </Button>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="REFRESH PLAYLIST" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="120" />
+                <TextBlock Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"
+                        Visibility="{x:Bind ToVis(ViewModel.IsAuditioning), Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xEB52;" FontSize="14" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.KeptCount, Mode=OneWay}" Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE711;" FontSize="13" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.RemovedCount, Mode=OneWay}" Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                </StackPanel>
+                <TextBlock VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                    <Run Text="{x:Bind ViewModel.RemainingCount, Mode=OneWay}" /><Run Text=" left" />
+                </TextBlock>
+                <Border Width="1" Height="20" Margin="4,0" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                <Button Click="Finish_Click" Width="36" Height="36" CornerRadius="18" Padding="0"
+                        AutomationProperties.Name="Finish and review" ToolTipService.ToolTip="Finish &amp; review">
+                    <FontIcon Glyph="&#xE73E;" FontSize="16" />
+                </Button>
+                <Button Width="36" Height="36" CornerRadius="18" Padding="0"
+                        AutomationProperties.Name="More options" ToolTipService.ToolTip="More">
+                    <FontIcon Glyph="&#xE712;" FontSize="16" />
+                    <Button.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Text="Start over" Command="{x:Bind ViewModel.StartOverCommand}">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE72C;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Discard progress" Command="{x:Bind ViewModel.DiscardCommand}">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <ProgressBar Grid.Row="1" Margin="24,16,24,0" Value="{x:Bind ViewModel.Progress, Mode=OneWay}"
+                     Minimum="0" Maximum="1" Visibility="{x:Bind ToVis(ViewModel.IsAuditioning), Mode=OneWay}" />
+
+        <!-- Stage -->
+        <Grid Grid.Row="2" Margin="24,12,24,24">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Artist spotlight (queryArtistNpv) -->
+            <Border Grid.Column="0" Width="320" VerticalAlignment="Stretch" Margin="0,0,16,0"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    Visibility="{x:Bind ToVis(ViewModel.HasArtistSpotlight), Mode=OneWay}">
+                <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="SpotlightContent" Spacing="14">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <imaging:CompositionImage Width="56" Height="56" CornerRadius="28" Stretch="UniformToFill"
+                                                      DecodePixelSize="128" ImageUrl="{x:Bind ViewModel.SpotlightAvatarUrl, Mode=OneWay}" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind ViewModel.SpotlightArtistName, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind ViewModel.SpotlightListeners, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBlock Text="{x:Bind ViewModel.SpotlightBio, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="6"
+                                   TextTrimming="CharacterEllipsis" Visibility="{x:Bind StrVis(ViewModel.SpotlightBio), Mode=OneWay}" />
+
+                        <StackPanel Spacing="6" Visibility="{x:Bind CountVis(ViewModel.ArtistCredits.Count), Mode=OneWay}">
+                            <TextBlock Text="CREDITS" Style="{StaticResource CaptionTextBlockStyle}" CharacterSpacing="100"
+                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.ArtistCredits, Mode=OneWay}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="tracks:ArtistCredit">
+                                        <Grid ColumnSpacing="8" Padding="0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{x:Bind Name}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Role}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Deck + controls -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20"
+                        Visibility="{x:Bind ToVis(ViewModel.IsAuditioning), Mode=OneWay}">
+                <Grid Width="320" Height="420">
+                    <Border Width="320" Height="420" CornerRadius="12" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            RenderTransformOrigin="0.5,0.5" Opacity="0.6"
+                            Visibility="{x:Bind ToVisObj(ViewModel.PeekCard2), Mode=OneWay}">
+                        <Border.RenderTransform><CompositeTransform ScaleX="0.90" ScaleY="0.90" TranslateY="34" /></Border.RenderTransform>
+                        <imaging:CompositionImage ImageUrl="{x:Bind ViewModel.PeekCard2.ImageUrl, Mode=OneWay}"
+                                                  DecodePixelSize="600" Stretch="UniformToFill" CornerRadius="12" />
+                    </Border>
+                    <Border Width="320" Height="420" CornerRadius="12" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            RenderTransformOrigin="0.5,0.5" Opacity="0.85"
+                            Visibility="{x:Bind ToVisObj(ViewModel.PeekCard1), Mode=OneWay}">
+                        <Border.RenderTransform><CompositeTransform ScaleX="0.95" ScaleY="0.95" TranslateY="17" /></Border.RenderTransform>
+                        <imaging:CompositionImage ImageUrl="{x:Bind ViewModel.PeekCard1.ImageUrl, Mode=OneWay}"
+                                                  DecodePixelSize="600" Stretch="UniformToFill" CornerRadius="12" />
+                    </Border>
+                    <swipe:SwipeCard x:Name="TopCard"
+                                     ImageUrl="{x:Bind ViewModel.CurrentCard.ImageUrl, Mode=OneWay}"
+                                     Title="{x:Bind ViewModel.CurrentCard.Title, Mode=OneWay}"
+                                     ArtistName="{x:Bind ViewModel.CurrentCard.ArtistName, Mode=OneWay}"
+                                     CanvasUrl="{x:Bind ViewModel.SpotlightCanvasUrl, Mode=OneWay}"
+                                     PreviewProgress="{x:Bind ViewModel.PreviewProgress, Mode=OneWay}"
+                                     PreviewState="{x:Bind ViewModel.PreviewState, Mode=OneWay}"
+                                     DecisionCommitted="TopCard_DecisionCommitted" />
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="16">
+                    <Button Click="Undo_Click" Width="40" Height="40" CornerRadius="20" Padding="0"
+                            AutomationProperties.Name="Undo" ToolTipService.ToolTip="Undo">
+                        <FontIcon Glyph="&#xE7A7;" FontSize="16" />
+                    </Button>
+                    <Button Click="Remove_Click" Width="56" Height="56" CornerRadius="28" Padding="0"
+                            AutomationProperties.Name="Remove" ToolTipService.ToolTip="Remove (Left arrow)">
+                        <FontIcon Glyph="&#xE711;" FontSize="20" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                    </Button>
+                    <Button Command="{x:Bind ViewModel.ToggleSnippetCommand}" Width="48" Height="48" CornerRadius="24" Padding="0"
+                            AutomationProperties.Name="Play or pause snippet" ToolTipService.ToolTip="Play / pause (Space)">
+                        <FontIcon Glyph="{x:Bind PlayPauseGlyph(ViewModel.PreviewState), Mode=OneWay}" FontSize="18" />
+                    </Button>
+                    <Button Click="Keep_Click" Style="{StaticResource AccentButtonStyle}" Width="56" Height="56" CornerRadius="28" Padding="0"
+                            AutomationProperties.Name="Keep" ToolTipService.ToolTip="Keep (Right arrow)">
+                        <FontIcon Glyph="&#xEB52;" FontSize="22" />
+                    </Button>
+                    <Button Click="Skip_Click" Width="40" Height="40" CornerRadius="20" Padding="0"
+                            AutomationProperties.Name="Skip" ToolTipService.ToolTip="Skip (decide later)">
+                        <FontIcon Glyph="&#xE893;" FontSize="16" />
+                    </Button>
+                </StackPanel>
+
+                <TextBlock Text="Drag the card · ← / → keys · Space to play" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Up next + Previously rail -->
+            <Border Grid.Column="2" Width="288" VerticalAlignment="Stretch" Margin="16,0,0,0"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    Visibility="{x:Bind ToVis(ViewModel.IsAuditioning), Mode=OneWay}">
+                <ScrollViewer Padding="4,8" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="Up next" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="12,4,12,4" />
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.UpNext, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:RefreshCard">
+                                    <Grid Padding="8,6" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <imaging:CompositionImage Grid.Column="0" Width="40" Height="40" ImageUrl="{x:Bind ImageUrl}"
+                                                                  DecodePixelSize="96" Stretch="UniformToFill" CornerRadius="4" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{x:Bind ArtistName}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border Height="1" Margin="12,8" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                Visibility="{x:Bind CountVis(ViewModel.Previously.Count), Mode=OneWay}" />
+                        <TextBlock Text="Previously" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="12,0,12,4"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Visibility="{x:Bind CountVis(ViewModel.Previously.Count), Mode=OneWay}" />
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Previously, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:RefreshHistoryEntry">
+                                    <Grid Padding="8,6" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="36" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <imaging:CompositionImage Grid.Column="0" Width="36" Height="36" ImageUrl="{x:Bind Card.ImageUrl}"
+                                                                  DecodePixelSize="96" Stretch="UniformToFill" CornerRadius="4" Opacity="0.8" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Card.Title}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{x:Bind Card.ArtistName}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <FontIcon Grid.Column="2" Glyph="&#xEB52;" FontSize="12" VerticalAlignment="Center"
+                                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                  Visibility="{x:Bind local:RefreshPlaylistPage.KeptVis(Decision)}" />
+                                        <FontIcon Grid.Column="2" Glyph="&#xE711;" FontSize="12" VerticalAlignment="Center"
+                                                  Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                  Visibility="{x:Bind local:RefreshPlaylistPage.RemovedVis(Decision)}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Empty / error state -->
+            <StackPanel Grid.Column="0" Grid.ColumnSpan="3" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        MaxWidth="360" Spacing="12" Visibility="{x:Bind ToVis(ViewModel.ShowEmptyState), Mode=OneWay}">
+                <FontIcon Glyph="&#xE895;" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}"
+                           HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                <Button Content="Back to playlist" Click="Exit_Click" Style="{StaticResource AccentButtonStyle}"
+                        HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Loading -->
+            <ProgressRing Grid.Column="0" Grid.ColumnSpan="3" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                          Visibility="{x:Bind ToVis(ViewModel.IsLoading), Mode=OneWay}"
+                          Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Grid>
+
+        <!-- Reconcile banner -->
+        <InfoBar Grid.Row="2" VerticalAlignment="Top" Margin="24,12,24,0"
+                 IsOpen="{x:Bind ViewModel.ShowReconcileBanner, Mode=OneWay}" Severity="Informational"
+                 Title="Playlist updated" Message="{x:Bind ViewModel.ReconcileText, Mode=OneWay}"
+                 CloseButtonCommand="{x:Bind ViewModel.DismissBannerCommand}" />
+
+        <!-- Review -->
+        <Grid Grid.RowSpan="3" Background="{ThemeResource SmokeFillColorDefaultBrush}"
+              Visibility="{x:Bind ToVis(ViewModel.IsReview), Mode=OneWay}">
+            <Border MaxWidth="440" Margin="24" VerticalAlignment="Center" Padding="24"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="0">
+                    <TextBlock Text="Review your refresh" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="0,12,0,4">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}">
+                            <Run Text="Kept" /><Run Text=" " /><Run Text="{x:Bind ViewModel.KeptCount, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Text="·" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource SystemFillColorCriticalBrush}">
+                            <Run Text="Removed" /><Run Text=" " /><Run Text="{x:Bind ViewModel.RemovedCount, Mode=OneWay}" />
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock Text="Nothing leaves your playlist until you apply." Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,16" />
+                    <ScrollViewer MaxHeight="260" Margin="0,0,0,20">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.RemovedCards, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:RefreshCard">
+                                    <Grid Padding="0,8" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <imaging:CompositionImage Grid.Column="0" Width="40" Height="40" ImageUrl="{x:Bind ImageUrl}"
+                                                                  DecodePixelSize="96" Stretch="UniformToFill" CornerRadius="4" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{x:Bind ArtistName}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <Button Grid.Column="2" Content="Undo" CommandParameter="{x:Bind Uri}" Click="UnRemove_Click"
+                                                VerticalAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <Button Content="Apply changes" Command="{x:Bind ViewModel.ApplyCommand}" Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Stretch" />
+                    <HyperlinkButton Content="Cancel" Command="{x:Bind ViewModel.ViewPlaylistCommand}" HorizontalAlignment="Center" Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Done -->
+        <Grid Grid.RowSpan="3" Background="{ThemeResource SmokeFillColorDefaultBrush}"
+              Visibility="{x:Bind ToVis(ViewModel.IsDone), Mode=OneWay}">
+            <Border MaxWidth="440" Margin="24" VerticalAlignment="Center" Padding="24"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="0" HorizontalAlignment="Stretch">
+                    <Border Width="72" Height="72" CornerRadius="36" HorizontalAlignment="Center"
+                            Background="{ThemeResource AccentFillColorDefaultBrush}">
+                        <FontIcon Glyph="&#xE73E;" FontSize="32" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                    </Border>
+                    <TextBlock Text="Playlist refreshed" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" Margin="0,16,0,8" />
+                    <TextBlock HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                        <Run Text="Kept " /><Run Text="{x:Bind ViewModel.KeptCount, Mode=OneWay}" FontWeight="SemiBold"
+                             Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" /><Run Text=" tracks" />
+                    </TextBlock>
+                    <TextBlock HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                        <Run Text="Removed " /><Run Text="{x:Bind ViewModel.RemovedCount, Mode=OneWay}" FontWeight="SemiBold"
+                             Foreground="{ThemeResource SystemFillColorCriticalBrush}" /><Run Text=" tracks" />
+                    </TextBlock>
+                    <Button Content="View playlist" Command="{x:Bind ViewModel.ViewPlaylistCommand}" Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Stretch" Margin="0,20,0,0" />
+                    <HyperlinkButton Content="Start over" Command="{x:Bind ViewModel.StartOverCommand}" HorizontalAlignment="Center" Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- How it works -->
+        <Grid Grid.RowSpan="3" Background="{ThemeResource SmokeFillColorDefaultBrush}"
+              Visibility="{x:Bind ToVis(ViewModel.ShowHowItWorks), Mode=OneWay}">
+            <Border MaxWidth="440" Margin="24" VerticalAlignment="Center" Padding="24"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="16">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="How it works" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Text="Refresh a playlist in four quick steps." Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <StackPanel Spacing="16">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border Width="28" Height="28" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}"><TextBlock Text="1" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                            <StackPanel MaxWidth="320"><TextBlock Text="Choose a playlist" Style="{StaticResource BodyStrongTextBlockStyle}" /><TextBlock Text="Start from any playlist you can edit." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /></StackPanel>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border Width="28" Height="28" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}"><TextBlock Text="2" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                            <StackPanel MaxWidth="320"><TextBlock Text="Listen to a snippet" Style="{StaticResource BodyStrongTextBlockStyle}" /><TextBlock Text="Each track plays a 30-second preview — your main queue keeps playing untouched." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /></StackPanel>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border Width="28" Height="28" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}"><TextBlock Text="3" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                            <StackPanel MaxWidth="320"><TextBlock Text="Swipe to decide" Style="{StaticResource BodyStrongTextBlockStyle}" /><TextBlock Text="Right to keep, left to remove. Buttons and ← / → keys work too." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /></StackPanel>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border Width="28" Height="28" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}"><TextBlock Text="4" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                            <StackPanel MaxWidth="320"><TextBlock Text="All set" Style="{StaticResource BodyStrongTextBlockStyle}" /><TextBlock Text="Review what's leaving, then apply your changes." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /></StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                    <Button Content="Start refreshing" Command="{x:Bind ViewModel.DismissHowItWorksCommand}" Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Stretch" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -15,6 +15,10 @@ namespace Wavee.UI.WinUI.Styles;
 /// </summary>
 public static class FluentGlyphs
 {
+    // ── Refresh-with-swipes ───────────────────────────────────────────────
+    /// <summary>Sync / Refresh — used as the Refresh-playlist tab icon — E895.</summary>
+    public const string RefreshSwipe = "";
+
     // ── Playback ──────────────────────────────────────────────────────────
     /// <summary>Play — E768.</summary>
     public const string Play = "";

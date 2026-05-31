@@ -578,6 +578,13 @@ public static class AppLifecycleHelper
                 // callbacks onto the UI thread without depending on Microsoft.UI.Dispatching.
                 .AddSingleton<Wavee.UI.Threading.IUiDispatcher, DispatcherQueueUiDispatcher>()
                 .AddSingleton<ICardPreviewPlaybackCoordinator, CardPreviewPlaybackCoordinator>()
+                // Refresh-with-swipes: snippet preview URLs (reuses the SQLite-cached TrackV4 tier),
+                // per-track palette for the immersive background, and durable per-playlist session state.
+                .AddSingleton<Wavee.UI.Services.Tracks.IPreviewUrlResolver, Wavee.UI.Services.Tracks.PreviewUrlResolver>()
+                .AddSingleton<Wavee.UI.Services.Tracks.ITrackColorResolver, Services.TrackColorResolver>()
+                .AddSingleton<Wavee.UI.Services.Tracks.IArtistSpotlightResolver, Wavee.UI.Services.Tracks.ArtistSpotlightResolver>()
+                .AddSingleton<Wavee.UI.Services.Playlists.IRefreshSessionStore, Services.RefreshSessionStore>()
+                .AddTransient<ViewModels.RefreshPlaylistViewModel>()
                 .AddSingleton<ISharedCardCanvasPreviewService, SharedCardCanvasPreviewService>()
                 // Shared now-playing highlight observer. Subscribes to NowPlayingChangedMessage
                 // once; ContentCard instances subscribe to its C# event instead of registering
