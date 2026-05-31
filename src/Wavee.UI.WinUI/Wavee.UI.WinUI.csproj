@@ -159,10 +159,13 @@
 	<PropertyGroup>
 		<!-- Path to the sibling Klankhuis.Hero (hero-carousel-winui) project.
 		     Defaults to the local sibling checkout so VS / local builds work
-		     unchanged. CI (release.yml) clones github.com/christosk92/hero-carousel-winui
+		     unchanged. Anchored at $(USERPROFILE) (absolute, location-independent) rather
+		     than a path relative to this csproj, so the default also resolves from a git
+		     worktree under .claude\worktrees\ — a project-dir-relative path mis-resolves at
+		     that extra depth. CI (release.yml) clones github.com/christosk92/hero-carousel-winui
 		     and overrides this via the KlankhuisHeroProject env var, so the public
 		     repo never needs the out-of-tree path to exist. -->
-		<KlankhuisHeroProject Condition="'$(KlankhuisHeroProject)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\Users\ChristosKarapasias\test\Klankhuis\src\Klankhuis.Hero\Klankhuis.Hero.csproj</KlankhuisHeroProject>
+		<KlankhuisHeroProject Condition="'$(KlankhuisHeroProject)' == ''">$(USERPROFILE)\test\Klankhuis\src\Klankhuis.Hero\Klankhuis.Hero.csproj</KlankhuisHeroProject>
 	</PropertyGroup>
 
 	<ItemGroup>
