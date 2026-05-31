@@ -32,7 +32,6 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
     protected override string LikedPreferencesKey => "artists.liked";
 
     private readonly ILibraryDataService _libraryDataService;
-    private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IArtistService _artistService;
     private readonly IAlbumService _albumService;
     private readonly IPlaybackService _playbackService;
@@ -176,7 +175,6 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
 
     public ArtistsLibraryViewModel(
         ILibraryDataService libraryDataService,
-        IPlaylistMutationService playlistMutationService,
         IArtistService artistService,
         IAlbumService albumService,
         IPlaybackService playbackService,
@@ -186,7 +184,6 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
         : base(settingsService, likeService, libraryRecents, DispatcherQueue.GetForCurrentThread())
     {
         _libraryDataService = libraryDataService;
-        _playlistMutationService = playlistMutationService;
         _artistService = artistService;
         _albumService = albumService;
         _playbackService = playbackService;
@@ -324,14 +321,8 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
         {
             IsLoading = true;
 
-            // Load artists and playlists in parallel
-            var artistsTask = _libraryDataService.GetArtistsAsync();
-            var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
-
-            await Task.WhenAll(artistsTask, playlistsTask);
-
-            var artists = await artistsTask;
-            Playlists = await playlistsTask;
+            // Load artists
+            var artists = await _libraryDataService.GetArtistsAsync();
 
             Artists.Clear();
             foreach (var artist in artists)
@@ -1064,10 +1055,6 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
     public bool IsSortingByAlbum => false;
     public bool IsSortingByAddedAt => false;
 
-    // Playlists for "Add to playlist" menu
-    [ObservableProperty]
-    public partial IReadOnlyList<PlaylistSummaryDto> Playlists { get; set; } = Array.Empty<PlaylistSummaryDto>();
-
     private static string? GetTrackUri(object? item) =>
         item is AlbumTrackDto albumTrack ? albumTrack.Uri :
         item is LikedSongDto likedSong ? likedSong.Uri :
@@ -1159,19 +1146,6 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
         }
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
-    {
-        if (playlist == null || !HasSelection) return;
-        var trackIds = SelectedItems
-            .Select(GetTrackUri)
-            .Where(u => !string.IsNullOrEmpty(u))
-            .Select(u => u!)
-            .ToList();
-        if (trackIds.Count == 0) return;
-        await _playlistMutationService.AddTracksToPlaylistAsync(playlist.Id, trackIds);
-    }
-
     // Explicit ITrackListViewModel ICommand implementation
     ICommand ITrackListViewModel.SortByCommand => SortTrackColumnCommand;
     ICommand ITrackListViewModel.PlayTrackCommand => PlayTrackCommand;
@@ -1179,7 +1153,6 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
     ICommand ITrackListViewModel.PlayAfterCommand => PlayAfterCommand;
     ICommand ITrackListViewModel.AddSelectedToQueueCommand => AddSelectedToQueueCommand;
     ICommand ITrackListViewModel.RemoveSelectedCommand => RemoveSelectedCommand;
-    ICommand ITrackListViewModel.AddToPlaylistCommand => AddToPlaylistCommand;
 
     #endregion
 
@@ -1189,7 +1162,6 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
         PlayAfterCommand.NotifyCanExecuteChanged();
         AddSelectedToQueueCommand.NotifyCanExecuteChanged();
         RemoveSelectedCommand.NotifyCanExecuteChanged();
-        AddToPlaylistCommand.NotifyCanExecuteChanged();
     }
 
     public void UnlikeAllSongsFromLikedArtist(LikedArtistDto artist)

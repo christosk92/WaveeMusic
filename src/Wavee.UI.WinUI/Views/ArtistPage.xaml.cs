@@ -224,9 +224,29 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         // the shimmer reset to avoid flashing skeleton over good pixels.
         if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
         {
-            _showingContent = false;
-            _crossfadeScheduled = false;
-            ShimmerGate.Reset(() => ShimmerContainer, () => BodyContent);
+            // Warm same-type swap: a structurally-identical artist→artist re-nav
+            // with usable prefill fades the body through instead of flashing the
+            // skeleton over good pixels. Cold / first load takes the shimmer.
+            var artistPrefill = parameter as Wavee.UI.WinUI.Data.Parameters.ContentNavigationParameter;
+            var useWarmSwap =
+                mode == PageHostNavigationMode.Refresh &&
+                _showingContent &&
+                artistPrefill is not null &&
+                (!string.IsNullOrEmpty(artistPrefill.Title) || !string.IsNullOrEmpty(artistPrefill.ImageUrl));
+
+            if (useWarmSwap)
+            {
+                _crossfadeScheduled = false;
+                _showingContent = true;
+                ShimmerGate.IsLoaded = false;
+                AnimateBodyContentSwap();
+            }
+            else
+            {
+                _showingContent = false;
+                _crossfadeScheduled = false;
+                ShimmerGate.Reset(() => ShimmerContainer, () => BodyContent);
+            }
 
             // Clear the OUTGOING artist + arm loading SYNCHRONOUSLY, before the
             // Task.Yield + ScrollTo(0) below. The hero (artist photo + name) sits
@@ -302,37 +322,36 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
 
         if (!samePageCacheHit)
         {
-            ForceHeroVisualsVisible();
-            ScheduleHeroArrangeRefresh();
-
-            try
-            {
-                PageScrollView?.ScrollTo(
-                    0, 0,
-                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogDebug(ex, "ArtistPage scroll-to-top on navigation failed.");
-            }
-
-            _shyHeader?.Stop();
-            _shyHeader?.Reset();
-            ForceHeroVisualsVisible();
-            ScheduleHeroArrangeRefresh();
-
-            // Drain the dispatcher AND wait an additional settle window before
-            // re-enabling the shy-header evaluator. One TryEnqueue tick wasn’t
-            // enough â€” the ScrollViewer continues firing ViewChanged events
-            // through several frames after ScrollTo(0), and the user-visible
-            // symptom was the shy pill “inflating” into the hero band when the
-            // user scrolled up immediately after an artistâ†’artist nav. Chain
-            // two dispatcher ticks + a short Task.Delay so the queued events
-            // (and any composition reflow) have actually finished before the
-            // evaluator wakes up.
-            _ = ReleaseShyHeaderSuppressionAsync(navigationRevision);
+            _ = ResetViewportAfterNavigationAsync(navigationRevision);
         }
 
+    }
+
+    private async Task ResetViewportAfterNavigationAsync(int navigationRevision)
+    {
+        await Task.Yield();
+        if (_isDisposed || _isNavigatingAway || navigationRevision != _navigationRevision)
+            return;
+
+        ForceHeroVisualsVisible();
+        ScheduleHeroArrangeRefresh();
+
+        try
+        {
+            PageScrollView?.ScrollTo(
+                0, 0,
+                new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "ArtistPage scroll-to-top on navigation failed.");
+        }
+
+        _shyHeader?.Stop();
+        _shyHeader?.Reset();
+        ForceHeroVisualsVisible();
+        ScheduleHeroArrangeRefresh();
+        _ = ReleaseShyHeaderSuppressionAsync(navigationRevision);
     }
 
     private async Task ReleaseShyHeaderSuppressionAsync(int navigationRevision)
@@ -388,8 +407,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
             () =>
             {
-                System.Diagnostics.Debug.WriteLine("[artist.loaded] deferred OnLoaded body running");
-
                 _shyHeader = new ShyHeaderController(
                     PageScrollView, HeroGrid, HeroOverlayPanel, ShyHeaderCard,
                     (TransitionHelper)Resources["ArtistShyHeaderTransition"],
@@ -636,7 +653,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     {
         _crossfadeScheduled = true;
         await Task.Yield();
-        await Task.Delay(16);
+        await CompositionFrameAwaiter.NextFrameAsync();
 
         if (_isNavigatingAway || _showingContent || ViewModel.IsLoading)
         {
@@ -653,6 +670,24 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             BodyContent,
             CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml,
             () => _showingContent);
+    }
+
+    // Warm same-type swap reveal: fade the body content through (no shimmer)
+    // when re-navigating between structurally-identical artists. Honors the OS
+    // reduced-motion setting.
+    private void AnimateBodyContentSwap()
+    {
+        if (BodyContent is null) return;
+        if (!ReducedMotion.AnimationsEnabled)
+        {
+            BodyContent.Opacity = 1;
+            return;
+        }
+        CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
+            .Opacity(from: 0, to: 1,
+                     duration: TimeSpan.FromMilliseconds(220),
+                     layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
+            .Start(BodyContent);
     }
 
     /// <summary>Collapse the right column to 0 when there are no popular

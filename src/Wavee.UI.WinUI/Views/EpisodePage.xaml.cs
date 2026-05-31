@@ -131,7 +131,6 @@ public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavi
             PageController.TryShowContentNow();
 
         UpdateEpisodeBodyLayout();
-        TryHandlePendingPodcastEpisodeArtConnectedAnimation();
     }
 
     private void EpisodePage_Unloaded(object sender, RoutedEventArgs e)
@@ -198,26 +197,6 @@ public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavi
         // Same-tab navigation between two episodes reuses this Page instance —
         // TabBarItem.Navigate routes through here instead of an OnEntered fire.
         LoadNewContent(parameter, PageHostNavigationMode.Refresh);
-    }
-
-    // Short cross-fade of the page content root for a soft same-type swap (no
-    // shimmer reset). Mirrors PlaylistPage.AnimatePlaylistSwap; uses
-    // ContentPageController.ContentRoot so it needs no page-specific element.
-    private void AnimateContentSwap()
-    {
-        if (PageController.ContentRoot is not { } root)
-            return;
-        var fade = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
-        {
-            From = 0,
-            To = 1,
-            Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(200)),
-        };
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade, root);
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade, "Opacity");
-        var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-        sb.Children.Add(fade);
-        sb.Begin();
     }
 
     // True when the nav parameter carries enough to paint the hero immediately,
@@ -288,43 +267,13 @@ public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavi
         if (episodeParam is null) return;
         ViewModel.Activate(episodeParam);
         if (useSoftSwap)
-            AnimateContentSwap();
-
-        TryHandlePendingPodcastEpisodeArtConnectedAnimation();
+            PageController.CrossfadeContentSwap();
 
         await Task.Yield();
         if (PageController.IsNavigatingAway)
             return;
 
         PageController.TryShowContentNow();
-    }
-
-    private bool TryHandlePendingPodcastEpisodeArtConnectedAnimation()
-    {
-        if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PodcastEpisodeArt) ||
-            EpisodeCoverContainer is null)
-        {
-            return false;
-        }
-
-        PageController.MarkContentShownDirectly();
-
-        // Defer TryStartAnimation to the next render frame — see AlbumPage for
-        // the rationale. The previous sync UpdateLayout() walked the entire
-        // page (not even element-scoped), so the win here is the largest of
-        // the four detail pages.
-        var capturedContainer = EpisodeCoverContainer;
-        EventHandler<object>? onNextFrame = null;
-        onNextFrame = (_, _) =>
-        {
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= onNextFrame;
-            ConnectedAnimationHelper.TryStartAnimation(
-                ConnectedAnimationHelper.PodcastEpisodeArt,
-                capturedContainer);
-        };
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += onNextFrame;
-
-        return true;
     }
 
     // ── Breadcrumb ──────────────────────────────────────────────────────────

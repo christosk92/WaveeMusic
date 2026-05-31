@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
+using CommunityToolkit.WinUI.Animations;
 
 namespace Wavee.UI.WinUI.Helpers;
 
@@ -46,11 +47,6 @@ public sealed class ContentPageController
     public bool IsShowingContent => _showingContent;
     public bool IsCrossfadeScheduled => _crossfadeScheduled;
 
-    /// <summary>The page's content container (the element the crossfade reveals).
-    /// Exposed so a page can run a short soft-swap fade on it for same-type
-    /// navigation without reaching into its own named XAML elements.</summary>
-    public FrameworkElement? ContentRoot => _host.ContentContainer;
-
     public bool IsNavigatingAway
     {
         get => _isNavigatingAway;
@@ -92,7 +88,7 @@ public sealed class ContentPageController
 
         _crossfadeScheduled = true;
         await Task.Yield();
-        await Task.Delay(16);
+        await CompositionFrameAwaiter.NextFrameAsync();
 
         var bail = _isNavigatingAway || _showingContent;
         _logger?.LogDebug(
@@ -139,23 +135,33 @@ public sealed class ContentPageController
     }
 
     /// <summary>
-    /// Bypass the crossfade entirely — used by pages that perform a connected
-    /// animation (Album / Playlist / Show cover transition) where content should
-    /// snap to fully visible without fading the shimmer out. Sets the flags so
-    /// any pending <see cref="OnIsLoadingChanged"/> takes the
-    /// <c>skip-already-shown</c> branch, and unrealises the shimmer subtree via
-    /// <c>ShimmerGate.IsLoaded = false</c>.
+    /// Warm same-type re-navigation reveal: fade the content root through
+    /// without touching the shimmer gate, so a structurally-identical page
+    /// (album→album, playlist→playlist) gets a perceptible "new content" beat
+    /// instead of an instant snap OR a skeleton flash over already-good pixels.
+    /// Honors the OS reduced-motion setting. Pages call this on a same-type
+    /// refresh with usable prefill, in place of <see cref="ResetForNewLoad"/>.
     /// </summary>
-    public void MarkContentShownDirectly()
+    public void CrossfadeContentSwap()
     {
         _showingContent = true;
         _crossfadeScheduled = false;
         ShimmerGate.IsLoaded = false;
 
         var content = _host.ContentContainer;
-        content.Opacity = 1;
-        if (_host.CrossfadeLayer == CommunityToolkit.WinUI.Animations.FrameworkLayer.Composition)
-            ElementCompositionPreview.GetElementVisual(content).Opacity = 1;
+        var layer = _host.CrossfadeLayer;
+
+        if (!ReducedMotion.AnimationsEnabled)
+        {
+            content.Opacity = 1;
+            if (layer == FrameworkLayer.Composition)
+                ElementCompositionPreview.GetElementVisual(content).Opacity = 1;
+            return;
+        }
+
+        AnimationBuilder.Create()
+            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(220), layer: layer)
+            .Start(content);
     }
 
     private async Task CrossfadeToContentAsync()
@@ -208,4 +214,5 @@ public sealed class ContentPageController
             }
         }
     }
+
 }

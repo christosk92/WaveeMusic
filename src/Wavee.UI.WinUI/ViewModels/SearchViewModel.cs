@@ -14,6 +14,7 @@ using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.ViewModels.Home;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -50,6 +51,9 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private readonly List<SearchResultItem> _allItems = [];
     private int _requestVersion;
     private bool _isHibernated;
+    private readonly Wavee.UI.Contracts.IHomeFeedService? _homeFeedService;
+    private bool _browseFetchTriggered;
+    private bool _isBrowseLoading;
 
     // Generic chip pagination state — only one chip is active at a time, so a
     // single set of fields drives every per-chip page (Songs/Artists/Albums/
@@ -118,6 +122,20 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty]
     public partial bool ShowEmptyState { get; set; }
 
+    /// <summary>True when the empty-search landing (no query) should show the
+    /// homepage's Browse All chips instead of a blank page.</summary>
+    [ObservableProperty]
+    public partial bool ShowBrowse { get; set; }
+
+    /// <summary>True when the text hint ("No results for X" / "Start a search")
+    /// should show — an empty state not already covered by the browse chips.</summary>
+    [ObservableProperty]
+    public partial bool ShowEmptyHint { get; set; }
+
+    /// <summary>Browse All categories for the empty-search landing. Reuses the
+    /// homepage chips; populated by <see cref="EnsureBrowseLoadedAsync"/>.</summary>
+    public ObservableCollection<BrowseAllGroup> BrowseGroups { get; } = [];
+
     public ObservableCollection<SearchResultItem> Tracks { get; } = [];
     public ObservableCollection<ITrackItem> AdaptedTracks { get; } = [];
     public ObservableCollection<SearchResultItem> Artists { get; } = [];
@@ -143,12 +161,14 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         ISearchService searchService,
         IPlaybackStateService playbackStateService,
         ILogger<SearchViewModel>? logger = null,
-        Wavee.Local.ILocalLibraryService? localLibrary = null)
+        Wavee.Local.ILocalLibraryService? localLibrary = null,
+        Wavee.UI.Contracts.IHomeFeedService? homeFeedService = null)
     {
         _searchService = searchService;
         _playbackStateService = playbackStateService;
         _logger = logger;
         _localLibrary = localLibrary;
+        _homeFeedService = homeFeedService;
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, null)
         {
@@ -394,31 +414,32 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
     private void DispatchResults(IReadOnlyList<SearchResultItem> items)
     {
-        // Resilient resets — raw Clear() on these bound result collections can E_FAIL when the
-        // search page rebinds mid-layout (issue #6). The repopulating Adds below are unchanged.
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Tracks, []);
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(AdaptedTracks, []);
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Artists, []);
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Albums, []);
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Playlists, []);
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Sections, []);
+        // Build the typed lists in one pass, then push each bound collection in a
+        // single Reset (ReplaceWith) instead of clear + per-item Add — the per-item
+        // Adds fired ~50-100 CollectionChanged events per search and thrashed the
+        // ItemsRepeater layout. ReplaceWith is also E_FAIL-resilient (issue #6).
+        var tracks = new List<SearchResultItem>();
+        var adapted = new List<ITrackItem>();
+        var artists = new List<SearchResultItem>();
+        var albums = new List<SearchResultItem>();
+        var playlists = new List<SearchResultItem>();
 
         foreach (var item in items)
         {
             switch (item.Type)
             {
                 case SearchResultType.Track:
-                    Tracks.Add(item);
-                    AdaptedTracks.Add(new SearchTrackAdapter(item));
+                    tracks.Add(item);
+                    adapted.Add(new SearchTrackAdapter(item));
                     break;
                 case SearchResultType.Artist:
-                    Artists.Add(item);
+                    artists.Add(item);
                     break;
                 case SearchResultType.Album:
-                    Albums.Add(item);
+                    albums.Add(item);
                     break;
                 case SearchResultType.Playlist:
-                    Playlists.Add(item);
+                    playlists.Add(item);
                     break;
             }
         }
@@ -442,14 +463,22 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
             bucket.Add(item);
         }
 
+        var sections = new List<SearchSectionViewModel>(orderedLabels.Count);
         foreach (var label in orderedLabels)
         {
-            Sections.Add(new SearchSectionViewModel
+            sections.Add(new SearchSectionViewModel
             {
                 Title = label,
                 Items = sectionBuckets[label]
             });
         }
+
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Tracks, tracks);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(AdaptedTracks, adapted);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Artists, artists);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Albums, albums);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Playlists, playlists);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Sections, sections);
 
         OnPropertyChanged(nameof(ShowSections));
     }
@@ -473,8 +502,6 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
     private void UpdateVisibleResults()
     {
-        VisibleResults.Clear();
-
         // For chips other than All, _allItems already contains only the chip's results
         // (the network response is the single chip operation). The Where filter is a
         // belt-and-suspenders pass for the rare case where mixed types sneak through —
@@ -501,6 +528,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
             ? $"{TopResult.Type}:{TopResult.Uri}"
             : null;
 
+        var visible = new List<SearchResultItem>();
         foreach (var item in filtered)
         {
             if (hideSectionItems && !string.IsNullOrEmpty(item.SectionLabel))
@@ -509,8 +537,11 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
             if (topKey != null && $"{item.Type}:{item.Uri}" == topKey)
                 continue;
 
-            VisibleResults.Add(item);
+            visible.Add(item);
         }
+
+        // One Reset for the bound flat list instead of Clear + per-item Add.
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(VisibleResults, visible);
 
         OnPropertyChanged(nameof(HasVisibleResults));
         OnPropertyChanged(nameof(ShowHeroCard));
@@ -521,6 +552,49 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private void UpdateEmptyState()
     {
         ShowEmptyState = !IsLoading && !HasError && !ShowHeroCard && VisibleResults.Count == 0;
+
+        // With no query, the empty landing shows the homepage Browse All chips so
+        // it isn't blank (e.g. entered via "Find songs to add"). The text hint
+        // covers "No results for <query>" and the browse-unavailable fallback.
+        var noQuery = string.IsNullOrWhiteSpace(Query);
+        ShowBrowse = ShowEmptyState && noQuery && BrowseGroups.Count > 0;
+        ShowEmptyHint = ShowEmptyState && !ShowBrowse && !_isBrowseLoading;
+    }
+
+    /// <summary>
+    /// Loads the Browse All categories for the empty-search landing, reusing the
+    /// homepage chips (Pathfinder <c>browseAll</c> → <see cref="BrowseAllParser"/> →
+    /// <see cref="BrowseAllGrouper"/>). One-shot per VM lifetime; safe to call
+    /// repeatedly. Mirrors <c>HomeHeroAdapter.LoadBrowseAsync</c>.
+    /// </summary>
+    public async Task EnsureBrowseLoadedAsync()
+    {
+        if (_browseFetchTriggered || _homeFeedService is null)
+        {
+            UpdateEmptyState();
+            return;
+        }
+
+        _browseFetchTriggered = true;
+        _isBrowseLoading = true;
+        UpdateEmptyState();
+
+        try
+        {
+            var response = await _homeFeedService.GetBrowseAllAsync();
+            var items = BrowseAllParser.Extract(response);
+            var groups = BrowseAllGrouper.Group(items);
+            Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(BrowseGroups, groups);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Search browse-all load failed");
+        }
+        finally
+        {
+            _isBrowseLoading = false;
+            UpdateEmptyState();
+        }
     }
 
     /// <summary>Each filter has its own cache slot — every chip fires a distinct server query.</summary>

@@ -28,7 +28,7 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
     private readonly ILogger? _logger;
 
     private const int MaxRetries = 3;
-    private const long DefaultTtlSeconds = 3600; // 1 hour fallback
+    private const long DefaultTtlSeconds = 604800; // 1 week fallback
     private const string ExtendedMetadataContentType = "application/protobuf";
     private const int AudioAssociationsExtensionKindValue = 98;
     private const int VideoAssociationsExtensionKindValue = 99;

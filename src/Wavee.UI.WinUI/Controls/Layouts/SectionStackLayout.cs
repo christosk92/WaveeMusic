@@ -46,16 +46,9 @@ public sealed partial class SectionStackLayout : VirtualizingLayout
 
     /// <summary>
     /// Extra pixels on top and bottom of <see cref="VirtualizingLayoutContext.RealizationRect"/>
-    /// in which we still keep items realized. Roughly +2 viewport-pages in each
-    /// direction on a typical desktop window — the previous 1280 px (≈1 page) was
-    /// outrun by fast scrollbar drags on HomePage, leaving the visible region as
-    /// an unrealized <see cref="EstimatedItemHeight"/> placeholder slot (header
-    /// painted by the outer region wrapper but the inner shelf blank until scroll
-    /// settled). 2560 px gives the inner ShelfScroller a full extra viewport of
-    /// runway to complete its first realization pass before the user can scroll
-    /// past, validated against [home-scroll] outer.measure logs.
+    /// in which we still keep items realized.
     /// </summary>
-    private const double RealizationBufferPx = 2560.0;
+    private const double RealizationBufferPx = 1280.0;
 
     public static readonly DependencyProperty SpacingProperty =
         DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(SectionStackLayout),

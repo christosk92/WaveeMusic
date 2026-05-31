@@ -20,6 +20,9 @@ using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -233,53 +236,12 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
 
     // ── Navigation ───────────────────────────────────────────────────────────
 
-    private bool TryHandlePendingAlbumArtConnectedAnimation()
-    {
-        if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt))
-            return false;
-
-        // Skip the standard crossfade — connected animation paints content directly.
-        PageController.MarkContentShownDirectly();
-
-        // Defer TryStartAnimation to the next render frame instead of forcing a
-        // synchronous AlbumArtContainer.UpdateLayout() pass (which was ~70 ms on
-        // cross-album navs because PrefillFrom just invalidated the hero column).
-        // Layout completes naturally between this turn and CompositionTarget.Rendering;
-        // the destination rect is then accurate without any forced measure+arrange.
-        //
-        // One-frame delay (~16 ms at 60 Hz) sits well below the human reaction
-        // threshold (~215 ms), and the 250 ms morph absorbs the slip. If TryStart
-        // misses (rare — only when the destination has been detached in the
-        // intervening frame), the user sees a hard cut to the new album, which
-        // is the same fallback the original sync path had on miss.
-        var capturedContainer = AlbumArtContainer;
-        var capturedAlbumId = ViewModel.AlbumId;
-        EventHandler<object>? onNextFrame = null;
-        onNextFrame = (_, _) =>
-        {
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= onNextFrame;
-            var started = ConnectedAnimationHelper.TryStartAnimation(
-                ConnectedAnimationHelper.AlbumArt,
-                capturedContainer);
-            _logger?.LogDebug(
-                "[xfade][album:{Id}] connected.albumArt action={Action}",
-                XfadeLog.Tag(capturedAlbumId), started ? "started-deferred" : "miss-deferred");
-        };
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += onNextFrame;
-
-        return true;
-    }
-
     public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onEntered");
         var incomingNav = parameter as ContentNavigationParameter;
         var incomingId = incomingNav?.Uri ?? parameter as string;
         var sameId = !string.IsNullOrEmpty(incomingId) && string.Equals(incomingId, ViewModel.AlbumId, StringComparison.Ordinal);
-        System.Diagnostics.Debug.WriteLine(
-            $"[diag-album] OnEntered mode={mode} incoming.uri={incomingId} incoming.title={incomingNav?.Title} " +
-            $"incoming.imageUrl={(incomingNav?.ImageUrl ?? "<null>")} sameId={sameId} " +
-            $"vm.AlbumId={ViewModel.AlbumId} vm.AlbumName={ViewModel.AlbumName} vm.AlbumImageUrl={(ViewModel.AlbumImageUrl ?? "<null>")}");
         _logger?.LogDebug(
             "[xfade][album:{Id}] nav.to mode={Mode} incoming={Incoming} sameId={SameId}",
             XfadeLog.Tag(ViewModel.AlbumId), mode, XfadeLog.Tag(incomingId), sameId);
@@ -289,8 +251,6 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
     public void OnLeaving()
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onLeaving");
-        System.Diagnostics.Debug.WriteLine(
-            $"[diag-album] OnLeaving vm.AlbumId={ViewModel.AlbumId}");
         _logger?.LogDebug("[xfade][album:{Id}] nav.from", XfadeLog.Tag(ViewModel.AlbumId));
         // Trim work (Hibernate + Bindings.StopTracking) is deferred ~1 s by
         // TabBarItem's central scheduler — calling it synchronously here
@@ -389,26 +349,6 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         LoadNewContent(parameter, PageHostNavigationMode.Refresh);
     }
 
-    // Short cross-fade of the page content root for a soft same-type swap (no
-    // shimmer reset). Mirrors PlaylistPage.AnimatePlaylistSwap; uses
-    // ContentPageController.ContentRoot so it needs no page-specific element.
-    private void AnimateContentSwap()
-    {
-        if (PageController.ContentRoot is not { } root)
-            return;
-        var fade = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
-        {
-            From = 0,
-            To = 1,
-            Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(200)),
-        };
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade, root);
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade, "Opacity");
-        var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-        sb.Children.Add(fade);
-        sb.Begin();
-    }
-
     private async void LoadNewContent(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
         // If we were trimmed since the last LoadNewContent, the x:Bind graph is
@@ -430,57 +370,43 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             }
             RebuildHeaderArtistsText();
         }
-        System.Diagnostics.Debug.WriteLine(
-            $"[diag-album] LoadNewContent.enter mode={mode} wasTrimmed={wasTrimmed} vm.AlbumId={ViewModel.AlbumId} " +
-            $"vm.AlbumName={ViewModel.AlbumName} vm.AlbumImageUrl={(ViewModel.AlbumImageUrl ?? "<null>")} " +
-            $"vm.IsLoading={ViewModel.IsLoading}");
         _logger?.LogDebug(
             "[xfade][album:{Id}] load.enter",
             XfadeLog.Tag(ViewModel.AlbumId));
 
         PageController.IsNavigatingAway = false;
 
-        var hasPendingAlbumArtAnimation =
-            ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt);
-
-        // Soft-swap: on same-tab album→album refresh with usable prefill and
-        // content already on screen, skip the full shimmer reset and cross-fade
-        // the content root instead — no skeleton flash over good pixels for warm
-        // revisits. Mirrors PlaylistPage.useSoftPlaylistSwap.
-        var softSwapNav = parameter as ContentNavigationParameter;
-        var useSoftSwap =
+        // Reveal mode:
+        //  • Back/Forward — keep already-rendered pixels and scroll state.
+        //  • Same-tab refresh with content already showing + usable prefill —
+        //    warm content cross-fade (no skeleton flashed over structurally-
+        //    identical pixels; see ContentPageController.CrossfadeContentSwap).
+        //  • New / cold — full shimmer-gated reveal.
+        var navPrefill = parameter as ContentNavigationParameter;
+        var useWarmSwap =
             mode == PageHostNavigationMode.Refresh &&
             PageController.IsShowingContent &&
-            softSwapNav is not null &&
-            !hasPendingAlbumArtAnimation &&
-            (!string.IsNullOrEmpty(softSwapNav.Title) || !string.IsNullOrEmpty(softSwapNav.ImageUrl));
+            navPrefill is not null &&
+            (!string.IsNullOrEmpty(navPrefill.Title) || !string.IsNullOrEmpty(navPrefill.ImageUrl));
 
-        // Cache-hit nav (Back/Forward): content visual tree is already realised
-        // and bindings live; skip shimmer reset to avoid flashing skeleton over
-        // already-good pixels. Only New entry needs the full reset.
-        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward && !useSoftSwap)
+        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
         {
-            System.Diagnostics.Debug.WriteLine($"[diag-album] LoadNewContent.runReset mode={mode}");
-            PageController.ResetForNewLoad();
-            ResetScrollPositionForNavigation();
-            _footerRevealed = false;
-            _footerRevealGeneration++;
-            FooterShimmerGate.Reset(() => null, () => FooterContent, FrameworkLayer.Xaml);
-        }
-        else if (useSoftSwap)
-        {
-            System.Diagnostics.Debug.WriteLine($"[diag-album] LoadNewContent.softSwap mode={mode}");
-            AnimateContentSwap();
-            // New album → start at the top even though we kept the content layer.
-            ResetScrollPositionForNavigation();
-        }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine($"[diag-album] LoadNewContent.skipReset mode={mode} (cache-hit Back/Forward)");
+            if (useWarmSwap)
+            {
+                PageController.CrossfadeContentSwap();
+                ResetScrollPositionForNavigation();
+            }
+            else
+            {
+                PageController.ResetForNewLoad();
+                ResetScrollPositionForNavigation();
+                _footerRevealed = false;
+                _footerRevealGeneration++;
+                FooterShimmerGate.Reset(() => null, () => FooterContent, FrameworkLayer.Xaml);
+            }
         }
 
         string? albumId = null;
-        ContentNavigationParameter? connectedAnimationNav = null;
 
         if (parameter is ContentNavigationParameter nav)
         {
@@ -489,23 +415,13 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             // PrefillFrom writes the nav values — otherwise the clear would wipe the
             // prefill and the cached page would keep showing the previous album's
             // header until the store push arrived. Same pattern as PlaylistPage.
-            if (hasPendingAlbumArtAnimation)
-            {
-                // Keep the destination cover/title materialized so TryStart can run
-                // before the VM seeds placeholders and subscribes to the store.
-                connectedAnimationNav = nav;
-                ViewModel.PrefillFrom(nav, clearMissing: true);
-            }
-            else
-            {
-                ViewModel.Activate(nav.Uri);
-                // clearMissing: true → if nav lacks ImageUrl/Subtitle/TotalTracks
-                // those fields go null/empty rather than keeping the previous
-                // album's values. Prevents stale-cover-with-new-tracks bleed-through
-                // when navigating between two albums whose source cards don't
-                // carry every prefill field.
-                ViewModel.PrefillFrom(nav, clearMissing: true);
-            }
+            ViewModel.Activate(nav.Uri);
+            // clearMissing: true → if nav lacks ImageUrl/Subtitle/TotalTracks
+            // those fields go null/empty rather than keeping the previous
+            // album's values. Prevents stale-cover-with-new-tracks bleed-through
+            // when navigating between two albums whose source cards don't
+            // carry every prefill field.
+            ViewModel.PrefillFrom(nav, clearMissing: true);
         }
         else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
         {
@@ -516,44 +432,13 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         if (!string.IsNullOrEmpty(albumId))
             RestoreAlbumPanelWidth(albumId);
 
-        if (hasPendingAlbumArtAnimation && TryHandlePendingAlbumArtConnectedAnimation())
-        {
-            if (connectedAnimationNav is not null)
-            {
-                var uri = connectedAnimationNav.Uri;
-                await Task.Yield();
-                if (!PageController.IsNavigatingAway)
-                    ViewModel.Activate(uri, preserveHeaderPrefill: true);
-            }
-
-            // Warm-cache crossfade: the connected-anim path doesn't fall through
-            // to the SettleAlbumLayoutAsync + TryShowContentNow + TryRevealFooterAsync
-            // block below. On a warm-cache nav, IsLoading was already false going in
-            // and stays false through Activate, so the IsLoading-flip trigger that
-            // normally hides the shimmer never fires — and the just-armed shimmer
-            // would stay painted on top of the (correct) content forever (both the
-            // main page shimmer AND the footer shimmer). Force BOTH crossfades
-            // explicitly here so neither shimmer gets stuck.
-            System.Diagnostics.Debug.WriteLine(
-                "[diag-album] connectedAnim warm-cache: forcing TryShowContentNow + TryRevealFooterAsync");
-            await Task.Yield();
-            if (!PageController.IsNavigatingAway)
-            {
-                PageController.TryShowContentNow();
-                if (ViewModel.IsContentReady)
-                    _ = TryRevealFooterAsync();
-            }
-            return;
-        }
-
         // Warm-cache trigger. AlbumStore is a BehaviorSubject — Activate's subscribe
         // queues ApplyDetailState via the dispatcher, which runs after this method
         // returns. After one yield it has landed (AlbumName populated, IsLoading
         // stayed false), so TryShowContentNow can fire ScheduleCrossfade for the
-        // same-id case where the IsLoading=false write was a no-op.
-        if (connectedAnimationNav is not null)
-            ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true);
-
+        // same-id case where the IsLoading=false write was a no-op. On a warm swap
+        // CrossfadeContentSwap already marked content shown, so TryShowContentNow
+        // early-returns and only the footer reveal runs.
         if (await SettleAlbumLayoutAsync())
         {
             PageController.TryShowContentNow();
@@ -573,12 +458,7 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
     private void ResetScrollPositionForNavigation()
     {
         var generation = ++_scrollResetGeneration;
-        TryScrollToTop("navigation");
-
-        if (DispatcherQueue is not null)
-            DispatcherQueue.TryEnqueue(() => _ = ResetScrollPositionAfterLayoutAsync(generation));
-        else
-            _ = ResetScrollPositionAfterLayoutAsync(generation);
+        _ = ResetScrollPositionAfterLayoutAsync(generation);
     }
 
     private async Task ResetScrollPositionAfterLayoutAsync(int generation)
@@ -1004,38 +884,24 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         if (sender is ClickableBorder cb) cb.ShowHandCursor();
     }
 
-    private void AddToPlaylistMenuFlyout_Opening(object? sender, object e)
+    private async void AddToPlaylistPillButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuFlyout flyout) return;
-        // Rebuild on every open — user playlists may have been created /
-        // renamed / deleted while the page sat in the navigation cache.
-        flyout.Items.Clear();
-        foreach (var playlist in ViewModel.Playlists)
-        {
-            var captured = playlist;
-            var mi = new MenuFlyoutItem
-            {
-                Text = playlist.Name ?? "Untitled playlist",
-                Tag = playlist
-            };
-            mi.Click += (s, args) =>
-            {
-                _ = ViewModel.AddAlbumToPlaylistCommand.ExecuteAsync(captured);
-                _notificationService?.Show(
-                    $"Added to {captured.Name ?? "playlist"}",
-                    NotificationSeverity.Success,
-                    TimeSpan.FromSeconds(3));
-            };
-            flyout.Items.Add(mi);
-        }
-        if (flyout.Items.Count == 0)
-        {
-            flyout.Items.Add(new MenuFlyoutItem
-            {
-                Text = "No playlists yet",
-                IsEnabled = false
-            });
-        }
+        if (sender is not FrameworkElement fe) return;
+        var mediator = Ioc.Default.GetService<IPlaylistDragDropMediator>();
+        var albumId = ViewModel.AlbumId;
+        if (mediator is null || string.IsNullOrEmpty(albumId)) return;
+
+        // Same folder-aware menu the row / card / playlist-hero menus use: nests
+        // folders, owned playlists only, "Create new playlist". The album's track
+        // URIs resolve lazily through the shared mediator (album → track URIs).
+        var albumUri = albumId.StartsWith("spotify:album:", StringComparison.Ordinal)
+            ? albumId
+            : $"spotify:album:{albumId}";
+        var loader = AddToPlaylistSubmenuBuilder.Loader(
+            sourceLabel: ViewModel.AlbumName,
+            trackUrisLoader: ct => mediator.GetAlbumTrackUrisAsync(albumUri, ct));
+        var items = await loader();
+        ContextMenuHost.Show(fe, items);
     }
 
     private void MerchCard_Click(object sender, RoutedEventArgs e)

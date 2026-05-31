@@ -222,7 +222,6 @@ public sealed partial class ShowUpNextCard : UserControl
     {
         if (Episode is null) return;
         if (e.OriginalSource is FrameworkElement fe && IsInsidePlayButton(fe)) return;
-        ConnectedAnimationHelper.PrepareAnimation(ConnectedAnimationHelper.PodcastEpisodeArt, CoverContainer);
         OpenRequested?.Invoke(this, Episode);
     }
 

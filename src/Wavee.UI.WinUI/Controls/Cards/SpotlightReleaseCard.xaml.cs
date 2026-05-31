@@ -314,8 +314,7 @@ public sealed partial class SpotlightReleaseCard : UserControl
                 title: Title,
                 subtitle: Subtitle,
                 imageUrl: CoverImageUrl,
-                totalTracks: NavigationTotalTracks > 0 ? NavigationTotalTracks : null,
-                connectedAnimationSource: CoverBorder);
+                totalTracks: NavigationTotalTracks > 0 ? NavigationTotalTracks : null);
         }
         CardClick?.Invoke(this, e);
     }

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="Wavee.UI.WinUI.Controls.Omnibar.SearchFlyoutPanel"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -12,9 +12,23 @@
     <UserControl.Resources>
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
 
+        <!-- Section header row (flat-list mode). Non-interactive; keyboard nav skips it. -->
+        <DataTemplate x:Key="SectionHeaderTemplate" x:DataType="contracts:SearchSuggestionItem">
+            <TextBlock Text="{x:Bind Title}"
+                       Padding="14,12,12,4"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       CharacterSpacing="80"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Visibility="{x:Bind local:SearchFlyoutPanel.GetGroupHeaderVisibility(Title)}"/>
+        </DataTemplate>
+
         <!-- Text suggestion (search query) -->
         <DataTemplate x:Key="TextQueryTemplate" x:DataType="contracts:SearchSuggestionItem">
-            <Grid Padding="12,10" ColumnSpacing="12">
+            <Grid Padding="12,9" ColumnSpacing="12" Background="Transparent"
+                  Tapped="Item_Tapped"
+                  PointerEntered="Item_PointerEntered"
+                  PointerExited="Item_PointerExited">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -30,17 +44,20 @@
 
         <!-- Settings deep-link result: gear glyph + title + section breadcrumb. -->
         <DataTemplate x:Key="SettingTemplate" x:DataType="contracts:SearchSuggestionItem">
-            <Grid Padding="12,10" ColumnSpacing="12">
+            <Grid Padding="12,8" ColumnSpacing="12" Background="Transparent"
+                  Tapped="Item_Tapped"
+                  PointerEntered="Item_PointerEntered"
+                  PointerExited="Item_PointerExited">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="32"/>
+                    <ColumnDefinition Width="28"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Width="32" Height="32" CornerRadius="6"
+                <Border Grid.Column="0" Width="28" Height="28" CornerRadius="6"
                         Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         VerticalAlignment="Center">
-                    <FontIcon Glyph="&#xE713;" FontSize="14"
+                    <FontIcon Glyph="&#xE713;" FontSize="13"
                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
                 </Border>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
@@ -56,22 +73,25 @@
 
         <!-- Entity (artist, track, album, playlist) - reused for both Spotify and local. -->
         <DataTemplate x:Key="EntityTemplate" x:DataType="contracts:SearchSuggestionItem">
-            <Grid Padding="12,8" ColumnSpacing="12"
+            <Grid Padding="12,6" ColumnSpacing="12" Background="Transparent"
                   Loaded="EntityRoot_Loaded"
+                  Tapped="Item_Tapped"
+                  PointerEntered="Item_PointerEntered"
+                  PointerExited="Item_PointerExited"
                   RightTapped="EntityRoot_RightTapped"
                   Holding="EntityRoot_Holding">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="48"/>
+                    <ColumnDefinition Width="40"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Image (circular for artists, rounded square for others) -->
-                <Border Grid.Column="0" Width="48" Height="48"
+                <Border Grid.Column="0" Width="40" Height="40"
                         CornerRadius="{x:Bind local:SearchFlyoutPanel.GetImageCornerRadius(Type)}"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <imaging:CompositionImage ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
-                                              DecodePixelSize="48"
+                                              DecodePixelSize="40"
                                               Stretch="UniformToFill"/>
                 </Border>
 
@@ -96,21 +116,18 @@
             </Grid>
         </DataTemplate>
 
-        <!-- Per-section shimmer placeholder: identical footprint to EntityTemplate so the
-             real entity items can swap in without any layout shift. Used while the Spotify
-             section's network call is in flight; Settings + Library resolve too fast to
-             warrant their own shimmer. -->
+        <!-- Per-section shimmer placeholder: same footprint as EntityTemplate so the
+             real entity items swap in without layout shift. -->
         <DataTemplate x:Key="ShimmerTemplate" x:DataType="contracts:SearchSuggestionItem">
-            <Grid Padding="12,8" ColumnSpacing="12">
+            <Grid Padding="12,6" ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="48"/>
+                    <ColumnDefinition Width="40"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="4"/>
+                <controls:Shimmer Grid.Column="0" Width="40" Height="40" CornerRadius="4"/>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                    <controls:Shimmer Width="160" Height="14" HorizontalAlignment="Left"/>
-                    <controls:Shimmer Width="90" Height="12" HorizontalAlignment="Left"/>
+                    <controls:Shimmer Width="160" Height="13" HorizontalAlignment="Left"/>
+                    <controls:Shimmer Width="90" Height="11" HorizontalAlignment="Left"/>
                 </StackPanel>
             </Grid>
         </DataTemplate>
@@ -118,31 +135,18 @@
         <local:SearchSuggestionTemplateSelector x:Key="SuggestionTemplateSelector"
             TextQueryTemplate="{StaticResource TextQueryTemplate}"
             EntityTemplate="{StaticResource EntityTemplate}"
+            SectionHeaderTemplate="{StaticResource SectionHeaderTemplate}"
             SettingTemplate="{StaticResource SettingTemplate}"
             ShimmerTemplate="{StaticResource ShimmerTemplate}"/>
-
-        <!-- Group header: small uppercase caption rendered between sections. -->
-        <DataTemplate x:Key="GroupHeaderTemplate" x:DataType="contracts:SearchSuggestionGroup">
-            <Grid Padding="14,12,12,4">
-                <TextBlock Text="{x:Bind Header}"
-                           FontSize="11"
-                           FontWeight="SemiBold"
-                           CharacterSpacing="80"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Visibility="{x:Bind local:SearchFlyoutPanel.GetGroupHeaderVisibility(Header)}"/>
-            </Grid>
-        </DataTemplate>
     </UserControl.Resources>
 
+    <!-- Compact, single-column dropdown. Solid background (no acrylic blur) keeps it
+         light to composite; a subtle ThemeShadow gives elevation off the page. -->
     <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1" CornerRadius="8"
-            MaxHeight="600"
+            MaxHeight="440"
+            Background="{ThemeResource SolidBackgroundFillColorQuarternaryBrush}"
             Translation="0,0,32">
-        <Border.Background>
-            <AcrylicBrush TintColor="{ThemeResource SolidBackgroundFillColorQuarternary}"
-                          TintOpacity="0.9"
-                          FallbackColor="{ThemeResource SolidBackgroundFillColorQuarternary}"/>
-        </Border.Background>
         <Border.Shadow>
             <ThemeShadow/>
         </Border.Shadow>
@@ -157,126 +161,42 @@
                        Text="Recent searches" FontWeight="Bold" FontSize="14"
                        Padding="16,12,16,8" Visibility="Collapsed"/>
 
-            <!-- Shimmer loading state: mirrors the final grouped-grid layout so there is
-                 no layout shift when real results arrive. Two faked sections (Library + Spotify),
-                 each a header strip + 2-column grid of entity-style skeleton cells. Cells use
-                 star-width columns so they collapse to single-column on narrow popups, matching
-                 the real ItemsWrapGrid's adaptive behavior. -->
+            <!-- Single-column shimmer loading state. A header strip + a handful of
+                 entity-style skeleton rows; matches the real row footprint so there's
+                 no layout shift when results arrive. -->
             <StackPanel x:Name="ShimmerPanel" Grid.Row="1" Padding="0,2,0,8" Visibility="Collapsed">
-                <StackPanel.Resources>
-                    <Style x:Key="ShimmerSectionHeaderStyle" TargetType="controls:Shimmer">
-                        <Setter Property="Height" Value="11"/>
-                        <Setter Property="Width" Value="96"/>
-                        <Setter Property="HorizontalAlignment" Value="Left"/>
-                        <Setter Property="Margin" Value="14,12,12,4"/>
-                    </Style>
-                </StackPanel.Resources>
-
-                <!-- Section 1 — Library skeleton -->
-                <controls:Shimmer Style="{StaticResource ShimmerSectionHeaderStyle}"/>
-                <Grid Padding="12,2" ColumnSpacing="0" RowSpacing="0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MaxWidth="340"/>
-                        <ColumnDefinition Width="*" MaxWidth="340"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="64"/>
-                        <RowDefinition Height="64"/>
-                    </Grid.RowDefinitions>
-                    <Grid Grid.Row="0" Grid.Column="0" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="4"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="160" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="90" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
-                    <Grid Grid.Row="0" Grid.Column="1" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="24"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="70" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
-                    <Grid Grid.Row="1" Grid.Column="0" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="4"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="80" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
-                    <Grid Grid.Row="1" Grid.Column="1" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="4"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
+                <controls:Shimmer Height="11" Width="96" HorizontalAlignment="Left" Margin="14,12,12,6"/>
+                <Grid Padding="12,6" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <controls:Shimmer Grid.Column="0" Width="40" Height="40" CornerRadius="4"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                        <controls:Shimmer Width="170" Height="13" HorizontalAlignment="Left"/>
+                        <controls:Shimmer Width="90" Height="11" HorizontalAlignment="Left"/>
+                    </StackPanel>
                 </Grid>
-
-                <!-- Section 2 — Spotify skeleton -->
-                <controls:Shimmer Style="{StaticResource ShimmerSectionHeaderStyle}"/>
-                <Grid Padding="12,2" ColumnSpacing="0" RowSpacing="0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MaxWidth="340"/>
-                        <ColumnDefinition Width="*" MaxWidth="340"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="64"/>
-                        <RowDefinition Height="64"/>
-                        <RowDefinition Height="64"/>
-                    </Grid.RowDefinitions>
-                    <Grid Grid.Row="0" Grid.Column="0" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="24"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="150" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="80" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
-                    <Grid Grid.Row="0" Grid.Column="1" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="4"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="170" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="90" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
-                    <Grid Grid.Row="1" Grid.Column="0" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="4"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="200" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="100" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
-                    <Grid Grid.Row="1" Grid.Column="1" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="24"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="130" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="70" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
-                    <Grid Grid.Row="2" Grid.Column="0" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="4"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="160" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="85" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
-                    <Grid Grid.Row="2" Grid.Column="1" Padding="0,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="4"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
-                            <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="75" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Grid>
+                <Grid Padding="12,6" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <controls:Shimmer Grid.Column="0" Width="40" Height="40" CornerRadius="20"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                        <controls:Shimmer Width="130" Height="13" HorizontalAlignment="Left"/>
+                        <controls:Shimmer Width="70" Height="11" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Grid>
+                <Grid Padding="12,6" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <controls:Shimmer Grid.Column="0" Width="40" Height="40" CornerRadius="4"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                        <controls:Shimmer Width="190" Height="13" HorizontalAlignment="Left"/>
+                        <controls:Shimmer Width="80" Height="11" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Grid>
+                <Grid Padding="12,6" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <controls:Shimmer Grid.Column="0" Width="40" Height="40" CornerRadius="4"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                        <controls:Shimmer Width="150" Height="13" HorizontalAlignment="Left"/>
+                        <controls:Shimmer Width="60" Height="11" HorizontalAlignment="Left"/>
+                    </StackPanel>
                 </Grid>
             </StackPanel>
 
@@ -301,36 +221,21 @@
                         Click="RetryButton_Click"/>
             </StackPanel>
 
-            <!-- Results list - grouped ListView with ItemsWrapGrid panel.
-                 ItemWidth=340 means each row holds 2 columns when popup width >= 720,
-                 and collapses to a single column when popup is narrower.
-                 ItemHeight is explicit because ItemsWrapGrid otherwise picks the height
-                 of the first item — and TextQuery rows (the bold-match "Search Spotify
-                 for X" rows) are shorter than entity rows, which would clip the entity
-                 rows underneath. -->
-            <ListView x:Name="ResultsList" Grid.Row="1"
-                      SelectionMode="Single" IsItemClickEnabled="True"
-                      ScrollViewer.HorizontalScrollMode="Disabled"
-                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                      ItemTemplateSelector="{StaticResource SuggestionTemplateSelector}"
-                      ItemClick="ResultsList_ItemClick">
-                <ListView.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <ItemsWrapGrid Orientation="Horizontal" ItemWidth="340" ItemHeight="64"/>
-                    </ItemsPanelTemplate>
-                </ListView.ItemsPanel>
-                <ListView.GroupStyle>
-                    <GroupStyle HeaderTemplate="{StaticResource GroupHeaderTemplate}"
-                                HidesIfEmpty="True"/>
-                </ListView.GroupStyle>
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
-                        <Setter Property="Padding" Value="0"/>
-                        <Setter Property="MinHeight" Value="0"/>
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                    </Style>
-                </ListView.ItemContainerStyle>
-            </ListView>
+            <!-- Single-column virtualized suggestions list. ItemsRepeater (no ListViewItem
+                 container chrome) inside a ScrollViewer; section headers are interleaved
+                 rows (SearchSuggestionType.SectionHeader) selected by the template selector. -->
+            <ScrollViewer x:Name="ResultsScroller" Grid.Row="1"
+                          VerticalScrollMode="Auto"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollMode="Disabled"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsRepeater x:Name="ResultsList"
+                               ItemTemplate="{StaticResource SuggestionTemplateSelector}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Vertical" Spacing="0"/>
+                    </ItemsRepeater.Layout>
+                </ItemsRepeater>
+            </ScrollViewer>
         </Grid>
     </Border>
 </UserControl>

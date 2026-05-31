@@ -838,7 +838,8 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.UI.Contracts.ISearchService>(),
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetService<ILogger<SearchViewModel>>(),
-                        GetLocalLibraryService(sp)))
+                        GetLocalLibraryService(sp),
+                        sp.GetService<Wavee.UI.Contracts.IHomeFeedService>()))
                 .AddTransient<DebugViewModel>()
                 .AddTransient<FeedbackViewModel>()
                 .AddHttpClient<IFeedbackService, FeedbackService>(client =>

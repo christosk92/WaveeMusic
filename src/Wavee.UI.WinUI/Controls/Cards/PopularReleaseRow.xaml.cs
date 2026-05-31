@@ -205,8 +205,7 @@ public sealed partial class PopularReleaseRow : UserControl
                 title: Title,
                 subtitle: Subtitle,
                 imageUrl: CoverImageUrl,
-                totalTracks: NavigationTotalTracks > 0 ? NavigationTotalTracks : null,
-                connectedAnimationSource: CoverContainer);
+                totalTracks: NavigationTotalTracks > 0 ? NavigationTotalTracks : null);
         }
         CardClick?.Invoke(this, e);
     }

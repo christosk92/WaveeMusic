@@ -23,9 +23,9 @@ namespace Wavee.UI.WinUI.Helpers;
 /// </para>
 ///
 /// <para>
-/// Easing is the Fluent decelerate curve (cubic-bezier(0, 0, 0, 1)) — same
-/// curve as <c>ConnectedAnimationHelper.ConnectedAnimationDuration</c> /
-/// easing, so every motion in the app shares the same character.
+/// Easing is the Fluent decelerate curve (cubic-bezier(0, 0, 0, 1)) — the
+/// platform's canonical decelerate easing, so every motion in the app shares
+/// the same character.
 /// </para>
 ///
 /// <para>

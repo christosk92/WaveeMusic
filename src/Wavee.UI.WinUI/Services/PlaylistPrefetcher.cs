@@ -2,8 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reactive.Linq;
-using System.Reactive.Threading.Tasks;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -46,7 +44,6 @@ public interface IPlaylistMetadataPrefetcher
 public sealed partial class PlaylistMetadataPrefetcher : IPlaylistMetadataPrefetcher, IDisposable
 {
     private const string PlaylistUriPrefix = "spotify:playlist:";
-    private const int MaxConcurrentContentPrefetches = 2;
     private static readonly TimeSpan FlushDelay = TimeSpan.FromMilliseconds(100);
 
     private readonly ExtendedMetadataStore _metadataStore;
@@ -60,7 +57,6 @@ public sealed partial class PlaylistMetadataPrefetcher : IPlaylistMetadataPrefet
     private readonly ConcurrentDictionary<string, byte> _alreadyKicked = new(StringComparer.Ordinal);
 
     private readonly object _gate = new();
-    private readonly SemaphoreSlim _contentPrefetchGate = new(MaxConcurrentContentPrefetches);
     private List<string>? _pending;
     private Task? _flushTask;
     private CancellationTokenSource? _disposeCts = new();
@@ -84,8 +80,6 @@ public sealed partial class PlaylistMetadataPrefetcher : IPlaylistMetadataPrefet
         if (!playlistUri.StartsWith(PlaylistUriPrefix, StringComparison.Ordinal)) return;
         if (!_alreadyKicked.TryAdd(playlistUri, 0)) return;
 
-        StartContentPrefetch(playlistUri);
-
         bool scheduleFlush;
         lock (_gate)
         {
@@ -102,53 +96,6 @@ public sealed partial class PlaylistMetadataPrefetcher : IPlaylistMetadataPrefet
                 .ContinueWith(_ => FlushAsync(cts.Token), TaskScheduler.Default)
                 .Unwrap();
             lock (_gate) _flushTask = task;
-        }
-    }
-
-    private void StartContentPrefetch(string playlistUri)
-    {
-        var cts = _disposeCts;
-        if (cts is null || cts.IsCancellationRequested)
-            return;
-
-        _ = PrefetchPlaylistContentAsync(playlistUri, cts.Token);
-    }
-
-    private async Task PrefetchPlaylistContentAsync(string playlistUri, CancellationToken ct)
-    {
-        try
-        {
-            await _contentPrefetchGate.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                await _playlistStore.Observe(playlistUri)
-                    .Where(static state =>
-                        state is EntityState<PlaylistDetailDto>.Error ||
-                        state is EntityState<PlaylistDetailDto>.Ready { Freshness: Freshness.Fresh } ready
-                        && !ready.Value.IsPartial)
-                    .Select(static state => state switch
-                    {
-                        EntityState<PlaylistDetailDto>.Ready ready => ready.Value,
-                        EntityState<PlaylistDetailDto>.Error error => throw error.Exception,
-                        _ => throw new InvalidOperationException("Unexpected playlist prefetch state.")
-                    })
-                    .FirstAsync()
-                    .ToTask(ct)
-                    .ConfigureAwait(false);
-            }
-            finally
-            {
-                _contentPrefetchGate.Release();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Disposed mid-prefetch — silent. The underlying store/cache may
-            // still finish its shared fetch and warm the cache for later.
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "PlaylistMetadataPrefetcher: content prefetch failed for {Uri}", playlistUri);
         }
     }
 

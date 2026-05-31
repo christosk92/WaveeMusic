@@ -43,8 +43,12 @@ public sealed partial class OmnibarViewModel : ObservableObject
     private readonly Func<object?> _activeFrameContentProvider;
     private readonly IDispatcherService? _dispatcher;
 
-    private readonly Debouncer _searchDebouncer = new(TimeSpan.FromMilliseconds(300));
+    private readonly Debouncer _searchDebouncer = new(TimeSpan.FromMilliseconds(180));
     private string _activeSearchText = string.Empty;
+
+    // Per-keystroke cancellation for the zero-network local-library quicksearch,
+    // so fast typing cancels stale searches instead of piling them up.
+    private CancellationTokenSource? _librarySearchCts;
 
     public OmnibarViewModel(
         ISearchService searchService,
@@ -184,14 +188,7 @@ public sealed partial class OmnibarViewModel : ObservableObject
                 // 1) Synchronous Settings filter — always ≤ 3 items, in-memory.
                 var settingsItems = BuildSettingsSuggestions(normalizedText);
 
-                // 2) Zero-network library quicksearch — broadened to AllCached so anything
-                //    the user has seen/played is findable, not just explicitly-saved items.
-                var libraryItems = await BuildLibrarySuggestionsAsync(normalizedText, CancellationToken.None);
-
-                if (!string.Equals(_activeSearchText, normalizedText, StringComparison.Ordinal))
-                    return;
-
-                // 3) Try cached Spotify suggestions; show partial groups immediately when missing.
+                // 2) Cached Spotify suggestions, if any — instant.
                 List<SearchSuggestionItem>? spotifyItems = null;
                 var queryCacheIsFresh = false;
                 if (_cache.TryGetQuerySuggestions(normalizedText, out var cachedSpotify, out queryCacheIsFresh))
@@ -199,13 +196,21 @@ public sealed partial class OmnibarViewModel : ObservableObject
                     spotifyItems = cachedSpotify;
                 }
 
-                SuggestionGroups = _ranker.BuildGroups(settingsItems, libraryItems, spotifyItems);
+                // 3) Render Settings + cached Spotify (or its shimmer) IMMEDIATELY —
+                //    never block this keystroke's paint on the local-library search.
+                SuggestionGroups = _ranker.BuildGroups(settingsItems, new List<SearchSuggestionItem>(), spotifyItems);
                 IsSearchSuggestionsLoading = spotifyItems is null;
+
+                // 4) Local library quicksearch — cancellable + off the render path.
+                //    Cancels the previous keystroke's search so fast typing can't pile
+                //    them up; folds results in when they arrive (if still the active query).
+                var libraryToken = ResetLibrarySearchToken();
+                _ = FoldInLibrarySuggestionsAsync(normalizedText, settingsItems, spotifyItems, libraryToken);
 
                 if (spotifyItems is not null && queryCacheIsFresh)
                     return;
 
-                // 4) Debounce 300ms then refresh the Spotify group.
+                // 5) Debounce then refresh the Spotify group.
                 await _searchDebouncer.DebounceAsync(async ct =>
                 {
                     await RefreshQuerySuggestionsAsync(normalizedText, ct);
@@ -423,6 +428,52 @@ public sealed partial class OmnibarViewModel : ObservableObject
             });
         }
         return items;
+    }
+
+    private CancellationToken ResetLibrarySearchToken()
+    {
+        _librarySearchCts?.Cancel();
+        _librarySearchCts = new CancellationTokenSource();
+        return _librarySearchCts.Token;
+    }
+
+    /// <summary>
+    /// Runs the local-library quicksearch off the keystroke render path and folds
+    /// the results into the already-displayed groups when they arrive — provided
+    /// the search wasn't cancelled by a newer keystroke and the query is still active.
+    /// </summary>
+    private async Task FoldInLibrarySuggestionsAsync(
+        string query,
+        List<SearchSuggestionItem> settingsItems,
+        List<SearchSuggestionItem>? spotifyItems,
+        CancellationToken ct)
+    {
+        try
+        {
+            var libraryItems = await BuildLibrarySuggestionsAsync(query, ct);
+            if (ct.IsCancellationRequested)
+                return;
+            if (!string.Equals(_activeSearchText, query, StringComparison.Ordinal))
+                return;
+            if (libraryItems.Count == 0)
+                return; // nothing to add — leave the current groups untouched
+
+            // Spotify suggestions may have landed in the cache since the immediate
+            // render; prefer the freshest.
+            var spotify = spotifyItems;
+            if (spotify is null && _cache.TryGetQuerySuggestions(query, out var cached, out _))
+                spotify = cached;
+
+            SuggestionGroups = _ranker.BuildGroups(settingsItems, libraryItems, spotify);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer keystroke — silent.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Local library quicksearch failed for \"{Query}\"", query);
+        }
     }
 
     private async Task RefreshRecentSearchesAsync(string querySnapshot, CancellationToken ct = default)

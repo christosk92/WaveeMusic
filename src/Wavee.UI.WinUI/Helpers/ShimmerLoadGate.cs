@@ -59,6 +59,20 @@ public sealed partial class ShimmerLoadGate : DependencyObject
         FrameworkLayer layer = FrameworkLayer.Composition,
         Func<bool>? continuePredicate = null)
     {
+        if (!ReducedMotion.AnimationsEnabled)
+        {
+            // Reduced motion: snap content in, drop the skeleton, no fade.
+            content.Opacity = 1;
+            if (layer == FrameworkLayer.Composition)
+                ElementCompositionPreview.GetElementVisual(content).Opacity = 1;
+            if (continuePredicate is null || continuePredicate())
+            {
+                if (shimmer is not null) shimmer.Visibility = Visibility.Collapsed;
+                IsLoaded = false;
+            }
+            return;
+        }
+
         if (shimmer is not null)
         {
             AnimationBuilder.Create()

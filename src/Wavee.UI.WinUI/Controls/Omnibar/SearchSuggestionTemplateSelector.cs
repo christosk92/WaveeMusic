@@ -32,29 +32,3 @@ public sealed partial class SearchSuggestionTemplateSelector : DataTemplateSelec
         return SelectTemplateCore(item);
     }
 }
-
-/// <summary>
-/// Drives <see cref="VariableSizedWrapGrid.ColumnSpan"/> + hit-testing for items in the
-/// omnibar's flat suggestions list. Section header rows span the full grid width and
-/// are non-interactive; everything else takes a single cell.
-/// </summary>
-public sealed partial class SearchSuggestionContainerStyleSelector : StyleSelector
-{
-    public Style? DefaultStyle { get; set; }
-    public Style? SectionHeaderStyle { get; set; }
-    public Style? TextQueryStyle { get; set; }
-
-    protected override Style SelectStyleCore(object item, DependencyObject container)
-    {
-        if (item is SearchSuggestionItem entry)
-        {
-            return entry.Type switch
-            {
-                SearchSuggestionType.SectionHeader => SectionHeaderStyle ?? DefaultStyle!,
-                SearchSuggestionType.TextQuery     => TextQueryStyle ?? DefaultStyle!,
-                _ => DefaultStyle!,
-            };
-        }
-        return DefaultStyle!;
-    }
-}

@@ -41,6 +41,10 @@ public sealed class AppSettings
     /// <summary>Whether the "Refresh with swipes" how-it-works overlay has been shown once.</summary>
     public bool RefreshSwipeHowItWorksSeen { get; set; }
 
+    /// <summary>Whether the "Find songs to add" (add-to-playlist mode) how-it-works
+    /// overlay has been shown once.</summary>
+    public bool AddToPlaylistHowItWorksSeen { get; set; }
+
     /// <summary>
     /// Whether to show the play action dialog every time a track is played.
     /// </summary>

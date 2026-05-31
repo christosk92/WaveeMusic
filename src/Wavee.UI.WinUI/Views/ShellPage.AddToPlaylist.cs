@@ -2,6 +2,8 @@ using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Wavee.UI.Services.AddToPlaylist;
+using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Views;
 
@@ -21,6 +23,7 @@ public sealed partial class ShellPage
 
     private IAddToPlaylistSession? _addToPlaylistSession;
     private bool _isAddToPlaylistSessionHooked;
+    private ISettingsService? _settingsService;
 
     /// <summary>Called once from <c>ShellPage_Loaded</c>. Idempotent.</summary>
     private void HookAddToPlaylistSessionForToast()
@@ -37,9 +40,43 @@ public sealed partial class ShellPage
     {
         if (e.PropertyName != nameof(IAddToPlaylistSession.IsActive)) return;
         if (DispatcherQueue?.HasThreadAccess == true)
-            ApplyToastMargin();
+            OnAddToPlaylistSessionActiveChanged();
         else
-            DispatcherQueue?.TryEnqueue(ApplyToastMargin);
+            DispatcherQueue?.TryEnqueue(OnAddToPlaylistSessionActiveChanged);
+    }
+
+    private void OnAddToPlaylistSessionActiveChanged()
+    {
+        ApplyToastMargin();
+        MaybeShowAddToPlaylistHowItWorks();
+    }
+
+    /// <summary>
+    /// The first time the user enters add-to-playlist mode, show a one-time
+    /// "How it works" overlay explaining the collect → + → Add flow. Gated by
+    /// <see cref="AppSettings.AddToPlaylistHowItWorksSeen"/> so it never repeats.
+    /// </summary>
+    private void MaybeShowAddToPlaylistHowItWorks()
+    {
+        if (_addToPlaylistSession is null || !_addToPlaylistSession.IsActive) return;
+        if (AddToPlaylistHowItWorksOverlay is null) return;
+
+        _settingsService ??= Ioc.Default.GetService<ISettingsService>();
+        if (_settingsService is null || _settingsService.Settings.AddToPlaylistHowItWorksSeen) return;
+
+        var name = _addToPlaylistSession.TargetPlaylistName;
+        AddToPlaylistHowItWorksSubtitle.Text = string.IsNullOrWhiteSpace(name)
+            ? "Collect tracks from anywhere in the app, then add them all at once."
+            : $"Collect tracks from anywhere in the app, then add them to “{name}” at once.";
+        AddToPlaylistHowItWorksOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void OnAddToPlaylistHowItWorksDismiss(object sender, RoutedEventArgs e)
+    {
+        if (AddToPlaylistHowItWorksOverlay is not null)
+            AddToPlaylistHowItWorksOverlay.Visibility = Visibility.Collapsed;
+        _settingsService ??= Ioc.Default.GetService<ISettingsService>();
+        _settingsService?.Update(static s => s.AddToPlaylistHowItWorksSeen = true);
     }
 
     private void ApplyToastMargin()

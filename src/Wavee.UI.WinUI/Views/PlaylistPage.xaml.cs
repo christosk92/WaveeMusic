@@ -15,7 +15,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AvatarStack;
@@ -26,6 +25,7 @@ using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
+using Wavee.UI.Services.DragDrop;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.Models;
@@ -732,54 +732,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
         dateCol.IsVisible = ViewModel.TrackList.HasAnyAddedAt;
     }
 
-    private bool TryHandlePendingPlaylistArtConnectedAnimation()
-    {
-        if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt))
-            return false;
-
-        // Banner-mode playlists hide PlaylistArtContainer (square cover slot)
-        // — the destination element is collapsed, so the connected animation
-        // has nowhere to land. Cancel + fall through to standard crossfade.
-        // Banner→banner card-to-banner stretchy animation is a future
-        // enhancement; this path keeps the page render clean today.
-        if (ViewModel.Header.LayoutMode != PlaylistLayoutMode.Cover)
-        {
-            ConnectedAnimationHelper.CancelPending();
-            _logger?.LogDebug(
-                "[xfade][playlist:{Id}] connected.playlistArt action=cancelled (banner mode — no cover destination)",
-                XfadeLog.Tag(ViewModel.PlaylistId));
-            return false;
-        }
-
-        // Cover mode: original animation path. Skip the standard crossfade —
-        // connected animation paints content directly.
-        PageController.MarkContentShownDirectly();
-        TwoColumnGrid.Opacity = 1;
-
-        // Defer TryStartAnimation to the next render frame instead of forcing a
-        // synchronous PlaylistArtContainer.UpdateLayout() pass (~50-70 ms on
-        // cross-playlist navs because PrefillFrom just invalidated the hero).
-        // Layout completes naturally between this turn and CompositionTarget.Rendering;
-        // destination rect is then accurate without forced measure+arrange.
-        // One-frame slip (~16 ms at 60 Hz) is absorbed by the 250 ms morph.
-        var capturedContainer = PlaylistArtContainer;
-        var capturedPlaylistId = ViewModel.PlaylistId;
-        EventHandler<object>? onNextFrame = null;
-        onNextFrame = (_, _) =>
-        {
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= onNextFrame;
-            var started = ConnectedAnimationHelper.TryStartAnimation(
-                ConnectedAnimationHelper.PlaylistArt,
-                capturedContainer);
-            _logger?.LogDebug(
-                "[xfade][playlist:{Id}] connected.playlistArt action={Action}",
-                XfadeLog.Tag(capturedPlaylistId), started ? "started-deferred" : "miss-deferred");
-        };
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += onNextFrame;
-
-        return true;
-    }
-
     public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onEntered");
@@ -815,11 +767,20 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
         var navigationRevision = ++_navigationRevision;
 
         LoadParameter(parameter, mode);
+        _ = ResetViewportAfterNavigationAsync(navigationRevision);
+    }
 
-        // Scroll to top on every nav. Without this, navigating from a
-        // deep-scrolled playlist A to playlist B would leave the user mid-
-        // page on B's track table with no visible cue that they navigated.
-        // Mirrors ArtistPage's pattern.
+    private async Task ResetViewportAfterNavigationAsync(int navigationRevision)
+    {
+        await Task.Yield();
+
+        if (_isDisposed ||
+            PageController.IsNavigatingAway ||
+            navigationRevision != _navigationRevision)
+        {
+            return;
+        }
+
         try
         {
             LeftColumnScrollView?.ScrollTo(
@@ -875,21 +836,26 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
         // On cache-hit (Back/Forward), the visual tree is already realised and
         // populated — skip the shimmer reset to avoid flashing a skeleton over
         // good pixels.
-        var hasPendingPlaylistArtAnimation =
-            ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt);
         var navParameter = parameter as Data.Parameters.ContentNavigationParameter;
-        var useSoftPlaylistSwap =
+
+        // Reveal mode (mirrors AlbumPage):
+        //  • Back/Forward — keep rendered pixels.
+        //  • Same-tab refresh with content showing + usable prefill — warm
+        //    content cross-fade, no skeleton over good pixels.
+        //  • New / cold — shimmer-gated reveal.
+        var useWarmSwap =
             mode == PageHostNavigationMode.Refresh &&
             PageController.IsShowingContent &&
             navParameter is not null &&
-            HasUsablePlaylistPrefill(navParameter) &&
-            !hasPendingPlaylistArtAnimation;
+            HasUsablePlaylistPrefill(navParameter);
 
         if (mode != PageHostNavigationMode.Back &&
-            mode != PageHostNavigationMode.Forward &&
-            !useSoftPlaylistSwap)
+            mode != PageHostNavigationMode.Forward)
         {
-            PageController.ResetForNewLoad();
+            if (useWarmSwap)
+                PageController.CrossfadeContentSwap();
+            else
+                PageController.ResetForNewLoad();
         }
 
         // Yield once between the shimmer flip and the Activate / PrefillFrom
@@ -905,7 +871,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
             return;
 
         string? playlistId = null;
-        Data.Parameters.ContentNavigationParameter? connectedAnimationNav = null;
 
         if (navParameter is { } nav)
         {
@@ -913,17 +878,7 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
                 "PlaylistPage.LoadParameter: ContentNavigationParameter Uri='{Uri}', Title='{Title}', Subtitle='{Subtitle}', ImageUrl='{ImageUrl}'",
                 nav.Uri, nav.Title, nav.Subtitle, nav.ImageUrl);
             playlistId = nav.Uri;
-            if (hasPendingPlaylistArtAnimation)
-            {
-                // Keep the destination cover/title materialized so TryStart can run
-                // before the VM seeds placeholders and subscribes to the store.
-                connectedAnimationNav = nav;
-                ViewModel.PrefillFrom(nav, clearMissing: true);
-            }
-            else
-            {
-                ViewModel.Activate(nav.Uri, prefill: nav);
-            }
+            ViewModel.Activate(nav.Uri, prefill: nav);
         }
         else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
         {
@@ -945,68 +900,27 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
                 // hide tracks on Playlist B. Sort + column widths intentionally persist.
                 TrackGrid.ResetFilter();
                 _lastPlaylistId = playlistId;
-                if (useSoftPlaylistSwap)
-                    AnimatePlaylistSwap();
             }
             RestorePlaylistPanelWidth(playlistId);
-        }
-
-        if (hasPendingPlaylistArtAnimation && TryHandlePendingPlaylistArtConnectedAnimation())
-        {
-            if (connectedAnimationNav is not null)
-            {
-                var uri = connectedAnimationNav.Uri;
-                await Task.Yield();
-                if (!PageController.IsNavigatingAway)
-                    ViewModel.Activate(uri, preserveHeaderPrefill: true, prefill: connectedAnimationNav);
-            }
-
-            return;
         }
 
         // Warm-cache trigger. PlaylistStore is a BehaviorSubject — Activate's subscribe
         // queues ApplyDetailState via the dispatcher, which runs after this method
         // returns. After one yield it has landed (PlaylistName populated, IsLoading
         // stayed false), so TryShowContentNow can fire ScheduleCrossfade for the
-        // same-id case where the IsLoading=false write was a no-op.
-        if (connectedAnimationNav is not null)
-            ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true, prefill: connectedAnimationNav);
-
+        // same-id case where the IsLoading=false write was a no-op. On a warm swap
+        // CrossfadeContentSwap already marked content shown, so TryShowContentNow
+        // early-returns.
         await Task.Yield();
         if (PageController.IsNavigatingAway) return;
         PageController.TryShowContentNow();
     }
 
+    // True when the nav parameter carries enough to paint the hero immediately,
+    // so a same-type refresh can warm-swap instead of resetting to the shimmer.
     private static bool HasUsablePlaylistPrefill(Data.Parameters.ContentNavigationParameter nav)
-        => (!string.IsNullOrEmpty(nav.Title)
-            && !string.Equals(nav.Title, "Playlist", StringComparison.OrdinalIgnoreCase))
-           || (!string.IsNullOrEmpty(nav.ImageUrl)
-               && !SpotifyImageHelper.IsMosaicUri(nav.ImageUrl));
-
-    /// <summary>
-    /// Short cross-panel fade on playlist change. Without this, cached-page
-    /// navigations snap the old content straight to the new one (no animation,
-    /// because the page instance and its Visibility states don't actually change).
-    /// Targets the two-column grid root so the hero panel AND the track grid fade
-    /// together — anything less feels partial.
-    /// </summary>
-    private void AnimatePlaylistSwap()
-    {
-        if (TwoColumnGrid is null) return;
-        TwoColumnGrid.Opacity = 0;
-        var anim = new DoubleAnimation
-        {
-            From = 0,
-            To = 1,
-            Duration = new Duration(TimeSpan.FromMilliseconds(200)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-        };
-        Storyboard.SetTarget(anim, TwoColumnGrid);
-        Storyboard.SetTargetProperty(anim, "Opacity");
-        var sb = new Storyboard();
-        sb.Children.Add(anim);
-        sb.Begin();
-    }
+        => (!string.IsNullOrEmpty(nav.Title) || !string.IsNullOrEmpty(nav.ImageUrl))
+           && !SpotifyImageHelper.IsMosaicUri(nav.ImageUrl);
 
     public void OnLeaving()
     {
@@ -1677,44 +1591,23 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
         flyout.ShowAt(fe);
     }
 
-    private void AddPlaylistToPlaylistMenuFlyout_Opening(object? sender, object e)
+    private async void CopyToPlaylistButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuFlyout flyout) return;
-        flyout.Items.Clear();
+        if (sender is not FrameworkElement fe) return;
+        var playlistId = ViewModel.PlaylistId;
+        var mediator = Ioc.Default.GetService<IPlaylistDragDropMediator>();
+        if (string.IsNullOrEmpty(playlistId) || mediator is null) return;
 
-        // List the user's playlists; skip THIS one (copying a playlist to
-        // itself is pointless). Rebuilt on every open so renames / creates /
-        // deletes are picked up while the page sits in the nav cache.
-        foreach (var destination in ViewModel.TrackList.Playlists)
-        {
-            if (string.IsNullOrEmpty(destination.Id)) continue;
-            if (string.Equals(destination.Id, ViewModel.PlaylistId, StringComparison.Ordinal)) continue;
-
-            var captured = destination;
-            var mi = new MenuFlyoutItem
-            {
-                Text = destination.Name ?? "Untitled playlist",
-                Tag = destination
-            };
-            mi.Click += (s, args) =>
-            {
-                _ = ViewModel.TrackList.AddPlaylistToOtherPlaylistCommand.ExecuteAsync(captured);
-                Ioc.Default.GetService<INotificationService>()?.Show(
-                    $"Added to {captured.Name ?? "playlist"}",
-                    NotificationSeverity.Success,
-                    TimeSpan.FromSeconds(3));
-            };
-            flyout.Items.Add(mi);
-        }
-
-        if (flyout.Items.Count == 0)
-        {
-            flyout.Items.Add(new MenuFlyoutItem
-            {
-                Text = "No other playlists",
-                IsEnabled = false
-            });
-        }
+        // Same folder-aware menu the right-click track / card menus use: nests
+        // folders, lists only owned playlists, offers "Create new playlist". The
+        // track URIs of THIS playlist are resolved lazily (only when a destination
+        // is picked) and copied via the shared AddToPlaylistSubmenuBuilder.
+        var name = ViewModel.Header.PlaylistName ?? "playlist";
+        var loader = AddToPlaylistSubmenuBuilder.Loader(
+            sourceLabel: name,
+            trackUrisLoader: ct => mediator.GetPlaylistTrackUrisAsync(playlistId, ct));
+        var items = await loader();
+        ContextMenuHost.Show(fe, items);
     }
 
     // ── Collaborator avatar stack ────────────────────────────────────────────

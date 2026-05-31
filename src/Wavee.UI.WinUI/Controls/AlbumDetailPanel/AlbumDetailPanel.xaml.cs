@@ -410,10 +410,6 @@ public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfacePart
     {
         if (Album == null) return;
 
-        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
-        // Helpers.ConnectedAnimationHelper.PrepareAnimation(
-        //     Helpers.ConnectedAnimationHelper.AlbumArt, ImageArea);
-
         Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("AlbumDetailPanel.ViewAlbum");
 
         var param = new ContentNavigationParameter

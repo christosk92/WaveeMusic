@@ -264,7 +264,6 @@ public sealed partial class ShowResumeBanner : UserControl
         if (Episode is null) return;
         // Don't double-fire when the explicit Resume button handles its own click.
         if (e.OriginalSource is FrameworkElement fe && IsInsideResumeButton(fe)) return;
-        ConnectedAnimationHelper.PrepareAnimation(ConnectedAnimationHelper.PodcastEpisodeArt, BackdropImage);
         OpenRequested?.Invoke(this, Episode);
     }
 

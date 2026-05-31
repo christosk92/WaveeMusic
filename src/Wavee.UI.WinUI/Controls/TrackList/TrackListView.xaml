@@ -314,19 +314,8 @@
                                       Command="{x:Bind ViewModel.AddSelectedToQueueCommand, Mode=OneWay}"/>
                         <AppBarSeparator/>
                         <AppBarButton x:Uid="Controls_TrackList_TrackListView__Auto_603" Icon="{ui:FontIcon Glyph=&#xE710;}"
-                                      Label="Add to playlist">
-                            <AppBarButton.Flyout>
-                                <MenuFlyout x:Name="AddToPlaylistFlyout"
-                                            Placement="TopEdgeAlignedLeft"
-                                            Opening="AddToPlaylistFlyout_Opening">
-                                    <MenuFlyoutItem x:Uid="Controls_TrackList_TrackListView__MenuFlyoutItem_11" Text="New playlist..."
-                                                    Icon="{ui:FontIcon Glyph=&#xE710;}"
-                                                    Click="NewPlaylist_Click"/>
-                                    <MenuFlyoutSeparator x:Name="PlaylistSeparator" Visibility="Collapsed"/>
-                                    <!-- Playlist items added dynamically in code-behind -->
-                                </MenuFlyout>
-                            </AppBarButton.Flyout>
-                        </AppBarButton>
+                                      Label="Add to playlist"
+                                      Click="AddSelectedToPlaylistButton_Click"/>
                         <AppBarButton x:Name="RemoveButton"
                                       Icon="{ui:FontIcon Glyph=&#xE74D;}"
                                       Command="{x:Bind ViewModel.RemoveSelectedCommand, Mode=OneWay}"/>

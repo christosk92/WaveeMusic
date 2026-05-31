@@ -491,23 +491,36 @@
                             <TextBlock Text="Refresh with swipes" FontSize="13"/>
                         </StackPanel>
                     </Button>
-                    <!-- Add to playlist (flyout — picks the destination from the
-                         user's playlists, then copies all tracks of THIS playlist). -->
-                    <Button x:Name="AddPlaylistToPlaylistPillButton"
+                    <!-- Find songs to add — enters the app-wide add-to-playlist
+                         session (IAddToPlaylistSession) and lands on Search so the
+                         user can shop. Editable playlists only. -->
+                    <Button Height="36" Padding="14,0" CornerRadius="18"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Click="FindMoreSongsChip_Click"
+                            x:Uid="Views_PlaylistPage__FindSongsToAddButton"
+                            Visibility="{x:Bind ViewModel.Header.CanEditItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            ToolTipService.ToolTip="Find songs to add to this playlist">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xECCD;" FontSize="12"/>
+                            <TextBlock Text="Find songs to add" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+                    <!-- Copy to playlist — copies all tracks of THIS playlist into a
+                         destination the user picks from the shared folder-aware menu
+                         (AddToPlaylistSubmenuBuilder), same as the right-click menu. -->
+                    <Button x:Name="CopyToPlaylistButton"
                             Height="36" Padding="14,0" CornerRadius="18"
                             Background="Transparent"
                             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                             BorderThickness="1"
+                            Click="CopyToPlaylistButton_Click"
                             x:Uid="Views_PlaylistPage__AddToPlaylistButton"
                             ToolTipService.ToolTip="Copy all tracks to another playlist">
-                        <Button.Flyout>
-                            <MenuFlyout x:Name="AddPlaylistToPlaylistMenuFlyout"
-                                        Placement="Bottom"
-                                        Opening="AddPlaylistToPlaylistMenuFlyout_Opening"/>
-                        </Button.Flyout>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <FontIcon Glyph="&#xE710;" FontSize="12"/>
-                            <TextBlock x:Uid="Views_PlaylistPage__AddToPlaylistText" Text="Add to playlist" FontSize="13"/>
+                            <FontIcon Glyph="&#xF413;" FontSize="12"/>
+                            <TextBlock x:Uid="Views_PlaylistPage__AddToPlaylistText" Text="Copy to playlist" FontSize="13"/>
                         </StackPanel>
                     </Button>
                     <!-- Add to queue (split: primary = Add to queue, dropdown also offers Play next) -->
@@ -549,19 +562,6 @@
                             BorderThickness="1"
                             IsHitTestVisible="False"/>
                     </Grid>
-                    <!-- Start radio -->
-                    <Button Command="{x:Bind ViewModel.TrackList.StartPlaylistRadioCommand}"
-                            Height="36" Padding="14,0" CornerRadius="18"
-                            Background="Transparent"
-                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            x:Uid="Views_PlaylistPage__StartRadioButton"
-                            ToolTipService.ToolTip="Start a radio seeded from this playlist">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <FontIcon Glyph="&#xEC05;" FontSize="12"/>
-                            <TextBlock x:Uid="Views_PlaylistPage__StartRadioText" Text="Start radio" FontSize="13"/>
-                        </StackPanel>
-                    </Button>
                     <!-- Delete: owners only. Reuses the existing
                          ConfirmAndDeletePlaylistAsync dialog via HeroDeleteButton_Click. -->
                     <Button Click="HeroDeleteButton_Click"

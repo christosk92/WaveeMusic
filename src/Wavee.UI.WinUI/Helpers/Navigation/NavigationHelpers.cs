@@ -636,15 +636,9 @@ public static class NavigationHelpers
             return;
         }
 
-        var suppressTransition =
-            pageType == typeof(AlbumPage)
-                && ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt)
-            || pageType == typeof(PlaylistPage)
-                && ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt)
-            || pageType == typeof(ShowPage)
-                && ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PodcastArt)
-            || pageType == typeof(EpisodePage)
-                && ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PodcastEpisodeArt);
+        // Connected animations were removed — the content cross-fade is now the
+        // only navigation motion, so the page transition is never suppressed.
+        const bool suppressTransition = false;
 
         var currentTab = ShellViewModel.TabInstances[currentIndex];
         currentTab.Header = header;

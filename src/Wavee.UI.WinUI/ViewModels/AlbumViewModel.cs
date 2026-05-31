@@ -55,7 +55,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     private CompositeDisposable? _subscriptions;
     private string? _appliedDetailFor;
     private readonly ILibraryDataService _libraryDataService;
-    private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ITrackLikeService? _likeService;
     private readonly AlbumBioSummarizer? _albumBioSummarizer;
@@ -93,7 +92,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     private bool _isSortDescending = false;
     private int _totalTracks;
     private string _totalDuration = "";
-    private readonly ObservableCollection<PlaylistSummaryDto> _playlists = [];
     // Bound collections kept as stable instances and mutated in place. Assigning
     // a new list reference here forces ItemsRepeater/ListView to recycle every
     // realized container; mutating the same instance lets the binding stay
@@ -565,13 +563,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         PlaySelectedCommand.NotifyCanExecuteChanged();
         PlayAfterCommand.NotifyCanExecuteChanged();
         AddSelectedToQueueCommand.NotifyCanExecuteChanged();
-        AddToPlaylistCommand.NotifyCanExecuteChanged();
     }
-
-    /// <summary>
-    /// User's playlists for "Add to playlist" menu.
-    /// </summary>
-    public IReadOnlyList<PlaylistSummaryDto> Playlists => _playlists;
 
     /// <summary>
     /// More albums by the same artist.
@@ -871,7 +863,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         IAlbumService albumService,
         AlbumStore albumStore,
         ILibraryDataService libraryDataService,
-        IPlaylistMutationService playlistMutationService,
         IPlaybackStateService playbackStateService,
         ITrackLikeService? likeService = null,
         IMusicVideoMetadataService? musicVideoMetadata = null,
@@ -883,7 +874,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         _albumService = albumService;
         _albumStore = albumStore;
         _libraryDataService = libraryDataService;
-        _playlistMutationService = playlistMutationService;
         _playbackStateService = playbackStateService;
         _likeService = likeService;
         _musicVideoMetadata = musicVideoMetadata;
@@ -2000,9 +1990,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
             await RunCurrentAlbumUiAsync(albumId, () =>
             {
-                // Rootlist is only needed for the "Add to playlist" affordance.
-                _ = LoadRootlistAsync();
-
                 if (_musicVideoMetadata is not null && detail.Tracks.Count > 0)
                     _ = ApplyMusicVideoAvailabilityAsync(detail.Tracks);
 
@@ -2061,26 +2048,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         catch (Exception ex)
         {
             _logger?.LogDebug(ex, "Music-video availability probe failed for album {AlbumId}", AlbumId);
-        }
-    }
-
-    private async Task LoadRootlistAsync()
-    {
-        try
-        {
-            var list = await _libraryDataService.GetUserPlaylistsAsync().ConfigureAwait(false);
-            if (_disposed)
-                return;
-
-            await RunOnUiThreadAsync(() =>
-            {
-                if (!_disposed)
-                    _playlists.ReplaceWith(list);
-            }).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "LoadRootlistAsync failed (album)");
         }
     }
 
@@ -2243,23 +2210,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     private void RemoveSelected()
     {
         // Not applicable for albums - tracks can't be removed
-    }
-
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
-    {
-        if (playlist?.Id is not { Length: > 0 } playlistId) return;
-        var uris = CollectSelectedTrackUris();
-        if (uris.Count == 0) return;
-
-        try
-        {
-            await _playlistMutationService.AddTracksToPlaylistAsync(playlistId, uris).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "AddToPlaylistAsync (album selection) failed → {Playlist}", playlistId);
-        }
     }
 
     [RelayCommand]
@@ -2548,31 +2498,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         await _playbackStateService.StartRadioAsync(uri, name);
     }
 
-    /// <summary>Adds every track of this album to a user playlist. Picked from
-    /// the action-cluster "Add to playlist" flyout — caller supplies the
-    /// target playlist. Local albums are skipped (their tracks aren't valid
-    /// Spotify URIs).</summary>
-    [RelayCommand]
-    private async Task AddAlbumToPlaylistAsync(PlaylistSummaryDto? playlist)
-    {
-        if (playlist?.Id is not { Length: > 0 } playlistId) return;
-        if (_allTracks.Count == 0) return;
-        var trackUris = _allTracks
-            .Select(t => t.Data is AlbumTrackDto dto ? dto.Uri : null)
-            .Where(u => SpotifyUriHelper.IsKind(u, SpotifyEntityKind.Track))
-            .Cast<string>()
-            .ToList();
-        if (trackUris.Count == 0) return;
-
-        try
-        {
-            await _playlistMutationService.AddTracksToPlaylistAsync(playlistId, trackUris).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "AddAlbumToPlaylistAsync failed for {Album} → {Playlist}", AlbumId, playlistId);
-        }
-    }
 
     [RelayCommand]
     private void OpenLikedSongs()
@@ -2595,7 +2520,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     ICommand ITrackListViewModel.PlayAfterCommand => PlayAfterCommand;
     ICommand ITrackListViewModel.AddSelectedToQueueCommand => AddSelectedToQueueCommand;
     ICommand ITrackListViewModel.RemoveSelectedCommand => RemoveSelectedCommand;
-    ICommand ITrackListViewModel.AddToPlaylistCommand => AddToPlaylistCommand;
 
     #endregion
 
@@ -2617,7 +2541,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         _alternateReleases.ClearWithoutNotify();
         _moreByArtist.ClearWithoutNotify();
         _merchItems.ClearWithoutNotify();
-        _playlists.ClearWithoutNotify();
         _similarAlbums.ClearWithoutNotify();
         _similarArtists.ClearWithoutNotify();
         _recommendedPlaylists.ClearWithoutNotify();

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Specialized;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -23,7 +24,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     // opened three separate windows; with rapid back-and-forth nav (2-3 s
     // cadence) the refcount never returned to 0, so the post-window Gen2
     // drain in NavigationGcCoordinator.EndCriticalWindow never fired.
-    private static readonly TimeSpan NavigationGcWindow = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan NavigationGcWindow = TimeSpan.FromSeconds(2);
 
     // Per-tab page cache. "Comfortable" = 3 keeps back/forward through a
     // deep nav stack instant (no recreation, no flicker, no item-container
@@ -163,6 +164,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     // UI-thread-only field; no locking needed.
     private static readonly TimeSpan DeferredTrimDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan DeferredTrimRetryDelay = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan DeferredTrimStepSpacing = TimeSpan.FromMilliseconds(120);
     private const int MaxDeferredTrimRetries = 8;
     private (INavigationCacheMemoryParticipant Participant, DispatcherQueueTimer Timer)? _pendingTrim;
 
@@ -460,11 +462,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             // that didn't override GetTrimMicroSteps still get a single chunk
             // matching the old behaviour (default impl yields the legacy
             // TrimForNavigationCache as one step).
-            foreach (var step in capturedParticipant.GetTrimMicroSteps())
-            {
-                var capturedStep = step;
-                ScheduleDeferredTrimStep(dispatcher, capturedParticipant, capturedStep, attempt: 0);
-            }
+            var steps = capturedParticipant.GetTrimMicroSteps().ToArray();
+            ScheduleDeferredTrimStep(dispatcher, capturedParticipant, steps, index: 0, attempt: 0);
         };
         _pendingTrim = (participant, timer);
         timer.Start();
@@ -473,9 +472,13 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     private void ScheduleDeferredTrimStep(
         DispatcherQueue dispatcher,
         INavigationCacheMemoryParticipant participant,
-        Action step,
+        Action[] steps,
+        int index,
         int attempt)
     {
+        if (index >= steps.Length)
+            return;
+
         dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
             if (ReferenceEquals(participant, ContentHost.ActivePage))
@@ -492,7 +495,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                 retryTimer.Tick += (s, _) =>
                 {
                     s.Stop();
-                    ScheduleDeferredTrimStep(dispatcher, participant, step, attempt + 1);
+                    ScheduleDeferredTrimStep(dispatcher, participant, steps, index, attempt + 1);
                 };
                 retryTimer.Start();
                 return;
@@ -500,9 +503,23 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
             using (NavigationDiagnostics.Instance?.StageCurrent("deferredTrim.step"))
             {
-                try { step(); }
+                try { steps[index](); }
                 catch { /* best-effort */ }
             }
+
+            var nextIndex = index + 1;
+            if (nextIndex >= steps.Length)
+                return;
+
+            var nextTimer = dispatcher.CreateTimer();
+            nextTimer.Interval = DeferredTrimStepSpacing;
+            nextTimer.IsRepeating = false;
+            nextTimer.Tick += (s, _) =>
+            {
+                s.Stop();
+                ScheduleDeferredTrimStep(dispatcher, participant, steps, nextIndex, attempt: 0);
+            };
+            nextTimer.Start();
         });
     }
 

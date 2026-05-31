@@ -144,8 +144,6 @@ public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigat
 
         if (!ViewModel.IsLoading)
             PageController.TryShowContentNow();
-
-        TryHandlePendingPodcastArtConnectedAnimation();
     }
 
     private void ShowPage_Unloaded(object sender, RoutedEventArgs e)
@@ -183,26 +181,6 @@ public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigat
         LoadNewContent(parameter, PageHostNavigationMode.Refresh);
     }
 
-    // Short cross-fade of the page content root for a soft same-type swap (no
-    // shimmer reset). Mirrors PlaylistPage.AnimatePlaylistSwap; uses
-    // ContentPageController.ContentRoot so it needs no page-specific element.
-    private void AnimateContentSwap()
-    {
-        if (PageController.ContentRoot is not { } root)
-            return;
-        var fade = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
-        {
-            From = 0,
-            To = 1,
-            Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(200)),
-        };
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade, root);
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade, "Opacity");
-        var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-        sb.Children.Add(fade);
-        sb.Begin();
-    }
-
     private async void LoadNewContent(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
         // If we were trimmed since the last LoadNewContent, the x:Bind graph is
@@ -234,7 +212,7 @@ public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigat
         if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward && !useSoftSwap)
             PageController.ResetForNewLoad();
         else if (useSoftSwap)
-            AnimateContentSwap();
+            PageController.CrossfadeContentSwap();
 
         // Yield once between the shimmer flip and the synchronous Activate
         // / PrefillFrom chain. Without this, OnNavigatedTo runs the whole
@@ -260,40 +238,11 @@ public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigat
             ViewModel.PrefillFrom(navigationParameter);
         RestoreShowPanelWidth(showUri);
 
-        TryHandlePendingPodcastArtConnectedAnimation();
-
         await Task.Yield();
         if (PageController.IsNavigatingAway)
             return;
 
         PageController.TryShowContentNow();
-    }
-
-    private bool TryHandlePendingPodcastArtConnectedAnimation()
-    {
-        if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PodcastArt) ||
-            CoverContainer is null)
-        {
-            return false;
-        }
-
-        PageController.MarkContentShownDirectly();
-
-        // Defer TryStartAnimation to the next render frame — see AlbumPage for
-        // the rationale. Layout completes naturally before the frame fires,
-        // sparing us the ~50-70 ms forced UpdateLayout pass on cold show navs.
-        var capturedContainer = CoverContainer;
-        EventHandler<object>? onNextFrame = null;
-        onNextFrame = (_, _) =>
-        {
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= onNextFrame;
-            ConnectedAnimationHelper.TryStartAnimation(
-                ConnectedAnimationHelper.PodcastArt,
-                capturedContainer);
-        };
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += onNextFrame;
-
-        return true;
     }
 
     // ── Left-panel sizing ───────────────────────────────────────────────────

@@ -165,7 +165,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         RestoreLocalSection(localSection);
         ApplyChips(snapshot.Chips);
         SectionsApplied?.Invoke(this, ordered);
-        await RefreshLocalSectionAsync();
+        _ = RefreshLocalSectionAsync();
     }
 
     /// <summary>
@@ -186,7 +186,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         RestoreLocalSection(localSection);
         ApplyChips(snapshot.Chips);
         SectionsApplied?.Invoke(this, ordered);
-        await RefreshLocalSectionAsync();
+        _ = RefreshLocalSectionAsync();
     }
 
     /// <summary>
@@ -204,7 +204,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         RestoreLocalSection(localSection);
         ApplyChips(result.Chips);
         SectionsApplied?.Invoke(this, ordered);
-        await RefreshLocalSectionAsync();
+        _ = RefreshLocalSectionAsync();
     }
 
     /// <summary>
@@ -565,7 +565,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
     /// what we need to let WinUI paint between chunks.
     /// </para>
     /// </summary>
-    private async Task PopulateSectionsChunkedAsync(IList<HomeSection> ordered, int chunkSize = 4)
+    private async Task PopulateSectionsChunkedAsync(IList<HomeSection> ordered, int chunkSize = 2)
     {
         // Start from empty: we only call this when Sections.Count == 0, but guard anyway.
         // Resilient reset — a raw Clear() on the bound home shelf mid-layout can E_FAIL (issue #6).
@@ -816,8 +816,6 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
     {
         if (chip == null) return;
 
-        System.Diagnostics.Debug.WriteLine($"[SelectChipAsync] chip={chip.Label}, id={chip.Id}, isBack={chip.IsBackChip}");
-
         // Synthetic "Local files" chip — purely client-side. Flip the
         // local-only filter, mark the chip as the lone selection, and
         // skip the Pathfinder refetch (there's no Spotify facet to send).
@@ -894,7 +892,6 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         _homeFeedCache.CurrentFacet = string.IsNullOrEmpty(facet) ? null : facet;
         _homeFeedCache.Invalidate();
 
-        System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] facet={facet ?? "(null)"}, cache invalidated, about to fetch");
         _logger?.LogDebug("Refetching home with facet: {Facet}", facet ?? "(none)");
 
         // Tell the parent to flip IsLoading and clear any existing error — bypasses
@@ -904,7 +901,6 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         try
         {
             var snapshot = await _homeFeedCache.FetchFreshAsync();
-            System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] Got {snapshot.Sections.Count} sections, greeting={snapshot.Greeting}");
             _greetingSetter(snapshot.Greeting);
             var ordered = ApplyPreferences(snapshot.Sections);
 
@@ -917,13 +913,11 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
                     s => s.ApplyTheme(_isDarkThemeProvider()));
             RestoreLocalSection(localSection);
 
-            System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] After diff: {Sections.Count} sections displayed");
             SectionsApplied?.Invoke(this, ordered);
-            await RefreshLocalSectionAsync();
+            _ = RefreshLocalSectionAsync();
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] ERROR: {ex.Message}");
             _logger?.LogError(ex, "Failed to refetch with facet {Facet}", facet);
             FacetRefetchFailed?.Invoke(this, ex);
         }
