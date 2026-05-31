@@ -1,0 +1,14 @@
+<svg width="640" height="180" viewBox="0 0 640 180" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Download for Windows</title>
+  <desc id="desc">Signed MSIX installer download badge for WaveeMusic.</desc>
+  <rect x="2.5" y="2.5" width="635" height="175" rx="24" fill="#0B0B0B"/>
+  <rect x="2.5" y="2.5" width="635" height="175" rx="24" stroke="#707070" stroke-width="5"/>
+  <g transform="translate(32 46)">
+    <rect width="88" height="88" rx="10" fill="#0078D4"/>
+    <path d="M17 31L44 16L71 31L44 46L17 31Z" fill="#FFFFFF"/>
+    <path d="M17 37L41 50V74L17 60V37Z" fill="#FFFFFF"/>
+    <path d="M47 50L71 37V60L47 74V50Z" fill="#FFFFFF"/>
+  </g>
+  <text x="146" y="66" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="600" letter-spacing=".7">SIGNED MSIX INSTALLER</text>
+  <text x="146" y="123" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="43" font-weight="600">Download for Windows</text>
+</svg>
