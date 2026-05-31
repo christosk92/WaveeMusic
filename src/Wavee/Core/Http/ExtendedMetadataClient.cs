@@ -152,20 +152,34 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         if (data == null)
             return null;
 
+        Track track;
         try
         {
-            var track = Track.Parser.ParseFrom(data);
-
-            // Store queryable properties
-            await StoreTrackPropertiesAsync(trackUri, track, cancellationToken);
-
-            return track;
+            track = Track.Parser.ParseFrom(data);
         }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Failed to parse Track from TRACK_V4 extension data");
             return null;
         }
+
+        // Caching queryable properties is best-effort. A cancelled or write-lock-contended
+        // metadata-DB write must NOT masquerade as a parse failure, and the parsed track is
+        // still valid to return even when the cache write didn't land.
+        try
+        {
+            await StoreTrackPropertiesAsync(trackUri, track, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogDebug("Track-properties cache write cancelled for {Uri}", trackUri);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to cache track properties for {Uri}", trackUri);
+        }
+
+        return track;
     }
 
     /// <summary>

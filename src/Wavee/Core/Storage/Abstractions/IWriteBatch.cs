@@ -1,3 +1,4 @@
+using Wavee.Core.Storage.Entities;
 using Wavee.Protocol.ExtendedMetadata;
 
 namespace Wavee.Core.Storage.Abstractions;
@@ -61,5 +62,14 @@ public interface IWriteBatch : IAsyncDisposable
         string? streamUrl = null,
         long? expiresAt = null,
         long? addedAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Upserts a playlist cache entry row in this batch's transaction. Mirrors the
+    /// standalone <c>IMetadataDatabase.UpsertPlaylistCacheEntryAsync</c>, letting many
+    /// rows (e.g. a whole rootlist) be persisted under one transaction.
+    /// </summary>
+    Task UpsertPlaylistCacheEntryAsync(
+        PlaylistCacheEntry playlist,
         CancellationToken cancellationToken = default);
 }
