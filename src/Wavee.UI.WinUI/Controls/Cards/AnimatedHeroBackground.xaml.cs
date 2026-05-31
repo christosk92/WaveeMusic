@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using ComputeSharp;
 using ComputeSharp.D2D1.WinUI;
@@ -34,6 +35,15 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
         typeof(AnimatedHeroBackground),
         new PropertyMetadata(false, OnIsPausedChanged));
 
+    // Opt-in (default false → existing consumers snap exactly as before). When true, PrimaryColor /
+    // AccentColor changes are eased toward on the render thread (per-frame lerp in OnDraw) for a
+    // smooth palette morph — e.g. between swipe cards.
+    public static readonly DependencyProperty AnimateColorTransitionsProperty = DependencyProperty.Register(
+        nameof(AnimateColorTransitions),
+        typeof(bool),
+        typeof(AnimatedHeroBackground),
+        new PropertyMetadata(false, OnAnimateColorTransitionsChanged));
+
     // Self-clip: a Win2D CanvasAnimatedControl swap chain is not reliably clipped by
     // a rounded ancestor (Border.CornerRadius / AttachedCardShadow CompositionMaskBrush
     // / parent CompositionGeometricClip). Apply the rounded clip directly on this
@@ -47,6 +57,11 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
     private readonly PixelShaderEffect<MeshGradientShader> _effect = new();
     private float4 _primary;
     private float4 _accent;
+    // Targets the on-screen colors ease toward when AnimateColorTransitions is on.
+    private float4 _primaryTarget;
+    private float4 _accentTarget;
+    // Cached on the UI thread so OnDraw (render thread) never reads the DP (which throws off-thread).
+    private bool _animateColors;
     // Cached on the UI thread so OnDraw (Win2D render thread) doesn't have to read
     // the DP, which throws when accessed off the dispatcher.
     private float _clipRadius;
@@ -75,6 +90,12 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
         set => SetValue(IsPausedProperty, value);
     }
 
+    public bool AnimateColorTransitions
+    {
+        get => (bool)GetValue(AnimateColorTransitionsProperty);
+        set => SetValue(AnimateColorTransitionsProperty, value);
+    }
+
     public double ClipCornerRadius
     {
         get => (double)GetValue(ClipCornerRadiusProperty);
@@ -84,8 +105,9 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
     public AnimatedHeroBackground()
     {
         InitializeComponent();
-        _primary = ToFloat4(PrimaryColor);
-        _accent = ToFloat4(AccentColor);
+        _primary = _primaryTarget = ToFloat4(PrimaryColor);
+        _accent = _accentTarget = ToFloat4(AccentColor);
+        _animateColors = AnimateColorTransitions;
         _clipRadius = (float)ClipCornerRadius;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -192,11 +214,23 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
     {
         if (d is not AnimatedHeroBackground self)
             return;
-        var color = (Color)e.NewValue;
+        var f = ToFloat4((Color)e.NewValue);
         if (e.Property == PrimaryColorProperty)
-            self._primary = ToFloat4(color);
+        {
+            self._primaryTarget = f;
+            if (!self._animateColors) self._primary = f;
+        }
         else if (e.Property == AccentColorProperty)
-            self._accent = ToFloat4(color);
+        {
+            self._accentTarget = f;
+            if (!self._animateColors) self._accent = f;
+        }
+    }
+
+    private static void OnAnimateColorTransitionsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is AnimatedHeroBackground self)
+            self._animateColors = (bool)e.NewValue;
     }
 
     private void OnDraw(ICanvasAnimatedControl sender, CanvasAnimatedDrawEventArgs args)
@@ -210,6 +244,15 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
             var height = (int)sender.ConvertDipsToPixels((float)sender.Size.Height, CanvasDpiRounding.Round);
             if (width <= 0 || height <= 0)
                 return;
+
+            if (_animateColors)
+            {
+                // Frame-rate-independent ease toward the target palette (~0.12s time constant).
+                var dt = (float)args.Timing.ElapsedTime.TotalSeconds;
+                var k = dt <= 0f ? 1f : 1f - MathF.Exp(-dt / 0.12f);
+                _primary = Lerp(_primary, _primaryTarget, k);
+                _accent = Lerp(_accent, _accentTarget, k);
+            }
 
             _effect.ConstantBuffer = new MeshGradientShader(
                 (float)args.Timing.TotalTime.TotalSeconds,
@@ -262,4 +305,7 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
 
     private static float4 ToFloat4(Color c)
         => new(c.R / 255f, c.G / 255f, c.B / 255f, c.A / 255f);
+
+    private static float4 Lerp(float4 a, float4 b, float t)
+        => new(a.X + ((b.X - a.X) * t), a.Y + ((b.Y - a.Y) * t), a.Z + ((b.Z - a.Z) * t), a.W + ((b.W - a.W) * t));
 }

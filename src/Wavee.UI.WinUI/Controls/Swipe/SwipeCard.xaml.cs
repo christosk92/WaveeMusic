@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -7,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.Services.Playlists;
+using Wavee.UI.WinUI.Services;
 using Windows.Foundation;
 
 namespace Wavee.UI.WinUI.Controls.Swipe;
@@ -30,6 +32,7 @@ public sealed partial class SwipeCard : UserControl
     public SwipeCard()
     {
         InitializeComponent();
+        _canvasService = Ioc.Default.GetService<ISharedCardCanvasPreviewService>();
         PointerPressed += OnPointerPressed;
         PointerMoved += OnPointerMoved;
         PointerReleased += OnPointerReleased;

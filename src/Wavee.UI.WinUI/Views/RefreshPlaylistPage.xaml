@@ -23,8 +23,9 @@
         </Grid.RowDefinitions>
 
         <!-- Immersive palette wash — animated mesh gradient driven by the current card's art.
-             Kept low-opacity so it reads as an ambient glow behind the deck, not a loud gradient. -->
-        <cards:AnimatedHeroBackground Grid.RowSpan="3" Opacity="0.42" IsHitTestVisible="False"
+             AnimateColorTransitions eases the palette between cards (no snap). -->
+        <cards:AnimatedHeroBackground x:Name="HeroBg" Grid.RowSpan="3" Opacity="0.42" IsHitTestVisible="False"
+                                      AnimateColorTransitions="True"
                                       PrimaryColor="{x:Bind ViewModel.BackgroundPrimary, Mode=OneWay}"
                                       AccentColor="{x:Bind ViewModel.BackgroundAccent, Mode=OneWay}" />
 
@@ -104,7 +105,7 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
                     Visibility="{x:Bind ToVis(ViewModel.HasArtistSpotlight), Mode=OneWay}">
                 <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="14">
+                    <StackPanel x:Name="SpotlightContent" Spacing="14">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <imaging:CompositionImage Width="56" Height="56" CornerRadius="28" Stretch="UniformToFill"
                                                       DecodePixelSize="128" ImageUrl="{x:Bind ViewModel.SpotlightAvatarUrl, Mode=OneWay}" />
@@ -115,13 +116,6 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                         </StackPanel>
-
-                        <Border CornerRadius="8" Width="176" Height="276" HorizontalAlignment="Center"
-                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                Visibility="{x:Bind ToVis(ViewModel.HasCanvas), Mode=OneWay}">
-                            <MediaPlayerElement x:Name="CanvasVideo" Stretch="UniformToFill" AreTransportControlsEnabled="False"
-                                                CornerRadius="8" />
-                        </Border>
 
                         <TextBlock Text="{x:Bind ViewModel.SpotlightBio, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="6"
@@ -173,6 +167,7 @@
                                      ImageUrl="{x:Bind ViewModel.CurrentCard.ImageUrl, Mode=OneWay}"
                                      Title="{x:Bind ViewModel.CurrentCard.Title, Mode=OneWay}"
                                      ArtistName="{x:Bind ViewModel.CurrentCard.ArtistName, Mode=OneWay}"
+                                     CanvasUrl="{x:Bind ViewModel.SpotlightCanvasUrl, Mode=OneWay}"
                                      PreviewProgress="{x:Bind ViewModel.PreviewProgress, Mode=OneWay}"
                                      PreviewState="{x:Bind ViewModel.PreviewState, Mode=OneWay}"
                                      DecisionCommitted="TopCard_DecisionCommitted" />

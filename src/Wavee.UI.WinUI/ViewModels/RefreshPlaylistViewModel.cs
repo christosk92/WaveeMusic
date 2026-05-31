@@ -113,10 +113,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
     [ObservableProperty] public partial string? SpotlightAvatarUrl { get; set; }
     [ObservableProperty] public partial string SpotlightListeners { get; set; } = "";
     [ObservableProperty] public partial string? SpotlightBio { get; set; }
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasCanvas))]
-    public partial string? SpotlightCanvasUrl { get; set; }
-    public bool HasCanvas => !string.IsNullOrEmpty(SpotlightCanvasUrl);
+    [ObservableProperty] public partial string? SpotlightCanvasUrl { get; set; }   // bound to SwipeCard.CanvasUrl
 
     public ObservableCollection<RefreshCard> RemovedCards { get; } = new();
     public ObservableCollection<RefreshCard> UpNext { get; } = new();

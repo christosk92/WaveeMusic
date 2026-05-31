@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -10,16 +11,12 @@ using Wavee.UI.WinUI.Controls.Swipe;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels;
-using Windows.Media.Core;
-using Windows.Media.Playback;
 using Windows.System;
 
 namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class RefreshPlaylistPage : UserControl, IPageHostAware
 {
-    private MediaPlayer? _canvasPlayer;
-
     public RefreshPlaylistViewModel ViewModel { get; }
 
     public RefreshPlaylistPage()
@@ -41,7 +38,7 @@ public sealed partial class RefreshPlaylistPage : UserControl, IPageHostAware
     public void OnLeaving()
     {
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        TeardownCanvas();
+        TopCard.ReleaseCanvas();
         ViewModel.Teardown();
     }
 
@@ -54,39 +51,16 @@ public sealed partial class RefreshPlaylistPage : UserControl, IPageHostAware
     public static Visibility RemovedVis(SwipeDecision? d) => d == SwipeDecision.Remove ? Visibility.Visible : Visibility.Collapsed;
     public Visibility CountVis(int n) => n > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-    // ── Artist Canvas video (looping, muted) ──
+    // The immersive shader morphs its own palette (AnimateColorTransitions). Here we only soft-reveal
+    // the artist panel when its content changes per track.
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(RefreshPlaylistViewModel.SpotlightCanvasUrl))
-            UpdateCanvas(ViewModel.SpotlightCanvasUrl);
+        if (e.PropertyName == nameof(RefreshPlaylistViewModel.SpotlightArtistName))
+            FadeSpotlight();
     }
 
-    private void UpdateCanvas(string? url)
-    {
-        if (string.IsNullOrEmpty(url))
-        {
-            if (_canvasPlayer is not null) { _canvasPlayer.Pause(); _canvasPlayer.Source = null; }
-            return;
-        }
-        try
-        {
-            if (_canvasPlayer is null)
-            {
-                _canvasPlayer = new MediaPlayer { IsLoopingEnabled = true, IsMuted = true };
-                CanvasVideo.SetMediaPlayer(_canvasPlayer);
-            }
-            _canvasPlayer.Source = MediaSource.CreateFromUri(new Uri(url));
-            _canvasPlayer.Play();
-        }
-        catch { /* Canvas is decorative — never let a bad URL break the page */ }
-    }
-
-    private void TeardownCanvas()
-    {
-        if (_canvasPlayer is null) return;
-        try { _canvasPlayer.Pause(); CanvasVideo?.SetMediaPlayer(null); _canvasPlayer.Dispose(); } catch { }
-        _canvasPlayer = null;
-    }
+    private void FadeSpotlight()
+        => AnimationBuilder.Create().Opacity(from: 0.4d, to: 1d, duration: TimeSpan.FromMilliseconds(260)).Start(SpotlightContent);
 
     private void Page_KeyDown(object sender, KeyRoutedEventArgs e)
     {
