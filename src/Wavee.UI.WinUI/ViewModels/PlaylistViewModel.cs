@@ -79,6 +79,15 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
     /// commands, reorder). Constructor-initialized.</summary>
     public PlaylistTrackListViewModel TrackList { get; }
 
+    /// <summary>Launch "Refresh with swipes" for this playlist (editable, non-empty playlists only).</summary>
+    [RelayCommand]
+    private void OpenRefreshWithSwipes()
+    {
+        if (!Header.CanEditItems || TrackList.TotalTracks <= 0) return;
+        Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenRefreshPlaylist(
+            new Wavee.UI.WinUI.Data.Parameters.RefreshPlaylistParameter(PlaylistId, Header.PlaylistName ?? "Playlist"));
+    }
+
     /// <summary>Mutation commands (rename, description, cover change/remove,
     /// delete, collab toggle, recommendations). Constructor-initialized.</summary>
     public PlaylistMutationCoordinator Mutations { get; }

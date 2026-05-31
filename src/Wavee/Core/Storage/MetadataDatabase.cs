@@ -90,7 +90,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
     //      Wavee.Core.Storage.Outbox.OutboxProcessor.
     // v23: Persisted undoable user-action activity entries for the Activity
     //      flyout. The action layer owns descriptor JSON semantics.
-    private const int CurrentSchemaVersion = 23;
+    private const int CurrentSchemaVersion = 24;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -324,6 +324,18 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     is_undone       INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE INDEX IF NOT EXISTS idx_user_action_activity_created ON user_action_activity(created_at DESC);
+                """),
+        new SchemaMigration(
+            FromVersion: 23,
+            ToVersion: 24,
+            Sql: """
+                CREATE TABLE IF NOT EXISTS playlist_refresh_sessions (
+                    playlist_id     TEXT PRIMARY KEY NOT NULL,
+                    payload_json    TEXT NOT NULL,
+                    remaining_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at      INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_playlist_refresh_sessions_updated ON playlist_refresh_sessions(updated_at DESC);
                 """)
     ];
 
@@ -3086,6 +3098,69 @@ public sealed class MetadataDatabase : IMetadataDatabase
         await connection.OpenAsync(ct);
         using var cmd = connection.CreateCommand();
         cmd.CommandText = "DELETE FROM user_action_activity;";
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    #endregion
+
+    #region Playlist Refresh Session Operations
+
+    public async Task UpsertPlaylistRefreshSessionAsync(string playlistId, string payloadJson, int remaining, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(playlistId);
+        ArgumentNullException.ThrowIfNull(payloadJson);
+
+        using var __lease = await AcquireWriteLockAsync(nameof(UpsertPlaylistRefreshSessionAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO playlist_refresh_sessions (playlist_id, payload_json, remaining_count, updated_at)
+            VALUES ($id, $payload, $remaining, $updatedAt)
+            ON CONFLICT(playlist_id) DO UPDATE SET
+                payload_json = excluded.payload_json,
+                remaining_count = excluded.remaining_count,
+                updated_at = excluded.updated_at;
+            """;
+        cmd.Parameters.AddWithValue("$id", playlistId);
+        cmd.Parameters.AddWithValue("$payload", payloadJson);
+        cmd.Parameters.AddWithValue("$remaining", remaining);
+        cmd.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task<(string PayloadJson, int Remaining)?> GetPlaylistRefreshSessionAsync(string playlistId, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT payload_json, remaining_count FROM playlist_refresh_sessions WHERE playlist_id = $id;";
+        cmd.Parameters.AddWithValue("$id", playlistId);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+        return (reader.GetString(0), reader.GetInt32(1));
+    }
+
+    public async Task<int?> GetPlaylistRefreshRemainingAsync(string playlistId, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT remaining_count FROM playlist_refresh_sessions WHERE playlist_id = $id;";
+        cmd.Parameters.AddWithValue("$id", playlistId);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is null or DBNull ? null : Convert.ToInt32(result);
+    }
+
+    public async Task DeletePlaylistRefreshSessionAsync(string playlistId, CancellationToken ct = default)
+    {
+        using var __lease = await AcquireWriteLockAsync(nameof(DeletePlaylistRefreshSessionAsync), 1, ct);
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM playlist_refresh_sessions WHERE playlist_id = $id;";
+        cmd.Parameters.AddWithValue("$id", playlistId);
         await cmd.ExecuteNonQueryAsync(ct);
     }
 

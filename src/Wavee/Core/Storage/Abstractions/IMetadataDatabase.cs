@@ -628,6 +628,22 @@ public interface IMetadataDatabase : IAsyncDisposable
     Task ClearUserActionActivitiesAsync(CancellationToken ct = default);
 
     #endregion
+
+    #region Playlist Refresh Session Operations
+
+    /// <summary>Upserts the saved "Refresh with swipes" session for a playlist. <paramref name="remaining"/> is stored for the cheap entry-button lookup.</summary>
+    Task UpsertPlaylistRefreshSessionAsync(string playlistId, string payloadJson, int remaining, CancellationToken ct = default);
+
+    /// <summary>Loads the saved refresh session payload + remaining count for a playlist, or null when none is saved.</summary>
+    Task<(string PayloadJson, int Remaining)?> GetPlaylistRefreshSessionAsync(string playlistId, CancellationToken ct = default);
+
+    /// <summary>Cheap "Resume · N left" lookup; null when no refresh session is saved for the playlist.</summary>
+    Task<int?> GetPlaylistRefreshRemainingAsync(string playlistId, CancellationToken ct = default);
+
+    /// <summary>Removes the saved refresh session for a playlist.</summary>
+    Task DeletePlaylistRefreshSessionAsync(string playlistId, CancellationToken ct = default);
+
+    #endregion
 }
 
 /// <summary>
