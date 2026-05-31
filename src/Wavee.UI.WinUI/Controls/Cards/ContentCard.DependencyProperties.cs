@@ -288,21 +288,6 @@ public sealed partial class ContentCard
         DependencyProperty.Register(nameof(ShowPlaybackOverlay), typeof(bool), typeof(ContentCard),
             new PropertyMetadata(true, OnShowPlaybackOverlayChanged));
 
-    public static readonly DependencyProperty UseConnectedAnimationProperty =
-        DependencyProperty.Register(nameof(UseConnectedAnimation), typeof(bool), typeof(ContentCard),
-            new PropertyMetadata(true));
-
-    /// <summary>
-    /// Enables source-to-destination connected animation for same-tab navigation.
-    /// Disable for cards hosted inside the destination page itself; reusing that
-    /// page can invalidate the source subtree during the navigation event.
-    /// </summary>
-    public bool UseConnectedAnimation
-    {
-        get => (bool)GetValue(UseConnectedAnimationProperty);
-        set => SetValue(UseConnectedAnimationProperty, value);
-    }
-
     public static readonly DependencyProperty AutoNavigateOnTapProperty =
         DependencyProperty.Register(nameof(AutoNavigateOnTap), typeof(bool), typeof(ContentCard),
             new PropertyMetadata(true));

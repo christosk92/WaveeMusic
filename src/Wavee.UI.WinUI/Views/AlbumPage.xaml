@@ -1162,7 +1162,6 @@
                                                     Title="{x:Bind Name}"
                                                     Subtitle="{x:Bind Year}"
                                                     NavigationUri="{x:Bind Uri}"
-                                                    UseConnectedAnimation="False"
                                                     PlaceholderGlyph="&#xE93C;"
                                                     IsCircularImage="False"/>
                                             </DataTemplate>
@@ -1213,7 +1212,6 @@
                                                     Title="{x:Bind Name, Mode=OneTime}"
                                                     Subtitle="{x:Bind Description, Mode=OneTime}"
                                                     NavigationUri="{x:Bind Id, Mode=OneTime}"
-                                                    UseConnectedAnimation="False"
                                                     PlaceholderGlyph="&#xE8FD;"
                                                     IsCircularImage="False"/>
                                             </DataTemplate>

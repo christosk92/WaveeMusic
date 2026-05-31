@@ -341,7 +341,6 @@ public sealed partial class ShowEpisodeRow : UserControl
         // their own Click handlers and we'd otherwise both fire LikeRequested
         // and OpenRequested on a single heart/play tap.
         if (e.OriginalSource is FrameworkElement fe && IsInsideActionCluster(fe)) return;
-        ConnectedAnimationHelper.PrepareAnimation(ConnectedAnimationHelper.PodcastEpisodeArt, CoverContainer);
         OpenRequested?.Invoke(this, Episode);
     }
 

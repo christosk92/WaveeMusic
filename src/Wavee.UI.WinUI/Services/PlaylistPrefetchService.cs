@@ -34,7 +34,9 @@ public interface IPlaylistPrefetcher
 
 internal sealed partial class PlaylistPrefetchService : IPlaylistPrefetcher
 {
-    private const int MaxConcurrent = 4;
+    private const int MaxConcurrent = 1;
+    private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan BetweenFetchDelay = TimeSpan.FromMilliseconds(250);
 
     private readonly ILibraryDataService _libraryDataService;
     private readonly IMessenger _messenger;
@@ -75,36 +77,30 @@ internal sealed partial class PlaylistPrefetchService : IPlaylistPrefetcher
                 total, MaxConcurrent);
             _messenger.Send(new PlaylistPrefetchStartedMessage(total));
 
-            using var gate = new SemaphoreSlim(MaxConcurrent, MaxConcurrent);
+            await Task.Delay(InitialDelay, ct).ConfigureAwait(false);
+
             var done = 0;
-            var tasks = new List<Task>(total);
 
             foreach (var summary in playlists)
             {
                 ct.ThrowIfCancellationRequested();
-                await gate.WaitAsync(ct).ConfigureAwait(false);
-                tasks.Add(Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        await _libraryDataService.GetPlaylistAsync(summary.Id, ct).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) { throw; }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogDebug(ex, "Playlist prefetch failed for {Name} ({Id})", summary.Name, summary.Id);
-                    }
-                    finally
-                    {
-                        var current = Interlocked.Increment(ref done);
-                        _messenger.Send(new PlaylistPrefetchProgressMessage(summary.Name ?? "(unnamed)", current, total));
-                        _logger?.LogDebug("Playlist prefetch: {Name} [{Done}/{Total}]", summary.Name, current, total);
-                        gate.Release();
-                    }
-                }, ct));
+                    await _libraryDataService.GetPlaylistAsync(summary.Id, ct).ConfigureAwait(false);
+                    await Task.Delay(BetweenFetchDelay, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Playlist prefetch failed for {Name} ({Id})", summary.Name, summary.Id);
+                }
+                finally
+                {
+                    var current = ++done;
+                    _messenger.Send(new PlaylistPrefetchProgressMessage(summary.Name ?? "(unnamed)", current, total));
+                    _logger?.LogDebug("Playlist prefetch: {Name} [{Done}/{Total}]", summary.Name, current, total);
+                }
             }
-
-            await Task.WhenAll(tasks).ConfigureAwait(false);
             _logger?.LogInformation("Playlist prefetch: complete ({Total} playlists warmed)", total);
         }
         catch (OperationCanceledException)

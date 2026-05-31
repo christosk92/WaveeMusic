@@ -424,24 +424,7 @@ public sealed partial class LibraryGridView : UserControl
     {
         if (SelectedItem == null) return;
 
-        if (e.OriginalSource is DependencyObject source)
-        {
-            var card = FindParent<Cards.ContentCard>(source);
-            card?.PrepareConnectedAnimation();
-        }
-
         ItemDoubleTapped?.Invoke(this, SelectedItem);
-    }
-
-    private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
-    {
-        var parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(child);
-        while (parent != null)
-        {
-            if (parent is T match) return match;
-            parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent);
-        }
-        return null;
     }
 
     private void ShimmerOverlay_Loaded(object sender, RoutedEventArgs e)

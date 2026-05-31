@@ -131,7 +131,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         DispatcherQueue.TryEnqueue(() => ViewModel.ApplyBackgroundRefresh(snapshot));
     }
 
-    private async void HomePage_Loaded(object sender, RoutedEventArgs e)
+    private void HomePage_Loaded(object sender, RoutedEventArgs e)
     {
         Loaded -= HomePage_Loaded;
 
@@ -143,7 +143,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>(this, (r, m) =>
         {
             if (m.Value == AuthStatus.Authenticated)
-                DispatcherQueue.TryEnqueue(() => _ = ViewModel.LoadCommand.ExecuteAsync(null));
+                QueueHomeLoad("auth");
         });
 
         if (_cache != null)
@@ -151,13 +151,27 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
 
+        QueueHomeLoad("loaded");
+    }
+
+    private void QueueHomeLoad(string reason)
+    {
+        if (!DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () => _ = RunHomeLoadAsync(reason)))
+            _ = RunHomeLoadAsync(reason);
+    }
+
+    private async Task RunHomeLoadAsync(string reason)
+    {
+        if (_isDisposed || _isNavigatedAway)
+            return;
+
         try
         {
             await ViewModel.LoadCommand.ExecuteAsync(null);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Unhandled error in HomePage Loaded handler");
+            _logger?.LogError(ex, "Unhandled error while loading HomePage ({Reason})", reason);
         }
     }
 
@@ -516,6 +530,36 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         // within 4/256 of the stale pre-trim value.
         ViewModel.ResetCarouselBleedThrottle();
         DetachSectionsRepeater();
+    }
+
+    IEnumerable<Action> INavigationCacheMemoryParticipant.GetTrimMicroSteps()
+    {
+        if (_isDisposed || _trimmedForNavigationCache)
+            yield break;
+
+        yield return () =>
+        {
+            if (_isDisposed || _trimmedForNavigationCache)
+                return;
+
+            _trimmedForNavigationCache = true;
+            _pendingSleepState = new HomePageSleepState(ContentContainer?.VerticalOffset ?? 0);
+        };
+        yield return () =>
+        {
+            if (!_isDisposed)
+                ViewModel.HibernateForNavigation();
+        };
+        yield return () =>
+        {
+            if (!_isDisposed)
+                ViewModel.ResetCarouselBleedThrottle();
+        };
+        yield return () =>
+        {
+            if (!_isDisposed)
+                DetachSectionsRepeater();
+        };
     }
 
     public void RestoreFromNavigationCache()

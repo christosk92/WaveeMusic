@@ -212,14 +212,12 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable, IInPage
 
     private void OpenSelectedEpisodeDetails_Click(object sender, RoutedEventArgs e)
     {
-        PrepareConnectedAnimationNear(sender as DependencyObject, "EpisodeDetailCoverContainer", ConnectedAnimationHelper.PodcastEpisodeArt);
         if (ViewModel.OpenSelectedEpisodeDetailsCommand.CanExecute(null))
             ViewModel.OpenSelectedEpisodeDetailsCommand.Execute(null);
     }
 
     private void OpenSelectedShowDetails_Click(object sender, RoutedEventArgs e)
     {
-        PrepareConnectedAnimationNear(sender as DependencyObject, "SelectedShowCoverContainer", ConnectedAnimationHelper.PodcastArt);
         if (ViewModel.OpenSelectedShowCommand.CanExecute(null))
             ViewModel.OpenSelectedShowCommand.Execute(null);
     }
@@ -267,52 +265,6 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable, IInPage
     private void BrowsePodcasts_Click(object sender, RoutedEventArgs e)
     {
         NavigationHelpers.OpenPodcastBrowse(NavigationHelpers.IsCtrlPressed());
-    }
-
-    private static void PrepareConnectedAnimationNear(DependencyObject? origin, string sourceName, string key)
-    {
-        var source = FindNearestNamedDescendant<FrameworkElement>(origin, sourceName);
-        if (source is null)
-            return;
-
-        ConnectedAnimationHelper.PrepareAnimation(key, source);
-    }
-
-    private static T? FindNearestNamedDescendant<T>(DependencyObject? origin, string name)
-        where T : FrameworkElement
-    {
-        var current = origin;
-        while (current is not null)
-        {
-            var match = FindDescendantByName<T>(current, name);
-            if (match is not null)
-                return match;
-
-            current = VisualTreeHelper.GetParent(current);
-        }
-
-        return null;
-    }
-
-    private static T? FindDescendantByName<T>(DependencyObject? root, string name)
-        where T : FrameworkElement
-    {
-        if (root is null)
-            return null;
-
-        var childCount = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < childCount; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T element && element.Name == name)
-                return element;
-
-            var descendant = FindDescendantByName<T>(child, name);
-            if (descendant is not null)
-                return descendant;
-        }
-
-        return null;
     }
 
     public void Dispose()

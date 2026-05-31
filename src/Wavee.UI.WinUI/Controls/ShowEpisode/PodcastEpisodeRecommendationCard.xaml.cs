@@ -105,7 +105,6 @@ public sealed partial class PodcastEpisodeRecommendationCard : UserControl
         if (Recommendation is null) return;
         if (e.OriginalSource is FrameworkElement fe && IsInsidePlayButton(fe)) return;
 
-        ConnectedAnimationHelper.PrepareAnimation(ConnectedAnimationHelper.PodcastEpisodeArt, CoverContainer);
         NavigationHelpers.OpenEpisodePage(
             Recommendation.Uri,
             Recommendation.Title,

@@ -98,8 +98,6 @@ public sealed partial class ContentCard
             var openInNewTab = Helpers.Navigation.NavigationHelpers.IsCtrlPressed();
             NavigationDiagnostics.RecordClickIntent(
                 "ContentCard." + ClickIntentKindFromUri(NavigationUri) + (openInNewTab ? ".NewTab" : ""));
-            if (!openInNewTab && UseConnectedAnimation)
-                PrepareConnectedAnimation();
 
             ResetInteractionState();
             if (NavigateToUri(openInNewTab))
@@ -135,7 +133,7 @@ public sealed partial class ContentCard
 
     /// <summary>
     /// Click handler for the optional SecondaryAction overlay button. Routes
-    /// to AlbumPage with full prefetch + connected animation + count prefill
+    /// to AlbumPage with full prefetch + count prefill
     /// via <see cref="Helpers.Navigation.AlbumNavigationHelper.NavigateToAlbum"/>. Marks the event
     /// handled so the underlying card Tapped / CardClick doesn't also fire —
     /// critical on surfaces whose primary tap triggers a different action
@@ -151,27 +149,13 @@ public sealed partial class ContentCard
             title: Title,
             subtitle: Subtitle,
             imageUrl: ImageUrl,
-            totalTracks: NavigationTotalTracks > 0 ? NavigationTotalTracks : null,
-            connectedAnimationSource: UseConnectedAnimation ? GetConnectedAnimationSource() : null);
+            totalTracks: NavigationTotalTracks > 0 ? NavigationTotalTracks : null);
 
         // RoutedEventArgs from Button.Click does not bubble to ancestor Tapped
         // handlers under the WinUI 3 input model — the Button consumes the
         // pointer before Tapped fires, so we don't need e.Handled = true here.
         // CardClick is only invoked from CardButton_Click (which never sees the
         // inner Button's click), so the expand path also stays untouched.
-    }
-
-    /// <summary>
-    /// The cover-image visual to use as the connected-animation source.
-    /// Square cards animate the SquareImageContainer; circle cards (artist
-    /// avatars) animate the CircleImageContainer. Returns null if neither is
-    /// available — caller's null-check skips the animation prep cleanly.
-    /// </summary>
-    private UIElement? GetConnectedAnimationSource()
-    {
-        if (IsCircularImage && CircleImageContainer is not null)
-            return CircleImageContainer;
-        return SquareImageContainer as UIElement;
     }
 
     private void SelectParentItemContainer()
@@ -351,44 +335,5 @@ public sealed partial class ContentCard
     private void OpenAlbumAfterClick(Data.Parameters.ContentNavigationParameter parameter, string title, bool openInNewTab)
     {
         Helpers.Navigation.NavigationHelpers.OpenAlbum(parameter, title, openInNewTab);
-    }
-
-    internal bool PrepareConnectedAnimation()
-    {
-        var uri = NavigationUri;
-        if (string.IsNullOrEmpty(uri) || IsCircularImage)
-            return false;
-
-        // Don't snapshot before the GPU surface has finished loading — the
-        // morph would start from an empty rect and pop into the cover mid-
-        // flight. Cold-cache cards fall back to the standard shimmer crossfade
-        // reveal, which looks correct.
-        if (SquareImage is null || !SquareImage.IsImageLoaded)
-            return false;
-
-        var parts = uri.Split(':');
-        if (parts.Length < 3)
-            return false;
-
-        var key = parts[1] switch
-        {
-            var type when type.Equals("album", StringComparison.OrdinalIgnoreCase)
-                => Helpers.ConnectedAnimationHelper.AlbumArt,
-            var type when type.Equals("playlist", StringComparison.OrdinalIgnoreCase)
-                => Helpers.ConnectedAnimationHelper.PlaylistArt,
-            var type when type.Equals("show", StringComparison.OrdinalIgnoreCase)
-                => Helpers.ConnectedAnimationHelper.PodcastArt,
-            var type when type.Equals("episode", StringComparison.OrdinalIgnoreCase)
-                => Helpers.ConnectedAnimationHelper.PodcastEpisodeArt,
-            _ => null
-        };
-
-        if (key is null)
-            return false;
-
-        Helpers.ConnectedAnimationHelper.PrepareAnimation(
-            key,
-            SquareImageContainer);
-        return true;
     }
 }
