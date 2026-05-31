@@ -227,6 +227,19 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             _showingContent = false;
             _crossfadeScheduled = false;
             ShimmerGate.Reset(() => ShimmerContainer, () => BodyContent);
+
+            // Clear the OUTGOING artist + arm loading SYNCHRONOUSLY, before the
+            // Task.Yield + ScrollTo(0) below. The hero (artist photo + name) sits
+            // outside the shimmer gate and is force-shown by ForceHeroVisualsVisible,
+            // so without this it stays bound to the previous artist while the page
+            // scrolls to the top — then only blanks when the DEFERRED
+            // ViewModel.Initialize tick runs. That lag is the "old artist content →
+            // scrolls up → shimmer" flicker. BeginArtistSwap nulls Header.Artist,
+            // whose [NotifyPropertyChangedFor] fan-out blanks the hero's OneWay
+            // x:Binds this frame; the expensive subscribe / enrich / Bindings.Update
+            // still runs deferred in InitializeArtistDeferred.
+            if (!string.IsNullOrEmpty(uri))
+                ViewModel.BeginArtistSwap(uri);
         }
 
         // Yield once between the shimmer flip and the heavy VM-init /

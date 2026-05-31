@@ -343,6 +343,29 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Initialization ──────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Cheap, synchronous front-half of an artist swap, run on the navigation's
+    /// synchronous path (before ScrollTo / first paint) so a reused page never
+    /// shows the previous artist at the new scroll position. Nulls the header
+    /// (the hero's projected scalars blank via [NotifyPropertyChangedFor]),
+    /// clears the section collections, and arms the loading state. The expensive
+    /// store-subscribe / enrich / Bindings.Update stays deferred — the full
+    /// <see cref="Initialize"/> runs on the deferred tick and harmlessly re-does
+    /// the (now no-op) clear before subscribing. No-op when the artist is unchanged.
+    /// </summary>
+    public void BeginArtistSwap(string artistId)
+    {
+        if (string.IsNullOrEmpty(artistId)
+            || string.Equals(ArtistId, artistId, StringComparison.Ordinal))
+            return;
+
+        Interlocked.Increment(ref _loadGeneration);
+        ResetForNewArtist();
+        _appliedOverviewFor = null;
+        _appliedOverview = null;
+        IsLoading = true;
+    }
+
     public void Initialize(string artistId)
     {
         AttachLongLivedServices();
