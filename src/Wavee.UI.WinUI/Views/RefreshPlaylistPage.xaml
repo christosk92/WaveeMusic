@@ -24,7 +24,7 @@
 
         <!-- Immersive palette wash — animated mesh gradient driven by the current card's art.
              Kept low-opacity so it reads as an ambient glow behind the deck, not a loud gradient. -->
-        <cards:AnimatedHeroBackground Grid.RowSpan="3" Opacity="0.32" IsHitTestVisible="False"
+        <cards:AnimatedHeroBackground Grid.RowSpan="3" Opacity="0.42" IsHitTestVisible="False"
                                       PrimaryColor="{x:Bind ViewModel.BackgroundPrimary, Mode=OneWay}"
                                       AccentColor="{x:Bind ViewModel.BackgroundAccent, Mode=OneWay}" />
 

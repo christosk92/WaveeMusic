@@ -87,47 +87,56 @@ public sealed class TrackColorResolver : ITrackColorResolver
         return await ToPaletteAsync(decoder);
     }
 
-    // Palette extraction only needs a thumbnail. ColorThief decodes the decoder at its full
-    // PixelWidth × PixelHeight, so a 640px art produces a ~1.6 MB pixel buffer on the LOH —
-    // collected only in Gen2, which (with prefetch running 3 per swipe) drives repeated blocking
-    // Gen2 pauses that stall the UI and starve the in-process preview AudioGraph. Downscale to a
-    // 64px thumbnail first so every extraction stays a ~16 KB gen0 allocation.
-    private const uint PaletteThumbPx = 64;
+    // The immersive background only needs two dominant colours. Decode the art straight to a tiny
+    // 48px BGRA buffer (a ~9 KB gen0 allocation — no full-res LOH block, no Gen2 churn) and pick the
+    // two most prominent vibrant buckets directly. This replaced a ColorThief median-cut on a
+    // re-encoded thumbnail that threw on every call (leaving the palette null → a static background).
+    private const uint PaletteSampleEdge = 48;
 
     private static async Task<TrackPalette?> ToPaletteAsync(BitmapDecoder source)
     {
-        BitmapDecoder decoder = source;
-        InMemoryRandomAccessStream? thumbStream = null;
-        try
+        var transform = new BitmapTransform
         {
-            if (source.PixelWidth > PaletteThumbPx || source.PixelHeight > PaletteThumbPx)
+            ScaledWidth = Math.Max(1u, Math.Min(PaletteSampleEdge, source.PixelWidth)),
+            ScaledHeight = Math.Max(1u, Math.Min(PaletteSampleEdge, source.PixelHeight)),
+            InterpolationMode = BitmapInterpolationMode.Fant,
+        };
+        var provider = await source.GetPixelDataAsync(
+            BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight, transform,
+            ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
+        var px = provider.DetachPixelData();   // BGRA, edge*edge*4 bytes
+
+        // Quantise to 4 bits/channel; score buckets by saturation so vibrant colours win over greys.
+        // [0]=count [1..3]=ΣR,G,B [4]=Σ(score*1000).
+        var buckets = new Dictionary<int, long[]>();
+        void Accumulate(bool vibrantOnly)
+        {
+            buckets.Clear();
+            for (var i = 0; i + 4 <= px.Length; i += 4)
             {
-                var transform = new BitmapTransform
-                {
-                    ScaledWidth = Math.Max(1u, Math.Min(PaletteThumbPx, source.PixelWidth)),
-                    ScaledHeight = Math.Max(1u, Math.Min(PaletteThumbPx, source.PixelHeight)),
-                    InterpolationMode = BitmapInterpolationMode.Fant,
-                };
-                using var thumb = await source.GetSoftwareBitmapAsync(
-                    BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, transform,
-                    ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
-
-                thumbStream = new InMemoryRandomAccessStream();
-                var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, thumbStream);
-                encoder.SetSoftwareBitmap(thumb);
-                await encoder.FlushAsync();
-                thumbStream.Seek(0);
-                decoder = await BitmapDecoder.CreateAsync(thumbStream);
+                int b = px[i], g = px[i + 1], r = px[i + 2], a = px[i + 3];
+                if (a < 16) continue;
+                int mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
+                if (mx < 24 || mn > 236) continue;                       // skip near-black / near-white
+                var sat = mx == 0 ? 0d : (mx - mn) / (double)mx;
+                if (vibrantOnly && sat < 0.18) continue;
+                var key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+                if (!buckets.TryGetValue(key, out var e)) { e = new long[5]; buckets[key] = e; }
+                e[0]++; e[1] += r; e[2] += g; e[3] += b; e[4] += (long)((sat + 0.15) * 1000);
             }
-
-            var result = await PaletteHelper.MedianCutGetAccentColorsFromByteAsync(decoder, 3, isDark: true);
-            if (result?.Palette is not { Count: > 0 } palette) return null;
-            var primary = palette[0];
-            var accent = palette.Count > 1 ? palette[1] : Lighten(primary);
-            return new TrackPalette(Hex(primary), Hex(accent));
         }
-        finally { thumbStream?.Dispose(); }
+
+        Accumulate(vibrantOnly: true);
+        if (buckets.Count == 0) Accumulate(vibrantOnly: false);   // greyscale art → fall back to any colour
+        if (buckets.Count == 0) return null;
+
+        var ranked = buckets.Values.OrderByDescending(e => e[4]).ToList();
+        var primary = BucketColor(ranked[0]);
+        var accent = ranked.Count > 1 ? BucketColor(ranked[1]) : Lighten(primary);
+        return new TrackPalette(Hex(primary), Hex(accent));
     }
+
+    private static Vector3 BucketColor(long[] e) => new(e[1] / (float)e[0], e[2] / (float)e[0], e[3] / (float)e[0]);
 
     private static Vector3 Lighten(Vector3 c) => new(
         Math.Clamp(c.X * 1.25f + 28f, 0, 255),
