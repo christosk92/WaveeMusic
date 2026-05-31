@@ -37,7 +37,6 @@ public static class ChangelogData
                     DetailTitle = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Resume_DetailTitle"),
                     DetailDescription = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Resume_Detail"),
                     NavigationHint = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Resume_Nav"),
-                    ImageAssetPath = Alpha011AssetRoot + "resume-reconcile.png",
                 },
                 new ChangelogFeature
                 {
@@ -47,7 +46,6 @@ public static class ChangelogData
                     DetailTitle = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Spotlight_DetailTitle"),
                     DetailDescription = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Spotlight_Detail"),
                     NavigationHint = AppLocalization.GetString("Changelog_0_1_1_Alpha_Section_Spotlight_Nav"),
-                    ImageAssetPath = Alpha011AssetRoot + "artist-spotlight-canvas.png",
                 },
                 new ChangelogFeature
                 {
