@@ -37,6 +37,19 @@ public sealed partial class UpdateService : IUpdateService
     private DateTimeOffset? _lastChecked;
     private bool _isUpdateAvailable;
     private bool _isRestartUpdateReady;
+    private bool _isAutoUpdateEnabled;
+    private bool _isDownloadingUpdate;
+    private double _downloadProgress;
+
+    // Serializes staging so the startup check and the Settings OnAboutLoaded re-check can't both
+    // kick AddPackageByAppInstallerFileAsync for the same update.
+    private readonly SemaphoreSlim _stageLock = new(1, 1);
+
+    // Per-arch fallback when GetAppInstallerInfo() can't supply the channel URI (e.g. the package
+    // was installed by an older client). Mirrors the experimental asset names emitted by
+    // signing/Generate-AppInstaller.ps1 — keep in sync with signing/Wavee.appinstaller.template.
+    private const string ExperimentalAppInstallerUrlBase =
+        "https://github.com/christosk92/WaveeMusic/releases/download/experimental-latest/Wavee.Experimental.";
 
     public UpdateService(
         IHttpClientFactory httpClientFactory,
@@ -54,6 +67,7 @@ public sealed partial class UpdateService : IUpdateService
 
         // Restore last checked time
         _lastChecked = _settingsService.Settings.LastUpdateCheck;
+        _isAutoUpdateEnabled = _settingsService.Settings.AutoUpdate;
 
         // Fire-and-forget initial check after a short delay to let the app settle. The work
         // lives in an async method (not Task.Delay(...).ContinueWith(async _ => ...)) so the
@@ -170,6 +184,28 @@ public sealed partial class UpdateService : IUpdateService
     {
         get => _isRestartUpdateReady;
         private set => SetField(ref _isRestartUpdateReady, value);
+    }
+
+    public bool IsAutoUpdateEnabled
+    {
+        get => _isAutoUpdateEnabled;
+        set
+        {
+            if (SetField(ref _isAutoUpdateEnabled, value))
+                _settingsService.Update(s => s.AutoUpdate = value);
+        }
+    }
+
+    public bool IsDownloadingUpdate
+    {
+        get => _isDownloadingUpdate;
+        private set => SetField(ref _isDownloadingUpdate, value);
+    }
+
+    public double DownloadProgress
+    {
+        get => _downloadProgress;
+        private set => SetField(ref _downloadProgress, value);
     }
 
     public async Task CheckForUpdateAsync(CancellationToken ct = default)
@@ -319,16 +355,25 @@ public sealed partial class UpdateService : IUpdateService
         }
 
         if (IsRestartUpdateReady)
-            return; // already nudged this session
+            return; // already staged + nudged this session
 
-        _logger?.LogInformation(
-            "MSIX update staged via .appinstaller; prompting restart (availability={Availability})",
-            availability);
-
-        // Safe from the threadpool continuation: ShowRestartReadyNudge sets IsRestartUpdateReady
-        // (its PropertyChanged is marshalled to the UI thread by SetField) and posts a toast
-        // (NotificationService.Show marshals itself).
-        ShowRestartReadyNudge();
+        if (IsAutoUpdateEnabled)
+        {
+            // Actively download + stage now instead of waiting on Windows App Installer's own
+            // schedule. On success this sets IsRestartUpdateReady and posts the restart nudge.
+            _logger?.LogInformation(
+                "Newer MSIX available (availability={Availability}); auto-staging via PackageManager",
+                availability);
+            await DownloadAndStageUpdateAsync(ct).ConfigureAwait(false);
+        }
+        else
+        {
+            // Auto-update off: don't claim it's already downloaded — offer download + restart.
+            _logger?.LogInformation(
+                "Newer MSIX available (availability={Availability}); auto-update off, offering download",
+                availability);
+            ShowDownloadAvailableNudge();
+        }
     }
 
     private void ShowRestartReadyNudge()
@@ -344,13 +389,153 @@ public sealed partial class UpdateService : IUpdateService
         });
     }
 
-    public Task RestartToApplyUpdateAsync()
+    private void ShowDownloadAvailableNudge()
+    {
+        _notificationService?.Show(new NotificationInfo
+        {
+            Message = AppLocalization.Format("Update_AvailableDownloadMessage", LatestVersion),
+            Severity = NotificationSeverity.Informational,
+            AutoDismissAfter = TimeSpan.FromSeconds(10),
+            ActionLabel = AppLocalization.GetString("Update_DownloadAndRestart"),
+            Action = async () =>
+            {
+                if (await DownloadAndStageUpdateAsync().ConfigureAwait(false))
+                    await RestartToApplyUpdateAsync().ConfigureAwait(false);
+            }
+        });
+    }
+
+    /// <summary>
+    /// The <c>.appinstaller</c> URI this package updates from — the OS-recorded value
+    /// (<c>Package.GetAppInstallerInfo</c>), falling back to the per-arch experimental constant.
+    /// Null when neither resolves (e.g. not installed from an .appinstaller).
+    /// </summary>
+    private Uri? ResolveAppInstallerUri()
     {
         try
         {
-            // Full process restart so Windows applies the staged MSIX on relaunch. This is a
-            // hard process replacement (distinct from UiRestartCoordinator's UI-only restart) —
-            // on success it terminates the current process and never returns.
+            if (Package.Current.GetAppInstallerInfo()?.Uri is { } uri)
+                return uri;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "GetAppInstallerInfo failed; falling back to per-arch constant");
+        }
+
+        var arch = Package.Current.Id.Architecture switch
+        {
+            Windows.System.ProcessorArchitecture.X64 => "x64",
+            Windows.System.ProcessorArchitecture.Arm64 => "arm64",
+            _ => null
+        };
+        if (arch is null)
+        {
+            _logger?.LogWarning("No .appinstaller URI and unsupported arch {Arch}", Package.Current.Id.Architecture);
+            return null;
+        }
+        return new Uri($"{ExperimentalAppInstallerUrlBase}{arch}.appinstaller");
+    }
+
+    public async Task<bool> DownloadAndStageUpdateAsync(CancellationToken ct = default)
+    {
+        if (Distribution != DistributionMode.Sideloaded)
+            return false;
+        if (IsRestartUpdateReady)
+            return true; // already staged this session
+        if (!await _stageLock.WaitAsync(0, ct).ConfigureAwait(false))
+            return false; // a stage is already in flight
+
+        try
+        {
+            var uri = ResolveAppInstallerUri();
+            if (uri is null)
+                return false;
+
+            Status = UpdateStatus.Downloading;
+            IsDownloadingUpdate = true;
+            DownloadProgress = 0;
+            ErrorMessage = null;
+
+            var packageManager = new Windows.Management.Deployment.PackageManager();
+            // None: registration of the newer package DEFERS while this one is in use and commits
+            // on the next launch (zero processes); we apply on demand via the AudioHost-kill
+            // restart. Self-update of the same package family needs no packageManagement
+            // capability (runFullTrust suffices) — Microsoft "non-store-developer-updates".
+            var operation = packageManager.AddPackageByAppInstallerFileAsync(
+                uri,
+                Windows.Management.Deployment.AddPackageByAppInstallerOptions.None,
+                null);
+            operation.Progress = (_, p) => DownloadProgress = p.percentage / 100.0;
+
+            var result = await operation.AsTask(ct).ConfigureAwait(false);
+
+            if (result.ExtendedErrorCode is { HResult: not 0 } err)
+            {
+                _logger?.LogWarning("Update stage failed: hr=0x{Hr:X8} {ErrorText}", err.HResult, result.ErrorText);
+                Status = UpdateStatus.Error;
+                ErrorMessage = string.IsNullOrWhiteSpace(result.ErrorText)
+                    ? AppLocalization.GetString("Update_DownloadFailed")
+                    : result.ErrorText;
+                return false;
+            }
+
+            _logger?.LogInformation("MSIX update staged via PackageManager; will apply on next restart");
+            Status = UpdateStatus.UpdateAvailable;
+            IsRestartUpdateReady = true;
+            ShowRestartReadyNudge();
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Access-denied (capability), network, signature, downgrade — degrade to the passive
+            // App-Installer path; the user is no worse off than before.
+            _logger?.LogWarning(ex, "DownloadAndStageUpdateAsync failed; falling back to passive update path");
+            Status = UpdateStatus.Error;
+            ErrorMessage = ex.Message;
+            return false;
+        }
+        finally
+        {
+            IsDownloadingUpdate = false;
+            DownloadProgress = 0;
+            _stageLock.Release();
+        }
+    }
+
+    public async Task RestartToApplyUpdateAsync()
+    {
+        try
+        {
+            // A staged MSIX update is only committed when the package has NO
+            // running processes left. The out-of-process audio host
+            // (Wavee.AudioHost — same package identity) is deliberately kept
+            // alive across UI restarts for the UI-only handoff: its job object
+            // uses LimitFlags=0, so it survives the UI process exiting. For an
+            // UPDATE restart we want the opposite — a full cold restart of the
+            // whole package — so tear the audio host down first. Without this,
+            // AppInstance.Restart relaunches the still-registered OLD version
+            // (the package never reached zero processes) and the "restart to
+            // update" nudge just reappears, which is the bug this fixes.
+            var audio = Wavee.UI.WinUI.Helpers.Application.AppLifecycleHelper.AudioProcessManager;
+            if (audio is not null)
+            {
+                try
+                {
+                    await audio.StopAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to stop audio host before update restart; continuing");
+                }
+            }
+
+            // Hard process replacement; on success it terminates the current
+            // process and never returns. With the audio host gone the package is
+            // fully unloaded, so Windows commits the staged MSIX on relaunch.
             var reason = Microsoft.Windows.AppLifecycle.AppInstance.Restart(string.Empty);
             _logger?.LogWarning("AppInstance.Restart returned without restarting ({Reason})", reason);
         }
@@ -358,7 +543,6 @@ public sealed partial class UpdateService : IUpdateService
         {
             _logger?.LogWarning(ex, "Restart to apply update failed");
         }
-        return Task.CompletedTask;
     }
 
     private void ReportNoUpdate(string reason)

@@ -26,7 +26,7 @@
        next restart. The app surfaces a "restart to update" nudge via
        Package.CheckUpdateAvailabilityAsync (no package-management capability needed). -->
   <UpdateSettings>
-    <OnLaunch HoursBetweenUpdateChecks="8" ShowPrompt="false" />
+    <OnLaunch HoursBetweenUpdateChecks="4" ShowPrompt="false" />
     <AutomaticBackgroundTask />
   </UpdateSettings>
 

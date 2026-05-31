@@ -285,6 +285,12 @@
   <data name="Controls_Settings_AboutSettingsSection__SettingsCard_10.Header" xml:space="preserve">
     <value>Release notes</value>
   </data>
+  <data name="Controls_Settings_AboutSettingsSection__SettingsCard_AutoUpdate.Header" xml:space="preserve">
+    <value>Automatic updates</value>
+  </data>
+  <data name="Controls_Settings_AboutSettingsSection__SettingsCard_AutoUpdate.Description" xml:space="preserve">
+    <value>Download and install updates automatically; they apply when you restart Wavee</value>
+  </data>
   <data name="Controls_Settings_AboutSettingsSection__SettingsCard_12.Description" xml:space="preserve">
     <value>Report bugs, request features, or share your thoughts</value>
   </data>
@@ -1908,6 +1914,15 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   </data>
   <data name="Update_RestartNow" xml:space="preserve">
     <value>Restart now</value>
+  </data>
+  <data name="Update_AvailableDownloadMessage" xml:space="preserve">
+    <value>Wavee v{0} is available — download and restart to update</value>
+  </data>
+  <data name="Update_DownloadAndRestart" xml:space="preserve">
+    <value>Download &amp; restart</value>
+  </data>
+  <data name="Update_DownloadFailed" xml:space="preserve">
+    <value>Couldn't download the update — it'll retry later.</value>
   </data>
   <data name="Connect_RequestingPairingCode" xml:space="preserve">
     <value>Requesting pairing code...</value>
