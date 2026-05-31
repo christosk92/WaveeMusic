@@ -3114,7 +3114,16 @@ public sealed class MetadataDatabase : IMetadataDatabase
         using var connection = CreateConnection();
         await connection.OpenAsync(ct);
         using var cmd = connection.CreateCommand();
+        // Self-heal: the metadata.db is shared across worktrees/branches, so its schema version
+        // may already be at/above this build's CurrentSchemaVersion (set by another branch),
+        // which skips the v24 migration. Ensure the table exists before writing.
         cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS playlist_refresh_sessions (
+                playlist_id     TEXT PRIMARY KEY NOT NULL,
+                payload_json    TEXT NOT NULL,
+                remaining_count INTEGER NOT NULL DEFAULT 0,
+                updated_at      INTEGER NOT NULL
+            );
             INSERT INTO playlist_refresh_sessions (playlist_id, payload_json, remaining_count, updated_at)
             VALUES ($id, $payload, $remaining, $updatedAt)
             ON CONFLICT(playlist_id) DO UPDATE SET
@@ -3131,26 +3140,42 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     public async Task<(string PayloadJson, int Remaining)?> GetPlaylistRefreshSessionAsync(string playlistId, CancellationToken ct = default)
     {
-        using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT payload_json, remaining_count FROM playlist_refresh_sessions WHERE playlist_id = $id;";
-        cmd.Parameters.AddWithValue("$id", playlistId);
-        using var reader = await cmd.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct))
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT payload_json, remaining_count FROM playlist_refresh_sessions WHERE playlist_id = $id;";
+            cmd.Parameters.AddWithValue("$id", playlistId);
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
+                return null;
+            return (reader.GetString(0), reader.GetInt32(1));
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException)
+        {
+            // Table may not exist yet on a shared dev DB whose schema version was set by another
+            // branch (skipping the v24 migration). Treat as "no saved session"; the first save heals it.
             return null;
-        return (reader.GetString(0), reader.GetInt32(1));
+        }
     }
 
     public async Task<int?> GetPlaylistRefreshRemainingAsync(string playlistId, CancellationToken ct = default)
     {
-        using var connection = CreateConnection();
-        await connection.OpenAsync(ct);
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT remaining_count FROM playlist_refresh_sessions WHERE playlist_id = $id;";
-        cmd.Parameters.AddWithValue("$id", playlistId);
-        var result = await cmd.ExecuteScalarAsync(ct);
-        return result is null or DBNull ? null : Convert.ToInt32(result);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT remaining_count FROM playlist_refresh_sessions WHERE playlist_id = $id;";
+            cmd.Parameters.AddWithValue("$id", playlistId);
+            var result = await cmd.ExecuteScalarAsync(ct);
+            return result is null or DBNull ? null : Convert.ToInt32(result);
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException)
+        {
+            return null;   // table not present yet — no saved session (see GetPlaylistRefreshSessionAsync)
+        }
     }
 
     public async Task DeletePlaylistRefreshSessionAsync(string playlistId, CancellationToken ct = default)
@@ -3159,7 +3184,15 @@ public sealed class MetadataDatabase : IMetadataDatabase
         using var connection = CreateConnection();
         await connection.OpenAsync(ct);
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "DELETE FROM playlist_refresh_sessions WHERE playlist_id = $id;";
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS playlist_refresh_sessions (
+                playlist_id     TEXT PRIMARY KEY NOT NULL,
+                payload_json    TEXT NOT NULL,
+                remaining_count INTEGER NOT NULL DEFAULT 0,
+                updated_at      INTEGER NOT NULL
+            );
+            DELETE FROM playlist_refresh_sessions WHERE playlist_id = $id;
+            """;
         cmd.Parameters.AddWithValue("$id", playlistId);
         await cmd.ExecuteNonQueryAsync(ct);
     }

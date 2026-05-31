@@ -75,10 +75,12 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAuditioning))]
+    [NotifyPropertyChangedFor(nameof(IsAuditioning), nameof(ShowEmptyState))]
     public partial bool IsLoading { get; set; } = true;
     [ObservableProperty] public partial string PlaylistName { get; set; } = "";
-    [ObservableProperty] public partial RefreshCard? CurrentCard { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAuditioning))]
+    public partial RefreshCard? CurrentCard { get; set; }
     [ObservableProperty] public partial RefreshCard? PeekCard1 { get; set; }
     [ObservableProperty] public partial RefreshCard? PeekCard2 { get; set; }
     [ObservableProperty]
@@ -96,14 +98,21 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
     [ObservableProperty] public partial bool ShowReconcileBanner { get; set; }
     [ObservableProperty] public partial string ReconcileText { get; set; } = "";
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAuditioning))]
+    [NotifyPropertyChangedFor(nameof(IsAuditioning), nameof(ShowEmptyState))]
     public partial bool IsEmpty { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAuditioning), nameof(ShowEmptyState))]
+    public partial bool HasError { get; set; }
+
+    [ObservableProperty] public partial string EmptyMessage { get; set; } = "There are no tracks here to refresh.";
 
     public ObservableCollection<RefreshCard> RemovedCards { get; } = new();
     public ObservableCollection<RefreshCard> UpNext { get; } = new();
 
     public bool HasStagedDecisions => _session?.HasStagedDecisions ?? false;
-    public bool IsAuditioning => Phase == RefreshPhase.Auditioning && !IsLoading && !IsEmpty;
+    public bool IsAuditioning => Phase == RefreshPhase.Auditioning && !IsLoading && !IsEmpty && !HasError && CurrentCard is not null;
+    public bool ShowEmptyState => !IsLoading && (IsEmpty || HasError);
     public bool IsReview => Phase == RefreshPhase.Review;
     public bool IsDone => Phase == RefreshPhase.Done;
 
@@ -147,6 +156,12 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
             _ = UpdateBackgroundAsync(_session.CurrentCard);
             if (!ShowHowItWorks && _session.Phase == RefreshPhase.Auditioning)
                 StartCurrentSnippet();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Refresh load failed for {Id}", p.PlaylistId);
+            EmptyMessage = "Couldn't load this playlist to refresh. Go back and try again.";
+            HasError = true;
         }
         finally { IsLoading = false; }
     }
