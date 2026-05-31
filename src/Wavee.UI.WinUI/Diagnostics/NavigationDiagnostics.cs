@@ -293,7 +293,7 @@ internal sealed class NavigationDiagnostics
             if (_recentGcsCount < RecentGcRingSize) _recentGcsCount++;
         }
 
-        _logger?.LogDebug(
+        _logger?.LogTrace(
             "[gc] gen={Gen} latency={Latency} navCritical={NavCritical} lastStage={LastStage} allocSinceMb={AllocMb:F2}",
             generation, mode, rec.NavCritical, rec.LastStage, allocSinceMb);
     }

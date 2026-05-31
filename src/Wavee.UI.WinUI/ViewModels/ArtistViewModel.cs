@@ -560,7 +560,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         foreach (var mapping in overview.MusicVideoMappings)
         {
             videoMetadata.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
-            _logger?.LogDebug("[VideoCache]   {AudioUri} -> {VideoUri}",
+            _logger?.LogTrace("[VideoCache]   {AudioUri} -> {VideoUri}",
                 mapping.AudioTrackUri, mapping.VideoTrackUri);
         }
     }

@@ -193,7 +193,7 @@ public static class CardEffectiveViewportBehavior
             {
                 state.LoggedEmptyViewport = true;
                 state.LoggedNonEmptyViewport = false;
-                _logger?.LogDebug(
+                _logger?.LogTrace(
                     "[home-scroll] card.emptyViewport actualSize=({W:F0}x{H:F0}) evp=({EW:F0}x{EH:F0})",
                     card.ActualWidth, card.ActualHeight,
                     args.EffectiveViewport.Width, args.EffectiveViewport.Height);
@@ -213,7 +213,7 @@ public static class CardEffectiveViewportBehavior
         {
             state.LoggedNonEmptyViewport = true;
             state.LoggedEmptyViewport = false;
-            _logger?.LogDebug(
+            _logger?.LogTrace(
                 "[home-scroll] card.viewport actualSize=({W:F0}x{H:F0}) evp=({EW:F0}x{EH:F0}) inside={Inside}",
                 card.ActualWidth, card.ActualHeight,
                 args.EffectiveViewport.Width, args.EffectiveViewport.Height, isInside);

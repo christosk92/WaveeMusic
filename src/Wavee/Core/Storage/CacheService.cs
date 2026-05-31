@@ -179,19 +179,19 @@ public sealed class CacheService : ICacheService, ICleanableCache
         _logger?.LogDebug("GetTracksAsync: {HotHits} hot hits, {Misses} SQLite lookups",
             result.Count, missedUris.Count);
 
-        // Batch fetch from SQLite for misses
+        // Batch fetch from SQLite for misses — one IN(...) query instead of N
+        // sequential GetEntityAsync round-trips. The per-row loop was the source
+        // of the "GetTracksAsync: N SQLite lookups" nav-path cost (one open +
+        // query per URI); GetEntitiesAsync resolves all misses in a single read.
         if (missedUris.Count > 0)
         {
-            foreach (var uri in missedUris)
+            var dbEntities = await _database.GetEntitiesAsync(missedUris, ct);
+            foreach (var dbEntity in dbEntities)
             {
-                var dbEntity = await _database.GetEntityAsync(uri, ct);
-                if (dbEntity != null)
-                {
-                    var entry = MapToTrackCacheEntry(dbEntity);
-                    entry = await EnrichFromCacheAsync(entry, ct);
-                    result[uri] = entry;
-                    _hotCache.Set(uri, entry);
-                }
+                var entry = MapToTrackCacheEntry(dbEntity);
+                entry = await EnrichFromCacheAsync(entry, ct);
+                result[dbEntity.Uri] = entry;
+                _hotCache.Set(dbEntity.Uri, entry);
             }
         }
 
@@ -207,14 +207,17 @@ public sealed class CacheService : ICacheService, ICleanableCache
         var uriList = uris.ToList();
         var result = new Dictionary<string, EpisodeCacheEntry>();
 
-        // Episodes don't have a hot cache layer yet — go straight to SQLite.
-        // Logged hits/misses mirror GetTracksAsync's shape so the trace lines
-        // line up symmetrically when both run during a single Home parse.
-        foreach (var uri in uriList)
+        // Episodes don't have a hot cache layer yet — go straight to SQLite, but
+        // in one bulk IN(...) read rather than a GetEntityAsync per URI (same
+        // N+1 the track path had).
+        if (uriList.Count > 0)
         {
-            var dbEntity = await _database.GetEntityAsync(uri, ct);
-            if (dbEntity != null && dbEntity.EntityType == EntityType.Episode)
-                result[uri] = MapToEpisodeCacheEntry(dbEntity);
+            var dbEntities = await _database.GetEntitiesAsync(uriList, ct);
+            foreach (var dbEntity in dbEntities)
+            {
+                if (dbEntity.EntityType == EntityType.Episode)
+                    result[dbEntity.Uri] = MapToEpisodeCacheEntry(dbEntity);
+            }
         }
 
         _logger?.LogDebug("GetEpisodesAsync: 0 hot hits, {Misses} SQLite lookups",

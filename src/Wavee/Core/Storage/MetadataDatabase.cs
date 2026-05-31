@@ -3986,7 +3986,33 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     private SqliteConnection CreateConnection()
     {
-        return new SqliteConnection(_connectionString);
+        var connection = new SqliteConnection(_connectionString);
+        connection.StateChange += ApplyConnectionPragmasOnOpen;
+        return connection;
+    }
+
+    // Per-connection PRAGMAs that must run on every physical handle — unlike
+    // journal_mode=WAL (persisted in the DB file header, set once in
+    // InitializeSchema), synchronous and busy_timeout are per-connection and
+    // reset on each open. Wiring them through StateChange applies them to every
+    // read and write connection — pooled or fresh — without touching the dozens
+    // of CreateConnection call sites. The handler is static (no per-connection
+    // closure allocation) and dies with the connection.
+    //   • synchronous=NORMAL: in WAL mode this fsyncs only at checkpoint, not on
+    //     every commit. Correct for a re-fetchable metadata CACHE (a crash can
+    //     lose the last transaction but never corrupts the file) and removes the
+    //     per-commit fsync behind the 35–150 ms write-batch spikes.
+    //   • busy_timeout: wait for a contended lock (e.g. an in-progress
+    //     checkpoint) instead of failing fast with SQLITE_BUSY — matters under
+    //     Cache=Shared where readers and a checkpoint can collide.
+    private static void ApplyConnectionPragmasOnOpen(object? sender, System.Data.StateChangeEventArgs e)
+    {
+        if (e.CurrentState != System.Data.ConnectionState.Open || sender is not SqliteConnection connection)
+            return;
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;";
+        cmd.ExecuteNonQuery();
     }
 
     private static string GetExtensionCacheKey(string entityUri, ExtensionKind extensionKind, string? locale)
