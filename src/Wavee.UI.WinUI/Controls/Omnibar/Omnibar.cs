@@ -17,8 +17,6 @@ namespace Wavee.UI.WinUI.Controls.Omnibar;
 /// </summary>
 public sealed partial class Omnibar : Control
 {
-    private const int LostFocusDelayMs = 250;
-
     private AutoSuggestBox? _searchBox;
     private TextBox? _searchTextBox;
     private Popup? _popup;
@@ -187,21 +185,46 @@ public sealed partial class Omnibar : Control
         TextChanged?.Invoke(this, new OmnibarTextChangedEventArgs(_searchBox?.Text ?? ""));
     }
 
-    private async void SearchBox_LostFocus(object sender, RoutedEventArgs e)
+    private void SearchBox_LostFocus(object sender, RoutedEventArgs e)
     {
         _hasFocus = false;
 
-        // Small delay to allow click on popup items to register before closing.
-        // If the user clicked a flyout item, FlyoutPanel_ItemClicked will fire
-        // within this window and close the popup itself.
-        await System.Threading.Tasks.Task.Delay(LostFocusDelayMs);
-
-        // Only close if focus didn't return to the search box (e.g., user clicked
-        // a flyout item which programmatically refocuses, or tabbed back)
-        if (!_hasFocus && !_isSuggestionContextMenuOpen)
+        // Defer one dispatcher tick so the newly-focused element (a clicked
+        // suggestion, the action button, or the popup's own context menu) has
+        // settled, then dismiss only if focus genuinely left BOTH the search box
+        // and the flyout subtree. Deterministic — no fixed-delay guess.
+        DispatcherQueue?.TryEnqueue(() =>
         {
-            HidePopup();
+            if (_isSuggestionContextMenuOpen)
+                return;
+
+            if (XamlRoot is null)
+            {
+                HidePopup();
+                return;
+            }
+
+            var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+            if (!IsWithinSearchSurface(focused))
+                HidePopup();
+        });
+    }
+
+    // Walks the visual-tree parent chain to decide whether <paramref name="node"/>
+    // lives inside the search box or the suggestions flyout (the popup child is a
+    // separate tree root, but parent-walking from a focused descendant reaches
+    // _flyoutPanel). Used by the focus-based dismiss.
+    private bool IsWithinSearchSurface(DependencyObject? node)
+    {
+        while (node is not null)
+        {
+            if (ReferenceEquals(node, _searchBox)
+                || ReferenceEquals(node, _flyoutPanel)
+                || ReferenceEquals(node, this))
+                return true;
+            node = VisualTreeHelper.GetParent(node);
         }
+        return false;
     }
 
     private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
@@ -275,14 +298,12 @@ public sealed partial class Omnibar : Control
         // Inherit theme from the app — Popup children don't get it automatically
         _flyoutPanel.RequestedTheme = this.ActualTheme;
 
-        // Compute popup width:
-        //   - at least 480 px (or the input width if it's wider)
-        //   - up to 760 px so a 2-column grid (item width 340) fits comfortably
+        // Compute popup width for the single-column suggestions list:
+        //   - at least 400 px (or the input width if it's wider)
+        //   - up to 520 px so the dropdown stays compact, not page-wide
         //   - clamped to available window width minus right padding
-        // On narrow windows the popup matches input width and the grid renders 1-column;
-        // on wide windows it widens to fit 2 columns of section results.
-        const double MinPopupWidth = 480;
-        const double MaxPopupWidth = 760;
+        const double MinPopupWidth = 400;
+        const double MaxPopupWidth = 520;
         const double RightPadding = 16;
 
         var inputWidth = _searchBox.ActualWidth;

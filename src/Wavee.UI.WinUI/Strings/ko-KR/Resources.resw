@@ -3482,7 +3482,10 @@
     <value>모든 트랙을 다른 재생목록으로 복사</value>
   </data>
   <data name="Views_PlaylistPage__AddToPlaylistText.Text" xml:space="preserve">
-    <value>재생목록에 추가</value>
+    <value>재생목록에 복사</value>
+  </data>
+  <data name="Views_PlaylistPage__FindSongsToAddButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>이 재생목록에 추가할 곡 찾기</value>
   </data>
   <data name="Views_PlaylistPage__AddToQueueSplitButton.ToolTipService.ToolTip" xml:space="preserve">
     <value>모든 트랙을 대기열에 추가합니다(이 목록이 끝난 후). '다음에 재생'을 보려면 메뉴를 여세요.</value>
@@ -3501,12 +3504,6 @@
   </data>
   <data name="Views_PlaylistPage__MenuAddToQueue.ToolTipService.ToolTip" xml:space="preserve">
     <value>현재 목록이 끝난 후 재생됩니다.</value>
-  </data>
-  <data name="Views_PlaylistPage__StartRadioButton.ToolTipService.ToolTip" xml:space="preserve">
-    <value>이 재생목록을 기반으로 라디오 시작</value>
-  </data>
-  <data name="Views_PlaylistPage__StartRadioText.Text" xml:space="preserve">
-    <value>라디오 시작</value>
   </data>
   <data name="Views_PlaylistPage__DeleteButton.ToolTipService.ToolTip" xml:space="preserve">
     <value>재생목록 삭제</value>

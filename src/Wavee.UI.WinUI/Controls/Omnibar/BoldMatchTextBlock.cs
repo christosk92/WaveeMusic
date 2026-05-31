@@ -12,6 +12,8 @@ namespace Wavee.UI.WinUI.Controls.Omnibar;
 public sealed partial class BoldMatchTextBlock : Control
 {
     private RichTextBlock? _rtb;
+    private string? _renderedText;
+    private string? _renderedMatch;
 
     public BoldMatchTextBlock()
     {
@@ -54,9 +56,18 @@ public sealed partial class BoldMatchTextBlock : Control
     {
         if (_rtb == null) return;
 
-        _rtb.Blocks.Clear();
         var text = Text ?? "";
         var match = MatchText ?? "";
+
+        // Container recycling re-pushes the same (Text, MatchText) on each render —
+        // skip the RichTextBlock inline rebuild when nothing actually changed.
+        if (string.Equals(text, _renderedText, System.StringComparison.Ordinal)
+            && string.Equals(match, _renderedMatch, System.StringComparison.Ordinal))
+            return;
+        _renderedText = text;
+        _renderedMatch = match;
+
+        _rtb.Blocks.Clear();
         var paragraph = new Paragraph();
 
         if (!string.IsNullOrEmpty(match))

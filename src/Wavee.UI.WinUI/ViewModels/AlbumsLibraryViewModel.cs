@@ -40,7 +40,6 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
     protected override string LikedPreferencesKey => "albums.liked";
 
     private readonly ILibraryDataService _libraryDataService;
-    private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IAlbumService _albumService;
     private readonly IPlaybackService _playbackService;
     private bool _disposed;
@@ -165,7 +164,6 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
 
     public AlbumsLibraryViewModel(
         ILibraryDataService libraryDataService,
-        IPlaylistMutationService playlistMutationService,
         IAlbumService albumService,
         IPlaybackService playbackService,
         ITrackLikeService? likeService = null,
@@ -174,7 +172,6 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
         : base(settingsService, likeService, libraryRecents, DispatcherQueue.GetForCurrentThread())
     {
         _libraryDataService = libraryDataService;
-        _playlistMutationService = playlistMutationService;
         _albumService = albumService;
         _playbackService = playbackService;
 
@@ -316,14 +313,8 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
         {
             IsLoading = true;
 
-            // Load albums and playlists in parallel
-            var albumsTask = _libraryDataService.GetAlbumsAsync();
-            var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
-
-            await Task.WhenAll(albumsTask, playlistsTask);
-
-            var albums = await albumsTask;
-            Playlists = await playlistsTask;
+            // Load albums
+            var albums = await _libraryDataService.GetAlbumsAsync();
 
             Albums.Clear();
             foreach (var album in albums)
@@ -1082,10 +1073,6 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
     public bool IsSortingByAlbum => false;
     public bool IsSortingByAddedAt => false;
 
-    // Playlists for "Add to playlist" menu
-    [ObservableProperty]
-    public partial IReadOnlyList<PlaylistSummaryDto> Playlists { get; set; } = Array.Empty<PlaylistSummaryDto>();
-
     // Multi-select commands
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task PlaySelectedAsync()
@@ -1138,19 +1125,6 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
         }
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
-    {
-        if (playlist == null || !HasSelection) return;
-        var trackIds = SelectedItems
-            .Select(item => item is AlbumTrackDto a ? a.Uri : item is LikedSongDto l ? l.Uri : null)
-            .Where(u => !string.IsNullOrEmpty(u))
-            .Select(u => u!)
-            .ToList();
-        if (trackIds.Count == 0) return;
-        await _playlistMutationService.AddTracksToPlaylistAsync(playlist.Id, trackIds);
-    }
-
     // Explicit ITrackListViewModel ICommand implementation
     ICommand ITrackListViewModel.SortByCommand => SortTrackColumnCommand;
     ICommand ITrackListViewModel.PlayTrackCommand => PlayTrackCommand;
@@ -1158,7 +1132,6 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
     ICommand ITrackListViewModel.PlayAfterCommand => PlayAfterCommand;
     ICommand ITrackListViewModel.AddSelectedToQueueCommand => AddSelectedToQueueCommand;
     ICommand ITrackListViewModel.RemoveSelectedCommand => RemoveSelectedCommand;
-    ICommand ITrackListViewModel.AddToPlaylistCommand => AddToPlaylistCommand;
 
     #endregion
 
@@ -1194,7 +1167,6 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
         PlayAfterCommand.NotifyCanExecuteChanged();
         AddSelectedToQueueCommand.NotifyCanExecuteChanged();
         RemoveSelectedCommand.NotifyCanExecuteChanged();
-        AddToPlaylistCommand.NotifyCanExecuteChanged();
     }
 
     public void Dispose()

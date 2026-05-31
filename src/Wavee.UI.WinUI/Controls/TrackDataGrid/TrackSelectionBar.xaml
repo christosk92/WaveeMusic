@@ -78,12 +78,8 @@
                         Style="{StaticResource BarActionButtonStyle}"
                         Click="OnAddToQueueClick"/>
                 <Button x:Name="AddToPlaylistButton"
-                        Style="{StaticResource BarActionButtonStyle}">
-                    <Button.Flyout>
-                        <MenuFlyout x:Name="AddToPlaylistFlyout"
-                                    Opening="OnAddToPlaylistFlyoutOpening"/>
-                    </Button.Flyout>
-                </Button>
+                        Style="{StaticResource BarActionButtonStyle}"
+                        Click="OnAddToPlaylistClick"/>
                 <Button x:Name="SaveButton"
                         Style="{StaticResource BarActionButtonStyle}"
                         Click="OnSaveClick"/>

@@ -178,6 +178,8 @@ public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INav
         else
         {
             RestoreFromNavigationCache();
+            // No query → show the homepage Browse All chips instead of a blank page.
+            _ = ViewModel.EnsureBrowseLoadedAsync();
         }
 
         UpdateFilterSelection();

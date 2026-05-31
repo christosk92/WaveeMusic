@@ -40,7 +40,6 @@ public sealed partial class ShellPage : UserControl
 {
     private readonly ILogger? _logger;
     private readonly IAuthState? _authState;
-    private readonly ISettingsService? _settingsService;
     private readonly IPlaybackStateService? _playbackState;
     private readonly IWindowContext? _windowContext;
     private readonly IActiveVideoSurfaceService? _videoSurface;

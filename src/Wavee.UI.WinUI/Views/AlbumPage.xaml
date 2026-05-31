@@ -353,13 +353,9 @@
                                         Background="{ThemeResource ControlFillColorDefaultBrush}"
                                         BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                         BorderThickness="1"
+                                        Click="AddToPlaylistPillButton_Click"
                                         x:Uid="Views_AlbumPage__Button_105"
                                         ToolTipService.ToolTip="Add every track to a playlist">
-                                    <Button.Flyout>
-                                        <MenuFlyout x:Name="AddToPlaylistMenuFlyout"
-                                                    Placement="Bottom"
-                                                    Opening="AddToPlaylistMenuFlyout_Opening"/>
-                                    </Button.Flyout>
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                         <FontIcon Glyph="&#xE710;" FontSize="12"/>
                                         <TextBlock x:Uid="Views_AlbumPage__TextBlock_106" Text="Add to playlist" FontSize="13"/>

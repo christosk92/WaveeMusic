@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,6 +11,8 @@ using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Styles;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Windows.System;
 
 namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
@@ -167,74 +170,23 @@ public sealed partial class TrackSelectionBar : UserControl
 
     // ── Add to playlist ────────────────────────────────────────────────────
 
-    private async void OnAddToPlaylistFlyoutOpening(object? sender, object e)
+    private async void OnAddToPlaylistClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuFlyout flyout) return;
+        if (sender is not FrameworkElement fe || _grid is null) return;
 
-        flyout.Items.Clear();
-        flyout.Items.Add(new MenuFlyoutItem { Text = "Loading…", IsEnabled = false });
-
-        var library = Ioc.Default.GetService<ILibraryDataService>();
-        if (library is null) return;
-
-        IReadOnlyList<PlaylistSummaryDto> playlists;
-        try
-        {
-            playlists = await library.GetUserPlaylistsAsync();
-        }
-        catch
-        {
-            flyout.Items.Clear();
-            flyout.Items.Add(new MenuFlyoutItem { Text = "Couldn't load playlists", IsEnabled = false });
-            return;
-        }
-
-        flyout.Items.Clear();
-        foreach (var playlist in playlists)
-        {
-            if (!playlist.IsOwner || string.IsNullOrEmpty(playlist.Id)) continue;
-            var captured = playlist;
-            var item = new MenuFlyoutItem
-            {
-                Text = string.IsNullOrWhiteSpace(playlist.Name) ? "Untitled playlist" : playlist.Name
-            };
-            item.Click += (_, _) => AddSelectionToPlaylist(captured);
-            flyout.Items.Add(item);
-        }
-
-        if (flyout.Items.Count == 0)
-            flyout.Items.Add(new MenuFlyoutItem { Text = "No playlists", IsEnabled = false });
-    }
-
-    private async void AddSelectionToPlaylist(PlaylistSummaryDto playlist)
-    {
-        if (_grid is null || string.IsNullOrEmpty(playlist.Id)) return;
-
+        // Snapshot the selected tracks' URIs now — same folder-aware menu the
+        // row / card / hero menus use: nests folders, lists only owned playlists,
+        // and offers "Create new playlist". Add + success toast live in the builder.
         var uris = _grid.GetSelectedTracks()
             .Select(t => t.Uri)
             .Where(u => !string.IsNullOrEmpty(u))
             .ToList();
         if (uris.Count == 0) return;
 
-        var mutations = Ioc.Default.GetService<IPlaylistMutationService>();
-        var notifications = Ioc.Default.GetService<INotificationService>();
-        if (mutations is null) return;
-
-        _grid.ExitSelectionMode();
-        try
-        {
-            await mutations.AddTracksToPlaylistAsync(playlist.Id, uris);
-            notifications?.Show(
-                $"Added {uris.Count} to {playlist.Name ?? "playlist"}",
-                NotificationSeverity.Success,
-                TimeSpan.FromSeconds(3));
-        }
-        catch
-        {
-            notifications?.Show(
-                "Couldn't add tracks to the playlist",
-                NotificationSeverity.Error,
-                TimeSpan.FromSeconds(3));
-        }
+        var loader = AddToPlaylistSubmenuBuilder.Loader(
+            sourceLabel: uris.Count == 1 ? "1 track" : $"{uris.Count} tracks",
+            trackUrisLoader: _ => Task.FromResult<IReadOnlyList<string>>(uris));
+        var items = await loader();
+        ContextMenuHost.Show(fe, items);
     }
 }

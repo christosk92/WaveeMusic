@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -24,6 +25,8 @@ using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 using Windows.Foundation;
 using Wavee.UI.WinUI.Controls.Reorder;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 namespace Wavee.UI.WinUI.Controls.TrackList;
 
 /// <summary>
@@ -37,7 +40,6 @@ public sealed partial class TrackListView : UserControl, IReorderHost
     private const int DurationColumnIndex = 7; // Base index of Duration column before custom columns (0=#, 1=Heart, 2=Art, 3=Title, 4=Artist, 5=Album, 6=DateAdded, 7=Duration)
     private ScrollViewer? _scrollViewer;
     private INotifyCollectionChanged? _currentCollection;
-    private readonly List<MenuFlyoutItem> _dynamicPlaylistMenuItems = [];
     private readonly List<UIElement> _scrollableCustomHeaderElements = [];
     private readonly List<UIElement> _stickyCustomHeaderElements = [];
 
@@ -575,11 +577,6 @@ public sealed partial class TrackListView : UserControl, IReorderHost
     /// Raised when an album link is clicked.
     /// </summary>
     public event EventHandler<string>? AlbumClicked;
-
-    /// <summary>
-    /// Raised when "New playlist..." is clicked in the flyout.
-    /// </summary>
-    public event EventHandler<IReadOnlyList<string>>? NewPlaylistRequested;
 
     /// <summary>
     /// Raised when the internal virtualizing list scrolls. Used by host pages that
@@ -1175,54 +1172,24 @@ public sealed partial class TrackListView : UserControl, IReorderHost
 
     #region Playlist Flyout
 
-    private void AddToPlaylistFlyout_Opening(object? sender, object e)
+    private async void AddSelectedToPlaylistButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuFlyout flyout || ViewModel == null) return;
+        if (sender is not FrameworkElement fe || ViewModel is null) return;
 
-        // Unsubscribe and remove previously added playlist items
-        foreach (var item in _dynamicPlaylistMenuItems)
-        {
-            item.Click -= PlaylistMenuItem_Click;
-            flyout.Items.Remove(item);
-        }
-        _dynamicPlaylistMenuItems.Clear();
-
-        // Show separator and add playlist items if we have playlists
-        var playlists = ViewModel.Playlists;
-        PlaylistSeparator.Visibility = playlists.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        foreach (var playlist in playlists)
-        {
-            var menuItem = new MenuFlyoutItem
-            {
-                Text = playlist.Name,
-                Tag = playlist,
-                Icon = new FontIcon { Glyph = "\uE8FD" }
-            };
-            menuItem.Click += PlaylistMenuItem_Click;
-            _dynamicPlaylistMenuItems.Add(menuItem);
-            flyout.Items.Add(menuItem);
-        }
-    }
-
-    private void PlaylistMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is MenuFlyoutItem item && item.Tag is PlaylistSummaryDto playlist)
-        {
-            ViewModel?.AddToPlaylistCommand?.Execute(playlist);
-        }
-    }
-
-    private void NewPlaylist_Click(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel == null) return;
-
-        var trackIds = ViewModel.SelectedItems
+        // Snapshot the selected tracks' URIs now \u2014 selection can change while the
+        // folder tree loads. Same folder-aware menu the row / card / hero menus use.
+        var uris = ViewModel.SelectedItems
             .OfType<ITrackItem>()
-            .Select(t => t.Id)
+            .Select(t => t.Uri)
+            .Where(u => !string.IsNullOrEmpty(u))
             .ToList();
+        if (uris.Count == 0) return;
 
-        NewPlaylistRequested?.Invoke(this, trackIds);
+        var loader = AddToPlaylistSubmenuBuilder.Loader(
+            sourceLabel: ViewModel.SelectionHeaderText,
+            trackUrisLoader: _ => Task.FromResult<IReadOnlyList<string>>(uris));
+        var items = await loader();
+        ContextMenuHost.Show(fe, items);
     }
 
     #endregion

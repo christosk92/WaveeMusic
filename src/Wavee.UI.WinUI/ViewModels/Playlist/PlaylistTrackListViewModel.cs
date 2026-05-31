@@ -41,7 +41,6 @@ namespace Wavee.UI.WinUI.ViewModels.Playlist;
 public sealed partial class PlaylistTrackListViewModel
     : TrackListViewModelBase, ITrackListViewModel
 {
-    private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly IPlaylistCacheService? _playlistCache;
@@ -85,7 +84,6 @@ public sealed partial class PlaylistTrackListViewModel
     public IReadOnlyList<PlaylistTrackDto> AllTracks => _allTracks;
 
     public PlaylistTrackListViewModel(
-        ILibraryDataService libraryDataService,
         IPlaylistMutationService playlistMutationService,
         IPlaybackStateService playbackStateService,
         PlaylistTrackFilterSorter filterSorter,
@@ -100,7 +98,6 @@ public sealed partial class PlaylistTrackListViewModel
         Func<byte[]?> playlistRevisionProvider,
         Func<bool> canEditItemsProvider)
     {
-        _libraryDataService = libraryDataService;
         _playlistMutationService = playlistMutationService;
         _playbackStateService = playbackStateService;
         _filterSorter = filterSorter;
@@ -127,12 +124,6 @@ public sealed partial class PlaylistTrackListViewModel
     private string PlaylistId => _playlistIdProvider() ?? string.Empty;
 
     // ── Bound collections ────────────────────────────────────────────────────
-
-    // Stable instance mutated in place — see Tier 1 rationale on bound
-    // collections elsewhere in the project. Used by the "Add to playlist"
-    // dropdown bound through ItemsRepeater.
-    private readonly ObservableCollection<PlaylistSummaryDto> _playlists = [];
-    public IReadOnlyList<PlaylistSummaryDto> Playlists => _playlists;
 
     /// <summary>
     /// Track rows bound to TrackDataGrid. Initial loading is represented by the
@@ -347,7 +338,6 @@ public sealed partial class PlaylistTrackListViewModel
         PlayAfterCommand.NotifyCanExecuteChanged();
         AddSelectedToQueueCommand.NotifyCanExecuteChanged();
         RemoveSelectedCommand.NotifyCanExecuteChanged();
-        AddToPlaylistCommand.NotifyCanExecuteChanged();
     }
 
     // ── Filter + sort plumbing ───────────────────────────────────────────────
@@ -1089,28 +1079,6 @@ public sealed partial class PlaylistTrackListViewModel
         }
     }
 
-    // ── Rootlist for the add-to-playlist flyout ──────────────────────────────
-
-    /// <summary>Refreshes the destinations list bound by the "Add to playlist"
-    /// flyout. Background — kicked off from the parent's Activate so the page
-    /// doesn't gate its detail render on it.</summary>
-    public async Task LoadRootlistAsync()
-    {
-        try
-        {
-            var list = await _libraryDataService.GetUserPlaylistsAsync().ConfigureAwait(false);
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                if (_disposed) return;
-                _playlists.ReplaceWith(list);
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "LoadRootlistAsync failed");
-        }
-    }
-
     // ── Commands ─────────────────────────────────────────────────────────────
 
     [RelayCommand]
@@ -1183,46 +1151,6 @@ public sealed partial class PlaylistTrackListViewModel
             .ToList();
         if (trackUris.Count == 0) return;
         _playbackStateService.PlayNext(trackUris);
-    }
-
-    /// <summary>Seeds Spotify radio from this playlist's URI. Mirrors
-    /// AlbumViewModel.StartAlbumRadioAsyncCommand.</summary>
-    [RelayCommand]
-    private async Task StartPlaylistRadioAsync()
-    {
-        if (string.IsNullOrEmpty(PlaylistId)) return;
-        var seed = PlaylistId.StartsWith("spotify:playlist:", StringComparison.Ordinal)
-            ? PlaylistId
-            : $"spotify:playlist:{PlaylistId}";
-        var displayName = _playlistNameProvider();
-        var name = displayName is { Length: > 0 } n ? $"{n} Radio" : "Playlist Radio";
-        await _playbackStateService.StartRadioAsync(seed, name);
-    }
-
-    /// <summary>Adds every track of THIS playlist to ANOTHER user playlist.
-    /// Caller supplies the destination (typically picked from a flyout
-    /// bound to <see cref="Playlists"/>). Filters out non-Spotify URIs.</summary>
-    [RelayCommand]
-    private async Task AddPlaylistToOtherPlaylistAsync(PlaylistSummaryDto? destination)
-    {
-        if (destination?.Id is not { Length: > 0 } destinationId) return;
-        if (_allTracks.Count == 0) return;
-        var trackUris = _allTracks
-            .Select(t => t.Uri)
-            .Where(u => SpotifyUriHelper.IsKind(u, SpotifyEntityKind.Track))
-            .Cast<string>()
-            .ToList();
-        if (trackUris.Count == 0) return;
-
-        try
-        {
-            await _playlistMutationService.AddTracksToPlaylistAsync(destinationId, trackUris).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "AddPlaylistToOtherPlaylistAsync failed for {Source} → {Destination}",
-                PlaylistId, destinationId);
-        }
     }
 
     private void BuildQueueAndPlay(int startIndex, bool shuffle)
@@ -1342,23 +1270,6 @@ public sealed partial class PlaylistTrackListViewModel
         UpdateAggregates();
         ApplyFilterAndSort();
         TracksChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
-    {
-        if (playlist?.Id is not { Length: > 0 } playlistId) return;
-        var uris = CollectSelectedTrackUris();
-        if (uris.Count == 0) return;
-
-        try
-        {
-            await _playlistMutationService.AddTracksToPlaylistAsync(playlistId, uris).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "AddToPlaylistAsync (playlist selection) failed → {Playlist}", playlistId);
-        }
     }
 
     /// <summary>
@@ -1499,7 +1410,6 @@ public sealed partial class PlaylistTrackListViewModel
     ICommand ITrackListViewModel.PlayAfterCommand => PlayAfterCommand;
     ICommand ITrackListViewModel.AddSelectedToQueueCommand => AddSelectedToQueueCommand;
     ICommand ITrackListViewModel.RemoveSelectedCommand => RemoveSelectedCommand;
-    ICommand ITrackListViewModel.AddToPlaylistCommand => AddToPlaylistCommand;
 }
 
 /// <summary>

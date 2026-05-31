@@ -20,6 +20,9 @@ using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -881,38 +884,24 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         if (sender is ClickableBorder cb) cb.ShowHandCursor();
     }
 
-    private void AddToPlaylistMenuFlyout_Opening(object? sender, object e)
+    private async void AddToPlaylistPillButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuFlyout flyout) return;
-        // Rebuild on every open — user playlists may have been created /
-        // renamed / deleted while the page sat in the navigation cache.
-        flyout.Items.Clear();
-        foreach (var playlist in ViewModel.Playlists)
-        {
-            var captured = playlist;
-            var mi = new MenuFlyoutItem
-            {
-                Text = playlist.Name ?? "Untitled playlist",
-                Tag = playlist
-            };
-            mi.Click += (s, args) =>
-            {
-                _ = ViewModel.AddAlbumToPlaylistCommand.ExecuteAsync(captured);
-                _notificationService?.Show(
-                    $"Added to {captured.Name ?? "playlist"}",
-                    NotificationSeverity.Success,
-                    TimeSpan.FromSeconds(3));
-            };
-            flyout.Items.Add(mi);
-        }
-        if (flyout.Items.Count == 0)
-        {
-            flyout.Items.Add(new MenuFlyoutItem
-            {
-                Text = "No playlists yet",
-                IsEnabled = false
-            });
-        }
+        if (sender is not FrameworkElement fe) return;
+        var mediator = Ioc.Default.GetService<IPlaylistDragDropMediator>();
+        var albumId = ViewModel.AlbumId;
+        if (mediator is null || string.IsNullOrEmpty(albumId)) return;
+
+        // Same folder-aware menu the row / card / playlist-hero menus use: nests
+        // folders, owned playlists only, "Create new playlist". The album's track
+        // URIs resolve lazily through the shared mediator (album → track URIs).
+        var albumUri = albumId.StartsWith("spotify:album:", StringComparison.Ordinal)
+            ? albumId
+            : $"spotify:album:{albumId}";
+        var loader = AddToPlaylistSubmenuBuilder.Loader(
+            sourceLabel: ViewModel.AlbumName,
+            trackUrisLoader: ct => mediator.GetAlbumTrackUrisAsync(albumUri, ct));
+        var items = await loader();
+        ContextMenuHost.Show(fe, items);
     }
 
     private void MerchCard_Click(object sender, RoutedEventArgs e)

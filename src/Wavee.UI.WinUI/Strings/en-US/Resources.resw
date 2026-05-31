@@ -3565,7 +3565,10 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Copy all tracks to another playlist</value>
   </data>
   <data name="Views_PlaylistPage__AddToPlaylistText.Text" xml:space="preserve">
-    <value>Add to playlist</value>
+    <value>Copy to playlist</value>
+  </data>
+  <data name="Views_PlaylistPage__FindSongsToAddButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Find songs to add to this playlist</value>
   </data>
   <data name="Views_PlaylistPage__AddToQueueSplitButton.ToolTipService.ToolTip" xml:space="preserve">
     <value>Add every track to the queue (after this list ends). Open menu for Play next.</value>
@@ -3584,12 +3587,6 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   </data>
   <data name="Views_PlaylistPage__MenuAddToQueue.ToolTipService.ToolTip" xml:space="preserve">
     <value>Plays after the current list ends.</value>
-  </data>
-  <data name="Views_PlaylistPage__StartRadioButton.ToolTipService.ToolTip" xml:space="preserve">
-    <value>Start a radio seeded from this playlist</value>
-  </data>
-  <data name="Views_PlaylistPage__StartRadioText.Text" xml:space="preserve">
-    <value>Start radio</value>
   </data>
   <data name="Views_PlaylistPage__DeleteButton.ToolTipService.ToolTip" xml:space="preserve">
     <value>Delete playlist</value>

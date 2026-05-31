@@ -103,7 +103,6 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
     public ICommand PlayAfterCommand { get; } = new RelayCommand(() => { });
     public ICommand AddSelectedToQueueCommand { get; } = new RelayCommand(() => { });
     public ICommand RemoveSelectedCommand { get; } = new RelayCommand(() => { });
-    public ICommand AddToPlaylistCommand { get; } = new RelayCommand<object>(_ => { });
 
     public string SortChevronGlyph => "";
     public bool IsSortingByTitle => false;
@@ -116,8 +115,6 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
     // Header is overridden to "" so a stray selection-mode binding never paints
     // a "0 tracks selected" string on the profile chrome.
     public override string SelectionHeaderText => string.Empty;
-
-    public IReadOnlyList<PlaylistSummaryDto> Playlists => [];
 
     public TabItemParameter? TabItemParameter { get; private set; }
 

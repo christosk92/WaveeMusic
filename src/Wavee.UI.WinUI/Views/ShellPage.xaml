@@ -174,6 +174,82 @@
             HorizontalAlignment="Center"
             Margin="0,0,0,16"/>
 
+        <!-- First-run "How it works" overlay for add-to-playlist mode. Shown
+             once (gated by AppSettings.AddToPlaylistHowItWorksSeen); driven from
+             ShellPage.AddToPlaylist.cs when a session first becomes active. The
+             smoke layer is hit-testable so it blocks the bar / + buttons until
+             dismissed. -->
+        <Grid x:Name="AddToPlaylistHowItWorksOverlay"
+              Grid.Row="2" Grid.RowSpan="2"
+              Canvas.ZIndex="10"
+              Visibility="Collapsed"
+              Background="{ThemeResource SmokeFillColorDefaultBrush}">
+            <Border MaxWidth="440" Margin="24" Padding="24"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="16">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Find songs to add" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                        <TextBlock x:Name="AddToPlaylistHowItWorksSubtitle"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <StackPanel Spacing="16">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border Width="28" Height="28" CornerRadius="14" VerticalAlignment="Top"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                <TextBlock Text="1" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                            </Border>
+                            <StackPanel MaxWidth="320">
+                                <TextBlock Text="Keep browsing as normal" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <TextBlock Text="Search, or open any album, artist or playlist — the whole app stays usable while you shop."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border Width="28" Height="28" CornerRadius="14" VerticalAlignment="Top"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                <TextBlock Text="2" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                            </Border>
+                            <StackPanel MaxWidth="320">
+                                <TextBlock Text="Tap + on any song" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <TextBlock Text="Each song you tap is collected onto the bar at the bottom. Tap again to remove it."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border Width="28" Height="28" CornerRadius="14" VerticalAlignment="Top"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                <TextBlock Text="3" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                            </Border>
+                            <StackPanel MaxWidth="320">
+                                <TextBlock Text="Tap Add when you're done" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <TextBlock Text="Everything you collected is added to the playlist at once. Cancel discards the selection."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                    <Button Content="Got it"
+                            Click="OnAddToPlaylistHowItWorksDismiss"
+                            Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Stretch"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!-- Ctrl+F in-page filter overlay. Floats top-right of the content
              area. Mounted once at shell level; the controller binds it to
              whatever page is currently active. -->

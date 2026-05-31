@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Windows.Input;
-using Wavee.UI.Models;
 
 namespace Wavee.UI.WinUI.ViewModels.Contracts;
 
@@ -87,15 +86,4 @@ public interface ITrackListViewModel
     /// Command to remove selected tracks (from library, playlist, etc.).
     /// </summary>
     ICommand RemoveSelectedCommand { get; }
-
-    /// <summary>
-    /// Command to add selected tracks to a playlist. Parameter is PlaylistSummaryDto.
-    /// </summary>
-    ICommand AddToPlaylistCommand { get; }
-
-    // Playlist Data
-    /// <summary>
-    /// Available playlists for the "Add to playlist" flyout.
-    /// </summary>
-    IReadOnlyList<PlaylistSummaryDto> Playlists { get; }
 }

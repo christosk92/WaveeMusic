@@ -25,6 +25,7 @@ using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
+using Wavee.UI.Services.DragDrop;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.Models;
@@ -1590,44 +1591,23 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
         flyout.ShowAt(fe);
     }
 
-    private void AddPlaylistToPlaylistMenuFlyout_Opening(object? sender, object e)
+    private async void CopyToPlaylistButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuFlyout flyout) return;
-        flyout.Items.Clear();
+        if (sender is not FrameworkElement fe) return;
+        var playlistId = ViewModel.PlaylistId;
+        var mediator = Ioc.Default.GetService<IPlaylistDragDropMediator>();
+        if (string.IsNullOrEmpty(playlistId) || mediator is null) return;
 
-        // List the user's playlists; skip THIS one (copying a playlist to
-        // itself is pointless). Rebuilt on every open so renames / creates /
-        // deletes are picked up while the page sits in the nav cache.
-        foreach (var destination in ViewModel.TrackList.Playlists)
-        {
-            if (string.IsNullOrEmpty(destination.Id)) continue;
-            if (string.Equals(destination.Id, ViewModel.PlaylistId, StringComparison.Ordinal)) continue;
-
-            var captured = destination;
-            var mi = new MenuFlyoutItem
-            {
-                Text = destination.Name ?? "Untitled playlist",
-                Tag = destination
-            };
-            mi.Click += (s, args) =>
-            {
-                _ = ViewModel.TrackList.AddPlaylistToOtherPlaylistCommand.ExecuteAsync(captured);
-                Ioc.Default.GetService<INotificationService>()?.Show(
-                    $"Added to {captured.Name ?? "playlist"}",
-                    NotificationSeverity.Success,
-                    TimeSpan.FromSeconds(3));
-            };
-            flyout.Items.Add(mi);
-        }
-
-        if (flyout.Items.Count == 0)
-        {
-            flyout.Items.Add(new MenuFlyoutItem
-            {
-                Text = "No other playlists",
-                IsEnabled = false
-            });
-        }
+        // Same folder-aware menu the right-click track / card menus use: nests
+        // folders, lists only owned playlists, offers "Create new playlist". The
+        // track URIs of THIS playlist are resolved lazily (only when a destination
+        // is picked) and copied via the shared AddToPlaylistSubmenuBuilder.
+        var name = ViewModel.Header.PlaylistName ?? "playlist";
+        var loader = AddToPlaylistSubmenuBuilder.Loader(
+            sourceLabel: name,
+            trackUrisLoader: ct => mediator.GetPlaylistTrackUrisAsync(playlistId, ct));
+        var items = await loader();
+        ContextMenuHost.Show(fe, items);
     }
 
     // ── Collaborator avatar stack ────────────────────────────────────────────

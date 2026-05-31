@@ -125,7 +125,6 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             playlistIdProvider: () => PlaylistId);
 
         TrackList = new PlaylistTrackListViewModel(
-            libraryDataService,
             playlistMutationService,
             playbackStateService,
             playlistTrackFilterSorter,
@@ -363,10 +362,6 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
                 state => _dispatcherQueue.TryEnqueue(() => ApplyDetailState(state, playlistId)),
                 ex => _logger?.LogError(ex, "PlaylistStore stream faulted for {PlaylistId}", playlistId));
         _subscriptions.Add(streamSubscription);
-
-        // Rootlist is secondary: the add-to-playlist flyout can hydrate after
-        // the playlist hero and first rows have painted.
-        _ = LoadRootlistAfterFirstFrameAsync();
     }
 
     private void ApplyPrefillTrackCount(Data.Parameters.ContentNavigationParameter nav, bool clearMissing)
@@ -757,15 +752,6 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         ErrorMessage = null;
     }
 
-    private async Task LoadRootlistAfterFirstFrameAsync()
-    {
-        await Task.Delay(64);
-        if (_disposed)
-            return;
-
-        await TrackList.LoadRootlistAsync();
-    }
-
     private async Task ApplySecondaryHeaderStateAsync(string playlistId)
     {
         // Collaborator chips are below the hot path for navigation. Deferring
@@ -982,6 +968,55 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         }
     }
 
+    private async Task<bool> RunOnUiAsync(string playlistId, CancellationToken ct, Action action)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            if (_disposed || !string.Equals(PlaylistId, playlistId, StringComparison.Ordinal))
+                return false;
+
+            action();
+            return true;
+        }
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = ct.CanBeCanceled
+            ? ct.Register(static state => ((TaskCompletionSource<bool>)state!).TrySetCanceled(), tcs)
+            : default;
+
+        if (!_dispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    if (ct.IsCancellationRequested)
+                    {
+                        tcs.TrySetCanceled();
+                        return;
+                    }
+
+                    if (_disposed || !string.Equals(PlaylistId, playlistId, StringComparison.Ordinal))
+                    {
+                        tcs.TrySetResult(false);
+                        return;
+                    }
+
+                    action();
+                    tcs.TrySetResult(true);
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
+            }))
+        {
+            tcs.TrySetResult(false);
+        }
+
+        return await tcs.Task.ConfigureAwait(false);
+    }
+
     private async Task LoadTracksAsync(string playlistId)
     {
         if (string.Equals(_tracksLoadInFlightFor, playlistId, StringComparison.Ordinal))
@@ -1027,14 +1062,15 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
                 if (skeletons.Count > 0)
                 {
                     ct.ThrowIfCancellationRequested();
-                    _dispatcherQueue.TryEnqueue(() =>
+                    var skeletonsApplied = await RunOnUiAsync(playlistId, ct, () =>
                     {
-                        if (_disposed || PlaylistId != playlistId)
-                            return;
                         TrackList.ApplySkeletons(skeletons);
                         TrackList.IsLoadingTracks = false;
                         TrackList.ClearPendingSignalChip();
-                    });
+                    }).ConfigureAwait(false);
+
+                    if (!skeletonsApplied)
+                        return;
 
                     await _libraryDataService.StreamPlaylistTrackMetadataAsync(
                         skeletons,

@@ -36,7 +36,6 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     private readonly Wavee.UI.Services.Infra.IReloadCoordinator _reloadCoordinator;
     private IDisposable? _reloadRegistration;
     private readonly IPlaybackStateService _playbackStateService;
-    private readonly IPlaylistMutationService _playlistMutationService;
     private readonly ITrackDescriptorFetcher _descriptorFetcher;
     private readonly IAuthState? _authState;
     private readonly IMusicVideoMetadataService? _musicVideoMetadata;
@@ -93,9 +92,6 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     [ObservableProperty]
     public partial string TotalDuration { get; set; } = "";
 
-    [ObservableProperty]
-    public partial IReadOnlyList<PlaylistSummaryDto> Playlists { get; set; } = Array.Empty<PlaylistSummaryDto>();
-
     public ObservableCollection<LikedSongDto> FilteredSongs { get; } = [];
     public ObservableCollection<LikedSongsFilterChipViewModel> FilterChips { get; } = [];
     public bool HasFilterChips => FilterChips.Count > 0;
@@ -124,7 +120,6 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     public LikedSongsViewModel(
         ILibraryDataService libraryDataService,
         IPlaybackStateService playbackStateService,
-        IPlaylistMutationService playlistMutationService,
         ITrackDescriptorFetcher descriptorFetcher,
         Wavee.UI.Services.Infra.IReloadCoordinator reloadCoordinator,
         IAuthState? authState = null,
@@ -136,7 +131,6 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     {
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
-        _playlistMutationService = playlistMutationService;
         _descriptorFetcher = descriptorFetcher;
         _authState = authState;
         _reloadCoordinator = reloadCoordinator;
@@ -247,7 +241,6 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
         PlayAfterCommand.NotifyCanExecuteChanged();
         AddSelectedToQueueCommand.NotifyCanExecuteChanged();
         RemoveSelectedCommand.NotifyCanExecuteChanged();
-        AddToPlaylistCommand.NotifyCanExecuteChanged();
     }
 
     private void ApplyFilterAndSort()
@@ -379,10 +372,9 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
         try
         {
             var songsTask = _libraryDataService.GetLikedSongsAsync();
-            var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
             var filtersTask = _libraryDataService.GetLikedSongFiltersAsync();
 
-            await Task.WhenAll(songsTask, playlistsTask, filtersTask);
+            await Task.WhenAll(songsTask, filtersTask);
 
             var songs = await songsTask;
             _allSongs = songs.Select((s, i) => s with { OriginalIndex = i + 1 }).ToList();
@@ -401,8 +393,6 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
             UpdateAggregates();
             BuildFilterChips(_cachedFilters);
             ApplyFilterAndSort();
-
-            Playlists = await playlistsTask;
 
             // Kick off async descriptor enrichment. On first open (no cached tags anywhere)
             // we show the shimmer; on subsequent opens the tags are already present so we
@@ -667,23 +657,6 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
         NotifyVideoFilterProperties();
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
-    {
-        if (playlist?.Id is not { Length: > 0 } playlistId) return;
-        var uris = CollectSelectedTrackUris();
-        if (uris.Count == 0) return;
-
-        try
-        {
-            await _playlistMutationService.AddTracksToPlaylistAsync(playlistId, uris).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "AddToPlaylistAsync (liked-songs selection) failed → {Playlist}", playlistId);
-        }
-    }
-
     [RelayCommand]
     private void SelectFilterChip(LikedSongsFilterChipViewModel? chip)
     {
@@ -748,7 +721,6 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     ICommand ITrackListViewModel.PlayAfterCommand => PlayAfterCommand;
     ICommand ITrackListViewModel.AddSelectedToQueueCommand => AddSelectedToQueueCommand;
     ICommand ITrackListViewModel.RemoveSelectedCommand => RemoveSelectedCommand;
-    ICommand ITrackListViewModel.AddToPlaylistCommand => AddToPlaylistCommand;
 
     #endregion
 }
