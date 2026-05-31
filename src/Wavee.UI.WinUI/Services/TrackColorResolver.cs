@@ -13,6 +13,7 @@ using Wavee.Controls.Lyrics.Helper;
 using Wavee.UI.Helpers;
 using Wavee.UI.Services.Tracks;
 using Windows.Graphics.Imaging;
+using Windows.Storage.Streams;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -86,13 +87,46 @@ public sealed class TrackColorResolver : ITrackColorResolver
         return await ToPaletteAsync(decoder);
     }
 
-    private static async Task<TrackPalette?> ToPaletteAsync(BitmapDecoder decoder)
+    // Palette extraction only needs a thumbnail. ColorThief decodes the decoder at its full
+    // PixelWidth × PixelHeight, so a 640px art produces a ~1.6 MB pixel buffer on the LOH —
+    // collected only in Gen2, which (with prefetch running 3 per swipe) drives repeated blocking
+    // Gen2 pauses that stall the UI and starve the in-process preview AudioGraph. Downscale to a
+    // 64px thumbnail first so every extraction stays a ~16 KB gen0 allocation.
+    private const uint PaletteThumbPx = 64;
+
+    private static async Task<TrackPalette?> ToPaletteAsync(BitmapDecoder source)
     {
-        var result = await PaletteHelper.MedianCutGetAccentColorsFromByteAsync(decoder, 3, isDark: true);
-        if (result?.Palette is not { Count: > 0 } palette) return null;
-        var primary = palette[0];
-        var accent = palette.Count > 1 ? palette[1] : Lighten(primary);
-        return new TrackPalette(Hex(primary), Hex(accent));
+        BitmapDecoder decoder = source;
+        InMemoryRandomAccessStream? thumbStream = null;
+        try
+        {
+            if (source.PixelWidth > PaletteThumbPx || source.PixelHeight > PaletteThumbPx)
+            {
+                var transform = new BitmapTransform
+                {
+                    ScaledWidth = Math.Max(1u, Math.Min(PaletteThumbPx, source.PixelWidth)),
+                    ScaledHeight = Math.Max(1u, Math.Min(PaletteThumbPx, source.PixelHeight)),
+                    InterpolationMode = BitmapInterpolationMode.Fant,
+                };
+                using var thumb = await source.GetSoftwareBitmapAsync(
+                    BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, transform,
+                    ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
+
+                thumbStream = new InMemoryRandomAccessStream();
+                var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, thumbStream);
+                encoder.SetSoftwareBitmap(thumb);
+                await encoder.FlushAsync();
+                thumbStream.Seek(0);
+                decoder = await BitmapDecoder.CreateAsync(thumbStream);
+            }
+
+            var result = await PaletteHelper.MedianCutGetAccentColorsFromByteAsync(decoder, 3, isDark: true);
+            if (result?.Palette is not { Count: > 0 } palette) return null;
+            var primary = palette[0];
+            var accent = palette.Count > 1 ? palette[1] : Lighten(primary);
+            return new TrackPalette(Hex(primary), Hex(accent));
+        }
+        finally { thumbStream?.Dispose(); }
     }
 
     private static Vector3 Lighten(Vector3 c) => new(

@@ -17,6 +17,9 @@ public sealed record RefreshCard(
     string Uri, string Title, string ArtistName,
     string? ImageUrl, string? ImageSmallUrl, TimeSpan Duration);
 
+/// <summary>An audited card plus its decision (<c>null</c> = skipped) — one row of the "Previously" rail.</summary>
+public sealed record RefreshHistoryEntry(RefreshCard Card, SwipeDecision? Decision);
+
 /// <summary>What changed upstream between the saved snapshot and the current playlist.</summary>
 public readonly record struct RefreshDiffSummary(int Added, int Removed)
 {
@@ -132,6 +135,20 @@ public sealed class RefreshPlaylistSession
         _deck.Where(c => _decisions.TryGetValue(c.Uri, out var d) && d == SwipeDecision.Remove).ToList();
     public IReadOnlyList<RefreshCard> UpNext(int count) =>
         _deck.Skip(_cursor + 1).Where(c => !_decisions.ContainsKey(c.Uri)).Take(count).ToList();
+
+    /// <summary>Cards already audited this session, most-recent first, with how they were decided
+    /// (<c>null</c> = skipped). Drives the "Previously" rail.</summary>
+    public IReadOnlyList<RefreshHistoryEntry> Previous(int count)
+    {
+        var list = new List<RefreshHistoryEntry>(Math.Min(count, _history.Count));
+        for (var i = _history.Count - 1; i >= 0 && list.Count < count; i--)
+        {
+            var card = _deck[_history[i]];
+            SwipeDecision? decision = _decisions.TryGetValue(card.Uri, out var d) ? d : null;
+            list.Add(new RefreshHistoryEntry(card, decision));
+        }
+        return list;
+    }
     public bool HasStagedDecisions => _decisions.Count > 0;
 
     public event EventHandler? StateChanged;

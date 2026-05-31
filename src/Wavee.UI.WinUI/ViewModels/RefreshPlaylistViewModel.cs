@@ -106,6 +106,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
 
     public ObservableCollection<RefreshCard> RemovedCards { get; } = new();
     public ObservableCollection<RefreshCard> UpNext { get; } = new();
+    public ObservableCollection<RefreshHistoryEntry> Previously { get; } = new();
 
     public bool HasStagedDecisions => _session?.HasStagedDecisions ?? false;
     public bool IsAuditioning => Phase == RefreshPhase.Auditioning && !IsLoading && !IsEmpty && !HasError && CurrentCard is not null;
@@ -206,7 +207,9 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         RemovedCards.Clear();
         foreach (var c in _session.RemovedCards) RemovedCards.Add(c);
         UpNext.Clear();
-        foreach (var c in _session.UpNext(3)) UpNext.Add(c);
+        foreach (var c in _session.UpNext(20)) UpNext.Add(c);
+        Previously.Clear();
+        foreach (var e in _session.Previous(20)) Previously.Add(e);
 
         if (CurrentCard?.Uri != _currentCardUri)
         {
@@ -215,7 +218,8 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
             if (_session.Phase == RefreshPhase.Auditioning)
             {
                 _ = UpdateBackgroundAsync(CurrentCard);                 // palette is prefetched → resolves instantly
-                ResolveAvailability(CurrentCard);   // shows "preview unavailable" if needed — does NOT play
+                if (ShowHowItWorks) ResolveAvailability(CurrentCard);   // intro still up — check availability, don't play yet
+                else StartCurrentSnippet();                            // past the intro → snippets autoplay per card
                 _ = PrefetchAsync();
             }
         }
@@ -273,7 +277,11 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
     [RelayCommand] private void UnRemove(string? uri) { if (!string.IsNullOrEmpty(uri)) _session?.UnRemove(uri); }
 
     [RelayCommand]
-    private void DismissHowItWorks() => ShowHowItWorks = false;   // start auditioning; snippet plays only on explicit play / Space
+    private void DismissHowItWorks()
+    {
+        ShowHowItWorks = false;
+        if (_session?.Phase == RefreshPhase.Auditioning) StartCurrentSnippet();   // begin autoplay from the first card
+    }
 
     [RelayCommand] private void DismissBanner() => ShowReconcileBanner = false;
 
@@ -333,7 +341,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         if (card is null) return;
         try
         {
-            var palette = await _colors.ResolveAsync(card.Uri, card.ImageUrl);   // cached + prefetched → usually instant
+            var palette = await _colors.ResolveAsync(card.Uri, card.ImageSmallUrl ?? card.ImageUrl);   // small art → cheap decode; cached + prefetched
             if (_session?.CurrentCard?.Uri != card.Uri) return;                   // advanced while resolving
             if (palette is { } p)
             {
@@ -365,7 +373,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         var next = _session.UpNext(3);
         if (next.Count == 0) return Task.CompletedTask;
         _ = _previewUrls.PrefetchAsync(next.Select(c => c.Uri).ToList());                       // 30s snippet URLs
-        _ = _colors.PrefetchAsync(next.Select(c => (c.Uri, c.ImageUrl)).ToList());              // background palettes
+        _ = _colors.PrefetchAsync(next.Select(c => (c.Uri, c.ImageSmallUrl ?? c.ImageUrl)).ToList());   // background palettes (small art)
         return Task.CompletedTask;
     }
 

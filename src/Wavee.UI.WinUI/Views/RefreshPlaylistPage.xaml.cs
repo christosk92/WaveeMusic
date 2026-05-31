@@ -6,6 +6,7 @@ using Wavee.UI.Services.Playlists;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.Swipe;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.System;
 
@@ -35,6 +36,10 @@ public sealed partial class RefreshPlaylistPage : UserControl, IPageHostAware
     // ── x:Bind function-binding helpers ──
     public Visibility ToVis(bool b) => b ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ToVisObj(object? o) => o is null ? Visibility.Collapsed : Visibility.Visible;
+    public string PlayPauseGlyph(SwipePreviewState s) => s == SwipePreviewState.Playing ? FluentGlyphs.Pause : FluentGlyphs.Play;
+    public static Visibility KeptVis(SwipeDecision? d) => d == SwipeDecision.Keep ? Visibility.Visible : Visibility.Collapsed;
+    public static Visibility RemovedVis(SwipeDecision? d) => d == SwipeDecision.Remove ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility CountVis(int n) => n > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     private void Page_KeyDown(object sender, KeyRoutedEventArgs e)
     {
