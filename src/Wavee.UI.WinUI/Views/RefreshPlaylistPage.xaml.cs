@@ -38,7 +38,7 @@ public sealed partial class RefreshPlaylistPage : UserControl, IPageHostAware
 
     private void Page_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (!ViewModel.IsAuditioning) return;
+        if (!ViewModel.IsAuditioning || ViewModel.ShowHowItWorks) return;
         switch (e.Key)
         {
             case VirtualKey.Left: e.Handled = true; TopCard.CommitDecision(SwipeDirection.Left); break;

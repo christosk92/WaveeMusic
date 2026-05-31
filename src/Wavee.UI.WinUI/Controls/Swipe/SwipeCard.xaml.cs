@@ -6,7 +6,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.UI.Services.Playlists;
 using Windows.Foundation;
 
@@ -27,7 +26,6 @@ public sealed partial class SwipeCard : UserControl
     private bool _dragging, _committing;
     private Point _start;
     private double _lastX, _lastT, _vx, _width = 316;
-    private Storyboard? _eq;
 
     public SwipeCard()
     {
@@ -202,41 +200,41 @@ public sealed partial class SwipeCard : UserControl
         v.StartAnimation("Opacity", fade);
     }
 
+    // Equalizer bounce runs on the GPU composition thread (Visual.Scale), NOT a XAML
+    // DoubleAnimation on Height with EnableDependentAnimation — that animates per-frame on
+    // the UI thread and tanks FPS while a snippet plays. Scale.Y about the bar's bottom grows
+    // it upward; relative bar heights are preserved so it still reads as an equalizer.
     private void StartEq()
     {
         Eq.Visibility = Visibility.Visible;
-        _eq ??= BuildEq();
-        _eq.Begin();
+        var bars = new[] { EqBar1, EqBar2, EqBar3, EqBar4 };
+        var delays = new[] { 0, 130, 260, 390 };
+        for (var i = 0; i < bars.Length; i++)
+        {
+            var bar = bars[i];
+            var v = ElementCompositionPreview.GetElementVisual(bar);
+            var c = v.Compositor;
+            v.CenterPoint = new Vector3((float)(bar.Width / 2), (float)bar.Height, 0f);
+            var anim = c.CreateVector3KeyFrameAnimation();
+            anim.Target = "Scale";
+            anim.InsertKeyFrame(0f, new Vector3(1f, 0.4f, 1f));
+            anim.InsertKeyFrame(0.5f, new Vector3(1f, 1.2f, 1f));
+            anim.InsertKeyFrame(1f, new Vector3(1f, 0.4f, 1f));
+            anim.Duration = TimeSpan.FromMilliseconds(820);
+            anim.DelayTime = TimeSpan.FromMilliseconds(delays[i]);
+            anim.IterationBehavior = AnimationIterationBehavior.Forever;
+            v.StartAnimation("Scale", anim);
+        }
     }
 
     private void StopEq()
     {
-        _eq?.Stop();
-        Eq.Visibility = Visibility.Collapsed;
-    }
-
-    private Storyboard BuildEq()
-    {
-        var sb = new Storyboard();
-        var bars = new (Microsoft.UI.Xaml.Shapes.Rectangle Bar, double Delay)[]
+        foreach (var bar in new[] { EqBar1, EqBar2, EqBar3, EqBar4 })
         {
-            (EqBar1, 0), (EqBar2, 150), (EqBar3, 300), (EqBar4, 450),
-        };
-        foreach (var (bar, delay) in bars)
-        {
-            var a = new DoubleAnimation
-            {
-                From = 5, To = 16,
-                Duration = new Duration(TimeSpan.FromMilliseconds(450)),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever,
-                BeginTime = TimeSpan.FromMilliseconds(delay),
-                EnableDependentAnimation = true,
-            };
-            Storyboard.SetTarget(a, bar);
-            Storyboard.SetTargetProperty(a, "Height");
-            sb.Children.Add(a);
+            var v = ElementCompositionPreview.GetElementVisual(bar);
+            v.StopAnimation("Scale");
+            v.Scale = Vector3.One;
         }
-        return sb;
+        Eq.Visibility = Visibility.Collapsed;
     }
 }

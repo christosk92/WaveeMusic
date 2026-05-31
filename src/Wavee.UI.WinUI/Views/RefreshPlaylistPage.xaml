@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:swipe="using:Wavee.UI.WinUI.Controls.Swipe"
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:models="using:Wavee.UI.Services.Playlists"
     mc:Ignorable="d"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -18,6 +19,12 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
+        <!-- Immersive palette wash — animated mesh gradient driven by the current card's art.
+             Kept low-opacity so it reads as an ambient glow behind the deck, not a loud gradient. -->
+        <cards:AnimatedHeroBackground Grid.RowSpan="3" Opacity="0.32" IsHitTestVisible="False"
+                                      PrimaryColor="{x:Bind ViewModel.BackgroundPrimary, Mode=OneWay}"
+                                      AccentColor="{x:Bind ViewModel.BackgroundAccent, Mode=OneWay}" />
 
         <!-- Header -->
         <Grid Grid.Row="0" Margin="24,20,24,0" ColumnSpacing="16">
@@ -96,14 +103,14 @@
                             Visibility="{x:Bind ToVisObj(ViewModel.PeekCard2), Mode=OneWay}">
                         <Border.RenderTransform><CompositeTransform ScaleX="0.90" ScaleY="0.90" TranslateY="34" /></Border.RenderTransform>
                         <imaging:CompositionImage ImageUrl="{x:Bind ViewModel.PeekCard2.ImageUrl, Mode=OneWay}"
-                                                  DecodePixelSize="400" Stretch="UniformToFill" CornerRadius="12" />
+                                                  DecodePixelSize="600" Stretch="UniformToFill" CornerRadius="12" />
                     </Border>
                     <Border Width="320" Height="420" CornerRadius="12" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                             RenderTransformOrigin="0.5,0.5" Opacity="0.85"
                             Visibility="{x:Bind ToVisObj(ViewModel.PeekCard1), Mode=OneWay}">
                         <Border.RenderTransform><CompositeTransform ScaleX="0.95" ScaleY="0.95" TranslateY="17" /></Border.RenderTransform>
                         <imaging:CompositionImage ImageUrl="{x:Bind ViewModel.PeekCard1.ImageUrl, Mode=OneWay}"
-                                                  DecodePixelSize="500" Stretch="UniformToFill" CornerRadius="12" />
+                                                  DecodePixelSize="600" Stretch="UniformToFill" CornerRadius="12" />
                     </Border>
                     <swipe:SwipeCard x:Name="TopCard"
                                      ImageUrl="{x:Bind ViewModel.CurrentCard.ImageUrl, Mode=OneWay}"
@@ -307,7 +314,7 @@
                             <StackPanel MaxWidth="320"><TextBlock Text="All set" Style="{StaticResource BodyStrongTextBlockStyle}" /><TextBlock Text="Review what's leaving, then apply your changes." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /></StackPanel>
                         </StackPanel>
                     </StackPanel>
-                    <Button Content="Got it" Command="{x:Bind ViewModel.DismissHowItWorksCommand}" Style="{StaticResource AccentButtonStyle}"
+                    <Button Content="Start refreshing" Command="{x:Bind ViewModel.DismissHowItWorksCommand}" Style="{StaticResource AccentButtonStyle}"
                             HorizontalAlignment="Stretch" />
                 </StackPanel>
             </Border>

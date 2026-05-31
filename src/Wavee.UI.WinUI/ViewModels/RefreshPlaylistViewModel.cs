@@ -27,8 +27,8 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class RefreshPlaylistViewModel : ObservableObject
 {
     private const double SnippetSeconds = 30;
-    private static readonly Color DefaultPrimary = Color.FromArgb(255, 0x3a, 0x1c, 0x5e);
-    private static readonly Color DefaultAccent = Color.FromArgb(255, 0x2c, 0x53, 0x64);
+    private static readonly Color DefaultPrimary = Color.FromArgb(255, 0x32, 0x2a, 0x4a);
+    private static readonly Color DefaultAccent = Color.FromArgb(255, 0x24, 0x3a, 0x46);
 
     private readonly ILibraryDataService _library;
     private readonly IPlaylistCacheService _playlistCache;
@@ -37,7 +37,6 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
     private readonly ITrackColorResolver _colors;
     private readonly ICardPreviewPlaybackCoordinator _previews;
     private readonly IRefreshSessionStore _store;
-    private readonly ISettingsService _settings;
     private readonly ILogger<RefreshPlaylistViewModel>? _logger;
     private readonly DispatcherQueue _dispatcher;
     private readonly DispatcherQueueTimer _clock;
@@ -56,7 +55,6 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         ITrackColorResolver colors,
         ICardPreviewPlaybackCoordinator previews,
         IRefreshSessionStore store,
-        ISettingsService settings,
         ILogger<RefreshPlaylistViewModel>? logger = null)
     {
         _library = library;
@@ -66,7 +64,6 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         _colors = colors;
         _previews = previews;
         _store = store;
-        _settings = settings;
         _logger = logger;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
         _clock = _dispatcher.CreateTimer();
@@ -137,7 +134,6 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
             if (saved is null)
             {
                 _session = RefreshPlaylistSession.Start(p.PlaylistId, tracks, baseRevision, _mutation);
-                ShowHowItWorks = !_settings.Settings.RefreshSwipeHowItWorksSeen;
             }
             else
             {
@@ -151,11 +147,11 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
 
             _session.StateChanged += OnSessionChanged;
             IsEmpty = _session.Phase == RefreshPhase.Empty;
+            // Always open on the welcome card — nothing plays until the user starts.
+            ShowHowItWorks = _session.Phase == RefreshPhase.Auditioning;
             await PersistAsync();
             SyncFromSession();
             _ = UpdateBackgroundAsync(_session.CurrentCard);
-            if (!ShowHowItWorks && _session.Phase == RefreshPhase.Auditioning)
-                StartCurrentSnippet();
         }
         catch (Exception ex)
         {
@@ -215,13 +211,32 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         if (CurrentCard?.Uri != _currentCardUri)
         {
             _currentCardUri = CurrentCard?.Uri;
+            StopSnippet();
             if (_session.Phase == RefreshPhase.Auditioning)
             {
-                _ = UpdateBackgroundAsync(CurrentCard);
-                StartCurrentSnippet();
+                _ = UpdateBackgroundAsync(CurrentCard);                 // palette is prefetched → resolves instantly
+                ResolveAvailability(CurrentCard);   // shows "preview unavailable" if needed — does NOT play
                 _ = PrefetchAsync();
             }
         }
+    }
+
+    /// <summary>
+    /// Determines whether the current card has a snippet (so the card can show "preview unavailable")
+    /// without starting playback. Snippets only play on an explicit play / Space.
+    /// </summary>
+    private async void ResolveAvailability(RefreshCard? card)
+    {
+        PreviewProgress = 0;
+        PreviewState = SwipePreviewState.None;
+        if (card is null) return;
+        try
+        {
+            var url = await _previewUrls.ResolveAsync(card.Uri);
+            if (_session?.CurrentCard?.Uri != card.Uri) return;   // advanced while resolving
+            PreviewState = string.IsNullOrEmpty(url) ? SwipePreviewState.Unavailable : SwipePreviewState.None;
+        }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Preview availability check failed for {Uri}", card.Uri); }
     }
 
     // ── page-invoked deck operations ──
@@ -258,13 +273,7 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
     [RelayCommand] private void UnRemove(string? uri) { if (!string.IsNullOrEmpty(uri)) _session?.UnRemove(uri); }
 
     [RelayCommand]
-    private void DismissHowItWorks()
-    {
-        ShowHowItWorks = false;
-        _settings.Settings.RefreshSwipeHowItWorksSeen = true;
-        _ = _settings.SaveAsync();
-        if (_session?.Phase == RefreshPhase.Auditioning) StartCurrentSnippet();
-    }
+    private void DismissHowItWorks() => ShowHowItWorks = false;   // start auditioning; snippet plays only on explicit play / Space
 
     [RelayCommand] private void DismissBanner() => ShowReconcileBanner = false;
 
@@ -317,15 +326,15 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         if (PreviewProgress >= 1) StopClock();
     }
 
-    // ── palette / background ──
+    // ── palette / immersive background ──
 
     private async Task UpdateBackgroundAsync(RefreshCard? card)
     {
         if (card is null) return;
         try
         {
-            var palette = await _colors.ResolveAsync(card.Uri, card.ImageUrl);
-            if (_session?.CurrentCard?.Uri != card.Uri) return;
+            var palette = await _colors.ResolveAsync(card.Uri, card.ImageUrl);   // cached + prefetched → usually instant
+            if (_session?.CurrentCard?.Uri != card.Uri) return;                   // advanced while resolving
             if (palette is { } p)
             {
                 BackgroundPrimary = ParseHex(p.PrimaryHex, DefaultPrimary);
@@ -334,18 +343,6 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         }
         catch (Exception ex) { _logger?.LogDebug(ex, "Background palette failed for {Uri}", card.Uri); }
     }
-
-    private async Task PrefetchAsync()
-    {
-        if (_session is null) return;
-        var next = _session.UpNext(3);
-        if (next.Count == 0) return;
-        _ = _previewUrls.PrefetchAsync(next.Select(c => c.Uri).ToList());
-        _ = _colors.PrefetchAsync(next.Select(c => (c.Uri, c.ImageUrl)).ToList());
-        await Task.CompletedTask;
-    }
-
-    public void Teardown() { _ = _previews.UnregisterOwner(_ownerId); StopClock(); }
 
     private static Color ParseHex(string? hex, Color fallback)
     {
@@ -359,4 +356,18 @@ public sealed partial class RefreshPlaylistViewModel : ObservableObject
         }
         catch { return fallback; }
     }
+
+    // ── prefetch (look-ahead so a swipe is never a cold load) ──
+
+    private Task PrefetchAsync()
+    {
+        if (_session is null) return Task.CompletedTask;
+        var next = _session.UpNext(3);
+        if (next.Count == 0) return Task.CompletedTask;
+        _ = _previewUrls.PrefetchAsync(next.Select(c => c.Uri).ToList());                       // 30s snippet URLs
+        _ = _colors.PrefetchAsync(next.Select(c => (c.Uri, c.ImageUrl)).ToList());              // background palettes
+        return Task.CompletedTask;
+    }
+
+    public void Teardown() { _ = _previews.UnregisterOwner(_ownerId); StopClock(); }
 }
