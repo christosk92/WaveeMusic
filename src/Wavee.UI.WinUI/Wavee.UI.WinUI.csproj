@@ -189,7 +189,7 @@
 		     project — no transitive package conflicts; ComputeSharp.D2D1 resolves at 3.2.0.
 		     Path comes from $(KlankhuisHeroProject): the local sibling checkout by default,
 		     or the CI clone path that release.yml sets on the runner. -->
-		<ProjectReference Include="$(KlankhuisHeroProject)" />
+		<ProjectReference Include="$(KlankhuisHeroProject)" SetPlatform="Platform=AnyCPU" />
 		<!-- Multi-provider lyrics search & parsing (QQ, Kugou, Netease) -->
 		<ProjectReference Include="..\..\vendor\Lyricify.Lyrics.Helper\Lyricify.Lyrics.Helper.csproj" />
 	</ItemGroup>
