@@ -12,9 +12,11 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.Services;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Controls.Library;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -155,6 +157,12 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
     public partial ArtistsLibraryStage NarrowStage { get; set; } = ArtistsLibraryStage.Artists;
 
     public ObservableCollection<string> BreadcrumbItems { get; } = [];
+
+    /// <summary>Declarative action rows for the shared <c>LibraryDetailPanel</c>.</summary>
+    public ObservableCollection<LibraryDetailAction> SavedArtistDetailActions { get; } = [];
+    public ObservableCollection<LibraryDetailAction> LikedArtistDetailActions { get; } = [];
+    private LibraryDetailAction? _savedOnlyAction;
+
     public bool IsWideLayout => !UseNarrowLayout;
     public bool IsNarrowLayout => UseNarrowLayout;
     public bool ShowNarrowArtistsStage => UseNarrowLayout && NarrowStage == ArtistsLibraryStage.Artists;
@@ -193,10 +201,39 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
         _grouping = grouping;
 
         LoadPreferences();
+        BuildArtistDetailActions();
 
         AttachLongLivedServices();
         if (LibraryRecents != null)
             _ = PrefetchRecentsAsync();
+    }
+
+    private void BuildArtistDetailActions()
+    {
+        SavedArtistDetailActions.Add(new LibraryDetailAction { Label = "Play", Glyph = FluentGlyphs.Play, IsAccent = true, Command = PlayArtistCommand });
+        SavedArtistDetailActions.Add(new LibraryDetailAction { Label = "Shuffle", Glyph = FluentGlyphs.Shuffle, Command = ShuffleArtistCommand });
+        SavedArtistDetailActions.Add(new LibraryDetailAction { Label = "View artist", Glyph = FluentGlyphs.ShowFilled, Command = OpenArtistDetailsCommand });
+        SavedArtistDetailActions.Add(new LibraryDetailAction { Label = "Following", Glyph = FluentGlyphs.CheckMark, IsToggle = true, IsChecked = true, Command = ToggleFollowSelectedArtistCommand });
+        _savedOnlyAction = new LibraryDetailAction { Label = "Saved only", Glyph = FluentGlyphs.Pin, IsToggle = true, IsChecked = ShowSavedOnly, Command = ToggleSavedOnlyCommand };
+        SavedArtistDetailActions.Add(_savedOnlyAction);
+
+        LikedArtistDetailActions.Add(new LibraryDetailAction { Label = "Play liked", Glyph = FluentGlyphs.Play, IsAccent = true, Command = PlayLikedArtistTracksCommand });
+        LikedArtistDetailActions.Add(new LibraryDetailAction { Label = "Shuffle", Glyph = FluentGlyphs.Shuffle, Command = ShuffleLikedArtistTracksCommand });
+        LikedArtistDetailActions.Add(new LibraryDetailAction { Label = "Open artist", Glyph = FluentGlyphs.Open, Command = OpenArtistDetailsCommand });
+    }
+
+    [RelayCommand]
+    private void ToggleFollowSelectedArtist()
+    {
+        if (SelectedArtist is { } artist && LikeService is not null)
+            LikeService.ToggleSave(SavedItemType.Artist, artist.Id, currentlySaved: true);
+    }
+
+    [RelayCommand]
+    private void ToggleSavedOnly()
+    {
+        if (_savedOnlyAction is not null)
+            ShowSavedOnly = _savedOnlyAction.IsChecked;
     }
 
     private async Task PrefetchRecentsAsync()
@@ -797,6 +834,8 @@ public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModel
 
     partial void OnShowSavedOnlyChanged(bool value)
     {
+        if (_savedOnlyAction is not null && _savedOnlyAction.IsChecked != value)
+            _savedOnlyAction.IsChecked = value;
         ApplyAlbumFilter();
     }
 
