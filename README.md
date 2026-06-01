@@ -6,6 +6,13 @@ A modern, open-source Spotify desktop client for Windows — built with .NET 10 
 ![WinUI](https://img.shields.io/badge/WinUI-3-0078D4?logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+<p>
+  <a href="https://github.com/christosk92/WaveeMusic/releases/download/experimental-latest/Wavee.Experimental.x64.appinstaller">
+    <img src="assets/download-msix.svg" alt="Download for Windows - signed MSIX installer" width="260">
+  </a><br>
+  <sub>Windows on ARM? Use the <a href="https://github.com/christosk92/WaveeMusic/releases/download/experimental-latest/Wavee.Experimental.arm64.appinstaller">ARM64 installer</a>.</sub>
+</p>
+
 <img width="1306" height="871" alt="image" src="https://github.com/user-attachments/assets/68608f86-7fb9-46ad-99c5-c5a94220ad71" />
 
 
@@ -99,12 +106,16 @@ A **Spotify Premium** account is required, and the app is intended for personal 
 
 ## Download the alpha
 
-The experimental alpha ships as a signed MSIX from
-[GitHub Releases](https://github.com/christosk92/WaveeMusic/releases) —
-grab the matching `Wavee.UI.WinUI_{package-version}_{arch}.msix` for your machine,
-or install from `Wavee.Experimental.<arch>.appinstaller` to get silent background
-auto-updates. See [ALPHA.md](ALPHA.md) for system requirements, installation steps,
-known limitations, and how to file a useful bug report.
+The badge above downloads Wavee's experimental `.appinstaller` file for x64
+Windows. Open it and Windows App Installer will download the signed MSIX
+package, then keep it on the background auto-update channel. ARM64 builds are
+available from the ARM64 installer link above and from the release assets.
+
+If you want the raw package instead, download the matching
+`Wavee.UI.WinUI_{package-version}_{arch}.msix` asset from
+[GitHub Releases](https://github.com/christosk92/WaveeMusic/releases). See
+[ALPHA.md](ALPHA.md) for system requirements, installation steps, known
+limitations, and how to file a useful bug report.
 
 > A Spotify **Premium** account is required. Wavee shows a non-dismissible
 > banner if you sign in with a Free account.
