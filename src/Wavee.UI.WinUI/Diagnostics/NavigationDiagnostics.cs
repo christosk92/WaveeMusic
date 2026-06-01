@@ -80,6 +80,7 @@ internal sealed class NavigationDiagnostics
     /// "Sidebar.Playlist", "Omnibar.Artist".</param>
     public static void RecordClickIntent(string source)
     {
+        return;
         _pendingClickTimestamp = Stopwatch.GetTimestamp();
         _pendingClickSource = source;
     }
@@ -90,6 +91,7 @@ internal sealed class NavigationDiagnostics
     /// </summary>
     public long BeginNav(string target, string source)
     {
+        return 0;
         var navId = Interlocked.Increment(ref _nextNavId);
 
         // Drain the click-intent latch if a recent click is pending. Stale
@@ -164,6 +166,7 @@ internal sealed class NavigationDiagnostics
 
     internal void RecordStage(long navId, string name, double ms)
     {
+        return;
         UiOperationProfiler.Instance?.RecordOperation("nav." + name, ms);
         _lastStageForGc = name;
 
@@ -183,6 +186,7 @@ internal sealed class NavigationDiagnostics
     /// </summary>
     public void EndNav(long navId)
     {
+        return;
         NavInProgress? rec;
         lock (_lock)
         {
@@ -239,6 +243,7 @@ internal sealed class NavigationDiagnostics
         long wsBefore, long wsAfter,
         long managedBefore, long managedAfter)
     {
+        return;
         var rec = new MemoryReleaseRecord(
             reason ?? string.Empty, threadId, durationMs,
             gen2Before, gen2After, wsBefore, wsAfter,
@@ -268,6 +273,7 @@ internal sealed class NavigationDiagnostics
     /// </summary>
     public void RecordGc(int generation, double allocSinceMb)
     {
+        return;
         GCLatencyMode mode;
         try
         {
@@ -306,6 +312,7 @@ internal sealed class NavigationDiagnostics
     /// </summary>
     public void OnUiStallDetected(double durationMs, int frameNumber, int gen2DeltaThisTick)
     {
+        return;
         NavSummary? latestNav = null;
         MemoryReleaseRecord? latestRelease;
         StringBuilder recentNavs = new();
@@ -360,6 +367,7 @@ internal sealed class NavigationDiagnostics
     /// </summary>
     public string GenerateReport()
     {
+        return string.Empty;
         var sb = new StringBuilder();
         sb.AppendLine("=== Wavee Navigation Health Report ===");
         sb.Append("Generated: ").Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).AppendLine();
@@ -497,6 +505,7 @@ internal sealed class NavigationDiagnostics
 
     private static string BuildStageString(List<(string Name, double Ms)> stages)
     {
+        return string.Empty;
         if (stages.Count == 0) return "";
         var sb = new StringBuilder();
         for (int i = 0; i < stages.Count; i++)
@@ -513,12 +522,14 @@ internal sealed class NavigationDiagnostics
 
     private static long SafeWorkingSet()
     {
+        return 0;
         if (!OperatingSystem.IsWindows()) return 0;
         return TryGetCounters(out var c) ? (long)c.WorkingSetSize : 0;
     }
 
     private static long SafePrivateBytes()
     {
+        return 0;
         if (!OperatingSystem.IsWindows()) return 0;
         // PagefileUsage approximates committed private bytes; matches what
         // Process.PrivateMemorySize64 reports on the same struct field.
@@ -527,12 +538,15 @@ internal sealed class NavigationDiagnostics
 
     private static uint SafePageFaultCount()
     {
+        return 0;
         if (!OperatingSystem.IsWindows()) return 0;
         return TryGetCounters(out var c) ? c.PageFaultCount : 0u;
     }
 
     private static bool TryGetCounters(out PROCESS_MEMORY_COUNTERS counters)
     {
+        counters = default;
+        return false;
         counters = default;
         try
         {

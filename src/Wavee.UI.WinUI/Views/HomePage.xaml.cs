@@ -729,6 +729,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         _scrollRestoreGeneration++;
         _isRestoringScroll = true;
         ContentCard.IsImageLoadingSuspended = true;
+        _logger?.LogDebug("[homescroll] Begin gen={Gen} (suspend ON)", _scrollRestoreGeneration);
 
         // Watchdog — see ScrollRestoreWatchdogMs comment. If neither the
         // normal RestoreScrollOffsetAsync completion nor an OnNavigatedFrom /
@@ -745,6 +746,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         }
         catch { return; }
         if (_isDisposed) return;
+        _logger?.LogDebug("[homescroll] Watchdog fired gen={Gen}", generation);
         EndScrollRestore(generation);
     }
 
@@ -753,6 +755,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         _scrollRestoreGeneration++;
         _isRestoringScroll = false;
         ContentCard.IsImageLoadingSuspended = false;
+        _logger?.LogDebug("[homescroll] Cancel → gen bumped to {Gen}, suspend OFF", _scrollRestoreGeneration);
     }
 
     private async Task RestoreScrollOffsetAsync(double offset, int generation)
@@ -793,10 +796,14 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     private void EndScrollRestore(int generation)
     {
         if (generation != _scrollRestoreGeneration)
+        {
+            _logger?.LogDebug("[homescroll] End gen={Gen} STALE (cur={Cur}) → ignored", generation, _scrollRestoreGeneration);
             return;
+        }
 
         _isRestoringScroll = false;
         ContentCard.IsImageLoadingSuspended = false;
+        _logger?.LogDebug("[homescroll] End gen={Gen} → suspend OFF", generation);
     }
 
     // ── Card click handlers (used by both ContentCard and baseline buttons) ──

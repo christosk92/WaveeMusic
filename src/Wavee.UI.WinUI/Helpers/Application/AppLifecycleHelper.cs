@@ -745,6 +745,10 @@ public static class AppLifecycleHelper
                 // latest release / popular releases into a single decision.
                 .AddSingleton<Wavee.UI.Services.Artists.SpotlightSelectionService>()
                 .AddSingleton<ILibraryDataService, Data.Contexts.LibraryDataService>()
+                // Shared cached "From Liked Songs" grouping — one liked-songs fetch +
+                // one grouping reused across the Albums and Artists tabs, rebuilt only
+                // on save-state change (was: re-grouped per tab switch in each VM).
+                .AddSingleton<Services.ILikedSongsGroupingCache, Services.LikedSongsGroupingCache>()
                 // App-wide "Add to playlist" modal session — shared singleton so
                 // the floating bar in ShellPage, TrackItem '+' affordances, and
                 // playlist-page entry points all see the same target + pending set.

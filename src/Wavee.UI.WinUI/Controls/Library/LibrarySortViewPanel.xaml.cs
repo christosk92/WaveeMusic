@@ -62,6 +62,13 @@ public sealed partial class LibrarySortViewPanel : UserControl
             typeof(LibrarySortViewPanel),
             new PropertyMetadata(false, OnShowGridScaleChanged));
 
+    public static readonly DependencyProperty ShowViewTogglesProperty =
+        DependencyProperty.Register(
+            nameof(ShowViewToggles),
+            typeof(bool),
+            typeof(LibrarySortViewPanel),
+            new PropertyMetadata(true, OnShowViewTogglesChanged));
+
     public LibrarySortBy SortBy
     {
         get => (LibrarySortBy)GetValue(SortByProperty);
@@ -103,6 +110,17 @@ public sealed partial class LibrarySortViewPanel : UserControl
         set => SetValue(ShowGridScaleProperty, value);
     }
 
+    /// <summary>
+    /// When false, hides the "View as" toggles + grid-size slider (and the trigger's
+    /// view glyph/divider), leaving a sort-only popover. Used by Liked Songs, which
+    /// has no grid/list modes.
+    /// </summary>
+    public bool ShowViewToggles
+    {
+        get => (bool)GetValue(ShowViewTogglesProperty);
+        set => SetValue(ShowViewTogglesProperty, value);
+    }
+
     public LibrarySortViewPanel()
     {
         InitializeComponent();
@@ -116,6 +134,7 @@ public sealed partial class LibrarySortViewPanel : UserControl
         ApplyDirectionToUi();
         ApplyViewModeToUi();
         ApplyGridScaleVisibility();
+        ApplyViewToggleVisibility();
         UpdateTriggerDisplay();
     }
 
@@ -153,11 +172,25 @@ public sealed partial class LibrarySortViewPanel : UserControl
         ((LibrarySortViewPanel)d).ApplyGridScaleVisibility();
     }
 
+    private static void OnShowViewTogglesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((LibrarySortViewPanel)d).ApplyViewToggleVisibility();
+    }
+
     private void ApplyGridScaleVisibility()
     {
         if (GridScaleSection == null) return;
         var isGridMode = ViewMode is LibraryViewMode.DefaultGrid or LibraryViewMode.CompactGrid;
-        GridScaleSection.Visibility = (ShowGridScale && isGridMode) ? Visibility.Visible : Visibility.Collapsed;
+        GridScaleSection.Visibility = (ShowViewToggles && ShowGridScale && isGridMode) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ApplyViewToggleVisibility()
+    {
+        var vis = ShowViewToggles ? Visibility.Visible : Visibility.Collapsed;
+        if (ViewSection != null) ViewSection.Visibility = vis;
+        if (TriggerViewGlyph != null) TriggerViewGlyph.Visibility = vis;
+        if (TriggerViewDivider != null) TriggerViewDivider.Visibility = vis;
+        ApplyGridScaleVisibility();
     }
 
     // ── UI sync ──

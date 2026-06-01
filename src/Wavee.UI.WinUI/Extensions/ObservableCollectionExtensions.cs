@@ -175,4 +175,96 @@ public static class ObservableCollectionExtensions
         ref var backing = ref Accessors<T>.GetItems(collection);
         backing.Clear();
     }
+
+    /// <summary>
+    /// Reconciles <paramref name="target"/> to match <paramref name="desired"/>
+    /// (already in final order) using per-item Remove / Move / Insert / Replace
+    /// notifications instead of a Clear+rebuild or a single Reset. Surviving rows
+    /// keep their identity — so selection, scroll position and per-item image
+    /// surfaces are preserved and there is no flicker. This is the incremental,
+    /// flicker-free apply that replaces <see cref="ReplaceWith{T}"/> on the
+    /// library hot paths (like / unlike deltas, re-filter, re-sort).
+    ///
+    /// <para>Matching is by <paramref name="keySelector"/>. For a key present in
+    /// both lists: when <paramref name="updateInPlace"/> is supplied it patches the
+    /// retained instance's mutable fields (the instance reference is kept);
+    /// otherwise, if the desired instance differs, the row is replaced in place
+    /// (keeps its index) so immutable-record data changes are reflected.</para>
+    /// </summary>
+    public static void ApplyKeyedDiff<T>(
+        this ObservableCollection<T> target,
+        IReadOnlyList<T> desired,
+        Func<T, string> keySelector,
+        Action<T, T>? updateInPlace = null,
+        IEqualityComparer<string>? keyComparer = null)
+    {
+        if (target == null || desired == null) return;
+        var cmp = keyComparer ?? StringComparer.Ordinal;
+
+        // Fast path: nothing there yet → straight append (first load).
+        if (target.Count == 0)
+        {
+            foreach (var d in desired)
+                target.Add(d);
+            return;
+        }
+
+        // 1) Remove rows whose key is gone from the desired set.
+        var desiredKeys = new HashSet<string>(cmp);
+        foreach (var d in desired)
+            desiredKeys.Add(keySelector(d));
+
+        for (var i = target.Count - 1; i >= 0; i--)
+        {
+            if (!desiredKeys.Contains(keySelector(target[i])))
+                target.RemoveAt(i);
+        }
+
+        // 2) Index the survivors by key (assumes unique keys; last wins).
+        var existing = new Dictionary<string, T>(cmp);
+        foreach (var t in target)
+            existing[keySelector(t)] = t;
+
+        // 3) Walk the desired order: move survivors into place, insert newcomers,
+        //    patch / replace matched rows. Indices < i are already settled.
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var d = desired[i];
+            var key = keySelector(d);
+
+            if (existing.TryGetValue(key, out var cur))
+            {
+                updateInPlace?.Invoke(cur, d);
+
+                var j = IndexOfRef(target, cur, i);
+                if (j > i)
+                    target.Move(j, i);
+
+                if (updateInPlace is null && !ReferenceEquals(cur, d))
+                {
+                    target[i] = d;        // Replace event — keeps position
+                    existing[key] = d;
+                }
+            }
+            else
+            {
+                target.Insert(i, d);
+                existing[key] = d;
+            }
+        }
+
+        // 4) Trim any trailing leftovers (defensive; removals above usually suffice).
+        while (target.Count > desired.Count)
+            target.RemoveAt(target.Count - 1);
+    }
+
+    private static int IndexOfRef<T>(ObservableCollection<T> list, T item, int start)
+    {
+        for (var i = start; i < list.Count; i++)
+        {
+            if (ReferenceEquals(list[i], item))
+                return i;
+        }
+        return -1;
+    }
 }

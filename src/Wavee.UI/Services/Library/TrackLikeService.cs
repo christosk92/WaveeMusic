@@ -142,10 +142,22 @@ public sealed class TrackLikeService : ITrackLikeService, ILibrarySavedActionExe
 
     public async Task ReloadCacheAsync()
     {
-        foreach (var (type, (_, dbType, _)) in TypeMap)
+        // Build fresh sets off to the side, then swap each live set's contents in one
+        // synchronous pass. The old code Clear()'d the live cache and then awaited the
+        // DB read — during that window IsSaved() returned false and hearts flickered
+        // off. Now a save-push landing mid-reload reads either the full old or full new
+        // set, never an empty one.
+        var rebuilt = new Dictionary<SavedItemType, HashSet<string>>();
+        foreach (var (type, (prefix, dbType, _)) in TypeMap)
         {
-            _caches[type].Clear();
-            await LoadItemsAsync(type, dbType).ConfigureAwait(false);
+            rebuilt[type] = await LoadIntoNewSetAsync(dbType, prefix).ConfigureAwait(false);
+        }
+
+        foreach (var (type, set) in rebuilt)
+        {
+            var live = _caches[type];
+            live.Clear();
+            live.UnionWith(set);
         }
 
         _logger?.LogInformation(
@@ -318,6 +330,35 @@ public sealed class TrackLikeService : ITrackLikeService, ILibrarySavedActionExe
             offset += entities.Count;
             if (entities.Count < pageSize) break;
         }
+    }
+
+    /// <summary>
+    /// Pages all saved items of a type into a fresh set (no mutation of the live cache).
+    /// Used by the build-then-swap <see cref="ReloadCacheAsync"/>.
+    /// </summary>
+    private async Task<HashSet<string>> LoadIntoNewSetAsync(SpotifyLibraryItemType dbType, string prefix)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        var offset = 0;
+        const int pageSize = 500;
+
+        while (true)
+        {
+            var entities = await _database.GetSpotifyLibraryItemsAsync(dbType, pageSize, offset).ConfigureAwait(false);
+            if (entities.Count == 0) break;
+
+            foreach (var entity in entities)
+            {
+                var bareId = ExtractBareId(entity.Uri, prefix);
+                if (bareId != null)
+                    set.Add(bareId);
+            }
+
+            offset += entities.Count;
+            if (entities.Count < pageSize) break;
+        }
+
+        return set;
     }
 
     private void SubscribeToLibraryChanges()

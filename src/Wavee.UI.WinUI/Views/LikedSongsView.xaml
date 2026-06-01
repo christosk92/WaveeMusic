@@ -109,6 +109,13 @@
                         <Run x:Uid="Views_LikedSongsView__Auto_600" Text=" &#x2022; "/>
                         <Run Text="{x:Bind ViewModel.TotalDuration, Mode=OneWay}"/>
                     </TextBlock>
+                    <TextBox
+                        MinWidth="180"
+                        MaxWidth="280"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        PlaceholderText="Filter songs..."
+                        Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                 </StackPanel>
             </tdg:TrackDataGrid.ToolbarLeftContent>
             <tdg:TrackDataGrid.FilterBarContent>

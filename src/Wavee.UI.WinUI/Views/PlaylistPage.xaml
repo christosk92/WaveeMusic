@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:tdg="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:entranceAnim="using:Wavee.UI.WinUI.Controls.Behaviors"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     xmlns:helpers="using:Wavee.UI.WinUI.Helpers"
@@ -791,6 +792,7 @@
                                 Spacing="16"
                                 Visibility="{x:Bind ViewModel.Header.CanShowRecommendations, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid x:Name="FooterTracksContent"
+                              entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                               x:Load="{x:Bind ViewModel.Header.CanShowRecommendations, Mode=OneWay}">
                             <StackPanel Spacing="16">
                         <Grid>

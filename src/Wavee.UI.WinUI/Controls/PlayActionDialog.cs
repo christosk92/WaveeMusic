@@ -31,7 +31,7 @@ public static class PlayActionDialog
     public static async Task<PlayActionResult> ShowAsync(
         XamlRoot xamlRoot,
         bool isFirstTime = false,
-        bool askEveryTime = true)
+        bool askEveryTime = false)
     {
         var panel = new StackPanel { Spacing = 8, MinWidth = 300 };
 

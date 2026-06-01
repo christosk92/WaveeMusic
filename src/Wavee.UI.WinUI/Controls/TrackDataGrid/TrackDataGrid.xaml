@@ -6,6 +6,7 @@
     xmlns:contracts="using:Wavee.UI.Contracts"
     xmlns:local="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
+    xmlns:anim="using:Wavee.UI.WinUI.Controls.Behaviors"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
 
     <UserControl.Resources>
@@ -331,6 +332,7 @@
                                             Margin="0,4"
                                             HorizontalContentAlignment="Stretch"
                                             VerticalContentAlignment="Stretch"
+                                            anim:StaggeredEntrance.IsEntranceAnimated="True"
                                             MinHeight="0">
                                             <track:TrackItem
                                                 Track="{x:Bind}"

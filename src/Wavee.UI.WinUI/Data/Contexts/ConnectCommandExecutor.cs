@@ -354,12 +354,14 @@ internal sealed partial class ConnectCommandExecutor : IPlaybackCommandExecutor,
             // matches Spotify desktop's wire shape 1:1 — prepare_play_options,
             // play_options, full play_origin, intent_id, connection_type,
             // restrictions, conditional `pages` per context kind.
-            result = await _client.SendPlayCommandAsync(
-                target,
-                typedPlayCommand,
-                waitForAck: waitForAck,
-                ackTimeout: ackTimeout,
-                ct: ct).ConfigureAwait(false);
+            result = await Task.Run(
+                async () => await _client.SendPlayCommandAsync(
+                    target,
+                    typedPlayCommand,
+                    waitForAck: waitForAck,
+                    ackTimeout: ackTimeout,
+                    ct: ct).ConfigureAwait(false),
+                ct).ConfigureAwait(false);
         }
         else
         {

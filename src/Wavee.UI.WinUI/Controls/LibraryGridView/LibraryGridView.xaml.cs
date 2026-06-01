@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Wavee.UI.WinUI.Controls.Layouts;
 using Wavee.UI.WinUI.Data.Enums;
 
 namespace Wavee.UI.WinUI.Controls;
@@ -341,6 +342,13 @@ public sealed partial class LibraryGridView : UserControl
             control.ApplyViewMode();
     }
 
+    // Cached layout instances. ApplyViewMode re-runs on every grid-size slider tick;
+    // reusing these and mutating their properties (a cheap InvalidateMeasure) avoids
+    // allocating a fresh layout and reassigning ItemsView.Layout each time — the latter
+    // forces a full re-layout and throws away the layout's realization bookkeeping.
+    private ResponsiveGridLayout? _gridLayout;
+    private StackLayout? _listLayout;
+
     private void ApplyViewMode()
     {
         if (ItemsGridView == null) return;
@@ -349,75 +357,71 @@ public sealed partial class LibraryGridView : UserControl
         var scaledWidth = MinItemWidth * scale;
         var scaledHeight = MinItemHeight * scale;
 
-        var (template, layout, minWidth, minHeight) = ViewMode switch
-        {
-            LibraryViewMode.CompactList => (
-                CompactListItemTemplate ?? DefaultListItemTemplate ?? ItemTemplate,
-                (Microsoft.UI.Xaml.Controls.Layout)new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 },
-                (double)0,
-                (double)36),
-            LibraryViewMode.DefaultList => (
-                DefaultListItemTemplate ?? ItemTemplate,
-                new StackLayout { Orientation = Orientation.Vertical, Spacing = 4 },
-                (double)0,
-                (double)56),
-            LibraryViewMode.CompactGrid => (
-                CompactGridItemTemplate ?? DefaultGridItemTemplate ?? ItemTemplate,
-                new UniformGridLayout
-                {
-                    MinItemWidth = 100,
-                    MinItemHeight = 100,
-                    MinRowSpacing = 8,
-                    MinColumnSpacing = 8,
-                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
-                },
-                (double)100,
-                (double)100),
-            _ => (
-                DefaultGridItemTemplate ?? ItemTemplate,
-                new UniformGridLayout
-                {
-                    MinItemWidth = scaledWidth,
-                    MinItemHeight = scaledHeight,
-                    MinRowSpacing = 12,
-                    MinColumnSpacing = 12,
-                    // Uniform stretch: cells grow with the viewport while preserving the
-                    // MinItemWidth:MinItemHeight aspect, so the album art (square) and
-                    // the text band below scale together. Earlier we used None so cells
-                    // hugged MinItemWidth and titles like "Can This Love Be Translated?"
-                    // got truncated even on wide displays.
-                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
-                },
-                scaledWidth,
-                scaledHeight)
-        };
+        DataTemplate? template;
+        Microsoft.UI.Xaml.Controls.Layout layout;
 
-        // Keep the shimmer aligned to the items layout so the placeholder silhouette
-        // approximates the actual rendered rows/cards.
-        if (ShimmerOverlay != null && layout is UniformGridLayout uniform)
+        switch (ViewMode)
         {
-            ShimmerOverlay.Layout = new UniformGridLayout
-            {
-                MinItemWidth = uniform.MinItemWidth,
-                MinItemHeight = uniform.MinItemHeight,
-                MinRowSpacing = uniform.MinRowSpacing,
-                MinColumnSpacing = uniform.MinColumnSpacing,
-                ItemsStretch = uniform.ItemsStretch
-            };
-        }
-        else if (ShimmerOverlay != null && layout is StackLayout stack)
-        {
-            ShimmerOverlay.Layout = new StackLayout
-            {
-                Orientation = stack.Orientation,
-                Spacing = stack.Spacing
-            };
+            case LibraryViewMode.CompactList:
+                _listLayout ??= new StackLayout { Orientation = Orientation.Vertical };
+                _listLayout.Spacing = 2;
+                layout = _listLayout;
+                template = CompactListItemTemplate ?? DefaultListItemTemplate ?? ItemTemplate;
+                break;
+
+            case LibraryViewMode.DefaultList:
+                _listLayout ??= new StackLayout { Orientation = Orientation.Vertical };
+                _listLayout.Spacing = 4;
+                layout = _listLayout;
+                template = DefaultListItemTemplate ?? ItemTemplate;
+                break;
+
+            case LibraryViewMode.CompactGrid:
+                _gridLayout ??= new ResponsiveGridLayout();
+                _gridLayout.MinItemWidth = 100;
+                _gridLayout.ColumnSpacing = 8;
+                _gridLayout.RowSpacing = 8;
+                _gridLayout.AspectRatio = 1.0;
+                _gridLayout.TextBandHeight = 0;
+                layout = _gridLayout;
+                template = CompactGridItemTemplate ?? DefaultGridItemTemplate ?? ItemTemplate;
+                break;
+
+            default: // DefaultGrid — CSS auto-fill + 1fr (see ResponsiveGridLayout).
+                _gridLayout ??= new ResponsiveGridLayout();
+                _gridLayout.MinItemWidth = scaledWidth;
+                _gridLayout.ColumnSpacing = 12;
+                _gridLayout.RowSpacing = 12;
+                _gridLayout.AspectRatio = 1.0;
+                // Text band below the square cover = the consumer's MinItemHeight minus
+                // the image side. Cells fill width, rows track content → no clip / no gap.
+                _gridLayout.TextBandHeight = Math.Max(0, scaledHeight - scaledWidth);
+                layout = _gridLayout;
+                template = DefaultGridItemTemplate ?? ItemTemplate;
+                break;
         }
 
-        ItemsGridView.Layout = layout;
+        UpdateShimmerLayout(layout);
+
+        // Only reassign on a mode-class switch (grid <-> list); within a class (e.g. the
+        // grid-size slider) the cached instance was mutated in place above.
+        if (!ReferenceEquals(ItemsGridView.Layout, layout))
+            ItemsGridView.Layout = layout;
         if (template != null)
             ItemsGridView.ItemTemplate = template;
-        _ = minWidth; _ = minHeight;
+    }
+
+    /// <summary>
+    /// Drive the shimmer placeholder repeater with the very same layout instance as the
+    /// items. ResponsiveGridLayout / StackLayout are stateless — all state is derived
+    /// per pass from the layout context — so one instance lays out both repeaters, and
+    /// the placeholders get the exact same column/row geometry as the real cards.
+    /// </summary>
+    private void UpdateShimmerLayout(Microsoft.UI.Xaml.Controls.Layout layout)
+    {
+        if (ShimmerOverlay == null) return;
+        if (!ReferenceEquals(ShimmerOverlay.Layout, layout))
+            ShimmerOverlay.Layout = layout;
     }
 
     private void ItemsGridView_DoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)

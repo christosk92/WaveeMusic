@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.InPageFilter;
+using Wavee.UI.WinUI.Controls.Layouts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -32,7 +33,6 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
     private const double NarrowLayoutBreakpoint = 680;
     private bool _hasInitializedLayoutMode;
     private bool _disposed;
-    private bool _suppressSelectorEvents;
 
     public ArtistsLibraryViewModel ViewModel { get; }
 
@@ -58,7 +58,6 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         // Sync selection when loaded into the visual tree
         SyncSelectionToItemsView();
         SyncLikedSelectionToItemsView();
-        SyncSourceSelectorFromViewModel();
 
         // Initialize tracks panel state
         UpdateTracksPanelVisibility(ViewModel.IsTracksPanelVisible, animate: false);
@@ -90,34 +89,9 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         }
         else if (e.PropertyName == nameof(ViewModel.SourceMode))
         {
-            SyncSourceSelectorFromViewModel();
             ApplyArtistsViewMode();
             DispatcherQueue.TryEnqueue(ApplyArtistsViewMode);
         }
-    }
-
-    private void SyncSourceSelectorFromViewModel()
-    {
-        if (SourceSelector == null) return;
-        var index = ViewModel.SourceMode == LibrarySource.FromLikedSongs ? 1 : 0;
-        if (SourceSelector.SelectedIndex == index) return;
-
-        _suppressSelectorEvents = true;
-        try { SourceSelector.SelectedIndex = index; }
-        finally { _suppressSelectorEvents = false; }
-    }
-
-    private void SourceSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_suppressSelectorEvents) return;
-        if (sender is not Selector { SelectedItem: FrameworkElement fe }) return;
-        if (fe.Tag is not string tag) return;
-
-        var mode = string.Equals(tag, nameof(LibrarySource.FromLikedSongs), StringComparison.OrdinalIgnoreCase)
-            ? LibrarySource.FromLikedSongs
-            : LibrarySource.Saved;
-        if (ViewModel.SourceMode != mode)
-            ViewModel.SourceMode = mode;
     }
 
     /// <summary>
@@ -125,6 +99,15 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
     /// based on the selected <see cref="LibraryViewMode"/>. The inline template defined in XAML
     /// is the DefaultList variant; the other three live in <c>UserControl.Resources</c>.
     /// </summary>
+    // Cached layouts per ItemsView. ApplyArtistsViewMode re-runs on ViewMode / source /
+    // load changes; reusing these and mutating their properties (a cheap InvalidateMeasure)
+    // avoids reallocating a layout and reassigning ItemsView.Layout each time. Separate
+    // instances per view since a layout shouldn't be shared across two live repeaters.
+    private ResponsiveGridLayout? _savedGridLayout;
+    private ResponsiveGridLayout? _likedGridLayout;
+    private StackLayout? _savedListLayout;
+    private StackLayout? _likedListLayout;
+
     private void ApplyArtistsViewMode()
     {
         if (ArtistsView is null && LikedArtistsView is null) return;
@@ -132,70 +115,77 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         switch (ViewModel.ViewMode)
         {
             case LibraryViewMode.CompactList:
-                ApplyArtistListLayout(new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 });
+                ApplyArtistListLayout(2);
                 ApplyTemplateFromResources("ArtistCompactListItemTemplate");
                 ApplyLikedTemplateFromResources("LikedArtistCompactListItemTemplate");
                 break;
 
             case LibraryViewMode.CompactGrid:
-                ApplyArtistListLayout(new UniformGridLayout
-                {
-                    MinItemWidth = 104,
-                    MinItemHeight = 122,
-                    MinRowSpacing = 8,
-                    MinColumnSpacing = 8,
-                    // Uniform so circular cards grow proportionally as the
-                    // column widens — None left a static grid that ignored
-                    // extra horizontal space.
-                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
-                });
+                // Compact card shows the name only (~1 line) under the avatar.
+                ApplyArtistGridLayout(minItemWidth: 104, spacing: 8, textBandHeight: 34);
                 ApplyTemplateFromResources("ArtistCompactGridItemTemplate");
                 ApplyLikedTemplateFromResources("LikedArtistCompactGridItemTemplate");
                 break;
 
             case LibraryViewMode.DefaultGrid:
-                ApplyArtistListLayout(new UniformGridLayout
-                {
-                    MinItemWidth = 112,
-                    MinItemHeight = 150,
-                    MinRowSpacing = 4,
-                    MinColumnSpacing = 4,
-                    // Uniform — same reason as the compact branch above.
-                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
-                });
+                // CSS auto-fill + 1fr: circular avatars grow with the column width; row
+                // height = avatar (square) + a fixed text band sized for the
+                // From-Liked-Songs card's 3 lines. No clip, no empty space at any width.
+                ApplyArtistGridLayout(minItemWidth: 150, spacing: 12, textBandHeight: 88);
                 ApplyTemplateFromResources("ArtistDefaultGridItemTemplate");
                 ApplyLikedTemplateFromResources("LikedArtistDefaultGridItemTemplate");
                 break;
 
             case LibraryViewMode.DefaultList:
             default:
-                ApplyArtistListLayout(new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 });
+                ApplyArtistListLayout(2);
                 ApplyTemplateFromResources("ArtistDefaultListItemTemplate");
                 ApplyLikedTemplateFromResources("LikedArtistDefaultListItemTemplate");
                 break;
         }
     }
 
-    private void ApplyArtistListLayout(Layout layout)
+    private void ApplyArtistGridLayout(double minItemWidth, double spacing, double textBandHeight)
     {
         if (ArtistsView is not null)
-            ArtistsView.Layout = layout;
+        {
+            _savedGridLayout ??= new ResponsiveGridLayout { AspectRatio = 1.0 };
+            _savedGridLayout.MinItemWidth = minItemWidth;
+            _savedGridLayout.ColumnSpacing = spacing;
+            _savedGridLayout.RowSpacing = spacing;
+            _savedGridLayout.TextBandHeight = textBandHeight;
+            if (!ReferenceEquals(ArtistsView.Layout, _savedGridLayout))
+                ArtistsView.Layout = _savedGridLayout;
+        }
         if (LikedArtistsView is not null)
-            LikedArtistsView.Layout = CloneLayout(layout);
+        {
+            _likedGridLayout ??= new ResponsiveGridLayout { AspectRatio = 1.0 };
+            _likedGridLayout.MinItemWidth = minItemWidth;
+            _likedGridLayout.ColumnSpacing = spacing;
+            _likedGridLayout.RowSpacing = spacing;
+            _likedGridLayout.TextBandHeight = textBandHeight;
+            if (!ReferenceEquals(LikedArtistsView.Layout, _likedGridLayout))
+                LikedArtistsView.Layout = _likedGridLayout;
+        }
     }
 
-    private static Layout CloneLayout(Layout layout) => layout switch
+    private void ApplyArtistListLayout(double spacing)
     {
-        UniformGridLayout u => new UniformGridLayout
+        if (ArtistsView is not null)
         {
-            MinItemWidth = u.MinItemWidth,
-            MinItemHeight = u.MinItemHeight,
-            MinRowSpacing = u.MinRowSpacing,
-            MinColumnSpacing = u.MinColumnSpacing,
-            ItemsStretch = u.ItemsStretch
-        },
-        _ => new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 }
-    };
+            _savedListLayout ??= new StackLayout { Orientation = Orientation.Vertical };
+            _savedListLayout.Spacing = spacing;
+            if (!ReferenceEquals(ArtistsView.Layout, _savedListLayout))
+                ArtistsView.Layout = _savedListLayout;
+        }
+        if (LikedArtistsView is not null)
+        {
+            _likedListLayout ??= new StackLayout { Orientation = Orientation.Vertical };
+            _likedListLayout.Spacing = spacing;
+            if (!ReferenceEquals(LikedArtistsView.Layout, _likedListLayout))
+                LikedArtistsView.Layout = _likedListLayout;
+        }
+    }
 
     private void ApplyTemplateFromResources(string resourceKey)
     {

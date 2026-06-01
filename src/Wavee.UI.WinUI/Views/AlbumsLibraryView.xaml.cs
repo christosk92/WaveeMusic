@@ -48,7 +48,6 @@ public sealed partial class AlbumsLibraryView : UserControl, IDisposable, IInPag
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         UpdateLayoutMode(preserveContext: false);
-        SyncSourceSelectorFromViewModel();
         SyncDetailModeSelectorFromViewModel();
     }
 
@@ -68,24 +67,9 @@ public sealed partial class AlbumsLibraryView : UserControl, IDisposable, IInPag
     {
         switch (e.PropertyName)
         {
-            case nameof(AlbumsLibraryViewModel.SourceMode):
-                SyncSourceSelectorFromViewModel();
-                break;
             case nameof(AlbumsLibraryViewModel.LikedAlbumDetailMode):
                 SyncDetailModeSelectorFromViewModel();
                 break;
-        }
-    }
-
-    private void SyncSourceSelectorFromViewModel()
-    {
-        if (SourceSelector == null) return;
-        var index = ViewModel.SourceMode == LibrarySource.FromLikedSongs ? 1 : 0;
-        if (SourceSelector.SelectedIndex != index)
-        {
-            _suppressSelectorEvents = true;
-            try { SourceSelector.SelectedIndex = index; }
-            finally { _suppressSelectorEvents = false; }
         }
     }
 
@@ -101,19 +85,6 @@ public sealed partial class AlbumsLibraryView : UserControl, IDisposable, IInPag
                 NarrowDetailModeSelector.SelectedIndex = index;
         }
         finally { _suppressSelectorEvents = false; }
-    }
-
-    private void SourceSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_suppressSelectorEvents) return;
-        if (sender is not Selector { SelectedItem: FrameworkElement fe }) return;
-        if (fe.Tag is not string tag) return;
-
-        var newMode = string.Equals(tag, nameof(LibrarySource.FromLikedSongs), StringComparison.OrdinalIgnoreCase)
-            ? LibrarySource.FromLikedSongs
-            : LibrarySource.Saved;
-        if (ViewModel.SourceMode != newMode)
-            ViewModel.SourceMode = newMode;
     }
 
     private void DetailModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)

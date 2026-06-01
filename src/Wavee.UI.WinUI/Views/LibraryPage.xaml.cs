@@ -21,7 +21,7 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
     // LibraryPage hosts four child views (Albums/Artists/LikedSongs/YourEpisodes)
     // via a ContentControl. Ctrl+F routes through the currently active child.
     private IInPageFilterable? ActiveFilterableChild
-        => ContentHost?.Content as IInPageFilterable;
+        => _activeView as IInPageFilterable;
     string IInPageFilterable.FilterQuery
     {
         get => ActiveFilterableChild?.FilterQuery ?? string.Empty;
@@ -49,6 +49,12 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
     private ArtistsLibraryView? _artistsView;
     private LikedSongsView? _likedSongsView;
     private YourEpisodesView? _yourEpisodesView;
+
+    // The child view currently shown (Visibility=Visible). The others remain
+    // parented to ContentHost but Collapsed, with their GPU image surfaces
+    // released via NavCacheSurfaces — so switching back is a Visibility flip plus
+    // a cheap surface re-pin, never a re-layout / re-realize.
+    private UserControl? _activeView;
     private int _deferredShowTabAttempts;
     private TabItemParameter? _tabItemParameter;
     private bool _disposed;
@@ -173,7 +179,7 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
 
     private void LibraryPage_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_disposed || ContentHost?.Content != null)
+        if (_disposed || _activeView != null)
             return;
 
         var selectedItem = LibrarySelectorBar.SelectedItem as SegmentedItem
@@ -244,15 +250,51 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
             view = _albumsView ??= new AlbumsLibraryView(ViewModel.Albums);
         }
 
-        if (!ReferenceEquals(ContentHost.Content, view))
+        ShowView(view);
+    }
+
+    /// <summary>
+    /// Reveals <paramref name="view"/> by Visibility — all four child views stay
+    /// parented to <c>ContentHost</c> — re-pinning its image surfaces, and parks
+    /// the previously-active view: Collapsed but still realized, with its GPU
+    /// surfaces released. A tab switch is therefore a Visibility flip plus a cheap
+    /// surface re-pin (no Unloaded, no re-layout, no container re-realization),
+    /// which is what makes switching back instant. Mirrors how <c>TabBarItem</c>
+    /// drives <see cref="NavCacheSurfaces"/> for whole pages.
+    /// </summary>
+    private void ShowView(UserControl view)
+    {
+        if (!ContentHost.Children.Contains(view))
+            ContentHost.Children.Add(view);
+
+        if (ReferenceEquals(_activeView, view))
         {
-            ContentHost.Content = view;
-            // The active filterable child changed under LibraryPage —
-            // close the Ctrl+F filter bar (if open) so the user starts
-            // fresh on the new sub-tab. The bar can be re-opened with
-            // another Ctrl+F press and will target the new child.
-            Ioc.Default.GetService<Services.InPageFilterController>()?.Hide();
+            // Same tab (e.g. re-entered via back/forward) — just make sure it's
+            // visible and its surfaces are live.
+            view.Visibility = Visibility.Visible;
+            NavCacheSurfaces.RestoreAll(view);
+            return;
         }
+
+        // Reveal the target and re-hydrate its surfaces (no-op the first time,
+        // a cheap cache re-pin on every subsequent return).
+        view.Visibility = Visibility.Visible;
+        NavCacheSurfaces.RestoreAll(view);
+
+        // Park the previously-active view: it stays realized (no teardown), but
+        // sheds its image surfaces so only the active tab's surfaces are resident.
+        if (_activeView is { } previous)
+        {
+            previous.Visibility = Visibility.Collapsed;
+            NavCacheSurfaces.ReleaseAll(previous);
+        }
+
+        _activeView = view;
+
+        // The active filterable child changed under LibraryPage — close the
+        // Ctrl+F filter bar (if open) so the user starts fresh on the new
+        // sub-tab. It can be re-opened and will target the new child.
+        Ioc.Default.GetService<Services.InPageFilterController>()?.Hide();
     }
 
     private bool HasCachedViewFor(SegmentedItem selectedItem)
@@ -408,8 +450,13 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
 
         _trimmedForNavigationCache = true;
         _trimmedSelectedTabKey = GetSelectedTabKey();
+        // Whole page is off-screen — drop all four child trees to free memory
+        // (the view objects stay cached in their fields and are re-hosted on
+        // restore; the active tab is re-shown via SelectTab). The keep-tree
+        // fast-switch optimization only needs to hold while Library is on-screen.
         if (ContentHost != null)
-            ContentHost.Content = null;
+            ContentHost.Children.Clear();
+        _activeView = null;
     }
 
     public void RestoreFromNavigationCache()
@@ -436,7 +483,8 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
 
         Loaded -= LibraryPage_Loaded;
         LibrarySelectorBar.SelectionChanged -= SelectorBar_SelectionChanged;
-        ContentHost.Content = null;
+        ContentHost.Children.Clear();
+        _activeView = null;
 
         DisposeIfNeeded(ref _albumsView);
         DisposeIfNeeded(ref _artistsView);

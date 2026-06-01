@@ -20,7 +20,19 @@ $ErrorActionPreference = "Stop"
 function Invoke-Git {
     param([Parameter(Mandatory = $true)][string[]] $Arguments)
 
-    $output = & git @Arguments 2>&1
+    # Windows PowerShell 5.1 turns a native command's stderr (e.g. git fetch's
+    # benign "From github.com:..." progress) into a terminating NativeCommandError
+    # under $ErrorActionPreference='Stop' when merged via 2>&1 — aborting before
+    # the $LASTEXITCODE check. Capture under 'Continue' so the real exit code
+    # drives success/failure (no-op under pwsh, where this never terminated).
+    $eap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & git @Arguments 2>&1
+    }
+    finally {
+        $ErrorActionPreference = $eap
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "git $($Arguments -join ' ') failed: $output"
     }

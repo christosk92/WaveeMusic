@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Library.LibraryDetailPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:lib="using:Wavee.UI.WinUI.Controls.Library"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
+    xmlns:primitives="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+
+        <!-- Pill button for secondary actions (Shuffle / View / Open …). -->
+        <Style x:Key="LibDetailPillStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="Padding" Value="16,7"/>
+        </Style>
+        <Style x:Key="LibDetailIconStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="Padding" Value="9"/>
+            <Setter Property="MinWidth" Value="0"/>
+        </Style>
+        <Style x:Key="LibDetailTogglePillStyle" TargetType="ToggleButton">
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="Padding" Value="16,7"/>
+        </Style>
+
+        <DataTemplate x:Key="ActAccentTemplate" x:DataType="lib:LibraryDetailAction">
+            <Button Style="{StaticResource AccentButtonStyle}"
+                    CornerRadius="18" Padding="20,7"
+                    Command="{x:Bind Command}"
+                    CommandParameter="{x:Bind CommandParameter}"
+                    ToolTipService.ToolTip="{x:Bind Tooltip}"
+                    Visibility="{x:Bind IsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="{x:Bind Glyph, Mode=OneWay}" FontSize="14"/>
+                    <TextBlock Text="{x:Bind Label, Mode=OneWay}"/>
+                </StackPanel>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ActDefaultTemplate" x:DataType="lib:LibraryDetailAction">
+            <Button Style="{StaticResource LibDetailPillStyle}"
+                    Command="{x:Bind Command}"
+                    CommandParameter="{x:Bind CommandParameter}"
+                    ToolTipService.ToolTip="{x:Bind Tooltip}"
+                    Visibility="{x:Bind IsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="{x:Bind Glyph, Mode=OneWay}" FontSize="14"/>
+                    <TextBlock Text="{x:Bind Label, Mode=OneWay}"/>
+                </StackPanel>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ActIconTemplate" x:DataType="lib:LibraryDetailAction">
+            <Button Style="{StaticResource LibDetailIconStyle}"
+                    Command="{x:Bind Command}"
+                    CommandParameter="{x:Bind CommandParameter}"
+                    ToolTipService.ToolTip="{x:Bind Tooltip}"
+                    Visibility="{x:Bind IsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <FontIcon Glyph="{x:Bind Glyph, Mode=OneWay}" FontSize="15"/>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ActToggleTemplate" x:DataType="lib:LibraryDetailAction">
+            <ToggleButton Style="{StaticResource LibDetailTogglePillStyle}"
+                          IsChecked="{x:Bind IsChecked, Mode=TwoWay}"
+                          Command="{x:Bind Command}"
+                          CommandParameter="{x:Bind CommandParameter}"
+                          ToolTipService.ToolTip="{x:Bind Tooltip}"
+                          Visibility="{x:Bind IsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="{x:Bind Glyph, Mode=OneWay}" FontSize="14"/>
+                    <TextBlock Text="{x:Bind Label, Mode=OneWay}"/>
+                </StackPanel>
+            </ToggleButton>
+        </DataTemplate>
+
+        <lib:LibraryActionTemplateSelector x:Key="LibraryActionSelector"
+            AccentTemplate="{StaticResource ActAccentTemplate}"
+            DefaultTemplate="{StaticResource ActDefaultTemplate}"
+            IconTemplate="{StaticResource ActIconTemplate}"
+            ToggleTemplate="{StaticResource ActToggleTemplate}"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Hero: art + title/subtitle/metadata. Art shape (square/circle) is set
+             from ArtShape in code-behind. -->
+        <Grid Grid.Row="0" Margin="0,0,0,16" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid x:Name="ArtHost"
+                  Width="104" Height="104"
+                  CornerRadius="8"
+                  Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                <FontIcon x:Name="PlaceholderIcon"
+                          Glyph="{x:Bind PlaceholderGlyph, Mode=OneWay}"
+                          FontSize="34" Opacity="0.3"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <imaging:CompositionImage x:Name="HeroImage"
+                          ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                          DecodePixelSize="208"
+                          Stretch="UniformToFill"/>
+            </Grid>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                <TextBlock x:Name="KickerBlock"
+                           Text="{x:Bind Kicker, Mode=OneWay}"
+                           FontSize="11" FontWeight="SemiBold"
+                           CharacterSpacing="60"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                <TextBlock x:Name="TitleBlock"
+                           Text="{x:Bind TitleText, Mode=OneWay}"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="2"/>
+                <HyperlinkButton x:Name="SubtitleLink"
+                                 Content="{x:Bind SubtitleText, Mode=OneWay}"
+                                 Command="{x:Bind SubtitleCommand, Mode=OneWay}"
+                                 Padding="0"/>
+                <TextBlock x:Name="SubtitlePlain"
+                           Text="{x:Bind SubtitleText, Mode=OneWay}"
+                           FontWeight="SemiBold"/>
+                <TextBlock x:Name="MetaBlock"
+                           Text="{x:Bind MetadataText, Mode=OneWay}"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Declarative action row. -->
+        <ItemsControl Grid.Row="1" Margin="0,0,0,14"
+                      ItemsSource="{x:Bind PrimaryActions, Mode=OneWay}"
+                      ItemTemplateSelector="{StaticResource LibraryActionSelector}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <primitives:WrapPanel HorizontalSpacing="8" VerticalSpacing="8"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+        </ItemsControl>
+
+        <!-- Inline sub-toggle slot (Liked|Full album, Saved|Latest). -->
+        <ContentPresenter x:Name="SubTogglePresenter"
+                          Grid.Row="2" Margin="0,0,0,8"
+                          HorizontalContentAlignment="Stretch"
+                          Content="{x:Bind SubToggleContent, Mode=OneWay}"/>
+
+        <!-- Content slot: track / episode list / discography. A ContentPresenter
+             defaults to Top/Left content alignment, which would arrange a hosted
+             ScrollView at its (unbounded) desired height instead of filling this
+             star row — leaving the inner scroller without a bounded viewport.
+             That breaks the effective-viewport math the image loaders gate on, so
+             cards stay on their placeholder. Stretch so the content fills the row
+             and the scroll viewport is real. -->
+        <ContentPresenter Grid.Row="3"
+                          HorizontalContentAlignment="Stretch"
+                          VerticalContentAlignment="Stretch"
+                          Content="{x:Bind PanelContent, Mode=OneWay}"/>
+    </Grid>
+</UserControl>

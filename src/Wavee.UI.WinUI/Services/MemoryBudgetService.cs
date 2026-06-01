@@ -50,6 +50,7 @@ public sealed partial class MemoryBudgetService : IDisposable, IAsyncDisposable
 
     public void Start(long budgetBytes = DefaultBudgetBytes)
     {
+        return;
         if (_timer is not null)
             return;
 

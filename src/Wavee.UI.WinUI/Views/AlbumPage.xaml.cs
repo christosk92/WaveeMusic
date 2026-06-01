@@ -402,7 +402,10 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
                 ResetScrollPositionForNavigation();
                 _footerRevealed = false;
                 _footerRevealGeneration++;
-                FooterShimmerGate.Reset(() => null, () => FooterContent, FrameworkLayer.Xaml);
+                // FooterContent stays visible; per-section SectionStaggerEntrance owns
+                // the reveal. Re-arm the (collapsed) legacy shimmer gate only — don't
+                // zero FooterContent's opacity (that would flatten the staggered sections).
+                FooterShimmerGate.Reset(() => null, () => null, FrameworkLayer.Xaml);
             }
         }
 
@@ -530,22 +533,23 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         // whenever the page tree is up. Defensive null-check covers the edge
         // case where IsContentReady arrives before the framework has wired the
         // named field on a freshly-constructed page.
-        var content = FooterContent;
-        if (content is null) return;
+        if (FooterContent is null) return;
 
         _footerRevealed = true;
         _logger?.LogDebug(
-            "[xfade][album:{Id}] footer.xfade.start shimmer={ShimmerKnown}",
-            XfadeLog.Tag(ViewModel.AlbumId), false);
+            "[xfade][album:{Id}] footer.reveal — per-section staggered entrance owns the reveal",
+            XfadeLog.Tag(ViewModel.AlbumId));
 
-        await FooterShimmerGate.RunCrossfadeAsync(
-            null, content,
-            FrameworkLayer.Xaml,
-            continuePredicate: () =>
-                _footerRevealed &&
-                !_isDisposed &&
-                !PageController.IsNavigatingAway &&
-                generation == _footerRevealGeneration);
+        // FooterContent stays visible; SectionStaggerEntrance fades each section in
+        // as it scrolls into view, so there is no block crossfade to flatten the
+        // stagger. Release the (collapsed) legacy shimmer subtree after a beat so its
+        // x:Load peers free.
+        await Task.Delay(250).ConfigureAwait(true);
+        if (_footerRevealed && !_isDisposed && !PageController.IsNavigatingAway &&
+            generation == _footerRevealGeneration)
+        {
+            FooterShimmerGate.IsLoaded = false;
+        }
     }
 
     private async Task<bool> SettleAlbumLayoutAsync()

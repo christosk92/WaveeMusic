@@ -74,7 +74,7 @@ internal sealed partial class TrackMetadataEnricher : IRecipient<TrackEnrichment
         _enrichmentCts = new CancellationTokenSource();
         var ct = _enrichmentCts.Token;
 
-        _ = EnrichPlayableAsync(trackUri, ct);
+        _ = Task.Run(() => EnrichPlayableAsync(trackUri, ct), CancellationToken.None);
     }
 
     private async Task EnrichPlayableAsync(string uri, CancellationToken ct)
@@ -95,10 +95,6 @@ internal sealed partial class TrackMetadataEnricher : IRecipient<TrackEnrichment
     {
         try
         {
-            // Yield immediately so the calling dispatcher frame (OnRemoteStateChanged)
-            // can finish and render before we do cache lookups + protobuf deserialization.
-            await Task.Yield();
-
             var track = await _metadataClient.GetTrackAsync(trackUri, ct).ConfigureAwait(false);
             if (ct.IsCancellationRequested || track == null) return;
 
@@ -296,8 +292,6 @@ internal sealed partial class TrackMetadataEnricher : IRecipient<TrackEnrichment
     {
         try
         {
-            await Task.Yield();
-
             var bytes = await _spClient.GetEpisodeMetadataAsync(episodeUri, ct).ConfigureAwait(false);
             if (ct.IsCancellationRequested || bytes.Length == 0) return;
 
@@ -337,15 +331,13 @@ internal sealed partial class TrackMetadataEnricher : IRecipient<TrackEnrichment
     {
         var uris = message.Value;
         if (uris == null || uris.Count == 0) return;
-        _ = EnrichQueueTracksAsync(uris);
+        _ = Task.Run(() => EnrichQueueTracksAsync(uris), CancellationToken.None);
     }
 
     private async Task EnrichQueueTracksAsync(IReadOnlyList<string> trackUris)
     {
         try
         {
-            await Task.Yield();
-
             _logger?.LogDebug("Queue enrichment: fetching metadata for {Count} playable items", trackUris.Count);
 
             var trackOnlyUris = trackUris.Where(IsSpotifyTrackUri).Distinct().ToList();

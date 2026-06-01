@@ -50,10 +50,9 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     // is already warm), so without a guard we cycle forever, rebuilding
     // FilterChips and FilteredSongs on every iteration. Set on the FIRST
     // trigger; subsequent LoadAsync passes (including the one OnDescriptor-
-    // FetchCompleted enqueues) skip the fetch. Library-level changes
-    // (DataChanged) currently don't reset this — acceptable trade-off; if a
-    // newly-synced song needs descriptor enrichment, expose a refresh path
-    // that resets this flag explicitly rather than re-arming the cycle.
+    // FetchCompleted enqueues) skip the fetch. The genuine library-change path
+    // (ReloadFromChangeAsync) resets this flag once so songs liked / synced AFTER
+    // the first fetch get enriched, without re-arming the FetchCompleted cycle.
     private bool _descriptorFetchTriggered;
 
     private List<LikedSongDto> _allSongs = [];
@@ -61,6 +60,13 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     // descriptor enrichment without re-fetching the server-side filter list.
     private IReadOnlyList<LikedSongsFilterDto> _cachedFilters = Array.Empty<LikedSongsFilterDto>();
     private readonly DispatcherTimer _searchDebounceTimer;
+
+    // Pre-normalized tag index, rebuilt once per _allSongs materialization. Makes chip
+    // matching O(distinct tags) instead of O(filters × songs) and stops re-normalizing
+    // every tag on every comparison. Per-filter matches are memoized by filter query.
+    private readonly Dictionary<string, List<LikedSongDto>> _songsByNormalizedTag = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<LikedSongDto>> _matchesByFilterQuery = new(StringComparer.Ordinal);
+    private bool _videoFetchInFlight;
 
     [ObservableProperty]
     public partial bool ShowOnlyVideoTracks { get; set; }
@@ -177,6 +183,11 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     private async Task ReloadFromChangeAsync(CancellationToken ct)
     {
         if (_disposed || IsLoading) return;
+        // Re-arm descriptor enrichment so songs liked AFTER the first fetch get their
+        // genre tags. Only the genuine library-change path resets this — the
+        // FetchCompleted-driven LoadAsync does NOT, so the feedback loop the guard
+        // prevents (LoadAsync → fetch → FetchCompleted → LoadAsync …) stays closed.
+        _descriptorFetchTriggered = false;
         // The dispatcher-marshalled call ensures the LoadAsync side-effects
         // (ObservableCollection mutations) land on the UI thread; the
         // coordinator hands us an already-marshalled context but we double-
@@ -246,13 +257,14 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     private void ApplyFilterAndSort()
     {
         var query = SearchQuery?.Trim();
-        IEnumerable<LikedSongDto> filtered = _allSongs;
         var selectedChip = SelectedFilterChip;
 
-        if (selectedChip is { IsAllChip: false, Filter: { } selectedFilter })
-        {
-            filtered = filtered.Where(song => MatchesFilter(song, selectedFilter));
-        }
+        // Chip filter resolves to a precomputed song set (O(matches), memoized) instead
+        // of an O(songs) Where with per-comparison tag normalization.
+        IEnumerable<LikedSongDto> filtered =
+            selectedChip is { IsAllChip: false, Filter: { } selectedFilter }
+                ? SongsMatchingFilter(selectedFilter)
+                : _allSongs;
 
         if (!string.IsNullOrEmpty(query))
         {
@@ -278,7 +290,9 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
             _ => filtered.OrderByDescending(s => s.AddedAt)
         };
 
-        FilteredSongs.ReplaceWith(sorted);
+        // Incremental, flicker-free apply — keeps row identity (selection / scroll / row
+        // visuals) instead of a full Reset on every keystroke / sort / chip change.
+        FilteredSongs.ApplyKeyedDiff(sorted.ToList(), static s => s.Uri, keyComparer: StringComparer.Ordinal);
     }
 
     private void UpdateAggregates()
@@ -317,7 +331,7 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
 
         var matchingFilters = filters
             .Where(static filter => filter.IsSupported)
-            .Where(filter => _allSongs.Any(song => MatchesFilter(song, filter)))
+            .Where(filter => SongsMatchingFilter(filter).Count > 0)
             .ToList();
 
         if (matchingFilters.Count == 0)
@@ -378,6 +392,7 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
 
             var songs = await songsTask;
             _allSongs = songs.Select((s, i) => s with { OriginalIndex = i + 1 }).ToList();
+            RebuildTagIndex();
             NotifyVideoFilterProperties();
 
             // If local DB is empty and we haven't already triggered a sync this session,
@@ -450,6 +465,9 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     private void TryTriggerVideoAvailabilityFetch()
     {
         if (_musicVideoMetadata is null || _allSongs.Count == 0) return;
+        // Dedup: repeated LoadAsync passes (descriptor enrichment, library deltas) must
+        // not fan out concurrent availability fetches over the whole list.
+        if (_videoFetchInFlight) return;
 
         // Snapshot to avoid touching _allSongs from a Task.Run continuation.
         var snapshot = _allSongs
@@ -457,6 +475,7 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
             .ToList();
         if (snapshot.Count == 0) return;
 
+        _videoFetchInFlight = true;
         _ = Task.Run(async () =>
         {
             try
@@ -482,6 +501,10 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "Music-video availability enrichment failed");
+            }
+            finally
+            {
+                _dispatcherQueue.TryEnqueue(() => _videoFetchInFlight = false);
             }
         });
     }
@@ -652,6 +675,7 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
 
         var removed = uris.ToHashSet(StringComparer.Ordinal);
         _allSongs.RemoveAll(song => !string.IsNullOrWhiteSpace(song.Uri) && removed.Contains(song.Uri));
+        RebuildTagIndex();
         ApplyFilterAndSort();
         UpdateAggregates();
         NotifyVideoFilterProperties();
@@ -666,16 +690,56 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
         SelectedFilterChip = chip;
     }
 
-    private static bool MatchesFilter(LikedSongDto song, LikedSongsFilterDto filter)
+    /// <summary>Rebuild the normalized-tag → songs index (and clear the per-filter memo).</summary>
+    private void RebuildTagIndex()
     {
-        if (string.IsNullOrWhiteSpace(filter.TagValue) || song.Tags.Count == 0)
-            return false;
+        _songsByNormalizedTag.Clear();
+        _matchesByFilterQuery.Clear();
 
-        var normalizedFilter = NormalizeTag(filter.TagValue);
-        if (string.IsNullOrEmpty(normalizedFilter))
-            return false;
+        foreach (var song in _allSongs)
+        {
+            if (song.Tags.Count == 0) continue;
+            foreach (var tag in song.Tags)
+            {
+                var norm = NormalizeTag(tag);
+                if (norm.Length == 0) continue;
+                if (!_songsByNormalizedTag.TryGetValue(norm, out var list))
+                {
+                    list = new List<LikedSongDto>();
+                    _songsByNormalizedTag[norm] = list;
+                }
+                list.Add(song);
+            }
+        }
+    }
 
-        return song.Tags.Any(tag => NormalizeTag(tag).Contains(normalizedFilter, StringComparison.Ordinal));
+    /// <summary>
+    /// Songs whose (normalized) tags contain the filter's (normalized) value, computed
+    /// from the tag index — O(distinct tags) — and memoized per filter query.
+    /// </summary>
+    private IReadOnlyList<LikedSongDto> SongsMatchingFilter(LikedSongsFilterDto filter)
+    {
+        if (_matchesByFilterQuery.TryGetValue(filter.Query, out var cached))
+            return cached;
+
+        var result = new List<LikedSongDto>();
+        var norm = NormalizeTag(filter.TagValue);
+        if (norm.Length > 0)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var (tag, songs) in _songsByNormalizedTag)
+            {
+                if (!tag.Contains(norm, StringComparison.Ordinal)) continue;
+                foreach (var s in songs)
+                {
+                    if (!string.IsNullOrEmpty(s.Uri) && seen.Add(s.Uri))
+                        result.Add(s);
+                }
+            }
+        }
+
+        _matchesByFilterQuery[filter.Query] = result;
+        return result;
     }
 
     private static string NormalizeTag(string value)

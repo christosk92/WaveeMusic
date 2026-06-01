@@ -290,10 +290,11 @@
                             </Button>
                             <Button
                                 Click="OpenSelectedEpisodeDetails_Click"
-                                Padding="10,4">
+                                Padding="10,4"
+                                ToolTipService.ToolTip="Open the full episode page">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE8A5;" FontSize="12"/>
-                                    <TextBlock x:Uid="Views_YourEpisodesView__Auto_601" Text="Open"/>
+                                    <TextBlock x:Uid="Views_YourEpisodesView__Auto_601" Text="Open episode"/>
                                 </StackPanel>
                             </Button>
                             <Button x:Uid="Views_YourEpisodesView__Auto_602"
@@ -437,7 +438,15 @@
                     ItemTemplate="{StaticResource PodcastShowItemTemplate}"
                     SelectionMode="Single"
                     HorizontalContentAlignment="Stretch"
-                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                    <!-- Native staggered entrance for the shows list (matches the
+                         Composition cascade used on the Albums/Artists grids). -->
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition IsStaggeringEnabled="True"/>
+                        </TransitionCollection>
+                    </ListView.ItemContainerTransitions>
+                </ListView>
 
                 <StackPanel
                     x:Name="ShowsListShimmer"
@@ -611,10 +620,11 @@
                             <Button
                                 Click="OpenSelectedShowDetails_Click"
                                 Padding="10,5"
+                                ToolTipService.ToolTip="Open the full show page"
                                 Visibility="{x:Bind ViewModel.CanOpenSelectedShow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE8A5;" FontSize="13"/>
-                                    <TextBlock x:Uid="Views_YourEpisodesView__OpenShowText" Text="Open show"/>
+                                    <FontIcon Glyph="&#xEC05;" FontSize="13"/>
+                                    <TextBlock x:Uid="Views_YourEpisodesView__OpenShowText" Text="Go to show page"/>
                                 </StackPanel>
                             </Button>
                             <controls:Segmented
@@ -853,7 +863,103 @@
 
                 <Grid
                     Visibility="{x:Bind ViewModel.ShowNarrowEpisodesStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Compact show header: gives narrow mode the show identity + Play / Shuffle /
+                         Go to show page / Saved-Latest that the wide middle column has. Reuses the
+                         same VM members and code-behind handlers as the wide header. -->
+                    <Border
+                        Grid.Row="0"
+                        Margin="0,0,0,10"
+                        CornerRadius="8"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                        <Grid Padding="10" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="40"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border
+                                Grid.Column="0"
+                                Width="40"
+                                Height="40"
+                                CornerRadius="6"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                <Grid>
+                                    <FontIcon
+                                        Glyph="{x:Bind ViewModel.SelectedShowPlaceholderGlyph, Mode=OneWay}"
+                                        FontSize="18"
+                                        Opacity="0.35"/>
+                                    <imaging:CompositionImage
+                                        ImageUrl="{x:Bind ViewModel.SelectedShowImageUrl, Mode=OneWay}"
+                                        DecodePixelSize="80"
+                                        Stretch="UniformToFill"/>
+                                </Grid>
+                            </Border>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.SelectedShowName, Mode=OneWay}"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                                    TextTrimming="CharacterEllipsis"
+                                    MaxLines="1"/>
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.SelectedShowMetadata, Mode=OneWay}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextTrimming="CharacterEllipsis"
+                                    MaxLines="1"/>
+
+                                <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="6" VerticalSpacing="6" Margin="0,6,0,0">
+                                    <Button
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Command="{x:Bind ViewModel.PlayAllCommand, Mode=OneWay}"
+                                        IsEnabled="{x:Bind ViewModel.HasEpisodeGroups, Mode=OneWay}"
+                                        Padding="10,5">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE768;" FontSize="13"/>
+                                            <TextBlock x:Uid="Views_YourEpisodesView__Auto_606" Text="Play"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Command="{x:Bind ViewModel.ShuffleCommand, Mode=OneWay}"
+                                        IsEnabled="{x:Bind ViewModel.HasEpisodeGroups, Mode=OneWay}"
+                                        Padding="10,5">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE8B1;" FontSize="13"/>
+                                            <TextBlock x:Uid="Views_YourEpisodesView__Auto_607" Text="Shuffle"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Click="OpenSelectedShowDetails_Click"
+                                        Padding="10,5"
+                                        ToolTipService.ToolTip="Open the full show page"
+                                        Visibility="{x:Bind ViewModel.CanOpenSelectedShow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xEC05;" FontSize="13"/>
+                                            <TextBlock x:Uid="Views_YourEpisodesView__OpenShowText" Text="Go to show page"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <controls:Segmented
+                                        x:Name="PodcastEpisodeScopeSelectorNarrow"
+                                        SelectedIndex="{x:Bind ViewModel.PodcastEpisodeScopeIndex, Mode=OneWay}"
+                                        SelectionChanged="PodcastEpisodeScopeSelector_SelectionChanged"
+                                        Visibility="{x:Bind ViewModel.CanSwitchPodcastEpisodeScope, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <controls:SegmentedItem x:Uid="Views_YourEpisodesView__SegmentSaved" Content="Saved"/>
+                                        <controls:SegmentedItem x:Uid="Views_YourEpisodesView__SegmentLatest" Content="Latest"/>
+                                    </controls:Segmented>
+                                </controls:WrapPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
                     <tdg:TrackDataGrid
+                        Grid.Row="1"
                         PageKey="podcasts"
                         ShowToolbar="False"
                         UseCardRows="True"

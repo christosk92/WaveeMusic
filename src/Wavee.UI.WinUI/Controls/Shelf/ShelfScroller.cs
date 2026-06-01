@@ -35,6 +35,12 @@ public sealed partial class ShelfScroller : Control
     private bool _pendingIdentityRecycleReset;
     private bool _identityRecycleResetPosted;
 
+    // Plain-managed mirror of ItemsSourceIdentity for diagnostics. The repeater can
+    // fire ElementClearing while this control's CsWinRT projection is already
+    // disposed (navigation teardown during a collection Reset); reading the DP
+    // getter then throws ObjectDisposedException. A managed field never does.
+    private string? _itemsSourceIdentityLabel;
+
     private static readonly ILogger? _logger =
         Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("ShelfScroller");
 
@@ -238,14 +244,14 @@ public sealed partial class ShelfScroller : Control
     {
         _logger?.LogTrace(
             "[home-scroll] shelf.prepare id={Identity} idx={Index}",
-            ItemsSourceIdentity?.ToString() ?? "<no-id>", args.Index);
+            _itemsSourceIdentityLabel ?? "<no-id>", args.Index);
     }
 
     private void OnRepeaterElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
     {
         _logger?.LogTrace(
             "[home-scroll] shelf.clearing id={Identity}",
-            ItemsSourceIdentity?.ToString() ?? "<no-id>");
+            _itemsSourceIdentityLabel ?? "<no-id>");
     }
 
     // ── DP change callbacks ────────────────────────────────────────────────
@@ -303,6 +309,8 @@ public sealed partial class ShelfScroller : Control
     {
         if (d is not ShelfScroller s || Equals(e.OldValue, e.NewValue))
             return;
+
+        s._itemsSourceIdentityLabel = e.NewValue?.ToString();
 
         if (!s._hasItemsSourceIdentity)
         {

@@ -47,8 +47,9 @@ public sealed class AppSettings
 
     /// <summary>
     /// Whether to show the play action dialog every time a track is played.
+    /// Defaults off — the first-time setup toggle starts on "Ask me every time = Off".
     /// </summary>
-    public bool AskPlayAction { get; set; } = true;
+    public bool AskPlayAction { get; set; } = false;
 
     /// <summary>
     /// True once the user has seen the first-time play behavior setup.
