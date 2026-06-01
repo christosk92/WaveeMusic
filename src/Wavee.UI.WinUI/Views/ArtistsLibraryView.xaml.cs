@@ -32,7 +32,6 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
     private const double NarrowLayoutBreakpoint = 680;
     private bool _hasInitializedLayoutMode;
     private bool _disposed;
-    private bool _suppressSelectorEvents;
 
     public ArtistsLibraryViewModel ViewModel { get; }
 
@@ -58,7 +57,6 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         // Sync selection when loaded into the visual tree
         SyncSelectionToItemsView();
         SyncLikedSelectionToItemsView();
-        SyncSourceSelectorFromViewModel();
 
         // Initialize tracks panel state
         UpdateTracksPanelVisibility(ViewModel.IsTracksPanelVisible, animate: false);
@@ -90,34 +88,9 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         }
         else if (e.PropertyName == nameof(ViewModel.SourceMode))
         {
-            SyncSourceSelectorFromViewModel();
             ApplyArtistsViewMode();
             DispatcherQueue.TryEnqueue(ApplyArtistsViewMode);
         }
-    }
-
-    private void SyncSourceSelectorFromViewModel()
-    {
-        if (SourceSelector == null) return;
-        var index = ViewModel.SourceMode == LibrarySource.FromLikedSongs ? 1 : 0;
-        if (SourceSelector.SelectedIndex == index) return;
-
-        _suppressSelectorEvents = true;
-        try { SourceSelector.SelectedIndex = index; }
-        finally { _suppressSelectorEvents = false; }
-    }
-
-    private void SourceSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_suppressSelectorEvents) return;
-        if (sender is not Selector { SelectedItem: FrameworkElement fe }) return;
-        if (fe.Tag is not string tag) return;
-
-        var mode = string.Equals(tag, nameof(LibrarySource.FromLikedSongs), StringComparison.OrdinalIgnoreCase)
-            ? LibrarySource.FromLikedSongs
-            : LibrarySource.Saved;
-        if (ViewModel.SourceMode != mode)
-            ViewModel.SourceMode = mode;
     }
 
     /// <summary>

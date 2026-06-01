@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wavee — Library rework prototype</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="window">
+    <!-- Left nav rail (context only) -->
+    <aside class="rail">
+      <div class="rail-top">
+        <button class="rail-btn" title="Home"><span class="gi">&#xE80F;</span></button>
+        <button class="rail-btn active" title="Library"><span class="gi">&#xE8F1;</span></button>
+        <button class="rail-btn" title="Liked"><span class="gi">&#xEB52;</span></button>
+        <button class="rail-btn" title="Live"><span class="gi">&#xE789;</span></button>
+        <button class="rail-btn" title="Add"><span class="gi">&#xE710;</span></button>
+      </div>
+      <div class="rail-pins">
+        <span class="pin" style="background:linear-gradient(135deg,#c2410c,#7c2d12)"></span>
+        <span class="pin" style="background:linear-gradient(135deg,#1d4ed8,#1e3a8a)"></span>
+        <span class="pin" style="background:linear-gradient(135deg,#15803d,#14532d)"></span>
+        <span class="pin" style="background:linear-gradient(135deg,#9333ea,#581c87)"></span>
+        <span class="pin" style="background:linear-gradient(135deg,#be185d,#831843)"></span>
+        <span class="pin" style="background:linear-gradient(135deg,#0f766e,#134e4a)"></span>
+      </div>
+    </aside>
+
+    <!-- Main app surface -->
+    <main class="app">
+      <header class="topbar">
+        <div class="nav-arrows">
+          <button class="round-btn" title="Back"><span class="gi">&#xE72B;</span></button>
+          <button class="round-btn dim" title="Forward"><span class="gi">&#xE72A;</span></button>
+          <button class="round-btn" title="Home"><span class="gi">&#xE80F;</span></button>
+        </div>
+        <label class="search">
+          <span class="gi">&#xE721;</span>
+          <input type="text" placeholder="Search Wavee" value="" />
+        </label>
+        <div class="topbar-right">
+          <button class="round-btn" title="Account"><span class="gi">&#xE77B;</span></button>
+        </div>
+      </header>
+
+      <section class="library">
+        <nav class="tabs" id="tabs"></nav>
+        <div class="toolbar" id="toolbar"></div>
+        <div class="tab-body" id="tabBody"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Now-playing player bar (dynamic warm tint, like the app) -->
+  <footer class="player">
+    <div class="np">
+      <div class="np-art" id="npArt"></div>
+      <div class="np-meta">
+        <div class="np-title">EYES CLOSED (with ZAYN)</div>
+        <div class="np-sub">JISOO, ZAYN</div>
+      </div>
+      <button class="icon-btn" title="Like"><span class="gi on">&#xEB52;</span></button>
+    </div>
+    <div class="np-controls">
+      <div class="np-buttons">
+        <button class="icon-btn" title="Shuffle"><span class="gi">&#xE8B1;</span></button>
+        <button class="icon-btn" title="Previous"><span class="gi">&#xE892;</span></button>
+        <button class="icon-btn play" title="Pause"><span class="gi">&#xE769;</span></button>
+        <button class="icon-btn" title="Next"><span class="gi">&#xE893;</span></button>
+        <button class="icon-btn" title="Repeat"><span class="gi">&#xE8EE;</span></button>
+      </div>
+      <div class="np-seek">
+        <span class="np-time">1:38</span>
+        <div class="np-bar"><div class="np-fill" style="width:42%"></div></div>
+        <span class="np-time">3:08</span>
+      </div>
+    </div>
+    <div class="np-right">
+      <button class="icon-btn" title="Queue"><span class="gi">&#xE90B;</span></button>
+      <button class="icon-btn" title="Devices"><span class="gi">&#xE957;</span></button>
+      <div class="np-vol"><span class="gi">&#xE767;</span><div class="np-bar sm"><div class="np-fill" style="width:70%"></div></div></div>
+    </div>
+  </footer>
+
+  <script src="mock-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

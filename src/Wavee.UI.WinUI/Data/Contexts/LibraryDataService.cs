@@ -334,7 +334,10 @@ public sealed partial class LibraryDataService : ILibraryDataService
 
     public async Task<IReadOnlyList<LibraryAlbumDto>> GetAlbumsAsync(CancellationToken ct = default)
     {
-        var entities = await _database.GetSpotifyLibraryItemsAsync(SpotifyLibraryItemType.Album, 500, 0, ct);
+        // No cap: a fixed 500 silently hid albums for large libraries. The grid is
+        // virtualized (ItemsView/ItemsRepeater) so loading the full set is fine, and
+        // this matches GetLikedSongsAsync's unbounded read.
+        var entities = await _database.GetSpotifyLibraryItemsAsync(SpotifyLibraryItemType.Album, int.MaxValue, 0, ct);
         return entities.Select(e => new LibraryAlbumDto
         {
             Id = e.Uri,
@@ -349,7 +352,8 @@ public sealed partial class LibraryDataService : ILibraryDataService
 
     public async Task<IReadOnlyList<LibraryArtistDto>> GetArtistsAsync(CancellationToken ct = default)
     {
-        var entities = await _database.GetSpotifyLibraryItemsAsync(SpotifyLibraryItemType.Artist, 500, 0, ct);
+        // No cap (see GetAlbumsAsync) — large followed-artist sets were silently truncated at 500.
+        var entities = await _database.GetSpotifyLibraryItemsAsync(SpotifyLibraryItemType.Artist, int.MaxValue, 0, ct);
         return entities.Select(e => new LibraryArtistDto
         {
             Id = e.Uri,

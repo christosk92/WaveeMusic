@@ -13,7 +13,10 @@ using Wavee.UI.Services;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Controls.Library;
+using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -42,6 +45,7 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
     private readonly ILibraryDataService _libraryDataService;
     private readonly IAlbumService _albumService;
     private readonly IPlaybackService _playbackService;
+    private readonly ILikedSongsGroupingCache _grouping;
     private bool _disposed;
     private IReadOnlyDictionary<string, DateTimeOffset> _albumRecents =
         new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
@@ -132,6 +136,13 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
     public partial LikedAlbumDetailMode LikedAlbumDetailMode { get; set; } = LikedAlbumDetailMode.Liked;
 
     public ObservableCollection<string> BreadcrumbItems { get; } = [];
+
+    /// <summary>Declarative action row for the shared <c>LibraryDetailPanel</c> — Saved source.</summary>
+    public ObservableCollection<LibraryDetailAction> SavedDetailActions { get; } = [];
+
+    /// <summary>Declarative action row for the shared <c>LibraryDetailPanel</c> — From-Liked-Songs source.</summary>
+    public ObservableCollection<LibraryDetailAction> LikedDetailActions { get; } = [];
+
     public bool IsWideLayout => !UseNarrowLayout;
     public bool IsNarrowLayout => UseNarrowLayout;
     public bool ShowNarrowGridStage => UseNarrowLayout && NarrowStage == AlbumsLibraryStage.Grid;
@@ -166,6 +177,7 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
         ILibraryDataService libraryDataService,
         IAlbumService albumService,
         IPlaybackService playbackService,
+        ILikedSongsGroupingCache grouping,
         ITrackLikeService? likeService = null,
         ISettingsService? settingsService = null,
         LibraryRecentsService? libraryRecents = null)
@@ -174,13 +186,27 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
         _libraryDataService = libraryDataService;
         _albumService = albumService;
         _playbackService = playbackService;
+        _grouping = grouping;
 
         LoadPreferences();
+        BuildDetailActions();
 
         AttachLongLivedServices();
         if (LibraryRecents != null)
             // Best-effort prefetch; result arrives via RecentsChanged → re-applies sort.
             _ = PrefetchRecentsAsync();
+    }
+
+    private void BuildDetailActions()
+    {
+        SavedDetailActions.Add(new LibraryDetailAction { Label = "Play", Glyph = FluentGlyphs.Play, IsAccent = true, Command = PlayAlbumCommand });
+        SavedDetailActions.Add(new LibraryDetailAction { Label = "Shuffle", Glyph = FluentGlyphs.Shuffle, Command = ShuffleAlbumCommand });
+        SavedDetailActions.Add(new LibraryDetailAction { Label = "View album", Glyph = FluentGlyphs.ShowFilled, Command = OpenAlbumDetailsCommand });
+        SavedDetailActions.Add(new LibraryDetailAction { Label = "Unheart", Glyph = FluentGlyphs.HeartFilled, Command = UnheartSelectedAlbumCommand });
+
+        LikedDetailActions.Add(new LibraryDetailAction { Label = "Play liked", Glyph = FluentGlyphs.Play, IsAccent = true, Command = PlayLikedAlbumLikedTracksCommand, Tooltip = "Play the liked tracks of this album" });
+        LikedDetailActions.Add(new LibraryDetailAction { Label = "Shuffle", Glyph = FluentGlyphs.Shuffle, Command = ShuffleLikedAlbumLikedTracksCommand });
+        LikedDetailActions.Add(new LibraryDetailAction { Label = "Open album", Glyph = FluentGlyphs.Open, Command = OpenAlbumDetailsCommand });
     }
 
     private async Task PrefetchRecentsAsync()
@@ -354,14 +380,11 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
         try
         {
             IsLoading = true;
-            var liked = await _libraryDataService.GetLikedSongsAsync();
+            // Shared cache: one liked-songs fetch + one grouping reused across the
+            // Albums and Artists tabs; rebuilt only on save-state change.
+            var grouped = await _grouping.GetAlbumsAsync();
 
-            var savedAlbumIds = new HashSet<string>(Albums.Select(a => a.Id), StringComparer.OrdinalIgnoreCase);
-            var grouped = LikedSongsByAlbumGrouper.Group(liked, savedAlbumIds);
-
-            LikedAlbums.Clear();
-            foreach (var album in grouped)
-                LikedAlbums.Add(album);
+            LikedAlbums.ApplyKeyedDiff(grouped, a => a.Id, keyComparer: StringComparer.OrdinalIgnoreCase);
 
             LikedSideLoaded = true;
             ApplyFilter();
@@ -864,8 +887,6 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
     {
         var selectedId = SelectedAlbum?.Id;
 
-        FilteredAlbums.Clear();
-
         var query = SearchQuery?.Trim() ?? "";
         IEnumerable<LibraryAlbumDto> filtered = string.IsNullOrEmpty(query)
             ? Albums
@@ -876,13 +897,16 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
         // When sorted by Recents, stamp each DTO with a "Played X ago" subtitle so the
         // list/grid templates can show it in place of the artist / added-date line.
         var showRecents = SortBy == LibrarySortBy.Recents;
-        foreach (var album in SortAlbums(filtered))
+        var sorted = SortAlbums(filtered).ToList();
+        foreach (var album in sorted)
         {
             album.RecentsSubtitle = showRecents && _albumRecents.TryGetValue(album.Id, out var ts)
                 ? FormatRecentsSubtitle(ts)
                 : null;
-            FilteredAlbums.Add(album);
         }
+
+        // Incremental, flicker-free apply — keeps row identity (selection / image / scroll).
+        FilteredAlbums.ApplyKeyedDiff(sorted, a => a.Id, keyComparer: StringComparer.OrdinalIgnoreCase);
 
         PreserveSelectedAlbumAfterFilter(selectedId);
     }
@@ -890,8 +914,6 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
     private void ApplyFilterLiked()
     {
         var selectedId = SelectedLikedAlbum?.Id;
-
-        FilteredLikedAlbums.Clear();
 
         var query = SearchQuery?.Trim() ?? "";
         IEnumerable<LikedAlbumDto> filtered = string.IsNullOrEmpty(query)
@@ -901,13 +923,15 @@ public sealed partial class AlbumsLibraryViewModel : DualSourceLibraryViewModelB
                 (a.ArtistName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false));
 
         var showRecents = SortBy == LibrarySortBy.Recents;
-        foreach (var album in SortLikedAlbums(filtered))
+        var sorted = SortLikedAlbums(filtered).ToList();
+        foreach (var album in sorted)
         {
             album.RecentsSubtitle = showRecents && _albumRecents.TryGetValue(album.Id, out var ts)
                 ? FormatRecentsSubtitle(ts)
                 : null;
-            FilteredLikedAlbums.Add(album);
         }
+
+        FilteredLikedAlbums.ApplyKeyedDiff(sorted, a => a.Id, keyComparer: StringComparer.OrdinalIgnoreCase);
 
         PreserveSelectedLikedAlbumAfterFilter(selectedId);
     }

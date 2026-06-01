@@ -294,25 +294,11 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <primitives:Segmented
+        <!-- Unified source toggle: Saved | From Liked Songs. -->
+        <libcontrols:LibrarySourceSelector
             Grid.Row="0"
-            x:Name="SourceSelector"
             Margin="0,0,0,12"
-            HorizontalAlignment="Left"
-            SelectionChanged="SourceSelector_SelectionChanged">
-            <primitives:SegmentedItem Tag="Saved">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon Glyph="&#xE73E;" FontSize="14"/>
-                    <TextBlock x:Uid="Views_ArtistsLibraryView__TextBlock_100" Text="Following"/>
-                </StackPanel>
-            </primitives:SegmentedItem>
-            <primitives:SegmentedItem Tag="FromLikedSongs">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon Glyph="&#xEB52;" FontSize="14"/>
-                    <TextBlock x:Uid="Views_ArtistsLibraryView__TextBlock_101" Text="From Liked Songs"/>
-                </StackPanel>
-            </primitives:SegmentedItem>
-        </primitives:Segmented>
+            SourceMode="{x:Bind ViewModel.SourceMode, Mode=TwoWay}"/>
 
         <Grid
             x:Name="RootGrid"

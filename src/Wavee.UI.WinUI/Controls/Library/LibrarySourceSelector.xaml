@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Library.LibrarySourceSelector"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:primitives="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <!-- Unified Saved | From Liked Songs toggle (replaces the per-tab
+         "Hearted"/"Following" segmented). SourceMode is driven imperatively to
+         avoid an enum⇄int converter. -->
+    <primitives:Segmented
+        x:Name="Selector"
+        HorizontalAlignment="Left"
+        SelectionChanged="Selector_SelectionChanged">
+        <primitives:SegmentedItem Tag="Saved">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <FontIcon Glyph="&#xE73E;" FontSize="14"/>
+                <TextBlock Text="Saved"/>
+            </StackPanel>
+        </primitives:SegmentedItem>
+        <primitives:SegmentedItem Tag="FromLikedSongs">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <FontIcon Glyph="&#xEB52;" FontSize="14"/>
+                <TextBlock Text="From Liked Songs"/>
+            </StackPanel>
+        </primitives:SegmentedItem>
+    </primitives:Segmented>
+</UserControl>

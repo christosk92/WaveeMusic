@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Wavee.UI.Models;
+using static Wavee.UI.Services.LikedSongsGroupingKeys;
 
 namespace Wavee.UI.Services;
 
@@ -87,14 +88,4 @@ public static class LikedSongsByArtistGrouper
 
         return $"artist:name:{nameKey}";
     }
-
-    private static string NormalizeNameKey(string name) =>
-        name.Trim().ToLowerInvariant();
-
-    private static DateTimeOffset ToOffsetRespectingKind(DateTime dt) => dt.Kind switch
-    {
-        DateTimeKind.Utc => new DateTimeOffset(dt, TimeSpan.Zero),
-        DateTimeKind.Local => new DateTimeOffset(dt),
-        _ => new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Local))
-    };
 }

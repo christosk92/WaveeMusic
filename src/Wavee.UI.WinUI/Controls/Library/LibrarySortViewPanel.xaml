@@ -148,7 +148,7 @@
                           Glyph="&#xE74B;"
                           FontSize="10"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                <Border Width="1" Height="12" Margin="4,0"
+                <Border x:Name="TriggerViewDivider" Width="1" Height="12" Margin="4,0"
                         Background="{ThemeResource DividerStrokeColorDefaultBrush}"/>
                 <FontIcon x:Name="TriggerViewGlyph"
                           Glyph="&#xF0E2;"
@@ -256,6 +256,7 @@
                         </Button>
                     </StackPanel>
 
+                    <StackPanel x:Name="ViewSection">
                     <MenuFlyoutSeparator Margin="0,6"/>
 
                     <!-- View as section -->
@@ -315,6 +316,7 @@
                                 LargeChange="0.1"
                                 TickFrequency="0.1"
                                 Value="{x:Bind GridScale, Mode=TwoWay}"/>
+                    </StackPanel>
                     </StackPanel>
 
                 </StackPanel>

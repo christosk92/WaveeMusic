@@ -33,7 +33,7 @@ public enum PodcastEpisodeScope
 }
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposable
+public sealed partial class YourEpisodesViewModel : LibraryViewModelBase, IDisposable
 {
     private const string PodcastShowsColumnWidthKey = "podcasts.showsColumn";
     private const string PodcastEpisodesColumnWidthKey = "podcasts.episodesColumn";
@@ -67,13 +67,9 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     private bool _syncAlreadyRequested;
     private bool _pendingAutoSelectFirstEpisode;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInitialLoading))]
-    [NotifyPropertyChangedFor(nameof(ShowEpisodeEmptyState))]
-    [NotifyPropertyChangedFor(nameof(ShowEpisodesShimmer))]
-    [NotifyPropertyChangedFor(nameof(ShowLoadError))]
-    public partial bool IsLoading { get; set; }
-
+    // IsLoading is inherited from LibraryViewModelBase; SetIsLoading() re-raises the
+    // dependent computed properties (IsInitialLoading / ShowEpisodeEmptyState /
+    // ShowEpisodesShimmer / ShowLoadError) the old [NotifyPropertyChangedFor] covered.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowLoadError))]
     [NotifyPropertyChangedFor(nameof(ShowEpisodeEmptyState))]
@@ -92,16 +88,9 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [ObservableProperty]
     public partial string TotalDuration { get; set; } = "";
 
-    [ObservableProperty]
-    public partial string SearchQuery { get; set; } = "";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SortDirectionGlyph))]
-    public partial LibrarySortDirection SortDirection { get; set; } = LibrarySortDirection.Descending;
-
-    [ObservableProperty]
-    public partial LibrarySortBy SortBy { get; set; } = LibrarySortBy.RecentlyAdded;
-
+    // SearchQuery / SortBy / SortDirection are inherited from LibraryViewModelBase.
+    // Filtering/sorting is driven via the OnSearchQueryChangedCore / OnSortChangedCore
+    // overrides below; SortDirectionGlyph is re-raised there.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEpisodeGroupHeaders))]
     public partial LibraryPodcastShowDto? SelectedShow { get; set; }
@@ -467,6 +456,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         ISettingsService? settingsService = null,
         Wavee.UI.Services.Infra.IReloadCoordinator? reloadCoordinator = null,
         ILogger<YourEpisodesViewModel>? logger = null)
+        : base(settingsService, likeService: null, libraryRecents: null, DispatcherQueue.GetForCurrentThread())
     {
         _libraryDataService = libraryDataService;
         _podcastEpisodeService = podcastEpisodeService;
@@ -477,15 +467,20 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _podcastEpisodeScope = LoadPodcastEpisodeScopePreference();
-        AttachLongLivedServices();
+        // Podcasts default to most-recently-added (base defaults to Recents). Sort/search
+        // are intentionally NOT persisted via the base pref system here — PreferencesKey
+        // stays null — because this VM repurposes LibraryTabs["podcasts"].ViewMode for the
+        // Saved/Latest scope, which the base pref writer would otherwise clobber.
+        SortBy = LibrarySortBy.RecentlyAdded;
+        AttachPodcastServices();
     }
 
-    private bool _longLivedAttached;
+    private bool _podcastServicesAttached;
 
-    private void AttachLongLivedServices()
+    private void AttachPodcastServices()
     {
-        if (_longLivedAttached) return;
-        _longLivedAttached = true;
+        if (_podcastServicesAttached) return;
+        _podcastServicesAttached = true;
         _podcastEpisodeService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
         if (_reloadCoordinator is not null)
         {
@@ -500,10 +495,10 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         }
     }
 
-    private void DetachLongLivedServices()
+    private void DetachPodcastServices()
     {
-        if (!_longLivedAttached) return;
-        _longLivedAttached = false;
+        if (!_podcastServicesAttached) return;
+        _podcastServicesAttached = false;
         _podcastEpisodeService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
         _reloadRegistration?.Dispose();
         _reloadRegistration = null;
@@ -521,10 +516,21 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         await LoadDataAsync();
     }
 
+    // Re-raises the computed properties that the old IsLoading [NotifyPropertyChangedFor]
+    // covered (base IsLoading is a plain setter with no hook).
+    private void SetIsLoading(bool value)
+    {
+        IsLoading = value;
+        OnPropertyChanged(nameof(IsInitialLoading));
+        OnPropertyChanged(nameof(ShowEpisodeEmptyState));
+        OnPropertyChanged(nameof(ShowEpisodesShimmer));
+        OnPropertyChanged(nameof(ShowLoadError));
+    }
+
     private async Task LoadDataAsync()
     {
         if (IsLoading) return;
-        IsLoading = true;
+        SetIsLoading(true);
         HasError = false;
         ErrorMessage = null;
 
@@ -595,7 +601,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         }
         finally
         {
-            IsLoading = false;
+            SetIsLoading(false);
         }
     }
 
@@ -728,11 +734,13 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         SortBy = sortBy;
     }
 
-    partial void OnSearchQueryChanged(string value) => ApplyShowFilter();
+    protected override void OnSearchQueryChangedCore(string value) => ApplyShowFilter();
 
-    partial void OnSortByChanged(LibrarySortBy value) => ApplyShowFilter();
-
-    partial void OnSortDirectionChanged(LibrarySortDirection value) => ApplyShowFilter();
+    protected override void OnSortChangedCore()
+    {
+        OnPropertyChanged(nameof(SortDirectionGlyph));
+        ApplyShowFilter();
+    }
 
     partial void OnSelectedShowChanged(LibraryPodcastShowDto? value)
     {
@@ -1574,7 +1582,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         _episodeProgressCts?.Dispose();
         _showArchiveCts?.Cancel();
         _showArchiveCts?.Dispose();
-        DetachLongLivedServices();
+        DetachPodcastServices();
     }
 }
 
