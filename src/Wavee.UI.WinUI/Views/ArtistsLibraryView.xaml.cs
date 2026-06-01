@@ -129,10 +129,15 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
             case LibraryViewMode.DefaultGrid:
                 ApplyArtistListLayout(new UniformGridLayout
                 {
-                    MinItemWidth = 112,
-                    MinItemHeight = 150,
-                    MinRowSpacing = 4,
-                    MinColumnSpacing = 4,
+                    // MinItemHeight must cover the circular image (≈ cell width, since the
+                    // image stretches to width) PLUS the text band. The From-Liked-Songs
+                    // card carries 3 lines (name + "N liked songs" + recents); with the old
+                    // 112×150 the 3rd line overflowed the Uniform cell and clipped. 120×220
+                    // keeps height ≥ width + ~93 px band at every cell size ≥ MinItemWidth.
+                    MinItemWidth = 120,
+                    MinItemHeight = 220,
+                    MinRowSpacing = 12,
+                    MinColumnSpacing = 12,
                     // Uniform — same reason as the compact branch above.
                     ItemsStretch = UniformGridLayoutItemsStretch.Uniform
                 });
