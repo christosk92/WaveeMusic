@@ -3481,7 +3481,7 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Filter podcasts...</value>
   </data>
   <data name="Views_YourEpisodesView__OpenShowText.Text" xml:space="preserve">
-    <value>Open show</value>
+    <value>Go to show page</value>
   </data>
   <data name="Views_YourEpisodesView__SegmentSaved.Content" xml:space="preserve">
     <value>Saved</value>
@@ -5238,7 +5238,7 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Play</value>
   </data>
   <data name="Views_YourEpisodesView__Auto_601.Text" xml:space="preserve">
-    <value>Open</value>
+    <value>Open episode</value>
   </data>
   <data name="Views_YourEpisodesView__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
     <value>Copy episode link</value>

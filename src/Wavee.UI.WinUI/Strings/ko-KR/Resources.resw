@@ -3398,7 +3398,7 @@
     <value>팟캐스트 필터...</value>
   </data>
   <data name="Views_YourEpisodesView__OpenShowText.Text" xml:space="preserve">
-    <value>쇼 열기</value>
+    <value>쇼 페이지 열기</value>
   </data>
   <data name="Views_YourEpisodesView__SegmentSaved.Content" xml:space="preserve">
     <value>저장됨</value>
@@ -5155,7 +5155,7 @@
     <value>재생</value>
   </data>
   <data name="Views_YourEpisodesView__Auto_601.Text" xml:space="preserve">
-    <value>열기</value>
+    <value>에피소드 열기</value>
   </data>
   <data name="Views_YourEpisodesView__Auto_602.ToolTipService.ToolTip" xml:space="preserve">
     <value>에피소드 링크 복사</value>

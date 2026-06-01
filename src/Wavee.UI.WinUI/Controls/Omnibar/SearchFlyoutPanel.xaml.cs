@@ -125,6 +125,17 @@ public sealed partial class SearchFlyoutPanel : UserControl
 
     private void OnElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
+        // ItemsRepeater (unlike ListView) does not set the realized element's
+        // DataContext to the data item, and our x:Bind templates don't either —
+        // so the per-row pointer handlers that read sender.DataContext
+        // (Item_Tapped, ActionButton_Click, EntityRoot_RightTapped/Holding, and the
+        // EntityRoot_Loaded drag payload factory) were getting a non-item DataContext
+        // and bailing. That's why mouse click / the action button / right-click / drag
+        // did nothing while keyboard nav (which reads the _items model directly) worked.
+        // Assign it here so every pointer path resolves the bound item.
+        if (args.Index >= 0 && args.Index < _items.Count && args.Element is FrameworkElement fe)
+            fe.DataContext = _items[args.Index];
+
         if (args.Index == _keyboardIndex && args.Element is FrameworkElement el)
         {
             SetRowBackground(el, HighlightBrush);

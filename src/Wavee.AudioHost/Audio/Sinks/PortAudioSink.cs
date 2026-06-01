@@ -142,6 +142,65 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
         }
     }
 
+    /// <summary>
+    /// Builds the output <see cref="StreamParameters"/> for the given device + format and opens a
+    /// PortAudio stream on it. Enables WASAPI shared-mode auto-conversion (see
+    /// <see cref="AllocWasapiAutoConvertInfo"/>) so the OS resamples/remaps our track-format PCM to
+    /// the device's mix format — without it, <c>Pa_OpenStream</c> fails with "Error opening PortAudio
+    /// Stream" on any device whose shared-mode mix format differs from the decoded track's (e.g. a
+    /// 44.1 kHz track on a 48 kHz device). Also (re)computes <see cref="_seekUnmuteThresholdBytes"/>
+    /// for the format. The single open path used by initialize / device-switch / device-refresh so
+    /// auto-conversion is applied uniformly. Callers hold <see cref="_lock"/>.
+    /// </summary>
+    private PortAudioSharp.Stream OpenStreamOnDevice(int deviceIndex, AudioFormat format)
+    {
+        var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(deviceIndex);
+
+        var outputParams = new StreamParameters
+        {
+            device = deviceIndex,
+            channelCount = format.Channels,
+            sampleFormat = format.BitsPerSample switch
+            {
+                16 => SampleFormat.Int16,
+                24 => SampleFormat.Int24,
+                32 => SampleFormat.Float32,
+                _ => SampleFormat.Int16
+            },
+            suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.3)
+        };
+
+        // Callback period trades control latency for playback robustness.
+        // Using 80ms reduces sporadic steady-playback underflows on some systems.
+        var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
+        // Number of callback chunks to buffer before unmuting after a flush/seek
+        // is controlled by SeekUnmuteCallbackPeriods (currently 1 ≈ 80 ms).
+        _seekUnmuteThresholdBytes = Math.Max(
+            format.BytesPerFrame,
+            (int)(framesPerBuffer * format.BytesPerFrame * SeekUnmuteCallbackPeriods));
+
+        // The native PaWasapiStreamInfo is consumed by WASAPI during Pa_OpenStream, so it only needs
+        // to live across the constructor call — free it immediately afterwards (success or throw).
+        var wasapiInfo = AllocWasapiAutoConvertInfo(deviceIndex);
+        try
+        {
+            outputParams.hostApiSpecificStreamInfo = wasapiInfo;
+            return new PortAudioSharp.Stream(
+                inParams: null,  // No input
+                outParams: outputParams,
+                sampleRate: format.SampleRate,
+                framesPerBuffer: framesPerBuffer,
+                streamFlags: StreamFlags.PrimeOutputBuffersUsingStreamCallback,
+                callback: StreamCallback,
+                userData: null);
+        }
+        finally
+        {
+            if (wasapiInfo != IntPtr.Zero)
+                Marshal.FreeHGlobal(wasapiInfo);
+        }
+    }
+
     /// <inheritdoc />
     public Task InitializeAsync(AudioFormat format, int bufferSizeMs = 100, CancellationToken cancellationToken = default)
     {
@@ -169,41 +228,10 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
             }
 
             _currentDeviceIndex = deviceIndex;
-            var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(deviceIndex);
 
-            // Configure output parameters
-            var outputParams = new StreamParameters
-            {
-                device = deviceIndex,
-                channelCount = format.Channels,
-                sampleFormat = format.BitsPerSample switch
-                {
-                    16 => SampleFormat.Int16,
-                    24 => SampleFormat.Int24,
-                    32 => SampleFormat.Float32,
-                    _ => SampleFormat.Int16
-                },
-                suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.3)
-            };
-
-            // Callback period trades control latency for playback robustness.
-            // Using 80ms reduces sporadic steady-playback underflows on some systems.
-            var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
-            // Number of callback chunks to buffer before unmuting after a flush/seek
-            // is controlled by SeekUnmuteCallbackPeriods (currently 1 ≈ 80 ms).
-            _seekUnmuteThresholdBytes = Math.Max(
-                format.BytesPerFrame,
-                (int)(framesPerBuffer * format.BytesPerFrame * SeekUnmuteCallbackPeriods));
-
-            // Create stream with callback
-            _stream = new PortAudioSharp.Stream(
-                inParams: null,  // No input
-                outParams: outputParams,
-                sampleRate: format.SampleRate,
-                framesPerBuffer: framesPerBuffer,
-                streamFlags: StreamFlags.PrimeOutputBuffersUsingStreamCallback,
-                callback: StreamCallback,
-                userData: null);
+            // Open the output stream (WASAPI shared-mode auto-conversion is applied inside
+            // OpenStreamOnDevice so a device whose mix format differs from the track still opens).
+            _stream = OpenStreamOnDevice(deviceIndex, format);
 
             _isInitialized = true;
             _isPaused = false; // fresh track — auto-start gate must be open
@@ -524,7 +552,28 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
                 "[PortAudio] Switching output device: {OldName} (idx={OldIdx}) → idx={NewIdx}",
                 oldName, _currentDeviceIndex, newDeviceIndex);
 
-            // Save remaining buffer data so playback resumes seamlessly
+            // Open the new device FIRST. If the open fails (device disconnected, exclusive-locked,
+            // or a format the OS can't satisfy), leave the current stream/buffer/playing state
+            // completely untouched and rethrow — the user keeps hearing audio on their existing
+            // device while AudioHostService surfaces the error toast. Only after the replacement
+            // stream is open do we tear the old one down and swap, so a switch can never silence
+            // playback.
+            PortAudioSharp.Stream newStream;
+            try
+            {
+                newStream = OpenStreamOnDevice(newDeviceIndex, format);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex,
+                    "[PortAudio] Open failed on idx={NewIdx}; keeping current device {OldName} (idx={OldIdx})",
+                    newDeviceIndex, oldName, _currentDeviceIndex);
+                throw;
+            }
+
+            try { newName = PortAudioSharp.PortAudio.GetDeviceInfo(newDeviceIndex).name; } catch { }
+
+            // Replacement is ready — drain the current buffer so playback resumes seamlessly.
             byte[]? savedData = null;
             int savedLength = 0;
             if (_buffer != null && _buffer.Available > 0)
@@ -534,7 +583,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
                 _logger?.LogDebug("[PortAudio] Saved {Bytes} bytes of buffered PCM for device switch", savedLength);
             }
 
-            // Stop current stream
+            // Tear down the old stream now that the new one is open.
             _isPlaying = false;
             if (_stream != null)
             {
@@ -544,41 +593,12 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
                 _stream = null;
             }
 
-            // Create new stream on the new device
+            // Swap in the new device + a fresh buffer (capacity carried from the old buffer).
             _currentDeviceIndex = newDeviceIndex;
-            var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(newDeviceIndex);
-            newName = deviceInfo.name;
-
-            var outputParams = new StreamParameters
-            {
-                device = newDeviceIndex,
-                channelCount = format.Channels,
-                sampleFormat = format.BitsPerSample switch
-                {
-                    16 => SampleFormat.Int16,
-                    24 => SampleFormat.Int24,
-                    32 => SampleFormat.Float32,
-                    _ => SampleFormat.Int16
-                },
-                suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.3)
-            };
-
-            var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
-            _seekUnmuteThresholdBytes = Math.Max(
-                format.BytesPerFrame,
-                (int)(framesPerBuffer * format.BytesPerFrame * SeekUnmuteCallbackPeriods));
+            _stream = newStream;
 
             var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 2 / 1000);
             _buffer = new CircularAudioBuffer(bufferCapacity);
-
-            _stream = new PortAudioSharp.Stream(
-                inParams: null,
-                outParams: outputParams,
-                sampleRate: format.SampleRate,
-                framesPerBuffer: framesPerBuffer,
-                streamFlags: StreamFlags.PrimeOutputBuffersUsingStreamCallback,
-                callback: StreamCallback,
-                userData: null);
 
             // Restore saved buffer data
             if (savedData != null && savedLength > 0)
@@ -816,41 +836,16 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
         bool wasPlaying)
     {
         _currentDeviceIndex = deviceIndex;
-        var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(deviceIndex);
+        string? deviceName = null;
+        try { deviceName = PortAudioSharp.PortAudio.GetDeviceInfo(deviceIndex).name; } catch { }
         _logger?.LogDebug(
             "[PortAudio] ReopenStreamOnDevice: {DeviceName} (idx={Idx}), {Rate}Hz {Channels}ch {Bits}bit, savedBytes={SavedBytes}, wasPlaying={WasPlaying}",
-            deviceInfo.name, deviceIndex, format.SampleRate, format.Channels, format.BitsPerSample, savedLen, wasPlaying);
-
-        var outputParams = new StreamParameters
-        {
-            device = deviceIndex,
-            channelCount = format.Channels,
-            sampleFormat = format.BitsPerSample switch
-            {
-                16 => SampleFormat.Int16,
-                24 => SampleFormat.Int24,
-                32 => SampleFormat.Float32,
-                _ => SampleFormat.Int16
-            },
-            suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.3)
-        };
-
-        var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
-        _seekUnmuteThresholdBytes = Math.Max(
-            format.BytesPerFrame,
-            (int)(framesPerBuffer * format.BytesPerFrame * SeekUnmuteCallbackPeriods));
+            deviceName, deviceIndex, format.SampleRate, format.Channels, format.BitsPerSample, savedLen, wasPlaying);
 
         var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 2 / 1000);
         _buffer = new CircularAudioBuffer(bufferCapacity);
 
-        _stream = new PortAudioSharp.Stream(
-            inParams: null,
-            outParams: outputParams,
-            sampleRate: format.SampleRate,
-            framesPerBuffer: framesPerBuffer,
-            streamFlags: StreamFlags.PrimeOutputBuffersUsingStreamCallback,
-            callback: StreamCallback,
-            userData: null);
+        _stream = OpenStreamOnDevice(deviceIndex, format);
 
         if (savedData != null && savedLen > 0)
             _buffer.WriteImmediate(savedData.AsSpan(0, savedLen));
@@ -934,6 +929,133 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
         {
             return -1;
         }
+    }
+
+    // ── WASAPI shared-mode auto-conversion (PaWasapiStreamInfo) ──
+    //
+    // The PortAudioSharp2 binding ships no WASAPI helper type, so we hand-build the native
+    // PaWasapiStreamInfo and pass its pointer via StreamParameters.hostApiSpecificStreamInfo. We only
+    // need the first 16 bytes — size / hostApiType / version / flags — which are four contiguous
+    // 4-byte fields; everything after (channelMask, host-processor callbacks, threadPriority, category,
+    // option, …) defaults to zero = "unused". Setting paWinWasapiAutoConvert makes WASAPI resample/remap
+    // our track-format PCM to the device's shared-mode mix format inside the OS.
+
+    private const int PaWinWasapiAutoConvert = 0x0040; // AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM + SRC default quality
+    private const int PaInt16 = 0x00000008;            // PaSampleFormat paInt16
+    private const int PaErrIncompatibleHostApiSpecificStreamInfo = -9984;
+
+    // Cached sizeof(PaWasapiStreamInfo) for the loaded PortAudio build (it changed across versions);
+    // -1 means auto-conversion is unavailable (probe failed) → callers open without the stream info.
+    private static int? _wasapiInfoSize;
+
+    // Mirrors PortAudio's PaStreamParameters (LLP64: PaSampleFormat is 32-bit) for Pa_IsFormatSupported.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PaStreamParametersNative
+    {
+        public int device;
+        public int channelCount;
+        public int sampleFormat;
+        public double suggestedLatency;
+        public IntPtr hostApiSpecificStreamInfo;
+    }
+
+    [DllImport("portaudio", EntryPoint = "Pa_IsFormatSupported")]
+    private static extern int Pa_IsFormatSupported(IntPtr input, ref PaStreamParametersNative output, double sampleRate);
+
+    /// <summary>
+    /// Resolves and caches <c>sizeof(PaWasapiStreamInfo)</c> for the loaded PortAudio build. PortAudio
+    /// rejects a host-API stream info whose <c>size</c> field != its compiled sizeof with
+    /// <see cref="PaErrIncompatibleHostApiSpecificStreamInfo"/>, so we probe candidate sizes against
+    /// <c>Pa_IsFormatSupported</c> and take the first that is NOT rejected for that reason (any other
+    /// result — even a plain format-not-supported error — means the size was accepted). Returns -1 if
+    /// none work. Version-proof: no hard-coded struct size. The probe must target a WASAPI device
+    /// (<paramref name="wasapiDeviceIndex"/>) — probing a device on another host API would reject the
+    /// WASAPI stream info for every size and falsely disable auto-conversion.
+    /// </summary>
+    private static int GetWasapiStreamInfoSize(int wasapiDeviceIndex)
+    {
+        if (_wasapiInfoSize.HasValue)
+            return _wasapiInfoSize.Value;
+
+        int resolved = -1;
+        try
+        {
+            var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(wasapiDeviceIndex);
+            double rate = deviceInfo.defaultSampleRate > 0 ? deviceInfo.defaultSampleRate : 48000.0;
+            int channels = deviceInfo.maxOutputChannels >= 2 ? 2 : Math.Max(1, deviceInfo.maxOutputChannels);
+
+            foreach (var candidate in new[] { 56, 48, 64, 72, 40 })
+            {
+                var ptr = Marshal.AllocHGlobal(candidate);
+                try
+                {
+                    for (int off = 0; off < candidate; off += 4)
+                        Marshal.WriteInt32(ptr, off, 0);
+                    Marshal.WriteInt32(ptr, 0, candidate);            // size
+                    Marshal.WriteInt32(ptr, 4, PaHostApiTypeWasapi);  // hostApiType = paWASAPI
+                    Marshal.WriteInt32(ptr, 8, 1);                    // version
+                    Marshal.WriteInt32(ptr, 12, 0);                   // flags (probe: none)
+
+                    var p = new PaStreamParametersNative
+                    {
+                        device = wasapiDeviceIndex,
+                        channelCount = channels,
+                        sampleFormat = PaInt16,
+                        suggestedLatency = deviceInfo.defaultHighOutputLatency,
+                        hostApiSpecificStreamInfo = ptr
+                    };
+                    int err = Pa_IsFormatSupported(IntPtr.Zero, ref p, rate);
+                    if (err != PaErrIncompatibleHostApiSpecificStreamInfo)
+                    {
+                        resolved = candidate;
+                        break;
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(ptr);
+                }
+            }
+        }
+        catch
+        {
+            resolved = -1;
+        }
+
+        _wasapiInfoSize = resolved;
+        return resolved;
+    }
+
+    /// <summary>
+    /// Allocates a native PaWasapiStreamInfo configured for shared-mode auto-conversion, to attach to
+    /// <c>StreamParameters.hostApiSpecificStreamInfo</c>. Returns <see cref="IntPtr.Zero"/> (no info,
+    /// plain open) on non-Windows, when the size probe failed, or when the target device is not a WASAPI
+    /// device. The caller owns the pointer and must <see cref="Marshal.FreeHGlobal"/> it after the open.
+    /// </summary>
+    private IntPtr AllocWasapiAutoConvertInfo(int deviceIndex)
+    {
+        if (!OperatingSystem.IsWindows())
+            return IntPtr.Zero;
+
+        int wasapiHostApi = FindWasapiHostApiIndex();
+        if (wasapiHostApi < 0 || TryGetDeviceHostApi(deviceIndex) != wasapiHostApi)
+            return IntPtr.Zero;
+
+        int size = GetWasapiStreamInfoSize(deviceIndex);
+        if (size <= 0)
+        {
+            _logger?.LogDebug("[PortAudio] WASAPI auto-convert unavailable (stream-info size probe failed)");
+            return IntPtr.Zero;
+        }
+
+        var ptr = Marshal.AllocHGlobal(size);
+        for (int off = 0; off < size; off += 4)
+            Marshal.WriteInt32(ptr, off, 0);
+        Marshal.WriteInt32(ptr, 0, size);                    // size
+        Marshal.WriteInt32(ptr, 4, PaHostApiTypeWasapi);     // hostApiType = paWASAPI
+        Marshal.WriteInt32(ptr, 8, 1);                       // version
+        Marshal.WriteInt32(ptr, 12, PaWinWasapiAutoConvert); // flags
+        return ptr;
     }
 
     /// <inheritdoc />

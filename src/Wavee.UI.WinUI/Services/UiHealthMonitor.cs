@@ -120,6 +120,7 @@ internal sealed partial class UiHealthMonitor : IDisposable
 
     public void Start()
     {
+        return;
         if (_timer != null) return;
 
         _lastTickTimestamp = Stopwatch.GetTimestamp();

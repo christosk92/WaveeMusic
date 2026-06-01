@@ -790,8 +790,7 @@
                         <Grid>
                         <StackPanel x:Name="FooterContent"
                                     Spacing="32"
-                                    Padding="0,32,0,32"
-                                    Opacity="0">
+                                    Padding="0,32,0,32">
 
                             <!--  ════════════════════════════════════════════════════════
                                   ABOUT THIS ALBUM (on-device AI)
