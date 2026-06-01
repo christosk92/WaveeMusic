@@ -87,9 +87,16 @@ public static class StaggeredEntrance
         var visual = ElementCompositionPreview.GetElementVisual(element);
         var compositor = visual.Compositor;
 
+        // CRITICAL: animate the Translation facade, NOT Offset. ItemsView /
+        // ItemsRepeater position their realized items by setting each element's
+        // Composition Offset — writing Offset here overwrites the layout position
+        // and stacks every card at the origin. Translation composes on top of the
+        // layout's Offset, so the slide is purely additive.
+        ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+
         // Start state set immediately to avoid a flash before the delayed animation.
         visual.Opacity = 0f;
-        visual.Offset = new Vector3(0f, OffsetY, 0f);
+        visual.Properties.InsertVector3("Translation", new Vector3(0f, OffsetY, 0f));
 
         var delay = TimeSpan.FromMilliseconds(ordinal * StepMs);
         var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0.8f), new Vector2(0.2f, 1f));
@@ -113,6 +120,6 @@ public static class StaggeredEntrance
         }
 
         visual.StartAnimation("Opacity", fade);
-        visual.StartAnimation("Offset", slide);
+        visual.StartAnimation("Translation", slide);
     }
 }
