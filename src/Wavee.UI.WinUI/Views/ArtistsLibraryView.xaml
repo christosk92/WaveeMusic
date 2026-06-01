@@ -19,6 +19,7 @@
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:libcontrols="using:Wavee.UI.WinUI.Controls.Library"
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
+    xmlns:anim="using:Wavee.UI.WinUI.Controls.Behaviors"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -38,7 +39,7 @@
              them based on the selected view-mode. The inline ItemsView.ItemTemplate below
              mirrors the DefaultList variant for initial load. -->
         <DataTemplate x:Key="ArtistDefaultListItemTemplate" x:DataType="dto:LibraryArtistDto">
-            <ItemContainer>
+            <ItemContainer anim:StaggeredEntrance.IsEntranceAnimated="True">
                 <Grid Padding="8" ColumnSpacing="12" CornerRadius="4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="48"/>
@@ -111,7 +112,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ArtistCompactListItemTemplate" x:DataType="dto:LibraryArtistDto">
-            <ItemContainer>
+            <ItemContainer anim:StaggeredEntrance.IsEntranceAnimated="True">
                 <Grid Padding="8,4" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -126,7 +127,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ArtistCompactGridItemTemplate" x:DataType="dto:LibraryArtistDto">
-            <ItemContainer>
+            <ItemContainer anim:StaggeredEntrance.IsEntranceAnimated="True">
                 <cards:ContentCard
                     Style="{StaticResource CompactContentCardStyle}"
                     ImageUrl="{x:Bind ImageUrl}"
@@ -142,7 +143,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ArtistDefaultGridItemTemplate" x:DataType="dto:LibraryArtistDto">
-            <ItemContainer>
+            <ItemContainer anim:StaggeredEntrance.IsEntranceAnimated="True">
                 <cards:ContentCard
                     Style="{StaticResource CompactContentCardStyle}"
                     ImageUrl="{x:Bind ImageUrl}"
@@ -159,7 +160,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="LikedArtistDefaultListItemTemplate" x:DataType="dto:LikedArtistDto">
-            <ItemContainer RightTapped="LikedArtistItem_RightTapped">
+            <ItemContainer RightTapped="LikedArtistItem_RightTapped" anim:StaggeredEntrance.IsEntranceAnimated="True">
                 <Grid Padding="8" ColumnSpacing="12" CornerRadius="4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="48"/>
@@ -210,7 +211,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="LikedArtistCompactListItemTemplate" x:DataType="dto:LikedArtistDto">
-            <ItemContainer RightTapped="LikedArtistItem_RightTapped">
+            <ItemContainer RightTapped="LikedArtistItem_RightTapped" anim:StaggeredEntrance.IsEntranceAnimated="True">
                 <Grid Padding="8,4" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -232,7 +233,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="LikedArtistCompactGridItemTemplate" x:DataType="dto:LikedArtistDto">
-            <ItemContainer RightTapped="LikedArtistItem_RightTapped">
+            <ItemContainer RightTapped="LikedArtistItem_RightTapped" anim:StaggeredEntrance.IsEntranceAnimated="True">
                 <cards:ContentCard
                     Style="{StaticResource CompactContentCardStyle}"
                     ImageUrl="{x:Bind ImageUrl}"
@@ -249,7 +250,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="LikedArtistDefaultGridItemTemplate" x:DataType="dto:LikedArtistDto">
-            <ItemContainer RightTapped="LikedArtistItem_RightTapped">
+            <ItemContainer RightTapped="LikedArtistItem_RightTapped" anim:StaggeredEntrance.IsEntranceAnimated="True">
                 <cards:ContentCard
                     Style="{StaticResource CompactContentCardStyle}"
                     ImageUrl="{x:Bind ImageUrl}"
@@ -268,7 +269,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ArtistDiscographyContentCardTemplate" x:DataType="vm:ArtistAlbumItemViewModel">
-            <ItemContainer>
+            <ItemContainer anim:StaggeredEntrance.IsEntranceAnimated="True">
                 <cards:ContentCard
                     Style="{StaticResource CompactContentCardStyle}"
                     ImageUrl="{x:Bind Album.ImageUrl}"
@@ -1057,7 +1058,7 @@
                             </ItemsView.Layout>
                             <ItemsView.ItemTemplate>
                                 <DataTemplate x:DataType="dto:LibraryArtistDto">
-                                    <ItemContainer>
+                                    <ItemContainer anim:StaggeredEntrance.IsEntranceAnimated="True">
                                         <Grid Padding="8" ColumnSpacing="12" CornerRadius="4" Tapped="NarrowArtistItem_Tapped">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="48"/>
