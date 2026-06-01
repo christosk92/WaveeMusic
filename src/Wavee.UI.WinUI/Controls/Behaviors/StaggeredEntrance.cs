@@ -9,26 +9,31 @@ namespace Wavee.UI.WinUI.Controls.Behaviors;
 
 /// <summary>
 /// Attached property that gives collection items the web-prototype's staggered
-/// entrance: each item fades + slides up, cascaded across the batch.
+/// entrance: each item fades + slides up, cascaded <b>top-to-bottom, left-to-right</b>.
 ///
-/// Applied to the <b>root element of an item DataTemplate</b> (works for both
-/// <c>ItemsView</c> and <c>ItemsRepeater</c>, unlike a repeater-only hook). The
-/// cascade is driven by a global "burst sequencer": elements realized close
-/// together in time (the first on-screen viewport) get an increasing delay and
-/// cascade in; elements realized in isolation later (scroll-recycle) reset to
-/// delay 0 and just do a quick, near-imperceptible fade — so scrolling stays
-/// smooth and is never re-staggered. Honors the OS "show animations" setting.
+/// The delay is derived from each element's actual position (relative Y, then X)
+/// rather than realization order — virtualizing panels don't realize strictly in
+/// visual order, so an order-based delay cascades in a random direction. Position
+/// based makes it deterministic regardless of realization order or how many grids
+/// realize at once.
 ///
-/// Usage: <c>behaviors:StaggeredEntrance.IsEntranceAnimated="True"</c> on the
-/// template's root <c>Grid</c>/<c>Border</c>.
+/// Gated to the first-viewport burst so scrolling stays smooth: realizations more
+/// than <see cref="BurstGapMs"/> apart start a new "burst" (delays measured relative
+/// to the top of that burst), and only items realized within <see cref="ArmWindowMs"/>
+/// of the burst start animate. Honors the OS "show animations" setting.
+///
+/// Applied to the root element of an item DataTemplate (works for both ItemsView
+/// and ItemsRepeater): <c>behaviors:StaggeredEntrance.IsEntranceAnimated="True"</c>.
 /// </summary>
 public static class StaggeredEntrance
 {
-    private const double StepMs = 26;        // delay added per item within a burst
     private const double DurationMs = 360;
-    private const int MaxStaggered = 24;     // cap so the tail of a big viewport stays snappy
     private const float OffsetY = 14f;
     private const long BurstGapMs = 90;      // realizations farther apart than this start a new burst
+    private const double ArmWindowMs = 1100; // only the first-viewport burst animates
+    private const double YDelayPerPx = 0.32;  // vertical cascade rate (top rows first)
+    private const double XDelayPerPx = 0.05;  // gentle left-to-right within a row
+    private const double MaxDelayMs = 600;
 
     private static bool? _animationsEnabled;
     private static bool AnimationsEnabled => _animationsEnabled ??= ReadAnimationsEnabled();
@@ -39,9 +44,12 @@ public static class StaggeredEntrance
         catch { return true; }
     }
 
-    // Global burst sequencer state.
+    // Burst state: a burst is the set of items realized close together in time
+    // (the first on-screen viewport). Delays are measured relative to the top of
+    // the burst so the cascade reads top-to-bottom even mid-scroll.
     private static long _lastRealizeTicks;
-    private static int _burstOrdinal;
+    private static long _burstStartTicks;
+    private static double _burstMinY;
 
     public static readonly DependencyProperty IsEntranceAnimatedProperty =
         DependencyProperty.RegisterAttached(
@@ -68,37 +76,51 @@ public static class StaggeredEntrance
 
     private static void OnElementLoaded(object sender, RoutedEventArgs e)
     {
-        if (sender is not UIElement element) return;
+        if (sender is not FrameworkElement element) return;
         if (!AnimationsEnabled) return;
 
-        // Burst sequencing: items realized within BurstGapMs of each other cascade;
-        // a longer pause resets the ordinal (isolated scroll-in → delay 0).
         var now = DateTimeOffset.UtcNow.UtcTicks;
         var gapMs = (now - _lastRealizeTicks) / TimeSpan.TicksPerMillisecond;
-        _burstOrdinal = gapMs > BurstGapMs ? 0 : _burstOrdinal + 1;
         _lastRealizeTicks = now;
 
-        var ordinal = Math.Min(_burstOrdinal, MaxStaggered);
-        AnimateIn(element, ordinal);
+        // Position relative to the items panel — top-left is (0,0).
+        var pos = element.ActualOffset;
+
+        if (gapMs > BurstGapMs)
+        {
+            // New burst (fresh load / scroll-in): reset the origin to this element.
+            _burstStartTicks = now;
+            _burstMinY = pos.Y;
+        }
+        else if (pos.Y < _burstMinY)
+        {
+            _burstMinY = pos.Y;
+        }
+
+        // Past the first-viewport window → don't animate (keeps scrolling smooth).
+        if ((now - _burstStartTicks) / TimeSpan.TicksPerMillisecond > ArmWindowMs)
+            return;
+
+        var relativeY = Math.Max(0, pos.Y - _burstMinY);
+        var delayMs = Math.Min(relativeY * YDelayPerPx + Math.Max(0, pos.X) * XDelayPerPx, MaxDelayMs);
+
+        AnimateIn(element, delayMs);
     }
 
-    private static void AnimateIn(UIElement element, int ordinal)
+    private static void AnimateIn(UIElement element, double delayMs)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
         var compositor = visual.Compositor;
 
-        // CRITICAL: animate the Translation facade, NOT Offset. ItemsView /
-        // ItemsRepeater position their realized items by setting each element's
-        // Composition Offset — writing Offset here overwrites the layout position
-        // and stacks every card at the origin. Translation composes on top of the
-        // layout's Offset, so the slide is purely additive.
+        // Animate the Translation facade, NOT Offset — ItemsView / ItemsRepeater
+        // position items via Offset, so writing Offset stacks every card at the
+        // origin. Translation composes on top of the layout offset.
         ElementCompositionPreview.SetIsTranslationEnabled(element, true);
 
-        // Start state set immediately to avoid a flash before the delayed animation.
         visual.Opacity = 0f;
         visual.Properties.InsertVector3("Translation", new Vector3(0f, OffsetY, 0f));
 
-        var delay = TimeSpan.FromMilliseconds(ordinal * StepMs);
+        var delay = TimeSpan.FromMilliseconds(delayMs);
         var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0.8f), new Vector2(0.2f, 1f));
 
         var fade = compositor.CreateScalarKeyFrameAnimation();
