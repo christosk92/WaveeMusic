@@ -129,16 +129,16 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
             case LibraryViewMode.DefaultGrid:
                 ApplyArtistListLayout(new UniformGridLayout
                 {
-                    // MinItemHeight must cover the circular image (≈ cell width, since the
-                    // image stretches to width) PLUS the text band. The From-Liked-Songs
-                    // card carries 3 lines (name + "N liked songs" + recents); with the old
-                    // 112×150 the 3rd line overflowed the Uniform cell and clipped. 120×220
-                    // keeps height ≥ width + ~93 px band at every cell size ≥ MinItemWidth.
-                    MinItemWidth = 120,
-                    MinItemHeight = 220,
+                    // Matches the Albums grid ratio (150:230) so the two tabs are
+                    // consistent. The card's image grows with width while the text band
+                    // is fixed, so a single Uniform aspect can't be pixel-perfect at every
+                    // width — this ratio fits 3 lines (name + "N liked songs" + recents)
+                    // at typical widths with only minor empty space, and avoids the clip
+                    // the old 112:150 produced and the large gap the 120:220 produced.
+                    MinItemWidth = 150,
+                    MinItemHeight = 230,
                     MinRowSpacing = 12,
                     MinColumnSpacing = 12,
-                    // Uniform — same reason as the compact branch above.
                     ItemsStretch = UniformGridLayoutItemsStretch.Uniform
                 });
                 ApplyTemplateFromResources("ArtistDefaultGridItemTemplate");
