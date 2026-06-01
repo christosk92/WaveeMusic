@@ -437,7 +437,15 @@
                     ItemTemplate="{StaticResource PodcastShowItemTemplate}"
                     SelectionMode="Single"
                     HorizontalContentAlignment="Stretch"
-                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                    <!-- Native staggered entrance for the shows list (matches the
+                         Composition cascade used on the Albums/Artists grids). -->
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition IsStaggeringEnabled="True"/>
+                        </TransitionCollection>
+                    </ListView.ItemContainerTransitions>
+                </ListView>
 
                 <StackPanel
                     x:Name="ShowsListShimmer"
