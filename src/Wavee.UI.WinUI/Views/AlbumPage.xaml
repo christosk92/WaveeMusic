@@ -20,6 +20,7 @@
     xmlns:avatarStack="using:Wavee.UI.WinUI.Controls.AvatarStack"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     xmlns:ai="using:Wavee.UI.WinUI.Controls.Ai"
+    xmlns:entranceAnim="using:Wavee.UI.WinUI.Controls.Behaviors"
     helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
     Background="Transparent">
@@ -798,6 +799,7 @@
                                   IsAvailable evaporates the card on incompatible machines.
                                   ════════════════════════════════════════════════════════ -->
                             <ai:AiTextCard x:Name="AboutAlbumSection"
+                                           entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                            x:Uid="Views_AlbumPage__AiTextCard_118"
                                            Title="ABOUT THIS ALBUM"
                                            IsAvailable="{x:Bind ViewModel.IsAiAlbumCardVisible, Mode=OneWay}"
@@ -857,6 +859,7 @@
                                  in the pointer handlers is the cheapest reliable
                                  alternative. -->
                             <Border x:Name="MusicVideoStrip"
+                                    entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                     x:Load="{x:Bind ViewModel.HasMusicVideo, Mode=OneWay}"
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -938,6 +941,7 @@
                             <Grid>
                                 <Border
                                     x:Name="FooterArtistCardSkeleton"
+                                    entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                     x:Load="{x:Bind ViewModel.ShowArtistSummarySkeleton, Mode=OneWay}"
                                     Margin="0,0,16,0"
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -964,6 +968,7 @@
 
                                 <artistControls:ArtistSummaryCard
                                     x:Name="FooterArtistCard"
+                                    entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                     x:Load="{x:Bind ViewModel.ShowArtistSummaryCard, Mode=OneWay}"
                                     Margin="0,0,16,0"
                                     ArtistUri="{x:Bind ViewModel.ArtistId, Mode=OneWay}"
@@ -990,6 +995,7 @@
                                  others crowd their text. The fade-right hint sits on top
                                  of the rail to suggest there's more off-screen. -->
                             <StackPanel x:Name="FansAlsoLikeSkeleton"
+                                        entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                         x:Load="{x:Bind ViewModel.ShowSimilarArtistsSkeleton, Mode=OneWay}"
                                         Spacing="16">
                                 <controls:Shimmer Width="110" Height="18" HorizontalAlignment="Left" CornerRadius="3"/>
@@ -1048,6 +1054,7 @@
                             </StackPanel>
 
                             <StackPanel x:Name="FansAlsoLikePanel"
+                                        entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                         x:Load="{x:Bind ViewModel.ShowSimilarArtistsPanel, Mode=OneWay}"
                                         Spacing="16">
                                 <TextBlock x:Uid="Views_AlbumPage__TextBlock_121"
@@ -1093,6 +1100,7 @@
 
                             <!-- More by Artist. -->
                             <StackPanel x:Name="MoreByArtistSkeleton"
+                                        entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                         x:Load="{x:Bind ViewModel.ShowMoreByArtistSkeleton, Mode=OneWay}"
                                         Spacing="16">
                                 <controls:Shimmer Width="180" Height="18" HorizontalAlignment="Left" CornerRadius="3"/>
@@ -1122,6 +1130,7 @@
 
                             <StackPanel Spacing="16"
                                         x:Name="HasMorePanel"
+                                        entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                         x:Load="{x:Bind ViewModel.ShowMoreByArtistPanel, Mode=OneWay}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -1172,6 +1181,7 @@
                                  LIST_METADATA_V2 hero resolve. -->
                             <StackPanel Spacing="16"
                                         x:Name="HasRecommendedPlaylistsPanel"
+                                        entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                         x:Load="{x:Bind ViewModel.HasRecommendedPlaylists, Mode=OneWay}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -1219,6 +1229,7 @@
                             <!-- Merch. -->
                             <StackPanel Spacing="16"
                                         x:Name="HasMerchPanel"
+                                        entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                         x:Load="{x:Bind ViewModel.HasMerch, Mode=OneWay}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>

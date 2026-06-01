@@ -1,8 +1,5 @@
 using System;
-using System.Numerics;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Hosting;
 using Windows.UI.ViewManagement;
 
 namespace Wavee.UI.WinUI.Controls.Behaviors;
@@ -27,8 +24,6 @@ namespace Wavee.UI.WinUI.Controls.Behaviors;
 /// </summary>
 public static class StaggeredEntrance
 {
-    private const double DurationMs = 360;
-    private const float OffsetY = 14f;
     private const long BurstGapMs = 90;      // realizations farther apart than this start a new burst
     private const double ArmWindowMs = 1100; // only the first-viewport burst animates
     private const double YDelayPerPx = 0.32;  // vertical cascade rate (top rows first)
@@ -104,44 +99,6 @@ public static class StaggeredEntrance
         var relativeY = Math.Max(0, pos.Y - _burstMinY);
         var delayMs = Math.Min(relativeY * YDelayPerPx + Math.Max(0, pos.X) * XDelayPerPx, MaxDelayMs);
 
-        AnimateIn(element, delayMs);
-    }
-
-    private static void AnimateIn(UIElement element, double delayMs)
-    {
-        var visual = ElementCompositionPreview.GetElementVisual(element);
-        var compositor = visual.Compositor;
-
-        // Animate the Translation facade, NOT Offset — ItemsView / ItemsRepeater
-        // position items via Offset, so writing Offset stacks every card at the
-        // origin. Translation composes on top of the layout offset.
-        ElementCompositionPreview.SetIsTranslationEnabled(element, true);
-
-        visual.Opacity = 0f;
-        visual.Properties.InsertVector3("Translation", new Vector3(0f, OffsetY, 0f));
-
-        var delay = TimeSpan.FromMilliseconds(delayMs);
-        var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0.8f), new Vector2(0.2f, 1f));
-
-        var fade = compositor.CreateScalarKeyFrameAnimation();
-        fade.InsertKeyFrame(1f, 1f, easing);
-        fade.Duration = TimeSpan.FromMilliseconds(DurationMs);
-        if (delay > TimeSpan.Zero)
-        {
-            fade.DelayTime = delay;
-            fade.DelayBehavior = AnimationDelayBehavior.SetInitialValueBeforeDelay;
-        }
-
-        var slide = compositor.CreateVector3KeyFrameAnimation();
-        slide.InsertKeyFrame(1f, Vector3.Zero, easing);
-        slide.Duration = TimeSpan.FromMilliseconds(DurationMs);
-        if (delay > TimeSpan.Zero)
-        {
-            slide.DelayTime = delay;
-            slide.DelayBehavior = AnimationDelayBehavior.SetInitialValueBeforeDelay;
-        }
-
-        visual.StartAnimation("Opacity", fade);
-        visual.StartAnimation("Translation", slide);
+        EntranceAnimations.FadeSlideUp(element, delayMs);
     }
 }

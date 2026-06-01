@@ -19,6 +19,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:helpers="using:Wavee.UI.WinUI.Helpers"
+    xmlns:entranceAnim="using:Wavee.UI.WinUI.Controls.Behaviors"
     helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
     Background="Transparent">
@@ -387,6 +388,7 @@
                                     Grid.Column="0"
                                     Spacing="24">
                             <StackPanel Spacing="10"
+                                        entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                         Visibility="{x:Bind ViewModel.HasDescription, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <TextBlock x:Uid="Views_EpisodePage__Auto_607" Text="About this episode"
                                            Style="{StaticResource SubtitleTextBlockStyle}"
@@ -404,6 +406,7 @@
 
                             <comments:CommentsList
                                 x:Name="EpisodeComments"
+                                entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                 HeaderText="{x:Bind ViewModel.CommentsCountLabel, Mode=OneWay}"
                                 Comments="{x:Bind ViewModel.Comments, Mode=OneWay}"
                                 Draft="{x:Bind ViewModel.CommentDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -429,6 +432,7 @@
                          playback chapter rail (timestamp + rail + content card),
                          tapping a row seeks the player to chapter start. -->
                     <StackPanel Spacing="14"
+                                entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                 Visibility="{x:Bind ViewModel.HasChapters, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <TextBlock x:Uid="Views_EpisodePage__Auto_608" Text="Chapters"
                                    Style="{StaticResource SubtitleTextBlockStyle}"
@@ -505,6 +509,7 @@
 
                     <!-- ── MORE FROM THIS SHOW ─────────────────────────────── -->
                     <StackPanel Spacing="14"
+                                entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                 Visibility="{x:Bind ViewModel.HasMoreFromShow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid>
                             <Grid.ColumnDefinitions>

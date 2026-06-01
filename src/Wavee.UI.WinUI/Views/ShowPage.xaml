@@ -19,6 +19,7 @@
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:helpers="using:Wavee.UI.WinUI.Helpers"
+    xmlns:entranceAnim="using:Wavee.UI.WinUI.Controls.Behaviors"
     helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
     Background="Transparent">
@@ -576,6 +577,7 @@
                                  "More by Artist" shelf — same scroller, same chevron
                                  buttons, same fade-right gradient. -->
                             <StackPanel Spacing="16"
+                                        entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                         Visibility="{x:Bind ViewModel.HasRecommendations, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>

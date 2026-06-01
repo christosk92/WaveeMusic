@@ -26,6 +26,7 @@
     xmlns:gallery="using:Wavee.UI.WinUI.Controls.Gallery"
     xmlns:adp="using:Wavee.UI.WinUI.Controls.AlbumDetailPanel"
     xmlns:ai="using:Wavee.UI.WinUI.Controls.Ai"
+    xmlns:entranceAnim="using:Wavee.UI.WinUI.Controls.Behaviors"
     xmlns:services="using:Wavee.UI.WinUI.Services"
     waveeHelpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
@@ -720,6 +721,7 @@
                       ════════════════════════════════════════════════════════ -->
                         <ai:AiTextCard x:Uid="Views_ArtistPage__AiTextCard_109"
                                        x:Name="AboutExcerptSection"
+                                       entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
                                        Title="ABOUT THIS ARTIST"
                                        IsAvailable="{x:Bind ViewModel.Bio.IsAiBioSummaryCardVisible, Mode=OneWay}"
                                        IsGenerating="{x:Bind ViewModel.Bio.IsAiBioGenerating, Mode=OneWay}"
