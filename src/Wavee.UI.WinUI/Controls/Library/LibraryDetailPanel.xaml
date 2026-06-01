@@ -154,10 +154,19 @@
         <!-- Inline sub-toggle slot (Liked|Full album, Saved|Latest). -->
         <ContentPresenter x:Name="SubTogglePresenter"
                           Grid.Row="2" Margin="0,0,0,8"
+                          HorizontalContentAlignment="Stretch"
                           Content="{x:Bind SubToggleContent, Mode=OneWay}"/>
 
-        <!-- Content slot: track / episode list / discography. -->
+        <!-- Content slot: track / episode list / discography. A ContentPresenter
+             defaults to Top/Left content alignment, which would arrange a hosted
+             ScrollView at its (unbounded) desired height instead of filling this
+             star row — leaving the inner scroller without a bounded viewport.
+             That breaks the effective-viewport math the image loaders gate on, so
+             cards stay on their placeholder. Stretch so the content fills the row
+             and the scroll viewport is real. -->
         <ContentPresenter Grid.Row="3"
+                          HorizontalContentAlignment="Stretch"
+                          VerticalContentAlignment="Stretch"
                           Content="{x:Bind PanelContent, Mode=OneWay}"/>
     </Grid>
 </UserControl>
