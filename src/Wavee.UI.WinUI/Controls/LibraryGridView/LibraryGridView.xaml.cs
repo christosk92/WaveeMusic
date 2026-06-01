@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Wavee.UI.WinUI.Controls.Layouts;
 using Wavee.UI.WinUI.Data.Enums;
 
 namespace Wavee.UI.WinUI.Controls;
@@ -363,30 +364,31 @@ public sealed partial class LibraryGridView : UserControl
                 (double)56),
             LibraryViewMode.CompactGrid => (
                 CompactGridItemTemplate ?? DefaultGridItemTemplate ?? ItemTemplate,
-                new UniformGridLayout
+                new ResponsiveGridLayout
                 {
                     MinItemWidth = 100,
-                    MinItemHeight = 100,
-                    MinRowSpacing = 8,
-                    MinColumnSpacing = 8,
-                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
+                    ColumnSpacing = 8,
+                    RowSpacing = 8,
+                    AspectRatio = 1.0,
+                    TextBandHeight = 0
                 },
                 (double)100,
                 (double)100),
             _ => (
                 DefaultGridItemTemplate ?? ItemTemplate,
-                new UniformGridLayout
+                // ResponsiveGridLayout = CSS auto-fill + 1fr: columns stretch to fill
+                // the width (cards grow with the viewport) and each row's height tracks
+                // content — the square cover (cellWidth) plus a fixed text band below.
+                // Stock UniformGridLayout's fixed-aspect cells couldn't do both: they
+                // clipped on narrow cells and left empty space on wide ones. The text
+                // band is the consumer's MinItemHeight minus the square image side.
+                new ResponsiveGridLayout
                 {
                     MinItemWidth = scaledWidth,
-                    MinItemHeight = scaledHeight,
-                    MinRowSpacing = 12,
-                    MinColumnSpacing = 12,
-                    // Uniform stretch: cells grow with the viewport while preserving the
-                    // MinItemWidth:MinItemHeight aspect, so the album art (square) and
-                    // the text band below scale together. Earlier we used None so cells
-                    // hugged MinItemWidth and titles like "Can This Love Be Translated?"
-                    // got truncated even on wide displays.
-                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
+                    ColumnSpacing = 12,
+                    RowSpacing = 12,
+                    AspectRatio = 1.0,
+                    TextBandHeight = Math.Max(0, scaledHeight - scaledWidth)
                 },
                 scaledWidth,
                 scaledHeight)
@@ -394,7 +396,20 @@ public sealed partial class LibraryGridView : UserControl
 
         // Keep the shimmer aligned to the items layout so the placeholder silhouette
         // approximates the actual rendered rows/cards.
-        if (ShimmerOverlay != null && layout is UniformGridLayout uniform)
+        if (ShimmerOverlay != null && layout is ResponsiveGridLayout responsive)
+        {
+            // The shimmer ItemsRepeater can't host a VirtualizingLayout meant for the
+            // real items; approximate it with a uniform grid sized to one resolved cell.
+            ShimmerOverlay.Layout = new UniformGridLayout
+            {
+                MinItemWidth = responsive.MinItemWidth,
+                MinItemHeight = responsive.MinItemWidth * responsive.AspectRatio + responsive.TextBandHeight,
+                MinRowSpacing = responsive.RowSpacing,
+                MinColumnSpacing = responsive.ColumnSpacing,
+                ItemsStretch = UniformGridLayoutItemsStretch.Fill
+            };
+        }
+        else if (ShimmerOverlay != null && layout is UniformGridLayout uniform)
         {
             ShimmerOverlay.Layout = new UniformGridLayout
             {

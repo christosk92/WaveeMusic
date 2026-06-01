@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.InPageFilter;
+using Wavee.UI.WinUI.Controls.Layouts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -111,35 +112,31 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
                 break;
 
             case LibraryViewMode.CompactGrid:
-                ApplyArtistListLayout(new UniformGridLayout
+                ApplyArtistListLayout(new ResponsiveGridLayout
                 {
                     MinItemWidth = 104,
-                    MinItemHeight = 122,
-                    MinRowSpacing = 8,
-                    MinColumnSpacing = 8,
-                    // Uniform so circular cards grow proportionally as the
-                    // column widens — None left a static grid that ignored
-                    // extra horizontal space.
-                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
+                    ColumnSpacing = 8,
+                    RowSpacing = 8,
+                    AspectRatio = 1.0,
+                    // Compact card shows the name only (~1 line) under the avatar.
+                    TextBandHeight = 34
                 });
                 ApplyTemplateFromResources("ArtistCompactGridItemTemplate");
                 ApplyLikedTemplateFromResources("LikedArtistCompactGridItemTemplate");
                 break;
 
             case LibraryViewMode.DefaultGrid:
-                ApplyArtistListLayout(new UniformGridLayout
+                ApplyArtistListLayout(new ResponsiveGridLayout
                 {
-                    // Matches the Albums grid ratio (150:230) so the two tabs are
-                    // consistent. The card's image grows with width while the text band
-                    // is fixed, so a single Uniform aspect can't be pixel-perfect at every
-                    // width — this ratio fits 3 lines (name + "N liked songs" + recents)
-                    // at typical widths with only minor empty space, and avoids the clip
-                    // the old 112:150 produced and the large gap the 120:220 produced.
+                    // CSS auto-fill + 1fr: circular avatars grow with the column width,
+                    // and the row height = avatar (square) + a fixed text band sized for
+                    // the From-Liked-Songs card's 3 lines (name + "N liked songs" +
+                    // recents). No clip, no empty space at any width.
                     MinItemWidth = 150,
-                    MinItemHeight = 230,
-                    MinRowSpacing = 12,
-                    MinColumnSpacing = 12,
-                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
+                    ColumnSpacing = 12,
+                    RowSpacing = 12,
+                    AspectRatio = 1.0,
+                    TextBandHeight = 88
                 });
                 ApplyTemplateFromResources("ArtistDefaultGridItemTemplate");
                 ApplyLikedTemplateFromResources("LikedArtistDefaultGridItemTemplate");
@@ -164,6 +161,14 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
 
     private static Layout CloneLayout(Layout layout) => layout switch
     {
+        ResponsiveGridLayout r => new ResponsiveGridLayout
+        {
+            MinItemWidth = r.MinItemWidth,
+            ColumnSpacing = r.ColumnSpacing,
+            RowSpacing = r.RowSpacing,
+            AspectRatio = r.AspectRatio,
+            TextBandHeight = r.TextBandHeight
+        },
         UniformGridLayout u => new UniformGridLayout
         {
             MinItemWidth = u.MinItemWidth,
