@@ -446,17 +446,20 @@ public sealed partial class ContentCard
             return;
         }
 
-        // Only honour the outside-viewport early-return AFTER the card has
-        // actually loaded and the viewport behavior had a chance to attach and
-        // settle. During the very first DP binding (pre-Loaded), mirror
-        // OnLoaded's first-realize fallback — "not yet sampled" means
-        // "inside-by-default", so the image actually gets a load attempt
-        // instead of being silently suppressed.
+        // A *new* URL means the container was recycled onto a different item. A
+        // virtualizing host (ItemsView / ItemsRepeater) only realizes elements in
+        // or near the viewport, so the mirrored "_isInsideEffectiveViewport = false"
+        // left over from this container's PREVIOUS position is stale — and
+        // EffectiveViewportChanged does not reliably re-fire for the new position.
+        // Honoring it here is exactly what stranded recycled-but-visible cards on
+        // their placeholder. Reset the gate and load; if the card really is just
+        // outside the viewport, the behavior re-samples on the next tick and the
+        // (cached) load is cheap. This is the "re-trigger LoadImage on
+        // re-realization" fix from project memory `feedback_contentcard_unload_nulls_image`.
         if (card.IsLoaded && card._hasEffectiveViewport && !card._isInsideEffectiveViewport)
         {
-            if (!card.IsCurrentImageUrl(url))
-                card.ReleaseImage();
-            return;
+            card._hasEffectiveViewport = false;
+            card._isInsideEffectiveViewport = true;
         }
 
         card.LoadImage(url);
