@@ -94,6 +94,8 @@ public static class TrackStateBehavior
         {
             element.PointerEntered -= OnPointerEntered;
             element.PointerExited -= OnPointerExited;
+            element.PointerCanceled -= OnPointerExited;
+            element.PointerCaptureLost -= OnPointerExited;
             element.Loaded -= OnLoaded;
             element.Unloaded -= OnUnloaded;
             RemoveFromRegistry(element, oldTrackId);
@@ -103,6 +105,10 @@ public static class TrackStateBehavior
         {
             element.PointerEntered += OnPointerEntered;
             element.PointerExited += OnPointerExited;
+            // Touch-scroll capture delivers Canceled/CaptureLost instead of Exited;
+            // route both to the exit reset so IsHovered never sticks (issue #4).
+            element.PointerCanceled += OnPointerExited;
+            element.PointerCaptureLost += OnPointerExited;
             element.Loaded += OnLoaded;
             element.Unloaded += OnUnloaded;
             AddToRegistry(element, newTrackId);
@@ -205,6 +211,7 @@ public static class TrackStateBehavior
     {
         if (sender is not FrameworkElement element) return;
         if (!GetIsEnabled(element)) return;
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
 
         SetIsHovered(element, true);
 

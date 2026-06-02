@@ -794,7 +794,17 @@ public sealed partial class QueueControl : UserControl
             duration.Visibility = showActions || !hasLoadedTrack ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void TrackRow_PointerEntered(object sender, PointerRoutedEventArgs e) => SetRowHoverState(sender, true);
+    private void TrackRow_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        // Touch has no hover: a finger-scroll would otherwise leave the row's play /
+        // more buttons revealed, because the scroll capture delivers Canceled/
+        // CaptureLost rather than PointerExited (issue #4). Mouse/pen still reveal.
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return;
+        SetRowHoverState(sender, true);
+    }
+
+    // Also wired to PointerCanceled / PointerCaptureLost in XAML so a mouse
+    // drag-capture (or any lost capture) clears the revealed hover controls.
     private void TrackRow_PointerExited(object sender, PointerRoutedEventArgs e) => SetRowHoverState(sender, false);
 
     private void RowPlay_Click(object sender, RoutedEventArgs e)

@@ -261,6 +261,7 @@ public sealed partial class ArtistSummaryCard : UserControl
 
     private void CardSurface_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
         // Subtle background lift on hover. Mirrors the affordance the rest
         // of the app uses (ContentCard, ArtistPillCard) â€” lighter card-fill
         // tier signals "this is clickable".

@@ -65,6 +65,8 @@
                   Loaded="TrackRoot_Loaded"
                   PointerEntered="TrackRow_PointerEntered"
                   PointerExited="TrackRow_PointerExited"
+                  PointerCanceled="TrackRow_PointerExited"
+                  PointerCaptureLost="TrackRow_PointerExited"
                   Opacity="{x:Bind VisualOpacity, Mode=OneTime}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="40"/>

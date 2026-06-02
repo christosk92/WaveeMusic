@@ -241,7 +241,10 @@ public sealed partial class ShowResumeBanner : UserControl
     }
 
     private void BannerRoot_PointerEntered(object sender, PointerRoutedEventArgs e)
-        => SetHoverState(true);
+    {
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
+        SetHoverState(true);
+    }
 
     private void BannerRoot_PointerExited(object sender, PointerRoutedEventArgs e)
         => SetHoverState(false);

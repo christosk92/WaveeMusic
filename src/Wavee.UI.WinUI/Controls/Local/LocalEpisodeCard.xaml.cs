@@ -218,6 +218,7 @@ public sealed partial class LocalEpisodeCard : UserControl
 
     private void CardRoot_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
         if (Episode is not { IsOnDisk: true }) return; // missing rows: no hover affordance
         _isHovered = true;
         ScaleCard(1.03f, 180);

@@ -59,7 +59,11 @@ public static class CardHoverScaleBehavior
     private static void Attach(FrameworkElement fe)
     {
         var holder = new HandlerHolder();
-        holder.Entered = (_, _) => Animate(fe, HoverScale);
+        holder.Entered = (_, e) =>
+        {
+            if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch: no hover scale (issue #4)
+            Animate(fe, HoverScale);
+        };
         holder.Exited = (_, _) => Animate(fe, 1.0f);
         holder.Loaded = OnLoaded;
         holder.SizeChanged = OnSizeChanged;

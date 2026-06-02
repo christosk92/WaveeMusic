@@ -41,6 +41,7 @@ public sealed partial class BaselineHomeCard
 
     private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
         UpdateLastPointerWindowPosition(e);
         _hoverStopVersion++;
         _isPointerOver = true;

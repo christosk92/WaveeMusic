@@ -586,9 +586,14 @@ public sealed partial class TrackItem : UserControl
     {
         InitializeComponent();
 
-        // Hover tracking
+        // Hover tracking. Canceled/CaptureLost route to the same reset as Exited:
+        // during a touch-scroll (and a mouse drag-capture) the row gets those
+        // instead of PointerExited, so without them the hover visual would stick
+        // (issue #4).
         PointerEntered += OnPointerEntered;
         PointerExited += OnPointerExited;
+        PointerCanceled += OnPointerExited;
+        PointerCaptureLost += OnPointerExited;
 
         // Ensure playback bridge is initialized (idempotent)
         TrackStateBehavior.EnsurePlaybackSubscription();
