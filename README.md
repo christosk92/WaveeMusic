@@ -17,6 +17,14 @@ WaveeMusic is a modern, open-source **Spotify desktop client for Windows** — a
 
 > **Heads up — this is alpha software.** It's an early, experimental cut: things will break, some features are rough or missing, and there's a real chance it won't launch on every machine. That's what an alpha is for — if you hit something, a bug report is genuinely appreciated.
 
+## Listen to my playlist !
+
+<p>
+  <a href="https://open.spotify.com/playlist/0dijb70Boi9TIdmiLLq13V">Open the playlist on Spotify</a>
+</p>
+
+<iframe data-testid="embed-iframe" style="border-radius:12px" src="https://open.spotify.com/embed/playlist/0dijb70Boi9TIdmiLLq13V?utm_source=generator" width="100%" height="352" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+
 ## Installing and running
 
 WaveeMusic ships as a signed **MSIX** from GitHub Releases — there's no Microsoft Store listing yet. The button below installs the **experimental channel** through Windows App Installer and keeps it current with silent background auto‑updates.
