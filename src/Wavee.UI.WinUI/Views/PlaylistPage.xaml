@@ -334,11 +334,14 @@
                             <Grid x:Name="CoverEditOverlay"
                                   Background="#80000000"
                                   Opacity="0"
+                                  AllowDrop="True"
                                   IsHitTestVisible="{x:Bind ViewModel.Header.CanEditPicture, Mode=OneWay}"
                                   PointerEntered="CoverEditOverlay_PointerEntered"
                                   PointerExited="CoverEditOverlay_PointerExited"
                                   Tapped="CoverEditOverlay_Tapped"
-                                  RightTapped="CoverEditOverlay_RightTapped">
+                                  RightTapped="CoverEditOverlay_RightTapped"
+                                  DragOver="CoverEditOverlay_DragOver"
+                                  Drop="CoverEditOverlay_Drop">
                                 <StackPanel HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
                                             Spacing="6">

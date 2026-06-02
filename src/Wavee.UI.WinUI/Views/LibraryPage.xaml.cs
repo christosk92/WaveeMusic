@@ -15,7 +15,7 @@ using Wavee.UI.WinUI.ViewModels;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IInPageFilterable
+public sealed partial class LibraryPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────
     // LibraryPage hosts four child views (Albums/Artists/LikedSongs/YourEpisodes)
@@ -51,16 +51,12 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
     private YourEpisodesView? _yourEpisodesView;
 
     // The child view currently shown (Visibility=Visible). The others remain
-    // parented to ContentHost but Collapsed, with their GPU image surfaces
-    // released via NavCacheSurfaces — so switching back is a Visibility flip plus
-    // a cheap surface re-pin, never a re-layout / re-realize.
+    // parented to ContentHost but Collapsed and fully resident — so switching
+    // back is just a Visibility flip, never a re-layout / re-realize.
     private UserControl? _activeView;
     private int _deferredShowTabAttempts;
     private TabItemParameter? _tabItemParameter;
     private bool _disposed;
-    private LibraryPageSleepState? _pendingSleepState;
-    private bool _trimmedForNavigationCache;
-    private string? _trimmedSelectedTabKey;
     private int _deferredShowTabGeneration;
 
     public LibraryPage()
@@ -123,22 +119,12 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
         // SetSelectedItemSilently and ShowTab both no-op when the target
         // tab is already showing, so falling through to the standard path
         // is safe for same-tab back/forward navs too.
-        if (_trimmedForNavigationCache && navigationParameter is not string)
-        {
-            RestoreFromNavigationCache();
-            TryApplyPendingSleepState();
-            return;
-        }
-
         SegmentedItem itemToSelect = navigationParameter is string tab
             ? GetItemForTabKey(tab)
             : AlbumsItem;
 
         SetSelectedItemSilently(itemToSelect);
-        _trimmedForNavigationCache = false;
-        _trimmedSelectedTabKey = null;
         ShowTab(itemToSelect, deferColdCreation: true);
-        TryApplyPendingSleepState();
     }
 
     public void OnLeaving()
@@ -183,7 +169,7 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
             return;
 
         var selectedItem = LibrarySelectorBar.SelectedItem as SegmentedItem
-                           ?? GetItemForTabKey(_trimmedSelectedTabKey);
+                           ?? GetItemForTabKey(null);
         SetSelectedItemSilently(selectedItem);
         ShowTab(selectedItem, deferColdCreation: true);
     }
@@ -254,13 +240,12 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
     }
 
     /// <summary>
-    /// Reveals <paramref name="view"/> by Visibility — all four child views stay
-    /// parented to <c>ContentHost</c> — re-pinning its image surfaces, and parks
-    /// the previously-active view: Collapsed but still realized, with its GPU
-    /// surfaces released. A tab switch is therefore a Visibility flip plus a cheap
-    /// surface re-pin (no Unloaded, no re-layout, no container re-realization),
-    /// which is what makes switching back instant. Mirrors how <c>TabBarItem</c>
-    /// drives <see cref="NavCacheSurfaces"/> for whole pages.
+    /// Reveals <paramref name="view"/> by flipping Visibility. All four child
+    /// views stay parented to <c>ContentHost</c> and fully resident (Files-app
+    /// tab model — no surface shedding, no trim, no re-pin): the target is shown
+    /// and the previously-active view is simply Collapsed. A tab switch is
+    /// therefore a pure show/hide flip — no Unloaded, no re-layout, no container
+    /// re-realization — which is what makes switching back instant.
     /// </summary>
     private void ShowView(UserControl view)
     {
@@ -270,23 +255,19 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
         if (ReferenceEquals(_activeView, view))
         {
             // Same tab (e.g. re-entered via back/forward) — just make sure it's
-            // visible and its surfaces are live.
+            // visible.
             view.Visibility = Visibility.Visible;
-            NavCacheSurfaces.RestoreAll(view);
             return;
         }
 
-        // Reveal the target and re-hydrate its surfaces (no-op the first time,
-        // a cheap cache re-pin on every subsequent return).
+        // Reveal the target.
         view.Visibility = Visibility.Visible;
-        NavCacheSurfaces.RestoreAll(view);
 
-        // Park the previously-active view: it stays realized (no teardown), but
-        // sheds its image surfaces so only the active tab's surfaces are resident.
+        // Park the previously-active view: it stays realized and resident (no
+        // teardown), just Collapsed.
         if (_activeView is { } previous)
         {
             previous.Visibility = Visibility.Collapsed;
-            NavCacheSurfaces.ReleaseAll(previous);
         }
 
         _activeView = view;
@@ -429,51 +410,6 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
             SelectTab(tabName);
     }
 
-    public object? CaptureSleepState()
-        => _disposed ? null : new LibraryPageSleepState(GetSelectedTabKey());
-
-    public void RestoreSleepState(object? state)
-    {
-        if (_disposed) return;
-
-        _pendingSleepState = state as LibraryPageSleepState;
-        TryApplyPendingSleepState();
-    }
-
-    public void TrimForNavigationCache()
-    {
-        if (_disposed)
-            return;
-
-        if (_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = true;
-        _trimmedSelectedTabKey = GetSelectedTabKey();
-        // Whole page is off-screen — drop all four child trees to free memory
-        // (the view objects stay cached in their fields and are re-hosted on
-        // restore; the active tab is re-shown via SelectTab). The keep-tree
-        // fast-switch optimization only needs to hold while Library is on-screen.
-        if (ContentHost != null)
-            ContentHost.Children.Clear();
-        _activeView = null;
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        if (_disposed)
-            return;
-
-        if (!_trimmedForNavigationCache)
-            return;
-
-        var tabKey = _trimmedSelectedTabKey ?? GetSelectedTabKey();
-        _trimmedForNavigationCache = false;
-        _trimmedSelectedTabKey = null;
-        SelectTab(tabKey);
-        TryApplyPendingSleepState();
-    }
-
     public void Dispose()
     {
         if (_disposed)
@@ -494,38 +430,6 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
         ViewModel.Dispose();
         ContentChanged = null;
         _tabItemParameter = null;
-        _pendingSleepState = null;
-        _trimmedSelectedTabKey = null;
-    }
-
-    private void TryApplyPendingSleepState()
-    {
-        if (_disposed)
-            return;
-
-        if (_pendingSleepState == null || !IsLoaded)
-            return;
-
-        var state = _pendingSleepState;
-        _pendingSleepState = null;
-
-        if (!string.IsNullOrWhiteSpace(state.SelectedTabKey))
-            SelectTab(state.SelectedTabKey);
-    }
-
-    private string GetSelectedTabKey()
-    {
-        var selectedItem = LibrarySelectorBar.SelectedItem as SegmentedItem;
-        if (selectedItem == ArtistsItem)
-            return "artists";
-
-        if (selectedItem == LikedSongsItem)
-            return "likedsongs";
-
-        if (selectedItem == YourEpisodesItem)
-            return "podcasts";
-
-        return "albums";
     }
 
     private SegmentedItem GetItemForTabKey(string? tabName)
@@ -555,6 +459,4 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
 
         value = null;
     }
-
-    private sealed record LibraryPageSleepState(string SelectedTabKey);
 }

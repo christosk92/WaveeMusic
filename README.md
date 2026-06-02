@@ -1,13 +1,92 @@
-# WaveeMusic
+<p align="center">
+  <img alt="WaveeMusic" src="./assets/ReadmeHero.png" />
+</p>
 
-A modern, open-source Spotify desktop client for Windows — built with .NET 10 and WinUI 3.
+<p align="center">
+  <a style="text-decoration:none" href="https://github.com/christosk92/WaveeMusic/actions/workflows/release.yml">
+    <img src="https://github.com/christosk92/WaveeMusic/actions/workflows/release.yml/badge.svg" alt="Release workflow" /></a>
+  <a style="text-decoration:none" href="https://github.com/christosk92/WaveeMusic/releases">
+    <img src="https://img.shields.io/github/v/release/christosk92/WaveeMusic?include_prereleases&label=release&color=512BD4" alt="Latest release" /></a>
+  <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet" alt=".NET 10" />
+  <img src="https://img.shields.io/badge/WinUI-3-0078D4?logo=windows" alt="WinUI 3" />
+  <a style="text-decoration:none" href="LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" /></a>
+</p>
 
-![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)
-![WinUI](https://img.shields.io/badge/WinUI-3-0078D4?logo=windows)
-![License](https://img.shields.io/badge/License-MIT-green)
+WaveeMusic is a modern, open-source **Spotify desktop client for Windows** — a clean‑room reimplementation of Spotify's Access Point, Connect (Dealer WebSocket), Mercury, and metadata (SpClient + Pathfinder) protocols, wrapped in a polished WinUI 3 app built on **.NET 10**. It works as both a full playback client and a Spotify Connect controller/target, with browser‑style tabs, synced lyrics, music videos, library sync, and opt‑in on‑device AI on Copilot+ PCs. A **Spotify Premium** account is required, and the app is intended for personal use.
 
-<img width="1306" height="871" alt="image" src="https://github.com/user-attachments/assets/68608f86-7fb9-46ad-99c5-c5a94220ad71" />
+> **Heads up — this is alpha software.** It's an early, experimental cut: things will break, some features are rough or missing, and there's a real chance it won't launch on every machine. That's what an alpha is for — if you hit something, a bug report is genuinely appreciated.
 
+## Installing and running
+
+WaveeMusic ships as a signed **MSIX** from GitHub Releases — there's no Microsoft Store listing yet. The button below installs the **experimental channel** through Windows App Installer and keeps it current with silent background auto‑updates.
+
+<p align="left">
+  <a style="text-decoration:none" href="https://github.com/christosk92/WaveeMusic/releases/download/experimental-latest/Wavee.Experimental.x64.appinstaller">
+    <picture>
+      <source media="(prefers-color-scheme: light)" srcset="./assets/DownloadInstaller-x64-dark.png" height="64" />
+      <img src="./assets/DownloadInstaller-x64-light.png" height="64" /></picture></a>
+  &ensp;
+  <a style="text-decoration:none" href="https://github.com/christosk92/WaveeMusic/releases/download/experimental-latest/Wavee.Experimental.arm64.appinstaller">
+    <picture>
+      <source media="(prefers-color-scheme: light)" srcset="./assets/DownloadInstaller-arm64-dark.png" height="64" />
+      <img src="./assets/DownloadInstaller-arm64-light.png" height="64" /></picture></a>
+</p>
+
+Prefer a manual install? Grab the matching `Wavee.UI.WinUI_<version>_<arch>.msix` from [**GitHub Releases**](https://github.com/christosk92/WaveeMusic/releases). See [**ALPHA.md**](ALPHA.md) for system requirements, step‑by‑step installation, known limitations, and how to file a useful bug report.
+
+> A Spotify **Premium** account is required. Wavee shows a non‑dismissible banner if you sign in with a Free account.
+
+## Building from source
+
+### Prerequisites
+- **Windows 11 version 24H2 (build 26100)** or later — required to enable the on-device AI features.
+- **.NET 10 SDK**
+- A Spotify **Premium** account
+
+```bash
+# Clone
+git clone https://github.com/christosk92/WaveeMusic.git
+cd WaveeMusic
+
+# Run the desktop client
+dotnet run --project src/Wavee.UI.WinUI
+
+# Run the console (Connect) client
+dotnet run --project src/Wavee.Console
+
+# Build everything / run tests
+dotnet build -c Release
+dotnet test
+```
+
+`Wavee.UI.WinUI` builds `Wavee.AudioHost` automatically as an x64 subprocess (via the `BuildAudioHost` MSBuild target). This is normal even on ARM64 Windows — the audio host loads `Spotify.dll` (x86_64) for PlayPlay key derivation, and the OS runs it under built-in x64 emulation. See [`src/Wavee.AudioHost/README.md`](src/Wavee.AudioHost/README.md) for the why.
+
+## Contributing
+
+Want to contribute? Let me know with an [issue](https://github.com/christosk92/WaveeMusic/issues) describing what you'd like to do before opening a [pull request](https://github.com/christosk92/WaveeMusic/pulls). The component guides in [`.agents/guides/`](.agents/guides) and the conventions in [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md) are the fastest way to get oriented before touching a subsystem.
+
+Releases follow a **release-train** flow — work PRs into the active `release/<x.y.z>-<label>` branch; `master` is protected and production. The full playbook lives in [`.agents/guides/contributing-and-releases.md`](.agents/guides/contributing-and-releases.md).
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="screenshots/screenshot-2.jpg" alt="Artist page" width="400"></td>
+    <td><img src="screenshots/screenshot-3.jpg" alt="Screenshot 3" width="400"></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/screenshot-4.jpg" alt="Screenshot 4" width="400"></td>
+    <td><img src="screenshots/screenshot-5.jpg" alt="Screenshot 5" width="400"></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/screenshot-6.jpg" alt="Screenshot 6" width="400"></td>
+    <td><img src="screenshots/screenshot-7.jpg" alt="Screenshot 7" width="400"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="screenshots/screenshot-8.jpg" alt="Screenshot 8" width="820"></td>
+  </tr>
+</table>
 
 ## 🎉 My first release
 
@@ -17,20 +96,12 @@ I started Wavee back in **2020**, originally for **UWP**. It was my playground: 
 
 What finally got it over the line was **AI** — building alongside **Claude Code** let me untangle years of half-finished ideas and actually push a release out the door. So here it is: a very, *very* experimental first cut.
 
-**Fair warning:** this is alpha software in the truest sense. Things **will** break. Some features are rough, some are missing, and there's a real chance it won't even launch on your machine. That's okay — that's what an alpha is for. If you hit something, I'd genuinely love the bug report.
-
 Thanks for taking a look. 🧡
 
 ### Known rough edges (this alpha)
 - Memory usage / leaks under heavy navigation
 - Waiting on WinUI 3 performance improvements (especially around allocations)
 - General snappiness / responsiveness
-
-## What it is
-
-Wavee is an alternative client for Spotify on Windows. Under the hood it's a clean‑room reimplementation of Spotify's Access Point, Connect, Mercury, and metadata protocols — the same ones the official client speaks — wrapped in a polished WinUI 3 desktop app.
-
-A **Spotify Premium** account is required, and the app is intended for personal use.
 
 ## Features
 
@@ -76,59 +147,6 @@ A **Spotify Premium** account is required, and the app is intended for personal 
 - **.NET 10** with Native AOT compatibility on the core library and console.
 - **MVVM + DI** in the desktop app (`Microsoft.Extensions.DependencyInjection`, `CommunityToolkit.Mvvm`, `ReactiveUI`).
 - **Single-project MSIX** packaging for x86 / x64 / ARM64.
-
-## Screenshots
-
-<table>
-  <tr>
-    <td><img src="screenshots/screenshot-2.jpg" alt="Screenshot 2" width="400"></td>
-    <td><img src="screenshots/screenshot-3.jpg" alt="Screenshot 3" width="400"></td>
-  </tr>
-  <tr>
-    <td><img src="screenshots/screenshot-4.jpg" alt="Screenshot 4" width="400"></td>
-    <td><img src="screenshots/screenshot-5.jpg" alt="Screenshot 5" width="400"></td>
-  </tr>
-  <tr>
-    <td><img src="screenshots/screenshot-6.jpg" alt="Screenshot 6" width="400"></td>
-    <td><img src="screenshots/screenshot-7.jpg" alt="Screenshot 7" width="400"></td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="screenshots/screenshot-8.jpg" alt="Screenshot 8" width="820"></td>
-  </tr>
-</table>
-
-## Download the alpha
-
-The experimental alpha ships as a signed MSIX from
-[GitHub Releases](https://github.com/christosk92/WaveeMusic/releases) —
-grab the matching `Wavee.UI.WinUI_{package-version}_{arch}.msix` for your machine,
-or install from `Wavee.Experimental.<arch>.appinstaller` to get silent background
-auto-updates. See [ALPHA.md](ALPHA.md) for system requirements, installation steps,
-known limitations, and how to file a useful bug report.
-
-> A Spotify **Premium** account is required. Wavee shows a non-dismissible
-> banner if you sign in with a Free account.
-
-## Quick start (for developers)
-
-### Prerequisites
-- **Windows 11 version 24H2 (build 26100)** or later — required since v0.1.0-alpha.1 to enable on-device AI features.
-- .NET 10 SDK
-- A Spotify **Premium** account
-
-### Run the desktop app
-
-```bash
-git clone https://github.com/christosk92/WaveeMusic.git
-cd WaveeMusic
-dotnet run --project src/Wavee.UI.WinUI
-```
-
-### Run the console app
-
-```bash
-dotnet run --project src/Wavee.Console
-```
 
 ## Repository structure
 
@@ -261,30 +279,6 @@ Azure Artifact Signing (formerly Trusted Signing) scripts for release MSIX build
 | `discography-expander.md` | Artist-page inline album expander: `ExpandableAlbumGrid`, `ExpandingGridLayout`, `AlbumDetailPanel` overlay. |
 
 Conventions and the index live in `AGENTS.md` (single source of truth) and `CLAUDE.md` (Claude Code instructions). A machine-readable knowledge graph of the whole codebase is at `.understand-anything/knowledge-graph.json` — open it with `/understand-anything:understand-dashboard` for an interactive map.
-
-## Building
-
-```bash
-# Build entire solution
-dotnet build
-
-# Release build
-dotnet build -c Release
-
-# Run tests
-dotnet test
-
-# Run a single test class / namespace
-dotnet test test/Wavee.Tests/Wavee.Tests.csproj --filter "FullyQualifiedName~ShannonCipher"
-dotnet test test/Wavee.Tests/Wavee.Tests.csproj --filter "FullyQualifiedName~Wavee.Tests.Connect"
-
-# Native AOT publish of the console client
-dotnet publish src/Wavee.Console -c Release -r win-x64
-dotnet publish src/Wavee.Console -c Release -r linux-x64
-dotnet publish src/Wavee.Console -c Release -r linux-arm64
-```
-
-`Wavee.UI.WinUI` builds `Wavee.AudioHost` automatically as an x64 subprocess (via the `BuildAudioHost` MSBuild target). This is normal even on ARM64 Windows — the audio host loads `Spotify.dll` (x86_64) for PlayPlay key derivation, and the OS runs it under built-in x64 emulation. See [src/Wavee.AudioHost/README.md](src/Wavee.AudioHost/README.md) for the why.
 
 ## Technology stack
 

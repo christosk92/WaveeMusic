@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace Wavee.UI.WinUI.Controls.PageHost;
 
@@ -33,7 +34,6 @@ public sealed partial class PageHost : ContentControl
     private UserControl? _activePage;
     private Type? _currentPageType;
     private object? _currentParameter;
-    private int _cacheSize = 5;
 
     public PageHost()
     {
@@ -63,70 +63,13 @@ public sealed partial class PageHost : ContentControl
     /// </summary>
     public bool IsNavigationStackEnabled { get; set; } = true;
 
-    /// <summary>
-    /// Maximum number of cached pages (active + collapsed-cached). Setting this
-    /// runs eviction immediately. Matches today's <c>TabBarItem</c>
-    /// adaptive 3/2 sizing.
-    /// </summary>
-    public int CacheSize
-    {
-        get => _cacheSize;
-        set
-        {
-            if (_cacheSize == value) return;
-            _cacheSize = Math.Max(0, value);
-            EvictLruIfNeeded();
-        }
-    }
-
     /// <summary>Total count of cached pages (active + collapsed). For memory diagnostics.</summary>
     public int CachedPageCount => _container.Children.Count;
 
     /// <summary>
-    /// Count of cached pages eligible for eviction — i.e. non-pinned. Pinned
-    /// pages (<see cref="PageRegistry.IsPinned"/>) are created once and reused for
-    /// the tab's lifetime, so they do not count against <see cref="CacheSize"/>
-    /// or the cross-tab ceiling. Drives the eviction budget here and in
-    /// <c>TabBarItem.EnforceGlobalCachedPageLimit</c>.
-    /// </summary>
-    public int EvictableCachedPageCount
-    {
-        get
-        {
-            var count = 0;
-            foreach (var type in _lru)
-            {
-                if (!PageRegistry.IsPinned(type))
-                    count++;
-            }
-            return count;
-        }
-    }
-
-    /// <summary>
-    /// Count of non-pinned, non-active cached pages — exactly the pages
-    /// <see cref="EvictOldestCollapsed"/> can drop. Used for cross-tab victim
-    /// selection so the ceiling never picks a tab whose only spare pages are
-    /// pinned (it would loop without freeing anything).
-    /// </summary>
-    public int EvictableCollapsedCount
-    {
-        get
-        {
-            var count = 0;
-            foreach (var type in _lru)
-            {
-                if (type != _currentPageType && !PageRegistry.IsPinned(type))
-                    count++;
-            }
-            return count;
-        }
-    }
-
-    /// <summary>
     /// Cached pages ordered oldest-first — the last entry is the active page,
-    /// the second-last is the prime back-target. Drives the nav-cache
-    /// surface-retention pass in <c>TabBarItem</c>.
+    /// the second-last is the prime back-target. Used by memory diagnostics and
+    /// the pressure-driven cache cleanup.
     /// </summary>
     public IReadOnlyList<UserControl> CachedPagesByRecency()
     {
@@ -140,38 +83,10 @@ public sealed partial class PageHost : ContentControl
     }
 
     /// <summary>
-    /// Evicts the oldest collapsed (non-active) cached page, disposing it when
-    /// <see cref="IDisposable"/>. Returns false when only the active page
-    /// remains. Drives the cross-tab cached-page ceiling.
-    /// </summary>
-    public bool EvictOldestCollapsed()
-    {
-        Type? victimType = null;
-        foreach (var type in _lru)
-        {
-            // Never evict the active page or a pinned page (pinned pages are
-            // reused for the tab's lifetime — see PageRegistry.IsPinned).
-            if (type != _currentPageType && !PageRegistry.IsPinned(type))
-            {
-                victimType = type;
-                break;
-            }
-        }
-
-        if (victimType is null || !_cache.TryGetValue(victimType, out var victim))
-            return false;
-
-        _cache.Remove(victimType);
-        _lru.Remove(victimType);
-        _container.Children.Remove(victim);
-        if (victim is IDisposable d)
-            d.Dispose();
-        return true;
-    }
-
-    /// <summary>
     /// Evicts collapsed pages from oldest to newest while preserving the active
-    /// page and the requested number of newest collapsed pages.
+    /// page and the requested number of newest collapsed pages. Only reached
+    /// under memory-budget pressure (<c>PageHostCacheCleanupAdapter</c>) or the
+    /// debug "drop caches" action — never on a tab switch.
     /// </summary>
     public int EvictCollapsedPages(int keepNewestCollapsed = 0)
     {
@@ -180,9 +95,7 @@ public sealed partial class PageHost : ContentControl
         var collapsed = new List<Type>();
         foreach (var type in _lru)
         {
-            // Pinned pages are never evicted — they're reused for the tab's
-            // lifetime (see PageRegistry.IsPinned).
-            if (type != _currentPageType && !PageRegistry.IsPinned(type) && _cache.ContainsKey(type))
+            if (type != _currentPageType && _cache.ContainsKey(type))
                 collapsed.Add(type);
         }
 
@@ -261,37 +174,6 @@ public sealed partial class PageHost : ContentControl
         _currentParameter = null;
     }
 
-    /// <summary>
-    /// Pre-realises a page during idle so the first user navigation to it is a
-    /// cache hit. Page is constructed, added to the panel with
-    /// <see cref="Visibility.Collapsed"/>, registered in the cache, but NOT made
-    /// active. <c>Loaded</c> fires on the page during the next layout pass.
-    /// Subsequent calls for the same type are no-ops.
-    /// </summary>
-    public void Prewarm(Type pageType)
-    {
-        if (_cache.ContainsKey(pageType)) return;
-
-        try
-        {
-            UserControl page;
-            using (Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("pageHost.prewarm.ctor." + pageType.Name))
-            {
-                page = PageRegistry.Create(pageType);
-            }
-            page.Visibility = Visibility.Collapsed;
-            AttachFirstLoadedMeter(page);
-            _container.Children.Add(page);
-            _cache[pageType] = page;
-            _lru.AddFirst(pageType); // oldest end — first to evict if pressure rises
-            EvictLruIfNeeded();
-        }
-        catch
-        {
-            // Prewarm is best-effort. Failure means no cache hit later; navigation still works.
-        }
-    }
-
     // ── Internal navigation flow ────────────────────────────────────────
 
     private bool NavigateInternal(Type pageType, object? parameter, PageHostNavigationMode mode)
@@ -333,6 +215,9 @@ public sealed partial class PageHost : ContentControl
                 else
                 {
                     outgoing.Visibility = Visibility.Collapsed;
+                    // Page stays resident, but stop any continuous GPU work (Win2D
+                    // render loops) while it's off-screen — see IHostVisibilityAware.
+                    NotifyHostVisibility(outgoing, isVisible: false);
                     TouchLru(outgoing.GetType());
                 }
             }
@@ -368,7 +253,11 @@ public sealed partial class PageHost : ContentControl
             if (incoming is IPageHostAware entered)
                 entered.OnEntered(parameter, mode);
 
-            EvictLruIfNeeded();
+            // Resume continuous GPU work on the now-visible page. For a freshly
+            // created page the tree isn't realized yet (this walk finds nothing)
+            // and the control re-checks its own ancestor visibility on Loaded; for
+            // a cached page (Visibility flip, no Loaded) this is what resumes it.
+            NotifyHostVisibility(incoming, isVisible: true);
 
             Navigated?.Invoke(this, new PageHostNavigatedEventArgs(pageType, parameter, mode));
             return true;
@@ -388,6 +277,36 @@ public sealed partial class PageHost : ContentControl
         _lru.AddLast(pageType);
     }
 
+    /// <summary>
+    /// Walks the realized visual tree under <paramref name="root"/> and notifies
+    /// every <see cref="IHostVisibilityAware"/> that its host page just became
+    /// visible / collapsed, so it can pause/resume continuous GPU work. Cheap —
+    /// only toggles a flag; no surfaces or bindings are touched.
+    /// </summary>
+    private static void NotifyHostVisibility(DependencyObject? root, bool isVisible)
+    {
+        if (root is null)
+            return;
+
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (current is IHostVisibilityAware aware)
+                aware.OnHostVisibilityChanged(isVisible);
+
+            int count;
+            try { count = VisualTreeHelper.GetChildrenCount(current); }
+            catch { continue; }
+            for (var i = 0; i < count; i++)
+            {
+                try { stack.Push(VisualTreeHelper.GetChild(current, i)); }
+                catch { /* tree mutated mid-walk — skip */ }
+            }
+        }
+    }
+
     private static void AttachFirstLoadedMeter(UserControl page)
     {
         var profiler = Wavee.UI.WinUI.Services.UiOperationProfiler.Instance;
@@ -402,34 +321,6 @@ public sealed partial class PageHost : ContentControl
             profiler.RecordOperation("nav.pageHost.loaded." + page.GetType().Name, ms);
         };
         page.Loaded += handler;
-    }
-
-    private void EvictLruIfNeeded()
-    {
-        // CacheSize bounds only the NON-PINNED (LRU) pages. Pinned pages are kept
-        // for the tab's lifetime — created once, reused on every revisit — so
-        // heavy browsing never pays repeated construction. The active page is
-        // never evicted regardless of pin state.
-        while (EvictableCachedPageCount > _cacheSize && TryEvictOldestEvictable())
-        {
-        }
-    }
-
-    /// <summary>
-    /// Evicts the oldest non-pinned, non-active cached page. Returns false when
-    /// none remains (only pinned + the active page are left), which also breaks
-    /// <see cref="EvictLruIfNeeded"/>'s loop so it can never spin.
-    /// </summary>
-    private bool TryEvictOldestEvictable()
-    {
-        foreach (var type in _lru) // oldest-first
-        {
-            if (type == _currentPageType || PageRegistry.IsPinned(type))
-                continue;
-            EvictPage(type); // mutates _lru — safe: we return before the next MoveNext
-            return true;
-        }
-        return false;
     }
 
     private bool EvictPage(Type pageType)

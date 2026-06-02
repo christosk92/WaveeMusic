@@ -24,7 +24,7 @@ namespace Wavee.UI.WinUI.Controls.MiniVideoPlayer;
 /// <see cref="LoadedImageSurface"/>. The visual lives as a child of
 /// <c>PosterBlurHost</c> through <see cref="ElementCompositionPreview"/>.
 /// </summary>
-public sealed partial class VideoSurfaceHost : UserControl, INavCacheSurfaceParticipant
+public sealed partial class VideoSurfaceHost : UserControl
 {
     // Crossfade durations / easing — locked to the "Soft" preset the user
     // approved in the HTML prototype.
@@ -45,7 +45,6 @@ public sealed partial class VideoSurfaceHost : UserControl, INavCacheSurfacePart
     private LoadedImageSurface? _posterSurface;
     private CompositionSurfaceBrush? _posterSurfaceBrush;
     private CompositionEffectBrush? _posterEffectBrush;
-    private bool _navCacheReleased;
 
     public VideoSurfaceHost()
     {
@@ -179,44 +178,6 @@ public sealed partial class VideoSurfaceHost : UserControl, INavCacheSurfacePart
         try { _posterVisual?.Dispose(); } catch { /* idempotent */ }
         _posterVisual = null;
         _compositor = null;
-    }
-
-    // ── INavCacheSurfaceParticipant ──
-    // Reuses the OnUnloaded teardown / OnLoaded hydrate so an off-screen page
-    // sheds the blurred-poster GPU surfaces (the poster decodes to ≤512²) the
-    // same way a real unload would.
-
-    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
-    {
-        if (_navCacheReleased)
-            return false;
-        _navCacheReleased = true;
-        TeardownComposition();
-        return true;
-    }
-
-    bool INavCacheSurfaceParticipant.RestoreForNavCache()
-    {
-        if (!_navCacheReleased)
-            return false;
-        _navCacheReleased = false;
-        EnsureComposition();
-        ApplyAlbumArt(AlbumArtUrl);
-        ApplyPosterUrl(PosterUrl);
-        ApplyFirstFrameState(IsFirstFrameReady, animate: false);
-        ApplyHostCornerRadius();
-        return true;
-    }
-
-    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
-    {
-        get
-        {
-            if (_navCacheReleased || _posterSurface is null)
-                return 0;
-            var d = ComputeArtworkDecodeSize();
-            return (long)d * d * 4;
-        }
     }
 
     private static void ClearOpacityImplicits(UIElement element)

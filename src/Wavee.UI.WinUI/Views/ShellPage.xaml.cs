@@ -1022,11 +1022,6 @@ public sealed partial class ShellPage : UserControl
         ViewModel.CloseTabCommand.Execute(tab);
     }
 
-    private void TabControl_TabSleepToggleRequested(object sender, TabBarItem tab)
-    {
-        ViewModel.ToggleTabSleep(tab);
-    }
-
     private void TabControl_AddTabRequested(object? sender, EventArgs e)
     {
         NavigationHelpers.OpenNewTab();

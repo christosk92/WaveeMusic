@@ -14,13 +14,10 @@ namespace Wavee.UI.WinUI.Controls.PageHost;
 public static class PageRegistry
 {
     private static readonly Dictionary<Type, Func<UserControl>> _factories = new();
-    private static readonly HashSet<Type> _pinned = new();
 
-    public static void Register<TPage>(Func<TPage> factory, bool pinned = false) where TPage : UserControl
+    public static void Register<TPage>(Func<TPage> factory) where TPage : UserControl
     {
         _factories[typeof(TPage)] = factory;
-        if (pinned)
-            _pinned.Add(typeof(TPage));
     }
 
     public static UserControl Create(Type pageType)
@@ -34,16 +31,4 @@ public static class PageRegistry
     }
 
     public static bool IsRegistered(Type pageType) => _factories.ContainsKey(pageType);
-
-    /// <summary>
-    /// True when this page type is <em>pinned</em>: created once per tab and
-    /// reused for the tab's lifetime — never evicted by <see cref="PageHost"/>'s
-    /// LRU cache or the cross-tab ceiling, so heavy browsing never re-pays
-    /// <c>new Page()</c> + <c>InitializeComponent</c> + VM-init (the cause of
-    /// progressive nav slowdown). Pinned pages going off-screen still hibernate
-    /// (the VM unsubscribes from singletons) and shed GPU surfaces via
-    /// <c>NavCacheSurfaces</c>, so the standing cost is only a managed visual
-    /// tree. They are still torn down on tab close / tab sleep.
-    /// </summary>
-    public static bool IsPinned(Type pageType) => _pinned.Contains(pageType);
 }

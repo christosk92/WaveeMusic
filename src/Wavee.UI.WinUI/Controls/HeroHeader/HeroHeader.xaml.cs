@@ -8,7 +8,6 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
-using Wavee.UI.WinUI.Controls.TabBar;
 
 namespace Wavee.UI.WinUI.Controls.HeroHeader;
 
@@ -17,7 +16,7 @@ namespace Wavee.UI.WinUI.Controls.HeroHeader;
 /// gradient mask, overlaid with a dark scrim for text readability, and scales in with
 /// a smooth pop-in animation on load.
 /// </summary>
-public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipant
+public sealed partial class HeroHeader : UserControl
 {
     private static readonly TimeSpan ColorTransitionDuration = TimeSpan.FromMilliseconds(420);
     private const float FallbackBlurAmount = 34f;
@@ -52,7 +51,6 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
     private string? _requestedImageUrl;
     private string? _loadedFallbackImageUrl;
     private string? _requestedFallbackImageUrl;
-    private bool _navCacheReleased;
 
     // â”€â”€ Dependency Properties â”€â”€
 
@@ -531,45 +529,6 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
         ApplyFallbackImage(FallbackImageUrl);
     }
 
-    // ── INavCacheSurfaceParticipant ──
-    // Driven by the NavCacheSurfaces tree-walk when the hosting page goes
-    // off-screen. Wraps the existing ReleaseSurface / RestoreSurface so the
-    // page no longer needs a bespoke per-page hero-release trim micro-step.
-
-    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
-    {
-        if (_navCacheReleased)
-            return false;
-        _navCacheReleased = true;
-        ReleaseSurface();
-        return true;
-    }
-
-    bool INavCacheSurfaceParticipant.RestoreForNavCache()
-    {
-        if (!_navCacheReleased)
-            return false;
-        _navCacheReleased = false;
-        RestoreSurface();
-        return true;
-    }
-
-    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
-    {
-        get
-        {
-            if (_navCacheReleased)
-                return 0;
-
-            if (_imageSurface is null)
-                return EstimateFallbackSurfaceBytes();
-
-            var w = ImageBorder.ActualWidth > 0 ? ImageBorder.ActualWidth : 1200;
-            var h = ImageBorder.ActualHeight > 0 ? ImageBorder.ActualHeight : 420;
-            return (long)(w * h * 4) + EstimateFallbackSurfaceBytes();
-        }
-    }
-
     private void LoadImage(string? url)
     {
         if (_surfaceBrush == null || _compositor == null) return;
@@ -803,15 +762,6 @@ public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipan
         var height = FallbackImageBorder.ActualHeight > 0 ? FallbackImageBorder.ActualHeight : ActualHeight;
         var target = (int)Math.Ceiling(Math.Max(width, height) * 1.25);
         return Math.Clamp(target, 384, 768);
-    }
-
-    private long EstimateFallbackSurfaceBytes()
-    {
-        if (_fallbackImageSurface is null)
-            return 0;
-
-        var decode = ComputeFallbackImageDecodeSize();
-        return (long)decode * decode * 4;
     }
 
     private void PrepareContainerForImageLoad(bool shouldAnimate)

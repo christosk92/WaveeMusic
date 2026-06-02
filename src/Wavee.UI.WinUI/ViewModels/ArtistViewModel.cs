@@ -412,19 +412,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
            && generation == Volatile.Read(ref _loadGeneration)
            && string.Equals(ArtistId, artistId, StringComparison.Ordinal);
 
-    /// <summary>
-    /// Dispose the store subscription; fetches for this VM stop and any
-    /// TaskCanceledException propagation is avoided.
-    /// </summary>
-    public void Deactivate()
-    {
-        DetachLongLivedServices();
-        _subscriptions?.Dispose();
-        _subscriptions = null;
-    }
-
     // Long-lived singleton subscriptions are attached lazily on first use and
-    // detached on Hibernate so the (Transient) VM is not pinned by the singleton
+    // detached on Dispose so the (Transient) VM is not pinned by the singleton
     // services' invocation lists across navigations. Idempotent in both directions.
     private bool _longLivedAttached;
 
@@ -448,43 +437,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         if (_contentFilterService != null)
             _contentFilterService.FilterChanged -= OnContentFilterChanged;
         _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
-    }
-
-    /// <summary>
-    /// Light hibernation for cached pages going off-screen. Disposes the store
-    /// subscription and releases the things that pin DirectX textures (hero /
-    /// avatar / pinned-card / latest-release image URLs). Data collections
-    /// (TopTracks, Discography, RelatedArtists, Concerts, ExternalLinks,
-    /// TopCities, GalleryPhotos) and the <c>_appliedOverviewFor</c> marker
-    /// are intentionally preserved so a revisit to the same artist
-    /// short-circuits in <see cref="ApplyOverviewState"/> without re-running
-    /// the heavy <see cref="LoadAsync"/> path (which costs ~2 s on a popular
-    /// artist: replaces section snapshots, reseeds virtualized item
-    /// containers, kicks off background discography paging + release-color
-    /// prefetch). The hero URLs are restored via <see cref="EnsureHeroUrls"/>
-    /// in the Ready branch when LoadAsync is skipped.
-    /// </summary>
-    public void Hibernate()
-    {
-        Deactivate();
-
-        TopTracks.ClearTopTracksSelection();
-        Discography.ExpandedAlbumTracks.Clear();
-        Discography.CancelInflightWork();
-
-        if (Header.Artist is { } artist)
-        {
-            Header.Artist = artist with
-            {
-                ArtistImageUrl = null,
-                HeaderImageUrl = null,
-                GalleryHeroUrl = null,
-                LatestRelease = artist.LatestRelease is null
-                    ? null
-                    : artist.LatestRelease with { ImageUrl = null },
-                PinnedItem = null
-            };
-        }
     }
 
     private void ApplyOverviewState(EntityState<ArtistOverviewResult> state, string expectedArtistId)

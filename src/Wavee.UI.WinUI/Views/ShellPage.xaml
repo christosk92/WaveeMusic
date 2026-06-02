@@ -56,7 +56,6 @@
                 SelectedIndex="{x:Bind ViewModel.SelectedTabIndex, Mode=TwoWay}"
                 Visibility="{x:Bind ViewModel.IsTabBarVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                 TabCloseRequested="TabControl_TabCloseRequested"
-                TabSleepToggleRequested="TabControl_TabSleepToggleRequested"
                 AddTabRequested="TabControl_AddTabRequested"/>
         </Grid>
 

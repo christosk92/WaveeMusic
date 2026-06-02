@@ -13,7 +13,6 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Foundation;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
-using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.Helpers;
@@ -23,7 +22,7 @@ using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Search;
 
-public sealed partial class SearchResultRowCard : UserControl, INavCacheSurfaceParticipant
+public sealed partial class SearchResultRowCard : UserControl
 {
     private static readonly InputCursor HandCursor = InputSystemCursor.Create(InputSystemCursorShape.Hand);
 
@@ -58,7 +57,6 @@ public sealed partial class SearchResultRowCard : UserControl, INavCacheSurfaceP
     // recycled row showing a different album fires once for the new URI).
     private bool _albumPrefetchKicked;
     private bool _playlistPrefetchKicked;
-    private bool _releasedForNavCache;
     private const double AlbumPrefetchTriggerDistance = 500;
     private const string AlbumUriPrefix = "spotify:album:";
     private const string PlaylistUriPrefix = "spotify:playlist:";
@@ -197,9 +195,6 @@ public sealed partial class SearchResultRowCard : UserControl, INavCacheSurfaceP
         ThumbnailImage.Source = null;
         ArtistAvatar.ProfilePicture = null;
 
-        if (_releasedForNavCache)
-            return;
-
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
         {
@@ -237,7 +232,7 @@ public sealed partial class SearchResultRowCard : UserControl, INavCacheSurfaceP
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (!_releasedForNavCache && Item is { } item)
+        if (Item is { } item)
             ApplyThumbnail(item.ImageUrl, item.Type == SearchResultType.Artist);
 
         // Subscribe on attach so the handler doesn't accumulate in the WinRT
@@ -280,37 +275,6 @@ public sealed partial class SearchResultRowCard : UserControl, INavCacheSurfaceP
         _albumPrefetchKicked = false;
         _playlistPrefetchKicked = false;
     }
-
-    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
-    {
-        if (_releasedForNavCache)
-            return false;
-
-        _releasedForNavCache = true;
-        if (ThumbnailImage != null) ThumbnailImage.Source = null;
-        if (ArtistAvatar != null) ArtistAvatar.ProfilePicture = null;
-        return Item?.ImageUrl is not null;
-    }
-
-    bool INavCacheSurfaceParticipant.RestoreForNavCache()
-    {
-        if (!_releasedForNavCache)
-            return false;
-
-        _releasedForNavCache = false;
-        if (Item is { } item)
-        {
-            var isArtist = item.Type == SearchResultType.Artist;
-            ApplyThumbnail(item.ImageUrl, isArtist);
-        }
-
-        return true;
-    }
-
-    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
-        => !_releasedForNavCache && (ThumbnailImage?.Source is not null || ArtistAvatar?.ProfilePicture is not null)
-            ? 64L * 64 * 4
-            : 0;
 
     private void OnPlaybackStateChanged()
     {

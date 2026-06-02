@@ -61,7 +61,7 @@ namespace Wavee.UI.WinUI.Views;
 ///     pattern to morph the hero into a pinned compact card on scroll
 /// </summary>
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
+public sealed partial class ArtistPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;
     private ShyHeaderController? _shyHeader;
@@ -74,7 +74,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private bool _isDisposed;
     private bool _isNavigatingAway;
     private bool _heroPulseFired;
-    private bool _trimmedForNavigationCache;
     private string? _lastRestoredArtistId;
     /// <summary>True once <see cref="ShimmerGate.RunCrossfadeAsync"/> has been
     /// triggered for the current load. Guards the crossfade's continuation
@@ -166,10 +165,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private async Task EnterArtistAsync(object? parameter, PageHostNavigationMode mode)
     {
         _isNavigatingAway = false;
-        // Restore from the trimmed (hibernated) state before we re-Initialize
-        // the VM â€” matches AlbumPage’s ordering so bindings are alive again
-        // by the time the new artist’s data starts flowing.
-        RestoreFromNavigationCache();
 
         var nav = parameter as ContentNavigationParameter;
         var uri = nav?.Uri ?? (parameter as string);
@@ -279,9 +274,8 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
 
         // Compare against the INCOMING uri, not ViewModel.ArtistId â€” at this
         // point ArtistId still references the previous artist (Initialize
-        // hasn’t run yet). This is what was misfiring in
-        // RestoreFromNavigationCache and leaving stale bindings on cross-
-        // artist navs.
+        // hasn’t run yet). Comparing against the stale ArtistId would leave
+        // stale bindings on cross-artist navs.
         var artistChanged = !string.Equals(_lastRestoredArtistId, uri, StringComparison.Ordinal);
 
         if (artistChanged)
@@ -1783,82 +1777,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             return $"https://open.spotify.com/{parts[1]}/{parts[2]}";
 
         return null;
-    }
-
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // INavigationCacheMemoryParticipant
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-    // Micro-step trim — see AlbumPage equivalent for the rationale.
-    IEnumerable<Action> INavigationCacheMemoryParticipant.GetTrimMicroSteps()
-    {
-        if (_trimmedForNavigationCache)
-            yield break;
-
-        yield return () =>
-        {
-            _trimmedForNavigationCache = true;
-            _lastRestoredArtistId = ViewModel.ArtistId;
-        };
-        yield return () => HeroGrid?.ReleaseSurface();
-        yield return CloseGalleryLightbox;
-        yield return () => ViewModel.Hibernate();
-        yield return () => Bindings?.StopTracking();
-    }
-
-    public void TrimForNavigationCache()
-    {
-        if (_trimmedForNavigationCache) return;
-        _trimmedForNavigationCache = true;
-        _lastRestoredArtistId = ViewModel.ArtistId;
-        HeroGrid?.ReleaseSurface();
-        CloseGalleryLightbox();
-        // NOTE: do NOT DetachScrollParallax here. Under PageHost the page is
-        // kept rooted with Visibility=Collapsed on leave (not detached from
-        // the visual tree like Frame did) — the composition ExpressionAnimations
-        // can safely keep evaluating against the still-rooted ScrollView while
-        // the page is hidden. Detaching here would break sticky / parallax on
-        // the next cache-hit re-entry because Loaded does NOT re-fire under
-        // PageHost (page Visibility flips but it never leaves the tree), so
-        // OnLoaded's AttachScrollParallax call never gets a second chance.
-        // DetachScrollParallax stays in OnUnloaded + Dispose for true teardown.
-        // Hibernate releases the bound discography / related-artist / video /
-        // merch collections AND unsubscribes the VM from singleton services.
-        // Without this, the cached page's VM stays rooted by
-        // _playbackStateService.PropertyChanged forever â€" every cross-type
-        // navigation adds a stale ArtistViewModel to the singleton's
-        // invocation list, the heap grows linearly, Gen2 GCs lengthen, and
-        // clicks freeze for 1â€"2 s.
-        ViewModel.Hibernate();
-        // Detach compiled x:Bind so VM PropertyChanged firings can't reach
-        // the page tree while it sits invisible in the Frame cache.
-        Bindings?.StopTracking();
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        HeroGrid?.RestoreSurface();
-        if (!_trimmedForNavigationCache) return;
-        _trimmedForNavigationCache = false;
-
-        // Re-attach compiled x:Bind. Trim's Bindings.StopTracking micro-step
-        // detached the binding graph and ViewModel.Hibernate null'd
-        // Header.Artist.HeaderImageUrl (texture-release path). On same-artist
-        // Back returns OnEntered skips Bindings.Update() because
-        // artistChanged=false, so without this re-attach the URL push from
-        // EnsureHeroUrls (called by ApplyOverviewState's same-artist Ready
-        // branch) never reaches the HeroHeader.ImageUrl DP and the hero image
-        // stays blank. Deferred to the next dispatcher tick so DWM gets a
-        // paint frame between the page reattaching and the synchronous
-        // binding sweep â€” mirrors AlbumPage.RestoreFromNavigationCache.
-        DispatcherQueue?.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
-            () =>
-            {
-                if (_isDisposed) return;
-                Bindings?.Update();
-                TryShowContentNow();
-            });
     }
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

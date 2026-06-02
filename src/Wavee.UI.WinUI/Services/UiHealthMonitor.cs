@@ -83,20 +83,12 @@ internal sealed partial class UiHealthMonitor : IDisposable
     // previous one and reclaimed bytes).
     private long _lastManagedBytes;
 
-    // Live-Shimmer leak indicator. NavCacheSurfaces maintains a weak-reference
-    // registry of every Shimmer it has visited; we sample it on a slow cadence
-    // because GetLiveShimmerCount() walks (and prunes) that list under a lock.
-    // A high count points at cached pages keeping skeleton subtrees realized
-    // — the leak class fixed by ShimmerLoadGate's IsLoaded=false unrealize and
-    // NavCacheSurfaces' Shimmer.IsActive deactivation.
-    private const int ShimmerSampleEveryTicks = 1875; // ~30 s at 16 ms tick
-    private const int ShimmerWarnThreshold = 500;
-    private static readonly TimeSpan ShimmerWarnCooldown = TimeSpan.FromMinutes(5);
-    private int _ticksSinceShimmerSample;
-    private int _lastShimmerCount;
-    private long _lastShimmerWarnTimestamp;
+    // Slow-cadence diagnostic sample (CompositionImage live-peer counts). Run on
+    // a slow cadence because the diagnostic counters aggregate across instances.
+    private const int DiagnosticsSampleEveryTicks = 1875; // ~30 s at 16 ms tick
+    private int _ticksSinceDiagnosticsSample;
 
-    // CompositionImage live-peer counter. Same cadence as the Shimmer sample.
+    // CompositionImage live-peer counter.
     // "Total" is every CompositionImage that has been OnLoaded since startup
     // (weak refs, pruned on read); "WithLivePeer" excludes those whose
     // composition resources have been torn down (nav-cache release or the
@@ -278,7 +270,7 @@ internal sealed partial class UiHealthMonitor : IDisposable
         if (degradedArgs is not null)
             Degraded?.Invoke(this, degradedArgs);
 
-        SampleShimmerLeakIndicator(now);
+        SampleDeferredDiagnostics();
     }
 
     /// <summary>
@@ -307,32 +299,18 @@ internal sealed partial class UiHealthMonitor : IDisposable
         }
     }
 
-    private void SampleShimmerLeakIndicator(long timestamp)
+    private void SampleDeferredDiagnostics()
     {
-        // Slow cadence — GetLiveShimmerCount() takes a lock and prunes the
-        // weak-ref registry, so we don't pay for it every UI tick.
-        if (++_ticksSinceShimmerSample < ShimmerSampleEveryTicks)
+        // Slow cadence — these counters aggregate across instances, so we don't
+        // pay for them every UI tick.
+        if (++_ticksSinceDiagnosticsSample < DiagnosticsSampleEveryTicks)
             return;
-        _ticksSinceShimmerSample = 0;
-
-        _lastShimmerCount = NavCacheSurfaces.GetLiveShimmerCount();
+        _ticksSinceDiagnosticsSample = 0;
 
         var (total, withPeer, bytes) = CompositionImage.GetDiagnosticCounts();
         _lastCompositionImageTotal = total;
         _lastCompositionImageWithLivePeer = withPeer;
         _lastCompositionImageBytes = bytes;
-
-        if (_lastShimmerCount < ShimmerWarnThreshold)
-            return;
-
-        if (_lastShimmerWarnTimestamp != 0
-            && Stopwatch.GetElapsedTime(_lastShimmerWarnTimestamp, timestamp) < ShimmerWarnCooldown)
-            return;
-
-        _lastShimmerWarnTimestamp = timestamp;
-        _logger?.LogWarning(
-            "Live Shimmer count {Count} exceeds threshold {Threshold} — cached-page skeleton trees likely leaking; expect inflated working-set",
-            _lastShimmerCount, ShimmerWarnThreshold);
     }
 
     private UiDegradationDetectedEventArgs? EvaluateDegradationLocked(double elapsedMs, long timestamp)
@@ -438,7 +416,6 @@ internal sealed partial class UiHealthMonitor : IDisposable
                     ManagedMb = managedMb,
                     WorkingSetMb = workingSetMb,
                     PrivateMb = privateMb,
-                    LiveShimmerCount = _lastShimmerCount,
                     CompositionImageTotal = _lastCompositionImageTotal,
                     CompositionImageWithLivePeer = _lastCompositionImageWithLivePeer,
                     CompositionImageEstimatedSurfaceBytes = _lastCompositionImageBytes,
@@ -483,7 +460,6 @@ internal sealed partial class UiHealthMonitor : IDisposable
         sb.AppendLine($"--- GC Collections ---");
         sb.AppendLine($"Gen0: {s.GcGen0}  Gen1: {s.GcGen1}  Gen2: {s.GcGen2}  Gen2-during-stalls: {s.Gen2DuringStalls}");
         sb.AppendLine($"Managed: {s.ManagedMb:F1} MB  Working set: {s.WorkingSetMb:F1} MB  Private: {s.PrivateMb:F1} MB");
-        sb.AppendLine($"Live Shimmer instances: {s.LiveShimmerCount} (warn at >= {ShimmerWarnThreshold})");
         sb.AppendLine(
             $"CompositionImage: total={s.CompositionImageTotal} withLivePeer={s.CompositionImageWithLivePeer} estSurfaceMB={s.CompositionImageEstimatedSurfaceBytes / 1048576.0:F1}");
 
@@ -529,9 +505,7 @@ internal sealed partial class UiHealthMonitor : IDisposable
             _lastGen1 = GC.CollectionCount(1);
             _lastGen2 = GC.CollectionCount(2);
             _lastManagedBytes = GC.GetTotalMemory(false);
-            _ticksSinceShimmerSample = 0;
-            _lastShimmerCount = 0;
-            _lastShimmerWarnTimestamp = 0;
+            _ticksSinceDiagnosticsSample = 0;
             _lastCompositionImageTotal = 0;
             _lastCompositionImageWithLivePeer = 0;
             _lastCompositionImageBytes = 0;
@@ -559,7 +533,6 @@ internal record struct UiHealthStats
     public double ManagedMb { get; init; }
     public double WorkingSetMb { get; init; }
     public double PrivateMb { get; init; }
-    public int LiveShimmerCount { get; init; }
     public int CompositionImageTotal { get; init; }
     public int CompositionImageWithLivePeer { get; init; }
     public long CompositionImageEstimatedSurfaceBytes { get; init; }

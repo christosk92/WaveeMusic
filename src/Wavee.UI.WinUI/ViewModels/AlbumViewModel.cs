@@ -907,7 +907,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     }
 
     // Long-lived singleton subscriptions are attached lazily and detached on
-    // Hibernate so the (Transient) VM is not pinned by singleton invocation lists.
+    // Deactivate/Dispose so the (Transient) VM is not pinned by singleton invocation lists.
     private bool _longLivedAttached;
 
     private void AttachLongLivedServices()
@@ -1117,28 +1117,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         DetachLongLivedServices();
         _subscriptions?.Dispose();
         _subscriptions = null;
-    }
-
-    /// <summary>
-    /// Heavy-state release for cached pages going off-screen. Drops the track grid,
-    /// More-by-artist, alternate releases, and merch — those are the bound
-    /// collections that cost the most composition memory while the page sits
-    /// invisible in the PageHost cache. Lightweight identity (AlbumId, AlbumName,
-    /// AlbumImageUrl, palette brushes) is preserved so the hero still renders
-    /// correctly during the brief window between re-Activate and the
-    /// AlbumStore's BehaviorSubject re-emitting the cached value.
-    /// </summary>
-    public void Hibernate()
-    {
-        Deactivate();
-        _appliedDetailFor = null;
-
-        _filteredTracks.Clear();
-        _allTracks = [];
-        OnPropertyChanged(nameof(ArtistSummaryTopTrackNames));
-        RebuildDiscMetadata();
-        _popularTrackIds.Clear();
-        ClearSecondaryAlbumSections();
     }
 
     private void BeginSecondaryAlbumSectionLoading()

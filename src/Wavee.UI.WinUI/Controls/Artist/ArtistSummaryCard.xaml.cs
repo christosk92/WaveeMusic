@@ -10,7 +10,6 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Helpers;
-using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -26,10 +25,8 @@ namespace Wavee.UI.WinUI.Controls.Artist;
 /// <see cref="EnableAiSummary"/>. Page-specific extras can be appended via
 /// <see cref="AdditionalContent"/>.
 /// </summary>
-public sealed partial class ArtistSummaryCard : UserControl, INavCacheSurfaceParticipant
+public sealed partial class ArtistSummaryCard : UserControl
 {
-    private bool _releasedForNavCache;
-
     // â”€â”€ Data DPs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public static readonly DependencyProperty ArtistUriProperty =
@@ -128,8 +125,7 @@ public sealed partial class ArtistSummaryCard : UserControl, INavCacheSurfacePar
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (!_releasedForNavCache)
-            ApplyArtistImage(ArtistImageUrl);
+        ApplyArtistImage(ArtistImageUrl);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -161,9 +157,6 @@ public sealed partial class ArtistSummaryCard : UserControl, INavCacheSurfacePar
 
     private void ApplyArtistImage(string? imageUrl)
     {
-        if (_releasedForNavCache)
-            return;
-
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         AvatarPicture.ProfilePicture = string.IsNullOrEmpty(httpsUrl)
             ? null
@@ -173,31 +166,6 @@ public sealed partial class ArtistSummaryCard : UserControl, INavCacheSurfacePar
                   DecodePixelType = DecodePixelType.Logical,
               };
     }
-
-    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
-    {
-        if (_releasedForNavCache)
-            return false;
-
-        _releasedForNavCache = true;
-        AvatarPicture.ProfilePicture = null;
-        return !string.IsNullOrEmpty(ArtistImageUrl);
-    }
-
-    bool INavCacheSurfaceParticipant.RestoreForNavCache()
-    {
-        if (!_releasedForNavCache)
-            return false;
-
-        _releasedForNavCache = false;
-        ApplyArtistImage(ArtistImageUrl);
-        return true;
-    }
-
-    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
-        => !_releasedForNavCache && AvatarPicture.ProfilePicture is not null
-            ? 112L * 112 * 4
-            : 0;
 
     private static void OnBioExcerptChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {

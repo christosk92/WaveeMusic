@@ -543,7 +543,18 @@ public sealed partial class SidebarItem : Control
 		{
 			resolvingTarget = element;
 		}
-		Owner = resolvingTarget.FindAscendant<SidebarView>()!;
+		// FindAscendant returns null when this row's Loaded fires while it is not
+		// (yet, or any longer) connected under a SidebarView — an ItemsRepeater
+		// container recycled / re-parented across a fast nav, or a flyout-hosted
+		// child whose TemplateRoot bridge has not resolved. Every other Owner use
+		// in this class is already null-safe; only HookupOwners assumed non-null,
+		// and the `!` suppressed the nullable warning without preventing the NRE.
+		// Bail rather than dereference null — a later real attach fires Loaded
+		// again and re-wires the callbacks.
+		Owner = resolvingTarget.FindAscendant<SidebarView>();
+		if (Owner is null)
+			return;
+
 		_ownerAtSubscription = Owner; // Store reference for safe unsubscription
 
 		_displayModeCallbackToken = Owner.RegisterPropertyChangedCallback(SidebarView.DisplayModeProperty, (sender, args) =>

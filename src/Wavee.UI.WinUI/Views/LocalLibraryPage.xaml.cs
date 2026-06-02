@@ -17,7 +17,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class LocalLibraryPage : UserControl, INavigationCacheMemoryParticipant, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware, IRedirectsCtrlFToOmnibar
+public sealed partial class LocalLibraryPage : UserControl, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware, IRedirectsCtrlFToOmnibar
 {
     public LocalLandingViewModel ViewModel { get; }
 
@@ -34,20 +34,6 @@ public sealed partial class LocalLibraryPage : UserControl, INavigationCacheMemo
     }
 
     public void OnLeaving() { }
-
-    private bool _trimmedForNavigationCache;
-    public void TrimForNavigationCache()
-    {
-        if (_trimmedForNavigationCache) return;
-        _trimmedForNavigationCache = true;
-        Bindings?.StopTracking();
-    }
-    public void RestoreFromNavigationCache()
-    {
-        if (!_trimmedForNavigationCache) return;
-        _trimmedForNavigationCache = false;
-        Bindings?.Update();
-    }
 
     private void SeeAllShows_Click(object sender, RoutedEventArgs e) =>
         Helpers.Navigation.NavigationHelpers.OpenLocalShows();

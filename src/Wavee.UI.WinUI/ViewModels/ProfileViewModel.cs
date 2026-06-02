@@ -32,8 +32,6 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
     private readonly IAuthState? _authState;
     private readonly IUserFollowService? _userFollowService;
     private readonly ILogger? _logger;
-    private ProfileSnapshot? _lastSnapshot;
-    private bool _isHibernated;
 
     [ObservableProperty]
     public partial string DisplayName { get; set; } = "";
@@ -239,10 +237,6 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
     /// </summary>
     public void ApplyBackgroundRefresh(ProfileSnapshot snapshot)
     {
-        _lastSnapshot = snapshot;
-        if (_isHibernated)
-            return;
-
         if (DisplayName != snapshot.DisplayName) DisplayName = snapshot.DisplayName;
         if (ProfileImageUrl != snapshot.ProfileImageUrl) ProfileImageUrl = snapshot.ProfileImageUrl;
         if (FollowingCount != snapshot.FollowingCount) FollowingCount = snapshot.FollowingCount;
@@ -259,9 +253,6 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
 
     private void ApplySnapshot(ProfileSnapshot snapshot)
     {
-        _lastSnapshot = snapshot;
-        _isHibernated = false;
-
         DisplayName = snapshot.DisplayName;
         ProfileImageUrl = snapshot.ProfileImageUrl;
         FollowingCount = snapshot.FollowingCount;
@@ -286,41 +277,6 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
             TabItemParameter.Title = snapshot.DisplayName;
 
         ContentChanged?.Invoke(this, TabItemParameter!);
-    }
-
-    public void Hibernate()
-    {
-        if (_isHibernated)
-            return;
-
-        _isHibernated = true;
-        IsLoading = false;
-        HasData = false;
-        ProfileImageUrl = null;
-        PageBleedBrush = null;
-
-        // Resilient resets on hibernate — raw Clear() on these bound profile collections can
-        // E_FAIL while the cached page's surfaces are dropped by the nav cache (issue #6).
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_recentArtists, []);
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_publicPlaylists, []);
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_followingArtists, []);
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_topTracks, []);
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_topTrackItems, []);
-    }
-
-    public void ResumeFromHibernate()
-    {
-        if (!_isHibernated)
-            return;
-
-        if (_lastSnapshot != null)
-        {
-            ApplySnapshot(_lastSnapshot);
-            return;
-        }
-
-        _isHibernated = false;
-        Initialize(null);
     }
 
     private void RebuildTopTracks(List<TopTrackItem> tracks)

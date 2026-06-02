@@ -227,9 +227,13 @@ public sealed partial class PlaylistTrackListViewModel
     public bool CanRemove => _canEditItemsProvider() && HasSelection;
 
     /// <summary>True when the user is allowed to drag-reorder tracks within this
-    /// list. We gate on owner-edit AND on "no sort applied" — applying a sort
-    /// makes manual position meaningless, so the gesture is hidden in that mode.</summary>
-    public bool CanReorderTracks => _canEditItemsProvider() && CurrentSortColumn == PlaylistSortColumn.Custom && !IsStreamingEnrich;
+    /// list. Manual reorder uses playlist indices, so it is only valid while the
+    /// visible projection is the unfiltered custom order.</summary>
+    public bool CanReorderTracks => _canEditItemsProvider()
+                                    && CurrentSortColumn == PlaylistSortColumn.Custom
+                                    && string.IsNullOrWhiteSpace(SearchQuery)
+                                    && !ShowOnlyVideoTracks
+                                    && !IsStreamingEnrich;
 
     private bool _parentIsLoading;
     private bool _parentHasError;
@@ -279,12 +283,14 @@ public sealed partial class PlaylistTrackListViewModel
 
     partial void OnSearchQueryChanged(string value)
     {
+        OnPropertyChanged(nameof(CanReorderTracks));
         _searchDebounceTimer.Stop();
         _searchDebounceTimer.Start();
     }
 
     partial void OnShowOnlyVideoTracksChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanReorderTracks));
         ApplyFilterAndSort();
     }
 
@@ -577,10 +583,41 @@ public sealed partial class PlaylistTrackListViewModel
             CurrentSortColumn != PlaylistSortColumn.Custom ||
             ShowOnlyVideoTracks)
         {
+            // A filter/sort the user set mid-stream: full reproject from
+            // _allTracks (a Reset that inherently backfills every placeholder).
             ApplyFilterAndSort();
+        }
+        else
+        {
+            // No-reproject path: streaming leaves the FilteredTracks placeholders
+            // in place and trusts every per-row EnrichRow to have populated them.
+            // That's fragile — if a DTO arrived for a slot that was already loaded
+            // (duplicate/shifted OriginalIndex) or a row's metadata never streamed,
+            // its placeholder is dropped and would otherwise stay an empty,
+            // reserved-height row forever (the "missing track #N with a gap" bug).
+            // Make completion authoritative: backfill any still-unloaded placeholder
+            // from the _allTracks snapshot. During streaming no reorder happens
+            // (sort = Custom, projection suppressed), so FilteredTracks[i] maps 1:1
+            // to _allTracks[i].
+            BackfillUnloadedPlaceholders();
         }
 
         onComplete?.Invoke();
+    }
+
+    /// <summary>
+    /// Streaming-completion invariant: no <see cref="FilteredTracks"/> row may be
+    /// left as an unloaded <see cref="LazyTrackItem"/>. Populates any leftover
+    /// placeholder from the position-matched <c>_allTracks</c> entry.
+    /// </summary>
+    private void BackfillUnloadedPlaceholders()
+    {
+        var count = Math.Min(FilteredTracks.Count, _allTracks.Count);
+        for (var i = 0; i < count; i++)
+        {
+            if (FilteredTracks[i] is LazyTrackItem { IsLoaded: false } lazy)
+                lazy.Populate(_allTracks[i]);
+        }
     }
 
     private static PlaylistTrackDto BuildSkeletonDto(PlaylistTrackSkeleton s) => new()
@@ -624,15 +661,15 @@ public sealed partial class PlaylistTrackListViewModel
 
     private static List<PlaylistTrackDto> NormalizeOriginalIndexes(IReadOnlyList<PlaylistTrackDto> tracks)
     {
-        var normalized = new List<PlaylistTrackDto>(tracks.Count);
+        // Renumber IN PLACE (PlaylistTrackDto.OriginalIndex is a change-notifying
+        // setter). Mutating the existing instances — rather than cloning via
+        // `with { ... }` — keeps DTO identity shared between _allTracks,
+        // FilteredTracks and the grid's projected rows, so an optimistic reorder
+        // updates the '#' column on already-realized rows without a rebind.
         for (var i = 0; i < tracks.Count; i++)
-        {
-            var desiredIndex = i + 1;
-            var track = tracks[i];
-            normalized.Add(track with { OriginalIndex = desiredIndex });
-        }
+            tracks[i].OriginalIndex = i + 1;
 
-        return normalized;
+        return tracks as List<PlaylistTrackDto> ?? new List<PlaylistTrackDto>(tracks);
     }
 
     /// <summary>
@@ -1297,7 +1334,18 @@ public sealed partial class PlaylistTrackListViewModel
             var insertAt = toIndex > fromIndex ? toIndex - length : toIndex;
             insertAt = Math.Clamp(insertAt, 0, _allTracks.Count);
             _allTracks.InsertRange(insertAt, moving);
+            // Renumber positions so the '#' column (bound to OriginalIndex) reflects
+            // the new order — otherwise rows keep their pre-move numbers and a
+            // correctly-ordered list looks scrambled (e.g. 1,2,5,3,4,8,…).
+            _allTracks = NormalizeOriginalIndexes(_allTracks);
             UpdateAggregates();
+            // Full reproject (ReplaceWith/Reset). An incremental FilteredTracks.Move
+            // was tried and removed: WinUI's ItemsView mis-arranges a single-item
+            // Move (overlapping rows + empty slots until a later re-layout). A Reset
+            // re-measures every row from a clean state → always correct. The grid's
+            // forced UpdateLayout + the FLIP transform-hold in ReorderController make
+            // this land in one frame (no jump), and the GPU image cache means
+            // re-realizing the same rows doesn't visibly flash.
             ApplyFilterAndSort();
             TracksChanged?.Invoke(this, EventArgs.Empty);
 
@@ -1309,6 +1357,10 @@ public sealed partial class PlaylistTrackListViewModel
             _logger?.LogError(ex, "Failed to reorder tracks in playlist {PlaylistId} (from={From}, length={Length}, to={To})",
                 PlaylistId, fromIndex, length, toIndex);
             _allTracks = snapshot;
+            // The optimistic move renumbered OriginalIndex in place on these same
+            // instances, so restoring the original order isn't enough — re-number
+            // the restored order to undo that mutation before reprojecting.
+            _allTracks = NormalizeOriginalIndexes(_allTracks);
             UpdateAggregates();
             ApplyFilterAndSort();
             TracksChanged?.Invoke(this, EventArgs.Empty);

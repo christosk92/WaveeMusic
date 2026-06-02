@@ -34,7 +34,7 @@ using Wavee.UI.WinUI.ViewModels;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
+public sealed partial class AlbumPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────
     string IInPageFilterable.FilterQuery
@@ -49,11 +49,8 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
     private readonly INotificationService? _notificationService;
     private readonly ISettingsService _settings;
     private bool _isDisposed;
-    private bool _trimmedForNavigationCache;
-    private string? _lastRestoredAlbumId;
     private int _layoutSettlingGeneration;
     private int _scrollResetGeneration;
-    private int _bindingsUpdateGeneration;
 
     public AlbumViewModel ViewModel { get; }
 
@@ -259,80 +256,6 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         // returns to this page first.
     }
 
-    public void TrimForNavigationCache()
-    {
-        if (_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = true;
-        _lastRestoredAlbumId = ViewModel.AlbumId;
-        ViewModel.Hibernate();
-        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
-        // without this the entire page tree is pinned across navigations.
-        Bindings?.StopTracking();
-    }
-
-    // Micro-step trim: each `yield return` lands on its own
-    // DispatcherQueuePriority.Low pump (see TabBarItem). Splits the ~120 ms
-    // single-shot trim into 3 chunks of ~30-50 ms so rendering and input can
-    // interleave between them. Idempotent — first step early-exits the
-    // sequence if the page has already been trimmed.
-    IEnumerable<Action> INavigationCacheMemoryParticipant.GetTrimMicroSteps()
-    {
-        if (_trimmedForNavigationCache)
-            yield break;
-
-        yield return () =>
-        {
-            _trimmedForNavigationCache = true;
-            _lastRestoredAlbumId = ViewModel.AlbumId;
-        };
-        yield return () => ViewModel.Hibernate();
-        yield return () => Bindings?.StopTracking();
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        if (!_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = false;
-        // TrimForNavigationCache calls Bindings.StopTracking(). Even when the
-        // user returns to the same album, the VM was hibernated and will replay
-        // tracks/secondary sections, so the compiled binding graph must be
-        // reattached. Skipping this leaves footer x:Load bindings and title/meta
-        // fields deaf, which shows up as permanent skeletons on warm return.
-        ScheduleBindingsUpdate("restore");
-        // ResetForNewLoad + ViewModel.Activate + TryShowContentNow used to run here
-        // too — but OnNavigatedTo → LoadNewContent fires next on the same dispatch
-        // with the authoritative parameter and does the same Activate. Running both
-        // caused two ApplyDetail dispatches against AlbumStore and two waves of
-        // TrackItem materialization per navigation.
-    }
-
-    private void ScheduleBindingsUpdate(string reason)
-    {
-        var generation = ++_bindingsUpdateGeneration;
-        DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
-        {
-            if (_isDisposed || generation != _bindingsUpdateGeneration)
-                return;
-
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile($"page.album.bindingsUpdate.{reason}"))
-            {
-                Bindings?.Update();
-            }
-
-            RebuildHeaderArtistsText();
-
-            if (!ViewModel.IsLoading)
-                PageController.TryShowContentNow();
-            if (ViewModel.IsContentReady)
-                _ = TryRevealFooterAsync();
-        });
-    }
-
     // Same-tab navigation between two albums reuses this Page instance and never
     // fires OnNavigatedTo — TabBarItem.Navigate routes through this method instead.
     // Without this override, clicking a different album from the player bar / a
@@ -351,25 +274,6 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
 
     private async void LoadNewContent(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
-        // If we were trimmed since the last LoadNewContent, the x:Bind graph is
-        // currently detached (TrimForNavigationCache called Bindings.StopTracking).
-        // Re-attach BEFORE the PrefillFrom / Activate / ApplyDetail chain below
-        // fires its PropertyChanged events, otherwise the hero cover, title,
-        // About-the-artist card etc. sit deaf and the view freezes on whatever
-        // was bound before the trim. Mirrors PlaylistPage.LoadParameter.
-        var wasTrimmed = _trimmedForNavigationCache;
-        _trimmedForNavigationCache = false;
-        if (wasTrimmed)
-        {
-            // The current VM writes below can be missed while compiled x:Bind
-            // tracking is detached, so reattach synchronously before Activate /
-            // PrefillFrom replay album and footer-section PropertyChanged events.
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate.load-trimmed"))
-            {
-                Bindings?.Update();
-            }
-            RebuildHeaderArtistsText();
-        }
         _logger?.LogDebug(
             "[xfade][album:{Id}] load.enter",
             XfadeLog.Tag(ViewModel.AlbumId));

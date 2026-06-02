@@ -134,12 +134,12 @@ public sealed partial class MemoryBudgetService : IDisposable, IAsyncDisposable
             var loh = gen.Length > 3 ? gen[3].SizeAfterBytes / 1048576.0 : 0.0;
             var poh = gen.Length > 4 ? gen[4].SizeAfterBytes / 1048576.0 : 0.0;
 
-            var (tabCount, pageCount, surfaceBytes) = await GatherPageAttributionAsync().ConfigureAwait(false);
+            var (tabCount, pageCount) = await GatherPageAttributionAsync().ConfigureAwait(false);
 
             _logger.LogInformation(
-                "[mem-attribution] imageCache={IcCount}/{IcMb:F1}MB pinned={IcPinned} | cachedPages={Pages} tabs={Tabs} navSurfaces={SurfMb:F1}MB | managed gen0={Gen0:F1} gen1={Gen1:F1} gen2={Gen2:F1} loh={Loh:F1} poh={Poh:F1} MB",
+                "[mem-attribution] imageCache={IcCount}/{IcMb:F1}MB pinned={IcPinned} | cachedPages={Pages} tabs={Tabs} | managed gen0={Gen0:F1} gen1={Gen1:F1} gen2={Gen2:F1} loh={Loh:F1} poh={Poh:F1} MB",
                 icCount, icMb, icPinned,
-                pageCount, tabCount, surfaceBytes / 1048576.0,
+                pageCount, tabCount,
                 gen0, gen1, gen2, loh, poh);
         }
         catch (Exception ex)
@@ -148,13 +148,13 @@ public sealed partial class MemoryBudgetService : IDisposable, IAsyncDisposable
         }
     }
 
-    private static Task<(int Tabs, int Pages, long SurfaceBytes)> GatherPageAttributionAsync()
+    private static Task<(int Tabs, int Pages)> GatherPageAttributionAsync()
     {
         var dispatcher = MainWindow.Instance?.DispatcherQueue;
         if (dispatcher is null)
-            return Task.FromResult((0, 0, 0L));
+            return Task.FromResult((0, 0));
 
-        var tcs = new TaskCompletionSource<(int, int, long)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<(int, int)>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void Gather()
         {
@@ -162,27 +162,20 @@ public sealed partial class MemoryBudgetService : IDisposable, IAsyncDisposable
             {
                 var tabs = ShellViewModel.TabInstances;
                 var pageCount = 0;
-                long surfaceBytes = 0;
                 foreach (var tab in tabs)
-                {
-                    foreach (var page in tab.ContentHost.CachedPagesByRecency())
-                    {
-                        pageCount++;
-                        surfaceBytes += NavCacheSurfaces.SumEstimatedBytes(page);
-                    }
-                }
-                tcs.TrySetResult((tabs.Count, pageCount, surfaceBytes));
+                    pageCount += tab.ContentHost.CachedPageCount;
+                tcs.TrySetResult((tabs.Count, pageCount));
             }
             catch
             {
-                tcs.TrySetResult((0, 0, 0L));
+                tcs.TrySetResult((0, 0));
             }
         }
 
         if (dispatcher.HasThreadAccess)
             Gather();
         else if (!dispatcher.TryEnqueue(Gather))
-            tcs.TrySetResult((0, 0, 0L));
+            tcs.TrySetResult((0, 0));
 
         return tcs.Task;
     }

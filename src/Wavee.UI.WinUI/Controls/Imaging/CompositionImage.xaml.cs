@@ -11,7 +11,6 @@ using Microsoft.UI.Xaml.Media;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
-using Wavee.UI.WinUI.Controls.TabBar;
 
 namespace Wavee.UI.WinUI.Controls.Imaging;
 
@@ -34,7 +33,7 @@ namespace Wavee.UI.WinUI.Controls.Imaging;
 /// swap the surface brush atomically.
 /// </para>
 /// </summary>
-public sealed partial class CompositionImage : UserControl, INavCacheSurfaceParticipant
+public sealed partial class CompositionImage : UserControl
 {
     // â”€â”€ Dependency Properties â”€â”€
 
@@ -186,8 +185,8 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
     /// Snapshot of live CompositionImage counts. <c>Total</c> is every instance
     /// the registry has seen and not yet collected; <c>WithLivePeer</c> is the
     /// subset that still holds a SpriteVisual; <c>EstimatedSurfaceBytes</c> sums
-    /// <see cref="EstimatedSurfaceBytes"/> across all live instances. Pruning
-    /// dead refs is folded into the read.
+    /// the rough GPU bytes held across all live instances. Pruning dead refs is
+    /// folded into the read.
     /// </summary>
     public static (int Total, int WithLivePeer, long EstimatedSurfaceBytes) GetDiagnosticCounts()
     {
@@ -206,7 +205,11 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
                     if (instance._spriteVisual is not null && !instance._releasedForNavigationCache)
                     {
                         withPeer++;
-                        bytes += instance.EstimatedSurfaceBytes;
+                        if (instance._surfaceBrush?.Surface is not null)
+                        {
+                            var d = instance._pinnedDecode > 0 ? instance._pinnedDecode : 512;
+                            bytes += (long)d * d * 4;
+                        }
                     }
                 }
             }
@@ -451,74 +454,6 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
         {
             t.Stop();
             _deferredCompositionReleaseTimer = null;
-        }
-    }
-
-    // ── INavCacheSurfaceParticipant ──
-    //
-    // Driven by the NavCacheSurfaces tree-walk when this control's hosting page
-    // goes off-screen / comes back. Replaces the reverted indiscriminate
-    // surface tree-walk: scoped to dormant pages only, and restore is a
-    // deterministic clean reload through the normal placeholder path.
-
-    /// <summary>
-    /// Sheds the GPU surface for an off-screen cached page. Unpins the LRU
-    /// entry (refcount-safe — a shared image still pinned by another realized
-    /// control survives) and resets <c>_resolvedUrl</c> so a later
-    /// <see cref="RestoreForNavCache"/> runs the standard fresh-load path.
-    /// Unpinning is the whole point: it lets <c>ImageCacheService</c> evict
-    /// the surface (the earlier nav-cache release kept the pin and freed no
-    /// memory).
-    /// </summary>
-    public bool ReleaseForNavCache()
-    {
-        if (_releasedForNavigationCache)
-            return false;
-
-        if (_currentCachedImage is null
-            && string.IsNullOrEmpty(_pinnedUrl)
-            && _surfaceBrush is null
-            && _spriteVisual is null)
-            return false;
-
-        ReleaseSurfaceReference(resetResolvedUrl: true, evictIfUnpinned: true);
-        ReleaseCompositionResources();
-        _releasedForNavigationCache = true;
-        DiagLog("ReleaseForNavCache");
-        return true;
-    }
-
-    /// <summary>
-    /// Re-hydrates after <see cref="ReleaseForNavCache"/>. Runs a clean
-    /// <see cref="TryLoadCurrent"/> from a fully-reset state: placeholder first,
-    /// then a cache/OS-backed reload through the standard first-realization path.
-    /// </summary>
-    public bool RestoreForNavCache()
-    {
-        if (!_releasedForNavigationCache)
-            return false;
-
-        _releasedForNavigationCache = false;
-
-        // Not realized yet (e.g. ItemsRepeater hasn't materialized this row) —
-        // OnLoaded will TryLoadCurrent from the clean state we left behind.
-        if (!_isAttached)
-            return true;
-
-        DiagLog("RestoreForNavCache");
-        TryLoadCurrent();
-        return true;
-    }
-
-    /// <summary>Rough GPU bytes held — 0 once released. Diagnostics only.</summary>
-    public long EstimatedSurfaceBytes
-    {
-        get
-        {
-            if (_releasedForNavigationCache || _surfaceBrush?.Surface is null)
-                return 0;
-            var d = _pinnedDecode > 0 ? _pinnedDecode : 512;
-            return (long)d * d * 4;
         }
     }
 
