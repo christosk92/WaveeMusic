@@ -130,9 +130,16 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
     // ItemsView.ScrollView.HorizontalOffset via ViewChanged.
     private ScrollView? _rowsItemsViewScrollView;
 
+    // Inner ItemsRepeater of the ItemsView. Hooked for ElementPrepared so we can scrub
+    // a recycled row's stale reorder transform synchronously (before paint) during a
+    // reorder settle window. The window's end (UTC ticks); 0 = not settling.
+    private ItemsRepeater? _rowsRepeater;
+    private long _reorderSettleUntilTicks;
+
     private void RowsItemsView_Loaded(object sender, RoutedEventArgs e)
     {
         HookRowsItemsViewScrollView();
+        HookRowsItemsRepeater();
         ApplyHorizontalRowScroll();
         ApplyVerticalRowScroll();
     }
@@ -145,6 +152,20 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
             _rowsItemsViewScrollView = null;
             RowsScrollViewChanged?.Invoke(this, EventArgs.Empty);
         }
+        if (_rowsRepeater is not null)
+        {
+            _rowsRepeater.ElementPrepared -= RowsRepeater_ElementPrepared;
+            _rowsRepeater = null;
+        }
+    }
+
+    private void HookRowsItemsRepeater()
+    {
+        if (_rowsRepeater is not null) return;
+        var repeater = FindDescendant<ItemsRepeater>(RowsItemsView);
+        if (repeater is null) return;
+        _rowsRepeater = repeater;
+        _rowsRepeater.ElementPrepared += RowsRepeater_ElementPrepared;
     }
 
     private void ApplyHorizontalRowScroll()
@@ -189,6 +210,20 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
             if (parent is T match)
                 return match;
             parent = VisualTreeHelper.GetParent(parent);
+        }
+        return null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                return match;
+            if (FindDescendant<T>(child) is { } nested)
+                return nested;
         }
         return null;
     }
@@ -295,6 +330,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
             return;
 
         _itemsViewRows.Add(row);
+        // A recycled ItemContainer can carry a stale reorder transform — clear it
+        // before this (possibly reused) container shows its row. See the method.
+        ClearStaleReorderTransform(row);
         row.TrackChanged -= RowsItemsViewTrackItem_TrackChanged;
         row.TrackChanged += RowsItemsViewTrackItem_TrackChanged;
 
@@ -370,6 +408,12 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         if (sender is not Track.TrackItem row || !_itemsViewRows.Contains(row))
             return;
 
+        // TrackChanged is the recycle/rebind hook: ItemsView reuses a container for
+        // a different row (notably after a reorder's optimistic move reprojects the
+        // collection). Clear any stale reorder transform so the reused container
+        // doesn't render at layout_pos + stale_offset (overlapping rows).
+        ClearStaleReorderTransform(row);
+
         var sourceItem = row.Track;
         var index = sourceItem is null ? -1 : _visibleRows.IndexOf(sourceItem);
         ConfigureItemsViewRow(row, sourceItem, index);
@@ -407,6 +451,44 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
 
         container.MinHeight = _preferredRowHeight ?? DensityRowHeights[_preferredDensity];
         container.Margin = _preferredDensity == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
+    }
+
+    /// <summary>
+    /// Clears any stale composition transform (Translation / Scale / Z-order /
+    /// shadow / opacity) left on a row's <see cref="ItemContainer"/> by a previous
+    /// reorder drag. ItemsView recycles containers on a collection reset and rebinds
+    /// reused elements (the Loaded / TrackChanged hooks above), so a container that
+    /// was lifted or displaced during a drag can be reused for an unrelated row;
+    /// without this it renders at <c>layout position + stale offset</c> and rows
+    /// visibly overlap after a drop/reproject. Skipped while a reorder is live so we
+    /// never fight the engine's own lift/displacement on currently-realized rows
+    /// (by drop time the reproject's rebind runs after the gesture ends, so this
+    /// still fires for the post-move recycle).
+    /// </summary>
+    private void ClearStaleReorderTransform(Track.TrackItem row)
+    {
+        if (FindParent<ItemContainer>(row) is not { } container)
+            return;
+        // Skip ONLY the rows being actively dragged right now — not a blanket
+        // "reorder is live" skip. During rapid back-to-back drags the old skip left a
+        // container recycled from the previous drop still carrying that drop's offset.
+        if (_reorder?.IsLiftedContainer(container) == true)
+            return;
+
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(container);
+        visual.StopAnimation("Translation");
+        visual.StopAnimation("Scale");
+        // Zero the COMPOSITION "Translation" facade directly. ReorderDisplacement
+        // offsets neighbours via visual.Properties.InsertVector3("Translation", …),
+        // which desyncs from the XAML UIElement.Translation property — so clearing
+        // only container.Translation (below) is a silent no-op and the offset
+        // survives the recycle, arranging the reused row at its predecessor's slot.
+        visual.Properties.InsertVector3("Translation", Vector3.Zero);
+        visual.Scale = Vector3.One;
+        container.Translation = Vector3.Zero;
+        container.Shadow = null;
+        container.Opacity = 1;
+        Canvas.SetZIndex(container, 0);
     }
 
     private bool ShouldShowPopularityBadge(object? row)
@@ -1152,6 +1234,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
             return;
 
         RefreshSnapshot(sender as IEnumerable ?? _subscribedSource as IEnumerable);
+        // Always full-reproject. An incremental _visibleRows.Move was tried and
+        // removed: WinUI's ItemsView/ItemsRepeater cannot correctly arrange a
+        // single-item Move here — it leaves containers overlapping / slots empty
+        // until a later full re-layout heals it (the visible drop "shuffle"). A
+        // ReplaceWith/Reset re-measures every row from a clean state, so the layout
+        // is always correct; the reorder commit relies on this (see
+        // ReorderController.CommitAndClear's FLIP timing for why it doesn't flash).
         ReprojectRows();
     }
 
@@ -1215,6 +1304,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         ApplyLoadingRowsVisibility();
         QueueProjectionDiagnostic(source.Count, rows.Count);
     }
+
 
     private void QueueProjectionDiagnostic(int sourceCount, int visibleCount)
     {
@@ -1716,7 +1806,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
     IReadOnlyList<ReorderRow> IReorderHost.GetRealizedRows()
     {
         var root = ((IReorderHost)this).ReorderCoordinateRoot;
-        var rows = new List<ReorderRow>(_itemsViewRows.Count);
+        // Keyed by model index: a reorder makes ItemsRepeater recycle the lifted
+        // container and realize a fresh one for the moved item, briefly leaving TWO
+        // realized containers bound to the same item — the recycled "phantom" parked
+        // far off-screen (top ≈ -10000), pending its Unloaded. Keep the on-screen one
+        // (largest top) per index so the phantom can't corrupt drag slot-math or the
+        // realized-row count.
+        var byIndex = new Dictionary<int, ReorderRow>(_itemsViewRows.Count);
         foreach (var row in _itemsViewRows)
         {
             var item = row.Track;
@@ -1730,8 +1826,11 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
             double top;
             try { top = container.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, 0)).Y; }
             catch { continue; }
-            rows.Add(new ReorderRow(container, modelIndex, top, container.ActualHeight));
+
+            if (!byIndex.TryGetValue(modelIndex, out var existing) || top > existing.Top)
+                byIndex[modelIndex] = new ReorderRow(container, modelIndex, top, container.ActualHeight);
         }
+        var rows = new List<ReorderRow>(byIndex.Values);
         rows.Sort(static (a, b) => a.ModelIndex.CompareTo(b.ModelIndex));
         return rows;
     }
@@ -1780,10 +1879,56 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
 
     bool IReorderHost.CommitMove(int from, int length, int toGapSlot)
     {
-        // Gap-slot coordinates pass straight through: TracksReorderRequested →
-        // PlaylistTrackListViewModel.ReorderTracksAsync does the gap→insert mapping
-        // and the optimistic local move + backend write itself.
+        if (_disposed) return false;
+
+        // The reorder commit re-realizes rows (the VM full-resets FilteredTracks).
+        // Open a brief "settle window": during it, (1) StaggeredEntrance is suppressed
+        // so re-realized rows DON'T replay the fade-slide-up entrance (which, mid-
+        // stagger, slides rows up through each other = the overlap/jump), and (2) the
+        // ItemsRepeater.ElementPrepared scrub zeroes any stale reorder Translation off
+        // recycled containers synchronously, before they paint. The window also covers
+        // the ~300 ms dealer echo (a second reset), so that stays clean too.
+        var settleUntil = DateTimeOffset.UtcNow.UtcTicks + TimeSpan.FromMilliseconds(900).Ticks;
+        _reorderSettleUntilTicks = settleUntil;
+        Behaviors.StaggeredEntrance.SuppressUntil(settleUntil);
+
+        // PlaylistTrackListViewModel.ReorderTracksAsync does the gap→insert mapping,
+        // OriginalIndex renumber, optimistic full-reset, and backend write.
         TracksReorderRequested?.Invoke(from, length, toGapSlot);
         return true;
+    }
+
+    /// <summary>
+    /// Synchronous safety net during a reorder settle window: as ItemsView realizes /
+    /// recycles each row container (ElementPrepared fires during layout, BEFORE paint),
+    /// zero any leftover reorder transform — both the XAML lift channel and the
+    /// composition displacement facade (which <c>container.Translation = 0</c> alone
+    /// doesn't clear). Outside the window this is a no-op so normal scroll-in entrance
+    /// animations are untouched; it also skips while a drag is actively in progress.
+    /// </summary>
+    private void RowsRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
+    {
+        if (DateTimeOffset.UtcNow.UtcTicks >= _reorderSettleUntilTicks)
+            return;
+        if (_reorder is { IsActive: true })
+            return;
+        var container = args.Element as ItemContainer ?? FindParent<ItemContainer>(args.Element);
+        if (container is null)
+            return;
+        ScrubContainerReorderTransform(container);
+    }
+
+    /// <summary>Hard-resets every reorder transform channel on a row container.</summary>
+    private static void ScrubContainerReorderTransform(ItemContainer container)
+    {
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(container);
+        visual.StopAnimation("Translation");
+        visual.StopAnimation("Scale");
+        visual.Properties.InsertVector3("Translation", Vector3.Zero);
+        visual.Scale = Vector3.One;
+        container.Translation = Vector3.Zero;
+        container.Shadow = null;
+        container.Opacity = 1;
+        Canvas.SetZIndex(container, 0);
     }
 }

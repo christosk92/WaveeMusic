@@ -45,12 +45,11 @@
              Content. A Content swap unloads the outgoing view (its whole visual
              subtree gets torn down) and re-loads + re-lays-out + re-realizes the
              incoming one on every tab click, which was the dominant switching
-             cost. With a Visibility flip the parked view stays realized (no
-             Unloaded / re-layout / re-realize), and only its GPU image surfaces
-             are shed via NavCacheSurfaces.ReleaseAll — re-pinned on return — so
-             RAM stays at ~one tab's surfaces while switching is instant. Page
-             entrance fade (PageEntranceFade on the Page root) still only fires
-             on first navigation TO Library. -->
+             cost. With a Visibility flip the parked view stays fully resident
+             (no Unloaded / re-layout / re-realize, no surface shedding —
+             Files-app tab model), so switching back is instant. Page entrance
+             fade (PageEntranceFade on the Page root) still only fires on first
+             navigation TO Library. -->
         <Grid x:Name="ContentArea" Grid.Row="1" Canvas.ZIndex="0" Padding="24,8,24,0">
             <Grid x:Name="ContentHost"/>
         </Grid>

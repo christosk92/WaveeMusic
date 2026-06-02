@@ -385,41 +385,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     public void ResumeBackgroundRefresh() => _homeFeedCache?.ResumeRefresh();
 
     /// <summary>
-    /// Pause refresh AND release the parsed feed tree so the Home page's
-    /// footprint drops while the user is on another page. The raw home-feed
-    /// response stays cached in <see cref="Services.HomeFeedCache"/> (SQLite
-    /// + in-memory), so coming back via <see cref="ResumeAndRehydrate"/>
-    /// rebuilds the parsed sections without a network round-trip.
-    ///
-    /// Without this, 127 section items + baseline enrichment (preview tracks,
-    /// poster URLs, canvas JSON) stay pinned in <see cref="Sections"/> for
-    /// the navigation-cached page's entire lifetime — a few MB per Home
-    /// visit that never come back under GC.
-    /// </summary>
-    public void HibernateForNavigation()
-    {
-        SuspendBackgroundRefresh();
-        Recommendations.CancelBaselineEnrichment();
-        // Pin the local-files shelf across hibernation. It is small (capped
-        // by LocalSectionMaxItems) and is sourced separately from the
-        // Spotify feed, so the Extract→ApplyDiff→Restore pattern that
-        // ResumeAndRehydrate relies on only works if it can find the
-        // section in Sections on entry.
-
-        // Phase 7.4 — release hero/featured state so the bound Image controls
-        // drop their textures and the cached page's residual footprint shrinks.
-        // ResumeAndRehydrate replays ApplyBackgroundRefresh which re-derives
-        // FeaturedItem and the hero brushes from the cached snapshot, so this
-        // is a pure transient release. HasFeaturedItem flips false → x:Load
-        // unloads the FeaturedItem button subtree.
-        HeroBackdropBrush = null;
-        HeroAccentLineBrush = null;
-        PageBleedBrush = null;
-    }
-
-    /// <summary>
-    /// Pair with <see cref="HibernateForNavigation"/>: rebuild sections from
-    /// the cached raw feed and resume the background refresh.
+    /// Rebuild sections from the cached raw feed and resume the background
+    /// refresh.
     /// </summary>
     public void ResumeAndRehydrate()
     {
@@ -1072,10 +1039,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         radial.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0, lifted.R, lifted.G, lifted.B), Offset = 1.0 });
         PageBleedBrush = radial;
     }
-
-    /// <summary>Resets the carousel-bleed throttle so a fresh nav cycle
-    /// always paints the next accent rather than skipping as below-threshold.</summary>
-    public void ResetCarouselBleedThrottle() => _lastCarouselBleedAccent = null;
 
     private static Color? TryParseHex(string? hex)
     {

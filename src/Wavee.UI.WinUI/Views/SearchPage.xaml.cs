@@ -30,18 +30,14 @@ using Wavee.UI.WinUI.ViewModels;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
+public sealed partial class SearchPage : UserControl, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     public SearchViewModel ViewModel { get; }
 
     private readonly ILogger? _logger;
-    private SearchPageSleepState? _pendingSleepState;
-    private bool _sleepFilterRestoreRequested;
-    private bool _trimmedForNavigationCache;
     private bool _viewModelEventsAttached;
     private bool _scrollHandlerAttached;
     private bool _isDisposed;
-    private int _restoreGeneration;
 
     public SearchPage()
     {
@@ -147,11 +143,6 @@ public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INav
         {
             UpdateFilterSelection();
         }
-
-        if (e.PropertyName == nameof(SearchViewModel.IsLoading) && !ViewModel.IsLoading)
-        {
-            TryApplyPendingSleepState();
-        }
     }
 
     public void OnEntered(object? parameter, PageHostNavigationMode mode)
@@ -172,18 +163,15 @@ public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INav
     {
         if (parameter is string query && !string.IsNullOrWhiteSpace(query))
         {
-            _trimmedForNavigationCache = false;
             _ = ViewModel.LoadAsync(query);
         }
         else
         {
-            RestoreFromNavigationCache();
             // No query → show the homepage Browse All chips instead of a blank page.
             _ = ViewModel.EnsureBrowseLoadedAsync();
         }
 
         UpdateFilterSelection();
-        TryApplyPendingSleepState();
     }
 
     public void OnLeaving()
@@ -430,99 +418,6 @@ public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INav
             : $"https://open.spotify.com/{pathKind}/{Uri.EscapeDataString(id)}";
     }
 
-    public object? CaptureSleepState()
-        => new SearchPageSleepState(
-            ViewModel.Query,
-            ViewModel.SelectedFilter,
-            PageScrollView?.VerticalOffset ?? 0);
-
-    public void RestoreSleepState(object? state)
-    {
-        _pendingSleepState = state as SearchPageSleepState;
-        _sleepFilterRestoreRequested = false;
-        TryApplyPendingSleepState();
-    }
-
-    public void TrimForNavigationCache()
-    {
-        if (_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = true;
-        ViewModel.Hibernate();
-        TopResultCard.ColorHex = null;
-        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
-        // without this the entire page tree is pinned across navigations.
-        Bindings?.StopTracking();
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        if (!_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = false;
-        var generation = ++_restoreGeneration;
-        if (DispatcherQueue is null)
-        {
-            using (UiOperationProfiler.Instance?.Profile("page.search.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
-
-            _ = ViewModel.ResumeFromHibernateAsync();
-            return;
-        }
-
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () =>
-        {
-            await System.Threading.Tasks.Task.Yield();
-            if (_isDisposed || _trimmedForNavigationCache || generation != _restoreGeneration)
-                return;
-
-            using (UiOperationProfiler.Instance?.Profile("page.search.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
-
-            await ViewModel.ResumeFromHibernateAsync();
-            if (_isDisposed || _trimmedForNavigationCache || generation != _restoreGeneration)
-                return;
-
-            TryApplyPendingSleepState();
-        });
-    }
-
-    private void TryApplyPendingSleepState()
-    {
-        if (_pendingSleepState == null || ViewModel.IsLoading || PageScrollView == null)
-            return;
-
-        var state = _pendingSleepState;
-
-        if (!string.IsNullOrWhiteSpace(state.Query)
-            && !string.Equals(ViewModel.Query, state.Query, StringComparison.Ordinal))
-        {
-            _ = ViewModel.LoadAsync(state.Query);
-            return;
-        }
-
-        if (!_sleepFilterRestoreRequested && ViewModel.SelectedFilter != state.SelectedFilter)
-        {
-            _sleepFilterRestoreRequested = true;
-            ViewModel.SelectedFilter = state.SelectedFilter;
-            return;
-        }
-
-        _pendingSleepState = null;
-        _sleepFilterRestoreRequested = false;
-
-        DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => PageScrollView.ScrollToImmediate(0, state.VerticalOffset));
-    }
-
     private void UpdateFilterSelection()
     {
         if (FilterAll == null)
@@ -537,9 +432,4 @@ public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INav
         FilterUsers.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Users;
         FilterGenres.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Genres;
     }
-
-    private sealed record SearchPageSleepState(
-        string? Query,
-        SearchFilterType SelectedFilter,
-        double VerticalOffset);
 }

@@ -33,6 +33,15 @@ public static class StaggeredEntrance
     private static bool? _animationsEnabled;
     private static bool AnimationsEnabled => _animationsEnabled ??= ReadAnimationsEnabled();
 
+    // While a list is re-realizing rows for a reason OTHER than a fresh load — most
+    // importantly a drag-reorder commit — the entrance gesture must NOT replay: the
+    // rows are already on screen, and a staggered fade-slide-up on a reorder makes
+    // rows slide up through each other (the "overlap / jumps then settles" bug).
+    // The reorder commit calls SuppressUntil(...) so realizations in that window snap
+    // straight to their resting state instead of animating.
+    private static long _suppressUntilTicks;
+    public static void SuppressUntil(long utcTicks) => _suppressUntilTicks = utcTicks;
+
     private static bool ReadAnimationsEnabled()
     {
         try { return new UISettings().AnimationsEnabled; }
@@ -75,6 +84,16 @@ public static class StaggeredEntrance
         if (!AnimationsEnabled) return;
 
         var now = DateTimeOffset.UtcNow.UtcTicks;
+
+        // Suppressed (e.g. a reorder commit is re-realizing rows): snap to the
+        // resting state, don't replay the entrance — otherwise the slide-up makes
+        // reordered rows overlap mid-stagger.
+        if (now < _suppressUntilTicks)
+        {
+            EntranceAnimations.ShowImmediate(element);
+            return;
+        }
+
         var gapMs = (now - _lastRealizeTicks) / TimeSpan.TicksPerMillisecond;
         _lastRealizeTicks = now;
 

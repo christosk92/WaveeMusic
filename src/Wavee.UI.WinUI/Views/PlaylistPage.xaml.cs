@@ -1,10 +1,13 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
+using Wavee.UI.WinUI.Controls.ImageEditor;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI;
 using CommunityToolkit.WinUI.Animations;
@@ -42,7 +45,7 @@ using Wavee.UI.WinUI.ViewModels.Playlist;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, INavCacheSurfaceParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
+public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────
     string IInPageFilterable.FilterQuery
@@ -65,8 +68,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
     private string? _lastPlaylistId;
 
     private bool _isDisposed;
-    private bool _trimmedForNavigationCache;
-    private string? _lastRestoredPlaylistId;
     private int _visualSettlingGeneration;
     private int _loadedViewWorkGeneration;
     private int _navigationRevision;
@@ -90,7 +91,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
     private CompositionColorGradientStop? _heroScrimBottomStop;
     private LoadedImageSurface? _heroImageSurface;
     private string? _appliedHeroUrl;
-    private bool _headerSurfaceReleasedForNavCache;
     private string? _retriedCoverImageUrl;
 
     public PlaylistViewModel ViewModel { get; }
@@ -808,24 +808,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
         // checkpoint below.
         var loadRevision = _navigationRevision;
 
-        // If we were trimmed since the last LoadParameter, the x:Bind graph is
-        // currently detached (TrimForNavigationCache called Bindings.StopTracking).
-        // Re-attach BEFORE the Activate / PrefillFrom / ApplyDetail chain below
-        // fires its PropertyChanged events, otherwise the hero panel's text and
-        // image bindings sit deaf and the view freezes on whatever was bound
-        // before the trim. Note: same-tab cross-playlist nav can trim twice
-        // (ContentFrame_Navigating, then OnNavigatedFrom) — calling Update()
-        // here covers both, including the second one which fires AFTER any
-        // earlier Restore-time Update() and silently detaches again.
-        var wasTrimmed = _trimmedForNavigationCache;
-        _trimmedForNavigationCache = false;
-        if (wasTrimmed)
-        {
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.playlist.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
-        }
         _logger?.LogInformation(
             "PlaylistPage.LoadParameter: parameter type={Type}, value={Value}",
             parameter?.GetType().FullName ?? "<null>", parameter);
@@ -925,85 +907,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
     public void OnLeaving()
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onLeaving");
-        // Trim work (Hibernate + bound-collection release + Bindings.StopTracking)
-        // is deferred ~1 s by TabBarItem's central scheduler — calling it here
-        // would move the cost from pageHostNavigating into onLeaving.
-    }
-
-    public void TrimForNavigationCache()
-    {
-        if (_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = true;
-        _lastRestoredPlaylistId = ViewModel.PlaylistId;
-        ViewModel.Hibernate();
-        ReleaseHeaderBackgroundSurface();
-        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
-        // without this the entire page tree is pinned across navigations.
-        Bindings?.StopTracking();
-    }
-
-    // Micro-step trim — see AlbumPage equivalent for the rationale.
-    IEnumerable<Action> INavigationCacheMemoryParticipant.GetTrimMicroSteps()
-    {
-        if (_trimmedForNavigationCache)
-            yield break;
-
-        yield return () =>
-        {
-            _trimmedForNavigationCache = true;
-            _lastRestoredPlaylistId = ViewModel.PlaylistId;
-        };
-        yield return () => ViewModel.Hibernate();
-        yield return ReleaseHeaderBackgroundSurface;
-        yield return () => Bindings?.StopTracking();
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        // No-op by design. OnEntered fires next on the same PageHost.Navigate
-        // dispatch with the authoritative parameter and routes through LoadParameter,
-        // which re-attaches bindings (Bindings.Update at its top, guarded by
-        // _trimmedForNavigationCache) and runs Activate. Calling LoadParameter here
-        // too duplicated every downstream effect: two Activates, two PlaylistStore
-        // subscriptions, two ApplyDetailState dispatches, two LoadTracksAsync runs,
-        // two FilteredTracks.ReplaceWith resets, two waves of TrackItem materialization.
-    }
-
-    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
-    {
-        if (_headerSurfaceReleasedForNavCache)
-            return false;
-
-        var hadSurface = _heroImageSurface is not null || _heroSurfaceBrush?.Surface is not null;
-        ReleaseHeaderBackgroundSurface();
-        _headerSurfaceReleasedForNavCache = true;
-        return hadSurface;
-    }
-
-    bool INavCacheSurfaceParticipant.RestoreForNavCache()
-    {
-        if (!_headerSurfaceReleasedForNavCache)
-            return false;
-
-        _headerSurfaceReleasedForNavCache = false;
-        ApplyHeaderBackground();
-        return true;
-    }
-
-    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
-    {
-        get
-        {
-            if (_headerSurfaceReleasedForNavCache || _heroImageSurface is null)
-                return 0;
-
-            var width = HeaderBackgroundHost?.ActualWidth > 0 ? HeaderBackgroundHost.ActualWidth : 1600;
-            var height = HeaderBackgroundHost?.ActualHeight > 0 ? HeaderBackgroundHost.ActualHeight : 280;
-            return (long)Math.Ceiling(width) * (long)Math.Ceiling(height) * 4;
-        }
     }
 
     private void RestorePlaylistPanelWidth(string playlistId)
@@ -1223,7 +1126,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
     private void ApplyHeaderBackground()
     {
         if (_heroSurfaceBrush == null || _heroCompositor == null) return;
-        if (_headerSurfaceReleasedForNavCache) return;
 
         var url = ViewModel.Header.HeaderImageUrl;
 
@@ -1437,32 +1339,71 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
         var file = await PickCoverFileAsync();
         if (file is null) return;
 
+        await StartCoverEditAsync(file);
+    }
+
+    private void CoverEditOverlay_DragOver(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        if (ViewModel.Header.IsOwner && !ViewModel.Mutations.IsUploadingCover
+            && e.DataView.Contains(StandardDataFormats.StorageItems))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "Change cover photo";
+            e.DragUIOverride.IsContentVisible = true;
+        }
+        else
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+        }
+    }
+
+    private async void CoverEditOverlay_Drop(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        if (!ViewModel.Header.IsOwner || ViewModel.Mutations.IsUploadingCover) return;
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+
+        var deferral = e.GetDeferral();
         try
         {
-            using (var stream = await file.OpenReadAsync())
-            {
-                var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
-                await bmp.SetSourceAsync(stream);
-                CoverPreviewImage.Source = bmp;
-                CoverPreviewImage.Visibility = Visibility.Visible;
-            }
+            var items = await e.DataView.GetStorageItemsAsync();
+            var file = items.OfType<StorageFile>().FirstOrDefault(f => IsSupportedImage(f.FileType));
+            if (file is not null) await StartCoverEditAsync(file);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    /// <summary>
+    /// Opens the reframe editor for <paramref name="file"/>; on confirm, previews the cropped
+    /// result and pushes it through the cover-change command.
+    /// </summary>
+    private async Task StartCoverEditAsync(StorageFile file)
+    {
+        byte[]? jpegBytes;
+        try
+        {
+            jpegBytes = await ImageReframeDialog.ShowAsync(
+                XamlRoot, file,
+                new ImageReframeOptions { Title = "Change cover photo", PrimaryButtonText = "Set photo" });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to open cover editor");
+            Ioc.Default.GetService<INotificationService>()?
+                .Show("Couldn't open that image", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+            return;
+        }
+
+        if (jpegBytes is null) return;   // user cancelled
+
+        try
+        {
+            await SetCoverPreviewFromBytesAsync(jpegBytes);
 
             CoverUploadRing.IsActive = true;
             CoverUploadRing.Visibility = Visibility.Visible;
-
-            byte[] jpegBytes;
-            try
-            {
-                jpegBytes = await Helpers.PlaylistCoverHelper.PrepareForUploadAsync(file);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Failed to prepare cover image for upload");
-                ClearCoverPreview();
-                Ioc.Default.GetService<INotificationService>()?
-                    .Show("Couldn't process that image", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
-                return;
-            }
 
             await ViewModel.Mutations.ChangeCoverCommand.ExecuteAsync(jpegBytes);
         }
@@ -1476,6 +1417,18 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, INav
             CoverUploadRing.Visibility = Visibility.Collapsed;
         }
     }
+
+    private async Task SetCoverPreviewFromBytesAsync(byte[] jpegBytes)
+    {
+        var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+        using var ms = new MemoryStream(jpegBytes);
+        await bmp.SetSourceAsync(ms.AsRandomAccessStream());
+        CoverPreviewImage.Source = bmp;
+        CoverPreviewImage.Visibility = Visibility.Visible;
+    }
+
+    private static bool IsSupportedImage(string fileType)
+        => fileType.ToLowerInvariant() is ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif" or ".webp";
 
     private void CoverEditOverlay_RightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
     {

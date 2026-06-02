@@ -77,7 +77,26 @@ public sealed partial record PlaylistTrackDto : ITrackItem
     }
 
     public bool IsExplicit { get; init; }
-    public int OriginalIndex { get; init; }
+
+    /// <summary>
+    /// 1-based playlist position shown in the '#' column. Mutable + change-notifying
+    /// (not <c>init</c>) so an in-place reorder renumber updates already-realized rows
+    /// without a rebind — <c>TrackItem</c> listens for this property to refresh the
+    /// row index. <c>NormalizeOriginalIndexes</c> mutates this in place precisely so
+    /// the bound DTO identity is preserved and the notification reaches the row.
+    /// </summary>
+    private int _originalIndex;
+    public int OriginalIndex
+    {
+        get => _originalIndex;
+        set
+        {
+            if (_originalIndex == value) return;
+            _originalIndex = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(OriginalIndex)));
+        }
+    }
+
     public bool IsLoaded => true;
     public bool IsLiked { get; set; }
 

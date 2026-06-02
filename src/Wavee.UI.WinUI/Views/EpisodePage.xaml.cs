@@ -23,7 +23,7 @@ using Wavee.UI.WinUI.ViewModels;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost, IRedirectsCtrlFToOmnibar
+public sealed partial class EpisodePage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IContentPageHost, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
@@ -73,40 +73,6 @@ public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavi
     public void OnLeaving()
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.episode.onLeaving");
-        // Trim deferred ~1 s by TabBarItem; calling sync here moves the cost
-        // off pageHostNavigating only to land in onLeaving instead.
-    }
-
-    private bool _trimmedForNavigationCache;
-
-    public void TrimForNavigationCache()
-    {
-        if (_trimmedForNavigationCache) return;
-        _trimmedForNavigationCache = true;
-        // Drop the singleton subscriptions that pin this VM across cached-
-        // page evictions. Activate re-attaches on nav-back.
-        ViewModel.Hibernate();
-        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling does not keep the cached page wired up while it sits off-screen.
-        Bindings?.StopTracking();
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        if (!_trimmedForNavigationCache) return;
-        _trimmedForNavigationCache = false;
-        // Defer Bindings.Update to the next dispatcher tick so DWM gets a
-        // paint frame between the page reattaching and the synchronous
-        // binding sweep. PageHost.Navigate runs this method sync, so without
-        // the defer the user sees the page pop in fully rendered before the
-        // PageEntranceFade ever animates.
-        DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
-        {
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.episode.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
-        });
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
@@ -214,23 +180,6 @@ public sealed partial class EpisodePage : UserControl, ITabBarItemContent, INavi
 
     private async void LoadNewContent(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
-        // If we were trimmed since the last LoadNewContent, the x:Bind graph is
-        // currently detached (TrimForNavigationCache called Bindings.StopTracking).
-        // Re-attach BEFORE the Activate / PrefillFrom chain below fires its
-        // PropertyChanged events, otherwise the hero cover, title etc. sit deaf
-        // and the view freezes on whatever was bound before the trim. The
-        // RestoreFromNavigationCache deferred Update fires too late on warm-cache
-        // cross-episode navs. Mirrors PlaylistPage / AlbumPage.
-        var wasTrimmed = _trimmedForNavigationCache;
-        _trimmedForNavigationCache = false;
-        if (wasTrimmed)
-        {
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.episode.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
-        }
-
         // Cache-hit nav (Back/Forward): content already realised — skip the
         // shimmer reset to avoid flashing skeleton over good pixels.
         var useSoftSwap =

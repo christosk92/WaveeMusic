@@ -31,10 +31,9 @@ public sealed partial record DiscographyBreadcrumbItem(string Label, string? Art
 /// second visit to the same group hydrates instantly.
 /// </summary>
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class ArtistDiscographyPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IRedirectsCtrlFToOmnibar
+public sealed partial class ArtistDiscographyPage : UserControl, ITabBarItemContent, IPageHostAware, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;
-    private bool _trimmedForNavigationCache;
     private TabItemParameter? _tabItemParameter;
 
     public ArtistDiscographyPageViewModel ViewModel { get; }
@@ -54,7 +53,6 @@ public sealed partial class ArtistDiscographyPage : UserControl, ITabBarItemCont
 
     public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        _trimmedForNavigationCache = false;
         LoadParameter(parameter);
     }
 
@@ -121,28 +119,5 @@ public sealed partial class ArtistDiscographyPage : UserControl, ITabBarItemCont
         // would also work for the same-tab case but doesn't handle out-of-
         // band entries like tab-restore).
         NavigationHelpers.OpenArtist(item.ArtistUri, item.Label);
-    }
-
-    public void TrimForNavigationCache()
-    {
-        if (_trimmedForNavigationCache) return;
-        _trimmedForNavigationCache = true;
-        // Detach compiled x:Bind from VM PropertyChanged. The underlying
-        // LazyReleaseItem instances live on the shared ArtistViewModel and
-        // stay alive there — only this page's binding graph goes idle.
-        Bindings?.StopTracking();
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        if (!_trimmedForNavigationCache) return;
-        _trimmedForNavigationCache = false;
-        // Defer the binding sweep to the next dispatcher tick so DWM gets a
-        // paint frame between the page reattaching and the synchronous
-        // Bindings.Update sweep — matches AlbumPage / ShowPage / EpisodePage.
-        DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
-        {
-            Bindings?.Update();
-        });
     }
 }

@@ -57,9 +57,18 @@ public interface IReorderHost
     /// Commit a contiguous block move. <paramref name="toGapSlot"/> is the gap
     /// index in <c>[0, ItemCount]</c> (0 = before first row), matching the legacy
     /// <c>TracksReorderRequested</c> / queue contract — the host applies any
-    /// removal-shift / context-index mapping itself. Should perform an optimistic
-    /// local move synchronously, then dispatch the backend write. Returns false
-    /// if rejected (engine then reverts visuals).
+    /// removal-shift / context-index mapping itself. Returns false if rejected
+    /// (engine then reverts visuals).
+    /// <para>
+    /// MUST apply the optimistic local move <b>synchronously</b> (then dispatch the
+    /// backend write). The engine forces a synchronous layout pass and releases its
+    /// hold transforms the instant this returns — so a deferred/async move would
+    /// clear the transforms against a stale layout, snapping rows for a frame (the
+    /// "drop jump"). Apply it as a full reset (re-measures every row from a clean
+    /// state) — NOT an incremental <c>CollectionChanged.Move</c>: WinUI's
+    /// <c>ItemsView</c>/<c>ItemsRepeater</c> mis-arranges a single-item Move
+    /// (overlapping rows + empty slots until a later re-layout heals it).
+    /// </para>
     /// </summary>
     bool CommitMove(int fromIndex, int length, int toGapSlot);
 }

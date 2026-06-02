@@ -67,6 +67,26 @@ public sealed class ReorderController
         _autoScroll = new ReorderAutoScroller(host.ScrollBy, OnAutoScrolled);
     }
 
+    /// <summary>
+    /// True while a drag-lift (pointer or keyboard) or its drop animation is in
+    /// flight. The host checks this before clearing composition transforms on a
+    /// (re)bound row container, so resetting recycled containers never fights the
+    /// engine's live lift/displacement transforms.
+    /// </summary>
+    public bool IsActive => _dragging || _committing;
+
+    /// <summary>
+    /// True only for a container that is part of the CURRENTLY active lift span
+    /// (the rows the user is dragging right now). The host uses this to decide
+    /// whether a (re)bound container may have its reorder transforms cleared: every
+    /// other container — including one recycled from a just-finished drop while a
+    /// new drag is already starting — is safe to reset. A blanket
+    /// <see cref="IsActive"/> skip left those recycled containers carrying a
+    /// previous drag's composition Translation offset during rapid successive drags.
+    /// </summary>
+    public bool IsLiftedContainer(FrameworkElement container)
+        => _dragging && _spanContainers.Contains(container);
+
     /// <summary>Attach gesture + keyboard handlers to a realized container (idempotent).</summary>
     public void AttachRow(FrameworkElement row)
     {
@@ -332,8 +352,8 @@ public sealed class ReorderController
             return;
         }
 
-        // Glide the lifted block to its resting offset, then commit + clear (the
-        // displaced layout equals the post-move layout, so clearing is neutral).
+        // Glide the lifted block to its resting offset, then commit + release on a
+        // clean tick (see batch.Completed → CommitAndClear).
         var restTop = RestingTop();
         var restY = (float)(restTop - _liftStartTop);
         var distance = Math.Abs(restY - (_lastPointerPanelY - _pressOriginPanel.Y));
@@ -341,7 +361,7 @@ public sealed class ReorderController
 
         _committing = true;
         var lead = _spanContainers.Count > 0 ? _spanContainers[0] : null;
-        if (lead is null) { CommitAndClear(); _committing = false; return; }
+        if (lead is null) { CommitAndClear(); return; }
 
         var v = ElementCompositionPreview.GetElementVisual(lead);
         var comp = v.Compositor;
@@ -360,8 +380,12 @@ public sealed class ReorderController
         batch.End();
         batch.Completed += (_, _) =>
         {
-            CommitAndClear();
-            _committing = false;
+            // Commit on a clean UI tick, NOT from inside this composition batch
+            // callback (mutating the ItemsView source from the callback recycles the
+            // just-lifted container into an off-screen phantom).
+            var dq = lead.DispatcherQueue;
+            if (dq is null) { CommitAndClear(); return; }
+            dq.TryEnqueue(CommitAndClear);
         };
     }
 
@@ -385,20 +409,32 @@ public sealed class ReorderController
     {
         var from = _from; var len = _length; var slot = _slot;
         var span = new List<FrameworkElement>(_spanContainers);
+        var movedLabel = Label(from);   // capture before the data move renumbers it
 
-        // Optimistic local move first → relayout to final positions; then zero all
-        // transforms synchronously. Displaced offsets == layout deltas, so this is
-        // visually neutral (no flicker).
+        // End the drag BEFORE committing, so the host's settle-window scrub (which runs
+        // as ItemsView re-realizes each row) doesn't treat the recycled lifted
+        // containers as actively-dragged and skip them.
+        EndDrag();
+        _committing = false;
+
+        // Commit (full reset) + force the arrange. The host (TrackDataGrid.CommitMove)
+        // opens a settle window: it suppresses the entrance animation on the re-realized
+        // rows — which was the real bug, the fade-slide-up replaying on the reordered
+        // rows and sliding them through each other — and scrubs any stale reorder
+        // transform off recycled containers synchronously, before they paint.
         var ok = _host.CommitMove(from, len, slot);
+        _host.ReorderCoordinateRoot?.UpdateLayout();
+
+        // Hygiene for the next drag: drop the displacement map + lift refs. The old
+        // containers are recycled by the reset, so zeroing them here is invisible.
         _displacement.ClearAllInstant();
         foreach (var c in span) RestoreLift(c);
-        EndDrag();
 
         if (ok)
         {
             var to = slot > from ? slot - len : slot;
             ReorderAnnouncer.Announce(span.Count > 0 ? span[0] : null,
-                $"Moved {Label(from)} to position {Math.Clamp(to, 0, _host.ItemCount) + 1} of {_host.ItemCount}");
+                $"Moved {movedLabel} to position {Math.Clamp(to, 0, _host.ItemCount) + 1} of {_host.ItemCount}");
         }
     }
 

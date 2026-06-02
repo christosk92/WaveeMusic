@@ -69,9 +69,6 @@ public sealed partial class PageHostCacheCleanupAdapter : ICleanableCache
         {
             try
             {
-                if (tab.IsSleeping)
-                    continue;
-
                 dropped += tab.ContentHost.EvictCollapsedPages(keepNewestCollapsed);
             }
             catch

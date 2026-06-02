@@ -23,7 +23,7 @@ using Wavee.UI.WinUI.Helpers;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
+public sealed partial class ProfilePage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private readonly ProfileCache? _cache;
     private readonly ILogger<ProfilePage>? _logger;
@@ -36,9 +36,7 @@ public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavi
     private bool _isDisposed;
     private bool _viewSubscriptionsAttached;
     private bool _dataSubscriptionsAttached;
-    private bool _trimmedForNavigationCache;
     private int _viewSubscriptionGeneration;
-    private int _restoreGeneration;
 
     public ProfileViewModel ViewModel { get; }
 
@@ -224,7 +222,6 @@ public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavi
     private void LoadProfileParameter(object? parameter)
     {
         _isNavigatingAway = false;
-        _trimmedForNavigationCache = false;
         AttachDataSubscriptions();
         ViewModel.Initialize(parameter as ContentNavigationParameter);
     }
@@ -233,69 +230,6 @@ public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavi
     {
         // Trim deferred ~1 s by TabBarItem; calling sync here moves the cost
         // off pageHostNavigating only to land in onLeaving instead.
-    }
-
-    public void TrimForNavigationCache()
-    {
-        if (_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = true;
-        _isNavigatingAway = true;
-        _shyHeader?.Stop();
-        DetachDataSubscriptions();
-        ViewModel.Hibernate();
-
-        if (ProfileAvatar != null)
-            ProfileAvatar.ProfilePicture = null;
-        if (PageBleedHost != null)
-            PageBleedHost.Opacity = 0;
-        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
-        // without this the entire page tree is pinned across navigations.
-        Bindings?.StopTracking();
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        if (!_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = false;
-        _isNavigatingAway = false;
-        var generation = ++_restoreGeneration;
-        if (DispatcherQueue is null)
-        {
-            using (UiOperationProfiler.Instance?.Profile("page.profile.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
-
-            AttachDataSubscriptions();
-            ViewModel.ResumeFromHibernate();
-            UpdateProfileAvatar(ViewModel.ProfileImageUrl);
-            UpdateIdentityCardBackground();
-            _shyHeader?.Reset();
-            return;
-        }
-
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () =>
-        {
-            await Task.Yield();
-            if (_isDisposed || _isNavigatingAway || generation != _restoreGeneration)
-                return;
-
-            using (UiOperationProfiler.Instance?.Profile("page.profile.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
-
-            AttachDataSubscriptions();
-            ViewModel.ResumeFromHibernate();
-            UpdateProfileAvatar(ViewModel.ProfileImageUrl);
-            UpdateIdentityCardBackground();
-            _shyHeader?.Reset();
-        });
     }
 
     // ── ViewModel events ──

@@ -1037,7 +1037,10 @@ public static class AppLifecycleHelper
 
                 // Image cache cleanup adapter
                 .AddSingleton<ICleanableCache, ImageCacheCleanupAdapter>()
-                .AddSingleton<ICleanableCache, PageHostCacheCleanupAdapter>()
+                // PageHostCacheCleanupAdapter intentionally NOT registered: under the
+                // Files-app tab model every visited page stays resident until its tab
+                // closes, so the memory-budget service must not shed collapsed pages.
+                // Re-add this registration to re-enable pressure-driven page eviction.
                 .AddSingleton<MemoryBudgetService>()
 
                 // Rich-type detail-page hot caches. Wired into ArtistStore /

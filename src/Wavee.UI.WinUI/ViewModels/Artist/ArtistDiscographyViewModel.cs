@@ -492,9 +492,8 @@ public sealed partial class ArtistDiscographyViewModel : ObservableObject, IDisp
     }
 
     /// <summary>Cancel any inflight discography pagination work without
-    /// otherwise disposing the VM. Called from <c>ArtistViewModel.Hibernate</c>
-    /// to release the background fetch loop while keeping the VM alive for
-    /// re-activation.</summary>
+    /// otherwise disposing the VM. Called during teardown/Dispose to release
+    /// the background fetch loop.</summary>
     public void CancelInflightWork() => CancelAndDisposeDiscographyCts();
 
     /// <summary>

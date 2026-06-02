@@ -68,12 +68,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private IDisposable? _changeBusLibrarySubscription;
 
     private bool _restoringTabSession;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _tabSleepTimer;
-    private DateTimeOffset _lastTabSleepMemoryReleaseUtc = DateTimeOffset.MinValue;
-
-    private static readonly TimeSpan TabSleepTimeout = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan TabSleepEvaluationInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan TabSleepMemoryReleaseThrottle = TimeSpan.FromSeconds(45);
 
     // ── Child VMs (constructor-init, never replaced) ────────────────────────
 
@@ -539,7 +533,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         });
 
         TabInstances.CollectionChanged += OnTabInstancesCollectionChanged;
-        InitializeTabSleepTimer();
     }
 
     private void OnNotificationServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -633,8 +626,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             or nameof(TabBarItem.ToolTipText)
             or nameof(TabBarItem.IsPinned)
             or nameof(TabBarItem.IsCompact)
-            or nameof(TabBarItem.IconSource)
-            or nameof(TabBarItem.IsSleeping))
+            or nameof(TabBarItem.IconSource))
         {
             PersistTabSession();
         }
@@ -701,10 +693,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             _previousTabIndex = oldValue;
 
             var nextTab = TabInstances[newValue];
-            if (nextTab.IsSleeping)
-                WakeTab(nextTab);
-            else
-                nextTab.MarkActivated();
+            nextTab.MarkActivated();
 
             SelectedTabItem = nextTab;
         }
@@ -715,29 +704,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedTabItemChanged(TabBarItem? oldValue, TabBarItem? newValue)
     {
-        // Unsubscribe from previous tab
+        // Files-app model: switching tabs is a pure show/hide. Every tab keeps
+        // its pages fully resident (visual tree + GPU surfaces), so there is no
+        // trim, restore, or surface release/restore on switch — just swap the
+        // navigation-event subscription and refresh nav state.
         if (oldValue != null)
-        {
-            oldValue.TrimActiveContentForNavigationCache();
             oldValue.Navigated -= TabItem_Navigated;
-        }
 
-        // Subscribe to new tab
         if (newValue != null)
-        {
             newValue.Navigated += TabItem_Navigated;
-            newValue.RestoreActiveContentFromNavigationCache();
-            newValue.ApplySurfaceRetention(isActiveTab: true);
-        }
-
-        // Every other realised tab is now in the background — shed its GPU
-        // surfaces (image surfaces, Win2D swap chains, baked backdrops). The
-        // new tab already re-hydrated its active + prime-back-target pages.
-        foreach (var tab in TabInstances)
-        {
-            if (!ReferenceEquals(tab, newValue))
-                tab.ReleaseAllSurfaces();
-        }
 
         UpdateNavigationState();
     }
@@ -930,47 +905,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Services.MemoryReleaseHelper.ReleaseWorkingSet(_logger, "tab-close");
     }
 
-    public void ToggleTabSleep(TabBarItem? tab)
-    {
-        if (tab == null)
-            return;
-
-        if (tab.IsSleeping)
-        {
-            WakeTab(tab);
-            return;
-        }
-
-        SleepTab(tab);
-    }
-
-    public void SleepTab(TabBarItem? tab)
-    {
-        if (tab == null)
-            return;
-
-        if (ReferenceEquals(tab, SelectedTabItem))
-            return;
-
-        if (!tab.Sleep())
-            return;
-
-        PersistTabSession();
-        MaybeReleaseMemoryAfterTabSleep("tab-sleep");
-    }
-
-    public void WakeTab(TabBarItem? tab)
-    {
-        if (tab == null)
-            return;
-
-        if (!tab.Wake())
-            return;
-
-        PersistTabSession();
-        UpdateNavigationState();
-    }
-
     public void GoBack()
     {
         if (SelectedTabItem?.ContentHost is { CanGoBack: true } host)
@@ -1049,13 +983,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Cleanup()
     {
-        if (_tabSleepTimer != null)
-        {
-            _tabSleepTimer.Stop();
-            _tabSleepTimer.Tick -= TabSleepTimer_Tick;
-            _tabSleepTimer = null;
-        }
-
         Omnibar.Dispose();
         Sidebar.Dispose();
         // LinkPreview's Dispose() is invoked transitively via Omnibar.Dispose.
@@ -1092,52 +1019,4 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     /// <inheritdoc />
     public void Dispose() => Cleanup();
-
-    private void InitializeTabSleepTimer()
-    {
-        var dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        if (dispatcherQueue == null)
-            return;
-
-        _tabSleepTimer = dispatcherQueue.CreateTimer();
-        _tabSleepTimer.Interval = TabSleepEvaluationInterval;
-        _tabSleepTimer.IsRepeating = true;
-        _tabSleepTimer.Tick += TabSleepTimer_Tick;
-        _tabSleepTimer.Start();
-    }
-
-    private void TabSleepTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var sleptAnyTabs = false;
-
-        for (var i = 0; i < TabInstances.Count; i++)
-        {
-            var tab = TabInstances[i];
-            if (ReferenceEquals(tab, SelectedTabItem) || tab.IsPinned || tab.IsSleeping)
-                continue;
-
-            if (now - tab.LastActivatedAtUtc < TabSleepTimeout)
-                continue;
-
-            if (tab.Sleep())
-                sleptAnyTabs = true;
-        }
-
-        if (!sleptAnyTabs)
-            return;
-
-        PersistTabSession();
-        MaybeReleaseMemoryAfterTabSleep("auto-tab-sleep");
-    }
-
-    private void MaybeReleaseMemoryAfterTabSleep(string reason)
-    {
-        var now = DateTimeOffset.UtcNow;
-        if (now - _lastTabSleepMemoryReleaseUtc < TabSleepMemoryReleaseThrottle)
-            return;
-
-        _lastTabSleepMemoryReleaseUtc = now;
-        Services.MemoryReleaseHelper.ReleaseWorkingSet(_logger, reason);
-    }
 }

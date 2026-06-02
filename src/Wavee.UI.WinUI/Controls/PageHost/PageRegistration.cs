@@ -19,35 +19,31 @@ internal static class PageRegistration
 {
     public static void RegisterAll()
     {
-        // `pinned: true` ⇒ created once per tab and reused for the tab's lifetime,
-        // never evicted/recreated mid-session (see PageRegistry.IsPinned). Applied
-        // to the frequently-visited and expensive-to-build content pages so heavy
-        // browsing stops re-paying `new Page()` + InitializeComponent + VM-init —
-        // the cause of progressive nav slowdown. Off-screen pinned pages still
-        // hibernate + shed GPU surfaces, so the standing cost is just a managed
-        // tree. Rare / one-shot / utility pages stay on LRU eviction. To pin or
-        // unpin a page, flip the flag on its line — one place.
+        // Files-app model: a tab keeps every page it visits resident (PageHost
+        // caches by Type, so one instance per page type per tab) until the tab
+        // closes. There is no proactive eviction — pages are reclaimed only on
+        // tab close or under memory-budget pressure (PageHostCacheCleanupAdapter).
         Register(() => new ShellPage(), nameof(ShellPage));
 
         // Main content pages
-        Register(() => new HomePage(), nameof(HomePage), pinned: true);
+        Register(() => new HomePage(), nameof(HomePage));
         Register(() => new StartPage(), nameof(StartPage));
-        Register(() => new LibraryPage(), nameof(LibraryPage), pinned: true);
-        Register(() => new SearchPage(), nameof(SearchPage), pinned: true);
-        Register(() => new BrowsePage(), nameof(BrowsePage), pinned: true);
+        Register(() => new LibraryPage(), nameof(LibraryPage));
+        Register(() => new SearchPage(), nameof(SearchPage));
+        Register(() => new BrowsePage(), nameof(BrowsePage));
 
         // Detail pages
-        Register(() => new AlbumPage(), nameof(AlbumPage), pinned: true);
-        Register(() => new PlaylistPage(), nameof(PlaylistPage), pinned: true);
-        Register(() => new ArtistPage(), nameof(ArtistPage), pinned: true);
-        Register(() => new ArtistDiscographyPage(), nameof(ArtistDiscographyPage), pinned: true);
-        Register(() => new ShowPage(), nameof(ShowPage), pinned: true);
-        Register(() => new EpisodePage(), nameof(EpisodePage), pinned: true);
-        Register(() => new ConcertPage(), nameof(ConcertPage), pinned: true);
+        Register(() => new AlbumPage(), nameof(AlbumPage));
+        Register(() => new PlaylistPage(), nameof(PlaylistPage));
+        Register(() => new ArtistPage(), nameof(ArtistPage));
+        Register(() => new ArtistDiscographyPage(), nameof(ArtistDiscographyPage));
+        Register(() => new ShowPage(), nameof(ShowPage));
+        Register(() => new EpisodePage(), nameof(EpisodePage));
+        Register(() => new ConcertPage(), nameof(ConcertPage));
         Register(() => new ProfilePage(), nameof(ProfilePage));
 
         // Podcast
-        Register(() => new PodcastBrowsePage(), nameof(PodcastBrowsePage), pinned: true);
+        Register(() => new PodcastBrowsePage(), nameof(PodcastBrowsePage));
 
         // Composition / wizard
         Register(() => new CreatePlaylistPage(), nameof(CreatePlaylistPage));
@@ -62,8 +58,8 @@ internal static class PageRegistration
         Register(() => new DebugPage(), nameof(DebugPage));
         Register(() => new FeedbackPage(), nameof(FeedbackPage));
 
-        // Local-library tree — pin the main hub; deep detail pages stay on LRU.
-        Register(() => new LocalLibraryPage(), nameof(LocalLibraryPage), pinned: true);
+        // Local-library tree
+        Register(() => new LocalLibraryPage(), nameof(LocalLibraryPage));
         Register(() => new LocalLikedSongsPage(), nameof(LocalLikedSongsPage));
         Register(() => new LocalMusicPage(), nameof(LocalMusicPage));
         Register(() => new LocalMusicVideosPage(), nameof(LocalMusicVideosPage));
@@ -76,10 +72,10 @@ internal static class PageRegistration
         Register(() => new LocalOtherPage(), nameof(LocalOtherPage));
     }
 
-    private static void Register<TPage>(System.Func<TPage> factory, string key, bool pinned = false)
+    private static void Register<TPage>(System.Func<TPage> factory, string key)
         where TPage : Microsoft.UI.Xaml.Controls.UserControl
     {
-        PageRegistry.Register(factory, pinned);
+        PageRegistry.Register(factory);
         PageTypeRegistry.Register(key, typeof(TPage));
     }
 }

@@ -8,14 +8,15 @@ using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Shaders;
-using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Windows.Foundation;
 using Windows.UI;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
-public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfaceParticipant
+public sealed partial class AnimatedHeroBackground : UserControl, IHostVisibilityAware
 {
     public static readonly DependencyProperty PrimaryColorProperty = DependencyProperty.Register(
         nameof(PrimaryColor),
@@ -65,8 +66,12 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
     // Cached on the UI thread so OnDraw (Win2D render thread) doesn't have to read
     // the DP, which throws when accessed off the dispatcher.
     private float _clipRadius;
-    private bool _navCacheReleased;
     private bool _renderFailed;
+    // Whether the host page is currently the visible active page. A collapsed
+    // cached page keeps this control Loaded, but a Win2D CanvasAnimatedControl
+    // keeps spinning its render loop while collapsed — so we pause it off-screen.
+    // PageHost drives this on nav; OnLoaded seeds it from ancestor visibility.
+    private bool _hostVisible = true;
     // Cached on the UI thread (construction) so the render-thread OnDraw failure path can
     // marshal back without touching DependencyObject.DispatcherQueue off-thread (which throws).
     private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcher =
@@ -117,50 +122,40 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        PART_Canvas.Paused = IsPaused;
+        // When a whole tab's ContentHost re-attaches, every cached page (active +
+        // collapsed) fires Loaded at once. Seed visibility from the live tree so a
+        // collapsed page's shader stays paused instead of all of them resuming.
+        _hostVisible = !IsHostCollapsed();
+        ApplyPauseState();
         UpdateClip();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
         => PART_Canvas.Paused = true;
 
-    // ── INavCacheSurfaceParticipant ──
-    // Off-screen pages stop the continuous mesh-gradient render loop. Pausing
-    // halts the per-frame shader dispatch (CPU + GPU + power — and a real
-    // composition-thread competitor for the active page); the card-sized
-    // CanvasAnimatedControl swap chain itself is only a few MB and is left in
-    // place so restore is an instant un-pause rather than a Win2D control
-    // rebuild.
-
-    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    /// <summary>PageHost notifies us when the host page becomes visible / collapsed.</summary>
+    public void OnHostVisibilityChanged(bool isVisible)
     {
-        if (_navCacheReleased)
-            return false;
-        _navCacheReleased = true;
-        if (PART_Canvas is { } canvas)
-            canvas.Paused = true;
-        return true;
+        _hostVisible = isVisible;
+        ApplyPauseState();
     }
 
-    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    private void ApplyPauseState()
     {
-        if (!_navCacheReleased)
-            return false;
-        _navCacheReleased = false;
         if (PART_Canvas is { } canvas)
-            canvas.Paused = IsPaused || !IsLoaded;
-        return true;
+            canvas.Paused = IsPaused || !IsLoaded || !_hostVisible;
     }
 
-    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    private bool IsHostCollapsed()
     {
-        get
+        DependencyObject? node = this;
+        while (node is not null)
         {
-            if (!IsLoaded || ActualWidth <= 0 || ActualHeight <= 0)
-                return 0;
-            // CanvasAnimatedControl swap chain — ~2 buffers at control size.
-            return (long)(ActualWidth * ActualHeight * 4 * 2);
+            if (node is UIElement element && element.Visibility == Visibility.Collapsed)
+                return true;
+            node = VisualTreeHelper.GetParent(node);
         }
+        return false;
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -204,10 +199,8 @@ public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfa
 
     private static void OnIsPausedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is not AnimatedHeroBackground self)
-            return;
-        if (self.PART_Canvas is { } canvas)
-            canvas.Paused = (bool)e.NewValue || !self.IsLoaded;
+        if (d is AnimatedHeroBackground self)
+            self.ApplyPauseState();
     }
 
     private static void OnColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

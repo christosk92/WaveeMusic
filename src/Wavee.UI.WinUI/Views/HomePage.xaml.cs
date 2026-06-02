@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -30,28 +29,15 @@ using Wavee.UI.WinUI.ViewModels;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
+public sealed partial class HomePage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;
     private readonly HomeFeedCache? _cache;
     private bool _isShimmerContentReleased;
     private bool _isDisposed;
-    private bool _trimmedForNavigationCache;
-    private bool _sectionsDetachedForNavigationCache;
     private bool _isNavigatedAway;
     private bool _postNavigationResumeQueued;
-    private HomePageSleepState? _pendingSleepState;
 
-    private const int ScrollRestoreMaxAttempts = 12;
-    private const int ScrollRestoreRetryDelayMs = 16;
-    // Safety net for ImageLoadingSuspension. If BeginScrollRestore runs but
-    // the matching EndScrollRestore never fires (ViewModel stuck in IsLoading,
-    // page never receives a fresh sleep-state apply, etc.) the global
-    // suspension flag would stay on forever and gate ALL cold image loads.
-    // After this timeout we forcibly clear our generation's suspension. The
-    // generation check in EndScrollRestore is preserved — if the real End
-    // already fired and bumped the generation, this is a no-op.
-    private const int ScrollRestoreWatchdogMs = 3000;
     private const double HeroRailMinWidth = 240;
     private const double HeroRailMaxWidth = 320;
     private const double HeroRailWidthRatio = 0.24;
@@ -60,9 +46,6 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     private const double HeroRailGapRatio = 0.016;
     private const double HeroWideMinHeroColumnWidth = 520;
     private const double HeroStackedNarrowWidth = 720;
-    private bool _isRestoringScroll;
-    private int _scrollRestoreGeneration;
-    private int _layoutRecoveryGeneration;
 
     // HeroCarousel.CurrentAccent registration token — set in HomePage_Loaded,
     // cleared in HomePage_Unloaded. The carousel publishes a per-frame RGB-lerped
@@ -121,9 +104,6 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
                 CrossfadeToContent();
             }
         }
-
-        if (e.PropertyName == nameof(ViewModel.IsLoading) && !ViewModel.IsLoading)
-            TryApplyPendingSleepState();
     }
 
     private void OnCacheDataRefreshed(HomeFeedSnapshot snapshot)
@@ -506,99 +486,24 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.home.onLeaving");
         _isNavigatedAway = true;
-        CancelScrollRestore();
 
-        // Stop background feed work immediately; visual-tree teardown is now
-        // scheduled centrally by TabBarItem (~1 s after the leave). HomePage's
-        // TrimForNavigationCache below is what TabBarItem fires on that timer.
+        // Stop background feed work immediately. The page stays fully resident
+        // (visual tree + bindings) until its tab closes — no trim, no sleep.
         ViewModel.SuspendBackgroundRefresh();
         // Detach compiled x:Bind from VM.PropertyChanged so the cached page
         // does not keep its bindings live while the user is on another page.
         Bindings?.StopTracking();
     }
 
-    public void TrimForNavigationCache()
-    {
-        if (_isDisposed || _trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = true;
-        _pendingSleepState = new HomePageSleepState(ContentContainer?.VerticalOffset ?? 0);
-        ViewModel.HibernateForNavigation();
-        // Clear the carousel-bleed delta-throttle so the next accent applied
-        // after RestoreFromNavigationCache always paints, even if it falls
-        // within 4/256 of the stale pre-trim value.
-        ViewModel.ResetCarouselBleedThrottle();
-        DetachSectionsRepeater();
-    }
-
-    IEnumerable<Action> INavigationCacheMemoryParticipant.GetTrimMicroSteps()
-    {
-        if (_isDisposed || _trimmedForNavigationCache)
-            yield break;
-
-        yield return () =>
-        {
-            if (_isDisposed || _trimmedForNavigationCache)
-                return;
-
-            _trimmedForNavigationCache = true;
-            _pendingSleepState = new HomePageSleepState(ContentContainer?.VerticalOffset ?? 0);
-        };
-        yield return () =>
-        {
-            if (!_isDisposed)
-                ViewModel.HibernateForNavigation();
-        };
-        yield return () =>
-        {
-            if (!_isDisposed)
-                ViewModel.ResetCarouselBleedThrottle();
-        };
-        yield return () =>
-        {
-            if (!_isDisposed)
-                DetachSectionsRepeater();
-        };
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        // The deferred-trim timer is owned by TabBarItem and cancelled there
-        // when the user re-enters this page — no per-page cancel needed.
-        if (!_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = false;
-        _isNavigatedAway = false;
-        BeginScrollRestoreIfNeeded();
-        ResetRegionsLayoutCache();
-        AttachSectionsRepeater();
-        ViewModel.ResumeFromNavigationCache();
-
-        QueueRestoredLayoutRefresh();
-        TryApplyPendingSleepState();
-    }
-
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        CancelScrollRestore();
 
         Loaded -= HomePage_Loaded;
         Unloaded -= HomePage_Unloaded;
         CleanupSubscriptions();
         (ViewModel as IDisposable)?.Dispose();
-    }
-
-    public object? CaptureSleepState()
-        => new HomePageSleepState(ContentContainer?.VerticalOffset ?? 0);
-
-    public void RestoreSleepState(object? state)
-    {
-        _pendingSleepState = state as HomePageSleepState;
-        TryApplyPendingSleepState();
     }
 
     private void CleanupSubscriptions()
@@ -607,26 +512,6 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         if (_cache != null)
             _cache.DataRefreshed -= OnCacheDataRefreshed;
-    }
-
-    private void DetachSectionsRepeater()
-    {
-        if (_sectionsDetachedForNavigationCache || RegionsRepeater == null)
-            return;
-
-        RegionsRepeater.ItemsSource = null;
-        ResetRegionsLayoutCache();
-        _sectionsDetachedForNavigationCache = true;
-    }
-
-    private void AttachSectionsRepeater()
-    {
-        if (!_sectionsDetachedForNavigationCache || RegionsRepeater == null)
-            return;
-
-        ResetRegionsLayoutCache();
-        RegionsRepeater.ItemsSource = ViewModel.HeroAdapter.Regions;
-        _sectionsDetachedForNavigationCache = false;
     }
 
     private void ResetRegionsLayoutCache()
@@ -643,8 +528,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         if (_postNavigationResumeQueued)
             return;
 
-        var restoreFromTrim = _trimmedForNavigationCache;
-        var resumeFromCache = mode == PageHostNavigationMode.New && !restoreFromTrim;
+        var resumeFromCache = mode == PageHostNavigationMode.New;
         _postNavigationResumeQueued = true;
 
         if (!DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
@@ -662,11 +546,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
                         Bindings?.Update();
                     }
 
-                    if (restoreFromTrim)
-                    {
-                        RestoreFromNavigationCache();
-                    }
-                    else if (resumeFromCache)
+                    if (resumeFromCache)
                     {
                         // Rehydrate rebuilds Sections + Chips from the cached
                         // home-feed response. Keep it outside the nav stage so
@@ -680,130 +560,6 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         {
             _postNavigationResumeQueued = false;
         }
-    }
-
-    private void QueueRestoredLayoutRefresh()
-    {
-        if (_isDisposed)
-            return;
-
-        var generation = ++_layoutRecoveryGeneration;
-        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
-        {
-            if (_isDisposed || _isNavigatedAway || generation != _layoutRecoveryGeneration)
-                return;
-
-            ResetRegionsLayoutCache();
-            RegionsRepeater?.InvalidateMeasure();
-            ContentContainer?.InvalidateMeasure();
-        });
-    }
-
-    private void TryApplyPendingSleepState()
-    {
-        if (_pendingSleepState == null || ViewModel.IsLoading || ContentContainer == null)
-            return;
-
-        var state = _pendingSleepState;
-        _pendingSleepState = null;
-
-        if (state.VerticalOffset <= 0)
-        {
-            EndScrollRestore(_scrollRestoreGeneration);
-            return;
-        }
-
-        BeginScrollRestore();
-        var generation = _scrollRestoreGeneration;
-        _ = RestoreScrollOffsetAsync(state.VerticalOffset, generation);
-    }
-
-    private void BeginScrollRestoreIfNeeded()
-    {
-        if (_pendingSleepState is { VerticalOffset: > 0 })
-            BeginScrollRestore();
-    }
-
-    private void BeginScrollRestore()
-    {
-        _scrollRestoreGeneration++;
-        _isRestoringScroll = true;
-        ContentCard.IsImageLoadingSuspended = true;
-        _logger?.LogDebug("[homescroll] Begin gen={Gen} (suspend ON)", _scrollRestoreGeneration);
-
-        // Watchdog — see ScrollRestoreWatchdogMs comment. If neither the
-        // normal RestoreScrollOffsetAsync completion nor an OnNavigatedFrom /
-        // Dispose path reaches EndScrollRestore in time, force-clear here.
-        var generation = _scrollRestoreGeneration;
-        _ = WatchdogClearSuspensionAsync(generation);
-    }
-
-    private async Task WatchdogClearSuspensionAsync(int generation)
-    {
-        try
-        {
-            await Task.Delay(ScrollRestoreWatchdogMs).ConfigureAwait(true);
-        }
-        catch { return; }
-        if (_isDisposed) return;
-        _logger?.LogDebug("[homescroll] Watchdog fired gen={Gen}", generation);
-        EndScrollRestore(generation);
-    }
-
-    private void CancelScrollRestore()
-    {
-        _scrollRestoreGeneration++;
-        _isRestoringScroll = false;
-        ContentCard.IsImageLoadingSuspended = false;
-        _logger?.LogDebug("[homescroll] Cancel → gen bumped to {Gen}, suspend OFF", _scrollRestoreGeneration);
-    }
-
-    private async Task RestoreScrollOffsetAsync(double offset, int generation)
-    {
-        for (var attempt = 0; attempt < ScrollRestoreMaxAttempts; attempt++)
-        {
-            await Task.Yield();
-            if (attempt > 0)
-                await Task.Delay(ScrollRestoreRetryDelayMs);
-
-            if (_isDisposed || _isNavigatedAway || generation != _scrollRestoreGeneration || ContentContainer == null)
-                return;
-
-            var maxOffset = Math.Max(0, ContentContainer.ExtentHeight - ContentContainer.ViewportHeight);
-            if (maxOffset <= 0 && attempt + 1 < ScrollRestoreMaxAttempts)
-                continue;
-
-            var target = Math.Clamp(offset, 0, maxOffset);
-            ContentContainer.ScrollToImmediate(0, target);
-
-            // EffectiveViewport propagation to RegionsRepeater needs a layout
-            // cycle after ScrollToImmediate. Invalidate and let XAML process it
-            // naturally; forcing UpdateLayout here made home resume block the
-            // UI thread for hundreds of milliseconds on large feeds.
-            RegionsRepeater?.InvalidateMeasure();
-            ContentContainer?.InvalidateMeasure();
-
-            QueueRestoredLayoutRefresh();
-            await Task.Yield();
-            await Task.Delay(ScrollRestoreRetryDelayMs);
-            EndScrollRestore(generation);
-            return;
-        }
-
-        EndScrollRestore(generation);
-    }
-
-    private void EndScrollRestore(int generation)
-    {
-        if (generation != _scrollRestoreGeneration)
-        {
-            _logger?.LogDebug("[homescroll] End gen={Gen} STALE (cur={Cur}) → ignored", generation, _scrollRestoreGeneration);
-            return;
-        }
-
-        _isRestoringScroll = false;
-        ContentCard.IsImageLoadingSuspended = false;
-        _logger?.LogDebug("[homescroll] End gen={Gen} → suspend OFF", generation);
     }
 
     // ── Card click handlers (used by both ContentCard and baseline buttons) ──
@@ -1113,8 +869,6 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         if (chip != null)
             _ = ViewModel.SelectChipCommand.ExecuteAsync(chip);
     }
-
-    private sealed record HomePageSleepState(double VerticalOffset);
 }
 
 /// <summary>
