@@ -64,6 +64,16 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
     private bool _restoringSelection;
     private readonly HashSet<Track.TrackItem> _itemsViewRows = new();
     private int _projectionDiagnosticGeneration;
+    // Reorder settle reveal: a re-realized container is hidden the instant it's prepared
+    // and revealed only after the mis-arranged FIRST post-Reset arrange frame has been
+    // skipped (ItemsRepeater's first arrange after the commit Reset lands rows near the
+    // insertion one pitch too low, then self-corrects on the next layout pass — revealing
+    // on the next frame instead of immediately is what hides that one bad frame).
+    // Reorder settle mask: while the post-commit arrange settles (ItemsRepeater's first
+    // arrange after the Reset mis-places the rows near the insertion for a frame or two),
+    // hide ONLY the rows that are off their expected grid position — never the whole list.
+    private EventHandler<object>? _reorderSettleHook;
+    private int _reorderSettleTicks;
     // Centralized LazyTrackItem.PropertyChanged subscription book-keeping. One
     // shared handler (_lazyItemHandler) is attached at most once per source
     // LazyTrackItem; the realized row is looked up via _rowByLazyItem on
@@ -157,6 +167,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
             _rowsRepeater.ElementPrepared -= RowsRepeater_ElementPrepared;
             _rowsRepeater = null;
         }
+        if (_reorderSettleHook is not null)
+            StopReorderSettleMask(revealAll: true);
     }
 
     private void HookRowsItemsRepeater()
@@ -475,20 +487,11 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         if (_reorder?.IsLiftedContainer(container) == true)
             return;
 
-        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(container);
-        visual.StopAnimation("Translation");
-        visual.StopAnimation("Scale");
-        // Zero the COMPOSITION "Translation" facade directly. ReorderDisplacement
-        // offsets neighbours via visual.Properties.InsertVector3("Translation", …),
-        // which desyncs from the XAML UIElement.Translation property — so clearing
-        // only container.Translation (below) is a silent no-op and the offset
-        // survives the recycle, arranging the reused row at its predecessor's slot.
-        visual.Properties.InsertVector3("Translation", Vector3.Zero);
-        visual.Scale = Vector3.One;
-        container.Translation = Vector3.Zero;
-        container.Shadow = null;
-        container.Opacity = 1;
-        Canvas.SetZIndex(container, 0);
+        // Zeroes BOTH the XAML lift channel and the composition displacement facade
+        // (ReorderDisplacement uses InsertVector3, which container.Translation=0 alone
+        // doesn't clear), enabling the Translation facade first so StopAnimation can't
+        // throw on a never-translated container.
+        ScrubContainerReorderTransform(container);
     }
 
     private bool ShouldShowPopularityBadge(object? row)
@@ -1892,10 +1895,101 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         _reorderSettleUntilTicks = settleUntil;
         Behaviors.StaggeredEntrance.SuppressUntil(settleUntil);
 
+        var draggedTitle = from >= 0 && from < _visibleRows.Count && _visibleRows[from] is ITrackItem dt
+            ? dt.Title : "?";
+
         // PlaylistTrackListViewModel.ReorderTracksAsync does the gap→insert mapping,
-        // OriginalIndex renumber, optimistic full-reset, and backend write.
+        // OriginalIndex renumber, optimistic reset, and backend write — and now SKIPS
+        // the redundant re-realize on every matching dealer echo (idempotent reproject),
+        // so the list no longer re-renders repeatedly ("jumps around") after one drop.
         TracksReorderRequested?.Invoke(from, length, toGapSlot);
+
+        // Discard the built-in StackLayout's stale position cache so the reordered rows
+        // arrange at the correct Y. (The echo that used to "correct" the cache is now
+        // skipped, so this swap is what lands it.) Swapping re-arranges the existing
+        // rows without recycling them — no flash, scroll preserved.
+        RowsItemsView.Layout = new StackLayout { Orientation = Orientation.Vertical, Spacing = 0 };
+        RowsItemsView.UpdateLayout();
+        // ItemsRepeater's FIRST arrange after the Reset mis-places the rows near the
+        // insertion (off[i] == settled[i+1]); a second layout pass lands them correctly.
+        // Force that pass synchronously so the first rendered frame is already right.
+        _rowsRepeater?.InvalidateMeasure();
+        RowsItemsView.InvalidateMeasure();
+        RowsItemsView.UpdateLayout();
+        // Safety net for any residual transient: hide only the still-mis-placed rows until
+        // they land (never the whole list), so neither the overlap nor a blank ever shows.
+        EnsureReorderSettleMask();
+        StartReorderOverlapSnapshot(draggedTitle, from, toGapSlot);
         return true;
+    }
+
+    // ── Reorder overlap diagnostics (temporary) ─────────────────────────────
+    // Logs EVERY realized container's bound title + arranged Y + both opacity channels
+    // for a short window after the drop, sorted by Y, flagging any two containers that
+    // sit within half a row pitch of each other (the visible overlap). This shows which
+    // two rows double-paint at one Y and which is the stale one.
+    private void StartReorderOverlapSnapshot(string draggedTitle, int from, int slot)
+    {
+        System.Diagnostics.Debug.WriteLine(
+            $"[odbg] === commit from={from} slot={slot} dragged='{draggedTitle}' visibleCount={_visibleRows.Count} ===");
+        var frame = 0;
+        System.EventHandler<object>? handler = null;
+        handler = (_, _) =>
+        {
+            frame++;
+            LogReorderContainers(frame);
+            if (frame >= 5 || _disposed)
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= handler;
+        };
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += handler;
+    }
+
+    private void LogReorderContainers(int frame)
+    {
+        try
+        {
+            var root = ((IReorderHost)this).ReorderCoordinateRoot;
+            var host = (DependencyObject?)_rowsRepeater ?? RowsItemsView;
+            var containers = new List<ItemContainer>();
+            CollectDescendants(host, containers);
+            var rows = new List<(string title, int idx, double top, double offY, double cOp, double vOp, bool vis, double fTY)>();
+            foreach (var c in containers)
+            {
+                var item = FindDescendant<Track.TrackItem>(c)?.Track;
+                var title = item?.Title ?? "<null>";
+                double top;
+                try { top = c.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, 0)).Y; }
+                catch { continue; }
+                var v = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(c);
+                v.Properties.TryGetVector3("Translation", out var facade);
+                var idx = item is null ? -1 : _visibleRows.IndexOf(item);
+                rows.Add((title.Length > 14 ? title[..14] : title, idx, top, v.Offset.Y, c.Opacity, v.Opacity, v.IsVisible, facade.Y));
+            }
+            rows.Sort((a, b) => a.top.CompareTo(b.top));
+            System.Diagnostics.Debug.WriteLine($"[odbg] f{frame,-2} realized={rows.Count}");
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                var overlap = i > 0 && !double.IsNaN(r.top) && !double.IsNaN(rows[i - 1].top)
+                              && Math.Abs(r.top - rows[i - 1].top) < 26 ? " <<OVERLAP" : "";
+                System.Diagnostics.Debug.WriteLine(
+                    $"[odbg]   '{r.title,-14}' i={r.idx,-2} top={r.top,7:F0} off={r.offY,7:F0} cO={r.cOp:F2} vO={r.vOp:F2} vis={(r.vis ? 1 : 0)} fY={r.fTY,6:F0}{overlap}");
+            }
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[odbg] f{frame} err {ex.Message}"); }
+    }
+
+    private static void CollectDescendants(DependencyObject root, List<ItemContainer> sink)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is ItemContainer ic)
+                sink.Add(ic);
+            else
+                CollectDescendants(child, sink); // don't descend into a container's own subtree
+        }
     }
 
     /// <summary>
@@ -1916,19 +2010,124 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         if (container is null)
             return;
         ScrubContainerReorderTransform(container);
+        // Drive the localized settle mask: hide only the rows that aren't on their grid
+        // position yet (see EnsureReorderSettleMask). Catches both the post-Reset arrange
+        // mis-placement and the pre-arrange origin (0,0) flash, without blanking the list.
+        EnsureReorderSettleMask();
+    }
+
+    // Runs each render frame during the reorder settle. Hides ONLY the containers whose
+    // rendered position is off the row grid (the transient post-Reset mis-arrange / origin
+    // flash) and reveals the rest, so the list never flashes blank and never shows the
+    // overlap. Unhooks once everything is on-grid (or after a safety cap).
+    private void EnsureReorderSettleMask()
+    {
+        if (_reorderSettleHook is not null) return;
+        _reorderSettleTicks = 0;
+        _reorderSettleHook = (_, _) =>
+        {
+            _reorderSettleTicks++;
+            if (_disposed) { StopReorderSettleMask(revealAll: false); return; }
+            var settled = ApplyReorderSettleMask();
+            if (settled || _reorderSettleTicks >= 12)
+                StopReorderSettleMask(revealAll: true);
+        };
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += _reorderSettleHook;
+    }
+
+    private void StopReorderSettleMask(bool revealAll)
+    {
+        if (_reorderSettleHook is not null)
+        {
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= _reorderSettleHook;
+            _reorderSettleHook = null;
+        }
+        if (!revealAll) return;
+        var containers = new List<ItemContainer>();
+        CollectDescendants((DependencyObject?)_rowsRepeater ?? RowsItemsView, containers);
+        foreach (var c in containers)
+            Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(c).IsVisible = true;
+    }
+
+    // Hides containers that are off their expected uniform-grid position; reveals the rest.
+    // Returns true when every realized row sits on the grid (settled). The grid (pitch +
+    // base) is derived from the realized rows themselves via medians, so the 1-2 mis-placed
+    // rows are outliers that get hidden, not the reference.
+    private bool ApplyReorderSettleMask()
+    {
+        var root = ((IReorderHost)this).ReorderCoordinateRoot;
+        var containers = new List<ItemContainer>();
+        CollectDescendants((DependencyObject?)_rowsRepeater ?? RowsItemsView, containers);
+
+        var rows = new List<(ItemContainer c, int idx, double top)>(containers.Count);
+        foreach (var c in containers)
+        {
+            var item = FindDescendant<Track.TrackItem>(c)?.Track;
+            if (item is null) continue;                 // footer / header — leave visible
+            var idx = _visibleRows.IndexOf(item);
+            if (idx < 0) continue;
+            double top;
+            try { top = c.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, 0)).Y; }
+            catch { continue; }
+            rows.Add((c, idx, top));
+        }
+        if (rows.Count < 3) return true;                // too few to derive a grid — don't mask
+        rows.Sort((a, b) => a.idx.CompareTo(b.idx));
+
+        var pitches = new List<double>(rows.Count);
+        for (int i = 1; i < rows.Count; i++)
+        {
+            var di = rows[i].idx - rows[i - 1].idx;
+            if (di > 0) pitches.Add((rows[i].top - rows[i - 1].top) / di);
+        }
+        if (pitches.Count == 0) return true;
+        var pitch = Median(pitches);
+        if (pitch < 1) return true;
+
+        var intercepts = new List<double>(rows.Count);
+        foreach (var r in rows) intercepts.Add(r.top - r.idx * pitch);
+        var baseY = Median(intercepts);
+        var tol = pitch * 0.4;
+
+        var allSettled = true;
+        foreach (var r in rows)
+        {
+            var mis = Math.Abs(r.top - (baseY + r.idx * pitch)) > tol;
+            Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(r.c).IsVisible = !mis;
+            if (mis) allSettled = false;
+        }
+        return allSettled;
+    }
+
+    private static double Median(List<double> values)
+    {
+        if (values.Count == 0) return 0;
+        values.Sort();
+        var n = values.Count;
+        return n % 2 == 1 ? values[n / 2] : (values[n / 2 - 1] + values[n / 2]) / 2;
     }
 
     /// <summary>Hard-resets every reorder transform channel on a row container.</summary>
     private static void ScrubContainerReorderTransform(ItemContainer container)
     {
-        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(container);
-        visual.StopAnimation("Translation");
-        visual.StopAnimation("Scale");
-        visual.Properties.InsertVector3("Translation", Vector3.Zero);
-        visual.Scale = Vector3.One;
-        container.Translation = Vector3.Zero;
-        container.Shadow = null;
-        container.Opacity = 1;
-        Canvas.SetZIndex(container, 0);
+        try
+        {
+            // Must enable the Translation facade FIRST: StopAnimation("Translation")
+            // throws "property not found" on a container that never had it enabled
+            // (e.g. rows realized by scrolling, past the entrance window). Enabling it
+            // is idempotent. Never let a realize-time handler throw into the layout pass.
+            Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(container, true);
+            var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(container);
+            visual.StopAnimation("Translation");
+            visual.StopAnimation("Scale");
+            visual.Properties.InsertVector3("Translation", Vector3.Zero);
+            visual.Scale = Vector3.One;
+            visual.IsVisible = true; // un-hide a recycled container before the settle re-hides it
+            container.Translation = Vector3.Zero;
+            container.Shadow = null;
+            container.Opacity = 1;
+            Canvas.SetZIndex(container, 0);
+        }
+        catch { /* a realize-time scrub must never throw into ItemsRepeater layout */ }
     }
 }

@@ -223,9 +223,20 @@ public sealed class ReorderController
     {
         Canvas.SetZIndex(c, 1000);
         ElementCompositionPreview.SetIsTranslationEnabled(c, true);
-        c.Translation = new Vector3(0, c.Translation.Y, LiftZ);
         c.Shadow ??= new ThemeShadow();
         var v = ElementCompositionPreview.GetElementVisual(c);
+        // Drive the lift's translation through the COMPOSITION facade (InsertVector3 /
+        // StartAnimation on the visual), NEVER the XAML c.Translation. The neighbour
+        // rows (ReorderDisplacement) already do this; the lifted row used to mix XAML
+        // c.Translation (drag-follow) with the facade (drop glide), and the two channels
+        // desync — once StartAnimation has touched the facade it stops tracking
+        // c.Translation. That desync was the "drop jumps proportional to the move" bug:
+        // the drag moved the row via c.Translation while the glide animated the facade
+        // from its stale 0, so the row leapt by the full move distance before settling.
+        // Reset any residual translation from a recycled container, then keep everything
+        // on the facade from here on.
+        try { v.StopAnimation("Translation"); } catch { /* facade not yet animated */ }
+        v.Properties.InsertVector3("Translation", new Vector3(0, 0, LiftZ));
         v.CenterPoint = new Vector3((float)(c.ActualWidth / 2), (float)(c.ActualHeight / 2), 0);
         var comp = v.Compositor;
         var scale = comp.CreateVector3KeyFrameAnimation();
@@ -241,6 +252,15 @@ public sealed class ReorderController
         v.StopAnimation("Scale");
         v.Scale = Vector3.One;
         v.StopAnimation("Translation");
+        // Clear the COMPOSITION "Translation" facade DIRECTLY — this is the fix for the
+        // "jumps proportional to how far you moved it" bug. The drop glide animates the
+        // facade (v.StartAnimation("Translation", …)) to restY (≈ the move distance);
+        // setting only the XAML c.Translation below is a NO-OP for a facade-set value
+        // (see TrackDataGrid.ClearStaleReorderTransform), so restY survived. Once the
+        // reproject re-arranged the row to its new slot it then rendered at
+        // new-slot + restY = an overshoot proportional to the move, same direction.
+        // InsertVector3 zeroes the facade so the row sits exactly at its new slot.
+        v.Properties.InsertVector3("Translation", Vector3.Zero);
         c.Translation = Vector3.Zero;
         c.Shadow = null;
         c.Opacity = 1;
@@ -252,7 +272,8 @@ public sealed class ReorderController
     {
         var dy = (float)(pointerPanelY - _pressOriginPanel.Y);
         foreach (var c in _spanContainers)
-            c.Translation = new Vector3(0, dy, LiftZ);
+            ElementCompositionPreview.GetElementVisual(c).Properties
+                .InsertVector3("Translation", new Vector3(0, dy, LiftZ));
     }
 
     /// <summary>Recompute the target gap from the pointer and displace neighbours.</summary>
@@ -371,10 +392,16 @@ public sealed class ReorderController
         anim.Duration = TimeSpan.FromMilliseconds(ms);
         anim.Target = "Translation";
 
+        // Non-lead span rows snap to the rest offset on the SAME facade channel the
+        // drag used (no glide for them — only the lead animates).
         foreach (var c in _spanContainers)
             if (!ReferenceEquals(c, lead))
-                c.Translation = new Vector3(0, restY, LiftZ);
+                ElementCompositionPreview.GetElementVisual(c).Properties
+                    .InsertVector3("Translation", new Vector3(0, restY, LiftZ));
 
+        // The facade already holds the drag offset (UpdateLiftFollow wrote it via
+        // InsertVector3), so this animates continuously from the drag position to restY
+        // — no leap to a stale 0 first.
         var batch = comp.CreateScopedBatch(CompositionBatchTypes.Animation);
         v.StartAnimation("Translation", anim);
         batch.End();
@@ -417,18 +444,28 @@ public sealed class ReorderController
         EndDrag();
         _committing = false;
 
-        // Commit (full reset) + force the arrange. The host (TrackDataGrid.CommitMove)
-        // opens a settle window: it suppresses the entrance animation on the re-realized
-        // rows — which was the real bug, the fade-slide-up replaying on the reordered
-        // rows and sliding them through each other — and scrubs any stale reorder
-        // transform off recycled containers synchronously, before they paint.
-        var ok = _host.CommitMove(from, len, slot);
-        _host.ReorderCoordinateRoot?.UpdateLayout();
-
-        // Hygiene for the next drag: drop the displacement map + lift refs. The old
-        // containers are recycled by the reset, so zeroing them here is invisible.
+        // Tear down the lift + displacement transforms. Do NOT hide/defer-reveal the
+        // span containers: the commit's full Reset RECYCLES the lifted container (it is
+        // NOT reused in place), so this captured reference is the off-screen phantom —
+        // hiding it and force-revealing it on a later tick paints that phantom (still
+        // bound to the dragged track) one slot off = the visible overlap / "one cell
+        // down" on short up-moves. The host's per-realize hide (TrackDataGrid's
+        // ElementPrepared scrub) owns visibility of the freshly realized rows, and
+        // CommitMove forces the arrange synchronously below, so no stale-slot frame
+        // renders between RestoreLift and the re-arrange. RestoreLift leaves Opacity=1.
         _displacement.ClearAllInstant();
-        foreach (var c in span) RestoreLift(c);
+        foreach (var c in span)
+            RestoreLift(c);
+
+        // Commit (full reset) + force the arrange. Wrapped so a throw in the re-realize
+        // can't leave the drag frozen (the teardown above already ran).
+        var ok = false;
+        try
+        {
+            ok = _host.CommitMove(from, len, slot);
+            _host.ReorderCoordinateRoot?.UpdateLayout();
+        }
+        catch { /* teardown already done above */ }
 
         if (ok)
         {
@@ -591,10 +628,11 @@ public sealed class ReorderController
         var rows = _host.GetRealizedRows();
         _slot = newSlot;
         ApplyDisplacement(rows, _slot);
-        // follow: lift block by the net displacement
+        // follow: lift block by the net displacement (composition facade, like the drag)
         var restY = (float)(RestingTop() - _liftStartTop);
         foreach (var c in _spanContainers)
-            c.Translation = new Vector3(0, restY, LiftZ);
+            ElementCompositionPreview.GetElementVisual(c).Properties
+                .InsertVector3("Translation", new Vector3(0, restY, LiftZ));
 
         var to = _slot > _from ? _slot - _length : _slot;
         ReorderAnnouncer.Announce(_keyboardRow, $"Position {Math.Clamp(to, 0, _host.ItemCount) + 1} of {_host.ItemCount}");

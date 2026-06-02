@@ -358,7 +358,29 @@ public sealed partial class PlaylistTrackListViewModel
             return;
 
         using var _ = UiOperationProfiler.Instance?.Profile("playlist.tracks.project");
-        FilteredTracks.ReplaceWith(BuildFilteredAndSortedTracks().Cast<ITrackItem>());
+        var next = BuildFilteredAndSortedTracks();
+        // Skip the re-realize when the visible order is unchanged. A drag-reorder
+        // commit is echoed back by the dealer one or more times carrying the SAME
+        // order; ReplaceWith on each echo tears down + rebuilds every row (each rebuild
+        // re-triggers the origin flash / a re-render) even though nothing the user can
+        // see changed. Compare by per-position track Uri; only reproject on a genuine
+        // order change (reorder/add/remove/sort). Metadata-only updates flow through
+        // in-place DTO PropertyChanged, so skipping here doesn't lose them.
+        if (TrackSequenceMatches(next))
+            return;
+        FilteredTracks.ReplaceWith(next.Cast<ITrackItem>());
+    }
+
+    private bool TrackSequenceMatches(IReadOnlyList<PlaylistTrackDto> next)
+    {
+        if (FilteredTracks.Count != next.Count)
+            return false;
+        for (var i = 0; i < next.Count; i++)
+        {
+            if (!string.Equals(FilteredTracks[i].Uri, next[i].Uri, StringComparison.Ordinal))
+                return false;
+        }
+        return true;
     }
 
     private IReadOnlyList<PlaylistTrackDto> BuildFilteredAndSortedTracks()
