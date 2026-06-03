@@ -221,13 +221,10 @@ public static class AddToPlaylistSubmenuBuilder
             // /playlist/v2 wire contract). Pass the full list — don't second-
             // guess.
             await mutations.AddTracksToPlaylistAsync(playlistId, uris).ConfigureAwait(true);
-            var noun = uris.Count == 1 ? "track" : "tracks";
-            notifications?.Show(
-                string.IsNullOrEmpty(playlistName)
-                    ? $"Added {uris.Count} {noun} to playlist"
-                    : $"Added {uris.Count} {noun} to {playlistName}",
-                NotificationSeverity.Success,
-                TimeSpan.FromSeconds(3));
+            // No success toast here: the undoable add already records a rich Activity
+            // entry (with the playlist name + Undo) via the action runner. Showing a
+            // toast too produced a duplicate, name-less "Added N tracks to playlist"
+            // entry in the Activity feed.
         }
         catch
         {
