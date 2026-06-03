@@ -17,10 +17,10 @@ namespace Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 /// </summary>
 public sealed partial class ExpandingGridLayout : VirtualizingLayout
 {
-    internal const double MinItemWidth = 160;
+    internal const double MinItemWidth = 184;
     internal const double ColumnSpacing = 16;
     internal const double RowSpacing = 20;
-    internal const double MinCardHeight = 220;
+    internal const double MinCardHeight = 252;
 
     // Uniform row height — grows to the tallest realized card, never below
     // MinCardHeight. Reset when the cell width changes (resize).

@@ -740,6 +740,24 @@ public sealed partial class LibraryDataService : ILibraryDataService
         // Canonicalize at the DTO boundary so OwnerId is a single-prefix URI and
         // OwnerName is the bare username (the resolver can replace it with a real
         // display name once the round-trip completes).
+        // The single-playlist content doesn't carry the owner's `public` flag — it
+        // lives on the playlist's rootlist entry — so source it from the cached
+        // rootlist decoration (authoritative for owned playlists) so the visibility
+        // toggle's label is correct. Cache-only + best-effort; falls back to the
+        // cached playlist value.
+        var isPublic = playlist.IsPublic;
+        try
+        {
+            var rootSnapshot = await _playlistCache.TryGetRootlistFromCacheAsync(ct);
+            if (rootSnapshot is not null
+                && rootSnapshot.Decorations.TryGetValue(playlist.Uri, out var deco))
+                isPublic = deco.IsPublic;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "GetPlaylistCoreAsync: rootlist IsPublic lookup failed for {Id}", playlistId);
+        }
+
         var bareOwner = string.IsNullOrWhiteSpace(playlist.OwnerUsername)
             ? string.Empty
             : Helpers.PlaylistUriHelpers.ExtractBareId(playlist.OwnerUsername, "spotify:user:");
@@ -765,7 +783,7 @@ public sealed partial class LibraryDataService : ILibraryDataService
             FollowerCount = 0,
             IsOwner = isOwner,
             IsCollaborative = playlist.IsCollaborative,
-            IsPublic = playlist.IsPublic,
+            IsPublic = isPublic,
             BasePermission = isOwner ? PlaylistBasePermission.Owner : MapBasePermission(playlist.BasePermission),
             Capabilities = MapCapabilities(
                 playlist.Capabilities,

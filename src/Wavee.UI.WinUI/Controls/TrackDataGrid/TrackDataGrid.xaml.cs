@@ -6,8 +6,10 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -608,6 +610,23 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
     {
         if (d is TrackDataGrid grid)
             grid.ApplyLoadingRowsVisibility();
+    }
+
+    /// <summary>
+    /// When true, the skeleton→content reveal cross-dissolves (skeleton fades out
+    /// while rows fade in) instead of a hard Visibility cut ("tracks just appear").
+    /// Opt-in because detail pages (Album/Playlist) already crossfade the whole
+    /// content at the page level via <c>ContentPageController</c> — only the
+    /// standalone library list views (Liked Songs, Your Episodes) need it here.
+    /// </summary>
+    public static readonly DependencyProperty CrossfadeRevealProperty =
+        DependencyProperty.Register(nameof(CrossfadeReveal), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(false));
+
+    public bool CrossfadeReveal
+    {
+        get => (bool)GetValue(CrossfadeRevealProperty);
+        set => SetValue(CrossfadeRevealProperty, value);
     }
 
     // Skeleton row count. When 0 (binding source unset or absent), falls back to
@@ -1453,6 +1472,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         rows.Add(new TrackDataGridFooterRow { Content = FooterContent });
     }
 
+    private bool _loadingRowsVisible;
+
     private void ApplyLoadingRowsVisibility()
     {
         if (LoadingRowsRepeater is null)
@@ -1461,9 +1482,57 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         // Suppress the skeleton overlay in scrolling-header (banner) mode: it
         // lives above the rows host, so it would paint ABOVE the in-rows banner.
         // The banner itself is the load affordance there; rows pop in when ready.
-        LoadingRowsRepeater.Visibility = IsLoading && _sourceSnapshot.Count == 0 && !HasScrollingHeader
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        var shouldShow = IsLoading && _sourceSnapshot.Count == 0 && !HasScrollingHeader;
+        var wasVisible = _loadingRowsVisible;
+        _loadingRowsVisible = shouldShow;
+
+        if (shouldShow)
+        {
+            LoadingRowsRepeater.Opacity = 1;
+            LoadingRowsRepeater.Visibility = Visibility.Visible;
+            return;
+        }
+
+        // Skeleton→content transition. Opt-in crossfade for standalone list views
+        // (detail pages crossfade at the page level, so they keep the hard cut).
+        if (wasVisible && CrossfadeReveal)
+        {
+            CrossfadeRevealRows();
+            return;
+        }
+
+        LoadingRowsRepeater.Visibility = Visibility.Collapsed;
+    }
+
+    private async void CrossfadeRevealRows()
+    {
+        const double durationMs = 200;
+        var skeleton = LoadingRowsRepeater;
+        var rows = RowsItemsViewHost;
+
+        if (rows != null)
+        {
+            rows.Opacity = 0;
+            AnimationBuilder.Create()
+                .Opacity(to: 1.0, duration: TimeSpan.FromMilliseconds(durationMs))
+                .Start(rows);
+        }
+        if (skeleton != null)
+            AnimationBuilder.Create()
+                .Opacity(to: 0.0, duration: TimeSpan.FromMilliseconds(durationMs))
+                .Start(skeleton);
+
+        try { await Task.Delay(TimeSpan.FromMilliseconds(durationMs)); }
+        catch { return; }
+
+        // If a new load re-showed the skeleton during the fade, leave it.
+        if (!_loadingRowsVisible && skeleton != null)
+        {
+            skeleton.Visibility = Visibility.Collapsed;
+            skeleton.Opacity = 1;
+        }
+        if (rows != null)
+            rows.Opacity = 1;
     }
 
     /// <summary>

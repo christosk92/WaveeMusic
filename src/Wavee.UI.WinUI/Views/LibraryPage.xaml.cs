@@ -204,8 +204,14 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, IPage
 
         if (deferColdCreation && !HasCachedViewFor(selectedItem))
         {
+            // Construct on the very next tick (Normal), not at idle (Low). The shell
+            // still paints one frame first so the nav click isn't blocked by view
+            // inflation, but the view + its loading skeleton then appear immediately
+            // instead of after a perceptible idle gap (the "content appears after a
+            // beat" jank). The view shows its own shimmer on construction, so there's
+            // no blank window — skeleton, then content.
             var generation = ++_deferredShowTabGeneration;
-            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Normal, () =>
             {
                 if (_disposed || generation != _deferredShowTabGeneration)
                     return;

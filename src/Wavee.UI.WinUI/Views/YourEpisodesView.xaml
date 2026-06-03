@@ -14,6 +14,7 @@
     xmlns:dto="using:Wavee.UI.Models"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:trackbehaviors="using:Wavee.UI.WinUI.Controls.Track.Behaviors"
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:media="using:Microsoft.UI.Xaml.Media"
@@ -453,8 +454,10 @@
                     Grid.Row="1"
                     Spacing="6"
                     Padding="6,0,6,0"
-                    x:Load="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <animations:Implicit.HideAnimations>
+                        <animations:OpacityAnimation Duration="0:0:0.2" From="1" To="0"/>
+                    </animations:Implicit.HideAnimations>
                     <Grid ColumnSpacing="8" Margin="0,4,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="32"/>
@@ -650,8 +653,10 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     Padding="10"
-                    x:Load="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <animations:Implicit.HideAnimations>
+                        <animations:OpacityAnimation Duration="0:0:0.2" From="1" To="0"/>
+                    </animations:Implicit.HideAnimations>
                     <Grid ColumnSpacing="10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="48"/>
@@ -694,8 +699,10 @@
                         x:Name="EpisodesListShimmer"
                         Spacing="12"
                         Padding="0,10,0,0"
-                        x:Load="{x:Bind ViewModel.ShowEpisodesShimmer, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.ShowEpisodesShimmer, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <animations:Implicit.HideAnimations>
+                            <animations:OpacityAnimation Duration="0:0:0.2" From="1" To="0"/>
+                        </animations:Implicit.HideAnimations>
                         <Grid ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="36"/>
@@ -761,8 +768,10 @@
                     x:Name="EpisodeDetailNarrowShimmer"
                     Spacing="10"
                     Padding="0,0,2,0"
-                    x:Load="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <animations:Implicit.HideAnimations>
+                        <animations:OpacityAnimation Duration="0:0:0.2" From="1" To="0"/>
+                    </animations:Implicit.HideAnimations>
                     <Grid ColumnSpacing="10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="64"/>

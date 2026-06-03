@@ -1423,27 +1423,6 @@ public sealed partial class PlaylistTrackListViewModel
         TracksChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Hibernate path — also dumps the empty-state genre grid and
-    /// FilteredTracks so the cached page doesn't pin realized item containers
-    /// while invisible in the Frame cache.</summary>
-    public void Hibernate()
-    {
-        Deactivate();
-        // Cached-page hibernate: raise a (resilient) Reset so the ItemsControl releases its
-        // realized containers; a raw Clear() here can E_FAIL while the page's surfaces are
-        // being dropped by the nav cache (issue #6).
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(FilteredTracks, []);
-        _allTracks = new List<PlaylistTrackDto>();
-        ShowOnlyVideoTracks = false;
-        NotifyVideoFilterProperties();
-        _suppressSessionSignal = true;
-        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(SessionControlChips, []);
-        SelectedSessionControlChip = null;
-        _suppressSessionSignal = false;
-        OnPropertyChanged(nameof(HasSessionControlChips));
-        TracksChanged?.Invoke(this, EventArgs.Empty);
-    }
-
     /// <summary>Cancels in-flight async work that belongs to this VM (session
     /// signal POST, empty-state genres fetch, search debounce).</summary>
     public void Deactivate()

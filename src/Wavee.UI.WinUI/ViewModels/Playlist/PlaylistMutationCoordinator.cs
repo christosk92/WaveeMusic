@@ -41,6 +41,9 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
     private readonly Action<string?> _playlistDescriptionSetter;
     private readonly Func<bool> _isCollaborativeProvider;
     private readonly Action<bool> _isCollaborativeSetter;
+    private readonly Func<bool> _isPublicProvider;
+    private readonly Action<bool> _isPublicSetter;
+    private readonly Func<bool> _isOwnerProvider;
     private readonly Func<bool> _canEditNameProvider;
     private readonly Func<bool> _canEditDescriptionProvider;
     private readonly Func<bool> _canEditPictureProvider;
@@ -61,6 +64,9 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
         Action<string?> playlistDescriptionSetter,
         Func<bool> isCollaborativeProvider,
         Action<bool> isCollaborativeSetter,
+        Func<bool> isPublicProvider,
+        Action<bool> isPublicSetter,
+        Func<bool> isOwnerProvider,
         Func<bool> canEditNameProvider,
         Func<bool> canEditDescriptionProvider,
         Func<bool> canEditPictureProvider,
@@ -80,6 +86,9 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
         _playlistDescriptionSetter = playlistDescriptionSetter;
         _isCollaborativeProvider = isCollaborativeProvider;
         _isCollaborativeSetter = isCollaborativeSetter;
+        _isPublicProvider = isPublicProvider;
+        _isPublicSetter = isPublicSetter;
+        _isOwnerProvider = isOwnerProvider;
         _canEditNameProvider = canEditNameProvider;
         _canEditDescriptionProvider = canEditDescriptionProvider;
         _canEditPictureProvider = canEditPictureProvider;
@@ -101,6 +110,9 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
     public bool CanEditItems => _canEditItemsProvider();
     public bool CanDelete => _canDeleteProvider();
 
+    /// <summary>Owner-only: only the playlist owner can change its visibility.</summary>
+    public bool CanChangeVisibility => _isOwnerProvider();
+
     /// <summary>
     /// Fan out CanExecute notifications to every capability-gated command on
     /// this VM. Called by the parent whenever the header's envelope (and thus
@@ -115,6 +127,7 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
         RemoveCoverCommand.NotifyCanExecuteChanged();
         DeletePlaylistCommand.NotifyCanExecuteChanged();
         ToggleCollaborativeCommand.NotifyCanExecuteChanged();
+        ToggleVisibilityCommand.NotifyCanExecuteChanged();
 
         OnPropertyChanged(nameof(CanEditName));
         OnPropertyChanged(nameof(CanEditDescription));
@@ -122,6 +135,7 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
         OnPropertyChanged(nameof(CanEditCollaborative));
         OnPropertyChanged(nameof(CanEditItems));
         OnPropertyChanged(nameof(CanDelete));
+        OnPropertyChanged(nameof(CanChangeVisibility));
     }
 
     // ── Inline edit (rename + description) ───────────────────────────────────
@@ -254,6 +268,34 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
             CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
                 .GetService<INotificationService>()?
                 .Show("Couldn't update sharing setting", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+    }
+
+    /// <summary>
+    /// Optimistically flips the playlist's visibility (public ↔ private) and
+    /// persists via the mutation service (base permission VIEWER/BLOCKED + the
+    /// rootlist <c>public</c> flag). Owner-only; reverts on failure.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanChangeVisibility))]
+    private async Task ToggleVisibilityAsync()
+    {
+        var playlistId = PlaylistId;
+        if (string.IsNullOrEmpty(playlistId)) return;
+
+        var previous = _isPublicProvider();
+        var next = !previous;
+        _isPublicSetter(next);
+        try
+        {
+            await _playlistMutationService.SetPlaylistVisibilityAsync(playlistId, next).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "ToggleVisibilityAsync failed for playlist '{Id}'; reverting", playlistId);
+            _isPublicSetter(previous);
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't update playlist visibility", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
         }
     }
 

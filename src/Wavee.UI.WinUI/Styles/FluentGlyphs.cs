@@ -155,6 +155,8 @@ public static class FluentGlyphs
     public const string More = "\uE712";
     /// <summary>Library \u2014 E895. Book-stack glyph for library / collection surfaces.</summary>
     public const string Library = "\uE895";
+    /// <summary>Globe \u2014 E774. World/public-visibility affordance (playlist make-public/private).</summary>
+    public const string Globe = "\uE774";
     /// <summary>Search \u2014 E721. Magnifying-glass search affordance.</summary>
     public const string Search = "\uE721";
     /// <summary>Forward \u2014 E71B. Arc-arrow forward navigation (paired with <see cref="ChromeBack"/>).</summary>

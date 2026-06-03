@@ -36,6 +36,13 @@ public sealed class PlaylistMutationService : IPlaylistMutationService, IPlaylis
     private readonly ILogger<PlaylistMutationService>? _logger;
     private readonly string _databasePath;
 
+    // Last-known base-permission revision per playlist (base64), so rapid
+    // visibility re-toggles chain off the server's resulting revision. Seeded
+    // with the "default" sentinel, which the server accepts when we don't yet
+    // know the current revision (so no GET is required).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _lastPermissionRevision = new();
+    private const string DefaultPermissionRevision = "ZGVmYXVsdA=="; // base64("default")
+
     public PlaylistMutationService(
         IMetadataDatabase database,
         IPlaylistCacheService playlistCache,
@@ -171,6 +178,99 @@ public sealed class PlaylistMutationService : IPlaylistMutationService, IPlaylis
             TrackCount = trackCount,
             IsOwner = true
         };
+    }
+
+    public async Task SetPlaylistVisibilityAsync(string playlistId, bool isPublic, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+
+        var userData = _session.GetUserData()
+            ?? throw new InvalidOperationException("SetPlaylistVisibilityAsync requires an authenticated session");
+        var username = userData.Username;
+        var playlistUri = PlaylistUriHelpers.NormalizePlaylistUri(playlistId);
+        var spClient = _session.SpClient;
+
+        // ── Call B: base permission — the authoritative who-can-view control. ──
+        // VIEWER = public, BLOCKED = private. Chain off the last resulting
+        // revision when we have one, else use the "default" sentinel. Throws on
+        // failure so the caller reverts its optimistic UI.
+        var level = isPublic ? "VIEWER" : "BLOCKED";
+        var revision = _lastPermissionRevision.TryGetValue(playlistUri, out var known)
+            ? known
+            : DefaultPermissionRevision;
+        var resulting = await spClient.SetPlaylistBasePermissionAsync(playlistUri, level, revision, ct);
+        if (!string.IsNullOrEmpty(resulting))
+            _lastPermissionRevision[playlistUri] = resulting!;
+
+        // ── Call A: the `public` flag on the playlist's rootlist entry. ──
+        // Best-effort: the visibility (call B) already succeeded, so a failure
+        // here (profile/discoverability flag only) must not fail the toggle.
+        try
+        {
+            var rootlist = await _playlistCache.GetRootlistAsync(ct: ct);
+            var index = RootlistGraph.FindRootlistPlaylistIndex(rootlist, playlistUri);
+            if (index < 0)
+            {
+                rootlist = await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
+                index = RootlistGraph.FindRootlistPlaylistIndex(rootlist, playlistUri);
+            }
+
+            if (index >= 0)
+            {
+                var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var changes = new Wavee.Protocol.Playlist.ListChanges
+                {
+                    BaseRevision = ByteString.CopyFrom(rootlist.Revision),
+                    Deltas =
+                    {
+                        new Wavee.Protocol.Playlist.Delta
+                        {
+                            Ops =
+                            {
+                                new Wavee.Protocol.Playlist.Op
+                                {
+                                    Kind = Wavee.Protocol.Playlist.Op.Types.Kind.UpdateItemAttributes,
+                                    UpdateItemAttributes = new Wavee.Protocol.Playlist.UpdateItemAttributes
+                                    {
+                                        Index = index,
+                                        NewAttributes = new Wavee.Protocol.Playlist.ItemAttributesPartialState
+                                        {
+                                            Values = new Wavee.Protocol.Playlist.ItemAttributes { Public = isPublic },
+                                        },
+                                    }
+                                }
+                            },
+                            Info = RootlistGraph.BuildRootlistChangeInfo(username, nowMs),
+                        }
+                    },
+                    WantResultingRevisions = true,
+                    WantSyncResult = true,
+                    Nonces = { RootlistGraph.NextRootlistNonce() },
+                };
+
+                await spClient.PostRootlistChangesAsync(username, changes, ct);
+                await _playlistCache.InvalidateAsync(PlaylistCacheUris.Rootlist, ct);
+                try
+                {
+                    await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger?.LogDebug(ex, "SetPlaylistVisibilityAsync: rootlist refresh failed for {Uri}", playlistUri);
+                }
+            }
+            else
+            {
+                _logger?.LogDebug(
+                    "SetPlaylistVisibilityAsync: {Uri} not in rootlist; skipped the public-flag op", playlistUri);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "SetPlaylistVisibilityAsync: rootlist public-flag op failed for {Uri}", playlistUri);
+        }
+
+        _changeBus.Publish(ChangeScope.Playlists);
     }
 
     public async Task AddTracksToPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)

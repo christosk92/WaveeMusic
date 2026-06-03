@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Wavee.UI.WinUI.Data.Models;
@@ -7,6 +8,12 @@ namespace Wavee.UI.WinUI.Data.Models;
 // `x:DataType` registration, which fails to compile when the type has
 // `required` members. Defaults (`= ""`) keep nullability happy while still
 // surfacing missing data visibly at runtime if a release entry is incomplete.
+//
+// For the same reason, members of types bound as `x:DataType` (ChangelogFeature
+// and ChangelogFix) use `set`, NOT `init`: the generated type-info emits a
+// property setter per bound member and won't compile against init-only members.
+// ChangelogRelease is read from code-behind (not an x:DataType), so it keeps
+// `init`. Do not "tidy" these back to `init` — it breaks the build.
 public sealed class ChangelogRelease
 {
     public string Version { get; init; } = "";
@@ -33,4 +40,21 @@ public sealed class ChangelogFeature
     public string DetailDescription { get; set; } = "";
     public string? NavigationHint { get; set; }
     public string? ImageAssetPath { get; set; }
+
+    /// <summary>
+    /// Optional itemized list (e.g. a "Bugfixes" section) rendered below the
+    /// detail description, each row linking to its GitHub issue / PR.
+    /// </summary>
+    public IReadOnlyList<ChangelogFix> Fixes { get; set; } = [];
+}
+
+public sealed class ChangelogFix
+{
+    public string Text { get; set; } = "";
+
+    /// <summary>Short reference label shown as the link, e.g. "#24".</summary>
+    public string Reference { get; set; } = "";
+
+    /// <summary>Target of the reference link (GitHub issue / PR). Null = no link.</summary>
+    public Uri? Url { get; set; }
 }
