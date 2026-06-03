@@ -22,8 +22,6 @@
     xmlns:contracts="using:Wavee.UI.Contracts"
     xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
     xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
-    xmlns:playlist="using:Wavee.UI.WinUI.Controls.Playlist"
-    xmlns:transitions="using:CommunityToolkit.WinUI"
     x:Name="PageRoot"
     helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
@@ -33,23 +31,6 @@
         <DataTemplate x:Key="EmptyPlaylistGenreChipTemplate" x:DataType="home:BrowseAllItem">
             <homeViews:BrowseChip Item="{x:Bind}"/>
         </DataTemplate>
-
-        <!-- Banner-mode shy header: the track-list scroller drives this now,
-             so playlist rows stay virtualized while the compact pill remains. -->
-        <transitions:TransitionHelper x:Key="PlaylistShyHeaderTransition"
-                                      Duration="0:0:0.30"
-                                      ReverseDuration="0:0:0.24"
-                                      DefaultEasingMode="EaseInOut"
-                                      SourceToggleMethod="ByVisibility"
-                                      TargetToggleMethod="ByVisibility"
-                                      IndependentElementShowDuration="0:0:0.16"
-                                      IndependentElementShowDelay="0:0:0.04"
-                                      IndependentElementHideDuration="0:0:0.10"
-                                      IsHitTestVisibleWhenAnimating="False">
-            <transitions:TransitionConfig Id="card-shell" ScaleMode="None"/>
-            <transitions:TransitionConfig Id="playlist-name" ScaleMode="None"/>
-            <transitions:TransitionConfig Id="playlist-owner" ScaleMode="None"/>
-        </transitions:TransitionHelper>
 
     </UserControl.Resources>
 
@@ -87,13 +68,13 @@
               HorizontalAlignment="Stretch"
               Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <Grid.RowDefinitions>
-                <!-- Banner row: 280 px hero band spanning all three columns.
-                     Either composition image (HeaderImageUrl present) or a
-                     procedural gradient (AnimatedHeroBackground), with the
-                     title overlaid at the bottom-left. -->
-                <RowDefinition Height="Auto"/>
-                <!-- Content row stays finite so the metadata column and track
-                     table can each own their own vertical scroll surface. -->
+                <!-- Vestigial: the banner moved into the track grid's in-rows
+                     header. Kept at 0 so the content row's Grid.Row="1" numbering
+                     stays unchanged. -->
+                <RowDefinition Height="0"/>
+                <!-- Content row: metadata column (left) + track table (right);
+                     the track grid owns the vertical scroll for both the banner
+                     and the rows now. -->
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
@@ -102,151 +83,28 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- ╔══════════════════════════════════════════════════════════
-                 ║ HERO BANNER ROW
-                 ║ Spans all 3 columns at the top. Two mutually-exclusive
-                 ║ background renderers stacked behind the title overlay:
-                 ║   1. HeaderBackgroundHost — composition image surface for
-                 ║      editorial / radio playlists with header_image_url_desktop.
-                 ║      Image + scrim composition visuals attached in code-behind.
-                 ║   2. AnimatedHeroBackground — Win2D + MeshGradientShader
-                 ║      seeded with palette-extracted BannerPrimaryColor /
-                 ║      BannerAccentColor for playlists without a header image.
-                 ║ XAML scrim Border on top provides bottom-weighted darken-
-                 ║ to-theme-surface so the title text stays legible against
-                 ║ either background.
-                 ╚══════════════════════════════════════════════════════════ -->
-            <Grid x:Name="HeroBannerRow"
-                  Grid.Row="0"
-                  Grid.ColumnSpan="3"
-                  Height="280"
-                  Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeBannerVisibilityConverter}}">
-
-                <!-- Procedural fallback (BACK layer). Visible only when
-                     HeaderImageUrl is null — most user-created playlists, plus
-                     the brief shimmer window before the editorial image lands,
-                     plus the rare image-decode-failure case (see
-                     OnHeroImageLoadCompleted in code-behind which clears
-                     HeaderImageUrl on failure). The two color DPs are fed from
-                     the cover-extracted AlbumPalette via the VM. -->
-                <cards:AnimatedHeroBackground
-                    x:Name="HeroBannerFallback"
-                    PrimaryColor="{x:Bind ViewModel.Header.BannerPrimaryColor, Mode=OneWay}"
-                    AccentColor="{x:Bind ViewModel.Header.BannerAccentColor, Mode=OneWay}"
-                    Visibility="{x:Bind ViewModel.Header.HasHeaderImage, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-
-                <!-- Composition image surface (FRONT layer). ALWAYS visible
-                     inside the banner row — no per-element Visibility binding.
-                     When HeaderImageUrl is null the composition surface is
-                     null (renders transparent) and the AnimatedHeroBackground
-                     behind shows through. When the URL arrives, the surface
-                     loads and the image covers the gradient.
-                     Why no Visibility binding: gating Visibility on
-                     HasHeaderImage caused intermittent empty banners on cold
-                     load — the host was Collapsed (ActualSize=0) when
-                     HeaderBackgroundHost_Loaded built the composition tree
-                     and ApplyHeaderBackground sized the decode, then the
-                     Collapsed→Visible transition didn't reliably re-sync the
-                     SpriteVisual's RelativeSizeAdjustment. Always-visible
-                     keeps the host at full size from first paint. -->
-                <Border x:Name="HeaderBackgroundHost"
-                        IsHitTestVisible="False"/>
-
-                <!-- Title + source overlay (bottom-left of the banner). The
-                     InlineEditableText keeps owner-rename inline-edit behavior
-                     in its new home — click the title to edit (owners only).
-                     Title shimmer occupies the same Y position so the swap
-                     when PlaylistName arrives is opacity-only, no shift.
-                     BannerOverlayPanel is the shy-header transition source for
-                     banner-mode playlists. -->
-                <Grid x:Name="BannerOverlayPanel"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch">
-                    <Border transitions:TransitionHelper.Id="card-shell"
-                            Background="Transparent"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Stretch"/>
-                    <Grid VerticalAlignment="Bottom"
-                          Margin="32,0,32,20">
-                        <StackPanel Spacing="6" HorizontalAlignment="Stretch">
-                            <Grid MinHeight="48" HorizontalAlignment="Stretch">
-                                <controls1:InlineEditableText
-                                    x:Name="BannerTitleEditor"
-                                    Text="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay}"
-                                    ToolTipService.ToolTip="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay}"
-                                    IsEditable="{x:Bind ViewModel.Header.CanEditName, Mode=OneWay}"
-                                    IsBusy="{x:Bind ViewModel.Mutations.IsRenaming, Mode=OneWay}"
-                                    MaxLength="100"
-                                    MaxLines="2"
-                                    FontSize="{x:Bind helpers:TitleFontSizer.Hero(ViewModel.Header.PlaylistName), Mode=OneWay}"
-                                    FontWeight="Bold"
-                                    TextAlignment="Left"
-                                    HorizontalContentAlignment="Stretch"
-                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                    Committed="PlaylistTitleEditor_Committed"
-                                    Visibility="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                    transitions:TransitionHelper.Id="playlist-name"/>
-                                <controls:Shimmer Width="480" Height="40" CornerRadius="6" HorizontalAlignment="Left"
-                                                  Visibility="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                            </Grid>
-                            <TextBlock Text="{x:Bind ViewModel.Header.OwnerName, Mode=OneWay}"
-                                       FontSize="14"
-                                       FontWeight="SemiBold"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Visibility="{x:Bind ViewModel.Header.OwnerName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                       transitions:TransitionHelper.Id="playlist-owner"/>
-                        </StackPanel>
-                    </Grid>
-                </Grid>
-            </Grid>
+            <!-- Banner-mode hero now scrolls INSIDE the track grid as its in-rows
+                 header (see <tdg:TrackDataGrid.HeaderContent> below) so it scrolls
+                 away with the rows and the cover + title live in the left column.
+                 Row 0 of this grid is therefore vestigial. -->
 
             <!-- Shimmer skeleton for left panel (visible while metadata loads).
                  Wrapper Grid keeps the IContentPageHost.ShimmerContainer ref +
-                 the narrow VSM Visibility setter pointing at one element.
-                 Inside, two skeletons branch by LayoutMode so the shimmer→
-                 loaded swap is opacity-only (geometry matches the loaded
-                 state for whichever layout mode is active):
-                   • Banner mode: owner-row + stats + actions (no cover/title
-                     — those live in the banner row above, with their own
-                     overlay shimmer).
-                   • Cover mode: cover + title + owner-row + stats + actions
-                     (matches the pre-redesign skeleton for user playlists). -->
+                 the narrow VSM Visibility setter pointing at one element. A
+                 single skeleton serves both layout modes now (cover + title +
+                 owner + stats + actions), since both modes render the cover +
+                 title in this left column — the shimmer→loaded swap stays
+                 opacity-only. -->
             <Grid x:Name="ShimmerContainer"
                   x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
                   Grid.Row="1" Grid.Column="0"
                   HorizontalAlignment="Stretch" VerticalAlignment="Top"
                   Padding="32,24,16,24">
-                <!-- Banner-mode skeleton (no cover/title — those live in the
-                     banner row above). Owner + stats + Play/Shuffle + 5-pill
-                     cluster shimmer. Geometry mirrors the loaded layout exactly. -->
-                <StackPanel Spacing="14"
-                            Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeBannerVisibilityConverter}}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <controls:Shimmer Width="24" Height="24" CornerRadius="12"/>
-                        <controls:Shimmer Width="120" Height="16" VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <controls:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
-                    <!-- Play + Shuffle -->
-                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                        <controls:Shimmer Width="86" Height="40" CornerRadius="20"/>
-                        <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
-                    </StackPanel>
-                    <!-- 5-pill cluster -->
-                    <controls:WrapPanel Orientation="Horizontal"
-                                        HorizontalSpacing="6" VerticalSpacing="6"
-                                        Margin="0,4,0,0">
-                        <controls:Shimmer Width="74"  Height="36" CornerRadius="18"/>
-                        <controls:Shimmer Width="80"  Height="36" CornerRadius="18"/>
-                        <controls:Shimmer Width="136" Height="36" CornerRadius="18"/>
-                        <controls:Shimmer Width="128" Height="36" CornerRadius="18"/>
-                        <controls:Shimmer Width="108" Height="36" CornerRadius="18"/>
-                    </controls:WrapPanel>
-                </StackPanel>
-                <!-- Cover-mode skeleton: cover + hero-scale title + owner row +
-                     stats + Play/Shuffle + 5-pill cluster. Matches the loaded
-                     state so the swap is opacity-only. -->
-                <StackPanel Spacing="14"
-                            Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
+                <!-- Single skeleton for both modes: cover + hero-scale title +
+                     owner row + stats + Play/Shuffle + 5-pill cluster. Both layout
+                     modes now show the cover + title in this left column, so the
+                     shimmer→loaded swap is opacity-only in either mode. -->
+                <StackPanel Spacing="14">
                     <controls:Shimmer Height="220" CornerRadius="8" HorizontalAlignment="Stretch"/>
                     <!-- Hero-scale title bar -->
                     <controls:Shimmer Width="260" Height="44" HorizontalAlignment="Left" CornerRadius="6"/>
@@ -272,9 +130,10 @@
             </Grid>
 
             <!-- Wide left panel: metadata owns its own scroll surface. The cover
-                 Grid + title block are gated on LayoutMode == Cover (user
-                 playlists). Banner-mode playlists hide both — their title lives
-                 in the banner row's overlay above, and there is no square cover. -->
+                 Grid + title block now render in BOTH layout modes — banner-mode
+                 (editorial) playlists show the square cover + title here in the
+                 left column too, while the wide hero scrolls in the track grid's
+                 in-rows header on the right. -->
             <ScrollView x:Name="LeftColumnScrollView"
                         Grid.Row="1"
                         Grid.Column="0"
@@ -300,8 +159,7 @@
                      title Grid below has its own name) so the layout-transition
                      fade-in in code-behind can target this surface independent
                      of the rest of WidePlaylistPanel which is already visible. -->
-                <Grid x:Name="CoverHeroBlock" HorizontalAlignment="Stretch"
-                      Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
+                <Grid x:Name="CoverHeroBlock" HorizontalAlignment="Stretch">
                     <winUi:Effects.Shadow>
                         <ui:AttachedCardShadow BlurRadius="32" Offset="0,12" Opacity="0.28" Color="Black" CornerRadius="8" InnerContentClipMode="CompositionMaskBrush"/>
                     </winUi:Effects.Shadow>
@@ -371,8 +229,7 @@
                      inherits the FontSize / FontWeight DPs. Hidden in Banner
                      mode — the banner overlay's BannerTitleEditor handles the
                      title up there. Both wire to the same Committed handler. -->
-                <Grid x:Name="CoverTitleBlock" MinHeight="44" HorizontalAlignment="Stretch"
-                      Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
+                <Grid x:Name="CoverTitleBlock" MinHeight="44" HorizontalAlignment="Stretch">
                     <controls1:InlineEditableText
                         x:Name="PlaylistTitleEditor"
                         Text="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay}"
@@ -720,27 +577,17 @@
                 Width="12"
                 ResizeCompleted="PlaylistSplitter_ResizeCompleted"/>
 
-            <!-- Track column scroll owner. Cover playlists keep TrackDataGrid's
-                 internal virtualized row scroller; banner playlists use the
-                 outer content scroller only while the track count is small.
-                 Large banners hand scrolling back to TrackDataGrid so the row
-                 surface stays virtualized. -->
-            <ScrollView x:Name="ContentScrollView"
-                        Grid.Row="1"
-                        Grid.Column="2"
-                        HorizontalScrollMode="Disabled"
-                        VerticalScrollMode="Disabled"
-                        VerticalScrollBarVisibility="Hidden"
-                        ZoomMode="Disabled"
-                        ContentOrientation="Vertical">
-                <!-- Track grid in column 2. IsLoading is driven by IsLoadingTracks so
-                     the grid can show lightweight skeleton rows while playlist tracks
-                     lazy-load independently of metadata. Rewrite swapped
-                     TrackListView for TrackDataGrid — filter/sort/columns live inside the
-                     grid's toolbar now; the page-level hero + narrow-mode header that used
-                     to nest inside TrackListView.HeaderContent still render above the grid. -->
+            <!-- Track grid in column 2. It now owns the vertical scroll for the
+                 whole right column: in banner mode the hero scrolls inside it as an
+                 in-rows header (HeaderContent below; HeaderPlacement toggled in
+                 code-behind by layout mode) with the toolbar + column header sticky
+                 below it; in cover mode it behaves like every other track table.
+                 IsLoading is driven by IsLoadingTracks so the grid shows skeleton
+                 rows while tracks lazy-load independently of metadata. -->
                 <tdg:TrackDataGrid
                     x:Name="TrackGrid"
+                    Grid.Row="1"
+                    Grid.Column="2"
                     VerticalAlignment="Stretch"
                     Margin="0,0,0,0"
                     PageKey="playlist"
@@ -753,6 +600,25 @@
                     TracksReorderRequested="TrackGrid_TracksReorderRequested"
                     ItemsSource="{x:Bind ViewModel.TrackList.FilteredTracks, Mode=OneWay}"
                     PlayCommand="{x:Bind ViewModel.TrackList.PlayTrackCommand}">
+
+                <!-- Banner hero — hosted as the grid's in-rows scrolling header so it
+                     scrolls away with the rows (and the cover + title live in the left
+                     column). HeaderPlacement is toggled in code-behind: InRowsScroll
+                     for banner playlists, None for cover. The title overlay is gone —
+                     this is just the image + procedural-gradient fallback + scrim.
+                     HeaderBackgroundHost's composition surface is wired in code-behind
+                     via HeaderBackgroundHost_Loaded (idempotent / recycle-safe). -->
+                <tdg:TrackDataGrid.HeaderContent>
+                    <Grid x:Name="HeroBannerRow" Height="280">
+                        <cards:AnimatedHeroBackground
+                            x:Name="HeroBannerFallback"
+                            PrimaryColor="{x:Bind ViewModel.Header.BannerPrimaryColor, Mode=OneWay}"
+                            AccentColor="{x:Bind ViewModel.Header.BannerAccentColor, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.Header.HasHeaderImage, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                        <Border x:Name="HeaderBackgroundHost"
+                                IsHitTestVisible="False"/>
+                    </Grid>
+                </tdg:TrackDataGrid.HeaderContent>
                 <tdg:TrackDataGrid.FilterBarContent>
                     <ToggleButton x:Uid="Views_PlaylistPage__Auto_601"
                         MinHeight="32"
@@ -947,7 +813,6 @@
                     </StackPanel>
                     </tdg:TrackDataGrid.FooterContent>
                 </tdg:TrackDataGrid>
-            </ScrollView>
 
             <Grid
                 x:Name="EmptyPlaylistState"
@@ -1033,22 +898,6 @@
             Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
-
-        <!-- Banner-mode shy pill. It follows whichever scroll owner the page
-             selected: the outer content scroller for small banners, or the
-             TrackGrid row scroller for large virtualized playlists. -->
-        <playlist:PlaylistShyPill
-            x:Name="PlaylistShyPill"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Top"
-            Margin="0,12,0,0"
-            Visibility="Collapsed"
-            PlaylistImageUrl="{x:Bind ViewModel.Header.PlaylistImageUrl, Mode=OneWay}"
-            PlaylistName="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay}"
-            OwnerName="{x:Bind ViewModel.Header.OwnerName, Mode=OneWay}"
-            PaletteAccentPillBrush="{x:Bind ViewModel.Header.PaletteAccentPillBrush, Mode=OneWay}"
-            PaletteAccentPillForegroundBrush="{x:Bind ViewModel.Header.PaletteAccentPillForegroundBrush, Mode=OneWay}"
-            PlayCommand="{x:Bind ViewModel.TrackList.PlayAllCommand}"/>
 
         <!-- Floating multi-select command bar — viewport-pinned sibling of
              the two-column layout so it stays at the bottom of the viewport
