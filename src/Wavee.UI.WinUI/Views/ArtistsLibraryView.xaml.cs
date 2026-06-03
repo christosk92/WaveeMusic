@@ -83,7 +83,8 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         {
             UpdateTracksPanelVisibility(ViewModel.IsTracksPanelVisible, animate: true);
         }
-        else if (e.PropertyName == nameof(ViewModel.ViewMode))
+        else if (e.PropertyName == nameof(ViewModel.ViewMode)
+                 || e.PropertyName == nameof(ViewModel.GridScale))
         {
             ApplyArtistsViewMode();
         }
@@ -122,16 +123,18 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
 
             case LibraryViewMode.CompactGrid:
                 // Compact card shows the name only (~1 line) under the avatar.
-                ApplyArtistGridLayout(minItemWidth: 104, spacing: 8, textBandHeight: 34);
+                ApplyArtistGridLayout(minItemWidth: 104, spacing: 8, savedTextBand: 34, likedTextBand: 34);
                 ApplyTemplateFromResources("ArtistCompactGridItemTemplate");
                 ApplyLikedTemplateFromResources("LikedArtistCompactGridItemTemplate");
                 break;
 
             case LibraryViewMode.DefaultGrid:
-                // CSS auto-fill + 1fr: circular avatars grow with the column width; row
-                // height = avatar (square) + a fixed text band sized for the
-                // From-Liked-Songs card's 3 lines. No clip, no empty space at any width.
-                ApplyArtistGridLayout(minItemWidth: 150, spacing: 12, textBandHeight: 88);
+                // Circular avatars grow with the column width; row height = avatar (square)
+                // + a text band. The Saved card shows name + recents (~2 lines); the
+                // From-Liked card adds a liked-songs count (~3 lines), so it gets a taller
+                // band. Reserving the From-Liked height for Saved too was floating the Saved
+                // cards' text with too much vertical space.
+                ApplyArtistGridLayout(minItemWidth: 150, spacing: 12, savedTextBand: 56, likedTextBand: 88);
                 ApplyTemplateFromResources("ArtistDefaultGridItemTemplate");
                 ApplyLikedTemplateFromResources("LikedArtistDefaultGridItemTemplate");
                 break;
@@ -145,25 +148,30 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         }
     }
 
-    private void ApplyArtistGridLayout(double minItemWidth, double spacing, double textBandHeight)
+    private void ApplyArtistGridLayout(double minItemWidth, double spacing, double savedTextBand, double likedTextBand)
     {
+        // Match the album grid's size slider: scale the avatar (item width) and its text
+        // band by GridScale; spacing stays fixed. GridScale defaults to 1.0.
+        var scale = ViewModel.GridScale <= 0 ? 1.0 : ViewModel.GridScale;
+        var scaledWidth = minItemWidth * scale;
+
         if (ArtistsView is not null)
         {
             _savedGridLayout ??= new ResponsiveGridLayout { AspectRatio = 1.0 };
-            _savedGridLayout.MinItemWidth = minItemWidth;
+            _savedGridLayout.MinItemWidth = scaledWidth;
             _savedGridLayout.ColumnSpacing = spacing;
             _savedGridLayout.RowSpacing = spacing;
-            _savedGridLayout.TextBandHeight = textBandHeight;
+            _savedGridLayout.TextBandHeight = savedTextBand * scale;
             if (!ReferenceEquals(ArtistsView.Layout, _savedGridLayout))
                 ArtistsView.Layout = _savedGridLayout;
         }
         if (LikedArtistsView is not null)
         {
             _likedGridLayout ??= new ResponsiveGridLayout { AspectRatio = 1.0 };
-            _likedGridLayout.MinItemWidth = minItemWidth;
+            _likedGridLayout.MinItemWidth = scaledWidth;
             _likedGridLayout.ColumnSpacing = spacing;
             _likedGridLayout.RowSpacing = spacing;
-            _likedGridLayout.TextBandHeight = textBandHeight;
+            _likedGridLayout.TextBandHeight = likedTextBand * scale;
             if (!ReferenceEquals(LikedArtistsView.Layout, _likedGridLayout))
                 LikedArtistsView.Layout = _likedGridLayout;
         }

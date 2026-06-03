@@ -611,7 +611,15 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .ToArray();
 
-        var playlistName = DisplayName(playlist, playlistUri);
+        // Owned playlists live in spotify_playlists, not the entities table, so the
+        // entity lookup above misses and DisplayName would fall back to the bare id.
+        // Resolve the real name from the playlist cache when the entity has no title.
+        var playlistName = FirstNonWhiteSpace(
+            playlist?.Title,
+            await TryGetPlaylistNameAsync(playlistUri, ct).ConfigureAwait(false),
+            ShortUri(playlistUri),
+            playlistUri,
+            "playlist")!;
         var action = added ? "Added" : "Removed";
         var noun = count == 1 ? "song" : "songs";
         var title = $"{action} {count} {noun} to \"{playlistName}\"";
@@ -708,6 +716,25 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogDebug(ex, "Failed to load activity entity metadata for {Uri}", uri);
+            return null;
+        }
+    }
+
+    // Playlist names live in spotify_playlists (the playlist cache), not the
+    // entities table — used to resolve a real name for playlist activity entries.
+    private async Task<string?> TryGetPlaylistNameAsync(string? uri, CancellationToken ct)
+    {
+        if (_database is null || string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        try
+        {
+            var entry = await _database.GetPlaylistCacheEntryAsync(uri, false, ct).ConfigureAwait(false);
+            return string.IsNullOrWhiteSpace(entry?.Name) ? null : entry!.Name;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "Failed to resolve playlist name for activity {Uri}", uri);
             return null;
         }
     }

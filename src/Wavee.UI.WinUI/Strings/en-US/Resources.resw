@@ -5154,7 +5154,7 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Thank you! Your feedback has been received.</value>
   </data>
   <data name="Views_LikedSongsView__Auto_600.Text" xml:space="preserve">
-    <value> &amp;#x2022; </value>
+    <value> &#x2022; </value>
   </data>
   <data name="Views_LikedSongsView__Auto_601.ToolTipService.ToolTip" xml:space="preserve">
     <value>Show only tracks with music videos</value>

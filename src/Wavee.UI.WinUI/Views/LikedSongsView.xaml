@@ -34,7 +34,7 @@
             IsTagsLoading picks between the real TokenView and the shimmer placeholders.
         -->
         <Grid Grid.Row="0"
-              Padding="16,12,16,4"
+              Padding="8,12,8,4"
               Visibility="{x:Bind ViewModel.HasFilterChipsOrShimmer, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
             <toolkit:TokenView
                 x:Name="FilterTokenView"
