@@ -335,7 +335,9 @@
                         AllowedSortKeys="Recents,RecentlyAdded,Alphabetical"
                         SortBy="{x:Bind ViewModel.SortBy, Mode=TwoWay}"
                         SortDirection="{x:Bind ViewModel.SortDirection, Mode=TwoWay}"
-                        ViewMode="{x:Bind ViewModel.ViewMode, Mode=TwoWay}"/>
+                        ViewMode="{x:Bind ViewModel.ViewMode, Mode=TwoWay}"
+                        GridScale="{x:Bind ViewModel.GridScale, Mode=TwoWay}"
+                        ShowGridScale="True"/>
 
                     <TextBox x:Uid="Views_ArtistsLibraryView__TextBox_1"
                         Grid.Column="1"
