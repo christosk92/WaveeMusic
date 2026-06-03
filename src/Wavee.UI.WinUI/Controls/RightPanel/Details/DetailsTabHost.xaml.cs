@@ -422,6 +422,16 @@ public sealed partial class DetailsTabHost : UserControl
         UpdateDetailsSnippetTimerState();
         UpdatePodcastChapterTimelineTimerState();
         UpdateDetailsLyricsUpdateMode();
+
+        // First-open fix: the parent flips IsDetailsTabActive BEFORE IsPanelVisible,
+        // so HandleTabActivationChanged saw IsPanelVisible=false and skipped the
+        // initial LoadAndBindDetailsAsync. Kick it here once visibility flips true
+        // while the tab is active so the first Details open (or a panel reopen with
+        // Details already selected) populates without needing a tab round-trip.
+        // No double-load: whichever of the two DPs settles first is gated out by its
+        // own (other-DP-still-false) check.
+        if (IsDetailsTabActive && IsPanelVisible && _detailsVm != null)
+            _ = LoadAndBindDetailsAsync();
     }
 
     private void ApplyEmbeddedChromeMask()
