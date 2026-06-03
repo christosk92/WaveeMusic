@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Wavee.UI.WinUI.Data.Models;
@@ -33,4 +34,21 @@ public sealed class ChangelogFeature
     public string DetailDescription { get; set; } = "";
     public string? NavigationHint { get; set; }
     public string? ImageAssetPath { get; set; }
+
+    /// <summary>
+    /// Optional itemized list (e.g. a "Bugfixes" section) rendered below the
+    /// detail description, each row linking to its GitHub issue / PR.
+    /// </summary>
+    public IReadOnlyList<ChangelogFix> Fixes { get; init; } = [];
+}
+
+public sealed class ChangelogFix
+{
+    public string Text { get; init; } = "";
+
+    /// <summary>Short reference label shown as the link, e.g. "#24".</summary>
+    public string Reference { get; init; } = "";
+
+    /// <summary>Target of the reference link (GitHub issue / PR). Null = no link.</summary>
+    public Uri? Url { get; init; }
 }

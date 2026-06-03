@@ -2024,16 +2024,16 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>Album and show covers open in a zoomable full-screen viewer, with a Save as… option to keep the image.</value>
   </data>
   <data name="Changelog_0_1_2_Alpha_Section_Fixes_Title" xml:space="preserve">
-    <value>Polish &amp; fixes</value>
+    <value>Bugfixes</value>
   </data>
   <data name="Changelog_0_1_2_Alpha_Section_Fixes_Short" xml:space="preserve">
-    <value>Touch, playlists, search and more</value>
+    <value>Fixes from the recent builds</value>
   </data>
   <data name="Changelog_0_1_2_Alpha_Section_Fixes_DetailTitle" xml:space="preserve">
-    <value>Lots of small fixes</value>
+    <value>Bugfixes</value>
   </data>
   <data name="Changelog_0_1_2_Alpha_Section_Fixes_Detail" xml:space="preserve">
-    <value>Touch scrolling no longer sticks as a stuck hover; playlist create/edit handles track seeding, cover sync and the cover leak; the search top result no longer washes out in light mode and results stagger in; plus add-to-playlist notifications, search-flyout thumbnails, and a PlayerBar crash fix.</value>
+    <value>A batch of fixes rolled up from the last few builds — each links to its pull request:</value>
   </data>
   <data name="Changelog_0_1_1_Alpha_Title" xml:space="preserve">
     <value>Refresh your playlists with swipes</value>

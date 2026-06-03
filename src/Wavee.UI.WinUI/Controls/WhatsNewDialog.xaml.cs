@@ -24,6 +24,11 @@ public sealed partial class WhatsNewDialog : ContentDialog
     // ABI — ItemsControl.set_ItemsSource throws otherwise. See
     // reference_winrt_itemssource_ireadonlylist_crash.md.
     public ObservableCollection<ChangelogFeature> Features { get; }
+
+    // Fixes for the currently-selected feature. ObservableCollection (mutated in
+    // place per selection) for the same CsWinRT ItemsSource reason as Features.
+    public ObservableCollection<ChangelogFix> DetailFixes { get; } = [];
+
     public string ReleaseTitle { get; }
     public string VersionDisplay { get; }
     public string? Announcement { get; }
@@ -74,6 +79,11 @@ public sealed partial class WhatsNewDialog : ContentDialog
         NavigationHintBorder.Visibility = string.IsNullOrWhiteSpace(feature.NavigationHint)
             ? Visibility.Collapsed
             : Visibility.Visible;
+
+        DetailFixes.Clear();
+        foreach (var fix in feature.Fixes)
+            DetailFixes.Add(fix);
+        FixesSection.Visibility = feature.Fixes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         if (!string.IsNullOrEmpty(feature.ImageAssetPath))
         {

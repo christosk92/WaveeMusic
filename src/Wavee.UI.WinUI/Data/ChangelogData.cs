@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
@@ -74,6 +75,57 @@ public static class ChangelogData
                     Glyph = FluentGlyphs.Accept,
                     DetailTitle = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Fixes_DetailTitle"),
                     DetailDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Fixes_Detail"),
+                    Fixes =
+                    [
+                        new ChangelogFix
+                        {
+                            Text = "Artist→artist navigation no longer flickers (stale hero scrolled up, then shimmered)",
+                            Reference = "#14",
+                            Url = new Uri("https://github.com/christosk92/WaveeMusic/pull/14"),
+                        },
+                        new ChangelogFix
+                        {
+                            Text = "Touch scrolling no longer registers as a stuck hover on track and card surfaces",
+                            Reference = "#24",
+                            Url = new Uri("https://github.com/christosk92/WaveeMusic/pull/24"),
+                        },
+                        new ChangelogFix
+                        {
+                            Text = "Playlist create/edit: track seeding, cover sync, a cover-image leak, and recommended add",
+                            Reference = "#25",
+                            Url = new Uri("https://github.com/christosk92/WaveeMusic/pull/25"),
+                        },
+                        new ChangelogFix
+                        {
+                            Text = "Add-to-playlist notification, Liked Songs row, Artists size slider, and search-flyout thumbnails",
+                            Reference = "#26",
+                            Url = new Uri("https://github.com/christosk92/WaveeMusic/pull/26"),
+                        },
+                        new ChangelogFix
+                        {
+                            Text = "Search top result no longer washes out on hover in light mode; results now stagger in",
+                            Reference = "#28",
+                            Url = new Uri("https://github.com/christosk92/WaveeMusic/pull/28"),
+                        },
+                        new ChangelogFix
+                        {
+                            Text = "Lyrics loading skeleton is now shaped like the rendered lyric column",
+                            Reference = "#29",
+                            Url = new Uri("https://github.com/christosk92/WaveeMusic/pull/29"),
+                        },
+                        new ChangelogFix
+                        {
+                            Text = "Details tab loads on first open instead of after a tab round-trip",
+                            Reference = "#30",
+                            Url = new Uri("https://github.com/christosk92/WaveeMusic/pull/30"),
+                        },
+                        new ChangelogFix
+                        {
+                            Text = "Fixed a PlayerBar icon crash",
+                            Reference = "#17",
+                            Url = new Uri("https://github.com/christosk92/WaveeMusic/pull/17"),
+                        },
+                    ],
                 },
             ]
         },
