@@ -278,6 +278,11 @@ public sealed partial class MockLibraryDataService : ILibraryDataService
     public Task<AlbumPalette?> GetPlaylistPaletteAsync(string playlistId, CancellationToken ct = default)
         => Task.FromResult<AlbumPalette?>(null);
 
+    // Demo/offline mock surfaces no "You might also like" recommendations.
+    public Task<IReadOnlyList<PlaylistDetailDto>> GetYouMightAlsoLikePlaylistsAsync(
+        string playlistId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<PlaylistDetailDto>>([]);
+
 
 
     // MovePlaylistInRootlistAsync moved to IRootlistService.
