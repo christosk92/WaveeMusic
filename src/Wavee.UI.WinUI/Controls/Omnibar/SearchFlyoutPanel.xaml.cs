@@ -297,6 +297,16 @@ public sealed partial class SearchFlyoutPanel : UserControl
     {
         if (sender is not FrameworkElement root)
             return;
+
+        // The entity thumbnail is a CompositionImage inside a Popup + ItemsRepeater;
+        // its own cold load can kick before the popup's visual is attached and bail
+        // (TryLoad:bail:notAttached), leaving the image blank with nothing to re-fire
+        // it. The row's Loaded confirms the subtree is in the live tree, so re-kick the
+        // load here (dispatched so the image's own attach has settled). Runs on every
+        // realization, and forceReapply also re-paints a retained-but-unpainted surface.
+        if (FindCompositionImage(root) is { } image)
+            root.DispatcherQueue?.TryEnqueue(image.RefreshCurrentImage);
+
         if (root.GetValue(EntityDragAttachedProperty) is true)
             return;
 
@@ -304,6 +314,20 @@ public sealed partial class SearchFlyoutPanel : UserControl
         ManualDragAttachment.AttachWithPackageWriter(
             root,
             () => SearchSuggestionInteraction.BuildDragPayload(root.DataContext as SearchSuggestionItem));
+    }
+
+    private static Wavee.UI.WinUI.Controls.Imaging.CompositionImage? FindCompositionImage(DependencyObject root)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is Wavee.UI.WinUI.Controls.Imaging.CompositionImage img)
+                return img;
+            if (FindCompositionImage(child) is { } nested)
+                return nested;
+        }
+        return null;
     }
 
     private void EntityRoot_RightTapped(object sender, RightTappedRoutedEventArgs e)
