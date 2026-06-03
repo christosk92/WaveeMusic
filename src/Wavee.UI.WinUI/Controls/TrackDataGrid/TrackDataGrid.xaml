@@ -26,14 +26,38 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="CornerRadius" Value="4" />
         </Style>
+
+        <!-- Opaque backing for the sticky chrome in banner mode so rows scrolling
+             under the stuck toolbar/column-header stay hidden. Applied in code only
+             when HeaderPlacement=InRowsScroll; null otherwise (pinned chrome has
+             nothing scrolling behind it, so it stays transparent as before). -->
+        <SolidColorBrush x:Key="TrackDataGridStickyChromeBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
     </UserControl.Resources>
 
     <Grid x:Name="Root">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition x:Name="ChromeRow" Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
+        <!-- ══ CHROME LAYER ══════════════════════════════════════════════════
+             Toolbar + filter + column header grouped under one host. Default
+             (pinned) layout: ChromeRow is an Auto row that reserves this host's
+             height with the rows below it — identical to the prior 3-row layout.
+             Banner layout (HeaderPlacement=InRowsScroll): ApplyChromeLayout
+             collapses ChromeRow and spans both ChromeHost and RowsLayer over Rows
+             0+1 so ChromeHost overlays the rows (Canvas.ZIndex keeps it on top);
+             UpdateStickyChrome then translates it to ride below the scrolling
+             banner and stick to the top once the banner scrolls past. -->
+        <StackPanel
+            x:Name="ChromeHost"
+            Grid.Row="0"
+            Canvas.ZIndex="1"
+            VerticalAlignment="Top"
+            SizeChanged="ChromeHost_SizeChanged">
+            <StackPanel.RenderTransform>
+                <TranslateTransform x:Name="ChromeTranslate" />
+            </StackPanel.RenderTransform>
 
         <!--
             Files-app-style toolbar: right-aligned icon-only buttons. No Play/Shuffle/Like —
@@ -43,7 +67,6 @@
         -->
         <Grid
             x:Name="ToolbarHost"
-            Grid.Row="0"
             Padding="8,6,8,6"
             Background="Transparent">
             <Grid.ColumnDefinitions>
@@ -222,37 +245,13 @@
             </Grid>
         </Border>
 
-        <!--  Header + list. The ItemsView wraps its own ScrollView (both axes
-              Auto) so virtualization is preserved per Microsoft's guidance.
-              HeaderHost sits OUTSIDE the ItemsView and stays vertically
-              pinned; TrackDataGrid.xaml.cs syncs its X translation to the
-              ItemsView.ScrollView.HorizontalOffset via ViewChanged.
-
-              Three-row layout:
-                Row 0 = column header (HeaderHost ScrollViewer)
-                Row 1 = loading-row skeleton (LoadingRowsRepeater)
-                Row 2 = real items presenter (RowsItemsViewHost)
-              Row 1 is Auto and collapses to 0 px when LoadingRowsRepeater is
-              Collapsed (i.e. IsLoading=false). When IsLoading=true the
-              skeleton rows sit ABOVE Row 2 so the FooterContent (which sits
-              inside RowsItemsViewHost below the ItemsView) lays out cleanly
-              below the skeleton rather than overlapping. -->
-        <Grid Grid.Row="2">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-
-            <!--  Header row: built in code-behind from Columns. The wrapping
-                  ScrollViewer with both scroll modes DISABLED provides
-                  automatic clipping of the HeaderHost's X translation so
-                  scrolled-out header content doesn't visually bleed out of
-                  the page bounds. The actual horizontal offset is driven
-                  programmatically from RowsItemsView.ScrollView via
-                  HeaderScrollTransform.  -->
+            <!--  Column header — grouped here with the toolbar + filter so banner
+                  playlists keep it as a sticky bar that rides below the scrolling
+                  banner and sticks to the top. Built in code-behind from Columns.
+                  The wrapping ScrollViewer (both scroll modes DISABLED) clips the
+                  HeaderHost X-translation; the offset is driven from
+                  RowsItemsView.ScrollView via HeaderScrollTransform. -->
             <ScrollViewer
-                Grid.Row="0"
                 Height="40"
                 HorizontalScrollMode="Disabled"
                 HorizontalScrollBarVisibility="Hidden"
@@ -280,6 +279,29 @@
                     </Grid.RenderTransform>
                 </Grid>
             </ScrollViewer>
+        </StackPanel>
+        <!-- ══ END CHROME LAYER ══════════════════════════════════════════════ -->
+
+        <!--  Rows layer. The ItemsView wraps its own ScrollView (both axes Auto)
+              so virtualization is preserved per Microsoft's guidance. In banner
+              mode ApplyChromeLayout spans this layer under the ChromeHost overlay
+              (Rows 0+1); otherwise it sits in Row 1 below the pinned chrome.
+
+              Rows:
+                Row 0 = spare (the column header now lives in ChromeHost above)
+                Row 1 = loading-row skeleton (LoadingRowsRepeater)
+                Row 2 = real items presenter (RowsItemsViewHost)
+              Row 1 is Auto and collapses to 0 px when LoadingRowsRepeater is
+              Collapsed (i.e. IsLoading=false). When IsLoading=true the skeleton
+              rows sit ABOVE Row 2 so the FooterContent (which sits inside
+              RowsItemsViewHost below the ItemsView) lays out cleanly below the
+              skeleton rather than overlapping. -->
+        <Grid x:Name="RowsLayer" Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
             <!-- Items presenter. ItemsView (which wraps ItemsRepeater inside a
                  ScrollView) has no Footer slot, so we host it + FooterContent
@@ -371,6 +393,35 @@
                                         </ItemContainer>
                                     </DataTemplate>
                                 </local:TrackDataGridItemTemplateSelector.FooterTemplate>
+                                <local:TrackDataGridItemTemplateSelector.HeaderTemplate>
+                                    <DataTemplate x:DataType="local:TrackDataGridHeaderRow">
+                                        <ItemContainer
+                                            Padding="0"
+                                            Margin="0"
+                                            HorizontalContentAlignment="Stretch"
+                                            VerticalContentAlignment="Stretch"
+                                            MinHeight="0" CanUserInvoke="UserCannotInvoke"
+                                            IsSelected="False">
+                                            <ItemContainer.Resources>
+                                                <!-- The header (e.g. a banner) must keep child controls hit-testable,
+                                                     but the synthetic ItemsView row itself should not paint row chrome. -->
+                                                <SolidColorBrush x:Key="ItemContainerPointerOverBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerPressedBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectedBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectedPointerOverBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectedPressedBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerPointerOverBorderBrush" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerPressedBorderBrush" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectionVisualPointerOverBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectionVisualPressedBackground" Color="Transparent"/>
+                                                <SolidColorBrush x:Key="ItemContainerSelectedInnerBorderBrush" Color="Transparent"/>
+                                            </ItemContainer.Resources>
+                                            <ContentPresenter
+                                                Content="{x:Bind Content}"
+                                                HorizontalContentAlignment="Stretch" />
+                                        </ItemContainer>
+                                    </DataTemplate>
+                                </local:TrackDataGridItemTemplateSelector.HeaderTemplate>
                             </local:TrackDataGridItemTemplateSelector>
                         </ItemsView.ItemTemplate>
                     </ItemsView>

@@ -57,7 +57,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
     bool IInPageFilterable.CanFilter => ViewModel?.TrackList is not null;
 
     private const int PlaylistCoverDecodeSize = 280;
-    private const int VirtualizedBannerTrackThreshold = 80;
 
     private readonly ILogger? _logger;
     private readonly ISettingsService _settings;
@@ -71,7 +70,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
     private int _visualSettlingGeneration;
     private int _loadedViewWorkGeneration;
     private int _navigationRevision;
-    private bool? _lastUsesParentContentScroll;
 
     // Composition resources for the full-width hero banner image. Surface is
     // (re)loaded whenever HeaderImageUrl changes; null when no header image.
@@ -201,9 +199,7 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
         // ElementCompositionPreview.GetElementVisual on the same tree can
         // throw "Calling Scale API is not allowed on this object".
         LeftColumnHost.Opacity = 0;
-        ContentScrollView.SizeChanged += ContentScrollView_SizeChanged;
-        TrackGrid.RowsScrollViewChanged += TrackGrid_RowsScrollViewChanged;
-        ApplyContentScrollMode();
+        ApplyHeaderPlacement();
         Loaded += PlaylistPage_Loaded;
         Unloaded += PlaylistPage_Unloaded;
         _logger?.LogDebug("[xfade][playlist:{Id}] ctor.enter", XfadeLog.Tag(ViewModel.PlaylistId));
@@ -251,7 +247,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
     {
         _loadedViewWorkGeneration++;
         PageController.IsNavigatingAway = true;
-        DetachShyHeader();
         ReleaseHeaderBackgroundSurface();
     }
 
@@ -300,164 +295,25 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
 
     private void AttachLoadedViewWork()
     {
-        ApplyContentScrollMode();
-        AttachShyHeader();
+        ApplyHeaderPlacement();
     }
 
-    // ── Shy-header (banner → pinned PlaylistShyPill morph) ──────────────────
+    // ── In-rows banner header placement ─────────────────────────────────────
     //
-    // Banner-mode playlists keep the compact shy pill. Small banners use the
-    // outer content ScrollView; large playlists switch to the track row scroller
-    // so ItemsView keeps a finite viewport and row virtualization stays active.
-    //
-    // PlaylistPage's banner is built from custom composition visuals (image
-    // + scrim) plus a XAML procedural-gradient fallback, so it doesn't expose
-    // a single ScrollFadeProgress DP like HeroHeader. ApplyBannerScrollFade
-    // drives both layers directly.
+    // Banner-mode playlists host the hero as the track grid's in-rows scrolling
+    // header (TrackDataGrid.HeaderContent = HeroBannerRow). The grid then owns a
+    // single virtualized scroll for the banner + rows, and its toolbar / column
+    // header stick just below the banner. Cover-mode playlists project no header
+    // row. The old parent-scroll fork + shy-pill morph are gone: the title is
+    // always visible in the left column now, so there is nothing to "shy".
 
-    private ShyHeaderController? _shyHeader;
-
-    private void AttachShyHeader()
+    private void ApplyHeaderPlacement()
     {
-        if (_shyHeader is not null) return;
-        if (ViewModel.Header.LayoutMode != PlaylistLayoutMode.Banner)
-        {
-            ApplyBannerScrollFade(0);
-            if (PlaylistShyPill is not null)
-                PlaylistShyPill.Visibility = Visibility.Collapsed;
+        if (TrackGrid is null)
             return;
-        }
-
-        var scrollView = ResolveShyHeaderScrollView();
-        if (scrollView is null ||
-            HeroBannerRow is null ||
-            BannerOverlayPanel is null ||
-            PlaylistShyPill is null)
-        {
-            return;
-        }
-
-        var transition = Resources["PlaylistShyHeaderTransition"] as global::CommunityToolkit.WinUI.TransitionHelper;
-        if (transition is null) return;
-
-        _shyHeader = new ShyHeaderController(
-            scrollView,
-            HeroBannerRow,
-            BannerOverlayPanel,
-            PlaylistShyPill,
-            transition,
-            ApplyBannerScrollFade,
-            ShyHeaderPinOffset.Below(HeroBannerRow, 90),
-            canEvaluate: () => !PageController.IsNavigatingAway && ViewModel.Header.LayoutMode == PlaylistLayoutMode.Banner,
-            logger: _logger);
-        _shyHeader.Attach();
-        _shyHeader.Reset();
-    }
-
-    private void ContentScrollView_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        ApplyContentScrollMode();
-    }
-
-    private void TrackGrid_RowsScrollViewChanged(object? sender, EventArgs e)
-    {
-        if (_isDisposed || ViewModel.Header.LayoutMode != PlaylistLayoutMode.Banner)
-            return;
-
-        ReattachShyHeader();
-    }
-
-    private void ApplyContentScrollMode()
-    {
-        if (ContentScrollView is null || TrackGrid is null)
-            return;
-
-        var isBanner = ViewModel.Header.LayoutMode == PlaylistLayoutMode.Banner;
-        var useParentContentScroll = UsesParentContentScroll();
-        Grid.SetRow(ContentScrollView, useParentContentScroll ? 0 : 1);
-        Grid.SetRowSpan(ContentScrollView, useParentContentScroll ? 2 : 1);
-
-        ContentScrollView.VerticalScrollMode = useParentContentScroll
-            ? ScrollingScrollMode.Auto
-            : ScrollingScrollMode.Disabled;
-        ContentScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
-
-        TrackGrid.IsParentScrolling = useParentContentScroll;
-        TrackGrid.Margin = useParentContentScroll
-            ? new Thickness(0, PlaylistCoverDecodeSize, 0, 0)
-            : new Thickness(0);
-        TrackGrid.Height = useParentContentScroll
-            ? double.NaN
-            : Math.Max(0, ContentScrollView.ActualHeight);
-
-        if (_lastUsesParentContentScroll != useParentContentScroll)
-        {
-            _lastUsesParentContentScroll = useParentContentScroll;
-            _logger?.LogDebug(
-                "Playlist scroll mode: layout={LayoutMode} totalTracks={TotalTracks} parentContentScroll={ParentContentScroll}",
-                ViewModel.Header.LayoutMode,
-                ViewModel.TrackList.TotalTracks,
-                useParentContentScroll);
-        }
-    }
-
-    private bool UsesParentContentScroll()
-        => ViewModel.Header.LayoutMode == PlaylistLayoutMode.Banner &&
-           ViewModel.TrackList.TotalTracks <= VirtualizedBannerTrackThreshold;
-
-    private ScrollView? ResolveShyHeaderScrollView()
-        => UsesParentContentScroll()
-            ? ContentScrollView
-            : TrackGrid?.RowsScrollView;
-
-    private void DetachShyHeader()
-    {
-        if (_shyHeader is null) return;
-        _shyHeader.Detach();
-        _shyHeader = null;
-    }
-
-    private void ReattachShyHeader()
-    {
-        DetachShyHeader();
-        AttachShyHeader();
-    }
-
-    /// <summary>
-    /// Fade strategy passed to <see cref="ShyHeaderController"/>. Receives the
-    /// raw 0..1 progress (<c>VerticalOffset / HeroBannerRow.ActualHeight</c>)
-    /// and applies a 15 % dead-zone curve to both the composition image/scrim
-    /// (<see cref="_heroContainer"/>) and the procedural-gradient fallback
-    /// (<see cref="HeroBannerFallback"/>). Title/owner overlay is NOT faded
-    /// here — those elements morph via TransitionHelper matched-IDs instead.
-    /// </summary>
-    private void ApplyBannerScrollFade(double progress)
-    {
-        const double deadZone = 0.15;
-        var clamped = Math.Clamp(progress, 0.0, 1.0);
-        var faded = clamped <= deadZone ? 0.0 : (clamped - deadZone) / (1.0 - deadZone);
-        var opacity = 1.0 - faded;
-        if (_heroContainer is not null)
-            _heroContainer.Opacity = (float)opacity;
-        if (HeroBannerFallback is not null)
-            HeroBannerFallback.Opacity = opacity;
-    }
-
-    private async Task ReleaseShyHeaderSuppressionAsync(int navigationRevision)
-    {
-        // First yield so the immediate ScrollTo's first ViewChanged fires.
-        await Task.Yield();
-        if (_isDisposed || PageController.IsNavigatingAway || navigationRevision != _navigationRevision)
-            return;
-        // Then sleep long enough for the ScrollView to settle on the new
-        // playlist's content. 250 ms covers the post-nav layout + composition
-        // reflow window comfortably; the user doesn't perceive a delay because
-        // the shy pill is invisible during suppression anyway.
-        await Task.Delay(250).ConfigureAwait(true);
-        if (_isDisposed || PageController.IsNavigatingAway || navigationRevision != _navigationRevision)
-            return;
-        _shyHeader?.Reset();
-        if (_shyHeader is not null) _shyHeader.Suppressed = false;
+        TrackGrid.HeaderPlacement = ViewModel.Header.LayoutMode == PlaylistLayoutMode.Banner
+            ? global::Wavee.UI.WinUI.Controls.TrackDataGrid.TrackDataGridHeaderPlacement.InRowsScroll
+            : global::Wavee.UI.WinUI.Controls.TrackDataGrid.TrackDataGridHeaderPlacement.None;
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs ev)
@@ -537,11 +393,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
 
         if (ev.PropertyName == nameof(Wavee.UI.WinUI.ViewModels.Playlist.PlaylistTrackListViewModel.HasAnyAddedAt))
             ApplyDateAddedColumnVisibility();
-        else if (ev.PropertyName == nameof(Wavee.UI.WinUI.ViewModels.Playlist.PlaylistTrackListViewModel.TotalTracks))
-        {
-            ApplyContentScrollMode();
-            ReattachShyHeader();
-        }
     }
 
     private void Collaborators_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -574,8 +425,9 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
         if (string.Equals(_retriedCoverImageUrl, url, StringComparison.Ordinal))
             _retriedCoverImageUrl = null;
 
-        if (ViewModel.Header.LayoutMode == PlaylistLayoutMode.Cover)
-            CoverHeroBlock.Opacity = 1;
+        // Cover + title now render in both layout modes, so reveal the cover
+        // block regardless of mode (was gated to Cover before).
+        CoverHeroBlock.Opacity = 1;
 
         _logger?.LogDebug(
             "Playlist cover image loaded: playlist={PlaylistId}, url={Url}, header={HeaderImageUrl}, layout={LayoutMode}",
@@ -657,9 +509,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
         HeaderBackgroundHost.Loaded -= HeaderBackgroundHost_Loaded;
         HeaderBackgroundHost.Unloaded -= HeaderBackgroundHost_Unloaded;
         ActualThemeChanged -= PlaylistPage_ActualThemeChanged;
-        ContentScrollView.SizeChanged -= ContentScrollView_SizeChanged;
-        TrackGrid.RowsScrollViewChanged -= TrackGrid_RowsScrollViewChanged;
-        DetachShyHeader();
         SelectionBar.Detach();
         TrackGrid.Dispose();
         ReleaseHeaderBackgroundSurface();
@@ -751,19 +600,6 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
 
     private void EnterPlaylist(object? parameter, PageHostNavigationMode mode)
     {
-        // Suppress the shy-header evaluator through the entire navigation
-        // reset. Without this, TrackGrid row-scroll events queued by the
-        // scroll-to-top below can fire while _isPinned still reads true from
-        // the previous playlist's deep scroll — the controller would then
-        // call _transition.ReverseAsync() to morph the pill back to the
-        // banner overlay, the matched-IDs interpolate from pill geometry to
-        // banner geometry over the 300 ms reverse, and the user sees the
-        // shy pill visibly inflate to fill the banner before snapping out.
-        // We unsuppress on a dispatcher tick + small delay after Stop+Reset
-        // have landed (ReleaseShyHeaderSuppressionAsync below).
-        if (_shyHeader is not null) _shyHeader.Suppressed = true;
-        if (PlaylistShyPill is not null) PlaylistShyPill.Visibility = Visibility.Collapsed;
-
         var navigationRevision = ++_navigationRevision;
 
         LoadParameter(parameter, mode);
@@ -786,19 +622,12 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
             LeftColumnScrollView?.ScrollTo(
                 0, 0,
                 new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
-            ContentScrollView?.ScrollTo(
-                0, 0,
-                new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
             TrackGrid?.ScrollRowsToTop();
         }
         catch (Exception ex)
         {
             _logger?.LogDebug(ex, "PlaylistPage scroll-to-top on navigation failed.");
         }
-
-        _shyHeader?.Stop();
-        _shyHeader?.Reset();
-        _ = ReleaseShyHeaderSuppressionAsync(navigationRevision);
     }
 
     private async void LoadParameter(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
@@ -953,16 +782,12 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
     {
         if (_isDisposed) return;
 
-        DetachShyHeader();
-        ApplyContentScrollMode();
-        AttachShyHeader();
+        ApplyHeaderPlacement();
 
-        FrameworkElement? target = ViewModel.Header.LayoutMode switch
-        {
-            PlaylistLayoutMode.Banner => HeroBannerRow,
-            PlaylistLayoutMode.Cover  => CoverHeroBlock,
-            _ => null
-        };
+        // Cover + title render in both modes now, so the left-column cover block
+        // is the reveal target regardless of layout mode. The banner (banner mode
+        // only) reveals via the grid's in-rows header projection.
+        FrameworkElement? target = CoverHeroBlock;
 
         if (target is null) return;
 

@@ -26,9 +26,14 @@ public sealed partial class TrackDataGridItemTemplateSelector : DataTemplateSele
     /// when a consumer wants the footer to scroll with the rows.</summary>
     public DataTemplate? FooterTemplate { get; set; }
 
+    /// <summary>Template used for <see cref="TrackDataGridHeaderRow"/> markers
+    /// when a consumer wants a header (e.g. a banner) to scroll with the rows.</summary>
+    public DataTemplate? HeaderTemplate { get; set; }
+
     protected override DataTemplate? SelectTemplateCore(object item)
         => item switch
         {
+            TrackDataGridHeaderRow => HeaderTemplate,
             TrackDataGridFooterRow => FooterTemplate,
             TrackDataGridGroupRow => GroupHeaderTemplate,
             _ => RowTemplate,

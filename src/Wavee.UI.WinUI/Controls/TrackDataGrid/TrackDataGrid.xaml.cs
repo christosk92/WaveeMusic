@@ -131,6 +131,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         RebuildSortFlyout();
         ApplyHorizontalRowScroll();
         ApplyVerticalRowScroll();
+        ApplyChromeLayout();
         WireRowContextMenuHandlers();
     }
 
@@ -152,6 +153,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         HookRowsItemsRepeater();
         ApplyHorizontalRowScroll();
         ApplyVerticalRowScroll();
+        UpdateStickyChrome();
     }
 
     private void RowsItemsView_Unloaded(object sender, RoutedEventArgs e)
@@ -212,6 +214,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
     private void RowsItemsViewScrollView_ViewChanged(ScrollView sender, object args)
     {
         HeaderScrollTransform.X = -sender.HorizontalOffset;
+        UpdateStickyChrome();
     }
 
     private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
@@ -1017,6 +1020,143 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         }
     }
 
+    // ── In-rows scrolling header (banner) ───────────────────────────────────
+    //
+    // Opt-in via HeaderPlacement=InRowsScroll + a non-null HeaderContent. The
+    // header is projected as the FIRST synthetic row inside the ItemsView (see
+    // PrependHeaderRow) so it scrolls away WITH the virtualized rows instead of
+    // sitting in a fixed band above them. In this mode the chrome (toolbar +
+    // filter + column header, grouped under ChromeHost) becomes a sticky overlay:
+    // ChromeHost rides just below the header at rest and sticks to the top once
+    // the header has scrolled past. See ApplyChromeLayout / UpdateStickyChrome.
+
+    public static readonly DependencyProperty HeaderContentProperty =
+        DependencyProperty.Register(nameof(HeaderContent), typeof(object), typeof(TrackDataGrid),
+            new PropertyMetadata(null, OnHeaderPlacementChanged));
+
+    public object? HeaderContent
+    {
+        get => GetValue(HeaderContentProperty);
+        set => SetValue(HeaderContentProperty, value);
+    }
+
+    public static readonly DependencyProperty HeaderPlacementProperty =
+        DependencyProperty.Register(nameof(HeaderPlacement), typeof(TrackDataGridHeaderPlacement), typeof(TrackDataGrid),
+            new PropertyMetadata(TrackDataGridHeaderPlacement.None, OnHeaderPlacementChanged));
+
+    public TrackDataGridHeaderPlacement HeaderPlacement
+    {
+        get => (TrackDataGridHeaderPlacement)GetValue(HeaderPlacementProperty);
+        set => SetValue(HeaderPlacementProperty, value);
+    }
+
+    private static void OnHeaderPlacementChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not TrackDataGrid grid)
+            return;
+        grid.ApplyChromeLayout();
+        if (!grid._disposed)
+            grid.ReprojectRows();
+    }
+
+    /// <summary>True when a banner is hosted as a scrolling in-rows header.</summary>
+    private bool HasScrollingHeader =>
+        HeaderPlacement == TrackDataGridHeaderPlacement.InRowsScroll && HeaderContent is not null;
+
+    // A scrolling header occupies _visibleRows[0], so every track's visible index
+    // is its model index + 1. Reorder coordinates are model-space (index into the
+    // page VM's track list), so translate when crossing the visible↔model boundary.
+    // 0 when there is no header → the reorder math is byte-identical to before.
+    private int HeaderRowCount => HasScrollingHeader ? 1 : 0;
+
+    private int ModelIndexOf(ITrackItem item)
+    {
+        var v = _visibleRows.IndexOf(item);
+        return v < 0 ? -1 : v - HeaderRowCount;
+    }
+
+    private void PrependHeaderRow(List<object> rows)
+    {
+        if (!HasScrollingHeader)
+            return;
+        rows.Insert(0, new TrackDataGridHeaderRow { Content = HeaderContent! });
+    }
+
+    /// <summary>
+    /// Switches the chrome (toolbar + filter + column header, grouped under
+    /// <c>ChromeHost</c>) between its classic pinned-at-top layout and the
+    /// banner-mode sticky overlay.
+    /// <para>
+    /// Pinned mode (<see cref="HasScrollingHeader"/> false): <c>ChromeRow</c> is
+    /// an Auto row that reserves ChromeHost's height; the rows sit in Row 1 below
+    /// it; the translate stays at 0. Identical to the pre-banner layout — every
+    /// non-banner consumer (Liked / Album / Search / Queue) stays here.
+    /// </para>
+    /// <para>
+    /// Banner mode: <c>ChromeRow</c> collapses to 0 and both ChromeHost and the
+    /// rows layer span Row 0+1, so ChromeHost overlays the rows (declared last →
+    /// on top). The hosted banner gets a bottom margin equal to ChromeHost's
+    /// height so the first real row never hides under the sticky chrome, ChromeHost
+    /// paints an opaque background so rows scrolling under it stay hidden, and
+    /// <see cref="UpdateStickyChrome"/> drives the Y translate from the scroll.
+    /// </para>
+    /// </summary>
+    private void ApplyChromeLayout()
+    {
+        if (ChromeHost is null || RowsLayer is null || ChromeRow is null || ChromeTranslate is null)
+            return;
+
+        if (HasScrollingHeader)
+        {
+            ChromeRow.Height = new GridLength(0);
+            Grid.SetRow(RowsLayer, 0);
+            Grid.SetRowSpan(RowsLayer, 2);
+            Grid.SetRowSpan(ChromeHost, 2);
+            ChromeHost.Background = Resources["TrackDataGridStickyChromeBrush"] as Microsoft.UI.Xaml.Media.Brush;
+            ApplyHeaderBottomReserve();
+            UpdateStickyChrome();
+        }
+        else
+        {
+            ChromeRow.Height = GridLength.Auto;
+            Grid.SetRow(RowsLayer, 1);
+            Grid.SetRowSpan(RowsLayer, 1);
+            Grid.SetRowSpan(ChromeHost, 1);
+            ChromeHost.Background = null;
+            ChromeTranslate.Y = 0;
+            if (HeaderContent is FrameworkElement fe)
+                fe.Margin = new Thickness(0);
+        }
+    }
+
+    /// <summary>Reserve space below the banner equal to the sticky chrome's
+    /// height so the first real row never paints under it.</summary>
+    private void ApplyHeaderBottomReserve()
+    {
+        if (HasScrollingHeader && HeaderContent is FrameworkElement fe && ChromeHost is not null)
+            fe.Margin = new Thickness(0, 0, 0, ChromeHost.ActualHeight);
+    }
+
+    /// <summary>Drive the sticky-chrome translate from the row scroll offset:
+    /// the chrome rides just below the banner (Y = bannerHeight) at rest and
+    /// clamps to 0 once the banner has scrolled past (sticks to the top).</summary>
+    private void UpdateStickyChrome()
+    {
+        if (!HasScrollingHeader || ChromeTranslate is null)
+            return;
+        var bannerHeight = (HeaderContent as FrameworkElement)?.ActualHeight ?? 0;
+        var offset = _rowsItemsViewScrollView?.VerticalOffset ?? 0;
+        ChromeTranslate.Y = Math.Max(0, bannerHeight - offset);
+    }
+
+    private void ChromeHost_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!HasScrollingHeader)
+            return;
+        ApplyHeaderBottomReserve();
+        UpdateStickyChrome();
+    }
+
     public static readonly DependencyProperty AllowHorizontalRowScrollProperty =
         DependencyProperty.Register(nameof(AllowHorizontalRowScroll), typeof(bool), typeof(TrackDataGrid),
             new PropertyMetadata(true, OnAllowHorizontalRowScrollChanged));
@@ -1040,49 +1180,16 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
             self.ApplyHorizontalRowScroll();
     }
 
-    public static readonly DependencyProperty IsParentScrollingProperty =
-        DependencyProperty.Register(nameof(IsParentScrolling), typeof(bool), typeof(TrackDataGrid),
-            new PropertyMetadata(false, OnIsParentScrollingChanged));
-
-    /// <summary>
-    /// When <c>true</c>, the internal ListView / ItemsView vertical scroll is
-    /// disabled so the grid renders all its rows at natural height and the
-    /// containing page's scroll viewer drives the whole layout. Default
-    /// <c>false</c> keeps normal in-grid vertical scrolling.
-    ///
-    /// <para>
-    /// Tradeoff: in this mode all rows render up-front (no virtualization),
-    /// because the inner panel measures against the parent's infinite vertical
-    /// extent rather than a constrained viewport. Acceptable for typical album
-    /// sizes (≤30 tracks). Revisit if a 100+-track surface needs it.
-    /// </para>
-    /// </summary>
-    public bool IsParentScrolling
-    {
-        get => (bool)GetValue(IsParentScrollingProperty);
-        set => SetValue(IsParentScrollingProperty, value);
-    }
-
-    private static void OnIsParentScrollingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        if (d is TrackDataGrid self)
-            self.ApplyVerticalRowScroll();
-    }
-
+    // The grid always owns its own virtualized vertical scroll now (banner
+    // playlists host their hero as an in-rows header instead of an outer
+    // parent scroll), so this just enables in-grid scrolling with a hidden
+    // scrollbar. The former IsParentScrolling DP / parent-scroll path is gone.
     private void ApplyVerticalRowScroll()
     {
         if (RowsItemsView?.ScrollView is not { } itemsScrollView) return;
 
-        if (IsParentScrolling)
-        {
-            itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Disabled;
-            itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
-        }
-        else
-        {
-            itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Auto;
-            itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
-        }
+        itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Auto;
+        itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
     }
 
     public void ScrollRowsToTop()
@@ -1263,10 +1370,16 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         var source = _sourceSnapshot;
         if (source.Count == 0)
         {
-            if (_visibleRows.Count > 0)
-                _visibleRows.Clear();
+            // Still project a scrolling header / in-rows footer on an empty or
+            // not-yet-loaded source so the banner shows during the track lazy-load
+            // window. With neither, this collapses to the prior Clear() behavior.
+            var emptyRows = new List<object>();
+            PrependHeaderRow(emptyRows);
+            AppendFooterRow(emptyRows);
+            if (emptyRows.Count > 0 || _visibleRows.Count > 0)
+                _visibleRows.ReplaceWith(emptyRows);
             ApplyLoadingRowsVisibility();
-            QueueProjectionDiagnostic(0, 0);
+            QueueProjectionDiagnostic(0, emptyRows.Count);
             return;
         }
 
@@ -1301,6 +1414,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
             rows = BuildFlatRowsWithHeaders(pipeline.ToList());
         }
 
+        PrependHeaderRow(rows);
         AppendFooterRow(rows);
         _visibleRows.ReplaceWith(rows);
         RestoreSelectionByKeys(selectedKeys);
@@ -1327,7 +1441,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
                 return;
 
             System.Diagnostics.Debug.WriteLine(
-                $"[track-grid] page={PageKey} source={sourceCount} visibleRows={visibleCount} realizedRows={_itemsViewRows.Count} parentScroll={IsParentScrolling}");
+                $"[track-grid] page={PageKey} source={sourceCount} visibleRows={visibleCount} realizedRows={_itemsViewRows.Count} header={HeaderRowCount}");
         });
     }
 
@@ -1344,7 +1458,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         if (LoadingRowsRepeater is null)
             return;
 
-        LoadingRowsRepeater.Visibility = IsLoading && _sourceSnapshot.Count == 0
+        // Suppress the skeleton overlay in scrolling-header (banner) mode: it
+        // lives above the rows host, so it would paint ABOVE the in-rows banner.
+        // The banner itself is the load affordance there; rows pop in when ready.
+        LoadingRowsRepeater.Visibility = IsLoading && _sourceSnapshot.Count == 0 && !HasScrollingHeader
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
@@ -1735,6 +1852,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         GroupCountFormatter = null;
         GroupHeaderTemplate = null;
         FooterContent = null;
+        HeaderContent = null;
         ToolbarLeftContent = null;
         FilterBarContent = null;
         DataContext = null;
@@ -1820,9 +1938,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         {
             var item = row.Track;
             if (item is null) continue;
-            // Custom-sort playlists (the only reorder-enabled case) have no group
-            // markers, so the ITrackItem's _visibleRows index is its model index.
-            var modelIndex = _visibleRows.IndexOf(item);
+            // Reorder-enabled lists have no group markers, so a track's _visibleRows
+            // index maps to its model index by subtracting the scrolling-header row
+            // (if any) — see ModelIndexOf / HeaderRowCount.
+            var modelIndex = ModelIndexOf(item);
             if (modelIndex < 0) continue;
             if (FindParent<ItemContainer>(row) is not { } container) continue;
 
@@ -1848,7 +1967,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
             int min = int.MaxValue, max = int.MinValue;
             foreach (var s in selected)
             {
-                var idx = _visibleRows.IndexOf(s);
+                var idx = ModelIndexOf(s);
                 if (idx < 0) continue;
                 if (idx < min) min = idx;
                 if (idx > max) max = idx;
@@ -1859,9 +1978,12 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         return (pressedIndex, 1);
     }
 
-    string IReorderHost.GetItemLabel(int index) =>
-        index >= 0 && index < _visibleRows.Count && _visibleRows[index] is ITrackItem t
+    string IReorderHost.GetItemLabel(int index)
+    {
+        var v = index + HeaderRowCount;
+        return v >= 0 && v < _visibleRows.Count && _visibleRows[v] is ITrackItem t
             ? (t.Title ?? string.Empty) : string.Empty;
+    }
 
     // Per-frame auto-scroll must be instant: the default animated ScrollBy
     // retargets a running animation every frame, which lags and compounds.
@@ -1874,8 +1996,11 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
     IDragPayload? IReorderHost.BuildPayload(int from, int length)
     {
         var uris = new List<string>(length);
-        for (int i = from; i < from + length && i < _visibleRows.Count; i++)
-            if (_visibleRows[i] is ITrackItem t) uris.Add(t.Id);
+        for (int i = from; i < from + length; i++)
+        {
+            var v = i + HeaderRowCount;
+            if (v >= 0 && v < _visibleRows.Count && _visibleRows[v] is ITrackItem t) uris.Add(t.Id);
+        }
         if (uris.Count == 0) return null;
         return new TrackDragPayload(uris.ToArray(), sourceContextUri: ContextUri, sourceStartIndex: from);
     }
