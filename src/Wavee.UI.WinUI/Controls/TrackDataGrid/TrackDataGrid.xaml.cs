@@ -1895,9 +1895,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         _reorderSettleUntilTicks = settleUntil;
         Behaviors.StaggeredEntrance.SuppressUntil(settleUntil);
 
-        var draggedTitle = from >= 0 && from < _visibleRows.Count && _visibleRows[from] is ITrackItem dt
-            ? dt.Title : "?";
-
         // PlaylistTrackListViewModel.ReorderTracksAsync does the gap→insert mapping,
         // OriginalIndex renumber, optimistic reset, and backend write — and now SKIPS
         // the redundant re-realize on every matching dealer echo (idempotent reproject),
@@ -1919,64 +1916,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable, IReorderHo
         // Safety net for any residual transient: hide only the still-mis-placed rows until
         // they land (never the whole list), so neither the overlap nor a blank ever shows.
         EnsureReorderSettleMask();
-        StartReorderOverlapSnapshot(draggedTitle, from, toGapSlot);
         return true;
-    }
-
-    // ── Reorder overlap diagnostics (temporary) ─────────────────────────────
-    // Logs EVERY realized container's bound title + arranged Y + both opacity channels
-    // for a short window after the drop, sorted by Y, flagging any two containers that
-    // sit within half a row pitch of each other (the visible overlap). This shows which
-    // two rows double-paint at one Y and which is the stale one.
-    private void StartReorderOverlapSnapshot(string draggedTitle, int from, int slot)
-    {
-        System.Diagnostics.Debug.WriteLine(
-            $"[odbg] === commit from={from} slot={slot} dragged='{draggedTitle}' visibleCount={_visibleRows.Count} ===");
-        var frame = 0;
-        System.EventHandler<object>? handler = null;
-        handler = (_, _) =>
-        {
-            frame++;
-            LogReorderContainers(frame);
-            if (frame >= 5 || _disposed)
-                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= handler;
-        };
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += handler;
-    }
-
-    private void LogReorderContainers(int frame)
-    {
-        try
-        {
-            var root = ((IReorderHost)this).ReorderCoordinateRoot;
-            var host = (DependencyObject?)_rowsRepeater ?? RowsItemsView;
-            var containers = new List<ItemContainer>();
-            CollectDescendants(host, containers);
-            var rows = new List<(string title, int idx, double top, double offY, double cOp, double vOp, bool vis, double fTY)>();
-            foreach (var c in containers)
-            {
-                var item = FindDescendant<Track.TrackItem>(c)?.Track;
-                var title = item?.Title ?? "<null>";
-                double top;
-                try { top = c.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, 0)).Y; }
-                catch { continue; }
-                var v = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(c);
-                v.Properties.TryGetVector3("Translation", out var facade);
-                var idx = item is null ? -1 : _visibleRows.IndexOf(item);
-                rows.Add((title.Length > 14 ? title[..14] : title, idx, top, v.Offset.Y, c.Opacity, v.Opacity, v.IsVisible, facade.Y));
-            }
-            rows.Sort((a, b) => a.top.CompareTo(b.top));
-            System.Diagnostics.Debug.WriteLine($"[odbg] f{frame,-2} realized={rows.Count}");
-            for (int i = 0; i < rows.Count; i++)
-            {
-                var r = rows[i];
-                var overlap = i > 0 && !double.IsNaN(r.top) && !double.IsNaN(rows[i - 1].top)
-                              && Math.Abs(r.top - rows[i - 1].top) < 26 ? " <<OVERLAP" : "";
-                System.Diagnostics.Debug.WriteLine(
-                    $"[odbg]   '{r.title,-14}' i={r.idx,-2} top={r.top,7:F0} off={r.offY,7:F0} cO={r.cOp:F2} vO={r.vOp:F2} vis={(r.vis ? 1 : 0)} fY={r.fTY,6:F0}{overlap}");
-            }
-        }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[odbg] f{frame} err {ex.Message}"); }
     }
 
     private static void CollectDescendants(DependencyObject root, List<ItemContainer> sink)
