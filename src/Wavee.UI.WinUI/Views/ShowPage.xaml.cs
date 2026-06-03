@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.Cards;
+using Wavee.UI.WinUI.Controls.Common;
 using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.ShowEpisode;
@@ -227,6 +228,35 @@ public sealed partial class ShowPage : UserControl, ITabBarItemContent, IPageHos
     {
         if (sender is Border border && e.NewSize.Width > 0)
             border.Height = e.NewSize.Width;
+    }
+
+    // ── Cover viewer (click cover → zoomable overlay with Save as…) ──
+    private static readonly Microsoft.UI.Input.InputCursor s_coverHandCursor =
+        Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
+
+    private async void CoverContainer_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        await ImageZoomDialog.ShowAsync(XamlRoot, ViewModel.CoverArtUrl, ViewModel.ShowName, ViewModel.ShowName);
+    }
+
+    private void CoverContainer_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is UIElement el)
+            Wavee.UI.WinUI.Helpers.UI.FrameworkElementExtensions.ChangeCursor(el, s_coverHandCursor);
+        if (CoverHoverOverlay is not null)
+            AnimationBuilder.Create()
+                .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(140))
+                .Start(CoverHoverOverlay);
+    }
+
+    private void CoverContainer_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is UIElement el)
+            Wavee.UI.WinUI.Helpers.UI.FrameworkElementExtensions.ChangeCursor(el, null);
+        if (CoverHoverOverlay is not null)
+            AnimationBuilder.Create()
+                .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(140))
+                .Start(CoverHoverOverlay);
     }
 
     // ── Filter / sort dropdowns ─────────────────────────────────────────────

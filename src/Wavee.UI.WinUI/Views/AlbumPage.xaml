@@ -147,6 +147,10 @@
                                 CornerRadius="8"
                                 HorizontalAlignment="Stretch"
                                 SizeChanged="AlbumArtContainer_SizeChanged"
+                                Tapped="AlbumArtContainer_Tapped"
+                                PointerEntered="AlbumArtContainer_PointerEntered"
+                                PointerExited="AlbumArtContainer_PointerExited"
+                                ToolTipService.ToolTip="View cover"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                                     <Grid>
                                         <FontIcon Glyph="&#xE93C;" FontSize="64" Opacity="0.3"
@@ -157,6 +161,26 @@
                                             DecodePixelSize="280"
                                             Stretch="UniformToFill"
                                             Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+
+                                        <!-- Hover affordance: an expand hint that fades in to signal
+                                             the cover opens a zoomable viewer. Only when there's art. -->
+                                        <Border x:Name="AlbumArtHoverOverlay"
+                                                Opacity="0"
+                                                IsHitTestVisible="False"
+                                                CornerRadius="8"
+                                                Background="#26000000"
+                                                Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                                            <Border Background="#B3000000"
+                                                    CornerRadius="22"
+                                                    Width="44" Height="44"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE740;"
+                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                          FontSize="20"
+                                                          Foreground="White"/>
+                                            </Border>
+                                        </Border>
                                     </Grid>
                                 </Border>
                             </Grid>

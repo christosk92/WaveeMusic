@@ -21,8 +21,10 @@ using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.Services.DragDrop;
+using Wavee.UI.WinUI.Controls.Common;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
+using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -514,6 +516,33 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, IPageHo
         // during the loading→content transition.
         if (Math.Abs(border.Height - target) < 0.5) return;
         border.Height = target;
+    }
+
+    // ── Cover viewer (click cover → zoomable overlay with Save as…) ──
+    private static readonly Microsoft.UI.Input.InputCursor s_coverHandCursor =
+        Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
+
+    private async void AlbumArtContainer_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        await ImageZoomDialog.ShowAsync(XamlRoot, ViewModel.AlbumImageUrl, ViewModel.AlbumName, ViewModel.AlbumName);
+    }
+
+    private void AlbumArtContainer_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is UIElement el) el.ChangeCursor(s_coverHandCursor);
+        if (AlbumArtHoverOverlay is not null)
+            AnimationBuilder.Create()
+                .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(140))
+                .Start(AlbumArtHoverOverlay);
+    }
+
+    private void AlbumArtContainer_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is UIElement el) el.ChangeCursor(null);
+        if (AlbumArtHoverOverlay is not null)
+            AnimationBuilder.Create()
+                .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(140))
+                .Start(AlbumArtHoverOverlay);
     }
 
     // Same square-as-it-grows treatment for the shimmer cover so the loading
