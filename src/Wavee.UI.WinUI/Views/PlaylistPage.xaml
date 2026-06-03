@@ -934,8 +934,7 @@
                                                 BorderThickness="1"
                                                 VerticalAlignment="Center"
                                                 Margin="8,0,0,0"
-                                                Command="{Binding ElementName=PageRoot, Path=ViewModel.Mutations.AddRecommendationCommand}"
-                                                CommandParameter="{x:Bind}"
+                                                Click="RecommendationAdd_Click"
                                                 ToolTipService.ToolTip="Add to this playlist">
                                             <FontIcon Glyph="&#xE710;" FontSize="14"/>
                                         </Button>
