@@ -172,6 +172,15 @@ public interface IPathfinderClient
     Task<FetchPlaylistResponse> FetchPlaylistAsync(
         string playlistUri, CancellationToken ct = default);
 
+    /// <summary>
+    /// Fetches the "You might also like" related-playlist rail for a playlist,
+    /// backed by the <c>playlistSection</c> persisted query. The section id is
+    /// fixed server-side; only the playlist URI varies. Used at the bottom of
+    /// the playlist page for playlists the current user does not own.
+    /// </summary>
+    Task<PlaylistSectionResponse> GetPlaylistSectionAsync(
+        string playlistUri, CancellationToken ct = default);
+
     /// <summary>Fetches the user's saved location from their Spotify profile.</summary>
     Task<UserLocationResponse> GetUserLocationAsync(CancellationToken ct = default);
 

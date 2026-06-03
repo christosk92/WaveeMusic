@@ -65,6 +65,14 @@ internal static class PathfinderOperations
     public const string FetchPlaylist = "fetchPlaylist";
     public const string FetchPlaylistHash = "a65e12194ed5fc443a1cdebed5fabe33ca5b07b987185d63c72483867ad13cb4";
 
+    // "You might also like" related-playlist rail shown on the bottom of a
+    // playlist page (non-owned playlists). The section URI below is a stable
+    // id that the server resolves against the supplied playlist URI, so a
+    // single hardcoded section drives every playlist.
+    public const string PlaylistSection = "playlistSection";
+    public const string PlaylistSectionHash = "2615df403a9043c1d7d3094fbeb4c9653b07b11a33d8081fbd31f0f7959ff4a1";
+    public const string PlaylistSectionUri = "spotify:section:0JQ5DAob0LgAOAm50K90Od";
+
     public const string UserLocation = "userLocation";
     public const string UserLocationHash = "079939378ca79b67c6d047be9152ea940d21f10bbfa2f5d4cf4d8320d87774c2";
 

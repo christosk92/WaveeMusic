@@ -13,6 +13,8 @@
     xmlns:helpers="using:Wavee.UI.WinUI.Helpers"
     xmlns:browseControls="using:Wavee.UI.WinUI.Controls.Browse"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    xmlns:dtos="using:Wavee.UI.Models"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
@@ -655,9 +657,15 @@
                          typed as `object`, and the XAML compile-time deferred-
                          load infrastructure can't attach x:Load on the direct
                          child of a custom-control property setter — assignment
-                         throws XamlParseException at parse time. -->
-                    <StackPanel Padding="16,24,16,32"
-                                x:Name="FooterTracks"
+                         throws XamlParseException at parse time. The outer
+                         FooterRoot is that direct child (no x:Load); each section
+                         below carries its own Visibility/x:Load. The two sections
+                         are mutually exclusive: owner ⇒ Recommended Songs,
+                         non-owner ⇒ You might also like. -->
+                    <StackPanel x:Name="FooterRoot"
+                                Padding="16,24,16,32"
+                                Spacing="24">
+                    <StackPanel x:Name="FooterTracks"
                                 Spacing="16"
                                 Visibility="{x:Bind ViewModel.Header.CanShowRecommendations, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid x:Name="FooterTracksContent"
@@ -810,6 +818,65 @@
                         </ItemsRepeater>
                             </StackPanel>
                         </Grid>
+                    </StackPanel>
+
+                    <!-- "You might also like" — related playlists for non-owned
+                         playlists (Pathfinder playlistSection query). Mirrors the
+                         AlbumPage rails: a ShelfScroller of ContentCards. The VM
+                         only loads this for non-owned playlists, so
+                         HasYouMightAlsoLike gates both visibility and the
+                         deferred load. ContentCard handles navigation itself. -->
+                    <StackPanel x:Name="FooterYmal"
+                                Spacing="16"
+                                Visibility="{x:Bind ViewModel.HasYouMightAlsoLike, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid x:Name="FooterYmalContent"
+                              entranceAnim:SectionStaggerEntrance.IsEntranceAnimated="True"
+                              x:Load="{x:Bind ViewModel.HasYouMightAlsoLike, Mode=OneWay}">
+                            <StackPanel Spacing="16">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               x:Uid="Views_PlaylistPage__YouMightAlsoLikeText"
+                                               Text="You might also like"
+                                               Style="{StaticResource SubtitleTextBlockStyle}"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                                Visibility="{Binding ElementName=YmalShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                Command="{Binding ElementName=YmalShelf, Path=PageLeftCommand}">
+                                            <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                                        </Button>
+                                        <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                Command="{Binding ElementName=YmalShelf, Path=PageRightCommand}">
+                                            <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid>
+                                    <shelf:ShelfScroller x:Name="YmalShelf"
+                                                         ItemsSource="{x:Bind ViewModel.YouMightAlsoLike, Mode=OneWay}"
+                                                         MinItemWidth="160" MaxItemWidth="200" Spacing="12">
+                                        <shelf:ShelfScroller.ItemTemplate>
+                                            <DataTemplate x:DataType="dtos:PlaylistDetailDto">
+                                                <cards:ContentCard
+                                                    Tag="{x:Bind}"
+                                                    ImageUrl="{x:Bind ImageUrl, Mode=OneTime}"
+                                                    Title="{x:Bind Name, Mode=OneTime}"
+                                                    Subtitle="{x:Bind OwnerName, Mode=OneTime}"
+                                                    NavigationUri="{x:Bind Id, Mode=OneTime}"
+                                                    PlaceholderGlyph="&#xE8FD;"
+                                                    IsCircularImage="False"/>
+                                            </DataTemplate>
+                                        </shelf:ShelfScroller.ItemTemplate>
+                                    </shelf:ShelfScroller>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
                     </StackPanel>
                     </tdg:TrackDataGrid.FooterContent>
                 </tdg:TrackDataGrid>
