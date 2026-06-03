@@ -1945,6 +1945,96 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Changelog_0_1_0_Alpha_1_Announcement" xml:space="preserve">
     <value>First time anyone outside my dev box is running this build. Things will break — when they do, see the "Report issues" section so I can actually fix it.</value>
   </data>
+  <data name="Changelog_0_1_2_Alpha_Title" xml:space="preserve">
+    <value>A redesigned library, faster navigation, and more</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Announcement" xml:space="preserve">
+    <value>A big roll-up of everything since the last update: the library is redesigned, the app stays fast no matter how long you browse, recent albums and covers open instantly, and updates now install themselves on restart — plus a stack of fixes.</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Library_Title" xml:space="preserve">
+    <value>Redesigned library</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Library_Short" xml:space="preserve">
+    <value>Albums, Liked Songs, Artists &amp; Podcasts, rebuilt</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Library_DetailTitle" xml:space="preserve">
+    <value>A cleaner, faster library</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Library_Detail" xml:space="preserve">
+    <value>Your whole library has been reworked around a shared layout with side-by-side detail panels — Albums, Liked Songs, Artists, and Podcasts now feel consistent, with a size slider to tune the grid to your taste.</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Nav_Title" xml:space="preserve">
+    <value>Navigation that stays fast</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Nav_Short" xml:space="preserve">
+    <value>No slowdown over a long session</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Nav_DetailTitle" xml:space="preserve">
+    <value>Snappy from the first nav to the last</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Nav_Detail" xml:space="preserve">
+    <value>Pages you leave are now quieted in the background instead of staying fully active, so the app no longer gets sluggish the longer you use it. Artist-to-artist jumps no longer flicker, and the navigation hot path is leaner across the board.</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Revisit_Title" xml:space="preserve">
+    <value>Instant revisits</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Revisit_Short" xml:space="preserve">
+    <value>Reopen a recent album or playlist with no wait</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Revisit_DetailTitle" xml:space="preserve">
+    <value>Pick up right where you left off</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Revisit_Detail" xml:space="preserve">
+    <value>Albums and playlists you've opened recently reappear instantly — no loading skeleton — so flicking through the sidebar to find a song feels immediate.</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Reveal_Title" xml:space="preserve">
+    <value>Smoother loading</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Reveal_Short" xml:space="preserve">
+    <value>Content fades in cleanly instead of popping</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Reveal_DetailTitle" xml:space="preserve">
+    <value>Easier on the eyes</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Reveal_Detail" xml:space="preserve">
+    <value>Pages now reveal with a single clean cross-fade, the library and Liked Songs fade in instead of appearing abruptly, lyrics and detail skeletons are shaped like the real content, and the Details tab loads the first time you open it.</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Update_Title" xml:space="preserve">
+    <value>Automatic updates</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Update_Short" xml:space="preserve">
+    <value>New versions install themselves on restart</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Update_DetailTitle" xml:space="preserve">
+    <value>Always on the latest</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Update_Detail" xml:space="preserve">
+    <value>Updates now download quietly in the background and apply the next time you restart Wavee — no manual reinstalling.</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Cover_Title" xml:space="preserve">
+    <value>Zoomable cover viewer</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Cover_Short" xml:space="preserve">
+    <value>Tap a cover to view it full-size</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Cover_DetailTitle" xml:space="preserve">
+    <value>See the artwork</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Cover_Detail" xml:space="preserve">
+    <value>Album and show covers open in a zoomable full-screen viewer, with a Save as… option to keep the image.</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Fixes_Title" xml:space="preserve">
+    <value>Polish &amp; fixes</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Fixes_Short" xml:space="preserve">
+    <value>Touch, playlists, search and more</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Fixes_DetailTitle" xml:space="preserve">
+    <value>Lots of small fixes</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Fixes_Detail" xml:space="preserve">
+    <value>Touch scrolling no longer sticks as a stuck hover; playlist create/edit handles track seeding, cover sync and the cover leak; the search top result no longer washes out in light mode and results stagger in; plus add-to-playlist notifications, search-flyout thumbnails, and a PlayerBar crash fix.</value>
+  </data>
   <data name="Changelog_0_1_1_Alpha_Title" xml:space="preserve">
     <value>Refresh your playlists with swipes</value>
   </data>
