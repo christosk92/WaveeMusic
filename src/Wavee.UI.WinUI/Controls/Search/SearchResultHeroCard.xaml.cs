@@ -130,12 +130,18 @@ public sealed partial class SearchResultHeroCard : UserControl
 
     private void ApplyHoverBackground()
     {
-        var key = _isPressed
-            ? "CardBackgroundFillColorTertiaryBrush"
-            : _isHovered
-            ? "CardBackgroundFillColorTertiaryBrush"
-            : "CardBackgroundFillColorSecondaryBrush";
-        RootBorder.Background = (Brush)Application.Current.Resources[key];
+        // When a hero image / palette wash is showing through the otherwise-
+        // transparent chrome, NEVER paint an opaque hover/rest fill over it: the
+        // RootBorder sits ABOVE the bleed layer, so an opaque CardBackground brush
+        // covered the artist photo and whited the card out in light mode. Those
+        // cards take their hover feedback from the border + play-button scale.
+        var hasHeroVisual = HeroInkOverlay.Visibility == Visibility.Visible;
+        RootBorder.Background = hasHeroVisual
+            ? new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0))
+            : (Brush)Application.Current.Resources[
+                _isPressed || _isHovered
+                    ? "CardBackgroundFillColorTertiaryBrush"
+                    : "CardBackgroundFillColorSecondaryBrush"];
         RootBorder.BorderBrush = (Brush)Application.Current.Resources[_isHovered || _isPressed
             ? "ControlStrokeColorDefaultBrush"
             : "CardStrokeColorDefaultBrush"];
@@ -283,6 +289,9 @@ public sealed partial class SearchResultHeroCard : UserControl
         HeroInkOverlay.Visibility = hasVisual ? Visibility.Visible : Visibility.Collapsed;
 
         ApplyPaletteBrush();
+        // The hero visual just resolved — re-evaluate the chrome fill so a hover
+        // that started before the image loaded stops covering it (and vice versa).
+        ApplyHoverBackground();
     }
 
     private void DisposeArtistSubscription()
