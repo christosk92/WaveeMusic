@@ -62,8 +62,8 @@
                                 ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
                                 Margin="32,24,32,40">
                 <muxc:ItemsRepeater.Layout>
-                    <muxc:UniformGridLayout MinItemWidth="160"
-                                            MinItemHeight="220"
+                    <muxc:UniformGridLayout MinItemWidth="184"
+                                            MinItemHeight="252"
                                             MinRowSpacing="20"
                                             MinColumnSpacing="16"
                                             ItemsStretch="Uniform"/>
