@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Helpers;
@@ -20,85 +21,120 @@ using Windows.Storage.Streams;
 namespace Wavee.UI.WinUI.Controls.Common;
 
 /// <summary>
-/// Reusable full-cover viewer: shows an image in a zoom/pan-able overlay dialog
-/// with an "export (Save as…)" action. Used by any cover surface — albums,
-/// playlists, podcasts/shows, etc. — via <see cref="ShowAsync"/>.
+/// Reusable full-window cover/image lightbox: the image is the content (stretched
+/// edge-to-edge, zoom + pan), with floating close + "Save as…" controls over it —
+/// no dialog chrome. Used by any cover surface (albums, shows/podcasts, etc.) via
+/// <see cref="ShowAsync"/>. Hosted in a <see cref="Popup"/>.
 /// </summary>
-public sealed partial class ImageZoomDialog : ContentDialog
+public sealed partial class ImageZoomDialog : UserControl
 {
     private string? _imageUrl;
     private string _suggestedFileName = "cover";
+    private Popup? _popup;
+    private XamlRoot? _xamlRoot;
+    private TaskCompletionSource<bool>? _closedTcs;
 
     public ImageZoomDialog()
     {
         InitializeComponent();
-        PrimaryButtonClick += OnSavePrimaryClick;
     }
 
     /// <summary>
-    /// Opens the viewer for <paramref name="imageUrl"/> (a Spotify image URI or a
-    /// plain https URL). <paramref name="title"/> is shown in the dialog header and
-    /// <paramref name="suggestedFileName"/> seeds the Save dialog (e.g. the album /
-    /// playlist / show name). No-ops when the image URL can't be resolved.
+    /// Opens the lightbox for <paramref name="imageUrl"/> (a Spotify image URI or a
+    /// plain https URL). <paramref name="suggestedFileName"/> seeds the Save dialog
+    /// (e.g. the album / show name). <paramref name="title"/> is accepted for API
+    /// stability but not shown (the lightbox has no header). Returns a task that
+    /// completes when the viewer is dismissed. No-ops when the URL can't be resolved.
     /// </summary>
-    public static async Task ShowAsync(XamlRoot? xamlRoot, string? imageUrl, string? title, string? suggestedFileName)
+    public static Task ShowAsync(XamlRoot? xamlRoot, string? imageUrl, string? title, string? suggestedFileName)
     {
-        if (xamlRoot is null) return;
+        if (xamlRoot is null) return Task.CompletedTask;
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
-        if (string.IsNullOrEmpty(httpsUrl)) return;
+        if (string.IsNullOrEmpty(httpsUrl)) return Task.CompletedTask;
 
-        var dialog = new ImageZoomDialog
+        var overlay = new ImageZoomDialog
         {
-            XamlRoot = xamlRoot,
-            Title = string.IsNullOrWhiteSpace(title) ? "Cover art" : title,
             _imageUrl = httpsUrl,
             _suggestedFileName = SanitizeFileName(suggestedFileName),
+            _xamlRoot = xamlRoot,
         };
-        // Match the dialog chrome (background / title / buttons) to the app's
-        // current light/dark theme — robust even when the app applies a
-        // per-element RequestedTheme override rather than an app-wide one.
+        // Match tooltip / focus chrome to the app theme (the surface itself is
+        // intentionally dark, like any image viewer).
         if (xamlRoot.Content is FrameworkElement rootElement)
-            dialog.RequestedTheme = rootElement.ActualTheme;
+            overlay.RequestedTheme = rootElement.ActualTheme;
         // Full-resolution decode (no DecodePixelSize cap) so zoom reveals detail.
-        dialog.FullImage.Source = new BitmapImage(new Uri(httpsUrl));
+        overlay.FullImage.Source = new BitmapImage(new Uri(httpsUrl));
 
-        // Scale the square viewer to the window so it "expands" responsively.
-        var size = xamlRoot.Size;
-        var side = Math.Clamp(Math.Min(size.Width, size.Height) * 0.78, 320, 760);
-        dialog.Viewer.Width = side;
-        dialog.Viewer.Height = side;
-        // Size the image to the viewport so it FITS at zoom factor 1 (a ScrollViewer
-        // otherwise measures an unconstrained Uniform image at its natural pixels);
-        // zoom then scales beyond fit. Uniform letterboxes non-square art cleanly.
-        dialog.FullImage.Width = side;
-        dialog.FullImage.Height = side;
+        var popup = new Popup
+        {
+            XamlRoot = xamlRoot,
+            Child = overlay,
+        };
+        overlay._popup = popup;
+        overlay.SizeToWindow();
+        xamlRoot.Changed += overlay.OnXamlRootChanged;
 
-        await dialog.ShowAsync();
+        var tcs = new TaskCompletionSource<bool>();
+        overlay._closedTcs = tcs;
+        popup.IsOpen = true;
+        overlay.OverlayRoot.Focus(FocusState.Programmatic);
+        return tcs.Task;
+    }
+
+    private void SizeToWindow()
+    {
+        if (_xamlRoot is null) return;
+        Width = _xamlRoot.Size.Width;
+        Height = _xamlRoot.Size.Height;
+    }
+
+    private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => SizeToWindow();
+
+    private void Close()
+    {
+        if (_xamlRoot is not null)
+            _xamlRoot.Changed -= OnXamlRootChanged;
+        if (_popup is not null)
+            _popup.IsOpen = false;
+        _closedTcs?.TrySetResult(true);
+    }
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void OverlayRoot_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        // Only the dimmed frame around the image dismisses — taps on the image
+        // (or the floating buttons) bubble with a different OriginalSource.
+        if (ReferenceEquals(e.OriginalSource, OverlayRoot))
+            Close();
+    }
+
+    private void OverlayRoot_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Escape)
+        {
+            Close();
+            e.Handled = true;
+        }
+    }
+
+    private void ZoomScroller_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Keep the zoom content the size of the viewport so the Uniform image fits
+        // at zoom factor 1 (a ScrollView otherwise measures it at natural pixels)
+        // and stays centred; zoom then scales beyond fit.
+        ImageHost.Width = ZoomScroller.ActualWidth;
+        ImageHost.Height = ZoomScroller.ActualHeight;
     }
 
     private void ZoomScroller_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        // ScrollView zooms programmatically via ZoomTo (no ChangeView). Null
-        // centerPoint zooms about the viewport centre.
         var target = ZoomScroller.ZoomFactor > 1.05f ? 1f : 2.5f;
         ZoomScroller.ZoomTo(target, null);
         e.Handled = true;
     }
 
-    private async void OnSavePrimaryClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
-    {
-        // Keep the viewer open after exporting so the user can keep browsing the art.
-        var deferral = args.GetDeferral();
-        args.Cancel = true;
-        try
-        {
-            await SaveImageAsync();
-        }
-        finally
-        {
-            deferral.Complete();
-        }
-    }
+    private async void Save_Click(object sender, RoutedEventArgs e) => await SaveImageAsync();
 
     private async Task SaveImageAsync()
     {
