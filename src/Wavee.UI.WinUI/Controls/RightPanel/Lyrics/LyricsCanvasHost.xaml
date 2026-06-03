@@ -44,20 +44,29 @@
             VerticalAlignment="Center"
             Visibility="Collapsed"/>
 
-        <!-- Loading shimmer placeholder -->
+        <!-- Loading shimmer placeholder. Shaped to match the rendered lyric
+             column so the load→lyrics swap reads as one surface: left-aligned
+             lines filling the panel, bars sized to the (dynamic) lyric font, an
+             emphasized "active" line near the vertical centre, and the past /
+             upcoming lines dimmed like the out-of-focus lines around it. -->
         <StackPanel
             x:Name="LyricsLoadingShimmer"
             Visibility="Collapsed"
             IsHitTestVisible="False"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Center"
-            Margin="14,0,14,0"
-            Spacing="10">
-            <controls:Shimmer Height="14" Width="210" CornerRadius="7" HorizontalAlignment="Left"/>
-            <controls:Shimmer Height="14" Width="248" CornerRadius="7" HorizontalAlignment="Left"/>
-            <controls:Shimmer Height="14" Width="186" CornerRadius="7" HorizontalAlignment="Left"/>
-            <controls:Shimmer Height="14" Width="230" CornerRadius="7" HorizontalAlignment="Left"/>
-            <controls:Shimmer Height="14" Width="170" CornerRadius="7" HorizontalAlignment="Left"/>
+            Margin="20,0,20,0"
+            Spacing="18">
+            <controls:Shimmer Height="20" Width="172" CornerRadius="7" HorizontalAlignment="Left" Opacity="0.32"/>
+            <controls:Shimmer Height="20" Width="228" CornerRadius="7" HorizontalAlignment="Left" Opacity="0.46"/>
+            <controls:Shimmer Height="20" Width="196" CornerRadius="7" HorizontalAlignment="Left" Opacity="0.62"/>
+            <controls:Shimmer Height="20" Width="240" CornerRadius="7" HorizontalAlignment="Left" Opacity="0.8"/>
+            <!-- Active line: larger + full opacity, like the focused lyric. -->
+            <controls:Shimmer Height="28" Width="212" CornerRadius="9" HorizontalAlignment="Left"/>
+            <controls:Shimmer Height="20" Width="184" CornerRadius="7" HorizontalAlignment="Left" Opacity="0.8"/>
+            <controls:Shimmer Height="20" Width="236" CornerRadius="7" HorizontalAlignment="Left" Opacity="0.62"/>
+            <controls:Shimmer Height="20" Width="158" CornerRadius="7" HorizontalAlignment="Left" Opacity="0.46"/>
+            <controls:Shimmer Height="20" Width="204" CornerRadius="7" HorizontalAlignment="Left" Opacity="0.32"/>
         </StackPanel>
 
         <!-- No lyrics fallback -->
