@@ -20,13 +20,13 @@
     <ItemGroup>
       <PackageReference Include="Google.Protobuf" Version="3.35.0" />
       <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
-      <PackageReference Include="Grpc.Tools" Version="2.80.0">
+      <PackageReference Include="Grpc.Tools" Version="2.81.0">
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         <PrivateAssets>all</PrivateAssets>
       </PackageReference>
       <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
-      <PackageReference Include="System.Reactive" Version="7.0.0-preview.15" />
+      <PackageReference Include="System.Reactive" Version="7.0.0-preview.20" />
       <!-- z440.atl.core moved to Wavee.Local with the metadata extractor -->
       <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.8" />
       <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />

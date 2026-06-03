@@ -220,7 +220,12 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     }
 
     public bool IsOwner => Playlist?.IsOwner == true;
-    public bool IsPublic => Playlist?.IsPublic == true;
+
+    public bool IsPublic
+    {
+        get => Playlist?.IsPublic == true;
+        internal set => UpdatePlaylist(p => p with { IsPublic = value });
+    }
 
     public bool IsCollaborative
     {

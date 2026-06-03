@@ -78,6 +78,16 @@ public interface IPlaylistMutationService
     Task SetPlaylistFollowedAsync(string playlistId, bool followed, CancellationToken ct = default);
 
     /// <summary>
+    /// Sets a user-owned playlist's visibility. Mirrors the web client's two
+    /// calls: (1) the base permission (<c>VIEWER</c> = public, <c>BLOCKED</c> =
+    /// private — the authoritative who-can-view control), then (2) the
+    /// <c>public</c> flag on the playlist's rootlist entry (profile /
+    /// discoverability). The permission call is authoritative; the rootlist flag
+    /// is best-effort.
+    /// </summary>
+    Task SetPlaylistVisibilityAsync(string playlistId, bool isPublic, CancellationToken ct = default);
+
+    /// <summary>
     /// Hits the playlistextender endpoint for "Recommended Songs" — used by
     /// the footer section on the playlist page.
     /// </summary>

@@ -26,7 +26,7 @@ using Wavee.UI.WinUI.ViewModels;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class ShowPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
+public sealed partial class ShowPage : UserControl, ITabBarItemContent, IPageHostAware, IHibernatingPage, IDisposable, IContentPageHost, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────
     string IInPageFilterable.FilterQuery
@@ -89,6 +89,27 @@ public sealed partial class ShowPage : UserControl, ITabBarItemContent, IPageHos
     public void OnLeaving()
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.show.onLeaving");
+        // Off-screen quiet-down is driven by PageHost's hot-window residency tiering
+        // (IHibernatingPage / PageHost.ApplyResidencyTiers).
+    }
+
+    // ── IHibernatingPage ───────────────────────────────────────────────────────
+
+    public void Hibernate()
+    {
+        _logger?.LogDebug("[hibernate] show-page {Uri}", ViewModel.ShowUri);
+        ViewModel.Hibernate();
+        Bindings?.StopTracking();
+    }
+
+    public void Rehydrate()
+    {
+        // Re-evaluate + resume x:Bind tracking; the reload itself runs via
+        // OnEntered → ViewModel.Activate (its same-show short-circuit is bypassed
+        // because Hibernate cleared the episode list, so it re-attaches + reloads
+        // with a skeleton).
+        _logger?.LogDebug("[hibernate] show-page rehydrate {Uri}", ViewModel.ShowUri);
+        Bindings?.Update();
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)

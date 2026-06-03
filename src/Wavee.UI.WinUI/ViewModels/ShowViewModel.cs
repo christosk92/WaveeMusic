@@ -323,6 +323,32 @@ public sealed partial class ShowViewModel : ObservableObject, ITabBarItemContent
         _changeBusSubscription = null;
     }
 
+    /// <summary>
+    /// Idle this show while its page sits resident-but-off-screen beyond PageHost's
+    /// hot window. Cancels in-flight loads, disconnects live sources (like-state,
+    /// playback, podcast-progress, library change-bus), and releases the realized
+    /// episode rows + topics/recommendations, so the collapsed page does no per-tick
+    /// UI-thread work and its rows de-register from the global playback broadcast.
+    /// Re-entry runs <see cref="Activate"/>; with episodes cleared its same-show
+    /// short-circuit is bypassed, so it re-attaches and reloads (skeleton). Idempotent.
+    /// </summary>
+    public void Hibernate()
+    {
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = null;
+        _progressRefreshCts?.Cancel();
+        _progressRefreshCts?.Dispose();
+        _progressRefreshCts = null;
+
+        DetachLongLivedServices();
+
+        _allEpisodes = new List<ShowEpisodeDto>();
+        FilteredEpisodes = Array.Empty<ShowEpisodeDto>();
+        Topics.Clear();
+        Recommendations.Clear();
+    }
+
     /// <summary>Entry-point from <c>ShowPage.OnNavigatedTo</c>.</summary>
     public void Activate(string showUriOrId)
     {

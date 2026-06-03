@@ -443,6 +443,21 @@ public interface ISpClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sets the playlist's base permission (link-sharing visibility) via
+    /// <c>POST /playlist-permission/v1/playlist/{id}/permission/base</c>.
+    /// <paramref name="permissionLevel"/> is <c>"VIEWER"</c> (public) or
+    /// <c>"BLOCKED"</c> (private). <paramref name="revision"/> is the current
+    /// permission revision (base64); the sentinel <c>"ZGVmYXVsdA=="</c> (base64
+    /// of <c>"default"</c>) is accepted when the current revision is unknown.
+    /// Returns the resulting permission revision (base64) on success, else null.
+    /// </summary>
+    Task<string?> SetPlaylistBasePermissionAsync(
+        string playlistId,
+        string permissionLevel,
+        string revision,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches a user's following list via the spclient profile endpoint.
     /// </summary>
     Task<SpotifyFollowingResponse> GetUserFollowingAsync(

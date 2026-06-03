@@ -36,7 +36,7 @@ using Wavee.UI.WinUI.ViewModels;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class AlbumPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
+public sealed partial class AlbumPage : UserControl, ITabBarItemContent, IPageHostAware, IHibernatingPage, IDisposable, IContentPageHost, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────
     string IInPageFilterable.FilterQuery
@@ -251,11 +251,33 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, IPageHo
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onLeaving");
         _logger?.LogDebug("[xfade][album:{Id}] nav.from", XfadeLog.Tag(ViewModel.AlbumId));
-        // Trim work (Hibernate + Bindings.StopTracking) is deferred ~1 s by
-        // TabBarItem's central scheduler — calling it synchronously here
-        // moves the 100+ ms hit from pageHostNavigating into page.album.onLeaving
-        // (same cost, different label). The deferred trim cancels if the user
-        // returns to this page first.
+        // Off-screen quiet-down is driven by PageHost's hot-window residency tiering
+        // (see IHibernatingPage / PageHost.ApplyResidencyTiers): the 2 most-recent
+        // collapsed pages stay live for instant back/forward, anything older is
+        // hibernated. Nothing to do synchronously on leave.
+    }
+
+    // ── IHibernatingPage ───────────────────────────────────────────────────────
+
+    public void Hibernate()
+    {
+        _logger?.LogDebug("[xfade][album:{Id}] hibernate", XfadeLog.Tag(ViewModel.AlbumId));
+        ViewModel.Hibernate();
+        // Detach the compiled x:Bind store from VM.PropertyChanged so the idle
+        // off-screen page stops re-evaluating bindings (incl. theme / scalar props
+        // the VM still raises). Rehydrate() re-evaluates + re-tracks.
+        Bindings?.StopTracking();
+    }
+
+    public void Rehydrate()
+    {
+        // Called by PageHost just before OnEntered on a previously-idled page.
+        // Re-evaluate + resume x:Bind tracking, then the normal OnEntered →
+        // LoadNewContent → ViewModel.Activate path re-subscribes to AlbumStore
+        // (replays + repopulates the grid; the track skeleton shows meanwhile
+        // because Hibernate left IsLoadingTracks true).
+        _logger?.LogDebug("[xfade][album:{Id}] rehydrate", XfadeLog.Tag(ViewModel.AlbumId));
+        Bindings?.Update();
     }
 
     // Same-tab navigation between two albums reuses this Page instance and never

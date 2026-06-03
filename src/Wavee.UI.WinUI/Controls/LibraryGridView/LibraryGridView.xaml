@@ -63,11 +63,13 @@
                 SelectionMode="Single"
                 SelectionChanged="ItemsGridView_SelectionChanged"/>
 
-            <!-- Loading shimmer skeleton cards (shown while loading) -->
+            <!-- Loading shimmer skeleton cards (shown while loading). Kept realized
+                 (no x:Load) so the skeleton→content reveal can cross-dissolve by
+                 opacity — an x:Load'd overlay unloads the instant loading ends and
+                 can't be faded. Visibility is driven by ApplyLoadingVisualState. -->
             <ItemsRepeater
                 x:Name="ShimmerOverlay"
                 Grid.Row="2"
-                x:Load="{x:Bind IsLoading, Mode=OneWay}"
                 Loaded="ShimmerOverlay_Loaded"
                 Visibility="Collapsed">
                 <ItemsRepeater.Layout>

@@ -45,7 +45,7 @@ using Wavee.UI.WinUI.ViewModels.Playlist;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
+public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPageHostAware, IHibernatingPage, IDisposable, IContentPageHost, IInPageFilterable
 {
     // ── IInPageFilterable ───────────────────────────────────────────────
     string IInPageFilterable.FilterQuery
@@ -585,6 +585,25 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onEntered");
         EnterPlaylist(parameter, mode);
+    }
+
+    // ── IHibernatingPage ───────────────────────────────────────────────────────
+
+    public void Hibernate()
+    {
+        _logger?.LogDebug("[hibernate] playlist-page {Id}", XfadeLog.Tag(ViewModel.PlaylistId));
+        ViewModel.Hibernate();
+        Bindings?.StopTracking();
+    }
+
+    public void Rehydrate()
+    {
+        // Re-evaluate + resume x:Bind tracking; the reload itself runs via
+        // OnEntered → EnterPlaylist → ViewModel.Activate (its isNewPlaylist branch
+        // fires because Hibernate set _tracksLoadedFor = null, showing the skeleton;
+        // the PlaylistStore replays + repopulates).
+        _logger?.LogDebug("[hibernate] playlist-page rehydrate {Id}", XfadeLog.Tag(ViewModel.PlaylistId));
+        Bindings?.Update();
     }
 
     // Same-tab navigation between two playlists reuses this Page instance and
@@ -1348,6 +1367,22 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
             };
             invite.Click += async (_, _) => await ShowInviteFlyoutAsync(fe);
             flyout.Items.Add(invite);
+            addedAny = true;
+        }
+
+        if (ViewModel.Header.IsOwner)
+        {
+            var toggleVisibility = new MenuFlyoutItem
+            {
+                Text = ViewModel.Header.IsPublic ? "Make private" : "Make public",
+                Icon = new FontIcon { Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.Globe }
+            };
+            toggleVisibility.Click += (_, _) =>
+            {
+                if (ViewModel.Mutations.ToggleVisibilityCommand.CanExecute(null))
+                    ViewModel.Mutations.ToggleVisibilityCommand.Execute(null);
+            };
+            flyout.Items.Add(toggleVisibility);
             addedAny = true;
         }
 

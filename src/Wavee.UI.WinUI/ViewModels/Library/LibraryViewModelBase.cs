@@ -20,7 +20,7 @@ public abstract partial class LibraryViewModelBase : TrackListViewModelBase
     private LibrarySortBy _sortBy = LibrarySortBy.Recents;
     private LibrarySortDirection _sortDirection = LibrarySortDirection.Descending;
     private LibraryViewMode _viewMode = LibraryViewMode.DefaultGrid;
-    private double _gridScale = 1.0;
+    private double _gridScale = 0.7;
     private bool _longLivedAttached;
 
     protected LibraryViewModelBase(
@@ -186,7 +186,7 @@ public abstract partial class LibraryViewModelBase : TrackListViewModelBase
             : LibraryViewMode.DefaultGrid;
         _gridScale = active.GridScale >= 0.5 && active.GridScale <= 2.0
             ? active.GridScale
-            : 1.0;
+            : 0.7;
         _searchQuery = searchQuery ?? "";
 
         OnPropertyChanged(nameof(SortBy));

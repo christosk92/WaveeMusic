@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -35,12 +37,31 @@ public sealed partial class PageHost : ContentControl
     private Type? _currentPageType;
     private object? _currentParameter;
 
+    /// <summary>
+    /// Page types currently hibernated — resident in the cache but idled
+    /// (disconnected from live sources) because they fell outside the hot window.
+    /// See <see cref="IHibernatingPage"/> and <see cref="ApplyResidencyTiers"/>.
+    /// </summary>
+    private readonly HashSet<Type> _hibernated = new();
+
+    private readonly ILogger? _logger;
+
+    /// <summary>
+    /// Number of most-recently-used <em>collapsed</em> pages kept fully live ("hot")
+    /// in addition to the active page, so back/forward to them stays instant. Any
+    /// resident page older than this is hibernated via <see cref="IHibernatingPage"/>
+    /// so it stops doing per-tick UI-thread work while off-screen.
+    /// </summary>
+    public const int HotCollapsedPageBudget = 2;
+
     public PageHost()
     {
         DefaultStyleKey = typeof(ContentControl);
         base.Content = _container;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
+        try { _logger = Ioc.Default.GetService<ILogger<PageHost>>(); }
+        catch { /* Ioc not configured yet (designer / very early construction) — skip logging */ }
     }
 
     // ── Public API ──────────────────────────────────────────────────────
@@ -167,6 +188,7 @@ public sealed partial class PageHost : ContentControl
         _container.Children.Clear();
         _cache.Clear();
         _lru.Clear();
+        _hibernated.Clear();
         _backStack.Clear();
         _forwardStack.Clear();
         _activePage = null;
@@ -210,6 +232,7 @@ public sealed partial class PageHost : ContentControl
                     _container.Children.Remove(outgoing);
                     _cache.Remove(outgoing.GetType());
                     _lru.Remove(outgoing.GetType());
+                    _hibernated.Remove(outgoing.GetType());
                     if (outgoing is IDisposable d) d.Dispose();
                 }
                 else
@@ -250,6 +273,11 @@ public sealed partial class PageHost : ContentControl
             _currentPageType = pageType;
             _currentParameter = parameter;
 
+            // A page only ever leaves the idle tier by being navigated to. Re-arm it
+            // BEFORE OnEntered so the reload path runs against a rehydrated page.
+            if (_hibernated.Remove(pageType) && incoming is IHibernatingPage reviving)
+                reviving.Rehydrate();
+
             if (incoming is IPageHostAware entered)
                 entered.OnEntered(parameter, mode);
 
@@ -258,6 +286,10 @@ public sealed partial class PageHost : ContentControl
             // and the control re-checks its own ancestor visibility on Loaded; for
             // a cached page (Visibility flip, no Loaded) this is what resumes it.
             NotifyHostVisibility(incoming, isVisible: true);
+
+            // Idle every resident page that has fallen outside the hot window so it
+            // stops doing per-tick UI-thread work while off-screen.
+            ApplyResidencyTiers();
 
             Navigated?.Invoke(this, new PageHostNavigatedEventArgs(pageType, parameter, mode));
             return true;
@@ -275,6 +307,71 @@ public sealed partial class PageHost : ContentControl
     {
         _lru.Remove(pageType);
         _lru.AddLast(pageType);
+    }
+
+    /// <summary>
+    /// Keeps the active page + the <see cref="HotCollapsedPageBudget"/> most-recently
+    /// used collapsed pages fully live, and hibernates every resident
+    /// <see cref="IHibernatingPage"/> older than that. Idempotent and cheap — in
+    /// steady state exactly one page transitions live→idle per navigation (the one
+    /// that just fell off the hot window).
+    /// </summary>
+    private void ApplyResidencyTiers()
+    {
+        if (_lru.Count == 0)
+            return;
+
+        // _lru tail = active page (most recent); walk backward toward oldest.
+        var keptHotCollapsed = 0;
+        var hibernatedNow = 0;
+        var rehydratedNow = 0;
+        var isActive = true;
+
+        for (var node = _lru.Last; node is not null; node = node.Previous)
+        {
+            var type = node.Value;
+
+            // The active page is always live.
+            if (isActive)
+            {
+                isActive = false;
+                continue;
+            }
+
+            var withinHotWindow = keptHotCollapsed < HotCollapsedPageBudget;
+            if (withinHotWindow)
+            {
+                keptHotCollapsed++;
+                // Defensive: a page re-entering the hot window must be live again.
+                if (_hibernated.Remove(type) &&
+                    _cache.TryGetValue(type, out var hot) && hot is IHibernatingPage reviving)
+                {
+                    reviving.Rehydrate();
+                    rehydratedNow++;
+                }
+                continue;
+            }
+
+            // Beyond the hot window — idle it if it isn't already.
+            if (!_hibernated.Contains(type) &&
+                _cache.TryGetValue(type, out var victim) && victim is IHibernatingPage hibernating)
+            {
+                hibernating.Hibernate();
+                _hibernated.Add(type);
+                hibernatedNow++;
+            }
+        }
+
+        if (hibernatedNow > 0 || rehydratedNow > 0)
+        {
+            _logger?.LogDebug(
+                "[pagehost-residency] resident={Resident} hot={Hot} idle={Idle} (+{Hib} hibernated, +{Reh} rehydrated)",
+                _cache.Count,
+                _cache.Count - _hibernated.Count,
+                _hibernated.Count,
+                hibernatedNow,
+                rehydratedNow);
+        }
     }
 
     /// <summary>
@@ -330,6 +427,7 @@ public sealed partial class PageHost : ContentControl
 
         _cache.Remove(pageType);
         _lru.Remove(pageType);
+        _hibernated.Remove(pageType);
         _container.Children.Remove(victim);
         if (victim is IDisposable d)
             d.Dispose();

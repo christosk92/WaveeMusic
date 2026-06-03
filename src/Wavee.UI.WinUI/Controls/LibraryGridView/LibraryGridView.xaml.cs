@@ -2,7 +2,9 @@ using System;
 using System.Collections;
 using System.Collections.Specialized;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Input;
+using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.Layouts;
@@ -537,16 +539,81 @@ public sealed partial class LibraryGridView : UserControl
         }
     }
 
+    private bool _wasLoading;
+
     private void ApplyLoadingVisualState(bool loading)
     {
-        if (ShimmerOverlay != null)
-            ShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        var wasLoading = _wasLoading;
+        _wasLoading = loading;
+
+        if (loading)
+        {
+            if (ShimmerOverlay != null)
+            {
+                ShimmerOverlay.Opacity = 1;
+                ShimmerOverlay.Visibility = Visibility.Visible;
+            }
+            if (ItemsGridView != null)
+                ItemsGridView.Visibility = Visibility.Collapsed;
+            if (DetailLoadingOverlay != null)
+                DetailLoadingOverlay.Visibility = Visibility.Visible;
+            return;
+        }
+
+        // loading == false
+        if (DetailLoadingOverlay != null)
+            DetailLoadingOverlay.Visibility = Visibility.Collapsed;
+
+        if (!wasLoading || ShimmerOverlay == null)
+        {
+            // No skeleton→content transition (initial show with content already
+            // ready, or the shimmer isn't realized) — hard show, nothing to fade.
+            if (ItemsGridView != null)
+            {
+                ItemsGridView.Opacity = 1;
+                ItemsGridView.Visibility = Visibility.Visible;
+            }
+            if (ShimmerOverlay != null)
+                ShimmerOverlay.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        // Cross-dissolve the skeleton out while the content fades in beneath it
+        // (the shimmer sits above the grid in z-order), matching the detail pages'
+        // reveal instead of a hard cut ("content just appears").
+        const double durationMs = 200;
 
         if (ItemsGridView != null)
-            ItemsGridView.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+        {
+            ItemsGridView.Opacity = 0;
+            ItemsGridView.Visibility = Visibility.Visible;
+            AnimationBuilder.Create()
+                .Opacity(to: 1.0, duration: TimeSpan.FromMilliseconds(durationMs))
+                .Start(ItemsGridView);
+        }
 
-        if (DetailLoadingOverlay != null)
-            DetailLoadingOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        FadeOutAndCollapseShimmer(durationMs);
+    }
+
+    private async void FadeOutAndCollapseShimmer(double durationMs)
+    {
+        var shimmer = ShimmerOverlay;
+        if (shimmer == null)
+            return;
+
+        AnimationBuilder.Create()
+            .Opacity(to: 0.0, duration: TimeSpan.FromMilliseconds(durationMs))
+            .Start(shimmer);
+
+        try { await Task.Delay(TimeSpan.FromMilliseconds(durationMs)); }
+        catch { return; }
+
+        // If a new load started during the fade, the shimmer was re-shown — leave it.
+        if (!_wasLoading)
+        {
+            shimmer.Visibility = Visibility.Collapsed;
+            shimmer.Opacity = 1; // reset for the next load
+        }
     }
 
     private static void OnSelectedItemChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

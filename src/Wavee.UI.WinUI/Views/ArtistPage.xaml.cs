@@ -61,7 +61,7 @@ namespace Wavee.UI.WinUI.Views;
 ///     pattern to morph the hero into a pinned compact card on scroll
 /// </summary>
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class ArtistPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
+public sealed partial class ArtistPage : UserControl, ITabBarItemContent, IPageHostAware, IHibernatingPage, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;
     private ShyHeaderController? _shyHeader;
@@ -372,8 +372,30 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, IPageH
         AlbumsGrid?.CollapseNow();
         SinglesGrid?.CollapseNow();
         ViewModel.Discography.CollapseAlbumCommand.Execute(null);
-        // Trim work is deferred ~1 s by TabBarItem's central scheduler — calling
-        // it here would move the cost from pageHostNavigating into onLeaving.
+        // Off-screen quiet-down is driven by PageHost's hot-window residency tiering
+        // (IHibernatingPage / PageHost.ApplyResidencyTiers): the 2 most-recent
+        // collapsed pages stay live for instant back/forward; older ones hibernate.
+    }
+
+    // ── IHibernatingPage ───────────────────────────────────────────────────────
+
+    public void Hibernate()
+    {
+        _logger?.LogDebug("[hibernate] artist-page {ArtistId}", ViewModel.ArtistId);
+        ViewModel.Hibernate();
+        Bindings?.StopTracking();
+    }
+
+    public void Rehydrate()
+    {
+        // Re-evaluate + resume x:Bind tracking (essential for same-artist back-nav,
+        // where InitializeArtistDeferred's artistChanged guard would otherwise skip
+        // the Bindings.Update). The reload itself runs via OnEntered →
+        // InitializeArtistDeferred → ViewModel.Initialize (re-subscribes to
+        // ArtistStore, which replays + repopulates); the skeleton shows meanwhile
+        // because Hibernate left IsLoading true.
+        _logger?.LogDebug("[hibernate] artist-page rehydrate {ArtistId}", ViewModel.ArtistId);
+        Bindings?.Update();
     }
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

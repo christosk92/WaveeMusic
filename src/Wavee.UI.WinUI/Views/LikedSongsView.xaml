@@ -78,6 +78,7 @@
             PageKey="liked"
             ItemsSource="{x:Bind ViewModel.FilteredSongs, Mode=OneWay}"
             IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+            CrossfadeReveal="True"
             LoadingRowCount="10"
             PlayCommand="{x:Bind ViewModel.PlayTrackCommand}"
             MultiSelectRemoveCommand="{x:Bind ViewModel.RemoveTracksFromLikedSongsCommand, Mode=OneWay}"

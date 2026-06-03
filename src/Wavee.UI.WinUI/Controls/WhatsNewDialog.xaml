@@ -162,6 +162,40 @@
                                    LineHeight="22"
                                    TextWrapping="Wrap"/>
 
+                        <!-- Itemized fix list (e.g. Bugfixes), each row links to its issue / PR -->
+                        <StackPanel x:Name="FixesSection" Spacing="4" Visibility="Collapsed">
+                            <ItemsControl ItemsSource="{x:Bind DetailFixes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ChangelogFix">
+                                        <Grid ColumnSpacing="8" Margin="0,0,0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Grid.Column="0"
+                                                      Glyph="&#xE73E;"
+                                                      FontSize="11"
+                                                      Foreground="{StaticResource App.Theme.AccentBrush}"
+                                                      VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{x:Bind Text}"
+                                                       Style="{StaticResource BodyTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                       TextWrapping="Wrap"
+                                                       VerticalAlignment="Center"/>
+                                            <HyperlinkButton Grid.Column="2"
+                                                             Content="{x:Bind Reference}"
+                                                             NavigateUri="{x:Bind Url}"
+                                                             Padding="4,0"
+                                                             FontSize="12"
+                                                             VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
                         <Border x:Name="NavigationHintBorder"
                                 CornerRadius="{ThemeResource ControlCornerRadius}"
                                 Padding="12,10"
