@@ -1370,6 +1370,22 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
             addedAny = true;
         }
 
+        if (ViewModel.Header.IsOwner)
+        {
+            var toggleVisibility = new MenuFlyoutItem
+            {
+                Text = ViewModel.Header.IsPublic ? "Make private" : "Make public",
+                Icon = new FontIcon { Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.Globe }
+            };
+            toggleVisibility.Click += (_, _) =>
+            {
+                if (ViewModel.Mutations.ToggleVisibilityCommand.CanExecute(null))
+                    ViewModel.Mutations.ToggleVisibilityCommand.Execute(null);
+            };
+            flyout.Items.Add(toggleVisibility);
+            addedAny = true;
+        }
+
         if (ViewModel.Header.CanAdministratePermissions && ViewModel.Header.HasCollaborators)
         {
             var manage = new MenuFlyoutItem

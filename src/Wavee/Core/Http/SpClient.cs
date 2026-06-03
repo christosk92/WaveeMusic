@@ -2539,6 +2539,78 @@ public sealed class SpClient : ISpClient
     }
 
     /// <inheritdoc />
+    public async Task<string?> SetPlaylistBasePermissionAsync(
+        string playlistId, string permissionLevel, string revision, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(permissionLevel);
+
+        var bareId = playlistId;
+        const string prefix = "spotify:playlist:";
+        if (bareId.StartsWith(prefix, StringComparison.Ordinal))
+            bareId = bareId[prefix.Length..];
+
+        var url = $"{_baseUrl}/playlist-permission/v1/playlist/{Uri.EscapeDataString(bareId)}/permission/base";
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        // Build the body with the JSON node API (reflection-free / AOT-safe) —
+        // mirrors how GetPlaylistMembersAsync reads with JsonDocument rather than
+        // a source-gen context.
+        var body = new System.Text.Json.Nodes.JsonObject
+        {
+            ["revision"] = revision,
+            ["permissionLevel"] = permissionLevel,
+        }.ToJsonString();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch { }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger?.LogWarning(
+                "SetPlaylistBasePermissionAsync: {Status} for {Id} (level={Level}): {Body}",
+                response.StatusCode, bareId, permissionLevel, err);
+            response.EnsureSuccessStatusCode(); // throw so the caller can revert the optimistic UI
+        }
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("resultingPermission", out var rp)
+                && rp.ValueKind == JsonValueKind.Object
+                && rp.TryGetProperty("revision", out var rev)
+                && rev.ValueKind == JsonValueKind.String)
+            {
+                return rev.GetString();
+            }
+        }
+        catch (JsonException ex)
+        {
+            _logger?.LogDebug(ex, "SetPlaylistBasePermissionAsync: couldn't parse response for {Id}", bareId);
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc />
     public async Task<List<string>> GetArtistTopTrackExtensionsAsync(
         string artistUri, CancellationToken cancellationToken = default)
     {
