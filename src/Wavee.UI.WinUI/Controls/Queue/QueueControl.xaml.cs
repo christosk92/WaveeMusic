@@ -794,8 +794,69 @@ public sealed partial class QueueControl : UserControl
             duration.Visibility = showActions || !hasLoadedTrack ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void TrackRow_PointerEntered(object sender, PointerRoutedEventArgs e) => SetRowHoverState(sender, true);
-    private void TrackRow_PointerExited(object sender, PointerRoutedEventArgs e) => SetRowHoverState(sender, false);
+    private void TrackRow_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        // Touch has no hover: a finger-scroll would otherwise leave the row's play /
+        // more buttons revealed, because the scroll capture delivers Canceled/
+        // CaptureLost rather than PointerExited (issue #4). Mouse/pen still reveal.
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return;
+        SetRowHoverState(sender, true);
+    }
+
+    // Also wired to PointerCanceled / PointerCaptureLost in XAML so a mouse
+    // drag-capture (or any lost capture) clears the revealed hover controls and
+    // any pressed tint.
+    private void TrackRow_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        SetRowHoverState(sender, false);
+        SetRowPressed(sender, false);
+    }
+
+    // -- Touch / tap feedback ------------------------------------------------
+    // Queue rows are SelectionMode=None + IsItemClickEnabled=False, so the list
+    // gives no native press chrome, and the play button is hover-only. After
+    // hover was disabled for touch (issue #4) a finger tap had no feedback and no
+    // way to play a row. Paint a transient pressed tint on press, and play on a
+    // clean tap. Applies to mouse too (consistent, transient — never sticks).
+
+    private static readonly Brush s_rowTransparent = new SolidColorBrush(Colors.Transparent);
+
+    private static void SetRowPressed(object sender, bool pressed)
+    {
+        if (sender is not Panel root) return; // TrackRoot is a Grid
+        root.Background = pressed
+            ? (Brush)Application.Current.Resources["SubtleFillColorTertiaryBrush"]
+            : s_rowTransparent;
+    }
+
+    private void TrackRow_PointerPressed(object sender, PointerRoutedEventArgs e) => SetRowPressed(sender, true);
+    private void TrackRow_PointerReleased(object sender, PointerRoutedEventArgs e) => SetRowPressed(sender, false);
+
+    // Tap anywhere on the row that isn't a button or link skips to that queue
+    // item — the same action as the hover play button, but reachable by touch.
+    private void TrackRow_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: QueueDisplayItem { HasMetadata: true } item })
+            return;
+        if (item.QueueIndex < 0)
+            return;
+        // Don't hijack taps on the play / more buttons or the title / artist links.
+        if (e.OriginalSource is DependencyObject src && IsWithinButton(src, sender as DependencyObject))
+            return;
+
+        _ = SkipToQueueAsync(item.QueueIndex);
+        e.Handled = true;
+    }
+
+    private static bool IsWithinButton(DependencyObject node, DependencyObject? stopAt)
+    {
+        for (var d = node; d is not null && !ReferenceEquals(d, stopAt); d = VisualTreeHelper.GetParent(d))
+        {
+            if (d is Microsoft.UI.Xaml.Controls.Primitives.ButtonBase)
+                return true;
+        }
+        return false;
+    }
 
     private void RowPlay_Click(object sender, RoutedEventArgs e)
     {

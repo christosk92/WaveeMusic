@@ -656,6 +656,7 @@ public sealed partial class SearchResultHeroCard : UserControl
 
     private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
         _isHovered = true;
         ApplyHoverBackground();
         AnimationBuilder.Create()

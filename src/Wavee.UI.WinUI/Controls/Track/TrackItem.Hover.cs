@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.WinUI.DragDrop;
 
 namespace Wavee.UI.WinUI.Controls.Track;
 
@@ -24,6 +25,13 @@ public sealed partial class TrackItem
 
     private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        // Touch has no hover. WinUI still raises PointerEntered on touch-down, but
+        // during a finger-scroll the ScrollView captures the pointer and the row
+        // receives PointerCanceled/CaptureLost instead of the PointerExited that
+        // clears hover — so the highlight would stick on every crossed row
+        // (issue #4). Mouse and pen continue to hover normally.
+        if (PointerInput.IsTouch(e)) return;
+
         _isHovered = true;
 
         if (Mode == TrackItemDisplayMode.Compact)

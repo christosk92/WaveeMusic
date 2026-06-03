@@ -63,8 +63,13 @@
                   CornerRadius="4"
                   Background="Transparent"
                   Loaded="TrackRoot_Loaded"
+                  Tapped="TrackRow_Tapped"
                   PointerEntered="TrackRow_PointerEntered"
                   PointerExited="TrackRow_PointerExited"
+                  PointerPressed="TrackRow_PointerPressed"
+                  PointerReleased="TrackRow_PointerReleased"
+                  PointerCanceled="TrackRow_PointerExited"
+                  PointerCaptureLost="TrackRow_PointerExited"
                   Opacity="{x:Bind VisualOpacity, Mode=OneTime}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="40"/>

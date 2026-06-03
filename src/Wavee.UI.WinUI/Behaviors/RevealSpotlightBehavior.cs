@@ -72,8 +72,9 @@ public static class RevealSpotlightBehavior
             OriginalBackground = border.Background,
         };
 
-        holder.Entered = (_, _) =>
+        holder.Entered = (_, e) =>
         {
+            if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch: no spotlight (issue #4)
             var color = GetSpotlightColor(border);
             holder.TrackingBrush = new RadialGradientBrush
             {

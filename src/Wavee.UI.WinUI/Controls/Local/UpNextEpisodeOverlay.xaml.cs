@@ -189,7 +189,10 @@ public sealed partial class UpNextEpisodeOverlay : UserControl
     private void CancelButton_Click(object sender, RoutedEventArgs e) => ViewModel?.Cancel();
 
     private void CardRoot_PointerEntered(object sender, PointerRoutedEventArgs e)
-        => ViewModel?.NotifyPointerEnteredCard();
+    {
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
+        ViewModel?.NotifyPointerEnteredCard();
+    }
 
     private void CardRoot_PointerExited(object sender, PointerRoutedEventArgs e)
         => ViewModel?.NotifyPointerExitedCard();

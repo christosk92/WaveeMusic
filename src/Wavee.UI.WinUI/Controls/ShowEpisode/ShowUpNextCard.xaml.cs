@@ -196,7 +196,10 @@ public sealed partial class ShowUpNextCard : UserControl
     }
 
     private void CardRoot_PointerEntered(object sender, PointerRoutedEventArgs e)
-        => SetHoverState(true);
+    {
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
+        SetHoverState(true);
+    }
 
     private void CardRoot_PointerExited(object sender, PointerRoutedEventArgs e)
         => SetHoverState(false);

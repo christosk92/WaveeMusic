@@ -803,6 +803,7 @@ public sealed partial class ContentCard : UserControl
 
     private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
         _isPointerOver = true;
         CardHover?.Invoke(this, EventArgs.Empty);
 

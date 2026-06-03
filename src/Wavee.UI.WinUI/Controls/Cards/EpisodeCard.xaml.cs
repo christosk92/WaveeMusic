@@ -271,6 +271,7 @@ public sealed partial class EpisodeCard : UserControl
 
     private void CardRoot_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (Wavee.UI.WinUI.DragDrop.PointerInput.IsTouch(e)) return; // touch has no hover (issue #4)
         if (_isHovered) return;
         _isHovered = true;
         AnimateHover(true);
