@@ -1949,7 +1949,7 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
     <value>A redesigned library, faster navigation, and more</value>
   </data>
   <data name="Changelog_0_1_2_Alpha_Announcement" xml:space="preserve">
-    <value>A big roll-up of everything since the last update: the library is redesigned, the app stays fast no matter how long you browse, recent albums and covers open instantly, and updates now install themselves on restart — plus a stack of fixes.</value>
+    <value>A big roll-up of everything since the last update: a redesigned library, public and private playlists, a zoomable cover viewer, navigation that stays fast no matter how long you browse, and automatic updates — plus a stack of fixes.</value>
   </data>
   <data name="Changelog_0_1_2_Alpha_Section_Library_Title" xml:space="preserve">
     <value>Redesigned library</value>
@@ -1963,41 +1963,29 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Changelog_0_1_2_Alpha_Section_Library_Detail" xml:space="preserve">
     <value>Your whole library has been reworked around a shared layout with side-by-side detail panels — Albums, Liked Songs, Artists, and Podcasts now feel consistent, with a size slider to tune the grid to your taste.</value>
   </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Nav_Title" xml:space="preserve">
-    <value>Navigation that stays fast</value>
+  <data name="Changelog_0_1_2_Alpha_Section_Visibility_Title" xml:space="preserve">
+    <value>Public &amp; private playlists</value>
   </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Nav_Short" xml:space="preserve">
-    <value>No slowdown over a long session</value>
+  <data name="Changelog_0_1_2_Alpha_Section_Visibility_Short" xml:space="preserve">
+    <value>Flip any playlist you own between public and private</value>
   </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Nav_DetailTitle" xml:space="preserve">
+  <data name="Changelog_0_1_2_Alpha_Section_Visibility_DetailTitle" xml:space="preserve">
+    <value>Your playlist, your call</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Visibility_Detail" xml:space="preserve">
+    <value>Open a playlist you own, hit the … menu, and switch it between public and private. Going private drops it from your public profile and stops it being viewable by link — flip it back any time.</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Performance_Title" xml:space="preserve">
+    <value>Faster &amp; smoother</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Performance_Short" xml:space="preserve">
+    <value>Stays quick all session, with cleaner loading</value>
+  </data>
+  <data name="Changelog_0_1_2_Alpha_Section_Performance_DetailTitle" xml:space="preserve">
     <value>Snappy from the first nav to the last</value>
   </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Nav_Detail" xml:space="preserve">
-    <value>Pages you leave are now quieted in the background instead of staying fully active, so the app no longer gets sluggish the longer you use it. Artist-to-artist jumps no longer flicker, and the navigation hot path is leaner across the board.</value>
-  </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Revisit_Title" xml:space="preserve">
-    <value>Instant revisits</value>
-  </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Revisit_Short" xml:space="preserve">
-    <value>Reopen a recent album or playlist with no wait</value>
-  </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Revisit_DetailTitle" xml:space="preserve">
-    <value>Pick up right where you left off</value>
-  </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Revisit_Detail" xml:space="preserve">
-    <value>Albums and playlists you've opened recently reappear instantly — no loading skeleton — so flicking through the sidebar to find a song feels immediate.</value>
-  </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Reveal_Title" xml:space="preserve">
-    <value>Smoother loading</value>
-  </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Reveal_Short" xml:space="preserve">
-    <value>Content fades in cleanly instead of popping</value>
-  </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Reveal_DetailTitle" xml:space="preserve">
-    <value>Easier on the eyes</value>
-  </data>
-  <data name="Changelog_0_1_2_Alpha_Section_Reveal_Detail" xml:space="preserve">
-    <value>Pages now reveal with a single clean cross-fade, the library and Liked Songs fade in instead of appearing abruptly, lyrics and detail skeletons are shaped like the real content, and the Details tab loads the first time you open it.</value>
+  <data name="Changelog_0_1_2_Alpha_Section_Performance_Detail" xml:space="preserve">
+    <value>Pages you leave are quieted in the background, so the app no longer slows down the longer you browse. Recently-opened albums and playlists reappear instantly with no loading skeleton, and everything reveals with a single clean cross-fade instead of popping into place.</value>
   </data>
   <data name="Changelog_0_1_2_Alpha_Section_Update_Title" xml:space="preserve">
     <value>Automatic updates</value>

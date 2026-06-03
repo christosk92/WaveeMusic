@@ -8,6 +8,7 @@ namespace Wavee.UI.WinUI.Data;
 
 public static class ChangelogData
 {
+    private const string Alpha012AssetRoot = "ms-appx:///Assets/Changelog/0.1.2-alpha/";
     private const string Alpha011AssetRoot = "ms-appx:///Assets/Changelog/0.1.1-alpha/";
 
     public static readonly IReadOnlyList<ChangelogRelease> Releases =
@@ -30,35 +31,12 @@ public static class ChangelogData
                 },
                 new ChangelogFeature
                 {
-                    Title = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Nav_Title"),
-                    ShortDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Nav_Short"),
-                    Glyph = FluentGlyphs.Forward,
-                    DetailTitle = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Nav_DetailTitle"),
-                    DetailDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Nav_Detail"),
-                },
-                new ChangelogFeature
-                {
-                    Title = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Revisit_Title"),
-                    ShortDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Revisit_Short"),
-                    Glyph = FluentGlyphs.Album,
-                    DetailTitle = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Revisit_DetailTitle"),
-                    DetailDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Revisit_Detail"),
-                },
-                new ChangelogFeature
-                {
-                    Title = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Reveal_Title"),
-                    ShortDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Reveal_Short"),
-                    Glyph = FluentGlyphs.Canvas,
-                    DetailTitle = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Reveal_DetailTitle"),
-                    DetailDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Reveal_Detail"),
-                },
-                new ChangelogFeature
-                {
-                    Title = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Update_Title"),
-                    ShortDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Update_Short"),
-                    Glyph = FluentGlyphs.Download,
-                    DetailTitle = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Update_DetailTitle"),
-                    DetailDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Update_Detail"),
+                    Title = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Visibility_Title"),
+                    ShortDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Visibility_Short"),
+                    Glyph = FluentGlyphs.Globe,
+                    DetailTitle = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Visibility_DetailTitle"),
+                    DetailDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Visibility_Detail"),
+                    ImageAssetPath = Alpha012AssetRoot + "playlist-visibility.png",
                 },
                 new ChangelogFeature
                 {
@@ -67,6 +45,22 @@ public static class ChangelogData
                     Glyph = FluentGlyphs.FullScreen,
                     DetailTitle = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Cover_DetailTitle"),
                     DetailDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Cover_Detail"),
+                },
+                new ChangelogFeature
+                {
+                    Title = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Performance_Title"),
+                    ShortDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Performance_Short"),
+                    Glyph = FluentGlyphs.Forward,
+                    DetailTitle = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Performance_DetailTitle"),
+                    DetailDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Performance_Detail"),
+                },
+                new ChangelogFeature
+                {
+                    Title = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Update_Title"),
+                    ShortDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Update_Short"),
+                    Glyph = FluentGlyphs.Download,
+                    DetailTitle = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Update_DetailTitle"),
+                    DetailDescription = AppLocalization.GetString("Changelog_0_1_2_Alpha_Section_Update_Detail"),
                 },
                 new ChangelogFeature
                 {
