@@ -77,6 +77,33 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     private List<LazyTrackItem> _allTracks = [];
     private HashSet<string> _popularTrackIds = new(StringComparer.Ordinal);
 
+    // Recent-album track cache for instant, skeleton-free re-visits while the user
+    // scans (album→album / back). Keyed by album id, MRU at the tail, capped. Album
+    // track lists are immutable, so a cached entry is always valid; the AlbumStore
+    // Ready replay still refreshes the header + secondary sections.
+    private const int RecentTrackCacheCapacity = 6;
+    private readonly Dictionary<string, IReadOnlyList<LazyTrackItem>> _recentTrackLists = new(StringComparer.Ordinal);
+    private readonly LinkedList<string> _recentTrackOrder = new();
+
+    private void RememberRecentTracks(string? albumId, IReadOnlyList<LazyTrackItem> tracks)
+    {
+        if (string.IsNullOrEmpty(albumId) || tracks.Count == 0)
+            return;
+
+        _recentTrackLists[albumId] = tracks.ToList();
+        _recentTrackOrder.Remove(albumId);
+        _recentTrackOrder.AddLast(albumId);
+
+        while (_recentTrackOrder.Count > RecentTrackCacheCapacity && _recentTrackOrder.First is { } oldest)
+        {
+            _recentTrackOrder.RemoveFirst();
+            _recentTrackLists.Remove(oldest.Value);
+        }
+    }
+
+    private bool TryGetRecentTracks(string albumId, out IReadOnlyList<LazyTrackItem> tracks)
+        => _recentTrackLists.TryGetValue(albumId, out tracks!);
+
     private string _albumId = "";
     private bool _isSaved;
     private bool _isLoading;
@@ -984,6 +1011,17 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     public void Initialize(string albumId, bool preserveHeaderPrefill = false)
     {
         AttachLongLivedServices();
+
+        // Snapshot the OUTGOING album's tracks for instant re-visit while scanning.
+        // Guarded on _appliedDetailFor so a half-loaded list is never cached.
+        if (!string.IsNullOrEmpty(AlbumId)
+            && !string.Equals(AlbumId, albumId, StringComparison.Ordinal)
+            && string.Equals(_appliedDetailFor, AlbumId, StringComparison.Ordinal)
+            && _allTracks.Count > 0)
+        {
+            RememberRecentTracks(AlbumId, _allTracks);
+        }
+
         var branch = AlbumId != albumId ? "reset" : "same";
         var imageBefore = AlbumImageUrl ?? "<null>";
         var nameBefore = AlbumName ?? "<null>";
@@ -1064,19 +1102,37 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             // cached page doesn't paint old tracks under the new header during the
             // gap between Activate and the AlbumStore's first push.
             IsLoading = !preserveHeaderPrefill || string.IsNullOrEmpty(AlbumImageUrl);
-            IsLoadingTracks = true;
-            _allTracks = [];
-            OnPropertyChanged(nameof(ArtistSummaryTopTrackNames));
-            // Mirror Album.TotalTracks onto the property so TrackDataGrid's
-            // LoadingRowCount binding sees the right value. With prefill the
-            // envelope holds the nav-supplied count; without prefill the freshly
-            // constructed envelope's TotalTracks defaults to 0 (→ skeleton falls
-            // back to DefaultLoadingRowCount).
-            TotalTracks = Album?.TotalTracks ?? 0;
-            RebuildDiscMetadata();
-            _popularTrackIds.Clear();
-            if (_filteredTracks.Count > 0)
-                _filteredTracks.Clear();
+
+            // Instant re-visit: seed the cached (immutable) album track list now — no
+            // skeleton, grid recycles containers. The AlbumStore Ready replay still runs
+            // ApplyDetailAsync to refresh header + secondary sections; it re-applies the
+            // identical track list via a cheap container-recycling ReplaceWith.
+            if (TryGetRecentTracks(albumId, out var cachedTracks))
+            {
+                _allTracks = new List<LazyTrackItem>(cachedTracks);
+                IsLoadingTracks = false;
+                OnPropertyChanged(nameof(ArtistSummaryTopTrackNames));
+                TotalTracks = _allTracks.Count;
+                RebuildDiscMetadata();
+                _popularTrackIds.Clear();
+                ApplyFilterAndSort();
+            }
+            else
+            {
+                IsLoadingTracks = true;
+                _allTracks = [];
+                OnPropertyChanged(nameof(ArtistSummaryTopTrackNames));
+                // Mirror Album.TotalTracks onto the property so TrackDataGrid's
+                // LoadingRowCount binding sees the right value. With prefill the
+                // envelope holds the nav-supplied count; without prefill the freshly
+                // constructed envelope's TotalTracks defaults to 0 (→ skeleton falls
+                // back to DefaultLoadingRowCount).
+                TotalTracks = Album?.TotalTracks ?? 0;
+                RebuildDiscMetadata();
+                _popularTrackIds.Clear();
+                if (_filteredTracks.Count > 0)
+                    _filteredTracks.Clear();
+            }
         }
 
         AlbumId = albumId;
@@ -1117,6 +1173,46 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         DetachLongLivedServices();
         _subscriptions?.Dispose();
         _subscriptions = null;
+    }
+
+    /// <summary>
+    /// Idle this album while its page sits resident-but-off-screen beyond PageHost's
+    /// hot window. Disconnects from live sources (AlbumStore stream + like-state
+    /// callbacks) and releases the realized track rows + secondary shelves, so the
+    /// collapsed page does no per-tick UI-thread work, its rows de-register from the
+    /// global playback-state broadcast, and their composition memory is freed.
+    ///
+    /// Lightweight header identity (<see cref="Album"/>: name, cover, artists) is
+    /// deliberately preserved so the hero re-shows instantly. Re-entry runs
+    /// <see cref="Activate"/>, which re-subscribes; AlbumStore is a BehaviorSubject,
+    /// so it replays the cached detail and <c>ApplyDetailState</c> repopulates the
+    /// grid (the <c>_appliedDetailFor = null</c> reset below defeats its
+    /// already-applied short-circuit). Idempotent.
+    /// </summary>
+    public void Hibernate()
+    {
+        _logger?.LogDebug("[xfade][album-vm:{Id}] hibernate", XfadeLog.Tag(AlbumId));
+
+        // Cache the tracks before releasing them so returning to this album after a
+        // cross-page detour re-paints instantly instead of cold-loading.
+        if (string.Equals(_appliedDetailFor, AlbumId, StringComparison.Ordinal) && _allTracks.Count > 0)
+            RememberRecentTracks(AlbumId, _allTracks);
+
+        Deactivate();
+
+        // Release the realized track rows (the bulk of containers + the only
+        // elements registered in TrackStateBehavior's global broadcast). Secondary
+        // shelves + header identity are left intact; re-entry's ApplyDetailState
+        // re-applies the full detail anyway once _appliedDetailFor is cleared.
+        _appliedDetailFor = null;
+        _allTracks = [];
+        // Resilient reset (Reset, not raw Clear) — this runs synchronously inside the
+        // triggering navigation (PageHost.ApplyResidencyTiers), and a raw Clear() on a
+        // bound collection mid-nav can throw COMException E_FAIL (issue #6).
+        if (_filteredTracks.Count > 0)
+            _filteredTracks.ReplaceWith([]);
+        IsLoadingTracks = true;
+        OnPropertyChanged(nameof(ArtistSummaryTopTrackNames));
     }
 
     private void BeginSecondaryAlbumSectionLoading()

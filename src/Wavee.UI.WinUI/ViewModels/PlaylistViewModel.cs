@@ -55,6 +55,34 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
     private string? _ownerResolutionKey;
     private string? _pendingFallbackMosaicPlaylistId;
     private int _recommendationsAutoLoadGeneration;
+
+    // Recent-playlist track cache for instant, skeleton-free re-visits while the user
+    // scans the sidebar. Keyed by playlist id, MRU at the tail, capped. Holds a list
+    // snapshot (DTO instances shared with the live grid); correctness comes from the
+    // always-on background refresh in LoadTracksAsync that diffs and self-heals, so a
+    // stale entry only ever produces a brief out-of-date paint that the refresh fixes.
+    private const int RecentTrackCacheCapacity = 6;
+    private readonly Dictionary<string, IReadOnlyList<PlaylistTrackDto>> _recentTrackLists = new(StringComparer.Ordinal);
+    private readonly LinkedList<string> _recentTrackOrder = new();
+
+    private void RememberRecentTracks(string? playlistId, IReadOnlyList<PlaylistTrackDto> tracks)
+    {
+        if (string.IsNullOrEmpty(playlistId) || tracks.Count == 0)
+            return;
+
+        _recentTrackLists[playlistId] = tracks.ToList();
+        _recentTrackOrder.Remove(playlistId);
+        _recentTrackOrder.AddLast(playlistId);
+
+        while (_recentTrackOrder.Count > RecentTrackCacheCapacity && _recentTrackOrder.First is { } oldest)
+        {
+            _recentTrackOrder.RemoveFirst();
+            _recentTrackLists.Remove(oldest.Value);
+        }
+    }
+
+    private bool TryGetRecentTracks(string playlistId, out IReadOnlyList<PlaylistTrackDto> tracks)
+        => _recentTrackLists.TryGetValue(playlistId, out tracks!);
     private bool _disposed;
 
     [ObservableProperty]
@@ -238,14 +266,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
     /// </summary>
     private PlaylistLayoutMode ResolveInitialLayoutMode(string playlistId)
     {
-        var cached = _playlistStore.PeekCached(playlistId);
-        if (cached is not null)
-        {
-            return string.IsNullOrEmpty(cached.HeaderImageUrl)
-                ? PlaylistLayoutMode.Cover
-                : PlaylistLayoutMode.Banner;
-        }
-
+        // TEMP: banner-mode hero is disabled — the full-width header image renders
+        // oversized/bugged over the track grid, so every playlist uses the Cover
+        // (two-column) layout for now. Restore the cache-driven Banner/Cover pick
+        // below when the hero is fixed.
+        _ = playlistId;
         return PlaylistLayoutMode.Cover;
     }
 
@@ -305,6 +330,15 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             "Activate: playlistId='{PlaylistId}', current PlaylistName='{PlaylistName}'",
             playlistId, Header.PlaylistName);
 
+        // Snapshot the OUTGOING playlist's tracks for instant re-visit while the user
+        // scans the sidebar. Guarded on _tracksLoadedFor so a half-streamed list is
+        // never cached (it's only set once tracks have fully landed).
+        if (!string.IsNullOrEmpty(_tracksLoadedFor)
+            && !string.Equals(_tracksLoadedFor, playlistId, StringComparison.Ordinal))
+        {
+            RememberRecentTracks(_tracksLoadedFor, TrackList.AllTracks);
+        }
+
         _subscriptions?.Dispose();
         _subscriptions = new CompositeDisposable();
 
@@ -327,10 +361,28 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             // brief window between Activate and LoadTracksAsync — those would
             // latch into already-materializing ListView containers).
             TrackList.ResetForNewPlaylist();
-            if (prefill is not null)
-                ApplyPrefillTrackCount(prefill, clearMissing: true);
-            _tracksLoadedFor = null;
-            _tracksLoadInFlightFor = null;
+
+            // Instant re-visit (sidebar scanning): if this playlist's tracks are in the
+            // recent cache, paint them now — no skeleton, and the grid recycles its
+            // containers instead of tearing down and rebuilding. Marking the list loaded
+            // makes LoadTracksAsync take its warm-hit branch (a silent diff refresh that
+            // self-heals any staleness), so the Ready replay doesn't flash a skeleton.
+            if (TryGetRecentTracks(playlistId, out var cachedTracks))
+            {
+                TrackList.ApplyTracks(cachedTracks);
+                _tracksLoadedFor = playlistId;
+                _tracksLoadInFlightFor = null;
+                TrackList.IsLoadingTracks = false;
+            }
+            else
+            {
+                if (prefill is not null)
+                    ApplyPrefillTrackCount(prefill, clearMissing: true);
+                _tracksLoadedFor = null;
+                _tracksLoadInFlightFor = null;
+                TrackList.IsLoadingTracks = true;
+            }
+
             _recommendationsAutoLoadGeneration++;
             _appliedDetailSignature = null;
             _ownerResolutionKey = null;
@@ -338,8 +390,6 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             Mutations.ResetForNewPlaylist();
 
             _pendingFallbackMosaicPlaylistId = null;
-
-            TrackList.IsLoadingTracks = true;
 
             // Force a false → true transition on IsLoading so the next Ready
             // emission (which sets false again) actually fires PropertyChanged →
@@ -498,27 +548,28 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Heavy-state release for cached pages going off-screen. Drops the track
-    /// grid and collaborator state — these are the bound collections that pin
-    /// the most realized item containers (and therefore composition memory)
-    /// while the page sits invisible in the PageHost cache.
-    ///
-    /// Lightweight identity (PlaylistId, name, image URL, palette brushes) is
-    /// preserved so the hero still renders correctly between re-Activate and
-    /// the BehaviorSubject re-emitting. Setting <c>_tracksLoadedFor = null</c>
-    /// forces Activate's <c>isNewPlaylist</c> branch on revisit so the grid
-    /// loading skeleton shows before the warm store value lands.
+    /// Idle this playlist while its page sits resident-but-off-screen beyond
+    /// PageHost's hot window. <see cref="Deactivate"/> disconnects the live
+    /// PlaylistStore stream (+ Header/TrackList live state);
+    /// <c>TrackList.ResetForNewPlaylist()</c> releases the realized track rows so
+    /// they de-register from the global playback broadcast and free composition
+    /// memory. Lightweight header identity (name, image URL, palette) is preserved
+    /// so the hero re-renders instantly; <c>_tracksLoadedFor = null</c> forces
+    /// Activate's <c>isNewPlaylist</c> branch on revisit (skeleton + reload), and
+    /// the PlaylistStore (BehaviorSubject) replays the cached detail. Idempotent.
     /// </summary>
     public void Hibernate()
     {
         _logger?.LogInformation("Hibernate: playlistId='{PlaylistId}'", PlaylistId);
+        // Cache the tracks before releasing them so returning to this playlist after a
+        // cross-page detour re-paints instantly (warm-hit) instead of cold-loading.
+        if (!string.IsNullOrEmpty(_tracksLoadedFor) && string.Equals(_tracksLoadedFor, PlaylistId, StringComparison.Ordinal))
+            RememberRecentTracks(PlaylistId, TrackList.AllTracks);
         Deactivate();
+        TrackList.ResetForNewPlaylist();
+        Header.RefreshTrackDerivedState();
         _tracksLoadedFor = null;
         _pendingFallbackMosaicPlaylistId = null;
-
-        TrackList.Hibernate();
-        Header.RefreshTrackDerivedState();
-        _recommendationsAutoLoadGeneration++;
     }
 
     public void Dispose()
@@ -688,9 +739,12 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         // no visible change. Header-image playlists discovered on cold load
         // flip here and the page-level PropertyChanged hook on LayoutMode
         // fades in the newly-visible container.
-        Header.LayoutMode = string.IsNullOrEmpty(Header.HeaderImageUrl)
-            ? PlaylistLayoutMode.Cover
-            : PlaylistLayoutMode.Banner;
+        // TEMP: banner-mode hero disabled (bugged oversized header image) — force
+        // Cover layout regardless of HeaderImageUrl. Restore the conditional when
+        // the hero is fixed:
+        //   Header.LayoutMode = string.IsNullOrEmpty(Header.HeaderImageUrl)
+        //       ? PlaylistLayoutMode.Cover : PlaylistLayoutMode.Banner;
+        Header.LayoutMode = PlaylistLayoutMode.Cover;
 
         TrackList.BuildSessionControlChips(detail.SessionControlOptions);
 

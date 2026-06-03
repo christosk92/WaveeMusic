@@ -1071,6 +1071,31 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// </summary>
     public void ApplyTheme(bool isDark) => Header.ApplyTheme(isDark);
 
+    /// <summary>
+    /// Idle this artist while its page sits resident-but-off-screen beyond PageHost's
+    /// hot window. Disconnects live sources (ArtistStore stream + like-state callbacks)
+    /// and releases every realized section (top tracks, discography, related, extras),
+    /// so the collapsed page does no per-tick UI-thread work and its rows de-register
+    /// from the global playback broadcast. Re-entry runs <see cref="Initialize"/>,
+    /// which re-attaches and re-subscribes; ArtistStore replays the cached overview and
+    /// ApplyOverviewState repopulates (<c>_appliedOverviewFor = null</c> defeats its
+    /// already-applied short-circuit). Idempotent.
+    /// </summary>
+    public void Hibernate()
+    {
+        _logger?.LogDebug("[hibernate] artist {ArtistId}", ArtistId);
+
+        DetachLongLivedServices();
+        _subscriptions?.Dispose();
+        _subscriptions = null;
+
+        Interlocked.Increment(ref _loadGeneration);
+        ResetForNewArtist();
+        _appliedOverviewFor = null;
+        _appliedOverview = null;
+        IsLoading = true;
+    }
+
     public void Dispose()
     {
         if (_disposed)
