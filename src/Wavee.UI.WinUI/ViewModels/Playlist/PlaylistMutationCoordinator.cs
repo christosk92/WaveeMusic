@@ -418,7 +418,12 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
     private async Task AddRecommendationAsync(RecommendedTrackResult? rec)
     {
         var playlistId = PlaylistId;
-        if (rec is null || string.IsNullOrEmpty(rec.Uri) || string.IsNullOrEmpty(playlistId)) return;
+        if (rec is null || string.IsNullOrEmpty(rec.Uri) || string.IsNullOrEmpty(playlistId))
+        {
+            _logger?.LogDebug("AddRecommendation skipped: recNull={RecNull}, uri='{Uri}', playlist='{Playlist}'",
+                rec is null, rec?.Uri ?? "<null>", playlistId);
+            return;
+        }
         try
         {
             await _playlistMutationService.AddTracksToPlaylistAsync(playlistId, new[] { rec.Uri })

@@ -49,6 +49,16 @@ public interface IPlaylistCacheService
         Wavee.Protocol.Playlist.SelectedListContent content,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Patches a playlist's cover image directly from a value the caller already
+    /// knows (e.g. the picture id just registered for an upload) — no server
+    /// round-trip. Updates the hot + persisted cache and fires <see cref="Changes"/>
+    /// (a <see cref="PlaylistChangeKind.Updated"/> event) so the sidebar and any
+    /// open page pick up the new cover inline. No-op if the playlist isn't cached
+    /// or the URL is unchanged. Pass <c>null</c> to clear (revert to mosaic).
+    /// </summary>
+    Task SetPlaylistImageAsync(string playlistUri, string? imageUrl, CancellationToken ct = default);
+
     IObservable<PlaylistChangeEvent> Changes { get; }
 }
 

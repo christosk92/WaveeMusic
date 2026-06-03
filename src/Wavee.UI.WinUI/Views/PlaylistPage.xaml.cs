@@ -812,6 +812,11 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
             "PlaylistPage.LoadParameter: parameter type={Type}, value={Value}",
             parameter?.GetType().FullName ?? "<null>", parameter);
 
+        // Drop any cover-edit preview overlay stranded from a previous playlist
+        // (e.g. navigated away mid-upload before StartCoverEditAsync's finally
+        // ran) so it can't render on top of this playlist's cover.
+        ClearCoverPreview();
+
         // Reset shimmer / content visual state for the fresh load — mirrors
         // ArtistPage / AlbumPage so the next playlist fades in cleanly instead
         // of inheriting the previous playlist's already-shown content layer.
@@ -1409,10 +1414,15 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
         }
         catch
         {
-            ClearCoverPreview();
+            // ChangeCoverCommand already toasts on failure; nothing extra here.
         }
         finally
         {
+            // Always drop the local preview overlay — on success AND failure.
+            // Leaving it set strands the uploaded bitmap on this reused
+            // PlaylistPage instance, so it would render on top of every other
+            // playlist's cover after navigation (the global cover-leak bug).
+            ClearCoverPreview();
             CoverUploadRing.IsActive = false;
             CoverUploadRing.Visibility = Visibility.Collapsed;
         }
@@ -1465,8 +1475,22 @@ public sealed partial class PlaylistPage : UserControl, ITabBarItemContent, IPag
 
     private void ClearCoverPreview()
     {
+        if (CoverPreviewImage is null) return;
         CoverPreviewImage.Source = null;
         CoverPreviewImage.Visibility = Visibility.Collapsed;
+    }
+
+    // Recommended Songs "+" — handled in code-behind so the command resolves
+    // against the page's ViewModel. An ElementName binding to PageRoot does NOT
+    // resolve inside the recommendations ItemsRepeater item template (separate
+    // namescope), which left the button inert.
+    private void RecommendationAdd_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not Wavee.UI.Contracts.RecommendedTrackResult rec)
+            return;
+        var cmd = ViewModel?.Mutations?.AddRecommendationCommand;
+        if (cmd?.CanExecute(rec) == true)
+            cmd.Execute(rec);
     }
 
     // ── Overflow menu (per-permission) ───────────────────────────────────────

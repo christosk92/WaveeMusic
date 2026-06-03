@@ -146,16 +146,29 @@ public sealed class PlaylistMutationService : IPlaylistMutationService, IPlaylis
             _logger?.LogWarning(ex, "CreatePlaylistAsync: post-create rename failed for {Uri}", newUri);
         }
 
-        // Tracks-from-selection path is a follow-up — needs ChangePlaylistAsync against
-        // the new URI with the freshly returned revision. Out of scope for this cut.
+        // Step 4: seed the originating tracks ("Add to playlist → New playlist"
+        // from a track selection). Reuses the standard add path so the change
+        // rides the outbox + playlist-diff pipeline. Never fail the create if the
+        // add throws — the playlist already exists in the rootlist.
+        var trackCount = 0;
         if (trackIds is { Count: > 0 })
-            _logger?.LogInformation("CreatePlaylistAsync: {Count} pending trackIds (track-add deferred)", trackIds.Count);
+        {
+            try
+            {
+                await AddTracksToPlaylistCoreAsync(newUri, trackIds, ct);
+                trackCount = trackIds.Count;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "CreatePlaylistAsync: seeding {Count} tracks failed for {Uri}", trackIds.Count, newUri);
+            }
+        }
 
         return new PlaylistSummaryDto
         {
             Id = newUri,
             Name = name,
-            TrackCount = 0,
+            TrackCount = trackCount,
             IsOwner = true
         };
     }
@@ -384,6 +397,14 @@ public sealed class PlaylistMutationService : IPlaylistMutationService, IPlaylis
             },
         };
         await PostAttributeChangeAsync(playlistId, partial, ct);
+
+        // The server's change response may not echo the new picture, which would
+        // leave PreserveSummaryFields holding the OLD cover. Write the cover we
+        // already know (the registered picture id) straight into the cache; its
+        // Updated event refreshes the sidebar row and the open page inline — no
+        // rootlist refetch.
+        var coverUrl = "spotify:image:" + Convert.ToHexString(pictureId).ToLowerInvariant();
+        await _playlistCache.SetPlaylistImageAsync(playlistId, coverUrl, ct);
     }
 
     public async Task RemovePlaylistCoverAsync(string playlistId, CancellationToken ct = default)
@@ -396,6 +417,10 @@ public sealed class PlaylistMutationService : IPlaylistMutationService, IPlaylis
         };
         partial.NoValue.Add(Wavee.Protocol.Playlist.ListAttributeKind.ListPicture);
         await PostAttributeChangeAsync(playlistId, partial, ct);
+
+        // Drop the known cover inline so the sidebar / page revert to the mosaic
+        // (the Updated event drives OnPlaylistContentsChanged's mosaic rebuild).
+        await _playlistCache.SetPlaylistImageAsync(playlistId, null, ct);
     }
 
     /// <summary>

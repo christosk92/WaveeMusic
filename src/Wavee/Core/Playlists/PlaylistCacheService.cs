@@ -364,6 +364,31 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         return merged;
     }
 
+    public async Task SetPlaylistImageAsync(string playlistUri, string? imageUrl, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+
+        var existing = _hotCache.Get(playlistUri);
+        if (existing is null)
+        {
+            var persisted = await _database.GetPlaylistCacheEntryAsync(playlistUri, touchAccess: false, ct);
+            if (persisted is not null)
+                existing = DeserializePlaylist(persisted);
+        }
+        if (existing is null) return;                                       // nothing cached to patch
+        if (string.Equals(existing.ImageUrl, imageUrl, StringComparison.Ordinal)) return;
+
+        var merged = existing with { ImageUrl = imageUrl };
+        await PersistPlaylistAsync(merged, ct);
+        _hotCache.Set(playlistUri, merged);
+
+        _changes.OnNext(new PlaylistChangeEvent
+        {
+            Uri = playlistUri,
+            Kind = PlaylistChangeKind.Updated
+        });
+    }
+
     public Task InvalidateAsync(string playlistUri, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
