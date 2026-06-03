@@ -63,6 +63,16 @@ public sealed partial class AudioOutputPicker : UserControl
             typeof(AudioOutputPicker),
             new PropertyMetadata(FlyoutPlacementMode.BottomEdgeAlignedLeft, OnCompactChromeChanged));
 
+    // Card-mode background override. Null keeps the default themed card brush
+    // (set in XAML); the Details panel points this at its album-tinted card
+    // brush so the "Playing on" card matches the rest of the Details stack.
+    public static readonly DependencyProperty CardBackgroundProperty =
+        DependencyProperty.Register(
+            nameof(CardBackground),
+            typeof(Brush),
+            typeof(AudioOutputPicker),
+            new PropertyMetadata(null, OnCardBackgroundChanged));
+
     private readonly ObservableCollection<AudioOutputDeviceRowViewModel> _localRows = new();
     private readonly ObservableCollection<AudioOutputDeviceRowViewModel> _connectRows = new();
     private IPlaybackStateService? _playbackStateService;
@@ -119,6 +129,12 @@ public sealed partial class AudioOutputPicker : UserControl
         set => SetValue(CompactFlyoutPlacementProperty, value);
     }
 
+    public Brush? CardBackground
+    {
+        get => (Brush?)GetValue(CardBackgroundProperty);
+        set => SetValue(CardBackgroundProperty, value);
+    }
+
     private static void OnDisplayModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is AudioOutputPicker picker)
@@ -141,6 +157,22 @@ public sealed partial class AudioOutputPicker : UserControl
     {
         if (d is AudioOutputPicker picker)
             picker.ApplyCompactChrome();
+    }
+
+    private static void OnCardBackgroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not AudioOutputPicker picker || picker.CardRoot == null)
+            return;
+
+        if (e.NewValue is Brush brush)
+        {
+            picker.CardRoot.Background = brush;
+        }
+        else if (Application.Current.Resources.TryGetValue("CardBackgroundFillColorDefaultBrush", out var def)
+                 && def is Brush defaultBrush)
+        {
+            picker.CardRoot.Background = defaultBrush;
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

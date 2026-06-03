@@ -292,6 +292,51 @@ public sealed partial class DetailsTabHost : UserControl
     /// chapter / snippet timers. Idempotent; the parent calls this after
     /// materialising the deferred host subtree.
     /// </summary>
+    /// <summary>
+    /// Tints the Details card stack from the current album-art colour so the
+    /// cards read as raised colour surfaces over the panel wash instead of flat
+    /// black/white. Called by the parent <c>RightPanelView</c> whenever the
+    /// extracted tint or the active theme changes. <paramref name="albumTint"/>
+    /// is the same colour the panel chrome uses (already lifted to a visible
+    /// luminance), so the card derivative stays in the same hue family.
+    /// </summary>
+    public void ApplyCardTint(Color albumTint, ElementTheme theme)
+    {
+        var key = theme == ElementTheme.Light ? "Light" : "Dark";
+        if (!Resources.ThemeDictionaries.TryGetValue(key, out var themedObj)
+            || themedObj is not ResourceDictionary themed
+            || !themed.TryGetValue("DetailsCardBrush", out var brushObj)
+            || brushObj is not AcrylicBrush brush)
+        {
+            return;
+        }
+
+        Color tint, fallback;
+        if (theme == ElementTheme.Light)
+        {
+            // Mostly white with a hint of the album hue.
+            tint = RightPanelThemeResolver.BlendColors(Colors.White, albumTint, 0.16f);
+            fallback = RightPanelThemeResolver.WithAlpha(
+                RightPanelThemeResolver.BlendColors(Colors.White, albumTint, 0.12f), 0xF4);
+        }
+        else
+        {
+            // Deep, colour-carrying surface — darker than the wash so cards lift.
+            tint = RightPanelThemeResolver.Darken(albumTint, 0.66f);
+            fallback = RightPanelThemeResolver.WithAlpha(
+                RightPanelThemeResolver.Darken(albumTint, 0.52f), 0xEA);
+        }
+
+        brush.TintColor = tint;
+        brush.FallbackColor = fallback;
+
+        // The "Playing on" device card is a separate control; point it at the
+        // same brush instance. Re-resolving the active-theme brush on every call
+        // means a Light/Dark switch re-points it correctly.
+        if (DetailsOutputDeviceCard != null)
+            DetailsOutputDeviceCard.CardBackground = brush;
+    }
+
     public void InitializeDetails()
     {
         if (_initialized) return;

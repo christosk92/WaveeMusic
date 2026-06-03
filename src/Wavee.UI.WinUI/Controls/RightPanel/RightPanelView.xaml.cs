@@ -684,11 +684,16 @@ public sealed partial class RightPanelView : UserControl
 
     private void UpdateBackgroundChrome()
     {
+        var tintColor = RightPanelThemeResolver.GetBackgroundTintColor(
+            ActualTheme, _themeColors, _backgroundTintExtractedColor);
+
+        // Tint the Details card stack from the same album colour as the panel
+        // wash so the cards read as raised colour surfaces, not flat black/white.
+        DetailsContent?.ApplyCardTint(tintColor, ActualTheme);
+
         if (!_overlayBehavior.IsAttached)
             return;
 
-        var tintColor = RightPanelThemeResolver.GetBackgroundTintColor(
-            ActualTheme, _themeColors, _backgroundTintExtractedColor);
         var surfaceColor = RightPanelThemeResolver.GetPanelSurfaceColor(ActualTheme, _themeColors);
         var blendColor = RightPanelThemeResolver.BlendColors(
             surfaceColor,
