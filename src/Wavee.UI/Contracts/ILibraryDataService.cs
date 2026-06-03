@@ -162,6 +162,16 @@ public interface ILibraryDataService
     /// </summary>
     Task<AlbumPalette?> GetPlaylistPaletteAsync(string playlistId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Fetches the "You might also like" related-playlist rail for a playlist
+    /// via the <c>playlistSection</c> Pathfinder query. Returns lightweight
+    /// <see cref="PlaylistDetailDto"/> cards (id / name / owner / cover). Empty
+    /// when the section is unavailable. Used on the playlist page for playlists
+    /// the current user does not own.
+    /// </summary>
+    Task<IReadOnlyList<PlaylistDetailDto>> GetYouMightAlsoLikePlaylistsAsync(
+        string playlistId, CancellationToken ct = default);
+
     // All playlist mutation methods (SetPlaylistFollowed / Add / Remove / Reorder
     // tracks / Rename / Update / RemoveCover / Delete / overlay ops /
     // GetPlaylistRecommendations) moved to IPlaylistMutationService (Phase 2).

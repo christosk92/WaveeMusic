@@ -3523,6 +3523,9 @@
   <data name="Views_PlaylistPage__RecommendedSongsText.Text" xml:space="preserve">
     <value>추천 곡</value>
   </data>
+  <data name="Views_PlaylistPage__YouMightAlsoLikeText.Text" xml:space="preserve">
+    <value>추천 플레이리스트</value>
+  </data>
   <data name="Views_PlaylistPage__FindMoreSongsChip.ToolTipService.ToolTip" xml:space="preserve">
     <value>앱을 둘러보고 이 재생목록에 트랙 추가</value>
   </data>

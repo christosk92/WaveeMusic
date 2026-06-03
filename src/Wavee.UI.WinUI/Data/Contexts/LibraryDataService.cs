@@ -691,6 +691,47 @@ public sealed partial class LibraryDataService : ILibraryDataService
         }
     }
 
+    public async Task<IReadOnlyList<PlaylistDetailDto>> GetYouMightAlsoLikePlaylistsAsync(
+        string playlistId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(playlistId)) return Array.Empty<PlaylistDetailDto>();
+
+        var fullUri = Helpers.PlaylistUriHelpers.NormalizePlaylistUri(playlistId);
+        try
+        {
+            var response = await _session.Pathfinder
+                .GetPlaylistSectionAsync(fullUri, ct)
+                .ConfigureAwait(false);
+
+            // We pass a single hardcoded section URI, so the response carries one
+            // section — take its items directly.
+            var items = response?.Data?.HomeSections?.Sections?.FirstOrDefault()?.SectionItems?.Items;
+            if (items is null || items.Count == 0) return Array.Empty<PlaylistDetailDto>();
+
+            var result = new List<PlaylistDetailDto>(items.Count);
+            foreach (var entry in items)
+            {
+                var pl = entry.Content?.GetPlaylistData();
+                if (pl?.Uri is null) continue;
+
+                result.Add(new PlaylistDetailDto
+                {
+                    Id = pl.Uri,                              // full spotify:playlist:… — ContentCard nav convention
+                    Name = pl.Name ?? string.Empty,
+                    OwnerName = pl.OwnerV2?.Data?.Name ?? string.Empty,
+                    ImageUrl = pl.Images?.Items?.FirstOrDefault()?.Sources?.FirstOrDefault()?.Url,
+                });
+            }
+            return result;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "GetYouMightAlsoLikePlaylistsAsync failed for {PlaylistId}", playlistId);
+            return Array.Empty<PlaylistDetailDto>();
+        }
+    }
+
     // Mirrors AlbumService.MapTier / MapPalette — duplicated here rather than
     // hoisted into a shared helper because it's small and only two callers
     // ever need it. If we add a third surface (concert?) consolidate then.

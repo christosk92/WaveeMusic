@@ -3684,6 +3684,9 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Views_PlaylistPage__RecommendedSongsText.Text" xml:space="preserve">
     <value>Recommended Songs</value>
   </data>
+  <data name="Views_PlaylistPage__YouMightAlsoLikeText.Text" xml:space="preserve">
+    <value>You might also like</value>
+  </data>
   <data name="Views_PlaylistPage__FindMoreSongsChip.ToolTipService.ToolTip" xml:space="preserve">
     <value>Browse the app and add tracks to this playlist</value>
   </data>

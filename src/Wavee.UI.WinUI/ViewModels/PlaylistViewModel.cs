@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Reactive.Disposables;
@@ -55,6 +56,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
     private string? _ownerResolutionKey;
     private string? _pendingFallbackMosaicPlaylistId;
     private int _recommendationsAutoLoadGeneration;
+    private string? _youMightAlsoLikeLoadedFor;
+    private readonly ObservableCollection<PlaylistDetailDto> _youMightAlsoLike = new();
 
     // Recent-playlist track cache for instant, skeleton-free re-visits while the user
     // scans the sidebar. Keyed by playlist id, MRU at the tail, capped. Holds a list
@@ -96,6 +99,15 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
+
+    /// <summary>"You might also like" related-playlist rail, shown at the bottom
+    /// of the page for playlists the current user does not own. Empty otherwise.</summary>
+    public IReadOnlyList<PlaylistDetailDto> YouMightAlsoLike => _youMightAlsoLike;
+
+    /// <summary>True once the related-playlist rail has items to show. Drives the
+    /// footer section's visibility (only ever true for non-owned playlists).</summary>
+    [ObservableProperty]
+    public partial bool HasYouMightAlsoLike { get; set; }
 
     /// <summary>Envelope state (name, owner, image, capabilities, palette,
     /// collaborators, follower count, layout mode, invite link, follow toggle).
@@ -244,6 +256,36 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Loads the "You might also like" related-playlist rail (non-owned
+    /// playlists only — the caller gates on <c>!IsOwner</c>). Mirrors
+    /// <c>AlbumViewModel.LoadRecommendedPlaylistsAsync</c>: fetch off the UI
+    /// thread, drop the result if the user navigated away, then marshal the
+    /// collection swap back onto the dispatcher.
+    /// </summary>
+    private async Task LoadYouMightAlsoLikeAsync(string playlistId)
+    {
+        try
+        {
+            var items = await _libraryDataService
+                .GetYouMightAlsoLikePlaylistsAsync(playlistId)
+                .ConfigureAwait(false);
+
+            if (_disposed || PlaylistId != playlistId) return;
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed || PlaylistId != playlistId) return;
+                Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_youMightAlsoLike, items);
+                HasYouMightAlsoLike = _youMightAlsoLike.Count > 0;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to load 'You might also like' for {PlaylistId}", playlistId);
+        }
+    }
+
     private void ScheduleVideoAvailabilityFetch(string playlistId, CancellationToken cancellationToken)
     {
         if (!_dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
@@ -387,6 +429,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             }
 
             _recommendationsAutoLoadGeneration++;
+            _youMightAlsoLikeLoadedFor = null;
+            _youMightAlsoLike.Clear();
+            HasYouMightAlsoLike = false;
             _appliedDetailSignature = null;
             _ownerResolutionKey = null;
 
@@ -625,6 +670,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
                 // keeps rows visible while it refetches — see its IsLoadingTracks guard.
                 if (!duplicateDetail || _tracksLoadedFor != expectedPlaylistId)
                     _ = LoadTracksAsync(expectedPlaylistId);
+                // "You might also like" rail — only for playlists we don't own.
+                // Fire once per playlist (the load guard tolerates Ready replays).
+                if (!ready.Value.IsOwner && _youMightAlsoLikeLoadedFor != expectedPlaylistId)
+                {
+                    _youMightAlsoLikeLoadedFor = expectedPlaylistId;
+                    _ = LoadYouMightAlsoLikeAsync(expectedPlaylistId);
+                }
                 break;
 
             case EntityState<PlaylistDetailDto>.Error error:

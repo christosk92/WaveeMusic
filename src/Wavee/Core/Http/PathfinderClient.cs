@@ -573,6 +573,26 @@ public sealed class PathfinderClient : IPathfinderClient
     }
 
     /// <inheritdoc />
+    public async Task<PlaylistSectionResponse> GetPlaylistSectionAsync(
+        string playlistUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+
+        var variables = new PlaylistSectionVariables
+        {
+            SectionUri = PathfinderOperations.PlaylistSectionUri,
+            PlaylistUri = playlistUri,
+        };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.PlaylistSection,
+            PathfinderOperations.PlaylistSectionHash,
+            PlaylistSectionJsonContext.Default.PlaylistSectionResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
     public async Task<AlbumMerchResponse> GetAlbumMerchAsync(
         string albumUri, CancellationToken ct = default)
     {
@@ -1091,6 +1111,10 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is FetchPlaylistVariables fpv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(fpv, FetchPlaylistVariablesJsonContext.Default.FetchPlaylistVariables);
+        }
+        else if (variables is PlaylistSectionVariables psv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(psv, PlaylistSectionVariablesJsonContext.Default.PlaylistSectionVariables);
         }
         else if (variables is EmptyVariables ev)
         {
