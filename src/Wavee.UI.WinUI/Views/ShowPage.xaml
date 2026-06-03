@@ -215,6 +215,10 @@
                                     CornerRadius="8"
                                     HorizontalAlignment="Stretch"
                                     SizeChanged="CoverContainer_SizeChanged"
+                                    Tapped="CoverContainer_Tapped"
+                                    PointerEntered="CoverContainer_PointerEntered"
+                                    PointerExited="CoverContainer_PointerExited"
+                                    ToolTipService.ToolTip="View cover"
                                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                                 <Grid>
                                     <FontIcon Glyph="&#xE93E;" FontSize="64" Opacity="0.3"
@@ -224,6 +228,25 @@
                                            DecodePixelSize="280"
                                            Stretch="UniformToFill"
                                            Visibility="{x:Bind ViewModel.CoverArtUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+
+                                    <!-- Hover affordance: expand hint signalling the cover opens a zoomable viewer. -->
+                                    <Border x:Name="CoverHoverOverlay"
+                                            Opacity="0"
+                                            IsHitTestVisible="False"
+                                            CornerRadius="8"
+                                            Background="#26000000"
+                                            Visibility="{x:Bind ViewModel.CoverArtUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                                        <Border Background="#B3000000"
+                                                CornerRadius="22"
+                                                Width="44" Height="44"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center">
+                                            <FontIcon Glyph="&#xE740;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="20"
+                                                      Foreground="White"/>
+                                        </Border>
+                                    </Border>
                                 </Grid>
                             </Border>
                         </Grid>
