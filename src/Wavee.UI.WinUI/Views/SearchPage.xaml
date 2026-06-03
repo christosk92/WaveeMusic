@@ -16,6 +16,7 @@
     xmlns:home="using:Wavee.UI.WinUI.ViewModels.Home"
     xmlns:homeViews="using:Wavee.UI.WinUI.Views.Home"
     xmlns:browseControls="using:Wavee.UI.WinUI.Controls.Browse"
+    xmlns:anim="using:Wavee.UI.WinUI.Controls.Behaviors"
     mc:Ignorable="d"
     Background="Transparent"
     waveeHelpers:PageEntranceFade.Fade="True">
@@ -166,7 +167,7 @@
             <StackPanel Spacing="10"
                         Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                 <search:SearchResultHeroCard x:Name="TopResultCard"
-                                            
+                                             anim:StaggeredEntrance.IsEntranceAnimated="True"
                                              Margin="0,0,0,10"
                                              Item="{x:Bind ViewModel.TopResult, Mode=OneWay}"
                                              CardRightTapped="TopResult_RightTapped"
@@ -201,6 +202,7 @@
                                     <ItemsRepeater.ItemTemplate>
                                         <DataTemplate x:DataType="pathfinder:SearchResultItem">
                                             <cards:ContentCard
+                                                anim:StaggeredEntrance.IsEntranceAnimated="True"
                                                 ImageUrl="{x:Bind ImageUrl}"
                                                 Title="{x:Bind Name}"
                                                 Subtitle="{x:Bind DisplaySubtitle}"
@@ -225,6 +227,7 @@
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="pathfinder:SearchResultItem">
                             <search:SearchResultRowCard Item="{x:Bind}"
+                                                        anim:StaggeredEntrance.IsEntranceAnimated="True"
                                                         CardRightTapped="ResultRow_RightTapped"
                                                         Tapped="ResultRow_Tapped"/>
                         </DataTemplate>
