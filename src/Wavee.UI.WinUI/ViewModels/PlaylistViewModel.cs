@@ -102,7 +102,14 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
 
     /// <summary>"You might also like" related-playlist rail, shown at the bottom
     /// of the page for playlists the current user does not own. Empty otherwise.</summary>
-    public IReadOnlyList<PlaylistDetailDto> YouMightAlsoLike => _youMightAlsoLike;
+    /// <remarks>
+    /// Exposed as the concrete <see cref="ObservableCollection{T}"/> — NOT
+    /// <c>IReadOnlyList&lt;T&gt;</c>. x:Bind/ItemsSource project a collection by the
+    /// property's STATIC type; CsWinRT's adapter for <c>IReadOnlyList&lt;T&gt;</c> has no
+    /// observable-vector support, so a CollectionChanged (e.g. the Clear in Activate on a
+    /// page re-visit) throws COMException E_FAIL once the shelf is realized + bound.
+    /// </remarks>
+    public ObservableCollection<PlaylistDetailDto> YouMightAlsoLike => _youMightAlsoLike;
 
     /// <summary>True once the related-playlist rail has items to show. Drives the
     /// footer section's visibility (only ever true for non-owned playlists).</summary>
