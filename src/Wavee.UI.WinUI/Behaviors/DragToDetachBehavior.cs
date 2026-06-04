@@ -140,7 +140,12 @@ public static class DragToDetachBehavior
             var hwnd = Win32Interop.GetWindowFromWindowId(appWindow.Id);
             // Re-fetch cursor position in case it moved between Detach and here.
             User32.GetCursorPos(out var nowPt);
-            var lparam = MakeLParam((short)nowPt.X, (short)nowPt.Y);
+            // WM_NCLBUTTONDOWN packs the cursor into two SIGNED 16-bit halves; a far
+            // multi-monitor coordinate (> 32767) would otherwise wrap to a negative
+            // position and start the modal-move loop at the wrong spot. Clamp first.
+            var lx = (short)Math.Clamp(nowPt.X, short.MinValue, short.MaxValue);
+            var ly = (short)Math.Clamp(nowPt.Y, short.MinValue, short.MaxValue);
+            var lparam = MakeLParam(lx, ly);
             User32.PostMessage((HWND)hwnd, WM_NCLBUTTONDOWN, HTCAPTION, lparam);
         }
         catch

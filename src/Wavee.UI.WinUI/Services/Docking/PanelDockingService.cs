@@ -144,16 +144,13 @@ internal sealed partial class PanelDockingService : ObservableObject, IPanelDock
                 var layout = _shellSession.GetLayoutSnapshot();
                 if (layout.PlayerWindowDetached)
                 {
-                    // Player windows always reopen in expanded focus mode.
-                    _shellSession.UpdateLayout(s => s.PlayerWindowExpanded = true);
-                    var size = new SizeInt32(
-                        (int)layout.PlayerWindowExpandedWidth,
-                        (int)layout.PlayerWindowExpandedHeight);
-                    var spawn = ClampToVisibleMonitor(
-                        new PointInt32(
-                            (int)layout.PlayerWindowExpandedX,
-                            (int)layout.PlayerWindowExpandedY),
-                        size);
+                    // Reopen in whichever form factor the user left (compact ⇆ expanded).
+                    var size = layout.PlayerWindowExpanded
+                        ? new SizeInt32((int)layout.PlayerWindowExpandedWidth, (int)layout.PlayerWindowExpandedHeight)
+                        : new SizeInt32((int)layout.PlayerWindowWidth, (int)layout.PlayerWindowHeight);
+                    var posX = layout.PlayerWindowExpanded ? layout.PlayerWindowExpandedX : layout.PlayerWindowX;
+                    var posY = layout.PlayerWindowExpanded ? layout.PlayerWindowExpandedY : layout.PlayerWindowY;
+                    var spawn = ClampToVisibleMonitor(new PointInt32((int)posX, (int)posY), size);
                     _playerWindow = CreatePlayerWindow(spawn, size);
                     IsPlayerDetached = true;
                     Activate(_playerWindow);
@@ -197,11 +194,11 @@ internal sealed partial class PanelDockingService : ObservableObject, IPanelDock
 
     private PlayerFloatingWindow CreatePlayerWindow(PointInt32? spawnAt, SizeInt32? size = null)
     {
-        _shellSession.UpdateLayout(s => s.PlayerWindowExpanded = true);
         var layout = _shellSession.GetLayoutSnapshot();
-        var preferredSize = size ?? new SizeInt32(
-            (int)layout.PlayerWindowExpandedWidth,
-            (int)layout.PlayerWindowExpandedHeight);
+        // Size to whichever form factor was last used unless the caller supplied one.
+        var preferredSize = size ?? (layout.PlayerWindowExpanded
+            ? new SizeInt32((int)layout.PlayerWindowExpandedWidth, (int)layout.PlayerWindowExpandedHeight)
+            : new SizeInt32((int)layout.PlayerWindowWidth, (int)layout.PlayerWindowHeight));
         var window = new PlayerFloatingWindow();
         ApplyInitialPlacement(window, spawnAt, preferredSize);
         return window;
@@ -266,12 +263,28 @@ internal sealed partial class PanelDockingService : ObservableObject, IPanelDock
         {
             var area = DisplayArea.GetFromPoint(pos, DisplayAreaFallback.Nearest);
             var work = area.WorkArea;
-            // If the *center* of the window would be inside the work area, leave it.
-            var centerX = pos.X + size.Width / 2;
-            var centerY = pos.Y + size.Height / 2;
-            var insideX = centerX >= work.X && centerX <= work.X + work.Width;
-            var insideY = centerY >= work.Y && centerY <= work.Y + work.Height;
-            if (insideX && insideY) return pos;
+
+            // Require the window to be *majority* on-screen AND its title bar
+            // reachable. A center-inside-only test (the old behaviour) still let a
+            // window land ~75% off the edge — a large float on a small monitor could
+            // restore with its drag handle past the screen edge and become unmovable.
+            var left = pos.X;
+            var top = pos.Y;
+            var right = pos.X + size.Width;
+            var bottom = pos.Y + size.Height;
+
+            var visibleW = Math.Max(0, Math.Min(right, work.X + work.Width) - Math.Max(left, work.X));
+            var visibleH = Math.Max(0, Math.Min(bottom, work.Y + work.Height) - Math.Max(top, work.Y));
+            var visibleArea = (long)visibleW * visibleH;
+            var windowArea = Math.Max(1L, (long)size.Width * size.Height);
+
+            // Top edge (title bar) must sit inside the work area so the window can
+            // always be dragged.
+            const int TitleBarBandPx = 24;
+            var titleBarReachable = top >= work.Y && top <= work.Y + work.Height - TitleBarBandPx;
+
+            if (visibleArea * 2 >= windowArea && titleBarReachable)
+                return pos;
 
             // Otherwise center inside that nearest area.
             var clampedX = work.X + Math.Max(0, (work.Width - size.Width) / 2);

@@ -43,6 +43,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
     private bool _disposed;
     private bool _suppressGeometryTracking;
     private bool _isFullScreen;
+    private bool _isExpanded = true;
     private PointInt32? _normalWindowPositionBeforeFullScreen;
     private SizeInt32? _normalWindowSizeBeforeFullScreen;
     private long _expandedModeCallbackToken = -1;
@@ -51,6 +52,10 @@ public sealed partial class PlayerFloatingWindow : WindowEx
     private readonly Color[] _backdropTintFrom = new Color[3];
     private readonly Color[] _backdropTintTo = new Color[3];
     private const int BackdropFadeDurationMs = 700;
+    private const int CompactMinWidth = 300;
+    private const int CompactMinHeight = 132;
+    private const int ExpandedMinWidth = 360;
+    private const int ExpandedMinHeight = 380;
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoActivate = 0x0010;
@@ -81,9 +86,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
         RegisterKeyboardAccelerators();
 
-        // Player windows always open in expanded focus mode.
         var layout = _shellSession.GetLayoutSnapshot();
-        _shellSession.UpdateLayout(s => s.PlayerWindowExpanded = true);
         var mode = ExpandedPlayerContentMode.Lyrics;
         if (Enum.TryParse<ExpandedPlayerContentMode>(layout.PlayerWindowExpandedMode, out var parsedMode)
             && parsedMode != ExpandedPlayerContentMode.None)
@@ -103,8 +106,11 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
         UpdateFullScreenButton();
         _miniVideoViewModel?.SetSuppressedByFloatingPlayer(true);
-        ExpandedHost.SetCanTakeVideoSurfaceFromVideoPage(true);
-        ExpandedHost.SetVideoSurfaceEnabled(true);
+
+        // Honor the persisted form factor (compact ⇆ expanded). The docking
+        // service sizes the window to the matching geometry, so resize:false here —
+        // we only set content + chrome + video-surface ownership.
+        ApplyFormFactor(layout.PlayerWindowExpanded, persist: false, resize: false);
     }
 
     private void RegisterKeyboardAccelerators()
@@ -159,10 +165,21 @@ public sealed partial class PlayerFloatingWindow : WindowEx
             _backdropTintTimer = null;
         }
 
-        ExpandedHost.SetVideoSurfaceEnabled(false);
-        ExpandedHost.SetCanTakeVideoSurfaceFromVideoPage(false);
-        ExpandedHost.ReleaseHeavyResources();
-        _miniVideoViewModel?.SetSuppressedByFloatingPlayer(false);
+        try
+        {
+            // Release the float's claim on the video surface BEFORE un-suppressing
+            // the mini player, so the mini doesn't briefly contend for a surface the
+            // float still owns (the handoff race).
+            ExpandedHost.SetVideoSurfaceEnabled(false);
+            ExpandedHost.SetCanTakeVideoSurfaceFromVideoPage(false);
+            ExpandedHost.ReleaseHeavyResources();
+        }
+        finally
+        {
+            // Always restore the mini player, even if surface release above threw —
+            // otherwise a teardown fault would hide the mini player permanently.
+            _miniVideoViewModel?.SetSuppressedByFloatingPlayer(false);
+        }
 
         if (_expandedModeCallbackToken >= 0)
         {
@@ -193,6 +210,8 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         if (_disposed) return;
         if (e.PropertyName == nameof(PlayerBarViewModel.AlbumArtColor))
             ApplyWindowTint(_viewModel.AlbumArtColor);
+        else if (e.PropertyName == nameof(PlayerBarViewModel.HasTrack))
+            UpdateContentVisibility();
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -328,15 +347,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         if (_isFullScreen) return;
         if (!args.DidPositionChange && !args.DidSizeChange) return;
 
-        var pos = AppWindow.Position;
-        var size = AppWindow.Size;
-        _shellSession.UpdateLayout(s =>
-        {
-            s.PlayerWindowExpandedX = pos.X;
-            s.PlayerWindowExpandedY = pos.Y;
-            s.PlayerWindowExpandedWidth = size.Width;
-            s.PlayerWindowExpandedHeight = size.Height;
-        });
+        PersistCurrentGeometry(AppWindow.Position, AppWindow.Size);
     }
 
     private void OnExpandedModeChanged(DependencyObject sender, DependencyProperty dp)
@@ -442,7 +453,9 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
     private void EnterFullScreen()
     {
-        if (_disposed || _isFullScreen)
+        // Fullscreen only applies to the expanded form factor; the compact mini
+        // player has no fullscreen affordance (and F12 is a no-op there).
+        if (_disposed || _isFullScreen || !_isExpanded)
             return;
 
         _normalWindowPositionBeforeFullScreen = AppWindow.Position;
@@ -517,6 +530,152 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         AppWindow.Resize(size);
         if (x != 0 || y != 0)
             AppWindow.Move(new PointInt32((int)x, (int)y));
+    }
+
+    // ── Compact ⇆ Expanded form factor ────────────────────────────────────
+
+    private void CompactToggleButton_Click(object sender, RoutedEventArgs e) => ToggleFormFactor();
+
+    private void ReDockButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_disposed) return;
+        _docking.Dock(DetachablePanel.Player);
+    }
+
+    private void ToggleFormFactor()
+    {
+        if (_disposed) return;
+
+        // Can't be compact while fullscreen — drop out first.
+        if (_isFullScreen)
+            ExitFullScreen();
+
+        // Snapshot the current size into the active mode so returning restores it.
+        PersistCurrentGeometry(AppWindow.Position, AppWindow.Size);
+
+        ApplyFormFactor(!_isExpanded, persist: true, resize: true);
+    }
+
+    /// <summary>
+    /// Applies the compact or expanded form factor: swaps the hosted content,
+    /// updates the title-bar chrome + min size, toggles video-surface ownership
+    /// (video lives only in expanded), and — when <paramref name="resize"/> — grows
+    /// or shrinks the window in place to that mode's last geometry.
+    /// </summary>
+    private void ApplyFormFactor(bool expanded, bool persist, bool resize)
+    {
+        _isExpanded = expanded;
+
+        UpdateContentVisibility();
+
+        ShrinkToMiniGlyph.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        ExpandToFullGlyph.Visibility = expanded ? Visibility.Collapsed : Visibility.Visible;
+        ToolTipService.SetToolTip(CompactToggleButton, expanded ? "Compact mini player" : "Expand player");
+        FullScreenButton.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+
+        MinWidth = expanded ? ExpandedMinWidth : CompactMinWidth;
+        MinHeight = expanded ? ExpandedMinHeight : CompactMinHeight;
+
+        // The video surface is hosted by the expanded layout only.
+        if (expanded)
+        {
+            ExpandedHost.SetCanTakeVideoSurfaceFromVideoPage(true);
+            ExpandedHost.SetVideoSurfaceEnabled(true);
+        }
+        else
+        {
+            ExpandedHost.SetVideoSurfaceEnabled(false);
+            ExpandedHost.SetCanTakeVideoSurfaceFromVideoPage(false);
+        }
+
+        if (persist)
+            _shellSession.UpdateLayout(s => s.PlayerWindowExpanded = expanded);
+
+        if (resize)
+            ResizeToFormFactor(expanded);
+    }
+
+    /// <summary>
+    /// Shows the active host (or the empty-state when nothing is playing) and
+    /// fades the compact host in via its <c>OpacityTransition</c>.
+    /// </summary>
+    private void UpdateContentVisibility()
+    {
+        if (_disposed) return;
+
+        var hasTrack = _viewModel.HasTrack;
+        var showExpanded = hasTrack && _isExpanded;
+        var showCompact = hasTrack && !_isExpanded;
+
+        EmptyState.Visibility = hasTrack ? Visibility.Collapsed : Visibility.Visible;
+        ExpandedHost.Visibility = showExpanded ? Visibility.Visible : Visibility.Collapsed;
+        CompactHost.Visibility = showCompact ? Visibility.Visible : Visibility.Collapsed;
+        CompactHost.Opacity = showCompact ? 1 : 0;
+    }
+
+    private void ResizeToFormFactor(bool expanded)
+    {
+        if (_disposed) return;
+
+        var layout = _shellSession.GetLayoutSnapshot();
+        var size = expanded
+            ? new SizeInt32((int)layout.PlayerWindowExpandedWidth, (int)layout.PlayerWindowExpandedHeight)
+            : new SizeInt32((int)layout.PlayerWindowWidth, (int)layout.PlayerWindowHeight);
+
+        size = new SizeInt32(
+            Math.Max(expanded ? ExpandedMinWidth : CompactMinWidth, size.Width),
+            Math.Max(expanded ? ExpandedMinHeight : CompactMinHeight, size.Height));
+
+        // Keep the current top-left and grow/shrink in place, then nudge fully
+        // on-screen — toggling form factor shouldn't fling the window elsewhere.
+        var target = ClampToWorkArea(AppWindow.Position, size);
+
+        _suppressGeometryTracking = true;
+        AppWindow.Resize(size);
+        AppWindow.Move(target);
+        PersistCurrentGeometry(target, size);
+        ReleaseGeometrySuppressionLater();
+    }
+
+    private PointInt32 ClampToWorkArea(PointInt32 pos, SizeInt32 size)
+    {
+        try
+        {
+            var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest);
+            var work = area.WorkArea;
+            var x = Math.Clamp(pos.X, work.X, Math.Max(work.X, work.X + work.Width - size.Width));
+            var y = Math.Clamp(pos.Y, work.Y, Math.Max(work.Y, work.Y + work.Height - size.Height));
+            return new PointInt32(x, y);
+        }
+        catch
+        {
+            return pos;
+        }
+    }
+
+    /// <summary>
+    /// Persists geometry into the active form factor's slot
+    /// (<c>PlayerWindowExpanded*</c> when expanded, <c>PlayerWindow*</c> when compact).
+    /// </summary>
+    private void PersistCurrentGeometry(PointInt32 pos, SizeInt32 size)
+    {
+        _shellSession.UpdateLayout(s =>
+        {
+            if (_isExpanded)
+            {
+                s.PlayerWindowExpandedX = pos.X;
+                s.PlayerWindowExpandedY = pos.Y;
+                s.PlayerWindowExpandedWidth = size.Width;
+                s.PlayerWindowExpandedHeight = size.Height;
+            }
+            else
+            {
+                s.PlayerWindowX = pos.X;
+                s.PlayerWindowY = pos.Y;
+                s.PlayerWindowWidth = size.Width;
+                s.PlayerWindowHeight = size.Height;
+            }
+        });
     }
 
     [DllImport("user32.dll", SetLastError = true)]

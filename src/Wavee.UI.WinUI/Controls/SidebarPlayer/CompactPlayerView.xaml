@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.SidebarPlayer.CompactPlayerView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
+    xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Picture-in-picture mini player. Composes the same leaf controls as the
+         bottom bar / sidebar (CompositionImage, HeartButton, CompositionProgressBar,
+         PlaybackActionContent, TransportModeButton) bound to the shared
+         PlayerBarViewModel singleton — so every surface stays in lock-step. -->
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-appx:///Styles/PlayerBarStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <converters:RepeatModeToGlyphConverter x:Key="RepeatGlyphConverter" />
+            <converters:RepeatModeToCheckedConverter x:Key="RepeatCheckedConverter" />
+            <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid x:Name="RootGrid" Padding="16,14,16,12" RowSpacing="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Art + title/artist -->
+        <Grid Grid.Row="0" ColumnSpacing="14" VerticalAlignment="Center">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid
+                Width="64"
+                Height="64"
+                CornerRadius="8"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                Tapped="AlbumArt_Tapped">
+                <imaging:CompositionImage
+                    Width="64"
+                    Height="64"
+                    IsHitTestVisible="False"
+                    ImageUrl="{x:Bind ViewModel.AlbumArt, Mode=OneWay}"
+                    DecodePixelSize="128"
+                    Stretch="UniformToFill" />
+                <FontIcon
+                    Glyph="&#xE8D6;"
+                    FontSize="22"
+                    IsHitTestVisible="False"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Visibility="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}" />
+            </Grid>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                <HyperlinkButton
+                    Padding="0"
+                    MinHeight="0"
+                    MinWidth="0"
+                    HorizontalAlignment="Left"
+                    HorizontalContentAlignment="Left"
+                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                    Click="TrackTitle_Click"
+                    ToolTipService.ToolTip="Open album">
+                    <TextBlock
+                        Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
+                        FontSize="15"
+                        FontWeight="SemiBold"
+                        MaxLines="1"
+                        TextTrimming="CharacterEllipsis" />
+                </HyperlinkButton>
+                <ctk:MetadataControl
+                    Items="{x:Bind ViewModel.ArtistMetadataItems, Mode=OneWay}"
+                    Separator=", ">
+                    <ctk:MetadataControl.TextBlockStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="FontSize" Value="12" />
+                            <Setter Property="Opacity" Value="0.7" />
+                            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <Setter Property="MaxLines" Value="1" />
+                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                        </Style>
+                    </ctk:MetadataControl.TextBlockStyle>
+                </ctk:MetadataControl>
+            </StackPanel>
+        </Grid>
+
+        <!-- Progress -->
+        <playback:CompositionProgressBar
+            x:Name="CompactProgressSlider"
+            Grid.Row="1"
+            VerticalAlignment="Center"
+            PositionMs="{x:Bind ViewModel.AnchorPositionMs, Mode=OneWay}"
+            DurationMs="{x:Bind ViewModel.Duration, Mode=OneWay}"
+            IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
+            IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+            HoverPreviewItems="{x:Bind ViewModel.HoverPreviewItems, Mode=OneWay}"
+            SeekStarted="ProgressBar_SeekStarted"
+            SeekCommitted="ProgressBar_SeekCommitted" />
+
+        <!-- Transport: shuffle | prev | play | next | repeat -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6">
+            <ToggleButton
+                Style="{StaticResource SubtleToggleButtonStyle}"
+                Width="30"
+                Height="30"
+                Padding="0"
+                IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                Command="{x:Bind ViewModel.ToggleShuffleCommand}"
+                ToolTipService.ToolTip="Shuffle">
+                <FontIcon Glyph="&#xE8B1;" FontSize="13" />
+            </ToggleButton>
+            <Button
+                Style="{StaticResource TransparentButtonStyle}"
+                Width="32"
+                Height="32"
+                Padding="0"
+                Command="{x:Bind ViewModel.PreviousCommand}"
+                ToolTipService.ToolTip="Previous">
+                <FontIcon Glyph="&#xF8AC;" FontSize="15" />
+            </Button>
+            <Button
+                Style="{StaticResource TransparentButtonStyle}"
+                Width="40"
+                Height="40"
+                Padding="0"
+                Command="{x:Bind ViewModel.PlayPauseCommand}"
+                ToolTipService.ToolTip="Play/Pause">
+                <playback:PlaybackActionContent
+                    IconSize="18"
+                    SpinnerSize="20"
+                    IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
+                    IsPending="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                    ActionForeground="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Button>
+            <Button
+                Style="{StaticResource TransparentButtonStyle}"
+                Width="32"
+                Height="32"
+                Padding="0"
+                Command="{x:Bind ViewModel.NextCommand}"
+                ToolTipService.ToolTip="Next">
+                <FontIcon Glyph="&#xF8AD;" FontSize="15" />
+            </Button>
+            <ToggleButton
+                Style="{StaticResource SubtleToggleButtonStyle}"
+                Width="30"
+                Height="30"
+                Padding="0"
+                IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                Command="{x:Bind ViewModel.ToggleRepeatCommand}"
+                ToolTipService.ToolTip="Repeat">
+                <FontIcon
+                    Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                    FontSize="13" />
+            </ToggleButton>
+        </StackPanel>
+    </Grid>
+</UserControl>

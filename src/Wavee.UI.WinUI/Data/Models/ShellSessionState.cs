@@ -30,10 +30,11 @@ public sealed class ShellLayoutState
     // when *Detached is true, restoring saved geometry and clamping to a
     // visible monitor when the saved coords aren't on any current display.
     public bool PlayerWindowDetached { get; set; }
+    // Compact (picture-in-picture mini player) geometry.
     public double PlayerWindowX { get; set; }
     public double PlayerWindowY { get; set; }
-    public double PlayerWindowWidth { get; set; } = 320;
-    public double PlayerWindowHeight { get; set; } = 540;
+    public double PlayerWindowWidth { get; set; } = 380;
+    public double PlayerWindowHeight { get; set; } = 168;
 
     // Expanded "now playing" mode for the floating player (Apple-Music-style
     // 2-column layout). Geometry is tracked separately so toggling expand

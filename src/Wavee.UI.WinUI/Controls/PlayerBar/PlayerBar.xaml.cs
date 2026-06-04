@@ -89,6 +89,7 @@ public sealed partial class PlayerBar : UserControl
         ViewModel.SetSurfaceVisible("bar", true);
         UpdateLayoutState(PlayerBarLayoutRoot.ActualWidth > 0 ? PlayerBarLayoutRoot.ActualWidth : ActualWidth);
         UpdateVideoPopoutTeachingTip();
+        UpdatePlayerPopOutButton();
         SyncPodcastResumeTeachingTip();
 
         AlbumArtHost?.ChangeCursor(HandCursor);
@@ -255,7 +256,69 @@ public sealed partial class PlayerBar : UserControl
     private void OnDockingPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(IPanelDockingService.IsPlayerDetached))
-            DispatcherQueue?.TryEnqueue(UpdateVideoPopoutTeachingTip);
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                UpdateVideoPopoutTeachingTip();
+                UpdatePlayerPopOutButton();
+            });
+        }
+    }
+
+    // ── Pop out / re-dock the player ──────────────────────────────────────
+    //
+    // The same affordance toggles: when docked it tears the player into a
+    // floating window; when already detached it re-docks. Reachable both as an
+    // inline button (Wide/Compact) and via the overflow menu (Narrow/VeryNarrow),
+    // plus the drag-out gesture on the track group.
+
+    private void PlayerPopOutButton_Click(object sender, RoutedEventArgs e) => TogglePlayerDetach();
+
+    private void PlayerPopOut_OverflowClick(object sender, RoutedEventArgs e) => TogglePlayerDetach();
+
+    private void TogglePlayerDetach()
+    {
+        var docking = _dockingService ?? Ioc.Default.GetService<IPanelDockingService>();
+        if (docking == null) return;
+
+        if (docking.IsPlayerDetached)
+        {
+            docking.Dock(DetachablePanel.Player);
+        }
+        else
+        {
+            // The expanded album-art footer would be orphaned once the player
+            // floats out of the bar, so collapse it first.
+            ViewModel.IsAlbumArtExpanded = false;
+            docking.Detach(DetachablePanel.Player);
+        }
+    }
+
+    private void UpdatePlayerPopOutButton()
+    {
+        var detached = (_dockingService ?? Ioc.Default.GetService<IPanelDockingService>())?.IsPlayerDetached == true;
+
+        if (PlayerPopOutButton != null)
+        {
+            ToolTipService.SetToolTip(
+                PlayerPopOutButton,
+                detached ? "Return player to window" : "Pop out player");
+        }
+
+        if (PlayerPopOutGlyph != null)
+        {
+            if (detached
+                && Application.Current.Resources.TryGetValue("AccentTextFillColorPrimaryBrush", out var accent)
+                && accent is Brush accentBrush)
+            {
+                PlayerPopOutGlyph.Foreground = accentBrush;
+            }
+            else
+            {
+                // Restore inherited foreground so the glyph matches its siblings.
+                PlayerPopOutGlyph.ClearValue(FontIcon.ForegroundProperty);
+            }
+        }
     }
 
     private void OnVideoMiniPlayerPromptStateChanged(bool isOpen)
@@ -616,6 +679,12 @@ public sealed partial class PlayerBar : UserControl
             likeItem.IsEnabled = !string.IsNullOrEmpty(currentTrackId);
         }
 
+        var popOutItem = flyout.Items.OfType<MenuFlyoutItem>().FirstOrDefault(static item => Equals(item.Tag, "popoutplayer"));
+        if (popOutItem != null)
+        {
+            var detached = (_dockingService ?? Ioc.Default.GetService<IPanelDockingService>())?.IsPlayerDetached == true;
+            popOutItem.Text = detached ? "Return player to window" : "Pop out player";
+        }
     }
 
     private void LikeOverflowMenuItem_Click(object sender, RoutedEventArgs e)

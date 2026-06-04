@@ -69,6 +69,7 @@ public sealed partial class ExpandedPlayerView : UserControl
     private bool _isVideoTheaterMode;
     private bool _autoFitRequestedForVideoFocus;
     private bool _compactNowPlayingVisible;
+    private bool _eventHandlersDetached;
     private double _compactHeaderTop = 42;
     private double _compactHeaderSide = 44;
     private double _compactHeaderArtSize = 78;
@@ -136,11 +137,33 @@ public sealed partial class ExpandedPlayerView : UserControl
     {
         System.Diagnostics.Debug.WriteLine("[mem] ExpandedPlayerView.OnUnloaded");
         ReleaseHeavyResources();
-        _videoSurface.ActiveSurfaceChanged -= OnActiveVideoSurfaceChanged;
+        DetachEventHandlers();
+    }
+
+    /// <summary>
+    /// Removes every handler wired in the constructor. Idempotent. Called from both
+    /// <see cref="OnUnloaded"/> and <see cref="ReleaseHeavyResources"/> so the
+    /// floating-window teardown path (which calls <see cref="ReleaseHeavyResources"/>
+    /// directly and cannot rely on <c>Unloaded</c> firing — it is unreliable on
+    /// <c>WindowEx</c> close) fully detaches from the shared singleton ViewModel and
+    /// services. A leaked handler on the singleton <see cref="PlayerBarViewModel"/>
+    /// (or <c>IActiveVideoSurfaceService</c> / <c>IWindowContext</c>) pins this whole
+    /// view + its visual tree for the lifetime of the app.
+    /// </summary>
+    private void DetachEventHandlers()
+    {
+        if (_eventHandlersDetached) return;
+        _eventHandlersDetached = true;
+
+        SizeChanged -= OnSizeChanged;
+        ActualThemeChanged -= OnActualThemeChanged;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         if (_windowContext != null)
             _windowContext.PropertyChanged -= OnWindowContextPropertyChanged;
-        ActualThemeChanged -= OnActualThemeChanged;
+        _videoSurface.ActiveSurfaceChanged -= OnActiveVideoSurfaceChanged;
+        PlayerLayout.TheaterModeChanged -= OnPlayerLayoutTheaterModeChanged;
+        PlayerLayout.FitVideoWindowRequested -= OnPlayerLayoutFitVideoWindowRequested;
+        PlayerLayout.QueueRequested -= OnPlayerLayoutQueueRequested;
     }
 
     internal void ReleaseHeavyResources()
@@ -200,6 +223,12 @@ public sealed partial class ExpandedPlayerView : UserControl
             ContentHost.IsOpen = false;
             ContentHost.Visibility = Visibility.Collapsed;
         }
+
+        // Detach singleton/service handlers here too: the floating window calls
+        // ReleaseHeavyResources() directly on close and WinUI 3 'Unloaded' does
+        // not reliably fire on WindowEx teardown, so this is the only guaranteed
+        // unsubscribe point on that path.
+        DetachEventHandlers();
     }
 
     internal void SetVideoSurfaceEnabled(bool enabled)

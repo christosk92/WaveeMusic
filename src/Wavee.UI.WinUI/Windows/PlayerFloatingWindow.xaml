@@ -34,6 +34,31 @@
         <sidebarplayer:ExpandedPlayerView
             x:Name="ExpandedHost" />
 
+        <!-- Picture-in-picture compact player; shown when the float is in
+             compact form factor. Cross-faded against ExpandedHost on toggle. -->
+        <sidebarplayer:CompactPlayerView
+            x:Name="CompactHost"
+            Opacity="0"
+            Visibility="Collapsed">
+            <sidebarplayer:CompactPlayerView.OpacityTransition>
+                <ScalarTransition Duration="0:0:0.18" />
+            </sidebarplayer:CompactPlayerView.OpacityTransition>
+        </sidebarplayer:CompactPlayerView>
+
+        <!-- Empty state — shown when nothing is playing. -->
+        <StackPanel
+            x:Name="EmptyState"
+            Visibility="Collapsed"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="12">
+            <FontIcon Glyph="&#xE8D6;" FontSize="44" Opacity="0.45"
+                      Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+            <TextBlock Text="Nothing playing"
+                       FontSize="16" Opacity="0.7" HorizontalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+        </StackPanel>
+
         <!-- Title-bar drag region overlay (transparent). -->
         <Border x:Name="DragRegion"
                 Height="32"
@@ -48,6 +73,20 @@
             VerticalAlignment="Top"
             Margin="0,2,142,0"
             Canvas.ZIndex="20">
+            <Button x:Name="CompactToggleButton"
+                    Width="34"
+                    Height="28"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    CornerRadius="4"
+                    Click="CompactToggleButton_Click"
+                    ToolTipService.ToolTip="Compact player">
+                <Grid>
+                    <FontIcon x:Name="ShrinkToMiniGlyph" Glyph="&#xE73F;" FontSize="12" />
+                    <FontIcon x:Name="ExpandToFullGlyph" Glyph="&#xE740;" FontSize="12" Visibility="Collapsed" />
+                </Grid>
+            </Button>
             <ToggleButton x:Uid="Windows_PlayerFloatingWindow__Auto_601" x:Name="AlwaysOnTopButton"
                           Width="34"
                           Height="28"
@@ -89,6 +128,17 @@
                     Click="FullScreenButton_Click"
                     ToolTipService.ToolTip="Enter full screen (F12)">
                 <FontIcon x:Name="FullScreenGlyph" Glyph="&#xE740;" FontSize="12" />
+            </Button>
+            <Button x:Name="ReDockButton"
+                    Width="34"
+                    Height="28"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    CornerRadius="4"
+                    Click="ReDockButton_Click"
+                    ToolTipService.ToolTip="Dock player back to window">
+                <FontIcon Glyph="&#xE74A;" FontSize="12" />
             </Button>
         </StackPanel>
     </Grid>

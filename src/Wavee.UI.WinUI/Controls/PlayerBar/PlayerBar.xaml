@@ -261,7 +261,8 @@
                         Grid.Column="0"
                         VerticalAlignment="Center"
                         MinWidth="200"
-                        MaxWidth="320">
+                        MaxWidth="320"
+                        behaviors:DragToDetachBehavior.Panel="Player">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -596,6 +597,17 @@
                                 </IconSourceElement>
                             </ToggleButton>
 
+                            <Button
+                                x:Name="PlayerPopOutButton"
+                                Style="{StaticResource TransparentButtonStyle}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                Click="PlayerPopOutButton_Click"
+                                ToolTipService.ToolTip="Pop out player">
+                                <FontIcon x:Name="PlayerPopOutGlyph" Glyph="&#xE8A7;" FontSize="14" />
+                            </Button>
+
                             <playback:WatchVideoButton ButtonSize="32" IconSize="16" />
 
                             <Button
@@ -804,6 +816,15 @@
                                     </ToggleMenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem
+                                        x:Name="WidePopOutPlayerItem"
+                                        Tag="popoutplayer"
+                                        Text="Pop out player"
+                                        Click="PlayerPopOut_OverflowClick">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE8A7;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
                                         x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_130"
                                         Text="Show in sidebar"
                                         Click="ShowInSidebar_Click">
@@ -835,7 +856,8 @@
                         Grid.Column="0"
                         Grid.ColumnSpan="2"
                         Margin="0,0,8,0"
-                        VerticalAlignment="Center">
+                        VerticalAlignment="Center"
+                        behaviors:DragToDetachBehavior.Panel="Player">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -1163,6 +1185,15 @@
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="NarrowPopOutPlayerItem"
+                                        Tag="popoutplayer"
+                                        Text="Pop out player"
+                                        Click="PlayerPopOut_OverflowClick">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE8A7;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_150"
                                         Text="Show in sidebar"
