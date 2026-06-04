@@ -311,6 +311,9 @@ public sealed partial class LibraryGridView : UserControl
     private static readonly object[] ShimmerPlaceholders = Enumerable.Range(0, 8).Cast<object>().ToArray();
     private INotifyCollectionChanged? _observedItemsSource;
     private bool _itemsSourceRefreshInProgress;
+    // True while we are re-asserting the ItemsView selection ourselves, so the
+    // SelectionChanged handler ignores the resulting (self-inflicted) events.
+    private bool _syncingSelection;
 
     public LibraryGridView()
     {
@@ -461,27 +464,69 @@ public sealed partial class LibraryGridView : UserControl
         DetachItemsSourceCollectionChanged();
     }
 
-    private void SyncSelectionToItemsView()
+    /// <summary>
+    /// Pushes the authoritative <see cref="SelectedItem"/> onto the inner ItemsView's
+    /// visual selection. When <paramref name="force"/> is set the re-assert is
+    /// unconditional: after an ItemsSource reorder (<c>ApplyKeyedDiff</c> issues
+    /// <see cref="System.Collections.ObjectModel.ObservableCollection{T}.Move"/> ops on a
+    /// recents re-sort), ItemsView keeps its selection by INDEX, so the highlight slides
+    /// onto whatever item now occupies the old slot while <c>ItemsGridView.SelectedItem</c>
+    /// still reports the real one — making the usual identity check unreliable. The forced
+    /// path runs only from the deferred post-mutation resync (never inside an ItemsView
+    /// <c>SelectionChanged</c> dispatch), so the deselect/reselect can't trip COMException
+    /// E_FAIL.
+    /// </summary>
+    private void SyncSelectionToItemsView(bool force = false)
     {
         if (ItemsGridView is null) return;
 
-        if (SelectedItem is null)
+        _syncingSelection = true;
+        try
         {
-            ItemsGridView.DeselectAll();
-        }
-        else if (ItemsSource is IList list)
-        {
-            var index = list.IndexOf(SelectedItem);
-            if (index >= 0 && ItemsGridView.SelectedItem != SelectedItem)
+            if (SelectedItem is null)
             {
-                ItemsGridView.Select(index);
+                ItemsGridView.DeselectAll();
+                return;
             }
+
+            if (ItemsSource is IList list)
+            {
+                var index = list.IndexOf(SelectedItem);
+                if (index < 0)
+                {
+                    ItemsGridView.DeselectAll();
+                    return;
+                }
+
+                if (force)
+                {
+                    ItemsGridView.DeselectAll();
+                    ItemsGridView.Select(index);
+                }
+                else if (ItemsGridView.SelectedItem != SelectedItem)
+                {
+                    ItemsGridView.Select(index);
+                }
+            }
+        }
+        finally
+        {
+            _syncingSelection = false;
         }
     }
 
     private void ItemsGridView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
     {
-        if (_itemsSourceRefreshInProgress && sender.SelectedItem is null && SelectedItem is not null)
+        // Ignore the selection events our own re-assert produces.
+        if (_syncingSelection)
+            return;
+
+        // While the ItemsSource is being mutated (a keyed-diff reorder), every
+        // SelectionChanged the ItemsView emits is a side effect of the Move/Remove/Insert
+        // — index-anchored selection can shift onto a different item — NOT a user action.
+        // Ignore them all; the real selection is re-applied from SelectedItem once the
+        // mutation settles (the deferred SyncSelectionToItemsView(force: true)).
+        if (_itemsSourceRefreshInProgress)
             return;
 
         if (sender.SelectedItem != SelectedItem)
@@ -527,7 +572,9 @@ public sealed partial class LibraryGridView : UserControl
         DispatcherQueue.TryEnqueue(() =>
         {
             _itemsSourceRefreshInProgress = false;
-            SyncSelectionToItemsView();
+            // Hard re-assert: a Move-based reorder leaves ItemsView's index-anchored
+            // highlight on the wrong card; only an unconditional reselect fixes it.
+            SyncSelectionToItemsView(force: true);
         });
     }
 
