@@ -149,6 +149,14 @@ public sealed partial class CompositionImage : UserControl
     private bool _isAttached;
     private bool _initialized;
     private bool _releasedForNavigationCache;
+    // Idempotency guard for the static ImageLoadingSuspension.Changed subscription.
+    // Loaded can fire more than once on the same instance before a matching
+    // Unloaded (ItemsRepeater recycle, collapsed cached-page revisits). Without
+    // this guard each extra Loaded stacked another handler on the *static* event,
+    // so a suspend/resume toggle fanned out to a growing handler list — the
+    // invocation list grew the longer image-heavy views were browsed. With the
+    // guard each instance subscribes at most once.
+    private bool _suspensionSubscribed;
     private EventHandler? _loadCompletedHandler;
 
     // Deferred composition-resource release: scrolled-out cards in an
@@ -371,7 +379,7 @@ public sealed partial class CompositionImage : UserControl
         _isAttached = true;
         _releasedForNavigationCache = false;
         EnsureCompositionResources();
-        ImageLoadingSuspension.Changed += OnSuspensionChanged;
+        SubscribeSuspension();
 
         // Re-attach the SpriteVisual eagerly. Unload/nav-cache release detaches
         // it, and TryLoadCurrent's same-url path can return without doing a
@@ -405,7 +413,7 @@ public sealed partial class CompositionImage : UserControl
     {
         DiagLog("OnUnloaded:enter");
         _isAttached = false;
-        ImageLoadingSuspension.Changed -= OnSuspensionChanged;
+        UnsubscribeSuspension();
 
         // Treat Unloaded as out-of-view. Drop our reference to the cached
         // surface and evict the cache entry if no other visible control still
@@ -584,6 +592,26 @@ public sealed partial class CompositionImage : UserControl
         var self = (CompositionImage)d;
         if (self.PlaceholderHost is not null)
             self.PlaceholderHost.Opacity = (double)e.NewValue;
+    }
+
+    // Subscribe/unsubscribe the static ImageLoadingSuspension.Changed event
+    // idempotently. The static event holds a strong ref to this instance via the
+    // handler, so a missed unsubscribe roots the instance — but more importantly a
+    // double subscribe grows the invocation list. Nav-cache release deliberately
+    // does NOT unsubscribe: a released-but-still-attached control keeps the single
+    // handler so a suspension resume reloads it (see OnSuspensionChanged).
+    private void SubscribeSuspension()
+    {
+        if (_suspensionSubscribed) return;
+        ImageLoadingSuspension.Changed += OnSuspensionChanged;
+        _suspensionSubscribed = true;
+    }
+
+    private void UnsubscribeSuspension()
+    {
+        if (!_suspensionSubscribed) return;
+        ImageLoadingSuspension.Changed -= OnSuspensionChanged;
+        _suspensionSubscribed = false;
     }
 
     private void OnSuspensionChanged(bool suspended)

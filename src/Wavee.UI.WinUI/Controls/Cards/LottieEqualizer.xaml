@@ -8,8 +8,15 @@
     mc:Ignorable="d"
     IsHitTestVisible="False">
 
-    <AnimatedVisualPlayer
-        x:Name="Player"
-        AutoPlay="False"
-        Stretch="Uniform"/>
+    <!-- Composition-driven equalizer bars (see code-behind). Designed in a fixed
+         ~18x16 space and uniformly scaled to IconSize by the Viewbox; each bar's
+         height is animated by a looping Composition Scale.Y animation on the
+         compositor thread (replaces the old Lottie vector that dominated idle CPU). -->
+    <Viewbox x:Name="BarsViewbox" Stretch="Uniform">
+        <StackPanel Orientation="Horizontal" Spacing="2" Height="16">
+            <Rectangle x:Name="Bar0" Width="3" Height="16" RadiusX="1.5" RadiusY="1.5" VerticalAlignment="Bottom"/>
+            <Rectangle x:Name="Bar1" Width="3" Height="16" RadiusX="1.5" RadiusY="1.5" VerticalAlignment="Bottom"/>
+            <Rectangle x:Name="Bar2" Width="3" Height="16" RadiusX="1.5" RadiusY="1.5" VerticalAlignment="Bottom"/>
+        </StackPanel>
+    </Viewbox>
 </UserControl>

@@ -185,6 +185,17 @@ internal static class PodcastCommentReactionsDialog
             dialog.Style = style;
         }
 
+        // ContentDialog can stay referenced by the popup root past close (until the
+        // next GC). Drop the avatar-bearing trees on close so the native image
+        // decode buffers are released promptly instead of lingering across opens.
+        dialog.Closed += (s, _) =>
+        {
+            chipsPanel.Children.Clear();
+            listPanel.Children.Clear();
+            content.Children.Clear();
+            s.Content = null;
+        };
+
         await dialog.ShowAsync();
     }
 
@@ -227,7 +238,11 @@ internal static class PodcastCommentReactionsDialog
         if (!string.IsNullOrWhiteSpace(reaction.AuthorImageUrl) &&
             Uri.TryCreate(reaction.AuthorImageUrl, UriKind.Absolute, out var imageUri))
         {
-            person.ProfilePicture = new BitmapImage(imageUri);
+            // The avatar renders at 40×40; decode at ~2× for HiDPI instead of the
+            // source's full resolution. Without DecodePixelWidth each of the ~30
+            // reactions decoded a 1000²+ full-res ARGB buffer (5–10 MB) of native
+            // memory while the dialog was open.
+            person.ProfilePicture = new BitmapImage(imageUri) { DecodePixelWidth = 80 };
         }
         Grid.SetColumn(person, 0);
         grid.Children.Add(person);

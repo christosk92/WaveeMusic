@@ -16,6 +16,24 @@ internal sealed partial class MusicVideoCatalogCache : IMusicVideoCatalogCache
     private readonly ConcurrentDictionary<string, Entry> _entries = new(System.StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _audioUrisByVideoUri = new(System.StringComparer.Ordinal);
 
+    // Upper bound on cached entries. Each entry is tiny (three nullable strings +
+    // a bool) but, before this cap, _entries grew once per unique track URI for
+    // the whole app lifetime — a long session over a large library accumulated
+    // them without limit. Keys are evicted oldest-first once the cap is exceeded.
+    private const int MaxEntries = 4096;
+    private readonly ConcurrentQueue<string> _insertionOrder = new();
+
+    // Records a newly-added key and evicts the oldest entries when over budget.
+    // Approximate FIFO rather than strict LRU: entries are cheap and re-derivable
+    // from a GraphQL refetch, so the simpler bound is sufficient. Called only when
+    // a Note* actually inserts a new key (GraphQL response path — low frequency).
+    private void TrackInsertion(string audioTrackUri)
+    {
+        _insertionOrder.Enqueue(audioTrackUri);
+        while (_entries.Count > MaxEntries && _insertionOrder.TryDequeue(out var oldest))
+            ForgetVideoAssociation(oldest);
+    }
+
     public bool? GetHasVideo(string audioTrackUri)
     {
         if (string.IsNullOrEmpty(audioTrackUri)) return null;
@@ -25,24 +43,28 @@ internal sealed partial class MusicVideoCatalogCache : IMusicVideoCatalogCache
     public void NoteHasVideo(string audioTrackUri, bool hasVideo)
     {
         if (string.IsNullOrEmpty(audioTrackUri)) return;
+        var added = false;
         _entries.AddOrUpdate(
             audioTrackUri,
-            _ => new Entry(hasVideo, null, null),
+            _ => { added = true; return new Entry(hasVideo, null, null); },
             (_, prev) => prev.HasVideo == hasVideo
                 ? prev
                 : prev with { HasVideo = hasVideo });
+        if (added) TrackInsertion(audioTrackUri);
     }
 
     public void NoteVideoUri(string audioTrackUri, string videoTrackUri)
     {
         if (string.IsNullOrEmpty(audioTrackUri) || string.IsNullOrEmpty(videoTrackUri)) return;
+        var added = false;
         _entries.AddOrUpdate(
             audioTrackUri,
-            _ => new Entry(true, videoTrackUri, null),
+            _ => { added = true; return new Entry(true, videoTrackUri, null); },
             (_, prev) => prev.HasVideo == true
                          && string.Equals(prev.VideoUri, videoTrackUri, System.StringComparison.Ordinal)
                 ? prev
                 : prev with { HasVideo = true, VideoUri = videoTrackUri });
+        if (added) TrackInsertion(audioTrackUri);
         if (!_audioUrisByVideoUri.TryGetValue(videoTrackUri, out var existing)
             || !string.Equals(existing, audioTrackUri, System.StringComparison.Ordinal))
         {
@@ -89,13 +111,15 @@ internal sealed partial class MusicVideoCatalogCache : IMusicVideoCatalogCache
     public void NoteManifestId(string audioTrackUri, string manifestId)
     {
         if (string.IsNullOrEmpty(audioTrackUri) || string.IsNullOrEmpty(manifestId)) return;
+        var added = false;
         _entries.AddOrUpdate(
             audioTrackUri,
-            _ => new Entry(true, null, manifestId),
+            _ => { added = true; return new Entry(true, null, manifestId); },
             (_, prev) => prev.HasVideo == true
                          && string.Equals(prev.ManifestId, manifestId, System.StringComparison.Ordinal)
                 ? prev
                 : prev with { HasVideo = true, ManifestId = manifestId });
+        if (added) TrackInsertion(audioTrackUri);
     }
 
     public bool TryGetManifestId(string audioTrackUri, out string manifestId)

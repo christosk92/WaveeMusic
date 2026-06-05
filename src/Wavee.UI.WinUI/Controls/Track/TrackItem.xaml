@@ -104,11 +104,20 @@
                     </Grid>
                 </Border>
 
-                <Border x:Name="CompactNowPlaying" CornerRadius="4"
-                        Background="#D9000000" Visibility="Collapsed">
+                <!-- Now-playing indicator: a small chip in the bottom-right corner
+                     of the cover instead of a full 85%-black scrim, so the album art
+                     stays visible. The chip is tiny, so it can stay high-opacity for
+                     crisp teal bars while leaving ~88% of the cover clear. Visibility /
+                     Opacity / equalizer are driven from TrackItem.Playback.cs (paused
+                     dims the chip via Opacity=0.7; the art is never touched). -->
+                <Border x:Name="CompactNowPlaying" CornerRadius="6"
+                        Background="#CC000000"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Margin="0,0,3,3" Padding="2"
+                        Visibility="Collapsed">
                     <cards:LottieEqualizer x:Name="CompactNowPlayingEqualizer"
                                            x:Load="False"
-                                           IconSize="24"
+                                           IconSize="14"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
                 </Border>

@@ -20,6 +20,15 @@ namespace Wavee.Controls.Lyrics.Renderer
         private GaussianBlurEffect? _glowBlurEffect;
         private readonly CanvasGradientStop[] _linearStops = new CanvasGradientStop[2];
         private readonly CanvasGradientStop[] _roundStops = new CanvasGradientStop[3];
+        // Cached linear (Top/Bottom) gradient brush. The stops sit at fixed
+        // positions 0→1, so only the base colour changes between frames; opacity is
+        // applied via Brush.Opacity rather than baked into the stop alpha. This lets
+        // the brush be reused frame-to-frame instead of allocated + disposed every
+        // frame while the spectrum overlay is visible. Device-tracked like the glow
+        // resources. (The radial brush can't be cached — its middle stop *position*
+        // tracks the per-frame radius — so it stays per-frame.)
+        private CanvasLinearGradientBrush? _linearBrush;
+        private Color _linearBrushColor;
 
         private readonly struct SpectrumGeometryCacheKey
         {
@@ -352,11 +361,6 @@ namespace Wavee.Controls.Lyrics.Renderer
             double height,
             Rect albumRect)
         {
-            _linearStops[0].Position = 0.0f;
-            _linearStops[0].Color = Colors.Transparent;
-            _linearStops[1].Position = 1.0f;
-            _linearStops[1].Color = Color.FromArgb((byte)(255 * opacity), color.R, color.G, color.B);
-
             ICanvasBrush brush;
 
             if (placement == SpectrumPlacement.AroundAlbumArt)
@@ -385,7 +389,8 @@ namespace Wavee.Controls.Lyrics.Renderer
             }
             else
             {
-                var linearBrush = new CanvasLinearGradientBrush(ds, _linearStops);
+                var linearBrush = EnsureLinearBrush(resourceCreator, color);
+                linearBrush.Opacity = opacity;
                 if (placement == SpectrumPlacement.Top)
                 {
                     linearBrush.StartPoint = new Vector2(0, (float)height);
@@ -427,7 +432,34 @@ namespace Wavee.Controls.Lyrics.Renderer
             // 绘制一条高亮的描边，增强轮廓感，让波峰更清晰
             //ds.DrawGeometry(geometry, Colors.White, 1.0f);
 
-            brush.Dispose();
+            // Only the radial brush is transient (rebuilt per frame); the linear
+            // brush is cached and reused, so don't dispose it here.
+            if (!ReferenceEquals(brush, _linearBrush))
+                brush.Dispose();
+        }
+
+        // Device-tracked cache for the Top/Bottom linear gradient brush. Rebuilt
+        // only when the device is lost/changed or the base colour changes; opacity
+        // and endpoints are set per frame by the caller. Mirrors EnsureGlowResources.
+        private CanvasLinearGradientBrush EnsureLinearBrush(ICanvasResourceCreator creator, Color color)
+        {
+            if (_linearBrush != null
+                && _linearBrush.Device == creator.Device
+                && _linearBrushColor.R == color.R
+                && _linearBrushColor.G == color.G
+                && _linearBrushColor.B == color.B)
+            {
+                return _linearBrush;
+            }
+
+            _linearBrush?.Dispose();
+            _linearStops[0].Position = 0.0f;
+            _linearStops[0].Color = Colors.Transparent;
+            _linearStops[1].Position = 1.0f;
+            _linearStops[1].Color = Color.FromArgb(255, color.R, color.G, color.B);
+            _linearBrush = new CanvasLinearGradientBrush(creator, _linearStops);
+            _linearBrushColor = color;
+            return _linearBrush;
         }
 
         // IBackgroundRenderer
@@ -469,6 +501,8 @@ namespace Wavee.Controls.Lyrics.Renderer
             _glowBlurEffect = null;
             _glowCommandList?.Dispose();
             _glowCommandList = null;
+            _linearBrush?.Dispose();
+            _linearBrush = null;
             _spectrumGeometry?.Dispose();
             _spectrumGeometry = null;
             _geometryCacheKey = null;

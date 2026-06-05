@@ -17,8 +17,10 @@ using Wavee.UI.WinUI.ViewModels.Local;
 namespace Wavee.UI.WinUI.Views;
 
 [global::WinRT.GeneratedBindableCustomProperty]
-public sealed partial class LocalLibraryPage : UserControl, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware, IRedirectsCtrlFToOmnibar
+public sealed partial class LocalLibraryPage : UserControl, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware, IRedirectsCtrlFToOmnibar, IDisposable
 {
+    private bool _isDisposed;
+
     public LocalLandingViewModel ViewModel { get; }
 
     public LocalLibraryPage()
@@ -26,6 +28,18 @@ public sealed partial class LocalLibraryPage : UserControl, Wavee.UI.WinUI.Contr
         ViewModel = Ioc.Default.GetService<LocalLandingViewModel>()
                     ?? new LocalLandingViewModel();
         InitializeComponent();
+    }
+
+    // PageHost caches pages by type and only calls Dispose on eviction / Clear.
+    // Without this, the transient LocalLandingViewModel (created in the ctor with
+    // three RX subscriptions to the singleton library facade + TMDB token store)
+    // was never disposed, so on the rare evict-then-recreate cycle the old VM's
+    // subscriptions leaked. Mirrors BrowsePage / HomePage / AlbumPage.
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+        (ViewModel as IDisposable)?.Dispose();
     }
 
     public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)

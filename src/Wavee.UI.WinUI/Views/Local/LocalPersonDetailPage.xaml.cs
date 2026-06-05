@@ -84,7 +84,10 @@ public sealed partial class LocalPersonDetailPage : UserControl, Wavee.UI.WinUI.
 
         if (!string.IsNullOrWhiteSpace(person.ProfileImageUrl))
         {
-            HeroPortraitBrush.ImageSource = new BitmapImage(new Uri(person.ProfileImageUrl));
+            // ResolveImage applies DecodePixelWidth (see lines 75/91) so the cached,
+            // type-reused page doesn't accumulate full-resolution (5–10 MB) decodes
+            // as it's reused across cast members.
+            HeroPortraitBrush.ImageSource = ResolveImage(person.ProfileImageUrl);
         }
         else if (HeroPortraitBrush.ImageSource is null && !string.IsNullOrEmpty(ViewModel.SeedImageUri))
         {
