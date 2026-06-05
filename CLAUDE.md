@@ -23,7 +23,7 @@ When adding a new component guide, follow the frontmatter, Quick-find table, and
 
 ## Repository at a glance
 
-WaveeMusic is a clean-room Spotify desktop client for Windows: a .NET 10 reimplementation of Spotify's Access Point, Mercury, Connect (Dealer WebSocket), SpClient (protobuf/HTTPS), and Pathfinder (GraphQL) protocols, wrapped in a WinUI 3 app. Requires a Spotify Premium account.
+WaveeMusic is a clean-room Spotify desktop client for Windows: a .NET 11 reimplementation of Spotify's Access Point, Mercury, Connect (Dealer WebSocket), SpClient (protobuf/HTTPS), and Pathfinder (GraphQL) protocols, wrapped in a WinUI 3 app. Requires a Spotify Premium account.
 
 Top-level project READMEs are the canonical source of architectural detail — they're already detailed and current. Read them before invasive changes:
 
@@ -72,7 +72,7 @@ dotnet publish src/Wavee.Console -c Release -r linux-x64
 dotnet publish src/Wavee.Console -c Release -r linux-arm64
 ```
 
-Prerequisites: .NET 10 SDK, Windows 11 24H2 (build 26100) or later for the WinUI app, Spotify Premium account.
+Prerequisites: .NET 11 SDK (preview 4), Windows 11 24H2 (build 26100) or later for the WinUI app, Spotify Premium account.
 
 ## High-level architecture
 
@@ -245,6 +245,6 @@ Crypto primitives (`ShannonCipher`, `AudioDecryptStream`) are validated against 
 - **`InternalsVisibleTo` is part of the contract.** `Wavee` exposes internals to `Wavee.Tests`; `Wavee.UI` exposes to `Wavee.UI.WinUI` and `Wavee.UI.Tests`; `Wavee.UI.WinUI` exposes to `Wavee.Tests`. Marking something `internal` here is intentional, not a leak.
 - **`IRemoteStateRecorder`** is threaded through `Session`, `DealerClient`, `DeviceStateManager`, `PlaybackStateManager`, and HTTP clients. Pass `null` for "no recording"; pass a real implementation (the WinUI app's `RemoteStateRecorder`, capped at 500 entries) to capture every dealer message + HTTP call for the Debug page.
 - **Workstation + Concurrent (background) GC in `Wavee.UI.WinUI`** (`<ServerGarbageCollection>false</>` + `<ConcurrentGarbageCollection>true</>` + `<RetainVMGarbageCollection>true</>`). The project iterated Workstation → DATAS → ServerGC → **back to Workstation** (commit `0c5d0ca`). History: vanilla Workstation showed a mid-life-crisis ratio (Gen0:Gen1:Gen2 ≈ 711:541:334) on image-heavy nav; DATAS fixed working set but added an adaptive-rebalance Gen2 pause on bursty allocation (dotnet/runtime#93891); ServerGC's per-CPU heaps then produced repeated **1–2 s Gen2 stop-the-world pauses** in the single-threaded UI process — worse than the alternatives for a latency-sensitive client. The current config optimizes for short pauses + low footprint (audio runs out-of-process, so UI GC pauses don't protect playback): background GC keeps most Gen2 off the UI thread, and `RetainVMGarbageCollection` avoids the decommit→re-fault churn after collections. The remaining blocking Gen2 stalls during image-heavy nav are driven by **gross transient allocation** (protobuf / JSON / image-decode landing on the LOH, collected only in Gen2), not by managed-heap size or GC mode — reduce them by cutting nav-path allocation (pool large buffers, demote per-item logging, bound caches), not by flipping GC mode or re-introducing per-nav `SustainedLowLatency` (tried and removed — see `NavigationGcCoordinator`).
-- **C# preview language version** in `Wavee.UI.WinUI` (required for CommunityToolkit.Mvvm 8.4.x on .NET 10).
+- **C# preview language version** in `Wavee.UI.WinUI` (required for CommunityToolkit.Mvvm 8.4.x on .NET 11).
 - **Use `FluentGlyphs` constants from C#, never raw PUA literals.** `src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs` is the single source of truth for icon codepoints. Two reasons inline literals are banned in `.cs`: (1) editors silently save-as CP-1252 on Windows and mangle PUA chars; (2) the Edit / replace tooling chain doesn't round-trip PUA reliably, so any future text replacement targeting a line with an inline glyph becomes brittle. Inside `FluentGlyphs.cs` itself, prefer the `\uXXXX` escape form over a raw PUA character (the existing file is a mix; new entries should use `\uXXXX`). XAML is exempt — literal glyphs like `Glyph="&#xE76C;"` are fine in `.xaml` because XAML files are always UTF-8 and don't go through the same encoding hazards.
 - **Protobuf code generation** runs at build time (`Grpc.Tools` 2.80.0). Generated files land in `src/Wavee/Protocol/Generated/`, are excluded from default `Compile`, and the `Protobuf` ItemGroup re-includes them with `Access="Public"`.

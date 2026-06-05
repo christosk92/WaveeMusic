@@ -2,7 +2,7 @@
 
 DTOs and named-pipe transport that define the wire protocol between `Wavee.UI.WinUI` (and the core `Wavee` library) and the out-of-process audio runtime `Wavee.AudioHost`.
 
-`net10.0` · AOT-compatible (`IsAotCompatible=true`, `EnableTrimAnalyzer=true`) · `AnyCPU;ARM64;x64`. Zero dependencies (only `Microsoft.Extensions.Logging.Abstractions`).
+`net11.0` · AOT-compatible (`IsAotCompatible=true`, `EnableTrimAnalyzer=true`) · `AnyCPU;ARM64;x64`. Zero dependencies (only `Microsoft.Extensions.Logging.Abstractions`).
 
 ## What's in here
 

@@ -616,9 +616,16 @@ public static class AppLifecycleHelper
                 .AddHttpClient("Wavee")
                     .ConfigurePrimaryHttpMessageHandler(() => new System.Net.Http.SocketsHttpHandler
                     {
-                        // Enables Accept-Encoding: gzip, deflate, br on all outgoing requests
-                        // and transparent decompression of responses.
-                        AutomaticDecompression = System.Net.DecompressionMethods.All,
+                        // Accept-Encoding: gzip, deflate, br + transparent decompression.
+                        // Deliberately EXCLUDES Zstandard. On .NET 11, DecompressionMethods.All
+                        // started advertising zstd, and the preview's zstd HTTP decompression
+                        // silently truncates multi-frame responses to the first frame — large
+                        // Pathfinder bodies get cut at byte 65536. See dotnet/runtime#129038.
+                        // Do NOT switch back to DecompressionMethods.All until that ships a fix;
+                        // brotli covers the same servers with no truncation.
+                        AutomaticDecompression = System.Net.DecompressionMethods.GZip
+                                               | System.Net.DecompressionMethods.Deflate
+                                               | System.Net.DecompressionMethods.Brotli,
                         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
                     })
                     .AddHttpMessageHandler<RetryHandler>()

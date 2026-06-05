@@ -2,7 +2,7 @@
 
 The audio engine. Spawned as a separate process by `Wavee.UI.WinUI` and talked to over a named pipe. Handles CDN download, Spotify track decryption (AES + PlayPlay fallback), Ogg Vorbis decode, mixing / DSP, and output.
 
-`net10.0` · `OutputType=Exe` · **x64 only** (`<Platforms>x64</Platforms>`, `<RuntimeIdentifier>win-x64</RuntimeIdentifier>`) · AOT-compatible (`IsAotCompatible=true`, `EnableTrimAnalyzer=true`).
+`net11.0` · `OutputType=Exe` · **x64 only** (`<Platforms>x64</Platforms>`, `<RuntimeIdentifier>win-x64</RuntimeIdentifier>`) · AOT-compatible (`IsAotCompatible=true`, `EnableTrimAnalyzer=true`).
 
 ## Why a separate process — and why x64
 

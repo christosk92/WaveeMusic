@@ -2,7 +2,7 @@
 
 A terminal Spotify Connect client built on the same `Wavee` core as the WinUI app. Useful for headless control, smoke-testing the protocol layer, and reproducing Connect bugs without dragging the UI in.
 
-`net10.0` · `OutputType=Exe` · **Native AOT** (`PublishAot=true`, `IlcOptimizationPreference=Size`, `IlcTrimMetadata=true`, `StripSymbols=true`) · `AnyCPU;ARM64;x64` · Linux-friendly (`DockerDefaultTargetOS=Linux`, ships a `Dockerfile`).
+`net11.0` · `OutputType=Exe` · **Native AOT** (`PublishAot=true`, `IlcOptimizationPreference=Size`, `IlcTrimMetadata=true`, `StripSymbols=true`) · `AnyCPU;ARM64;x64` · Linux-friendly (`DockerDefaultTargetOS=Linux`, ships a `Dockerfile`).
 
 The csproj escalates every IL2xxx and IL3xxx AOT/trim warning to an error — if you add code that isn't trim-safe, the build fails until you annotate or refactor.
 

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+		<TargetFramework>$(WaveeWindowsTfm)</TargetFramework>
 		<!-- Aligned with Wavee.UI.WinUI's Windows 11 24H2 floor — see notes there. -->
 		<TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
 		<RootNamespace>Wavee.Controls.Lyrics</RootNamespace>

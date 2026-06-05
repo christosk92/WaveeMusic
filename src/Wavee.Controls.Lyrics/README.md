@@ -2,7 +2,7 @@
 
 A WinUI 3 control library for displaying time-synchronized lyrics with shader effects, multi-language detection, and CJK romanization.
 
-`net10.0-windows10.0.26100.0` · min platform `10.0.19041.0` · `UseWinUI=true` · x86 / x64 / ARM64.
+`net11.0-windows10.0.26100.0` · min platform `10.0.19041.0` · `UseWinUI=true` · x86 / x64 / ARM64.
 
 ## Tech stack
 

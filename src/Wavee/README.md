@@ -2,7 +2,7 @@
 
 Reverse-engineered Spotify client for .NET. Authentication, the Access Point connection, Spotify Connect, metadata, playlists, audio key fetching, playback orchestration. **No UI.**
 
-Targets `net10.0`. AOT-compatible (`EnableTrimAnalyzer`, `EnableAotAnalyzer`, `EnableSingleFileAnalyzer` all on; trim/AOT warnings treated as errors).
+Targets `net11.0`. AOT-compatible (`EnableTrimAnalyzer`, `EnableAotAnalyzer`, `EnableSingleFileAnalyzer` all on; trim/AOT warnings treated as errors).
 
 ## What it does
 

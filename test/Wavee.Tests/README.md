@@ -2,7 +2,7 @@
 
 xUnit v3 test suite for the `Wavee` core library.
 
-`net10.0-windows10.0.26100.0` · `OutputType=Exe` · `AnyCPU;x64;ARM64` · stack: **xUnit v3 + FluentAssertions + Moq** (with `DynamicProxyGenAssembly2` granted `InternalsVisibleTo` from `Wavee` for proxy-based mocks).
+`net11.0-windows10.0.26100.0` · `OutputType=Exe` · `AnyCPU;x64;ARM64` · stack: **xUnit v3 + FluentAssertions + Moq** (with `DynamicProxyGenAssembly2` granted `InternalsVisibleTo` from `Wavee` for proxy-based mocks).
 
 ## Folder map
 

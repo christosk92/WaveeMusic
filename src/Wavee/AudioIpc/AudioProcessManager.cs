@@ -185,10 +185,14 @@ public sealed class AudioProcessManager : IAsyncDisposable
                 ? new[] { config, config == "Debug" ? "Release" : "Debug" }
                 : new[] { "Debug", "Release" };
 
+            // Derive the AudioHost TFM folder from the running runtime (e.g. "net11.0")
+            // so a framework bump never needs this path touched. AudioHost shares the
+            // non-Windows TFM family with Wavee core, so its output folder is "netX.Y".
+            var tfm = $"net{Environment.Version.Major}.{Environment.Version.Minor}";
             foreach (var cfg in configs)
             {
-                candidates.Add(Path.Combine(audioHostBin, "x64", cfg, "net10.0", "win-x64", "Wavee.AudioHost.exe"));
-                candidates.Add(Path.Combine(audioHostBin, cfg, "net10.0", "win-x64", "Wavee.AudioHost.exe"));
+                candidates.Add(Path.Combine(audioHostBin, "x64", cfg, tfm, "win-x64", "Wavee.AudioHost.exe"));
+                candidates.Add(Path.Combine(audioHostBin, cfg, tfm, "win-x64", "Wavee.AudioHost.exe"));
             }
         }
 

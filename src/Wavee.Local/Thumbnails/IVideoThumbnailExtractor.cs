@@ -8,7 +8,7 @@ namespace Wavee.Local;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The Wavee core project targets non-Windows TFM (<c>net10.0</c>), so it
+/// The Wavee core project targets non-Windows TFM (<c>net11.0</c>), so it
 /// can't depend on <c>Windows.Storage</c>. The host app supplies a
 /// platform-specific implementation via DI; the scanner accepts an optional
 /// dependency and falls back to "no thumbnail" when none is registered.

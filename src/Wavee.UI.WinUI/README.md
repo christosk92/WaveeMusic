@@ -2,7 +2,7 @@
 
 The headline app: a WinUI 3 / Windows App SDK Spotify client.
 
-`net10.0-windows10.0.26100.0` · min platform `10.0.26100.0` (Windows 11 24H2 — required for the on-device AI projection assemblies to load cleanly at startup) · **Single-project MSIX** · x86 / x64 / ARM64 · v0.1.0-alpha.1.
+`net11.0-windows10.0.26100.0` · min platform `10.0.26100.0` (Windows 11 24H2 — required for the on-device AI projection assemblies to load cleanly at startup) · **Single-project MSIX** · x86 / x64 / ARM64 · v0.1.0-alpha.1.
 
 ## Composition
 

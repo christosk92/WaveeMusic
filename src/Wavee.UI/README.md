@@ -2,7 +2,7 @@
 
 Plain C# class library that sits between the core protocol library (`Wavee`) and the WinUI app (`Wavee.UI.WinUI`). No XAML, no WinUI dependency — just contracts and services.
 
-`net10.0-windows10.0.26100.0` (uses some Windows-platform-specific contracts), no `UseWinUI`, no MSIX. Targets `AnyCPU;x86;x64;ARM64`.
+`net11.0-windows10.0.26100.0` (uses some Windows-platform-specific contracts), no `UseWinUI`, no MSIX. Targets `AnyCPU;x86;x64;ARM64`.
 
 ## Why a separate project
 

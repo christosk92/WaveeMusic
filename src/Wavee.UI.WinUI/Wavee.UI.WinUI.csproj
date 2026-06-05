@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
-		<TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+		<TargetFramework>$(WaveeWindowsTfm)</TargetFramework>
 		<!-- Windows 11 24H2 (build 26100) is the floor where Microsoft.Windows.AI.*
 		     APIs (Phi Silica, etc.) are available. We deliberately gate the whole
 		     app to this minimum so the AI projection assemblies are guaranteed
@@ -265,7 +265,7 @@
 		    Wavee.AudioHost.exe is the right architecture.
 		-->
 		<Exec Command="dotnet build &quot;$(MSBuildThisFileDirectory)..\Wavee.AudioHost\Wavee.AudioHost.csproj&quot; -c $(Configuration) -p:Platform=x64 --nologo -v quiet" ConsoleToMSBuild="true" />
-		<Message Importance="high" Text="[BuildAudioHost] AudioHost rebuilt at ..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\Wavee.AudioHost.exe" />
+		<Message Importance="high" Text="[BuildAudioHost] AudioHost rebuilt at ..\Wavee.AudioHost\bin\x64\$(Configuration)\$(WaveeDotNetTfm)\win-x64\Wavee.AudioHost.exe" />
 	</Target>
 
 	<!--
@@ -290,7 +290,7 @@
 	-->
 	<Target Name="CopyAudioHostToAppxLayout" AfterTargets="_GenerateProjectPriFileCore" Condition="Exists('$(OutputPath)AppX\')">
 		<PropertyGroup>
-			<_AudioHostBin>$(MSBuildThisFileDirectory)..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\</_AudioHostBin>
+			<_AudioHostBin>$(MSBuildThisFileDirectory)..\Wavee.AudioHost\bin\x64\$(Configuration)\$(WaveeDotNetTfm)\win-x64\</_AudioHostBin>
 		</PropertyGroup>
 		<ItemGroup>
 			<_AudioHostFiles Include="$(_AudioHostBin)**\*.*" />
@@ -307,7 +307,7 @@
 	-->
 	<Target Name="IncludeAudioHostInMsixPayload" BeforeTargets="_ComputeAppxPackagePayload">
 		<PropertyGroup>
-			<_AudioHostBin>$(MSBuildThisFileDirectory)..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\</_AudioHostBin>
+			<_AudioHostBin>$(MSBuildThisFileDirectory)..\Wavee.AudioHost\bin\x64\$(Configuration)\$(WaveeDotNetTfm)\win-x64\</_AudioHostBin>
 		</PropertyGroup>
 		<ItemGroup>
 			<_AudioHostPayloadFiles Include="$(_AudioHostBin)**\*.*" />

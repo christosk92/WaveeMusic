@@ -2,7 +2,7 @@
 
 Isolated test exe for the PlayPlay key emulator. Lives in its own project because the test host has to be x64.
 
-`net10.0` · `OutputType=Exe` · **x64 only** (`<Platforms>x64</Platforms>`, `<RuntimeIdentifier>win-x64</RuntimeIdentifier>`) · `AllowUnsafeBlocks=true`.
+`net11.0` · `OutputType=Exe` · **x64 only** (`<Platforms>x64</Platforms>`, `<RuntimeIdentifier>win-x64</RuntimeIdentifier>`) · `AllowUnsafeBlocks=true`.
 
 ## Why x64-only
 

@@ -2,7 +2,7 @@
 
 xUnit v3 test suite for the framework-neutral UI service layer (`Wavee.UI`). Doesn't touch WinUI.
 
-`net10.0-windows10.0.26100.0` (matches `Wavee.UI`'s TFM, which itself matches `Wavee.Controls.Lyrics`) · `OutputType=Exe` · `AnyCPU;x86;x64;ARM64`. Stack: **xUnit v3 + FluentAssertions + Moq**.
+`net11.0-windows10.0.26100.0` (matches `Wavee.UI`'s TFM, which itself matches `Wavee.Controls.Lyrics`) · `OutputType=Exe` · `AnyCPU;x86;x64;ARM64`. Stack: **xUnit v3 + FluentAssertions + Moq**.
 
 ## Why this is separate from `Wavee.Tests`
 

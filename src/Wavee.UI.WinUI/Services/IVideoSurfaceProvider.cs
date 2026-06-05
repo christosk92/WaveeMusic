@@ -16,7 +16,7 @@ namespace Wavee.UI.WinUI.Services;
 /// <para>
 /// Lives in <c>Wavee.UI.WinUI</c> rather than <c>Wavee.Core</c> because the
 /// interface inherently couples to a Windows type (<c>MediaPlayer</c>); the
-/// core project targets <c>net10.0</c> (non-Windows TFM) and can't reference
+/// core project targets <c>net11.0</c> (non-Windows TFM) and can't reference
 /// <c>Windows.Media.Playback</c>. Engines that need to render via a
 /// <c>MediaPlayer</c> implement this from a Windows-targeted assembly.
 /// </para>
