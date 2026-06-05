@@ -83,6 +83,10 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, IPageH
     /// hide the freshly-realised shimmer skeleton mid-load.</summary>
     private bool _showingContent;
 
+    // Set when an error unrealized the skeleton; tells the next load (Retry) to
+    // re-arm the shimmer gate instead of leaving a blank page behind the overlay.
+    private bool _shimmerHiddenForError;
+
     /// <summary>Shared by the unified body shimmer skeleton (x:Load) and the
     /// real BodyContent (Opacity crossfade). Owned by the page; legacy
     /// ArtistPage uses the same instance pattern.</summary>
@@ -558,7 +562,23 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, IPageH
     {
         switch (e.PropertyName)
         {
+            case nameof(ArtistViewModel.HasError):
+                if (ViewModel.HasError)
+                {
+                    // Error takes over the page — unrealize the skeleton so it stops
+                    // shimmering behind the PageErrorState overlay. Re-armed on the
+                    // next load (Retry) in the IsLoading case below.
+                    _shimmerHiddenForError = true;
+                    ShimmerGate.IsLoaded = false;
+                }
+                break;
             case nameof(ArtistViewModel.IsLoading):
+                if (ViewModel.IsLoading && _shimmerHiddenForError)
+                {
+                    // Retry after an error — bring the skeleton back for the reload.
+                    _shimmerHiddenForError = false;
+                    ShimmerGate.Reset(() => ShimmerContainer, () => BodyContent);
+                }
                 TryShowContentNow();
                 break;
         }

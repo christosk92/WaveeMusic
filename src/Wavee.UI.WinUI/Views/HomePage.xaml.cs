@@ -86,11 +86,29 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, IPageHos
 
     private bool _showingContent;
 
+    // Set when an error collapsed the skeleton; tells the next load (Retry) to
+    // bring the skeleton back instead of leaving a blank page behind the error.
+    private bool _shimmerHiddenForError;
+
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ViewModel.HasError) && ViewModel.HasError)
+        {
+            // Error takes over the page — collapse the skeleton so it doesn't
+            // linger behind the PageErrorState overlay. Keeps the shimmer content
+            // intact so a Retry can bring it back.
+            HideShimmerForError();
+        }
+
         if (e.PropertyName == nameof(ViewModel.IsLoading))
         {
-            if (ViewModel.IsLoading && _showingContent)
+            if (ViewModel.IsLoading && _shimmerHiddenForError && ShimmerContainer?.Content != null)
+            {
+                // Retry after an error — bring the skeleton back instead of a blank page.
+                _shimmerHiddenForError = false;
+                ShowShimmer();
+            }
+            else if (ViewModel.IsLoading && _showingContent)
             {
                 // Loading started (e.g. refresh) — show shimmer again
                 ShowShimmer();
@@ -99,7 +117,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, IPageHos
 
         if (e.PropertyName is nameof(ViewModel.IsLoading) or nameof(ViewModel.Sections))
         {
-            if (!ViewModel.IsLoading && ViewModel.Sections.Count > 0 && !_showingContent)
+            if (!ViewModel.IsLoading && !ViewModel.HasError && ViewModel.Sections.Count > 0 && !_showingContent)
             {
                 CrossfadeToContent();
             }
@@ -171,6 +189,21 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, IPageHos
         AnimationBuilder.Create()
             .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
             .Start(ContentContainer);
+    }
+
+    /// <summary>
+    /// Collapse the skeleton immediately when the page enters its error state so
+    /// it doesn't bleed through behind the <c>PageErrorState</c> overlay. Unlike
+    /// <see cref="CrossfadeShimmerOutAsync"/> this does NOT release
+    /// <c>ShimmerContainer.Content</c> — a Retry re-shows the same skeleton.
+    /// </summary>
+    private void HideShimmerForError()
+    {
+        _showingContent = false;
+        _shimmerHiddenForError = true;
+
+        if (ShimmerContainer != null)
+            ShimmerContainer.Visibility = Visibility.Collapsed;
     }
 
     private void CrossfadeToContent()

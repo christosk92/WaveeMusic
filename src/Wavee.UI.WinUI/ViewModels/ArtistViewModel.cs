@@ -451,6 +451,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 break;
             case EntityState<ArtistOverviewResult>.Loading loading:
                 IsLoading = loading.Previous is null && !HasRenderableArtistSnapshot();
+                // A load/retry is in flight — clear any prior error so the overlay
+                // dismisses and the skeleton can show.
+                HasError = false;
+                ErrorMessage = null;
                 break;
             case EntityState<ArtistOverviewResult>.Ready ready:
                 if (NeedsOverviewReplay(ready.Value, expectedArtistId))
@@ -467,10 +471,19 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     PrimeMusicVideoCatalogOnce(ready.Value, expectedArtistId);
                 }
                 IsLoading = false;
+                // We have renderable data — there is no error to show.
+                HasError = false;
+                ErrorMessage = null;
                 break;
             case EntityState<ArtistOverviewResult>.Error error:
-                HasError = true;
-                ErrorMessage = error.Exception.Message;
+                // Only surface the full-page error when there's nothing to show.
+                // If a cached snapshot is already rendered, a failed background
+                // refresh shouldn't blow the page away with an error overlay.
+                if (!HasRenderableArtistSnapshot())
+                {
+                    HasError = true;
+                    ErrorMessage = error.Exception.Message;
+                }
                 IsLoading = false;
                 _logger?.LogError(error.Exception, "ArtistStore reported error for {ArtistId}", expectedArtistId);
                 break;

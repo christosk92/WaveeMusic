@@ -151,6 +151,17 @@
             </InfoBar.ActionButton>
         </InfoBar>
 
+        <!-- Error overlay — a single PageErrorState over the content region, shown
+             when the artist fetch fails so the page never sits in infinite shimmer.
+             Canvas.ZIndex keeps it above the hero / shelves / skeleton. -->
+        <waveeControls:PageErrorState
+            Grid.Row="1"
+            Title="Couldn't load artist"
+            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+            RetryCommand="{x:Bind ViewModel.RetryCommand}"
+            Canvas.ZIndex="10"
+            Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
         <Grid Grid.Row="1">
         <!-- Page tint wash — palette gradient over the hero region.
              Brush is assigned from code-behind whenever HeaderHeroColorHex / palette change. -->

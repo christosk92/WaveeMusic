@@ -346,13 +346,6 @@
             <shared:HomePageShimmer/>
         </ScrollView>
 
-        <!-- Error -->
-        <controls1:ErrorStateView
-
-            Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-            RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
-
         <!-- Content (starts invisible via composition, crossfades in when loaded) -->
         <ScrollView x:Name="ContentContainer" VerticalScrollBarVisibility="Auto"
                     Margin="0,0,-28,0"
