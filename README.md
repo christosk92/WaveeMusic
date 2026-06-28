@@ -13,11 +13,15 @@
     <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" /></a>
 </p>
 
+> [!IMPORTANT]
+> ### 🚧 Wavee is being rebuilt on a brand‑new engine — FluentGPU
+> I'm currently **migrating WaveeMusic off WinUI** and onto **[FluentGPU](https://github.com/christosk92/fluent-gpu)** — my own from‑scratch, NativeAOT, GPU‑rendered UI framework for .NET. It keeps the parts of WinUI worth keeping (immutable element records, components, React‑style hooks) and swaps the C++ XAML/Composition core for a near‑zero‑allocation, signals‑first GPU paint path, built for Wavee's media‑heavy, 10k+‑track surfaces. This WinUI app is where Wavee began; its next chapter is being built on FluentGPU.
+>
+> **→ Follow the journey and see everything else I'm building at [cproducts.dev](https://cproducts.dev).**
+
 WaveeMusic is a modern, open-source **Spotify desktop client for Windows** — a clean‑room reimplementation of Spotify's Access Point, Connect (Dealer WebSocket), Mercury, and metadata (SpClient + Pathfinder) protocols, wrapped in a polished WinUI 3 app built on **.NET 10**. It works as both a full playback client and a Spotify Connect controller/target, with browser‑style tabs, synced lyrics, music videos, library sync, and opt‑in on‑device AI on Copilot+ PCs. A **Spotify Premium** account is required, and the app is intended for personal use.
 
 > **Heads up — this is alpha software.** It's an early, experimental cut: things will break, some features are rough or missing, and there's a real chance it won't launch on every machine. That's what an alpha is for — if you hit something, a bug report is genuinely appreciated.
-
-> **What I'm working on next — [fluent-gpu](https://github.com/christosk92/fluent-gpu).** I'm building a from-scratch, GPU-rendered UI engine for .NET 10 as an alternative to WinUI. WinUI 3 has structural performance limits — dependency properties box through objects, controls are finalizable COM objects, and state changes trigger broad re-renders — which show up as GC stutter and thread blocking on Wavee's media-heavy, 10k+ track surfaces. fluent-gpu keeps the part of WinUI developers actually want (immutable element records, component composition, React-style hooks) and replaces the C++ XAML/Composition engine with a near-zero-allocation, NativeAOT, signals-first GPU paint path, aiming for a sustained 60fps without GC hiccups. The long-term goal is to power WaveeMusic on it.
 
 ## Installing and running
 
