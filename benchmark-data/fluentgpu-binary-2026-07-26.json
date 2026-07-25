@@ -1,0 +1,114 @@
+﻿{
+    "schemaVersion":  1,
+    "measuredAtUtc":  "2026-07-25T22:26:44.7562215Z",
+    "status":  "current-binary snapshot; not a WinUI comparison",
+    "binary":  {
+                   "productVersion":  "0.1.1-dev+f7ca64c8d03f48bf380a89db453f48c21c460437",
+                   "fileVersion":  "0.1.1.0",
+                   "architecture":  "win-arm64",
+                   "nativeAot":  true,
+                   "bytes":  30336512,
+                   "mebibytes":  28.931,
+                   "sha256":  "589E151BD84014BACD4A4605B68C8D6AF5C71355471E4FB754F2AE418E903DD5",
+                   "lastWriteUtc":  "2026-07-25T21:29:52.7883525Z"
+               },
+    "environment":  {
+                        "os":  "Microsoft Windows 11 Pro Insider Preview",
+                        "osBuild":  "26300",
+                        "cpu":  "Snapdragon(R) X 12-core X1E80100 @ 3.40 GHz",
+                        "physicalCores":  12,
+                        "logicalProcessors":  12,
+                        "totalMemoryMiB":  32325,
+                        "gpu":  "Qualcomm(R) Adreno(TM) X1-85 GPU",
+                        "gpuDriver":  "31.0.133.1",
+                        "display":  "2496x1664",
+                        "displayHz":  120,
+                        "powerScheme":  "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)",
+                        "umaIntegratedGpu":  true,
+                        "anotherWaveeInstancePresentDuringCapture":  true
+                    },
+    "startupToWindow":  {
+                            "requestedRuns":  20,
+                            "validRuns":  20,
+                            "firstRunObservationMs":  423.82,
+                            "warmRuns":  19,
+                            "warmP50Ms":  332.461,
+                            "warmP95Ms":  367.086,
+                            "warmMinMs":  316.389,
+                            "warmMaxMs":  371.681,
+                            "metric":  "external process start to first non-zero main-window handle",
+                            "scope":  "Window readiness only; not first present or interactive content."
+                        },
+    "fiveMinuteIdle":  {
+                           "surface":  "fake-data Home; no playback or user input",
+                           "warmupSeconds":  30,
+                           "samples":  300,
+                           "sampleIntervalSeconds":  1,
+                           "allSamplesResponding":  true,
+                           "cpuTotalCapacityAveragePct":  0.0043,
+                           "cpuTotalCapacityP95Pct":  0,
+                           "cpuTotalCapacityMaxPct":  0.3857,
+                           "cpuOneCoreEquivalentAveragePct":  0.0516,
+                           "totalCpuTimeMs":  154.8,
+                           "workingSetAverageMiB":  336.514,
+                           "workingSetP95MiB":  336.812,
+                           "workingSetMinMiB":  336.289,
+                           "workingSetMaxMiB":  337.461,
+                           "workingSetFirst30AverageMiB":  336.845,
+                           "workingSetLast30AverageMiB":  336.645,
+                           "workingSetFirstToLast30DeltaMiB":  -0.2,
+                           "privateAverageMiB":  289.196,
+                           "privateP95MiB":  289.656
+                       },
+    "gpuAwareIdleCensus":  {
+                               "separateInstrumentedRun":  true,
+                               "managedHeapMiB":  41.2,
+                               "managedCommittedMiB":  45.3,
+                               "processWorkingSetMiB":  335.4,
+                               "trackedD3d12ResourcesMiB":  86.7,
+                               "trackedD3d12ResourceCount":  80,
+                               "imageCacheCount":  101,
+                               "imageCacheReady":  96,
+                               "imageCacheUsedMiB":  16,
+                               "pixelPoolRetainedMiB":  0,
+                               "pixelPoolPeakMiB":  23.5,
+                               "note":  "On a UMA/iGPU system, working set and tracked graphics resources are overlapping residency views, not additive buckets."
+                           },
+    "instrumentedIdleAllocation":  {
+                                       "samplesAfterStartup":  4,
+                                       "medianKiBPerSec":  1.55,
+                                       "minKiBPerSec":  0.8,
+                                       "maxKiBPerSec":  1.6,
+                                       "scope":  "Whole-process allocation rate reported by FG_MEM_DIAG after startup.",
+                                       "limitation":  "The memory census prints a report every five seconds and therefore contributes to the measured allocation rate; treat this as an instrumented upper bound."
+                                   },
+    "reliability":  {
+                        "successfulWindowLaunches":  20,
+                        "attemptedWindowLaunches":  20,
+                        "idleRespondingSamples":  300,
+                        "idleRequestedSamples":  300,
+                        "startupErrorLogMatches":  0,
+                        "idleErrorLogMatches":  0
+                    },
+    "rejectedCaptures":  [
+                             {
+                                 "name":  "1,000-navigation memory soak",
+                                 "reason":  "Completed 1,000 synthetic navigations in 1.1 seconds without a render-thread quiescence barrier; working set is a stress high-water mark, not settled retention."
+                             },
+                             {
+                                 "name":  "Home scroll specialist probe",
+                                 "reason":  "Captured only three painted frames; Home reported no net movement and Liked Songs exposed no viewport."
+                             },
+                             {
+                                 "name":  "dotnet-counters idle allocation",
+                                 "reason":  "The external counter process did not complete or emit a CSV against this NativeAOT process."
+                             }
+                         ],
+    "publicationNotes":  [
+                             "Use warm startup p50/p95 as process-to-window readiness, never as first content or first present.",
+                             "State CPU both as total 12-core capacity and one-core equivalent.",
+                             "Working set includes CPU, native, shared, mapped, driver, and graphics residency on UMA.",
+                             "The executable size is not a signed MSIX download or installed-footprint measurement.",
+                             "No WinUI-versus-FluentGPU improvement ratio is supported by this current-only snapshot."
+                         ]
+}

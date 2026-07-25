@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "July 25, 2026",
+  "scrollCadence": {
+    "displayHz": 120,
+    "pairedRuns": 3,
+    "sampleSpreadBeforeMs": 7.7,
+    "sampleSpreadAfterMs": 1.74,
+    "framesInModeBeforePct": 25.1,
+    "framesInModeAfterPct": 93.2,
+    "publishesPerPresentBefore": 1.32,
+    "publishesPerPresentAfter": 1.0,
+    "presentIntervalMedianMs": 8.31,
+    "source": "https://github.com/christosk92/fluent-gpu/commit/b17788d99f9249f18bf7337eca1ec5fc76b568cb"
+  },
+  "asyncRender": {
+    "uiThreadFenceWaitBeforeMinMs": 13.0,
+    "uiThreadFenceWaitBeforeMaxMs": 16.5,
+    "uiLoopSubmitAfterMs": 0.0,
+    "source": "https://github.com/christosk92/fluent-gpu/commit/f03ca725f0fcdb2fbf5e1f321b1dbb139034b454"
+  },
+  "allocation": {
+    "steadyPaintBytesPerFrame": 0,
+    "headlessChecks": 858,
+    "scope": "Steady managed paint phases only; loading, reconciliation, and application work can allocate."
+  },
+  "soak": {
+    "durationMinutes": 4,
+    "rounds": 97,
+    "deviceLosses": 0,
+    "source": "https://github.com/christosk92/fluent-gpu/commit/f03ca725f0fcdb2fbf5e1f321b1dbb139034b454"
+  }
+}
