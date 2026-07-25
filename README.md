@@ -17,11 +17,71 @@
 > ### 🚧 Wavee is being rebuilt on a brand‑new engine — FluentGPU
 > I'm currently **migrating WaveeMusic off WinUI** and onto **[FluentGPU](https://github.com/christosk92/fluent-gpu)** — my own from‑scratch, NativeAOT, GPU‑rendered UI framework for .NET. It keeps the parts of WinUI worth keeping (immutable element records, components, React‑style hooks) and swaps the C++ XAML/Composition core for a near‑zero‑allocation, signals‑first GPU paint path, built for Wavee's media‑heavy, 10k+‑track surfaces. This WinUI app is where Wavee began; its next chapter is being built on FluentGPU.
 >
+> **Target: a first public, signed FluentGPU experimental MSIX in August 2026.** That is a target window, not a fixed release date—the package ships when the install/update, playback, and soak gates below pass.
+>
 > **→ Follow the journey and see everything else I'm building at [cproducts.dev](https://cproducts.dev).**
 
 WaveeMusic is a modern, open-source **Spotify desktop client for Windows** — a clean‑room reimplementation of Spotify's Access Point, Connect (Dealer WebSocket), Mercury, and metadata (SpClient + Pathfinder) protocols, wrapped in a polished WinUI 3 app built on **.NET 10**. It works as both a full playback client and a Spotify Connect controller/target, with browser‑style tabs, synced lyrics, music videos, library sync, and opt‑in on‑device AI on Copilot+ PCs. A **Spotify Premium** account is required, and the app is intended for personal use.
 
 > **Heads up — this is alpha software.** It's an early, experimental cut: things will break, some features are rough or missing, and there's a real chance it won't launch on every machine. That's what an alpha is for — if you hit something, a bug report is genuinely appreciated.
+
+## The FluentGPU rewrite: measured, not just “feels faster”
+
+<p align="center">
+  <img alt="FluentGPU progress benchmark: tighter 120 Hz cadence, one publish per present, the GPU fence moved off the UI thread, 0 B managed allocation on the steady paint path, and 97 resize/scroll soak rounds without device loss" src="./assets/FluentGpuProgress.png" />
+</p>
+
+The rewrite is already a real Wavee application—not a renderer demo. Authentication, the live Spotify catalog, library, playback, Connect, lyrics, video surfaces, settings, and the media-heavy detail pages are running on the new engine. Recent work concentrated on the less glamorous part that decides whether 120 Hz actually *feels* like 120 Hz:
+
+- **Display-phase-locked scrolling.** In three matched synthetic runs on a 120 Hz panel, presented sample-time spread narrowed from **7.7 ms to 1.74 ms**, frames landing within 1 ms of the timing mode rose from roughly **25% to 93%**, and redundant production fell from **1.32 to exactly 1.00 publishes per present**. The median present interval stayed at 8.31 ms; this fixed cadence, not benchmark FPS. ([measurement and lost-wake fix](https://github.com/christosk92/fluent-gpu/commit/b17788d99f9249f18bf7337eca1ec5fc76b568cb))
+- **The GPU fence no longer owns the UI thread.** The async render thread is now the default for real windows. A measured **13–16.5 ms** fence stall moved off the UI loop, where submit measured **0.0 ms** in real-GPU validation. ([async render-thread validation](https://github.com/christosk92/fluent-gpu/commit/f03ca725f0fcdb2fbf5e1f321b1dbb139034b454))
+- **The real-window path survived the stress loop.** The same async-render validation completed a four-minute resize/scroll soak—**97 rounds with zero device-loss failures**.
+- **Cold detail loads no longer land as one giant swap.** The worst captured transition was one roughly **80 ms** UI frame—72.4 ms of recording, 694 spans, 138 component renders, and a Gen 2 collection. Real rows now reveal in bounded 12-row chunks instead. ([staged detail reveal](https://github.com/christosk92/fluent-gpu/commit/bdb54ba704e0a7a5adda51e4ec196323f75abc90))
+- **Less work is created in the first place.** Large-tree property diffs no longer box both operands; scrolling uses compositor bindings, virtual realization budgets, span reuse, occlusion culling, bounded image upload, and narrowly subscribed signals instead of broad page updates.
+- **The steady paint path is guarded at 0 B managed allocation.** The current full headless suite passes **858 checks**, including zero-allocation steady paint, scroll-input dispatch, compositor binding, text selection, timers, icons, and instrumentation. This is deliberately scoped: reconciliation, loading, freshly created elements, and application code can still allocate.
+
+The allocation distinction matters. The same-day cadence capture intentionally disabled memory and allocation probes so the instrumentation could not disturb timing; it cannot support a whole-app “before → after” allocation-rate claim. A preliminary whole-app CPU/memory run did not meet the paired publication protocol, so its numbers are not used here. The honest current claim is *zero managed allocation on settled paint frames*, not “the whole app never allocates.”
+
+The chart is generated with Matplotlib rather than image generation. Its [curated measurement data](benchmark-data/fluentgpu-progress.json) and [`eng/generate-fluentgpu-progress-chart.py`](eng/generate-fluentgpu-progress-chart.py) source emit both [PNG](assets/FluentGpuProgress.png) and [SVG](assets/FluentGpuProgress.svg).
+
+### The actual NativeAOT app binary
+
+<p align="center">
+  <img alt="Measurements from the current Wavee FluentGPU NativeAOT ARM64 binary: 332 ms median process-to-window startup, under 0.01 percent total idle CPU, flat five-minute working set, GPU-aware memory breakdown, 28.9 MiB executable, and 20 successful launches" src="./assets/FluentGpuBinaryMeasurements.png" />
+</p>
+
+I also measured the actual FluentGPU Wavee executable currently on disk—not a Gallery or engine demo. The tested build was `0.1.1-dev+f7ca64c8`, a 30,336,512-byte (**28.9 MiB**) win-arm64 NativeAOT executable, on a 12-core Snapdragon X1E-80 machine with an Adreno X1-85 iGPU and a 120 Hz display:
+
+- **Window readiness:** all **20/20** launches opened a responding window. Across 19 warm-filesystem-cache launches, process start → main window handle measured **332 ms p50** and **367 ms p95** (316–372 ms). The first observation was 424 ms. This is window readiness, not first content or first present.
+- **Loaded idle:** after a 30-second warm-up, 300 one-second samples over five minutes averaged **under 0.01% of total 12-core CPU capacity**, equivalent to **0.052% of one core** or 155 ms of CPU time across the entire five minutes. All 300 samples remained responsive.
+- **Instrumented whole-process idle allocation:** four post-startup census windows measured **1.55 KiB/s median** (0.8–1.6 KiB/s). This is an upper bound: the five-second memory-census report contributes to the allocation rate it observes.
+- **Stable residency:** working set averaged 336.5 MiB and the final 30-second average was **0.2 MiB lower** than the first 30-second average. This is a fake-data Home surface with no playback; it is not a universal Wavee footprint.
+- **GPU-aware memory:** a separate instrumented idle census reported **41.2 MiB managed heap**, **86.7 MiB of engine-tracked live D3D12 resources**, 16.0 MiB of ready image-cache payload, and 0 MiB retained in the pixel pool after a 23.5 MiB decode peak. On this UMA/iGPU machine these are overlapping residency views—not values to add together—and the 335.4 MiB process working set includes graphics/native residency.
+
+This was a developer-machine snapshot rather than a WinUI comparison; another Wavee instance remained open, while every startup/CPU/memory reading was bound to the newly spawned benchmark PID. The [curated result](benchmark-data/fluentgpu-binary-2026-07-26.json), [raw startup samples](benchmark-data/raw/2026-07-26-nativeaot/startup.csv), [raw idle samples](benchmark-data/raw/2026-07-26-nativeaot/idle.csv), and [GPU-memory census](benchmark-data/raw/2026-07-26-nativeaot/gpu-memory-census.txt) are included. The chart is generated by [`eng/generate-fluentgpu-binary-chart.py`](eng/generate-fluentgpu-binary-chart.py).
+
+### What is measured next?
+
+Before publishing a WinUI 3 → FluentGPU comparison, both signed packages will run the same controlled campaign:
+
+- 20 cold and 20 warm launches;
+- 30 cold and 30 warm artist, album, playlist, and Liked Songs navigations;
+- five 30-second 120 Hz scroll captures per representative surface;
+- separate ten-minute memory/allocation/GC runs, five-minute idle runs, and 30-minute reliability soaks;
+- signed-MSIX download and installed footprint.
+
+The comparison will report sample counts plus p50/p95 results, package and commit identities, and any probe failures. Cadence and allocation remain separate captures so memory instrumentation cannot perturb frame timing. The complete workloads, controls, rejection rules, and definition of done are in [the performance measurement plan](PERFORMANCE-BENCHMARKS.md).
+
+### When does the new app ship?
+
+The target window for the first public FluentGPU build is **August 2026**. It will be a signed, installable experimental MSIX—not a source-only preview. The exact day remains gate-driven:
+
+- clean install, launch, update, uninstall, and package-identity validation;
+- authentication, library sync, playback, Connect, and recovery smoke tests;
+- sustained navigation/scroll/resize soak without device loss or runaway memory;
+- a migration path that does not strand current experimental-channel users.
+
+Until that build clears those gates, the WinUI 3 MSIX below remains the downloadable WaveeMusic app.
 
 ## Installing and running
 

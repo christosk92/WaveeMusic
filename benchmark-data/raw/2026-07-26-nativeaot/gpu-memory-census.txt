@@ -1,0 +1,60 @@
+[memcensus]
+  gc      heap=41.2MB committed=45.3MB gen0=7 gen1=6 gen2=5 alloc=5261.2KB/s
+  proc    workingSet=339.3MB
+  scene   live=956 cap=2048 orphans=0 sticky=0 scroll=4 brush=3
+  strings map=117 pendReclaim=0 idHighWater=151
+  images  count=101 ready=96 pending=0 used=16.0MB
+  decode  inflight=0 canceledPending=0
+  recon   components=70 nodeBindings=104 virtuals=1 providers=15
+  anim    tracks=3 loops=0 transitions=63 interact=0 scroll=0
+  host    popupWindows=0
+  pixpool retained=0.0MB peak=23.5MB cap=32.0MB
+  gpu     bytes=86.7MB count=80 | glyphs=200 runs=74 atlasGen=0 quadPool=3 | tex: atlas=61 pages=2 pooledFree=0 retired=0 srv=37/4096 high=37 rejected=0 | store (fake) | detail=0
+[memcensus]
+  gc      heap=41.2MB committed=45.3MB gen0=7 gen1=6 gen2=5 alloc=1.5KB/s
+  proc    workingSet=335.4MB
+  scene   live=956 cap=2048 orphans=0 sticky=0 scroll=4 brush=3
+  strings map=117 pendReclaim=0 idHighWater=151
+  images  count=101 ready=96 pending=0 used=16.0MB
+  decode  inflight=0 canceledPending=0
+  recon   components=70 nodeBindings=104 virtuals=1 providers=15
+  anim    tracks=3 loops=0 transitions=63 interact=0 scroll=0
+  host    popupWindows=0
+  pixpool retained=0.0MB peak=23.5MB cap=32.0MB
+  gpu     bytes=86.7MB count=80 | glyphs=200 runs=74 atlasGen=0 quadPool=3 | tex: atlas=61 pages=2 pooledFree=0 retired=0 srv=37/4096 high=37 rejected=0 | store (fake) | detail=0
+[memcensus]
+  gc      heap=41.2MB committed=45.3MB gen0=7 gen1=6 gen2=5 alloc=1.6KB/s
+  proc    workingSet=335.4MB
+  scene   live=956 cap=2048 orphans=0 sticky=0 scroll=4 brush=3
+  strings map=117 pendReclaim=0 idHighWater=151
+  images  count=101 ready=96 pending=0 used=16.0MB
+  decode  inflight=0 canceledPending=0
+  recon   components=70 nodeBindings=104 virtuals=1 providers=15
+  anim    tracks=3 loops=0 transitions=63 interact=0 scroll=0
+  host    popupWindows=0
+  pixpool retained=0.0MB peak=23.5MB cap=32.0MB
+  gpu     bytes=86.7MB count=80 | glyphs=200 runs=74 atlasGen=0 quadPool=3 | tex: atlas=61 pages=2 pooledFree=0 retired=0 srv=37/4096 high=37 rejected=0 | store (fake) | detail=0
+[memcensus]
+  gc      heap=41.2MB committed=45.3MB gen0=7 gen1=6 gen2=5 alloc=1.6KB/s
+  proc    workingSet=335.4MB
+  scene   live=956 cap=2048 orphans=0 sticky=0 scroll=4 brush=3
+  strings map=117 pendReclaim=0 idHighWater=151
+  images  count=101 ready=96 pending=0 used=16.0MB
+  decode  inflight=0 canceledPending=0
+  recon   components=70 nodeBindings=104 virtuals=1 providers=15
+  anim    tracks=3 loops=0 transitions=63 interact=0 scroll=0
+  host    popupWindows=0
+  pixpool retained=0.0MB peak=23.5MB cap=32.0MB
+  gpu     bytes=86.7MB count=80 | glyphs=200 runs=74 atlasGen=0 quadPool=3 | tex: atlas=61 pages=2 pooledFree=0 retired=0 srv=37/4096 high=37 rejected=0 | store (fake) | detail=0
+[memcensus]
+  gc      heap=41.2MB committed=45.3MB gen0=7 gen1=6 gen2=5 alloc=0.8KB/s
+  proc    workingSet=335.4MB
+  scene   live=956 cap=2048 orphans=0 sticky=0 scroll=4 brush=0
+  strings map=117 pendReclaim=0 idHighWater=151
+  images  count=101 ready=96 pending=0 used=16.0MB
+  decode  inflight=0 canceledPending=0
+  recon   components=70 nodeBindings=104 virtuals=1 providers=15
+  anim    tracks=0 loops=0 transitions=63 interact=0 scroll=0
+  host    popupWindows=0
+  pixpool retained=0.0MB peak=23.5MB cap=32.0MB
+  gpu     bytes=86.7MB count=80 | glyphs=200 runs=74 atlasGen=0 quadPool=3 | tex: atlas=61 pages=2 pooledFree=0 retired=0 srv=37/4096 high=37 rejected=0 | store (fake) | detail=0
