@@ -72,6 +72,13 @@ These are live captures from the **FluentGPU** rewrite — the same Spotify cata
       Audio quality, autoplay, a 10‑band EQ with live curve, queue edits, and Connect — all in one shell.</p>
     </td>
   </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top">
+      <img src="screenshots/fluentgpu-concerts.png" alt="Concerts discovery with city, date, and genre filters over a live-event card grid" width="900" />
+      <p><strong>Live music, nearby</strong><br/>
+      Concerts with city, date, and genre filters — festival dates and artists playing near you, without leaving the player.</p>
+    </td>
+  </tr>
 </table>
 
 ## The FluentGPU rewrite: measured, not just “feels faster”
