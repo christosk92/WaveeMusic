@@ -25,6 +25,55 @@ WaveeMusic is a modern, open-source **Spotify desktop client for Windows** — a
 
 > **Heads up — this is alpha software.** It's an early, experimental cut: things will break, some features are rough or missing, and there's a real chance it won't launch on every machine. That's what an alpha is for — if you hit something, a bug report is genuinely appreciated.
 
+## A look at Wavee on FluentGPU
+
+These are live captures from the **FluentGPU** rewrite — the same Spotify catalog and Connect stack, rendered on a from‑scratch GPU UI instead of WinUI. The signed FluentGPU MSIX is still targeting **August 2026**; until then, the WinUI installers below remain the downloadable app.
+
+<p align="center">
+  <img src="screenshots/fluentgpu-home.png" alt="Wavee home on FluentGPU — personalized greeting, quick-access tiles, and recently played" width="900" />
+</p>
+<p align="center"><strong>Home that feels like yours</strong><br/>
+<em>Good evening</em> shelves, liked songs and radio tiles, recently played — acrylic glass over your wallpaper, not a flat dark box.</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/fluentgpu-artist-video.png" alt="Artist page with verified badge, top tracks, and picture-in-picture music video" width="440" />
+      <p><strong>Artist pages that breathe</strong><br/>
+      Hero banners, verified artists, top tracks, and a floating music‑video surface — without freezing the rest of the UI.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/fluentgpu-artist.png" alt="Artist discography with inline album expander and synced lyrics panel" width="440" />
+      <p><strong>Discography, inline</strong><br/>
+      Expand a single or EP between the grid rows; keep lyrics in the side panel while you browse.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/fluentgpu-album.png" alt="Album page with tracklist, about the artist, and Spotify Connect device picker" width="440" />
+      <p><strong>Albums with room to explore</strong><br/>
+      Tracklists, artist cards, “fans also like,” and Connect device picking from the same window.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/fluentgpu-playlist.png" alt="Radio playlist with cover art, tune controls, and dense track list" width="440" />
+      <p><strong>Playlists &amp; radio at scale</strong><br/>
+      Dense, virtualized track rows — cover, title, album, duration — built for long stations, not toy lists.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/fluentgpu-search-lyrics.png" alt="Search results beside synchronized lyrics with the active line highlighted" width="440" />
+      <p><strong>Search beside the song</strong><br/>
+      Omnibar search and recents on one side; word‑synced lyrics on the other, active line always in focus.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/fluentgpu-settings.png" alt="Playback settings with equalizer curve, queue panel, and track context menu" width="440" />
+      <p><strong>Playback you can tune</strong><br/>
+      Audio quality, autoplay, a 10‑band EQ with live curve, queue edits, and Connect — all in one shell.</p>
+    </td>
+  </tr>
+</table>
+
 ## The FluentGPU rewrite: measured, not just “feels faster”
 
 <p align="center">
@@ -133,26 +182,6 @@ dotnet test
 Want to contribute? Let me know with an [issue](https://github.com/christosk92/WaveeMusic/issues) describing what you'd like to do before opening a [pull request](https://github.com/christosk92/WaveeMusic/pulls). The component guides in [`.agents/guides/`](.agents/guides) and the conventions in [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md) are the fastest way to get oriented before touching a subsystem.
 
 Releases follow a **release-train** flow — work PRs into the active `release/<x.y.z>-<label>` branch; `master` is protected and production. The full playbook lives in [`.agents/guides/contributing-and-releases.md`](.agents/guides/contributing-and-releases.md).
-
-## Screenshots
-
-<table>
-  <tr>
-    <td><img src="screenshots/screenshot-2.jpg" alt="Artist page" width="400"></td>
-    <td><img src="screenshots/screenshot-3.jpg" alt="Screenshot 3" width="400"></td>
-  </tr>
-  <tr>
-    <td><img src="screenshots/screenshot-4.jpg" alt="Screenshot 4" width="400"></td>
-    <td><img src="screenshots/screenshot-5.jpg" alt="Screenshot 5" width="400"></td>
-  </tr>
-  <tr>
-    <td><img src="screenshots/screenshot-6.jpg" alt="Screenshot 6" width="400"></td>
-    <td><img src="screenshots/screenshot-7.jpg" alt="Screenshot 7" width="400"></td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="screenshots/screenshot-8.jpg" alt="Screenshot 8" width="820"></td>
-  </tr>
-</table>
 
 ## 🎉 My first release
 
