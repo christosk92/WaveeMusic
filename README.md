@@ -19,6 +19,10 @@
 >
 > **Target: a first public, signed FluentGPU experimental MSIX in August 2026.** That is a target window, not a fixed release date—the package ships when the install/update, playback, and soak gates below pass.
 >
+> **Why the move? We measured it.** A fair 1:1 benchmark — identical pixel-parity workloads, both frameworks as ARM64 NativeAOT, SHA-verified binaries, 620/620 runs, zero crashes. Navigating a realistic page (hero + card grid + track list — what a music client does all day): FluentGPU holds the full 120 Hz frame rate at **8.4 ms/frame** while WinUI 3 needs **16.7 ms — half the frame rate** — with a worst navigation of **463 ms vs 3.5 ms** and **25× less memory** under sustained navigation. Adding 225 styled controls costs FluentGPU **0.47 ms** where WinUI 3 pays **91 ms**. Full data, methodology, and the caveats that keep it honest (including where WinUI 3 wins) live in [fluent-gpu/benchmarks/FrameworkComparison](https://github.com/christosk92/fluent-gpu/tree/main/benchmarks/FrameworkComparison).
+>
+> <img alt="FluentGPU vs WinUI 3 benchmark composite: full vs half frame rate navigating a page, all 5,000 raw frames plotted, worst case 463 vs 3.5 ms, 194x cheaper content and 25x less memory" src="screenshots/fluentgpu-vs-winui3-benchmark.png" width="900" />
+>
 > **→ Follow the journey and see everything else I'm building at [cproducts.dev](https://cproducts.dev).**
 
 WaveeMusic is a modern, open-source **Spotify desktop client for Windows** — a clean‑room reimplementation of Spotify's Access Point, Connect (Dealer WebSocket), Mercury, and metadata (SpClient + Pathfinder) protocols, wrapped in a polished WinUI 3 app built on **.NET 10**. It works as both a full playback client and a Spotify Connect controller/target, with browser‑style tabs, synced lyrics, music videos, library sync, and opt‑in on‑device AI on Copilot+ PCs. A **Spotify Premium** account is required, and the app is intended for personal use.
