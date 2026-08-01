@@ -1,357 +1,166 @@
 <p align="center">
-  <img alt="WaveeMusic" src="./assets/ReadmeHero.png" />
+  <img alt="WaveeMusic" src="./docs/public/media/readme/ReadmeHero.png" />
 </p>
 
 <p align="center">
-  <a style="text-decoration:none" href="https://github.com/christosk92/WaveeMusic/actions/workflows/release.yml">
-    <img src="https://github.com/christosk92/WaveeMusic/actions/workflows/release.yml/badge.svg" alt="Release workflow" /></a>
-  <a style="text-decoration:none" href="https://github.com/christosk92/WaveeMusic/releases">
-    <img src="https://img.shields.io/github/v/release/christosk92/WaveeMusic?include_prereleases&label=release&color=512BD4" alt="Latest release" /></a>
-  <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet" alt=".NET 10" />
+  <a href="https://github.com/christosk92/WaveeMusic/actions/workflows/release.yml"><img src="https://github.com/christosk92/WaveeMusic/actions/workflows/release.yml/badge.svg" alt="Release workflow" /></a>
+  <a href="https://github.com/christosk92/WaveeMusic/releases"><img src="https://img.shields.io/github/v/release/christosk92/WaveeMusic?include_prereleases&label=release&color=512BD4" alt="Latest release" /></a>
+  <img src="https://img.shields.io/badge/.NET-11%20Preview-512BD4?logo=dotnet" alt=".NET 11 Preview" />
   <img src="https://img.shields.io/badge/WinUI-3-0078D4?logo=windows" alt="WinUI 3" />
-  <a style="text-decoration:none" href="LICENSE">
-    <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2ea44f" alt="MIT License" /></a>
 </p>
 
-WaveeMusic is a modern, open-source **Spotify desktop client for Windows** — a clean‑room reimplementation of Spotify's Access Point, Connect (Dealer WebSocket), Mercury, and metadata (SpClient + Pathfinder) protocols, wrapped in a polished WinUI 3 app built on **.NET 10**. It works as both a full playback client and a Spotify Connect controller/target, with browser‑style tabs, synced lyrics, music videos, library sync, and opt‑in on‑device AI on Copilot+ PCs. A **Spotify Premium** account is required, and the app is intended for personal use.
+> [!IMPORTANT]
+> ### Wavee is being rebuilt on FluentGPU
+> WaveeMusic is actively migrating off WinUI 3 and onto **[FluentGPU](https://github.com/christosk92/fluent-gpu)**, a from-scratch, NativeAOT, GPU-rendered UI framework for .NET. **The screenshots below are live captures of that in-development rewrite; the download buttons still install the current WinUI app.**
+>
+> The first public, signed FluentGPU experimental MSIX is targeting **August 2026**. That is a target window, not a fixed release date—the build will ship when installation, updates, authentication, playback, Connect, and reliability gates pass.
+>
+> **Why move off WinUI 3?** We benchmarked both frameworks head-to-head — identical pixel-parity workloads, both as ARM64 NativeAOT, SHA-verified binaries, 620/620 runs with zero crashes. Navigating a realistic page (hero + card grid + track list, built fresh per navigation, the thing a music client does all day): FluentGPU holds the full 120 Hz frame rate at **8.4 ms** per frame while WinUI 3 needs **16.7 ms** — two vblanks, i.e. **half the frame rate** — with a worst navigation of **463 ms vs 3.5 ms** and **25× less memory** under sustained navigation. Adding 225 styled controls to a window costs FluentGPU **0.47 ms** where WinUI 3 pays **91 ms**. Full data, methodology, and the caveats that keep it honest (including where WinUI 3 wins): [fluent-gpu/benchmarks/FrameworkComparison](https://github.com/christosk92/fluent-gpu/tree/main/benchmarks/FrameworkComparison).
+>
+> <img alt="FluentGPU vs WinUI 3 benchmark composite: full vs half frame rate navigating a page, all 5,000 raw frames, worst-case 463 vs 3.5 ms, 194x cheaper content and 25x less memory" src="./docs/public/media/readme/fluent-gpu-vs-winui3.png" />
 
-> **Heads up — this is alpha software.** It's an early, experimental cut: things will break, some features are rough or missing, and there's a real chance it won't launch on every machine. That's what an alpha is for — if you hit something, a bug report is genuinely appreciated.
+WaveeMusic is an experimental, Windows-native Spotify client. It brings Spotify's catalog and Connect ecosystem into a desktop experience designed around how people actually browse, queue, and organize music. The protocol, playback, library, and service layers continue across the migration; FluentGPU replaces the WinUI interface around them.
 
-## Installing and running
+> [!WARNING]
+> The current WinUI release is early alpha software. It requires **Windows 11 24H2 or later** and a **Spotify Premium** account. Expect rough edges, and please [report anything that breaks](https://github.com/christosk92/WaveeMusic/issues).
 
-WaveeMusic ships as a signed **MSIX** from GitHub Releases — there's no Microsoft Store listing yet. The button below installs the **experimental channel** through Windows App Installer and keeps it current with silent background auto‑updates.
+## Install
 
-<p align="left">
-  <a style="text-decoration:none" href="https://github.com/christosk92/WaveeMusic/releases/download/experimental-latest/Wavee.Experimental.x64.appinstaller">
+Install the experimental channel with Windows App Installer. It checks for signed updates in the background and applies them after the app restarts.
+
+<p>
+  <a href="https://github.com/christosk92/WaveeMusic/releases/download/experimental-latest/Wavee.Experimental.x64.appinstaller">
     <picture>
-      <source media="(prefers-color-scheme: light)" srcset="./assets/DownloadInstaller-x64-dark.png" height="64" />
-      <img src="./assets/DownloadInstaller-x64-light.png" height="64" /></picture></a>
+      <source media="(prefers-color-scheme: light)" srcset="./docs/public/media/readme/DownloadInstaller-x64-dark.png" />
+      <img src="./docs/public/media/readme/DownloadInstaller-x64-light.png" height="64" alt="Install Wavee for x64" />
+    </picture>
+  </a>
   &ensp;
-  <a style="text-decoration:none" href="https://github.com/christosk92/WaveeMusic/releases/download/experimental-latest/Wavee.Experimental.arm64.appinstaller">
+  <a href="https://github.com/christosk92/WaveeMusic/releases/download/experimental-latest/Wavee.Experimental.arm64.appinstaller">
     <picture>
-      <source media="(prefers-color-scheme: light)" srcset="./assets/DownloadInstaller-arm64-dark.png" height="64" />
-      <img src="./assets/DownloadInstaller-arm64-light.png" height="64" /></picture></a>
+      <source media="(prefers-color-scheme: light)" srcset="./docs/public/media/readme/DownloadInstaller-arm64-dark.png" />
+      <img src="./docs/public/media/readme/DownloadInstaller-arm64-light.png" height="64" alt="Install Wavee for ARM64" />
+    </picture>
+  </a>
 </p>
 
-Prefer a manual install? Grab the matching `Wavee.UI.WinUI_<version>_<arch>.msix` from [**GitHub Releases**](https://github.com/christosk92/WaveeMusic/releases). See [**ALPHA.md**](ALPHA.md) for system requirements, step‑by‑step installation, known limitations, and how to file a useful bug report.
+Prefer a manual install? Download the matching MSIX from [GitHub Releases](https://github.com/christosk92/WaveeMusic/releases). The [alpha tester guide](ALPHA.md) covers requirements, updates, known limitations, privacy, and useful bug reports.
 
-> A Spotify **Premium** account is required. Wavee shows a non‑dismissible banner if you sign in with a Free account.
+## The FluentGPU rewrite
 
-## Building from source
+FluentGPU keeps the component model that makes modern UI productive—immutable element records, components, and React-style hooks—but replaces the C++ XAML and Composition core with a signals-first GPU paint path. It is being built for the parts of Wavee that stress a conventional UI toolkit: media-rich pages, fluid animation, persistent playback surfaces, and virtualized libraries with thousands of tracks.
 
-### Prerequisites
-- **Windows 11 version 24H2 (build 26100)** or later — required to enable the on-device AI features.
-- **.NET 10 SDK**
-- A Spotify **Premium** account
+The rewrite is a working application, not a design mockup. Authentication, the live Spotify catalog, library, playback, Connect, lyrics, video surfaces, settings, and the main detail pages already run on the new engine. The remaining work is about feature parity, packaging, updates, and sustained reliability—not just making the screenshots look finished.
 
-```bash
-# Clone
-git clone https://github.com/christosk92/WaveeMusic.git
-cd WaveeMusic
+Until those gates pass, the WinUI MSIX remains the downloadable WaveeMusic app. Follow [FluentGPU on GitHub](https://github.com/christosk92/fluent-gpu) or see what else is being built at [cproducts.dev](https://cproducts.dev).
 
-# Run the desktop client
-dotnet run --project src/Wavee.UI.WinUI
+### Performance outlook
 
-# Run the console (Connect) client
-dotnet run --project src/Wavee.Console
+This is the honest snapshot before the matched WinUI 3 vs FluentGPU campaign. **Measured** values come from the current ARM64 developer build or Microsoft; **estimated** values are architectural projections; **pending** means there is not yet a defensible same-hardware ratio.
 
-# Build everything / run tests
-dotnet build -c Release
-dotnet test
-```
+| Area | WinUI 3 reference | FluentGPU today | Expected improvement | Status |
+| --- | --- | --- | --- | --- |
+| UI construction | Microsoft gives a rough cost of **~1 ms per XAML element**; 500 realized elements therefore imply about **500 ms** of element-creation work before application work | No XAML parser, `DependencyObject` tree, or control-template expansion; current Wavee reaches a responding window in **332 ms p50 / 367 ms p95** | Removes that XAML-specific scaling cost; matched time-to-first-present delta is pending | Measured inputs; cross-engine delta pending |
+| Steady-state allocation | No public Wavee byte-rate baseline; DP boxing, bindings, and managed/native projections are workload-dependent | **0 B/frame** in enforced steady paint phases; **1.55 KiB/s** median whole-process allocation while loaded and idle | **~10-100x lower** steady-state allocation rate | FluentGPU measured; ratio estimated |
+| Localized updates | Work can cross the affected binding and visual-tree path | Signals rerender only the owning component; direct compositor bindings skip render, reconcile, and layout | Scales with **changed subtree / affected tree**; a 10-node boundary inside a 1,000-node affected tree is an illustrative **~100x** reduction in framework work | Architectural model, not a benchmark |
+| 120 Hz scroll cadence | Matched WinUI capture pending | **8.31 ms** median present interval, **1.74 ms** sample spread, **93.2%** of frames within 1 ms of the timing mode, **1.00** publish/present | WinUI ratio pending; FluentGPU's own scheduler change cut spread **77.4%** and surplus publishes **24.2%** | FluentGPU measured; not cross-engine |
+| UI-thread GPU wait | Wavee WinUI trace pending | A measured **13-16.5 ms** fence stall was moved off the UI loop; UI-side submit measured **0.0 ms** | Removes that observed stall from the interactive loop | FluentGPU before/after |
+| Distribution size | Current signed ARM64 WinUI MSIX: **147.2 MiB** | Current unpackaged ARM64 NativeAOT executable: **28.9 MiB** | **80.3% fewer raw bytes**, indicative only | Different containers; signed FluentGPU MSIX pending |
+| Loaded idle | Matched WinUI capture pending | **<0.01%** of total 12-core CPU capacity; **300/300** responsive one-second samples | Pending | FluentGPU measured |
 
-`Wavee.UI.WinUI` builds `Wavee.AudioHost` automatically as an x64 subprocess (via the `BuildAudioHost` MSBuild target). This is normal even on ARM64 Windows — the audio host loads `Spotify.dll` (x86_64) for PlayPlay key derivation, and the OS runs it under built-in x64 emulation. See [`src/Wavee.AudioHost/README.md`](src/Wavee.AudioHost/README.md) for the why.
+Sources: [FluentGPU measurement data](https://github.com/christosk92/WaveeMusic/blob/docs/fluentgpu-announcement/benchmark-data/fluentgpu-binary-2026-07-26.json), [scheduler measurements](https://github.com/christosk92/WaveeMusic/blob/docs/fluentgpu-announcement/benchmark-data/fluentgpu-progress.json), [Microsoft's WinUI startup guidance](https://learn.microsoft.com/windows/apps/develop/performance/app-startup-performance), and [current Wavee releases](https://github.com/christosk92/WaveeMusic/releases). The FluentGPU sample is a July 2026 ARM64 developer snapshot with a loaded fake-Home workload, not the final feature-parity build.
 
-## Contributing
+For scale, [Microsoft's May 2026 WinUI work](https://github.com/microsoft/microsoft-ui-xaml/discussions/11096) reduced File Explorer launch allocations by **41%**, transient allocations by **63%**, function calls by **45%**, and time in WinUI code by **25%**. Those are old-vs-optimized WinUI results, **not** FluentGPU speedups. The final Wavee comparison will run both signed apps on the same machine, display, power mode, account, and scripted content.
 
-Want to contribute? Let me know with an [issue](https://github.com/christosk92/WaveeMusic/issues) describing what you'd like to do before opening a [pull request](https://github.com/christosk92/WaveeMusic/pulls). The component guides in [`.agents/guides/`](.agents/guides) and the conventions in [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md) are the fastest way to get oriented before touching a subsystem.
+### A look at Wavee on FluentGPU
 
-Releases follow a **release-train** flow — work PRs into the active `release/<x.y.z>-<label>` branch; `master` is protected and production. The full playbook lives in [`.agents/guides/contributing-and-releases.md`](.agents/guides/contributing-and-releases.md).
+Artwork colors flow through the shell, tabs keep discoveries open, and lyrics, queue, video, and device controls stay close without taking you away from the music.
 
-## Screenshots
+<p align="center">
+  <img src="./docs/public/media/readme/artist.png" alt="Wavee artist page with an immersive hero, top tracks, artist pick, live lyrics, and the player bar" />
+  <br />
+  <sub>Immersive artist pages keep discovery, playback, and live lyrics in one view.</sub>
+</p>
 
 <table>
   <tr>
-    <td><img src="screenshots/screenshot-2.jpg" alt="Artist page" width="400"></td>
-    <td><img src="screenshots/screenshot-3.jpg" alt="Screenshot 3" width="400"></td>
+    <td width="50%"><img src="./docs/public/media/readme/album.png" alt="Album page with custom video, queue, autoplay, and a floating video player" /></td>
+    <td width="50%"><img src="./docs/public/media/readme/library_customization.png" alt="Wavee sidebar editor with sections, templates, layout, density, and artwork controls" /></td>
   </tr>
   <tr>
-    <td><img src="screenshots/screenshot-4.jpg" alt="Screenshot 4" width="400"></td>
-    <td><img src="screenshots/screenshot-5.jpg" alt="Screenshot 5" width="400"></td>
+    <td><sub>Albums can bring together credits, related music, queue management, and video.</sub></td>
+    <td><sub>Your library is yours: arrange sections, choose a density, and pin what matters.</sub></td>
   </tr>
   <tr>
-    <td><img src="screenshots/screenshot-6.jpg" alt="Screenshot 6" width="400"></td>
-    <td><img src="screenshots/screenshot-7.jpg" alt="Screenshot 7" width="400"></td>
+    <td width="50%"><img src="./docs/public/media/readme/playlist.png" alt="Playlist page with sortable columns, BPM and key data, and recommended songs" /></td>
+    <td width="50%"><img src="./docs/public/media/readme/library.png" alt="Three-pane artist library showing artists, releases, and the selected release" /></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="screenshots/screenshot-8.jpg" alt="Screenshot 8" width="820"></td>
+    <td><sub>Playlists expose useful details and recommendations without becoming cluttered.</sub></td>
+    <td><sub>A multi-pane library makes large collections quick to scan and explore.</sub></td>
   </tr>
 </table>
 
-## 🎉 My first release
+<details>
+  <summary><strong>More screenshots</strong></summary>
+  <br />
+  <table>
+    <tr>
+      <td width="50%"><img src="./docs/public/media/readme/artist_2.png" alt="Inline expanded release on an artist discography page beside live lyrics" /></td>
+      <td width="50%"><img src="./docs/public/media/readme/library_search.png" alt="Searching inside the album library with matching text highlighted" /></td>
+    </tr>
+    <tr>
+      <td><sub>Explore a release inline without losing your place in an artist's discography.</sub></td>
+      <td><sub>Search inside your collection and see exactly why each result matched.</sub></td>
+    </tr>
+  </table>
+  <p align="center">
+    <img src="./docs/public/media/readme/flyouts.png" width="340" alt="Fluent track menu with play, queue, save, credits, radio, video, and sharing actions" />
+    <br />
+    <sub>Rich track actions are available anywhere you find a song.</sub>
+  </p>
+</details>
 
-This is the first time I've ever actually *shipped* this thing — and it's been a long time coming.
+## Highlights
 
-I started Wavee back in **2020**, originally for **UWP**. It was my playground: a place to properly learn C# and XAML, to try every new technique I could get my hands on, and to see how far I could push a "real" app on my own. I never managed to publish it. Spotify kept deprecating the APIs I'd reverse-engineered, UWP slowly faded out, WinUI 3's rough early days made me lose faith more than once, and life moved on. The project sat in a drawer for years.
+- **Explore without losing your place** — browser-style tabs, an omnibar, pinned navigation, and inline discography expansion make deep browsing feel effortless.
+- **Own your library** — search and sort collections, drill through artists and releases in multiple panes, customize the sidebar, and build detailed playlists.
+- **Keep playback close** — synced lyrics, queue and autoplay controls, music videos, floating playback surfaces, and consistent track actions across the app.
+- **Listen your way** — Spotify Connect controller and target support, device transfer, a 10-band EQ, normalization, crossfade, and an isolated audio process.
+- **Feel at home on Windows** — adaptive color, light and dark themes, media-key integration, system media controls, tray support, and native x64/ARM64 packages.
+- **Use AI only when you choose** — optional lyric explanations and song summaries run locally with Phi Silica on supported Copilot+ PCs.
 
-What finally got it over the line was **AI** — building alongside **Claude Code** let me untangle years of half-finished ideas and actually push a release out the door. So here it is: a very, *very* experimental first cut.
+See the [changelog](CHANGELOG.md) for the full feature history and current work.
 
-Thanks for taking a look. 🧡
+## Build from source
 
-### Known rough edges (this alpha)
-- Memory usage / leaks under heavy navigation
-- Waiting on WinUI 3 performance improvements (especially around allocations)
-- General snappiness / responsiveness
+These instructions build the current public **WinUI client**, not the separate FluentGPU rewrite. You will need Windows 11 24H2, the [.NET 11 Preview 4 SDK](global.json), and a Spotify Premium account.
 
-## Features
+```powershell
+git clone https://github.com/christosk92/WaveeMusic.git
+cd WaveeMusic
 
-### Desktop app
-- **Home, Browse, Search, Library** — personalized shelves, browse categories, liked songs, saved artists, saved albums, playlists, shows, and episodes.
-- **Artist, Album, Playlist, Show, Episode pages** — discography, top tracks, biography, related content, credits, queue actions, and color extraction from art.
-- **Browser-style tabs** with pin / drag-and-drop / context menus, a sidebar with rich navigation, and an omnibar for search, suggestions, and fast navigation.
-- **Music videos** — Spotify music videos play through WebView2 EME with selectable quality and dedicated video controls.
-- **Lyrics** — synced lyrics with shader effects, multi‑language detection, and CJK romanization (pinyin / kana).
-- **Now-playing surfaces** — compact player bar, expandable right-panel player, mini video player, full video page, and floating player window share the same playback surface.
-- **Friends feed**, **profile**, **concerts**, in‑app **settings** (theme, audio device, EQ, language, storage/network, diagnostics).
-- **On-device AI on Copilot+ PCs** (opt-in) — explain a lyric line or summarize a song's themes with Phi Silica running locally on the NPU. Nothing leaves the machine; off by default.
+# Required by the WinUI hero carousel
+git clone https://github.com/christosk92/hero-carousel-winui vendor/hero-carousel-winui
 
-### Coming soon after the initial alpha release
-- **Local media library** — index audio, music videos, movies, TV shows, episodes, subtitles, and embedded tracks from disk; browse them alongside Spotify content.
-- **Local metadata enrichment** — TMDB for movies / TV, MusicBrainz + Cover Art Archive for music, local artwork caching, thumbnails, watched state, resume position, custom collections, and local likes.
-- **Spotify linking for local media** — link local music videos to Spotify tracks so playback, metadata, queue state, and now-playing identity stay connected.
-- This code is present behind the `WAVEE_ENABLE_LOCAL_FILES` feature flag for internal testing, but it is disabled in the initial alpha release.
-
-### Spotify Connect
-- Full Dealer WebSocket implementation, real‑time cluster state synchronization.
-- Device picker for transferring playback between devices.
-- Volume sync, queue updates, queue edits, remote command handling — works as both controller and target.
-- This-device playback state is mirrored back into Connect so Spotify queue, device state, Recently Played, and UI surfaces stay in sync.
-
-### Audio
-- Audio runs in a separate process (`Wavee.AudioHost`) over named‑pipe IPC, so audio engine crashes don't take the UI down.
-- BASS for decode + DSP, NVorbis for Ogg Vorbis, and PortAudio for cross‑arch output.
-- Fast seek with byte-position bisection, predictive range prefetch, and decoder recreation fallback.
-- Lazy progressive CDN streaming, head-file caching, audio key resolution, queue prefetch, and gapless / crossfade preparation.
-- 10‑band equalizer, normalization (loudness), compressor / limiter stages, volume control, and crossfade between tracks.
-
-### Diagnostics and tooling
-- Debug page for IPC health, audio process state, Connect-state capture, in-memory logs, memory pressure, and UI operation timing.
-- Settings sections for diagnostics logging, Connect updates, cache/storage, network behavior, playback, audio output, and on-device AI readiness.
-- Component agent guides in `.agents/guides/` for playback, Connect state, library sync, and track / episode UI maintenance.
-
-### Authentication
-- OAuth 2.0 — both **Authorization Code with PKCE** (browser flow) and **Device Code** flow.
-- Credentials cached encrypted on disk via Windows DPAPI, so you only sign in once.
-
-### Architecture highlights
-- **.NET 10** with Native AOT compatibility on the core library and console.
-- **MVVM + DI** in the desktop app (`Microsoft.Extensions.DependencyInjection`, `CommunityToolkit.Mvvm`, `ReactiveUI`).
-- **Single-project MSIX** packaging for x86 / x64 / ARM64.
-
-## Repository structure
-
-The solution is composed of nine first-party `src/` projects, four test suites under `test/`, and two vendored libraries under `vendor/`. Each project owns a focused concern and has its own README with developer-facing details. The summaries below are derived from those READMEs and from the code's own structure (you can browse the full interactive map by running `/understand-anything:understand-dashboard`).
-
-```
-WaveeMusic/
-├── src/Wavee/                      Core protocol library (auth, Connect, audio orchestration, metadata)
-├── src/Wavee.UI/                   Framework-neutral UI service layer (no XAML)
-├── src/Wavee.UI.WinUI/             WinUI 3 desktop app (the headline client)
-├── src/Wavee.Local/                Local media library (scan, classify, enrich, query, playback helpers)
-├── src/Wavee.Controls.Lyrics/      Lyrics rendering library (D2D shaders, language detect, romanization)
-├── src/Wavee.AudioHost/            Out-of-process audio runtime (BASS + NVorbis + PortAudio, x64-only)
-├── src/Wavee.Playback.Contracts/   Shared IPC contracts between WinUI app and AudioHost
-├── src/Wavee.Console/              AOT-compiled CLI client (Spectre.Console + Docker-friendly)
-├── test/Wavee.Tests/               Core protocol library tests (xUnit v3 + librespot-verified crypto vectors)
-├── test/Wavee.UI.Tests/            UI service layer tests (no WinUI)
-├── test/Wavee.Local.Tests/         Local media classification / URI / subtitle tests
-├── test/Wavee.PlayPlay.Tests/      PlayPlay decryption tests (x64 plain-Exe harness, not xUnit)
-├── vendor/Lyricify.Lyrics.Helper/  Vendored: multi-provider lyrics search (QQ, Kugou, Netease, Apple, Musixmatch)
-├── vendor/NVorbis/                 Vendored: managed Ogg Vorbis decoder
-├── signing/                        Azure Artifact Signing scripts + LAF token coupling notes
-└── Wavee.slnx                      Solution
+dotnet run --project src/Wavee.UI.WinUI
 ```
 
-### `src/Wavee` — core protocol library
-[`README`](src/Wavee/README.md)
+Build the solution with `dotnet build -c Release` and run the test suites with `dotnet test`.
 
-Clean-room reimplementation of every protocol the Spotify desktop client speaks: AP (TCP+TLS with Diffie-Hellman + Shannon stream cipher), **Mercury** (legacy request/response over the AP), **Dealer** (WebSocket bus for Connect cluster state / transfer / volume / remote commands), **SpClient** (protobuf-over-HTTPS metadata API), **Pathfinder** (GraphQL for search / browse / home / profile), **Login5** (OAuth backend), **AudioKey** (AES-128 key fetch for Ogg decryption), and the **gabo telemetry envelope**. AOT-compatible — every IL2xxx / IL3xxx warning is treated as an error. No UI. Heavy `System.Reactive` usage; most state is `IObservable<T>`. The `Session` type is the anchor of everything: it connects to an AP, authenticates, and lazily initializes Dealer / Mercury / Pathfinder / AudioKeyManager / EventService on first access — so a process that only needs metadata never opens a Dealer WebSocket. See also [`Connect/DEALER_PROTOCOL.md`](src/Wavee/Connect/DEALER_PROTOCOL.md), [`Connect/DEALER_IMPLEMENTATION_GUIDE.md`](src/Wavee/Connect/DEALER_IMPLEMENTATION_GUIDE.md), [`OAuth/OAUTH_FLOWS.md`](src/Wavee/OAuth/OAUTH_FLOWS.md), and [`Core/Crypto/README.md`](src/Wavee/Core/Crypto/README.md).
+> [!NOTE]
+> The public source tree intentionally excludes a small set of Spotify-property playback components. It compiles and exposes the UI, metadata, library, Connect, video, and protocol layers, but a public-source build cannot decrypt Premium Ogg audio. See the [public-source split](.agents/guides/playplay-drm.md#public-source-vs-proprietary-split) for details.
 
-### `src/Wavee.UI` — framework-neutral UI service layer
-[`README`](src/Wavee.UI/README.md)
+## Contributing
 
-Plain C# class library that sits between `Wavee` (protocol) and `Wavee.UI.WinUI` (XAML). No XAML, no WinUI dependency — just contracts (`IPlaybackService`, `IPlaybackStateService`, `IUiDispatcher`, …), enums (`RepeatMode`, …), models (`ArtistCredit`, `QueueItem`, `PlaybackContextInfo`, …), and services that need to be testable in plain xUnit without booting WinUI. If a future `Wavee.UI.Avalonia` ever appeared, this project would stay unchanged.
+Start with an [issue](https://github.com/christosk92/WaveeMusic/issues) describing what you would like to change. Pull requests target the active `release/<version>-<label>` branch; `master` and release branches are protected from direct pushes.
 
-### `src/Wavee.UI.WinUI` — desktop client
-[`README`](src/Wavee.UI.WinUI/README.md)
-
-The headline app. WinUI 3 / Windows App SDK 2.0, **single-project MSIX**, x86 / x64 / ARM64. Composition flow on launch:
-
-```
-App.OnLaunched
-  → AppLifecycleHelper.ConfigureHost()       builds IHost
-  → Ioc.Default.ConfigureServices(...)       wires CommunityToolkit MVVM Ioc to the same container
-  → Force-resolve IMetadataDatabase          runs schema migrations before first paint
-  → MainWindow.Instance.Activate()           user sees the window
-  → MainWindow.Instance.InitializeApplicationAsync()   deferred login state, library sync, …
-```
-
-Crash handlers are wired at three levels (XAML, AppDomain, unobserved-task scheduler) and funnel through `LogUnhandledException` → `PiiRedactor` → `AppPaths.CrashLogPath`. Notable pages include `HomePage`, `SearchPage`, `ArtistPage`, `AlbumPage`, `PlaylistPage`, `LikedSongsView`, `ArtistsLibraryView`, `AlbumsLibraryView`, `LocalLibraryPage`, `VideoPlayerPage`, `ProfilePage`, `SettingsPage`, `ConcertPage`, `DebugPage`, and the `ShellPage` shell. Reusable controls include `PlayerBar`, `SidebarPlayer`, `ExpandedNowPlayingLayout`, `TrackItem`, `TrackDataGrid`, `ContentCard`, `LibraryGridView`, `ExpandableAlbumGrid`, `SectionShelf`, `HeroHeader`, `Omnibar`, `Sidebar`, `QueueTabView`, `RightPanelView`, `SpotifyConnectDialog`. Three custom MSBuild targets matter:
-
-- **`BuildAudioHost`** — spawns an isolated `dotnet build` subprocess for `Wavee.AudioHost` with `Platform=x64` on every WinUI build. Necessary because a project reference would inherit the parent's project-evaluation cache and could land an ARM64 NVorbis.dll next to an x64-only AudioHost.
-- **`RemoveDuplicateReferencedProjectAssets`** — removes WinUI's duplicate `<Content>` copies (~2.4 MB just for `Core14.profile.xml`). Carefully scoped — don't widen to the full `Wavee.Controls.Lyrics/` folder, which also contains compiled per-assembly XAML (`.xbf`).
-- **`StripUnusedWindowsAiPayload` + AI workaround targets** — keeps only the Phi Silica payload (Microsoft.Windows.AI + ML + onnxruntime + DirectML), strips Image / Generative / ContentModeration projections, and works around a WinAppSDK 2.0.1 regression where managed AI projection assemblies don't deploy into AppX. Delete these workaround targets when the WinAppSDK / MSIX tooling fix lands.
-
-The on-device AI surface (Copilot+ PCs only, opt-in by default, region-gated) sits in `Services/AiCapabilities.cs` as a single composite gate (hardware + region + opt-in) that every AI affordance binds against.
-
-### `src/Wavee.AudioHost` — out-of-process audio runtime
-[`README`](src/Wavee.AudioHost/README.md)
-
-Separate `Exe` process, x64-only (because `Spotify.dll` is x86_64-native and must be loaded in-process for PlayPlay key derivation). AOT-compatible. Audio stack: **ManagedBass** (decoder + mixer + DSP — EQ, normalization, crossfade), **NVorbis** (managed Ogg Vorbis decoder, vendored), **PortAudioSharp2** (cross-platform output), **z440.atl.core** (metadata). On first run, `NativeDeps/` downloads the missing native binaries (`portaudio.dll` for ARM64, `bass.dll` for x64) into the runtime directory; failure exits with code 3 so the UI can distinguish first-run setup failure from a transient crash. Talks to the WinUI process over a named pipe with length-prefixed JSON. AudioHost has **zero project references on Wavee\* assemblies** — the IPC contracts come in via `<Compile Include>`, eliminating a stale-DLL bug class.
-
-### `src/Wavee.Playback.Contracts` — IPC contracts
-[`README`](src/Wavee.Playback.Contracts/README.md)
-
-Tiny library (~3 files) defining the wire protocol between WinUI and AudioHost: `IpcMessage` envelope, command/event DTOs, `IpcPipeTransport` (length-prefixed JSON over named pipe — `[4 bytes big-endian length][UTF-8 JSON payload]`), and `AudioFileCache`. Consumed two different ways: **as a project reference** by `Wavee` (and transitively by `Wavee.UI.WinUI`), and **as source-included** (`<Compile Include>`) by `Wavee.AudioHost`. Wire format is JSON so type identity across assemblies doesn't matter. To add a new command/event, edit `IpcMessages.cs` only — both sides pick it up automatically.
-
-### `src/Wavee.Controls.Lyrics` — synced lyrics rendering library
-[`README`](src/Wavee.Controls.Lyrics/README.md)
-
-WinUI 3 control library for time-synchronized lyrics with shader effects. Tech stack: `Microsoft.Graphics.Win2D` for canvas + effects, `ComputeSharp.D2D1.WinUI` for AOT-friendly D2D pixel/compute shaders, `SpoutDx.Net.Interop` for cross-process texture sharing, `NAudio.Wasapi` for audio I/O during preview, `Vortice.Direct3D11` for DirectX interop, `NTextCat` + `Core14.profile.xml` (~2.4 MB bundled) for 14-language identification, `csharp-pinyin` and `WanaKana-net` for CJK romanization. Hosts an `EnsureIntermediateControlXaml` MSBuild target that copies a few `.xaml` files into `IntermediateOutputPath` before output to work around a WinUI cross-project loose-file XAML resolution quirk.
-
-### `src/Wavee.Local` — local media library
-[`README`](src/Wavee.Local/README.md)
-
-Framework-neutral, AOT-compatible, **no dependency on `Wavee.dll` or any UI**. Owns scan / classify / index / enrich / query / edit for `wavee:local:{kind}:{hash}` URIs. Scope: watched-folder management, filesystem scanning + metadata extraction (ATL.Net), content classification into Music / MusicVideo / TvEpisode / Movie / Other, TV-series + season auto-grouping from filenames, subtitle discovery (sibling files + RARBG-style `Subs/` folders), embedded audio/subtitle/video stream indexing, online metadata enrichment (TMDB for movies/TV, MusicBrainz + Cover Art Archive for music), local lyrics (sibling `.lrc` + LrcLib fetch), user collections, per-item kind / metadata overrides as JSON sidecars, watched state + resume position, and liked local tracks. Does NOT own its own SQLite database — writes to the shared `Wavee.Core.Storage.MetadataDatabase` (`Wavee.dll`) via SQL string constants declared in `Schema/LocalSchemaV17.cs`+ and imported by the v17 migration.
-
-### `src/Wavee.Console` — AOT CLI client
-[`README`](src/Wavee.Console/README.md)
-
-Terminal Spotify Connect client built on the same `Wavee` core. Useful for headless control, smoke-testing the protocol layer, and reproducing Connect bugs without the UI. `OutputType=Exe`, **Native AOT** (`PublishAot=true`), Linux-friendly (`DockerDefaultTargetOS=Linux`, ships a `Dockerfile`). `Program.cs` configures Serilog through a `SpectreUI` sink, sets up `IHttpClientFactory` + DPAPI-backed `CredentialsCache`, runs OAuth (Authorization Code + PKCE) if no stored credentials, and hands off to `ConnectConsole.cs` for the interactive REPL (cluster state, queue inspection, play/pause/seek/next/prev/volume/transfer, device picker).
-
-### `test/Wavee.Tests` — core library tests
-[`README`](test/Wavee.Tests/README.md)
-
-xUnit v3 + FluentAssertions + Moq (with `DynamicProxyGenAssembly2` granted `InternalsVisibleTo`). Covers the `Wavee` core protocol library. **Crypto primitives are validated against librespot** — see [`test/Wavee.Tests/Core/Crypto/README.md`](test/Wavee.Tests/Core/Crypto/README.md) for the validation methodology and instructions for regenerating test vectors from librespot's Rust source (`ShannonCipher`: 28 tests against librespot vectors; `AudioDecryptStream`: 9 tests). PlayPlay tests live in their own project because they need an x64-only process — don't add PlayPlay tests here.
-
-### `test/Wavee.UI.Tests` — UI service-layer tests
-[`README`](test/Wavee.UI.Tests/README.md)
-
-xUnit v3 suite for `Wavee.UI`. Doesn't reference `Wavee.UI.WinUI` deliberately — that would drag MSIX / packaging / RID complexity into the test build. `Wavee.UI` declares `InternalsVisibleTo` for this project, so tests exercise `internal` types directly.
-
-### `test/Wavee.PlayPlay.Tests` — PlayPlay decryption tests
-[`README`](test/Wavee.PlayPlay.Tests/README.md)
-
-x64-only plain `Exe` harness (not xUnit) that loads `Spotify.dll` to exercise the PlayPlay key emulator end-to-end. Forced to x64 because the loader is in-process. Public clones get a stub `Program.cs` (the real test vectors bundle Spotify property) so the project still builds. Exits non-zero on failure.
-
-### `test/Wavee.Local.Tests`
-
-Tests for `Wavee.Local`'s classifier, filename parser, URI helpers, and subtitle discovery.
-
-### `vendor/Lyricify.Lyrics.Helper`
-[`README`](vendor/Lyricify.Lyrics.Helper/README.md)
-
-Multi-provider lyrics search + parsing — supports Lyricify Syllable / Lines, LRC, QRC, KRC, YRC, TTML, raw Spotify and Musixmatch JSON, plus search providers for QQ Music, NetEase, Kugou, SodaMusic, Apple Music, and Musixmatch. Consumed via project reference from `Wavee.Controls.Lyrics`.
-
-### `vendor/NVorbis`
-[`README`](vendor/NVorbis/README.md)
-
-Pure-managed Ogg Vorbis decoder. No P/Invoke, no unsafe code. Used by `Wavee.AudioHost` to decode Ogg Vorbis streams alongside ManagedBass.
-
-### `signing/`
-[`README`](signing/README.md)
-
-Azure Artifact Signing (formerly Trusted Signing) scripts for release MSIX builds. `Sign-Release.ps1` is the one-command pipeline that swaps the manifest publisher to the release identity, builds + signs + verifies + installs, then restores the dev publisher via try/finally (even on Ctrl-C). The same flow runs in CI via `.github/workflows/release.yml`. **Important LAF coupling note:** the Phi Silica LAF token in `Wavee.UI.WinUI/Services/AiCapabilities.cs` is cryptographically bound to the **publisher hash** of the manifest's `Identity.Publisher`, so release-signed builds need a second LAF token issued against the production PFN — see `signing/laf-second-request.md` for the email draft.
-
-## Agent guides
-
-`.agents/guides/` contains component-specific, LLM-friendly guides for the most cross-cutting subsystems. Read the relevant guide before touching that area:
-
-| Guide | Scope |
-|---|---|
-| `track-and-episode-ui.md` | Every track/episode row, list, card, search, queue, now-playing surface. |
-| `connect-state.md` | Spotify Connect: dealer WebSocket, this-device announce, cluster state, remote commands, device picker / volume / now-playing UI. |
-| `library-and-sync.md` | User library lifecycle: collection sync, playlist cache, dealer-driven incremental updates, save / pin / follow write paths, library UI. |
-| `playback.md` | Playback runtime: orchestrator, queue + context, track resolution, AudioHost IPC, decode / decrypt / DSP / EQ, prefetch, local-file playback, video playback. |
-| `queue.md` | Queue subsystem: `PlaybackQueue` three buckets, cursor + shuffle + repeat, autoplay rollover, cluster sync, drag-drop, context-menu Play next / Add to queue. |
-| `composition-image.md` | `CompositionImage`: GPU-resident image primitive, cache lifecycle, LoadedImageSurface, suspension gate, retry behaviors. |
-| `content-card.md` | `ContentCard`: reusable shelf / grid card across Home / Search / Browse / Library / Artist / Album / Show / Concert / Profile / Local-media. |
-| `discography-expander.md` | Artist-page inline album expander: `ExpandableAlbumGrid`, `ExpandingGridLayout`, `AlbumDetailPanel` overlay. |
-
-Conventions and the index live in `AGENTS.md` (single source of truth) and `CLAUDE.md` (Claude Code instructions). A machine-readable knowledge graph of the whole codebase is at `.understand-anything/knowledge-graph.json` — open it with `/understand-anything:understand-dashboard` for an interactive map.
-
-## Technology stack
-
-| Component       | Technology                                                                 |
-|-----------------|----------------------------------------------------------------------------|
-| **Framework**   | .NET 10, C# preview                                                        |
-| **UI**          | WinUI 3, Windows App SDK 2.0, CommunityToolkit, ReactiveUI                 |
-| **Audio**       | BASS (DSP), NVorbis (Ogg), PortAudio (output) — out-of-process             |
-| **Video**       | WebView2 EME, Windows Media Playback, Media Foundation                     |
-| **Protocols**   | Protocol Buffers (Google.Protobuf), WebSocket, Mercury, ZStandard, Shannon |
-| **Reactive**    | System.Reactive (Rx.NET)                                                   |
-| **MVVM / DI**   | CommunityToolkit.Mvvm, Microsoft.Extensions.DependencyInjection / Hosting  |
-| **Storage**     | SQLite (Microsoft.Data.Sqlite) for library / playlist cache                |
-| **Logging**     | Serilog                                                                    |
-| **Lyrics**      | ComputeSharp.D2D1.WinUI, NTextCat, csharp-pinyin, WanaKana                 |
-| **On-device AI**| Phi Silica via `Microsoft.Windows.AI.Text` (Copilot+ PC only, opt-in)      |
-| **Signing**     | Azure Artifact Signing (release MSIX), self-signed cert for dev            |
-
-## Gabo events (telemetry)
-
-Wavee posts the bare minimum set of playback events Spotify's backend needs to credit your plays toward Recently Played, play counts, and the "made for you" recommendations you already get from any official client. Everything goes to `https://spclient.wg.spotify.com/gabo-receiver-service/v3/events/`.
-
-The legacy `event-service/v1/events` path (both Mercury and HTTPS variants) returns 404 — gabo is the only working transport, and our event surface is built around it.
-
-### Events sent — playback only
-
-| Event | When | What |
-|---|---|---|
-| `RawCoreStream` | At the end of each track | Track URI, context URI, ms played, reason started/ended, audio format. **This is the play-history event** — Recently Played and play counts both come from here. |
-| `RawCoreStreamSegment` | Per pause/resume/seek split inside a track | Same playback id + segment ms range |
-| `AudioSessionEvent` | When playback opens/seeks/closes | Session lifecycle markers |
-| `BoomboxPlaybackSession` | Once per track | Buffering / resolve / setup latencies + duration |
-| `Download`, `HeadFileDownload` | Per CDN fetch | File id, bytes, latency |
-| `CorePlaybackCommandCorrelation` | When a play command runs | Maps command id → playback id |
-| `ContentIntegrity` | Per track | Playback id + a flag stating we played in real-time (not ripping) |
-
-### Events Wavee deliberately does NOT send
-
-The desktop client sends these; we don't because none of them are required to make Recently Played work:
-
-- **Ad pipeline** — `AdEvent`, `AdRequestEvent`, `AdOpportunityEvent`, `AdSlotEvent`. Premium-only client, no ads.
-- **UI interaction telemetry** — `DesktopUIShellInteractionNonAuth`, `WindowSizeNonAuth`.
-- **System / driver fingerprinting** — `AudioDriverInfo`, `WasapiAudioDriverInfo`, `ModuleDebug`, `ConfigurationFetched`, `TimeMeasurement`, `ClientRuntimeDiag`.
-- **Library / cache reports** — `LocalFilesReport`, `CacheReport`, `OfflinePruneReport`, `CollectionEndpointUsage`.
-- Anything else from the 100+ event types defined in Spotify's binary.
-
-### How it's wired
-
-| File | Role |
-|---|---|
-| `src/Wavee/Connect/Events/EventService.cs` | Posts each `IPlaybackEvent` (one envelope per POST in v1; client-side batching can be layered later). Exposes `IObservable<IPlaybackEvent>` so in-process subscribers can mirror what's sent. |
-| `src/Wavee/Connect/Events/GaboEnvelopeFactory.cs` | Builds the protobuf envelope. The per-event payload is one `EventFragment`; the rest of the fragments are the **context block** — client id, installation id, application/device descriptors, time, SDK. |
-| `src/Wavee/Connect/Events/IPlaybackEvent.cs` | Interface for one event type. Implementations: `RawCoreStreamPlaybackEvent`, `RawCoreStreamSegmentPlaybackEvent`, `AudioSessionPlaybackEvent`, `BoomboxPlaybackSessionEvent`, `DownloadPlaybackEvent`, `HeadFileDownloadPlaybackEvent`, `CorePlaybackCommandCorrelationEvent`, `ContentIntegrityPlaybackEvent`. |
-| `src/Wavee/Core/Http/SpClient.cs` (`PostGaboEventAsync`) | The actual HTTPS POST. |
-
-### Mimicry of the desktop client (anti-fraud avoidance)
-
-Spotify's anti-fraud pipeline drops batches whose context block doesn't look like a first-party client. To stay below that bar, the envelope's `context_sdk` fragment uses the same `sdk_version_name` and `sdk_type` strings the C++ desktop client emits, the `application_desktop` fragment carries the desktop client's app version (`1.2.88.483` / version code `128800483`), and the device-context fragments use the real machine's BIOS manufacturer/model + OS version + Windows machine SID. The breakthrough is documented inline in `GaboEnvelopeFactory.cs`. If you change the SDK strings or version code, expect Recently Played to silently stop working.
-
-## What's NOT in this repo (proprietary)
-
-Three Spotify-property files are deliberately excluded from the public source tree. The build still compiles without them — stubs are provided where needed — but a few features are degraded or disabled.
-
-| Excluded file | What it does | Effect of the stub |
-|---|---|---|
-| `src/Wavee/Core/Crypto/AudioDecryptStream.cs` | AES-128-CTR Big-Endian decryption for Spotify audio files (matches librespot's `audio/src/decrypt.rs`). Provides streaming decrypt with arbitrary seeking. | The file is excluded entirely (no stub). Test fixtures (`test/Wavee.Tests/Core/Crypto/…`) document what *would* be tested. Without it, you cannot decrypt encrypted Spotify Ogg streams in this repo's open form. |
-| `src/Wavee/Core/Audio/PlayPlayConstants.cs` | Spotify-specific constants used to derive PlayPlay AES keys directly from `Spotify.dll`, used as a fallback when the AP audio-key channel returns a permanent error. | `PlayPlayConstants.Stub.cs` ships in its place; the runtime feature stays disabled. `AudioKeyManager` falls back to AP-only key resolution. |
-| `src/Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs` | The actual emulator that loads `Spotify.dll` (x86_64) in-process and exercises PlayPlay. | `PlayPlayKeyEmulator.Stub.cs` ships in its place. `Wavee.PlayPlay.Tests` runs against the stub and skips the real test vectors. |
-
-**Why excluded:** these files reproduce Spotify's DRM (the AES decryption stream) and proprietary key-derivation data (PlayPlay constants embedded in `Spotify.dll`). Both are part of Spotify's intellectual property; we're not in a position to redistribute them. The connection-protocol layer (handshake, Shannon cipher, packet framing) is fully open and included — see [Wavee/Core/Crypto/README.md](src/Wavee/Core/Crypto/README.md) for the legal note.
-
-**What still works without them:** authentication, session management, Spotify Connect (full controller + target), all metadata APIs (SpClient + Pathfinder), the WinUI app's UI, Spotify library sync, search, lyrics, Spotify music videos, Connect command issuance, telemetry, and the feature-flagged local media code paths when enabled — everything except the actual decryption of Spotify-encrypted audio files. If you need to play encrypted streams, you'll need to implement audio decryption yourself or obtain proper licensing.
+- [Contributor and release guide](.agents/guides/contributing-and-releases.md)
+- [Desktop app architecture](src/Wavee.UI.WinUI/README.md)
+- [Core protocol library](src/Wavee/README.md)
+- [Component-specific agent guides](.agents/guides)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+WaveeMusic is available under the [MIT License](LICENSE). It is an independent project and is not affiliated with, endorsed by, or sponsored by Spotify. Spotify is a trademark of Spotify AB.
