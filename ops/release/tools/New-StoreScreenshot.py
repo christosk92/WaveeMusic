@@ -74,7 +74,10 @@ def shadowed(win: Image.Image, radius: int = 12) -> Image.Image:
 
 
 def fit(win: Image.Image, max_w: int, max_h: int) -> Image.Image:
-    s = min(max_w / win.width, max_h / win.height)
+    """Scale DOWN to the box only - a capture is never upscaled (it would soften the text)."""
+    s = min(max_w / win.width, max_h / win.height, 1.0)
+    if s == 1.0:
+        return win
     return win.resize((round(win.width * s), round(win.height * s)), Image.LANCZOS)
 
 
@@ -105,31 +108,32 @@ def compose(shot: str, out: str, headline: str | None, side: str, dark: bool, se
         win = overlay_frame(win, overlay)
     ink = (245, 245, 250, 255) if dark else (24, 24, 30, 255)
     if not headline:
-        win = fit(win, 1640, 940)
+        win = fit(win, 1840, 1040)   # native size when the capture is smaller; the window may kiss the edges
         card, pad = shadowed(win)
         bg.alpha_composite(card, ((W - card.width) // 2, (H - card.height) // 2 - 6))
     elif side in ("left", "right"):
-        # The window takes ~72% of the width; the headline column gets what is left, minus the margins, and never
-        # crosses into the window (the previous right-side math did).
-        win = fit(win, 1380, 920)
+        # The reference listings (Files) keep the headline column and let the window run off the far edge instead of
+        # shrinking it: the window is shown at (near) capture size and the far ~15% is cropped by the canvas.
+        win = fit(win, 1900, 1040)   # native size; whatever passes the far edge is cropped by the canvas
         card, pad = shadowed(win)
-        col_w = W - 2 * MARGIN - GAP - win.width
-        text = headline_block(headline, col_w, ink, 64, align="left" if side == "left" else "right")
+        col_w = 470
+        text = headline_block(headline, col_w, ink, 66, align="left" if side == "left" else "right")
         cy = (H - card.height) // 2
         ty = (H - text.height) // 2 - 24
+        wx = MARGIN + col_w + GAP            # the window's near edge; the far edge falls off the canvas
         if side == "left":
-            bg.alpha_composite(card, (W - MARGIN - win.width - pad, cy))
+            bg.alpha_composite(card, (wx - pad, cy))
             bg.alpha_composite(text, (MARGIN, ty))
         else:
-            bg.alpha_composite(card, (MARGIN - pad, cy))
+            bg.alpha_composite(card, (W - wx - win.width - pad, cy))
             bg.alpha_composite(text, (W - MARGIN - text.width, ty))
-    else:  # top
-        win = fit(win, 1560, 780)
+    else:  # top: headline above, the window runs off the bottom edge
+        win = fit(win, 1840, 1100)
         card, pad = shadowed(win)
-        text = headline_block(headline, 1500, ink, 60, align="center")
-        top = 64
+        text = headline_block(headline, 1500, ink, 62, align="center")
+        top = 60
         bg.alpha_composite(text, ((W - text.width) // 2, top))
-        bg.alpha_composite(card, ((W - card.width) // 2, top + text.height + 8))
+        bg.alpha_composite(card, ((W - card.width) // 2, top + text.height + 4))
     bg.convert("RGB").save(out, "PNG", optimize=True)
     print(out, bg.size, "window", win.size)
 

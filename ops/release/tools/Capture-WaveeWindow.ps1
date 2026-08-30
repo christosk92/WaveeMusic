@@ -30,6 +30,8 @@ param(
   [string]$Arg,
   [int]$W = 1600,
   [int]$H = 1000,
+  # Leave the window where and how big the user made it (the listing shots are sized by hand).
+  [switch]$KeepSize,
   [int]$SettleMs = 2500,
   [int]$X = 40,
   [int]$Y = 40
@@ -94,7 +96,7 @@ if (-not $proc) {
 $hwnd = $proc.MainWindowHandle
 
 if ([WaveeCapture.Win32]::IsIconic($hwnd)) { $null = [WaveeCapture.Win32]::ShowWindow($hwnd, 9) }  # SW_RESTORE
-if (-not [WaveeCapture.Win32]::MoveWindow($hwnd, $X, $Y, $W, $H, $true)) {
+if (-not $KeepSize -and -not [WaveeCapture.Win32]::MoveWindow($hwnd, $X, $Y, $W, $H, $true)) {
   throw "MoveWindow failed (Win32 error $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error()))."
 }
 $null = [WaveeCapture.Win32]::SetForegroundWindow($hwnd)
