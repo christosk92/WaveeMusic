@@ -35,6 +35,9 @@ Store-wide; have "Wavee Music" ready as a fallback). Then Product management →
 - `Package/Identity/Name` — `cproducts.Wavee` (reserved 2026-08-30; equals the sideload name).
 - `Package/Identity/Publisher` — `CN=88D90E00-BEC4-41D6-8623-9F49F1AE2E9E`. **Not** our signing subject.
 - Package Family Name `cproducts.Wavee_thwr6bfjtcshw`, Store ID **`9NJPVWTQPT9H`** (baked into the build as `WaveeStoreId`).
+- Package SID `S-1-15-2-368211831-3534161536-959983934-995995205-4036165895-2946672076-447861987`, MSA app Id
+  `e24d2383-af70-4d4f-ab6b-9c8b8f0bc39e` (from Product identity; needed only for WNS or MSA sign-in, unused today).
+- Submission 1 (packages 1.2.102.0 x64+arm64, listing, trailer) entered certification **2026-08-30**.
 - `Package/Properties/PublisherDisplayName` — `cproducts`.
 
 The Store re-signs every MSIX with Microsoft's certificate, so the Store package carries the Store publisher. Two
