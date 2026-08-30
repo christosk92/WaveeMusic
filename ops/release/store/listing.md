@@ -66,7 +66,13 @@ Support: https://cproducts.dev/contact (hello@cproducts.dev). "This app accesses
 | 4 | 04-playlist.png | Playlists show tempo, key, date added and recommendations. |
 | 5 | 05-albums.png | A three-pane library: list, selection, tracks. |
 | 6 | 06-recents.png | Recents grouped by day, every play listed. |
-| 7 | 07-album.png | Albums with credits, related music and the official video. |
+| 7 | 07-album.png | Albums with play counts, credits and related music. |
+| 8 | 08-concerts.png | Concerts near you: live shows and festival dates, filtered by city and genre. |
+| 9 | 09-customize.png | Your sidebar, your layout: templates, sections, density and pins. |
+| 10 | 10-search.png | Search songs, artists, albums, playlists, podcasts and audiobooks at once. |
+| 11 | 11-lyrics.png (to capture) | Synced lyrics beside the player, syllable-level where available. |
+| 12 | 12-video.png (to capture + frame overlay) | The official video docked next to the queue. |
+| 13 | 13-queue.png (to capture) | Queue, autoplay and drag-reorder. |
 
 Store logos: `tile-300.png` (1:1 app tile), `hero-1920x1080.png` (16:9 super hero, no text, no UI).
 
