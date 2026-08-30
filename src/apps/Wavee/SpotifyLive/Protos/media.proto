@@ -1,0 +1,17 @@
+// Extracted from: Spotify 1.2.52.442 (windows)
+
+syntax = "proto3";
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.Media";
+
+enum AudioQuality {
+  DEFAULT = 0;
+  LOW = 1;
+  NORMAL = 2;
+  HIGH = 3;
+  VERY_HIGH = 4;
+  HIFI = 5;
+  HIFI_24 = 6;
+}
+

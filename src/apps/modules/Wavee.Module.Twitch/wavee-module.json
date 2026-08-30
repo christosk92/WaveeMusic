@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "wavee.twitch",
+  "version": "1.0.0",
+  "displayName": "Twitch",
+  "publisher": "wavee",
+  "protocolVersion": 1,
+  "entry": "Wavee.Module.Twitch.exe",
+  "capabilities": ["playback", "match", "metadata", "pages"],
+  "urlPatterns": ["twitch.tv"],
+  "menu": {
+    "label": "Twitch\u2026",
+    "placeholder": "Paste a Twitch channel or video link"
+  }
+}

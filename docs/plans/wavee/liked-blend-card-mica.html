@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Liked Blend Card</title>
+<style>
+  :root{
+    --solid-base:#202020;
+    --card:rgba(255,255,255,.0512); --card-2:rgba(255,255,255,.0837);
+    --hover:rgba(255,255,255,.0605); --stroke:rgba(255,255,255,.0698);
+    --text:#fff; --text-2:rgba(255,255,255,.786); --text-3:rgba(255,255,255,.5442); --text-4:rgba(255,255,255,.3628);
+    --accent:#60CDFF; --accent-text:#99EBFF;
+    --font:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; --font-d:"Segoe UI Variable Display","Segoe UI",sans-serif;
+    --ease:cubic-bezier(.2,.8,.2,1);
+    --mica-a:#3d5a8f; --mica-b:#6b3a63; --mica-tint:rgba(32,32,32,.86);
+  }
+  *{box-sizing:border-box} html,body{height:100%;margin:0}
+  body{font-family:var(--font);font-size:14px;color:var(--text);
+    background:#0c0c10;background-image:radial-gradient(900px 700px at 12% 8%,#2b3a5e 0%,transparent 60%),radial-gradient(1000px 800px at 88% 82%,#4a2a46 0%,transparent 62%);
+    display:grid;place-items:center;overflow:hidden}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
+  .win{width:min(1180px,96vw);padding:28px 32px 32px;border-radius:8px;border:1px solid rgba(255,255,255,.08);
+    box-shadow:0 32px 64px rgba(0,0,0,.37),0 0 2px rgba(0,0,0,.5);
+    background:linear-gradient(var(--mica-tint),var(--mica-tint)),radial-gradient(700px 500px at 10% 0%,var(--mica-a) 0%,transparent 62%),radial-gradient(760px 560px at 92% 96%,var(--mica-b) 0%,transparent 64%),var(--solid-base);
+    background-blend-mode:normal,soft-light,soft-light,normal}
+  h1{font-family:var(--font-d);font-weight:600;font-size:22px;letter-spacing:-.4px;margin:0 0 4px}
+  .sub{color:var(--text-3);font-size:12.5px;margin:0 0 22px;max-width:80ch;line-height:1.45}
+  .sub b{color:var(--text-2);font-weight:600}
+  .row{display:grid;grid-template-columns:repeat(3,304px);gap:28px;justify-content:start;align-items:start}
+  .col h2{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);font-weight:600;margin:0 0 8px}
+  .col h2 em{font-style:normal;color:var(--accent-text);margin-left:6px;letter-spacing:.04em}
+  .why{font-size:12px;color:var(--text-4);line-height:1.45;margin:10px 0 0}
+  .why b{color:var(--text-3);font-weight:600}
+
+  .fact{background:var(--card);border:1px solid var(--stroke);border-radius:8px;padding:10px 12px 11px;box-shadow:0 2px 4px rgba(0,0,0,.14),0 0 2px rgba(0,0,0,.12)}
+  .h{display:flex;align-items:baseline;gap:8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);font-weight:600}
+  .h .r{margin-left:auto;letter-spacing:0;text-transform:none;font-weight:400;color:var(--text-4);font-variant-numeric:tabular-nums}
+
+  .bar{display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px;margin-top:10px}
+  .seg{display:block;height:100%;position:relative;cursor:pointer;background:var(--accent);opacity:var(--o,1);transition:opacity .12s var(--ease),transform .12s var(--ease)}
+  .seg:hover{opacity:1}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;font-size:12px;color:var(--text-2)}
+  .legend span,.legend button{display:inline-flex;align-items:center;gap:6px;border-radius:3px;padding:1px 3px;margin:-1px -3px;cursor:pointer}
+  .legend span:hover,.legend button:hover{background:var(--hover)}
+  .legend span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--accent);opacity:var(--o,1)}
+  .legend em{font-style:normal;color:var(--text-4);font-variant-numeric:tabular-nums}
+  .tip{position:absolute;left:50%;top:-30px;transform:translateX(-50%);white-space:nowrap;z-index:2;
+    background:rgba(44,44,48,.92);backdrop-filter:blur(14px);border:1px solid var(--stroke);border-radius:4px;padding:4px 9px;font-size:12px;color:var(--text);
+    box-shadow:0 4px 8px rgba(0,0,0,.26);opacity:0;pointer-events:none;transition:opacity .06s}
+  .seg:hover .tip,.tk:hover .tip{opacity:1}
+
+  /* B-today: one grey slab */
+  .seg.other{background:var(--text-4);opacity:1;cursor:default}
+  .legend .oth::before{background:var(--text-4)}
+
+  /* B' — tail as ticks, expandable */
+  .tail{display:flex;gap:1px;height:100%;flex:1;position:relative;border-radius:0 4px 4px 0;overflow:visible;cursor:pointer}
+  .tk{display:block;height:100%;background:rgba(255,255,255,.22);position:relative;min-width:2px;transition:background .12s var(--ease)}
+  .tk:nth-child(3n){background:rgba(255,255,255,.30)} .tk:nth-child(3n+1){background:rgba(255,255,255,.16)}
+  .tk:hover,.tail:hover .tk{background:rgba(255,255,255,.34)} .tk:hover{background:var(--accent-text) !important}
+  .more{color:var(--text-3)} .more .chev{display:inline-block;transition:transform .2s var(--ease);font-size:10px}
+  .fact.open .more .chev{transform:rotate(90deg)}
+  .exp{display:grid;grid-template-rows:0fr;transition:grid-template-rows .26s var(--ease);margin-top:0}
+  .fact.open .exp{grid-template-rows:1fr;margin-top:8px}
+  .exp>div{overflow:hidden;min-height:0}
+  .exp .eh{display:flex;align-items:baseline;gap:8px;font-size:11px;color:var(--text-4);text-transform:uppercase;letter-spacing:.06em;font-weight:600;padding-top:6px;border-top:1px solid var(--stroke)}
+  .exp .eh .r{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400}
+  .exp .bar{margin-top:8px;gap:2px;transform-origin:left;transform:scaleX(.55);opacity:0;transition:transform .3s var(--ease) .05s,opacity .2s}
+  .fact.open .exp .bar{transform:none;opacity:1}
+  .exp .seg{background:rgba(255,255,255,.55)} .exp .seg:nth-child(even){background:rgba(255,255,255,.38)}
+  .exp .legend{color:var(--text-3)} .exp .legend span::before{background:rgba(255,255,255,.5)} .exp .legend span:nth-child(even)::before{background:rgba(255,255,255,.34)}
+
+  /* B'' — Other as an honest lens + hatch */
+  .seg.lens{cursor:pointer;opacity:1;background:repeating-linear-gradient(135deg,rgba(255,255,255,.30) 0 3px,rgba(255,255,255,.12) 3px 6px)}
+  .seg.lens:hover{background:repeating-linear-gradient(135deg,rgba(255,255,255,.42) 0 3px,rgba(255,255,255,.2) 3px 6px)}
+  .legend .oth2::before{background:repeating-linear-gradient(135deg,rgba(255,255,255,.34) 0 2px,rgba(255,255,255,.12) 2px 4px)}
+  .lensrow{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 6px 0 12px;border-radius:14px;border:1px solid var(--accent);color:var(--accent-text);font-size:13px;font-weight:600;margin-top:14px}
+  .lensrow .x{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:12px;color:var(--text-2)}
+  .lensrow .n{color:var(--text-3);font-weight:400;margin-left:2px}
+</style>
+</head>
+<body>
+<div class="win">
+  <h1>Your blend — keep the partition, give "Other" a shape</h1>
+  <p class="sub">The stacked bar stays a <b>partition</b> (every song counted once, by its primary descriptor — it must add to 100 %). The problem was never the maths, it was that 47 % of the bar was one flat slab that did nothing. Two fixes, combinable: draw the tail as <b>what it is</b> (44 small tags, each a tick you can hover and click), and let it <b>open</b> so the long tail gets its own bar at full width.</p>
+  <div class="row">
+    <div class="col">
+      <h2>B′ · Tail as ticks, opens in place<em>REC</em></h2>
+      <div class="fact" id="bp">
+        <div class="h">Your blend <span class="r">272 songs</span></div>
+        <div class="bar">
+          <span class="seg" style="width:20%;--o:1"><span class="tip">Pop · 55 songs · 20 %</span></span>
+          <span class="seg" style="width:13%;--o:.8"><span class="tip">K-Pop · 35 songs · 13 %</span></span>
+          <span class="seg" style="width:10%;--o:.62"><span class="tip">Soundtrack · 26 songs · 10 %</span></span>
+          <span class="seg" style="width:5%;--o:.46"><span class="tip">Sad · 14 songs · 5 %</span></span>
+          <span class="seg" style="width:5%;--o:.32"><span class="tip">Indie Pop · 13 songs · 5 %</span></span>
+          <span class="tail" id="tail" title=""></span>
+        </div>
+        <div class="legend">
+          <span style="--o:1">Pop<em>20 %</em></span><span style="--o:.8">K-Pop<em>13 %</em></span>
+          <span style="--o:.62">Soundtrack<em>10 %</em></span><span style="--o:.46">Sad<em>5 %</em></span>
+          <span style="--o:.32">Indie Pop<em>5 %</em></span>
+          <button class="more" id="moreBtn"><span class="chev">▶</span> 44 more <em>47 %</em></button>
+        </div>
+        <div class="exp">
+          <div>
+            <div class="eh">The other 44 <span class="r">128 songs · shown at full width</span></div>
+            <div class="bar" id="tailBar"></div>
+            <div class="legend" id="tailLegend"></div>
+          </div>
+        </div>
+      </div>
+      <p class="why"><b>Collapsed:</b> the tail reads as a texture of many small things, not a slab — every tick is a real tag: hover names it, click lenses it. <b>Open:</b> "44 more" cracks the card open (WinUI expander motion); the tail is re-drawn at full width with its own legend, so EDM at 3 % of the library is a real, clickable segment instead of 6 px. Click again to fold.</p>
+    </div>
+
+    <div class="col">
+      <h2>B″ · Other as an honest lens</h2>
+      <div class="fact">
+        <div class="h">Your blend <span class="r">272 songs</span></div>
+        <div class="bar">
+          <span class="seg" style="width:20%;--o:1"><span class="tip">Pop · 55 songs · 20 %</span></span>
+          <span class="seg" style="width:13%;--o:.8"></span><span class="seg" style="width:10%;--o:.62"></span>
+          <span class="seg" style="width:5%;--o:.46"></span><span class="seg" style="width:5%;--o:.32"></span>
+          <span class="seg lens" style="flex:1"><span class="tip">Everything else · 128 songs · 47 % — click to filter</span></span>
+        </div>
+        <div class="legend">
+          <span style="--o:1">Pop<em>20 %</em></span><span style="--o:.8">K-Pop<em>13 %</em></span>
+          <span style="--o:.62">Soundtrack<em>10 %</em></span><span style="--o:.46">Sad<em>5 %</em></span>
+          <span style="--o:.32">Indie Pop<em>5 %</em></span><span class="oth2">Everything else<em>47 %</em></span>
+        </div>
+      </div>
+      <div class="lensrow">Everything else <span class="x">✕</span><span class="n">128 songs</span></div>
+      <p class="why"><b>Smallest change:</b> hatch says "many, unnamed"; clicking it is a real filter — the songs whose primary tag is <i>not</i> one of the five — with a header pill like the others. No expansion, no extra rows. Can be combined with B′ (open = explore, click = filter).</p>
+    </div>
+
+    <div class="col">
+      <h2>B · Today</h2>
+      <div class="fact">
+        <div class="h">Your blend <span class="r">272 songs</span></div>
+        <div class="bar">
+          <span class="seg" style="width:20%;--o:1"></span><span class="seg" style="width:13%;--o:.8"></span>
+          <span class="seg" style="width:10%;--o:.62"></span><span class="seg" style="width:5%;--o:.46"></span>
+          <span class="seg" style="width:5%;--o:.32"></span>
+          <span class="seg other" style="flex:1"><span class="tip">Other · 128 songs · 47 % — EDM 3 % · R&amp;B 3 % · … and 44 more</span></span>
+        </div>
+        <div class="legend">
+          <span style="--o:1">Pop<em>20 %</em></span><span style="--o:.8">K-Pop<em>13 %</em></span>
+          <span style="--o:.62">Soundtrack<em>10 %</em></span><span style="--o:.46">Sad<em>5 %</em></span>
+          <span style="--o:.32">Indie Pop<em>5 %</em></span><span class="oth">Other<em>47 %</em></span>
+        </div>
+      </div>
+      <p class="why"><b>Reference.</b> Half the bar is a grey slab with a tooltip and nothing else.</p>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  // the tail: 44 descriptors, counts summing to 128 (a plausible long tail)
+  const names=["EDM","R&B","Nostalgia","Chill","Dance","Rock","Latin","Acoustic","Hip-Hop","Alternative","Jazz","Lo-fi","Funk","Classical","Ballad","Reggaeton","Trap","Anime","Folk","Synthwave","Metal","Blues","Gospel","House","Techno","Country","Disco","Ambient","Punk","Ska","Soul","Grime","Afrobeats","Bossa Nova","Drill","Emo","Garage","Indie Rock","K-Indie","Mandopop","New Wave","Opera","Salsa","Trance"];
+  const counts=[9,8,8,7,6,6,5,5,5,4,4,4,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1];
+  const total=128, lib=272;
+  const tail=document.getElementById('tail'), bar=document.getElementById('tailBar'), leg=document.getElementById('tailLegend');
+  names.forEach((n,i)=>{
+    const c=counts[i], pct=Math.round(c/lib*1000)/10;
+    const tk=document.createElement('span'); tk.className='tk'; tk.style.flex=c;
+    tk.innerHTML=`<span class="tip">${n} · ${c} song${c>1?'s':''} · ${pct} %</span>`; tail.appendChild(tk);
+    const s=document.createElement('span'); s.className='seg'; s.style.flex=c;
+    s.innerHTML=`<span class="tip">${n} · ${c} song${c>1?'s':''} · ${Math.round(c/total*100)} % of the tail</span>`; bar.appendChild(s);
+    if(i<10){ const l=document.createElement('span'); l.innerHTML=`${n}<em>${pct} %</em>`; leg.appendChild(l); }
+  });
+  const rest=document.createElement('span'); rest.style.color='var(--text-4)'; rest.textContent='… and 34 under 1 %'; leg.appendChild(rest);
+  const fact=document.getElementById('bp'), btn=document.getElementById('moreBtn');
+  const toggle=()=>fact.classList.toggle('open');
+  btn.addEventListener('click',toggle); tail.addEventListener('click',e=>{ if(e.target===tail) toggle(); });
+  if(location.hash==='#open') fact.classList.add('open');
+})();
+</script>
+</body>
+</html>

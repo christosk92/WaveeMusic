@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "wavee.radio",
+  "version": "1.0.0",
+  "displayName": "Radio",
+  "publisher": "wavee",
+  "protocolVersion": 1,
+  "entry": "Wavee.Module.Radio.exe",
+  "capabilities": ["playback", "match", "metadata", "fallback", "pages"],
+  "urlPatterns": [],
+  "menu": {
+    "label": "Radio station\u2026",
+    "placeholder": "Paste a radio stream or playlist url"
+  }
+}

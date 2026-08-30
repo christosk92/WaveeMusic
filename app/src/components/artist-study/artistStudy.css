@@ -1,0 +1,2162 @@
+/**
+ * Artist page study — layout only; all values come from artistTokens.css.
+ *
+ * Framed in the REAL shell at full viewport (sidebar 280 + titlebar 48 + player 72), because v1
+ * rendered inside a fake inset window that cost 172px of chrome and made every proportion
+ * untransferable — the container query measured 1370px for a pane that is really 1160px.
+ *
+ * Control geometry, strokes, fills and focus visuals are reproduced from
+ * microsoft-ui-xaml/controls/dev/CommonStyles/Common_themeresources_any.xaml rather than
+ * approximated. Spacing follows Fluent content-basics: 8 between buttons and between a control
+ * and its header, 12 between a control and its label and between content areas, 16 from a
+ * surface edge to text.
+ */
+
+.artist-study {
+  position: fixed;
+  inset: 0;
+  font: var(--wv-t-body);
+  color: var(--wv-text-primary);
+  background: var(--wv-page-bg);
+}
+
+.artist-study *,
+.artist-study *::before,
+.artist-study *::after {
+  box-sizing: border-box;
+}
+
+/**
+ * A whisper of grain over the whole surface. Two jobs: it kills the gradient banding that a wide
+ * low-alpha wash produces on 8-bit displays, and it gives large flat fields a tactile quality
+ * that flat colour cannot. It must stay under ~3% or it reads as dirt rather than texture.
+ */
+.artist-study::after {
+  position: fixed;
+  z-index: 300;
+  inset: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  content: "";
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+.artist-study button {
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/**
+ * The WinUI focus visual: 2px FocusStrokeColorOuter over a 1px FocusStrokeColorInner. It is
+ * near-black in light and white in dark — NOT an accent-coloured ring, which is the web default
+ * and the single most obvious tell that a surface was not built to Fluent.
+ */
+.artist-study :focus-visible {
+  outline: 2px solid var(--wv-focus-outer);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px var(--wv-focus-inner);
+}
+
+.av-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── shell ──────────────────────────────────────────────────────────────── */
+
+.av-shell {
+  display: grid;
+  grid-template-rows: var(--wv-titlebar-h) minmax(0, 1fr) var(--wv-player-h);
+  height: 100%;
+}
+
+.av-shell__body {
+  display: flex;
+  min-height: 0;
+}
+
+.av-titlebar {
+  display: grid;
+  grid-template-columns: auto 1fr minmax(240px, 440px) 1fr;
+  align-items: center;
+  gap: var(--wv-s);
+  padding: 0 var(--wv-s) 0 var(--wv-xs);
+  background: var(--wv-page-bg);
+}
+
+/* Navigation-basics: users expect the back affordance in a standard location. */
+.av-titlebar__back {
+  display: grid;
+  width: 36px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-primary);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.av-titlebar__back:hover {
+  background: var(--wv-subtle-secondary);
+}
+
+.av-titlebar__back:active {
+  color: var(--wv-text-secondary);
+  background: var(--wv-subtle-tertiary);
+}
+
+.av-titlebar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-s);
+  width: max-content;
+  font: var(--wv-t-body-str);
+}
+
+.av-titlebar__brand b {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--wv-on-accent-stroke);
+  border-bottom-color: var(--wv-on-accent-edge);
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-on-accent);
+  background: var(--wv-accent);
+  font: var(--wv-t-caption);
+  font-weight: 600;
+  place-items: center;
+}
+
+/* AutoSuggestBox: ControlFillColorDefault, ControlElevationBorderBrush, accent 2px underline
+   on focus (TextControlBorderThemeThicknessFocused = 1,1,1,2). */
+.av-titlebar__search {
+  display: flex;
+  align-items: center;
+  gap: var(--wv-s);
+  height: 32px;
+  padding: 0 var(--wv-m);
+  border: 1px solid var(--wv-ctrl-stroke);
+  border-bottom: 1px solid var(--wv-ctrl-edge);
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-tertiary);
+  background: var(--wv-fill-control);
+  font: var(--wv-t-body);
+  cursor: text;
+}
+
+.av-titlebar__search:hover {
+  background: var(--wv-fill-card);
+}
+
+.av-titlebar__search:focus-within {
+  border-bottom: 2px solid var(--wv-accent);
+  background: var(--wv-fill-card);
+}
+
+.av-titlebar__search span {
+  flex: 1;
+}
+
+.av-titlebar__search kbd {
+  padding: 0 var(--wv-xs);
+  border: 1px solid var(--wv-ctrl-stroke);
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-tertiary);
+  font: var(--wv-t-caption);
+}
+
+.av-titlebar__profile {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.av-titlebar__profile span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--wv-on-accent-stroke);
+  border-radius: 50%;
+  color: var(--wv-text-on-accent);
+  background: var(--wv-accent);
+  font: var(--wv-t-caption);
+  place-items: center;
+}
+
+/* ── sidebar: NavigationView ────────────────────────────────────────────── */
+
+.av-sidebar {
+  display: flex;
+  flex: 0 0 var(--wv-sidebar-w);
+  flex-direction: column;
+  gap: var(--wv-xxs);
+  width: var(--wv-sidebar-w);
+  padding: 0 var(--wv-xs) var(--wv-m);
+  overflow: hidden auto;
+  background: var(--wv-page-bg);
+}
+
+.av-sidebar hr {
+  height: 1px;
+  margin: var(--wv-m) var(--wv-m);
+  border: 0;
+  background: var(--wv-divider);
+}
+
+/**
+ * NavigationViewItem: 36 high (compact), SubtleFillColorSecondary backplate when selected, and
+ * the 2×24 accent selection indicator pinned to the leading edge — the most recognisable single
+ * element in a WinUI app, and absent from v1 entirely.
+ */
+.av-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--wv-m);
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 var(--wv-m);
+  border: 0;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-primary);
+  background: transparent;
+  font: var(--wv-t-body);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.av-nav-item--quiet {
+  color: var(--wv-text-secondary);
+}
+
+.av-nav-item:hover {
+  background: var(--wv-subtle-secondary);
+}
+
+.av-nav-item:active {
+  color: var(--wv-text-secondary);
+  background: var(--wv-subtle-tertiary);
+}
+
+.av-nav-item[aria-current="page"] {
+  background: var(--wv-subtle-secondary);
+}
+
+.av-nav-item[aria-current="page"]::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 24px;
+  border-radius: var(--wv-r-control);
+  background: var(--wv-accent);
+  content: "";
+  transform: translateY(-50%);
+}
+
+.av-nav-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── player bar ─────────────────────────────────────────────────────────── */
+
+.av-player {
+  display: grid;
+  grid-template-columns: 48px minmax(120px, 200px) auto 48px minmax(120px, 1fr) 48px 32px;
+  align-items: center;
+  gap: var(--wv-m);
+  padding: 0 var(--wv-l);
+  border-top: 1px solid var(--wv-divider);
+  background: var(--wv-page-bg);
+}
+
+.av-player__meta {
+  display: grid;
+  min-width: 0;
+}
+
+.av-player__meta strong {
+  overflow: hidden;
+  font: var(--wv-t-body-str);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.av-player__meta small {
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+}
+
+.av-player__transport {
+  display: flex;
+  align-items: center;
+  gap: var(--wv-s);
+}
+
+.av-player__transport button,
+.av-player__icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--wv-text-secondary);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.av-player__transport button:hover,
+.av-player__icon:hover {
+  color: var(--wv-text-primary);
+  background: var(--wv-subtle-secondary);
+}
+
+/* The transport primary is a circle control: CircleElevationBorderBrush + accent fill. */
+.av-player__play {
+  border: 1px solid var(--wv-on-accent-stroke) !important;
+  border-bottom-color: var(--wv-on-accent-edge) !important;
+  color: var(--wv-text-on-accent) !important;
+  background: var(--wv-accent) !important;
+}
+
+.av-player__time {
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+  text-align: center;
+}
+
+/* Slider: 4px bar radius, accent track, ControlSolidFill thumb with an accent ring. */
+.av-player__track {
+  position: relative;
+  display: block;
+  height: 4px;
+  border-radius: var(--wv-r-control);
+  background: var(--wv-ctrl-stroke-strong);
+}
+
+.av-player__track i {
+  display: block;
+  width: 18%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--wv-accent);
+}
+
+.av-player__track::after {
+  position: absolute;
+  top: 50%;
+  left: 18%;
+  width: 12px;
+  height: 12px;
+  border: 3px solid var(--wv-accent);
+  border-radius: 50%;
+  background: var(--wv-fill-card);
+  box-shadow: var(--wv-shadow-2);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+/* ── the content pane: this is what the container queries measure ────────── */
+
+.av-pane {
+  position: relative;
+  /* flex-grow is load-bearing: `container-type: inline-size` removes this element's intrinsic
+     width contribution, so without an explicit grow it collapses to 0px as a flex item. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden auto;
+  /* LayerFillColorDefault over the Mica-like base: the pane is a distinct layer, not the base. */
+  background: var(--wv-layer);
+  border-top-left-radius: var(--wv-r-card);
+  border-left: 1px solid var(--wv-divider);
+  border-top: 1px solid var(--wv-divider);
+  container: artist-page / inline-size;
+  scrollbar-color: var(--wv-ctrl-stroke-strong) transparent;
+  scrollbar-width: thin;
+}
+
+/* ── sticky identity bar: full-width, opaque, out of flow ────────────────── */
+
+.av-sticky {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wv-m);
+  height: 48px;
+  margin-bottom: -48px;
+  padding: 0 var(--wv-gutter);
+  border-bottom: 1px solid var(--wv-divider);
+  background: var(--wv-solid-base);
+  box-shadow: var(--wv-shadow-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.av-sticky[data-shown="1"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.av-sticky__art {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wv-r-control);
+  object-fit: cover;
+  object-position: 62% 30%;
+}
+
+.av-sticky strong {
+  flex: 1;
+  overflow: hidden;
+  font: var(--wv-t-body-lg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── shared identity copy ───────────────────────────────────────────────── */
+
+.av-identity__copy {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.av-identity__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-xs);
+  margin: 0;
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+}
+
+/* No nowrap and no ellipsis on the artist name at any width — v1 encoded a guaranteed
+   clipped name as a rule across nine truncation sites. */
+.av-identity__name {
+  margin: var(--wv-s) 0 0;
+  font: var(--wv-t-title-lg);
+  letter-spacing: -0.01em;
+  overflow-wrap: break-word;
+}
+
+/* Title → Body gets 12epx per content-basics. */
+.av-identity__bio {
+  display: -webkit-box;
+  max-width: var(--wv-bio-measure);
+  margin: var(--wv-m) 0 0;
+  overflow: hidden;
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-body);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.av-identity__meta {
+  margin: var(--wv-m) 0 0;
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-body);
+}
+
+/* World rank: accent TEXT, one home, no competing pill above the name. */
+.av-rank .av-num {
+  color: var(--wv-accent-text);
+  font: var(--wv-t-body-str);
+  font-variant-numeric: tabular-nums;
+}
+
+.av-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wv-s);
+  flex-wrap: wrap;
+  margin-top: var(--wv-l);
+}
+
+/* ── buttons: WinUI Button / AccentButton ───────────────────────────────── */
+
+.av-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wv-s);
+  height: 32px;
+  padding: 0 var(--wv-m);
+  /* ControlElevationBorderBrush: stronger stroke on the bottom edge in light theme. */
+  border: 1px solid var(--wv-ctrl-stroke);
+  border-bottom-color: var(--wv-ctrl-edge);
+  border-radius: var(--wv-r-control);
+  background: var(--wv-fill-control);
+  font: var(--wv-t-body-str);
+  cursor: pointer;
+}
+
+.av-btn:hover {
+  background: var(--wv-fill-card-secondary);
+}
+
+/* Pressed: the fill drops AND the border flattens to a uniform stroke, as WinUI does. */
+.av-btn:active {
+  border-bottom-color: var(--wv-ctrl-stroke);
+  color: var(--wv-text-secondary);
+  background: var(--wv-subtle-tertiary);
+}
+
+.av-btn--accent {
+  border-color: var(--wv-on-accent-stroke);
+  border-bottom-color: var(--wv-on-accent-edge);
+  color: var(--wv-text-on-accent);
+  background: var(--wv-accent);
+}
+
+.av-btn--accent:hover {
+  color: var(--wv-text-on-accent);
+  background: var(--wv-accent-hover);
+}
+
+.av-btn--accent:active {
+  border-bottom-color: var(--wv-on-accent-stroke);
+  color: rgba(255, 255, 255, 0.7);
+  background: var(--wv-accent-press);
+}
+
+.av-btn--icon {
+  width: 32px;
+  padding: 0;
+}
+
+.av-btn--sm {
+  height: 28px;
+  padding: 0 var(--wv-m);
+}
+
+/* HyperlinkButton: accent text, no chrome until hover. */
+.av-link {
+  padding: var(--wv-xs) var(--wv-s);
+  border: 0;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-accent-text);
+  background: transparent;
+  font: var(--wv-t-body-str);
+  cursor: pointer;
+}
+
+.av-link:hover {
+  background: var(--wv-subtle-secondary);
+}
+
+.av-link:active {
+  color: var(--wv-text-secondary);
+  background: var(--wv-subtle-tertiary);
+}
+
+.av-link--block {
+  align-self: start;
+  margin-top: var(--wv-s);
+}
+
+/* ── VARIANT: editorial split (recommended) ─────────────────────────────── */
+
+.av-hero--editorial {
+  position: relative;
+  isolation: isolate;
+}
+
+.av-hero--editorial .av-hero__wash {
+  position: absolute;
+  inset: 0;
+  border-bottom: 1px solid var(--wv-divider);
+  background:
+    /* A directional wash: densest under the type, clearing before the photograph. */
+    linear-gradient(100deg, rgba(var(--wv-wash-rgb), 0.14) 0%, rgba(var(--wv-wash-rgb), 0.05) 52%, transparent 78%),
+    var(--wv-layer);
+}
+
+.av-hero__split {
+  position: relative;
+  display: grid;
+  /* Asymmetric by construction — NOT a 50/50 split, which reads as a template. */
+  grid-template-columns: minmax(0, 1fr) 46%;
+  align-items: stretch;
+  min-height: 440px;
+}
+
+.av-hero--editorial .av-identity {
+  display: flex;
+  align-items: center;
+  padding: var(--wv-xxxl) var(--wv-xxl) var(--wv-xxxl) var(--wv-gutter);
+}
+
+/* Oversized type using Fluent's real Display step — expressive and on-ramp. */
+.av-hero--editorial .av-identity__name {
+  margin: var(--wv-m) 0 0;
+  font: var(--wv-t-display);
+  letter-spacing: -0.028em;
+}
+
+.av-hero--editorial .av-identity__bio {
+  max-width: 46ch;
+}
+
+/**
+ * The figure bleeds to the pane's top and right edges, so those corners stay square and only the
+ * inner corner is rounded — Fluent's "straight edges that intersect are not rounded" rule used
+ * deliberately, which is what stops this reading as a floating web card.
+ */
+.av-hero__figure {
+  position: relative;
+  overflow: hidden;
+  border-bottom-left-radius: var(--wv-r-card);
+  background: rgb(var(--wv-seed-rgb));
+}
+
+.av-hero__figure img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 58% 26%;
+  /* A slow settle on load: the photograph arrives rather than snapping in. */
+  animation: av-figure-settle 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Cinematic framing: a whisper of inward falloff so the photo has depth against the flat page,
+   plus a 1px inner light stroke so a pale press shot still has a defined edge. */
+.av-hero__vignette {
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 -60px 90px -60px rgba(0, 0, 0, 0.45),
+    inset 60px 0 90px -70px rgba(0, 0, 0, 0.28);
+}
+
+@keyframes av-figure-settle {
+  from {
+    opacity: 0;
+    transform: scale(1.035);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── VARIANT: wide band ─────────────────────────────────────────────────── */
+
+.av-hero--band .av-hero__photo {
+  height: 288px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--wv-divider);
+  background: rgb(var(--wv-wash-rgb));
+}
+
+.av-hero--band .av-hero__photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* The 2660×1139 source has real negative space at the top; bias into it. */
+  object-position: 50% 26%;
+}
+
+.av-hero--band .av-identity {
+  padding: var(--wv-xl) var(--wv-gutter) var(--wv-xxl);
+}
+
+/**
+ * The band pays for its photograph in vertical space, so its identity strip is compact:
+ * verified + metadata share one line and the commands sit to the right, CommandBar-style.
+ * This is what buys the ledger its fold budget back.
+ */
+@container artist-page (min-width: 901px) {
+  .av-hero--band .av-identity__copy {
+    display: grid;
+    grid-template-areas:
+      "eyebrow meta actions"
+      "name    name actions"
+      "bio     bio  actions";
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    column-gap: var(--wv-m);
+  }
+
+  .av-hero--band .av-identity__eyebrow {
+    grid-area: eyebrow;
+  }
+
+  .av-hero--band .av-identity__meta {
+    grid-area: meta;
+    margin: 0;
+    justify-self: start;
+  }
+
+  .av-hero--band .av-identity__meta::before {
+    margin-right: var(--wv-s);
+    color: var(--wv-text-tertiary);
+    content: "·";
+  }
+
+  .av-hero--band .av-identity__name {
+    grid-area: name;
+  }
+
+  .av-hero--band .av-identity__bio {
+    grid-area: bio;
+    margin-top: var(--wv-s);
+  }
+
+  .av-hero--band .av-actions {
+    grid-area: actions;
+    align-self: center;
+    margin: 0;
+    padding-left: var(--wv-xxl);
+  }
+}
+
+/* ── VARIANT: portrait plate ────────────────────────────────────────────── */
+
+.av-hero--plate {
+  position: relative;
+}
+
+.av-hero--plate .av-hero__wash {
+  position: absolute;
+  inset: 0;
+  border-bottom: 1px solid var(--wv-divider);
+  /* Mica's model: sample once, tint the base gently. Flat — no gradient, no tail. */
+  background: var(--wv-wash);
+}
+
+.av-hero--plate .av-identity {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wv-gutter);
+  padding: var(--wv-gutter);
+}
+
+.av-hero__plate {
+  flex: 0 0 320px;
+  width: 320px;
+  height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-card);
+  /* The only shadow on the page. */
+  box-shadow: var(--wv-shadow-8);
+}
+
+.av-hero__plate img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 62% 30%;
+}
+
+.av-hero--plate .av-identity__copy {
+  padding-top: var(--wv-xs);
+}
+
+/* ── VARIANT: current fade (the control) ────────────────────────────────── */
+/* Rebuilt against ArtistHeroLayout.cs: WideHeight 420, clamp(0.32w, 420, 560),
+   PhotoFadeBandFor clamp(0.28h, 120, 180), ContentBlendTail 96. */
+
+.av-hero--current {
+  position: relative;
+  height: clamp(420px, 32cqw, 560px);
+  overflow: hidden;
+  color: #f8fbff;
+  isolation: isolate;
+}
+
+.av-hero--current .av-hero__photo {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+}
+
+.av-hero--current .av-hero__photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 30%;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 180px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 180px), transparent 100%);
+}
+
+.av-hero--current .av-hero__scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(4, 10, 18, 0.68) 0%, rgba(4, 10, 18, 0.35) 42%, transparent 74%),
+    linear-gradient(0deg, rgba(4, 9, 16, 0.62) 0%, rgba(4, 9, 16, 0.26) 42%, transparent 68%);
+}
+
+.av-hero--current .av-hero__overlay {
+  position: absolute;
+  z-index: 3;
+  right: min(380px, 31%);
+  bottom: 116px;
+  left: var(--wv-gutter);
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.av-hero--current .av-identity__name {
+  margin: var(--wv-s) 0 0;
+  overflow: hidden;
+  color: #ffffff;
+  text-overflow: ellipsis;
+  /* Kept deliberately: this clipping IS the baseline's behaviour. */
+  white-space: nowrap;
+}
+
+.av-hero__badges {
+  display: flex;
+  gap: var(--wv-s);
+}
+
+.av-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-xs);
+  height: 24px;
+  padding: 0 var(--wv-m);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--wv-r-pill);
+  color: rgba(255, 255, 255, 0.84);
+  background: rgba(7, 20, 29, 0.54);
+  font: var(--wv-t-caption);
+}
+
+.av-badge--verified {
+  border-color: transparent;
+  color: #062337;
+  background: #4db8e7;
+}
+
+.av-hero__bio {
+  display: -webkit-box;
+  max-width: var(--wv-bio-measure);
+  margin: var(--wv-s) 0 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.8);
+  font: var(--wv-t-body);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.av-hero__stats {
+  margin: var(--wv-m) 0 0;
+  color: rgba(255, 255, 255, 0.66);
+  font: var(--wv-t-body);
+}
+
+.av-hero--current .av-btn {
+  border-color: rgba(255, 255, 255, 0.42);
+  color: #ffffff;
+  background: rgba(9, 19, 27, 0.24);
+}
+
+.av-hero--current .av-btn--accent {
+  border-color: transparent;
+  color: #062337;
+  background: #4db8e7;
+}
+
+.av-hero__pinned {
+  position: absolute;
+  z-index: 4;
+  right: var(--wv-gutter);
+  bottom: 128px;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--wv-m);
+  width: 320px;
+  padding: var(--wv-m);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--wv-r-card);
+  color: #f5f7fa;
+  background: rgba(9, 17, 24, 0.72);
+}
+
+.av-hero__pinned > div {
+  display: grid;
+  min-width: 0;
+}
+
+.av-hero__pinned span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-xs);
+  color: rgba(255, 255, 255, 0.65);
+  font: var(--wv-t-caption);
+}
+
+.av-hero__pinned strong {
+  overflow: hidden;
+  font: var(--wv-t-body-str);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.av-hero__pinned small {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.56);
+  font: var(--wv-t-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.av-hero__blend {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 96px;
+  background: linear-gradient(to bottom, transparent, var(--wv-layer));
+}
+
+/* ── content bands ──────────────────────────────────────────────────────── */
+
+.av-body {
+  display: grid;
+  /* Explicit, capped column: an implicit auto track is max-content sized, so a nowrap track
+     title would push the whole ledger past the pane instead of ellipsing. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--wv-xxl);
+  padding: var(--wv-xxl) var(--wv-gutter) 96px;
+}
+
+/* Tracks and the pinned item side by side: no pogo-sticking to reach the artist's pick. */
+.av-band {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 328px;
+  gap: var(--wv-xxl);
+  align-items: start;
+}
+
+.av-rail-column {
+  display: grid;
+  gap: var(--wv-xl);
+  min-width: 0;
+}
+
+.av-section {
+  min-width: 0;
+}
+
+.av-cover {
+  display: block;
+  border-radius: var(--wv-r-control);
+  box-shadow: inset 0 0 0 1px var(--wv-art-inset);
+  object-fit: cover;
+}
+
+.av-cover--40 {
+  width: 40px;
+  height: 40px;
+}
+
+.av-cover--48 {
+  width: 48px;
+  height: 48px;
+}
+
+.av-cover--56 {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--wv-r-control);
+}
+
+.av-cover--80 {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--wv-r-card);
+}
+
+.av-cover--96 {
+  width: 96px;
+  height: 96px;
+  border-radius: var(--wv-r-card);
+}
+
+/* Section header: accent rule + Subtitle + count, trailing HyperlinkButton. 8epx between the
+   control and its header per content-basics. */
+.av-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--wv-m);
+  min-height: 32px;
+  margin-bottom: var(--wv-s);
+}
+
+.av-section-header__bar {
+  flex: 0 0 3px;
+  width: 3px;
+  height: 20px;
+  border-radius: var(--wv-r-control);
+  background: var(--wv-accent);
+}
+
+.av-section-header h2,
+.av-section-header h3 {
+  margin: 0;
+  font: var(--wv-t-subtitle);
+  letter-spacing: -0.01em;
+}
+
+.av-section-header__count {
+  color: var(--wv-text-tertiary);
+  font: var(--wv-t-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.av-section-header__trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-s);
+  margin-left: auto;
+}
+
+/* ── Artist pick ────────────────────────────────────────────────────────── */
+
+/* The artist's comment as a Fluent surface — SolidBackgroundFillColorBase, card stroke, 8px
+   radius — rather than the borrowed white chat pill. */
+.av-pick__comment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-s);
+  margin: 0;
+  padding: var(--wv-xs) var(--wv-m) var(--wv-xs) var(--wv-xs);
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-pill);
+  background: var(--wv-solid-base);
+  font: var(--wv-t-caption);
+}
+
+.av-pick__comment--on-image {
+  position: absolute;
+  z-index: 2;
+  top: var(--wv-m);
+  left: var(--wv-m);
+  max-width: calc(100% - var(--wv-xxl));
+  box-shadow: var(--wv-shadow-8);
+}
+
+.av-pick__avatar {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: 50%;
+  background-image: url("/assets/conan-gray-hero.webp");
+  background-position: 62% 28%;
+  background-size: 62px auto;
+}
+
+.av-pick {
+  min-width: 0;
+}
+
+.av-pick--compact {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--wv-m);
+  align-items: center;
+  padding: var(--wv-m);
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-card);
+  background: var(--wv-fill-card);
+}
+
+.av-pick__copy {
+  display: grid;
+  gap: var(--wv-xxs);
+  justify-items: start;
+  min-width: 0;
+}
+
+.av-pick__copy strong {
+  overflow: hidden;
+  font: var(--wv-t-body-str);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.av-pick__copy small {
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+}
+
+.av-pick--compact .av-pick__copy strong {
+  margin-top: var(--wv-xs);
+}
+
+.av-pick--hero {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-card);
+  background: rgb(var(--wv-wash-rgb));
+}
+
+.av-pick__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 62% 24%;
+}
+
+/* The inset item card is a real surface with its own stroke and elevation, so it reads as a
+   card resting ON the photo rather than as text burned into it. */
+.av-pick__card {
+  position: absolute;
+  z-index: 2;
+  right: var(--wv-m);
+  bottom: var(--wv-m);
+  left: var(--wv-m);
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: var(--wv-m);
+  align-items: center;
+  padding: var(--wv-s);
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-card);
+  background: var(--wv-solid-base);
+  box-shadow: var(--wv-shadow-8);
+}
+
+/* ── latest release ─────────────────────────────────────────────────────── */
+
+.av-latest {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: var(--wv-m);
+  padding: var(--wv-m);
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-card);
+  background: var(--wv-fill-card);
+}
+
+.av-latest__copy {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+}
+
+.av-latest__copy strong {
+  overflow: hidden;
+  font: var(--wv-t-body-str);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.av-latest__copy small {
+  margin-top: var(--wv-xxs);
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+}
+
+.av-latest__actions {
+  display: flex;
+  gap: var(--wv-s);
+  margin-top: var(--wv-m);
+}
+
+/* ── the ledger: one flat ranked column ─────────────────────────────────── */
+
+/* Two columns, 5 + 5, reading 1–5 down the left then 6–10 down the right. */
+.av-ledger {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--wv-xxl);
+}
+
+.av-ledger__column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+/* Pager: chevrons + dots, matching the shipping PagedShelf affordance. */
+.av-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-s);
+}
+
+.av-pager > button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-secondary);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.av-pager > button:hover:not(:disabled) {
+  color: var(--wv-text-primary);
+  background: var(--wv-subtle-secondary);
+}
+
+.av-pager > button:disabled {
+  color: var(--wv-text-tertiary);
+  cursor: default;
+  opacity: 0.4;
+}
+
+.av-pager__dots {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-s);
+}
+
+.av-pager__dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--wv-ctrl-stroke-strong);
+  cursor: pointer;
+  transition: background-color 120ms linear, transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.av-pager__dots button:hover {
+  background: var(--wv-text-tertiary);
+  transform: scale(1.2);
+}
+
+.av-pager__dots button[aria-selected="true"] {
+  background: var(--wv-text-secondary);
+}
+
+.av-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px 40px minmax(0, 1fr) 32px 44px;
+  align-items: center;
+  gap: var(--wv-m);
+  height: var(--wv-row-h);
+  padding: 0 var(--wv-s);
+  border-radius: var(--wv-r-control);
+  cursor: pointer;
+}
+
+.av-row:hover {
+  background: var(--wv-subtle-secondary);
+}
+
+.av-row:active {
+  background: var(--wv-subtle-tertiary);
+}
+
+/* One divider per row, inset to the text start so five rows read as one object. */
+.av-row::after {
+  position: absolute;
+  right: var(--wv-s);
+  bottom: 0;
+  left: 88px;
+  height: 1px;
+  background: var(--wv-divider);
+  content: "";
+}
+
+.av-row--last::after {
+  display: none;
+}
+
+.av-row__index {
+  position: relative;
+  height: 20px;
+}
+
+.av-row__rank,
+.av-row__play,
+.av-row__eq {
+  position: absolute;
+  display: grid;
+  inset: 0;
+  margin: auto;
+  place-items: center;
+  transition: opacity 100ms linear;
+}
+
+.av-row__rank {
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.av-row__play {
+  /* Optical alignment: a triangle centred mathematically reads as sitting left of centre. */
+  padding-left: 2px;
+  color: var(--wv-accent);
+  opacity: 0;
+}
+
+.av-row__eq {
+  color: var(--wv-accent);
+}
+
+/* Now playing: the equalizer owns the index cell and the rank steps aside. */
+.av-row[data-playing="1"] .av-row__rank {
+  opacity: 0;
+}
+
+.av-row[data-playing="1"] .av-row__title {
+  color: var(--wv-accent-text);
+}
+
+.av-row:hover .av-row__rank,
+.av-row:focus-visible .av-row__rank,
+.av-row:focus-within .av-row__rank,
+.av-row:hover .av-row__eq,
+.av-row:focus-within .av-row__eq {
+  opacity: 0;
+}
+
+.av-row:hover .av-row__play,
+.av-row:focus-visible .av-row__play,
+.av-row:focus-within .av-row__play {
+  opacity: 1;
+}
+
+/* Two-line row: Body for the title, Caption beneath — content-basics for multi-line lists. */
+.av-row__copy {
+  display: grid;
+  min-width: 0;
+}
+
+.av-row__title {
+  overflow: hidden;
+  font: var(--wv-t-body-str);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.av-row__sub {
+  display: flex;
+  align-items: center;
+  gap: var(--wv-xs);
+  overflow: hidden;
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+  white-space: nowrap;
+}
+
+.av-explicit {
+  display: grid;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-layer);
+  background: var(--wv-text-tertiary);
+  font: var(--wv-t-caption);
+  line-height: 1;
+  place-items: center;
+  text-decoration: none;
+}
+
+.av-row__duration {
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-body);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Like and more occupy their columns at all times, so revealing them cannot reflow. */
+.av-row__like,
+.av-row__more {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-secondary);
+  background: transparent;
+  opacity: 0;
+  place-items: center;
+  cursor: pointer;
+  transition: opacity 100ms linear;
+}
+
+.av-row__like {
+  justify-self: center;
+}
+
+.av-row__more {
+  justify-self: end;
+}
+
+.av-row:hover .av-row__like,
+.av-row:hover .av-row__more,
+.av-row:focus-within .av-row__like,
+.av-row:focus-within .av-row__more {
+  opacity: 1;
+}
+
+.av-row__like:hover,
+.av-row__more:hover {
+  background: var(--wv-subtle-secondary);
+}
+
+/* A liked track is state, not an affordance: it stays visible. */
+.av-row__like:has([data-liked="1"]) {
+  color: var(--wv-accent);
+  opacity: 1;
+}
+
+/* ── discography: one continuous rail ───────────────────────────────────── */
+
+/**
+ * Discography: a vertical stack of typed sections. Each section is a WRAPPING GRID that fills
+ * the available width — no horizontal scroller, so the whole catalogue is reachable by scrolling
+ * and nothing is hidden behind a gesture.
+ */
+.av-discography {
+  display: grid;
+  /* Explicit capped column. Without it the implicit track is max-content sized, and an
+     `auto-fill` grid inside an indefinite inline size collapses to ONE full-width column —
+     which is what blew the album covers up to the full pane width. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--wv-xxxl);
+}
+
+.av-discography__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wv-s);
+  margin: 0;
+  font: var(--wv-t-title);
+  letter-spacing: -0.02em;
+}
+
+.av-discography__title span {
+  color: var(--wv-text-tertiary);
+  font: var(--wv-t-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.av-discography-facet {
+  position: relative;
+}
+
+/* The facet header pins below the 48px artist command bar and releases at the end of its section. */
+.av-facet-header {
+  position: sticky;
+  z-index: 12;
+  top: 48px;
+  min-height: 36px;
+  margin: 0 0 var(--wv-m);
+  padding: var(--wv-xs) var(--wv-s) var(--wv-xs) 0;
+  border-bottom: 1px solid transparent;
+  background: var(--wv-layer);
+  transition:
+    padding 120ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 120ms linear,
+    border-color 120ms linear;
+}
+
+.av-facet-header[data-stuck="1"] {
+  padding-left: var(--wv-s);
+  border-bottom-color: var(--wv-divider);
+  background: var(--wv-solid-base);
+}
+
+.av-facet-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-s);
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.av-facet-collapse {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-secondary);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.av-facet-collapse:hover {
+  color: var(--wv-text-primary);
+  background: var(--wv-subtle-secondary);
+}
+
+.av-facet-body {
+  display: grid;
+  gap: var(--wv-xxl);
+}
+
+.av-year-group {
+  display: grid;
+  gap: var(--wv-m);
+  min-width: 0;
+}
+
+.av-year-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wv-s);
+  margin: 0;
+  color: var(--wv-text-primary);
+  font: var(--wv-t-body-str);
+}
+
+.av-year-heading::after {
+  order: 2;
+  flex: 1;
+  height: 1px;
+  background: var(--wv-divider);
+  content: "";
+}
+
+.av-year-heading small {
+  order: 1;
+  color: var(--wv-text-tertiary);
+  font: var(--wv-t-caption);
+}
+
+/* Complete, wrapping collection: no horizontal rail and no preview slice. */
+.av-release-grid {
+  --av-grid-gap: var(--wv-l);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--wv-xl) var(--wv-l);
+  min-width: 0;
+}
+
+.av-release {
+  position: relative;
+  min-width: 0;
+}
+
+.av-release__art {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-card);
+  background: var(--wv-fill-card);
+  transition:
+    border-color 120ms linear,
+    background-color 120ms linear;
+}
+
+.av-release[data-expanded="1"] .av-release__art {
+  border: 2px solid var(--wv-accent);
+  background: var(--wv-fill-card-secondary);
+}
+
+.av-release__open {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.av-release__open--art {
+  display: block;
+  width: 100%;
+}
+
+.av-release__art .av-cover {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* The cover does not scale on hover: HoverScale in a tight rail reads as neighbour reflow. */
+.av-release__play {
+  position: absolute;
+  z-index: 2;
+  right: var(--wv-s);
+  bottom: var(--wv-s);
+  display: grid;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--wv-on-accent-stroke);
+  border-bottom-color: var(--wv-on-accent-edge);
+  border-radius: 50%;
+  color: var(--wv-text-on-accent);
+  background: var(--wv-accent);
+  box-shadow: var(--wv-shadow-8);
+  opacity: 0;
+  place-items: center;
+  cursor: pointer;
+  transition: opacity 120ms linear;
+}
+
+.av-release:hover .av-release__play,
+.av-release:focus-within .av-release__play {
+  opacity: 1;
+}
+
+.av-release__open--copy,
+.av-release__copy {
+  display: grid;
+  gap: var(--wv-xxs);
+  width: 100%;
+  margin-top: var(--wv-s);
+}
+
+.av-release__open--copy strong,
+.av-release__copy strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font: var(--wv-t-body-str);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.av-release__open--copy small,
+.av-release__copy small {
+  overflow: hidden;
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Full-row iTunes-style expansion, owned by the selected card above it. */
+.av-album-drawer {
+  position: relative;
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin-bottom: var(--wv-m);
+  padding: var(--wv-s) var(--wv-l);
+  overflow: hidden;
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-card);
+  background: var(--wv-fill-card-secondary);
+  animation: av-drawer-reveal 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.av-album-drawer__connector {
+  position: absolute;
+  top: 0;
+  left: var(--av-drawer-left);
+  width: var(--av-drawer-width);
+  height: 3px;
+  border-radius: var(--wv-r-control);
+  background: var(--wv-accent);
+}
+
+.av-album-drawer__header {
+  display: flex;
+  align-items: center;
+  gap: var(--wv-m);
+  min-height: 44px;
+}
+
+.av-album-drawer__play {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  padding: 0 0 0 1px;
+  border: 1px solid var(--wv-on-accent-stroke);
+  border-bottom-color: var(--wv-on-accent-edge);
+  border-radius: 50%;
+  color: var(--wv-text-on-accent);
+  background: var(--wv-accent);
+  place-items: center;
+  cursor: pointer;
+}
+
+.av-album-drawer__identity {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.av-album-drawer__identity strong,
+.av-album-drawer__identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.av-album-drawer__identity strong {
+  font: var(--wv-t-body-str);
+}
+
+.av-album-drawer__identity small {
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+}
+
+.av-album-drawer__tracks {
+  display: grid;
+}
+
+.av-drawer-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  min-width: 0;
+  min-height: 40px;
+  border-top: 1px solid var(--wv-divider);
+}
+
+.av-drawer-track__main {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: var(--wv-s);
+  min-width: 0;
+  padding: 0 var(--wv-s);
+  border: 0;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-primary);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.av-drawer-track__main:hover,
+.av-drawer-track__main:focus-visible,
+.av-drawer-track__more:hover {
+  background: var(--wv-subtle-secondary);
+}
+
+.av-drawer-track__index {
+  color: var(--wv-text-tertiary);
+  font: var(--wv-t-caption);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.av-drawer-track__play {
+  position: absolute;
+  left: 17px;
+  color: var(--wv-accent);
+  opacity: 0;
+}
+
+.av-drawer-track__main:hover .av-drawer-track__index,
+.av-drawer-track__main:focus-visible .av-drawer-track__index {
+  opacity: 0;
+}
+
+.av-drawer-track__main:hover .av-drawer-track__play,
+.av-drawer-track__main:focus-visible .av-drawer-track__play {
+  opacity: 1;
+}
+
+.av-drawer-track__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wv-xs);
+  min-width: 0;
+  overflow: hidden;
+  font: var(--wv-t-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.av-drawer-track__title abbr {
+  display: grid;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-layer);
+  background: var(--wv-text-tertiary);
+  font: var(--wv-t-caption);
+  line-height: 1;
+  place-items: center;
+  text-decoration: none;
+}
+
+.av-drawer-track__duration {
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+  text-align: right;
+}
+
+.av-drawer-track__more {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  align-self: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--wv-r-control);
+  color: var(--wv-text-secondary);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+@keyframes av-drawer-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── gallery ────────────────────────────────────────────────────────────── */
+
+.av-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--wv-xl);
+}
+
+.av-gallery__item {
+  padding: 0;
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-card);
+  overflow: hidden;
+  aspect-ratio: 1;
+  background: transparent;
+  cursor: pointer;
+}
+
+.av-gallery__item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── study chrome: an overlay, so it costs the page zero layout ──────────── */
+
+.av-study-overlay {
+  position: fixed;
+  z-index: 200;
+  bottom: calc(var(--wv-player-h) + var(--wv-l));
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--wv-m);
+  max-width: calc(100vw - 32px);
+  padding: var(--wv-s);
+  border: 1px solid var(--wv-card-stroke-solid);
+  border-radius: var(--wv-r-pill);
+  background: color-mix(in srgb, var(--wv-solid-base) 88%, transparent);
+  box-shadow: var(--wv-shadow-8);
+  backdrop-filter: blur(24px) saturate(140%);
+  transform: translateX(-50%);
+}
+
+.av-study-overlay__back {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--wv-text-secondary);
+  place-items: center;
+  text-decoration: none;
+}
+
+.av-study-overlay__switch {
+  display: inline-flex;
+  gap: var(--wv-xxs);
+  padding: var(--wv-xxs);
+  border-radius: var(--wv-r-pill);
+  background: var(--wv-subtle-secondary);
+}
+
+.av-study-overlay__switch button {
+  height: 28px;
+  padding: 0 var(--wv-m);
+  border: 0;
+  border-radius: var(--wv-r-pill);
+  color: var(--wv-text-secondary);
+  background: transparent;
+  font: var(--wv-t-caption);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.av-study-overlay__switch button[aria-pressed="true"] {
+  color: var(--wv-text-primary);
+  background: var(--wv-fill-card);
+  box-shadow: var(--wv-shadow-2);
+  font: var(--wv-t-caption);
+  font-weight: 600;
+}
+
+.av-study-overlay__note {
+  max-width: 360px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--wv-text-secondary);
+  font: var(--wv-t-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.av-study-overlay__note b {
+  color: var(--wv-accent-text);
+}
+
+.av-study-overlay__note i {
+  display: none;
+}
+
+.av-study-overlay__theme {
+  display: grid;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--wv-ctrl-stroke);
+  border-bottom-color: var(--wv-ctrl-edge);
+  border-radius: 50%;
+  color: var(--wv-text-secondary);
+  background: var(--wv-fill-control);
+  place-items: center;
+  cursor: pointer;
+}
+
+/* ── responsive: sidebar tiers track ShellResponsiveLayout ──────────────── */
+
+@media (max-width: 1399px) {
+  .artist-study {
+    --wv-sidebar-w: 240px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .artist-study {
+    --wv-sidebar-w: 56px;
+  }
+
+  .av-sidebar {
+    align-items: center;
+    padding: 0 var(--wv-xs) var(--wv-m);
+  }
+
+  .av-nav-item span {
+    display: none;
+  }
+
+  .av-nav-item {
+    justify-content: center;
+    width: 44px;
+    padding: 0;
+  }
+
+  .av-titlebar {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+
+  .av-player {
+    grid-template-columns: 48px minmax(0, 1fr) auto 48px 32px;
+  }
+
+  .av-player__track,
+  .av-player__time:last-of-type {
+    display: none;
+  }
+}
+
+@media (max-width: 679px) {
+  .artist-study {
+    --wv-sidebar-w: 0px;
+  }
+
+  .av-sidebar {
+    display: none;
+  }
+
+  .av-pane {
+    border-left: 0;
+    border-top-left-radius: 0;
+  }
+
+  .av-study-overlay {
+    gap: var(--wv-s);
+  }
+
+  .av-study-overlay__note,
+  .av-study-overlay__back {
+    display: none;
+  }
+}
+
+/* ── responsive: content, measured against the PANE (correct container) ──── */
+
+@container artist-page (max-width: 1000px) {
+  /* Container queries only style DESCENDANTS of the container, so token overrides must land on
+     a child of .av-pane — setting them on .artist-study (an ancestor) silently does nothing. */
+  .av-pane > * {
+    --wv-gutter: var(--wv-xxl);
+  }
+
+  /* The pick rail folds under the ledger before either gets cramped. */
+  .av-band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .av-rail-column {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-auto-flow: column;
+  }
+}
+
+@container artist-page (max-width: 900px) {
+  .av-identity__name {
+    font: 600 28px/36px var(--wv-font-display);
+  }
+
+  .av-hero--band .av-hero__photo {
+    height: 224px;
+  }
+
+  .av-hero__plate {
+    flex-basis: 208px;
+    width: 208px;
+    height: 208px;
+  }
+
+  .av-hero__pinned {
+    display: none;
+  }
+
+  .av-hero--current .av-hero__overlay {
+    right: var(--wv-gutter);
+  }
+
+  /* One column of ten before anything is dropped from a row. */
+  .av-ledger {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container artist-page (max-width: 620px) {
+  .av-pane > * {
+    --wv-gutter: var(--wv-l);
+    --wv-row-h: 48px;
+  }
+
+  .av-hero--band .av-hero__photo {
+    height: 176px;
+  }
+
+  .av-hero--plate .av-identity {
+    flex-direction: column;
+  }
+
+  .av-hero__plate {
+    flex-basis: 160px;
+    width: 160px;
+    height: 160px;
+  }
+
+  .av-identity__bio {
+    -webkit-line-clamp: 3;
+  }
+
+  .av-rail-column {
+    grid-auto-flow: row;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .av-actions {
+    width: 100%;
+  }
+
+  .av-btn--accent {
+    flex: 1 1 100%;
+  }
+
+  .av-pick--compact {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+
+  .av-cover--96 {
+    width: 80px;
+    height: 80px;
+  }
+
+  .av-row {
+    grid-template-columns: 40px minmax(0, 1fr) 44px;
+  }
+
+  .av-row__index,
+  .av-row__like {
+    display: none;
+  }
+
+  .av-row::after {
+    left: 52px;
+  }
+
+  .av-release-grid {
+    --av-grid-gap: var(--wv-m);
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--wv-l) var(--wv-m);
+  }
+
+  .av-facet-status__range {
+    display: none;
+  }
+
+  .av-album-drawer {
+    padding-right: var(--wv-s);
+    padding-left: var(--wv-s);
+  }
+
+  .av-drawer-track__main {
+    grid-template-columns: 24px minmax(0, 1fr) 42px;
+    padding: 0 var(--wv-xs);
+  }
+
+  .av-drawer-track__play {
+    left: 10px;
+  }
+
+  .av-gallery {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--wv-m);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artist-study *,
+  .artist-study *::before,
+  .artist-study *::after {
+    transition-duration: 0.01ms !important;
+  }
+}

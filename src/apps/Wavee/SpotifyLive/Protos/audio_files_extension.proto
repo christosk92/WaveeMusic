@@ -1,0 +1,31 @@
+// Vendored from librespot (protocol/proto/audio_files_extension.proto), extracted from Spotify desktop.
+// The AUDIO_FILES (extension kind 5) payload on a spotify:audio: entity — the ONLY place FLAC file IDs are served
+// (TRACK_V4's file[] carries Ogg/AAC only). Shape byte-verified against a live capture.
+syntax = "proto3";
+
+package spotify.extendedmetadata.audiofiles;
+
+import "metadata.proto";   // resolves to spotify.metadata.AudioFile via the shared `spotify` package ancestor
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.Audiofiles";
+option java_package = "com.spotify.audiophile.proto";
+
+message NormalizationParams {
+    float loudness_db = 1;
+    float true_peak_db = 2;
+}
+
+message ExtendedAudioFile {
+    reserved 2;
+    reserved 3;
+    metadata.AudioFile file = 1;      // { bytes file_id = 1; Format format = 2; } — FLAC_FLAC=16, FLAC_FLAC_24BIT=22
+    int32 average_bitrate = 4;
+}
+
+message AudioFilesExtensionResponse {
+    repeated ExtendedAudioFile files = 1;
+    NormalizationParams default_file_normalization_params = 2;
+    NormalizationParams default_album_normalization_params = 3;
+    bytes audio_id = 4;              // 16-byte audio-entity uuid (== Track.original_audio.uuid)
+}

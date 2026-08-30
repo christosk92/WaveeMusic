@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wavee search — v4 mica cards</title>
+  <style>
+    :root {
+      --text: rgba(255,255,255,.786);
+      --text-2: rgba(255,255,255,.544);
+      --text-3: rgba(255,255,255,.445);
+      --accent: #60CDFF;
+      --accent-text: #99EBFF;
+      --card: rgba(255,255,255,.051);
+      --card-hover: rgba(255,255,255,.07);
+      --stroke: rgba(255,255,255,.069);
+      --stroke-dark: rgba(0,0,0,.18);
+      --control: rgba(255,255,255,.060);
+      --radius: 8px;
+      --radius-ctl: 4px;
+      --ease: cubic-bezier(.2,.8,.2,1);
+      --hero: #102040;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      background: #0b0c0e;
+    }
+    button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+    input { font: inherit; color: inherit; }
+
+    /* Lab caption sits outside the window so the mock can be judged as an app. */
+    .lab {
+      padding: 18px 22px 10px;
+      color: rgba(255,255,255,.5);
+      font-size: 12.5px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    .lab strong { color: var(--text); font-weight: 600; }
+    .lab code { font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; color: var(--accent-text); }
+
+    /* ── Window: Mica is the BASE. Chrome is transparent. Cards sit on it. ── */
+    .win {
+      position: relative;
+      display: grid;
+      grid-template-rows: 32px 1fr;
+      grid-template-columns: 52px 1fr;
+      width: min(1280px, calc(100vw - 32px));
+      height: min(860px, calc(100vh - 88px));
+      margin: 0 auto 28px;
+      border-radius: 8px;
+      overflow: hidden;
+      isolation: isolate;
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .mica {
+      grid-column: 1 / -1;
+      grid-row: 1 / -1;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 90% 70% at 12% 0%, #4a6d8c 0%, transparent 52%),
+        radial-gradient(ellipse 70% 50% at 92% 88%, #7a4a32 0%, transparent 48%),
+        radial-gradient(ellipse 50% 40% at 70% 8%, #2a3e5c 0%, transparent 42%),
+        #202020;
+      filter: saturate(.55) blur(0px);
+    }
+    .mica::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: rgba(32,32,32,.78);
+      mix-blend-mode: soft-light;
+    }
+    .mica-inactive { display: none; }
+
+    .titlebar, .rail, .page { position: relative; z-index: 1; }
+    .titlebar {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      font-size: 12px;
+      color: var(--text-2);
+    }
+    .titlebar .dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.18); }
+    .titlebar .name { font-weight: 600; color: var(--text); }
+
+    .rail {
+      grid-column: 1;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 0;
+    }
+    .rail button {
+      width: 36px; height: 36px; border-radius: 4px;
+      color: var(--text-2);
+    }
+    .rail button.active { background: rgba(96,205,255,.16); color: var(--accent); }
+    .rail svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+
+    .page {
+      grid-column: 2;
+      grid-row: 2;
+      overflow: auto;
+      padding: 8px 28px 48px 12px;
+    }
+    .page::-webkit-scrollbar { width: 10px; }
+    .page::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 8px; }
+
+    /* Query lives ON mica — not inside a plate. Zune: type is the chrome. */
+    .query-block { margin: 6px 0 10px; position: relative; max-width: 720px; }
+    .query-echo {
+      font-family: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", sans-serif;
+      font-weight: 300;
+      font-size: 40px;
+      letter-spacing: -.6px;
+      line-height: 1.05;
+      margin: 0 0 10px;
+      text-transform: lowercase;
+    }
+    .query-echo .ghost { color: var(--text-3); }
+    .box {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 32px;
+      padding: 0 10px;
+      background: var(--control);
+      border-radius: var(--radius-ctl);
+      border-bottom: 1px solid rgba(255,255,255,.14);
+    }
+    .box:focus-within { border-bottom: 2px solid var(--accent); }
+    .box input {
+      flex: 1;
+      background: none;
+      border: 0;
+      outline: none;
+      font-size: 14px;
+    }
+    .box .hint { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+    .flyout {
+      display: none;
+      position: absolute;
+      left: 0; right: 0; top: calc(100% + 6px);
+      z-index: 5;
+      padding: 6px;
+      border-radius: 8px;
+      background: rgba(44,44,44,.62);
+      backdrop-filter: blur(40px) saturate(1.4);
+      border: 1px solid rgba(255,255,255,.1);
+      box-shadow: 0 16px 40px rgba(0,0,0,.38);
+    }
+    .query-block.open .flyout { display: block; }
+    .fly-h {
+      font-size: 11px; color: var(--text-3); letter-spacing: .06em;
+      text-transform: uppercase; padding: 6px 10px 4px;
+    }
+    .sug {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 10px; border-radius: 4px; width: 100%; text-align: left;
+    }
+    .sug:hover, .sug:focus { background: rgba(255,255,255,.08); outline: none; }
+    .sug .ic { width: 16px; color: var(--text-3); }
+    .sug .art { width: 28px; height: 28px; border-radius: 3px; background: #345; flex: none; }
+    .sug .art.round { border-radius: 50%; }
+    .sug .k { margin-left: auto; font-size: 11px; color: var(--text-3); }
+
+    /* SelectorBar — server chipOrder, counts as numerals, accent underline. */
+    .facets {
+      display: flex; gap: 2px; flex-wrap: nowrap;
+      overflow-x: auto; margin: 4px 0 18px;
+      border-bottom: 1px solid var(--stroke);
+    }
+    .facets::-webkit-scrollbar { height: 0; }
+    .facet {
+      flex: none;
+      padding: 8px 12px 10px;
+      color: var(--text-2);
+      font-size: 13px;
+      position: relative;
+    }
+    .facet em {
+      font-style: normal; font-size: 11px; color: var(--text-3);
+      font-variant-numeric: tabular-nums; margin-left: 5px;
+    }
+    .facet[aria-current="true"] { color: var(--text); font-weight: 600; }
+    .facet[aria-current="true"]::after {
+      content: ""; position: absolute; left: 12px; right: 12px; bottom: 0;
+      height: 2px; background: var(--accent); border-radius: 2px 2px 0 0;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+    }
+
+    /* Hero: Zune crop — art oversized, falling off the right edge. Color lives HERE only. */
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      min-height: 228px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .hero-wash {
+      position: absolute; inset: 0;
+      background: radial-gradient(120% 80% at 88% 40%, var(--hero) 0%, transparent 58%);
+      opacity: .55;
+      pointer-events: none;
+    }
+    .hero-copy {
+      position: relative;
+      padding: 22px 8px 22px 22px;
+      display: flex; flex-direction: column; justify-content: flex-end;
+      gap: 8px; min-width: 0;
+    }
+    .eyebrow {
+      font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--accent-text); font-weight: 600;
+    }
+    .hero h2 {
+      font-family: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", sans-serif;
+      font-weight: 300; font-size: 34px; letter-spacing: -.4px;
+      margin: 0; line-height: 1.05;
+    }
+    .hero .meta { color: var(--text-2); font-size: 13px; }
+    .hero .why { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip {
+      font-size: 11px; color: var(--text-2);
+      border: 1px solid var(--stroke); border-radius: 999px;
+      padding: 2px 8px;
+    }
+    .actions { display: flex; gap: 8px; margin-top: 6px; }
+    .btn {
+      height: 32px; padding: 0 14px; border-radius: var(--radius-ctl);
+      background: var(--accent); color: #003545; font-weight: 600; font-size: 13px;
+    }
+    .btn.ghost {
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      border: 1px solid var(--stroke);
+      font-weight: 500;
+    }
+    .kbd { font-size: 10px; opacity: .7; margin-left: 6px; font-weight: 500; }
+    .hero-art {
+      position: relative;
+      width: 340px; height: 260px;
+      margin: -16px -40px -16px 0;
+      background:
+        radial-gradient(70% 60% at 30% 20%, #3a6ea8, transparent 60%),
+        linear-gradient(160deg, #102040, #0a1228 60%, #1a3a5c);
+      transform: rotate(-2.5deg);
+    }
+    .hero-art img { width: 100%; height: 100%; object-fit: cover; opacity: .92; }
+
+    .sec {
+      display: flex; align-items: center; gap: 8px;
+      margin: 18px 4px 10px;
+    }
+    .sec .tick { width: 3px; height: 14px; background: var(--accent); border-radius: 2px; }
+    .sec h3 { margin: 0; font-size: 15px; font-weight: 600; }
+    .sec .sub { margin-left: auto; font-size: 12px; color: var(--text-3); }
+
+    .matches { padding: 6px 4px; }
+    .row {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr) auto 28px;
+      align-items: center;
+      gap: 10px;
+      height: 44px;
+      padding: 0 10px;
+      border-radius: 4px;
+      width: 100%;
+      text-align: left;
+    }
+    .row.lg { height: 56px; }
+    .row:hover, .row:focus { background: var(--card-hover); outline: none; }
+    .row[aria-selected="true"] { background: rgba(96,205,255,.12); }
+    .cover {
+      width: 36px; height: 36px; border-radius: 3px; flex: none;
+      background: #234;
+    }
+    .row.lg .cover { width: 44px; height: 44px; }
+    .cover.round { border-radius: 50%; }
+    .cover.sq { border-radius: 6px; }
+    .t1 { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .t2 { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    mark {
+      background: none; color: var(--accent-text); font-weight: 650;
+      padding: 0;
+    }
+    .dur { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+    .kind-g {
+      width: 16px; height: 16px; color: var(--text-3);
+      stroke: currentColor; fill: none; stroke-width: 1.7;
+    }
+    .row[aria-selected="true"] .kind-g { color: var(--accent); }
+
+    .film {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      padding: 12px;
+    }
+    .tile { text-align: left; }
+    .tile .art {
+      aspect-ratio: 1;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      background: #1a2a3a;
+    }
+    .tile .t1 { font-size: 13px; }
+    .tile .t2 { font-size: 12px; }
+
+    .genres {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px;
+    }
+    .g {
+      height: 72px; border-radius: 6px; padding: 10px 12px;
+      display: flex; align-items: flex-end;
+      font-weight: 650; font-size: 14px;
+      text-align: left; color: #fff;
+      position: relative; overflow: hidden;
+    }
+    .g::after {
+      content: ""; position: absolute; right: -12px; bottom: -18px;
+      width: 72px; height: 72px; border-radius: 50%;
+      background: rgba(255,255,255,.12);
+    }
+
+    .related {
+      display: flex; flex-wrap: wrap; gap: 8px 18px;
+      padding: 4px 4px 8px;
+      overflow: hidden;
+    }
+    .related a {
+      color: var(--text);
+      text-decoration: none;
+      font-family: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", sans-serif;
+      font-weight: 300; font-size: 22px; letter-spacing: -.3px;
+      text-transform: lowercase;
+      opacity: .78;
+    }
+    .related a:hover { opacity: 1; color: var(--accent-text); }
+    .related a.clip { max-width: 9.2ch; overflow: hidden; white-space: nowrap; }
+
+    .empty { padding: 8px 4px 40px; }
+    .browse {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0,1fr));
+      gap: 8px;
+    }
+
+    .foot {
+      margin-top: 22px;
+      font-size: 11px; color: var(--text-3);
+      display: flex; justify-content: space-between;
+    }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr 180px; }
+      .film, .genres, .browse { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .query-echo { font-size: 32px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="lab">
+    <strong>v4 — cards on Mica, not a plate and not a preview pane.</strong>
+    Microsoft’s card pattern: Mica is the window; results are separate cards sitting on it.
+    Zune is the crop and the type, not giant word-nav. Ranked list is the server’s
+    <code>topResultsV2</code>; playlists/genres are the capture’s <code>chipOrder[0]</code> and <code>searchGenres</code>.
+    Clear the field for the empty state. <code>/</code> focuses, arrows move, Enter plays.
+  </div>
+
+  <div class="win" role="application" aria-label="Wavee search prototype">
+    <div class="mica" aria-hidden="true"></div>
+    <div class="titlebar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="name">Wavee</span>
+      <span>search</span>
+    </div>
+    <nav class="rail" aria-label="App">
+      <button title="Home"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9H4z"/></svg></button>
+      <button class="active" title="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/></svg></button>
+      <button title="Library"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button>
+    </nav>
+
+    <main class="page" id="page">
+      <div class="query-block" id="qb">
+        <p class="query-echo" id="echo">sleep<span class="ghost" id="ghost"></span></p>
+        <div class="box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="q" value="sleep" autocomplete="off" spellcheck="false" aria-label="Search">
+          <span class="hint" id="prov">50 ranked · 9 ms · catalogue</span>
+        </div>
+        <div class="flyout" id="fly" role="listbox">
+          <div class="fly-h">Suggestions</div>
+          <button class="sug" data-q="sleep music"><span class="ic">⌕</span> sleep music</button>
+          <button class="sug" data-q="sleep music for deep sleeping"><span class="ic">⌕</span> sleep music for deep sleeping</button>
+          <button class="sug" data-q="sleep meditation"><span class="ic">⌕</span> sleep meditation</button>
+          <button class="sug" data-q="slaap"><span class="ic">⌕</span> slaap</button>
+          <div class="fly-h">Top results</div>
+          <button class="sug" data-q="sleep"><span class="art"></span><span><b>Sleep</b><div class="t2">Playlist · Spotify</div></span><span class="k">playlist</span></button>
+          <button class="sug" data-q="sleep"><span class="art round"></span><span><b>Sleeping With The Lights On</b><div class="t2">Song</div></span><span class="k">song</span></button>
+        </div>
+      </div>
+
+      <div id="results">
+        <div class="facets" role="tablist" aria-label="Facets from chipOrder">
+          <button class="facet" aria-current="true">All</button>
+          <button class="facet">Playlists<em>75</em></button>
+          <button class="facet">Songs<em>67</em></button>
+          <button class="facet">Episodes<em>55</em></button>
+          <button class="facet">Genres<em>8</em></button>
+          <button class="facet">Podcasts<em>61</em></button>
+          <button class="facet">Albums<em>91</em></button>
+          <button class="facet">Audiobooks<em>50</em></button>
+          <button class="facet">Artists<em>81</em></button>
+          <button class="facet">Authors<em>50</em></button>
+          <button class="facet">Profiles<em>50</em></button>
+        </div>
+
+        <article class="card hero">
+          <div class="hero-wash"></div>
+          <div class="hero-copy">
+            <div class="eyebrow">Top result · playlist</div>
+            <h2>Sleep</h2>
+            <div class="meta">Gentle ambient piano to help you fall asleep. · Spotify · 4 hr 12 min</div>
+            <div class="why">
+              <span class="chip">matched title</span>
+              <span class="chip">editorial</span>
+            </div>
+            <div class="actions">
+              <button class="btn">Play <span class="kbd">Enter</span></button>
+              <button class="btn ghost">Open page <span class="kbd">Ctrl+Enter</span></button>
+              <button class="btn ghost">Save</button>
+            </div>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <img alt="" src="https://i.scdn.co/image/ab67706f00000002cd17d41419faa97069e06c16">
+          </div>
+        </article>
+
+        <div class="sec">
+          <span class="tick"></span>
+          <h3>Best matches</h3>
+          <span class="sub">server ranking · topResultsV2</span>
+        </div>
+        <div class="card matches" id="list"></div>
+
+        <div class="sec">
+          <span class="tick"></span>
+          <h3>Playlists</h3>
+          <span class="sub">chipOrder first · 75</span>
+        </div>
+        <div class="card film">
+          <button class="tile"><div class="art" style="background:linear-gradient(135deg,#1a3a68,#0d1a30)"></div><div class="t1">Fall Asleep Fast</div><div class="t2">Playlist</div></button>
+          <button class="tile"><div class="art" style="background:linear-gradient(135deg,#243018,#101408)"></div><div class="t1">Goodnight Mix</div><div class="t2">matched description</div></button>
+          <button class="tile"><div class="art" style="background:linear-gradient(135deg,#3a2a18,#120c06)"></div><div class="t1">Jazz for Sleep</div><div class="t2">Playlist</div></button>
+          <button class="tile"><div class="art" style="background:linear-gradient(135deg,#182838,#0a1018)"></div><div class="t1">Sleep Music for Deep Sleeping</div><div class="t2">Playlist</div></button>
+        </div>
+
+        <div class="sec">
+          <span class="tick"></span>
+          <h3>Genres</h3>
+          <span class="sub">searchGenres · 8</span>
+        </div>
+        <div class="card">
+          <div class="genres">
+            <button class="g" style="background:#1b3a6e">Sleep</button>
+            <button class="g" style="background:#245a7a">Rain sounds</button>
+            <button class="g" style="background:#2a2a32">Noise for sleep</button>
+            <button class="g" style="background:#c8c8c8;color:#111">White Noise</button>
+            <button class="g" style="background:#6b4a8a">Lullabies</button>
+            <button class="g" style="background:#143050">Sleep</button>
+            <button class="g" style="background:#204060">Sleep &amp; Meditation</button>
+            <button class="g" style="background:#8a6a3a">Baby sleep</button>
+          </div>
+        </div>
+
+        <div class="sec">
+          <span class="tick"></span>
+          <h3>Related searches</h3>
+          <span class="sub">SearchAutoCompleteEntity</span>
+        </div>
+        <div class="related">
+          <a href="#">sleep music</a>
+          <a href="#">sleep music for deep sleeping</a>
+          <a class="clip" href="#" title="sleep meditation">sleep meditation</a>
+          <a href="#">slaap</a>
+        </div>
+
+        <div class="foot">
+          <span>↑ ↓ select · Enter play · Tab facets · Esc clear</span>
+          <span>capture: searchTopResultsList sleep · PLAYLISTS first</span>
+        </div>
+      </div>
+
+      <div class="empty" id="empty" hidden>
+        <div class="sec"><span class="tick"></span><h3>Recent</h3><span class="sub">recentSearches · entities, not strings</span></div>
+        <div class="card matches" id="recents"></div>
+        <div class="sec"><span class="tick"></span><h3>Browse</h3></div>
+        <div class="browse">
+          <button class="g" style="background:#c0392b">Pop</button>
+          <button class="g" style="background:#1b6e4a">Focus</button>
+          <button class="g" style="background:#6b4a8a">Jazz</button>
+          <button class="g" style="background:#1b3a6e">Sleep</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const rows = [
+      { k: "playlist", t: "Fall Asleep Fast", m: "Playlist · 312 saves", d: "", match: "title" },
+      { k: "playlist", t: "Goodnight Mix", m: "Playlist · matched description", d: "", match: "description" },
+      { k: "track", t: "Sleeping With The Lights On", m: "Azure Ray", d: "3:41" },
+      { k: "playlist", t: "Sleep Music for Deep Sleeping", m: "Playlist", d: "" },
+      { k: "playlist", t: "Songs that WILL put you to SLEEP", m: "Playlist", d: "" },
+      { k: "playlist", t: "Jazz for Sleep", m: "Playlist · Spotify", d: "" },
+      { k: "genre", t: "Sleep", m: "Genre", d: "" },
+      { k: "track", t: "Weightless", m: "Marconi Union", d: "8:08" },
+      { k: "artist", t: "Sleep Token", m: "Artist", d: "" },
+      { k: "episode", t: "1 Hour Relaxing Music for Stress Relief", m: "Episode", d: "1:00:12", match: "title" },
+      { k: "podcast", t: "Sleep With Me", m: "Podcast", d: "" },
+      { k: "audiobook", t: "Sleep Music for Babies", m: "Audiobook", d: "" },
+    ];
+    const recents = [
+      { k: "track", t: "Brabant", m: "Guus Meeuwis", d: "3:22" },
+      { k: "playlist", t: "Dalkom Cafe", m: "Playlist", d: "" },
+      { k: "track", t: "Broken Angel", m: "Arash, Helena", d: "3:18" },
+      { k: "artist", t: "Kris Kross Amsterdam", m: "Artist", d: "" },
+    ];
+    const glyphs = {
+      track: '<svg class="kind-g" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="16" r="2"/></svg>',
+      playlist: '<svg class="kind-g" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+      artist: '<svg class="kind-g" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-3 4-5 7-5s5.5 2 7 5"/></svg>',
+      genre: '<svg class="kind-g" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>',
+      episode: '<svg class="kind-g" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="18" rx="4"/></svg>',
+      podcast: '<svg class="kind-g" viewBox="0 0 24 24"><path d="M12 16v4M8 20h8"/><circle cx="12" cy="10" r="3"/></svg>',
+      audiobook: '<svg class="kind-g" viewBox="0 0 24 24"><path d="M4 19a2 2 0 0 1 2-2h12v3H6a2 2 0 0 1-2-2z"/><path d="M6 17V5h14v12"/></svg>',
+    };
+    function coverClass(k) {
+      if (k === "artist") return "cover round";
+      if (k === "genre" || k === "playlist") return "cover sq";
+      return "cover";
+    }
+    function hilite(t, q) {
+      if (!q) return t;
+      const i = t.toLowerCase().indexOf(q.toLowerCase());
+      if (i < 0) return t;
+      return t.slice(0, i) + "<mark>" + t.slice(i, i + q.length) + "</mark>" + t.slice(i + q.length);
+    }
+    function renderList(el, items, q) {
+      el.innerHTML = items.map((r, i) => `
+        <button class="row ${r.k === "playlist" || r.k === "audiobook" ? "lg" : ""}" data-i="${i}">
+          <span class="${coverClass(r.k)}"></span>
+          <span>
+            <div class="t1">${hilite(r.t, q)}</div>
+            <div class="t2">${r.m}${r.match ? " · " + r.match : ""}</div>
+          </span>
+          <span class="dur">${r.d}</span>
+          ${glyphs[r.k] || ""}
+        </button>`).join("");
+    }
+    const list = document.getElementById("list");
+    const recEl = document.getElementById("recents");
+    const q = document.getElementById("q");
+    const echo = document.getElementById("echo");
+    const ghost = document.getElementById("ghost");
+    const qb = document.getElementById("qb");
+    const results = document.getElementById("results");
+    const empty = document.getElementById("empty");
+    const completions = ["sleep music", "sleep music for deep sleeping", "sleep meditation", "slaap"];
+    let sel = 0;
+
+    function paint() {
+      const v = q.value.trim();
+      const g = completions.find(c => c.startsWith(v.toLowerCase()) && c !== v.toLowerCase());
+      echo.innerHTML = (v || "search") + (g ? `<span class="ghost">${g.slice(v.length)}</span>` : "");
+      const show = v.length > 0;
+      results.hidden = !show;
+      empty.hidden = show;
+      if (show) {
+        renderList(list, rows, v);
+        select(sel);
+      } else {
+        renderList(recEl, recents, "");
+      }
+    }
+    function select(i) {
+      const nodes = [...list.querySelectorAll(".row")];
+      if (!nodes.length) return;
+      sel = (i + nodes.length) % nodes.length;
+      nodes.forEach((n, k) => n.setAttribute("aria-selected", k === sel ? "true" : "false"));
+    }
+    q.addEventListener("input", () => { paint(); qb.classList.add("open"); });
+    q.addEventListener("focus", () => qb.classList.add("open"));
+    document.addEventListener("click", e => { if (!qb.contains(e.target)) qb.classList.remove("open"); });
+    document.querySelectorAll(".sug").forEach(b => b.addEventListener("click", () => {
+      q.value = b.dataset.q; qb.classList.remove("open"); paint();
+    }));
+    document.querySelectorAll(".facet").forEach(b => b.addEventListener("click", () => {
+      document.querySelectorAll(".facet").forEach(x => x.removeAttribute("aria-current"));
+      b.setAttribute("aria-current", "true");
+    }));
+    document.addEventListener("keydown", e => {
+      if (e.key === "/" && document.activeElement !== q) { e.preventDefault(); q.focus(); }
+      if (e.key === "Escape") { q.value = ""; qb.classList.remove("open"); paint(); q.blur(); }
+      if (e.key === "ArrowDown") { e.preventDefault(); select(sel + 1); qb.classList.remove("open"); }
+      if (e.key === "ArrowUp") { e.preventDefault(); select(sel - 1); }
+    });
+    paint();
+  </script>
+</body>
+</html>

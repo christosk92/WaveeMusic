@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "wavee.youtube",
+  "version": "1.0.0",
+  "displayName": "YouTube",
+  "publisher": "wavee",
+  "protocolVersion": 1,
+  "entry": "Wavee.Module.YouTube.exe",
+  "capabilities": ["playback", "match", "metadata", "pages"],
+  "urlPatterns": ["youtube.com", "youtu.be", "youtube-nocookie.com", "youtubekids.com", "youtube.googleapis.com"],
+  "menu": {
+    "label": "YouTube\u2026",
+    "placeholder": "Paste a YouTube link"
+  }
+}

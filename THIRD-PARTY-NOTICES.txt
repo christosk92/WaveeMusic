@@ -1,0 +1,89 @@
+THIRD-PARTY NOTICES
+===================
+
+Wavee is licensed under the MIT License (see LICENSE). Wavee is an independent client and is not
+affiliated with, endorsed by, or sponsored by Spotify AB. Spotify and the Spotify logo are
+trademarks of Spotify AB.
+
+This build incorporates the third-party components listed below. Each remains under its own license;
+the summary here names the license, not its full text -- follow the URL for the authoritative terms.
+
+Generated 2026-08-26 by ops/build/generate-third-party-notices.ps1.
+
+-------------------------------------------------------------------------------
+
+FlacBox  1.0.0
+  license: see package
+  authors: notmasteryet
+  url:     https://flacbox.codeplex.com
+
+Google.Protobuf  3.35.0
+  license: BSD-3-Clause
+  authors: Google Inc.
+  url:     https://github.com/protocolbuffers/protobuf
+
+Grpc.Tools  2.81.0
+  license: Apache-2.0
+  authors: The gRPC Authors
+  url:     https://github.com/grpc/grpc
+  note:    build-time (not redistributed as a binary; governs generated code)
+
+Microsoft.Data.Sqlite  10.0.8
+  license: MIT
+  authors: Microsoft
+  url:     https://docs.microsoft.com/dotnet/standard/data/sqlite/
+
+Microsoft.UI.Reactor (Element/Component/hooks model + the pure-C# Yoga flexbox port)  vendored / reimplemented
+  license: MIT
+  url:     https://github.com/microsoft/microsoft-ui-reactor
+  note:    FluentGpu's programming model (immutable Element records, Component, hooks) and its layout engine derive from Microsoft.UI.Reactor -- the original programming model (Element/Component/hooks) and the pure-C# Yoga flexbox port. Copyright (c) Microsoft Corporation.
+
+NLayer  1.15.0
+  license: MIT
+  authors: Mark Heath, Andrew Ward
+  url:     https://github.com/naudio/NLayer
+
+NVorbis  vendored (src/apps/vendor/NVorbis)
+  license: MIT
+  url:     https://github.com/NVorbis/NVorbis
+  note:    Pure-managed Ogg Vorbis decoder. Copyright (c) Andrew Ward and contributors. Vendored as source so it can be NativeAOT-published with the app.
+
+Segoe Fluent Icons / Segoe MDL2 Assets  Windows system font
+  license: Microsoft font license (system component)
+  url:     https://learn.microsoft.com/windows/apps/design/style/segoe-fluent-icons-font
+  note:    Icon glyphs are drawn from the Segoe Fluent Icons face shipped with Windows. Wavee does not redistribute the font -- it references the OS-installed face and falls back to Segoe MDL2 Assets on older builds.
+
+SQLite  bundled by SQLitePCLRaw.bundle_e_sqlite3
+  license: Public domain
+  url:     https://www.sqlite.org/copyright.html
+  note:    The SQLite engine itself is in the public domain; the managed bundle around it is MIT.
+
+SQLitePCLRaw.bundle_e_sqlite3  3.0.0
+  license: Apache-2.0
+  authors: Eric Sink
+  url:     https://github.com/ericsink/SQLitePCL.raw
+
+System.Security.Cryptography.ProtectedData  9.0.0
+  license: MIT
+  authors: Microsoft
+  url:     https://dot.net/
+
+TerraFX.Interop.Windows  10.0.26100.6
+  license: MIT
+  authors: Tanner Gooding and Contributors
+  url:     https://github.com/terrafx/terrafx.interop.windows
+
+Yoga  ported to C# via Microsoft.UI.Reactor
+  license: MIT
+  url:     https://github.com/facebook/yoga
+  note:    The flexbox layout algorithm. Copyright (c) Meta Platforms, Inc. and affiliates.
+
+ZstdSharp.Port  0.8.6
+  license: MIT
+  authors: Oleg Stepanischev
+  url:     https://github.com/oleg-st/ZstdSharp
+
+-------------------------------------------------------------------------------
+
+Wavee also talks to third-party services at runtime (Spotify, lyrics providers, GitHub for update
+checks). Those are services, not bundled code; see PRIVACY.md for what is sent where.

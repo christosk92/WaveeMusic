@@ -1,0 +1,37 @@
+[
+  {
+    "name": "NVorbis",
+    "version": "vendored (src/apps/vendor/NVorbis)",
+    "license": "MIT",
+    "url": "https://github.com/NVorbis/NVorbis",
+    "note": "Pure-managed Ogg Vorbis decoder. Copyright (c) Andrew Ward and contributors. Vendored as source so it can be NativeAOT-published with the app."
+  },
+  {
+    "name": "Microsoft.UI.Reactor (Element/Component/hooks model + the pure-C# Yoga flexbox port)",
+    "version": "vendored / reimplemented",
+    "license": "MIT",
+    "url": "https://github.com/microsoft/microsoft-ui-reactor",
+    "note": "FluentGpu's programming model (immutable Element records, Component, hooks) and its layout engine derive from Microsoft.UI.Reactor -- the original programming model (Element/Component/hooks) and the pure-C# Yoga flexbox port. Copyright (c) Microsoft Corporation."
+  },
+  {
+    "name": "Yoga",
+    "version": "ported to C# via Microsoft.UI.Reactor",
+    "license": "MIT",
+    "url": "https://github.com/facebook/yoga",
+    "note": "The flexbox layout algorithm. Copyright (c) Meta Platforms, Inc. and affiliates."
+  },
+  {
+    "name": "SQLite",
+    "version": "bundled by SQLitePCLRaw.bundle_e_sqlite3",
+    "license": "Public domain",
+    "url": "https://www.sqlite.org/copyright.html",
+    "note": "The SQLite engine itself is in the public domain; the managed bundle around it is MIT."
+  },
+  {
+    "name": "Segoe Fluent Icons / Segoe MDL2 Assets",
+    "version": "Windows system font",
+    "license": "Microsoft font license (system component)",
+    "url": "https://learn.microsoft.com/windows/apps/design/style/segoe-fluent-icons-font",
+    "note": "Icon glyphs are drawn from the Segoe Fluent Icons face shipped with Windows. Wavee does not redistribute the font -- it references the OS-installed face and falls back to Segoe MDL2 Assets on older builds."
+  }
+]

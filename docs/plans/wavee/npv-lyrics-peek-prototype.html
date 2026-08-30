@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wavee — NPV lyrics peek</title>
+  <style>
+    :root {
+      --lab-bg: #111318;
+      --lab-panel: rgba(27, 30, 37, .82);
+      --lab-stroke: rgba(255, 255, 255, .09);
+      --lab-text: #f5f6f8;
+      --lab-muted: #9da4b0;
+      --npv: #141414;
+      --text: #f5f5f5;
+      --text-secondary: #b8b8b8;
+      --text-tertiary: #858585;
+      --accent: #4cc2ff;
+      --stroke: rgba(255, 255, 255, .09);
+      --radius-card: 8px;
+      --row: 48px;
+      --tick-ms: 150ms;
+      --tick-ease: cubic-bezier(.8, 0, .2, 1);
+      --peek-opacity: .38;
+      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      color: var(--lab-text);
+      background:
+        radial-gradient(circle at 14% -8%, rgba(76, 194, 255, .12), transparent 28rem),
+        radial-gradient(circle at 90% 8%, rgba(138, 113, 255, .08), transparent 32rem),
+        var(--lab-bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+    .lab {
+      display: grid;
+      grid-template-columns: minmax(280px, 380px) minmax(320px, 1fr);
+      gap: 28px;
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 32px 24px 48px;
+    }
+
+    .notes h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      font-weight: 650;
+      letter-spacing: -.02em;
+    }
+    .notes p { margin: 0 0 14px; color: var(--lab-muted); line-height: 1.5; }
+    .notes code {
+      font-family: "Cascadia Code", "Consolas", monospace;
+      font-size: 12px;
+      color: #d7e8ff;
+      background: rgba(76, 194, 255, .1);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    .recipe {
+      margin: 18px 0;
+      padding: 14px 16px;
+      border: 1px solid var(--lab-stroke);
+      border-radius: 10px;
+      background: var(--lab-panel);
+      backdrop-filter: blur(16px);
+    }
+    .recipe h2 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--lab-muted);
+    }
+    .recipe pre {
+      margin: 0;
+      font: 12px/1.55 "Cascadia Code", "Consolas", monospace;
+      color: #e8eef7;
+      white-space: pre-wrap;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+    .controls button {
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, .07);
+      border: 1px solid var(--lab-stroke);
+    }
+    .controls button[aria-pressed="true"],
+    .controls button.primary {
+      background: rgba(76, 194, 255, .16);
+      border-color: rgba(76, 194, 255, .35);
+      color: #d8f2ff;
+    }
+    .controls button:hover { background: rgba(255, 255, 255, .11); }
+
+    .stage { display: flex; justify-content: center; }
+    .npv {
+      width: 360px;
+      background: var(--npv);
+      border: 1px solid var(--stroke);
+      border-radius: 16px;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, .45), 0 4px 16px rgba(0, 0, 0, .28);
+      overflow: hidden;
+    }
+    .art {
+      margin: 10px 10px 0;
+      aspect-ratio: 1;
+      border-radius: var(--radius-card);
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 38% 28%, #6b4a3a 0 18%, transparent 42%),
+        linear-gradient(160deg, #2a1c18, #121014 62%, #1a2430);
+      position: relative;
+    }
+    .art::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, #ef3b3b 0 18%, transparent 18% 28%, #3cc6ff 28% 46%, transparent 46% 58%, #f5d031 58% 78%, transparent 78%),
+        linear-gradient(#7a4cff 0 14%, transparent 14% 36%, #3cc6ff 36% 52%, transparent 52% 70%, #ef3b3b 70% 86%, transparent 86%);
+      opacity: .55;
+      mix-blend-mode: screen;
+    }
+    .art span {
+      position: absolute;
+      left: 16px;
+      bottom: 18px;
+      font-size: 34px;
+      font-weight: 750;
+      letter-spacing: .08em;
+      color: #fff;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: start;
+      padding: 16px 16px 8px;
+    }
+    .title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
+    .artist { margin: 2px 0 0; font-size: 14px; line-height: 20px; color: var(--text-secondary); }
+    .album { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-tertiary); }
+    .heart {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+    }
+
+    .lyrics {
+      padding: 8px 16px 20px;
+    }
+    .lyrics-body {
+      display: grid;
+      grid-template-columns: 3px 1fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .lyrics-spine {
+      width: 3px;
+      border-radius: 1.5px;
+      background: var(--accent);
+      opacity: .85;
+    }
+    .clip {
+      height: calc(var(--row) * 2);
+      overflow: hidden;
+      min-width: 0;
+    }
+    .reel {
+      will-change: transform;
+    }
+    .reel.tick {
+      transition: transform var(--tick-ms) var(--tick-ease);
+    }
+    .lyric {
+      height: var(--row);
+      margin: 0;
+      display: flex;
+      align-items: center;
+      font-family: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", sans-serif;
+      font-size: 20px;
+      line-height: 28px;
+      font-weight: 300;
+      letter-spacing: -.02em;
+      color: var(--text);
+      opacity: 0;
+    }
+    .reel.tick .lyric {
+      transition: opacity var(--tick-ms) var(--tick-ease);
+    }
+    .lyric.is-active { opacity: 1; }
+    .lyric.is-peek { opacity: var(--peek-opacity); }
+
+    html[data-reduced="1"] .reel.tick,
+    html[data-reduced="1"] .reel.tick .lyric {
+      transition-property: opacity;
+      transition-duration: 80ms;
+    }
+
+    @media (max-width: 780px) {
+      .lab { grid-template-columns: 1fr; padding: 20px 16px 36px; }
+      .stage { order: -1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="lab">
+    <aside class="notes">
+      <h1>NPV lyrics peek</h1>
+      <p>
+        No header, no extra transport — the player bar already owns that.
+        A 3px accent spine and light display type are enough to mark the reel.
+      </p>
+      <p>
+        On a tick the column physically slides one row: the old line travels up
+        and out of the clip, the peek rises into the active slot and brightens,
+        a new peek enters from below. No blur. Same token as the countdown:
+        <code>MotionTok.ControlFast</code> (150ms, FluentStandard).
+      </p>
+      <div class="recipe">
+        <h2>FlipCountdown reel</h2>
+        <pre>150ms  FluentStandard  (0.8, 0, 0.2, 1)
+clip   2 rows
+travel 1 row up / down
+fade   1 → 0.38 as a line leaves the focus
+no blur</pre>
+      </div>
+      <div class="controls">
+        <button class="primary" id="play" type="button">Pause</button>
+        <button id="prev" type="button">Prev line</button>
+        <button id="next" type="button">Next line</button>
+        <button id="reduced" type="button" aria-pressed="false">Reduced motion</button>
+      </div>
+    </aside>
+
+    <div class="stage">
+      <article class="npv" aria-label="Now playing">
+        <div class="art" aria-hidden="true"><span>TETRIS</span></div>
+        <div class="meta">
+          <div>
+            <h2 class="title">Hold On Tight</h2>
+            <p class="artist">aespa</p>
+            <p class="album">Tetris (Motion Picture Soundtrack)</p>
+          </div>
+          <button class="heart" type="button" aria-label="Saved">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-6.7-4.35-9.33-8.2C.7 10.1 1.2 6.7 4.1 5.35 6.2 4.4 8.4 5 12 8.2c3.6-3.2 5.8-3.8 7.9-2.85 2.9 1.35 3.4 4.75 1.43 7.45C18.7 16.65 12 21 12 21z"/></svg>
+          </button>
+        </div>
+
+        <div class="lyrics">
+          <div class="lyrics-body">
+            <div class="lyrics-spine" aria-hidden="true"></div>
+            <div class="clip">
+              <div class="reel" id="reel"></div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+
+  <script>
+    const LINES = [
+      "Hold on tight",
+      "Don't look down tonight",
+      "If the floor gives way",
+      "We can still take flight",
+      "Keep your eyes on me",
+      "Let the colors fall",
+      "Every block we catch",
+      "Is a chance to start",
+      "Hold on tight",
+      "We're not done yet"
+    ];
+
+    const ROW = 48;
+    let index = 0;
+    let playing = true;
+    let timer = 0;
+
+    const reel = document.getElementById("reel");
+    const playBtn = document.getElementById("play");
+    const nodes = LINES.map((text) => {
+      const p = document.createElement("p");
+      p.className = "lyric";
+      p.textContent = text;
+      reel.appendChild(p);
+      return p;
+    });
+
+    function offsetOf(i) {
+      return document.documentElement.dataset.reduced === "1" ? 0 : -(i * ROW);
+    }
+
+    function paint(i, animate) {
+      reel.classList.toggle("tick", animate);
+      reel.style.transform = "translateY(" + offsetOf(i) + "px)";
+      for (let n = 0; n < nodes.length; n++) {
+        nodes[n].className = "lyric" +
+          (n === i ? " is-active" : n === i + 1 ? " is-peek" : n < i ? " is-past" : " is-ahead");
+      }
+    }
+
+    function go(delta) {
+      const next = index + delta;
+      if (next < 0 || next >= LINES.length) return;
+      index = next;
+      paint(index, true);
+    }
+
+    function arm() {
+      clearInterval(timer);
+      if (!playing) return;
+      timer = setInterval(() => {
+        if (index >= LINES.length - 1) {
+          index = 0;
+          paint(0, false);
+          return;
+        }
+        go(1);
+      }, 2200);
+    }
+
+    document.getElementById("next").onclick = () => go(1);
+    document.getElementById("prev").onclick = () => go(-1);
+    playBtn.onclick = () => {
+      playing = !playing;
+      playBtn.textContent = playing ? "Pause" : "Play";
+      arm();
+    };
+    document.getElementById("reduced").onclick = (e) => {
+      const on = document.documentElement.dataset.reduced === "1" ? "" : "1";
+      document.documentElement.dataset.reduced = on;
+      e.currentTarget.setAttribute("aria-pressed", on ? "true" : "false");
+      paint(index, false);
+    };
+
+    paint(0, false);
+    arm();
+  </script>
+</body>
+</html>

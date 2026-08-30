@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package spotify.player.proto;
+
+option csharp_namespace = "Wavee.Protocol.Playback";
+option optimize_for = CODE_SIZE;
+
+message AutoplayContextRequest {
+    string context_uri = 1;
+    repeated string recent_track_uri = 2;
+    bool is_video = 3;
+}

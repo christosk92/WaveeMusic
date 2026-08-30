@@ -1,0 +1,156 @@
+syntax = "proto2";
+
+// A LEAN view of spotify.metadata Track/Album/Artist — only the fields the projection uses, with the SAME field numbers as
+// metadata.proto (wire format is field-number-based, so these parse the real Track/Album/Artist bytes). Parsed with
+// DiscardUnknownFields, so the many unused repeated fields (file[], restriction[], availability[], alternative[], …) are
+// SKIPPED without allocating their messages. This is the "custom field-skipping reader" — done as a schema, not hand-rolled.
+package wavee.lean;
+option csharp_namespace = "Wavee.Protocol.Lean";
+
+message LeanImage {
+    optional bytes file_id = 1;
+    optional int32 size = 2;     // Image.Size enum value read as int (0 = DEFAULT)
+    optional sint32 width = 3;
+    optional sint32 height = 4;
+}
+
+message LeanImageGroup {
+    repeated LeanImage image = 1;
+}
+
+message LeanDate {
+    optional sint32 year = 1;
+    optional sint32 month = 2;
+    optional sint32 day = 3;
+}
+
+message LeanArtistRef {          // an embedded artist: just gid + name
+    optional bytes gid = 1;
+    optional string name = 2;
+}
+
+message LeanAlbumRef {           // a track's embedded album: gid + name + cover + date (same field numbers as metadata.Album)
+    optional bytes gid = 1;
+    optional string name = 2;
+    optional LeanDate date = 6;  // album.date — TrackV4 always carries year; we used to skip it
+    optional LeanImageGroup cover_group = 17;
+}
+
+message LeanCountStub { }        // empty — retained for any count-only repeated fields
+
+message LeanDisc {
+    repeated LeanTrack track = 3;   // the album's tracklist (parsed: gid/name/artist/duration via LeanTrack's field numbers)
+}
+
+message LeanExternalId {            // Track.external_id (field 10): type="isrc"/"upc"/… + the id value
+    optional string type = 1;
+    optional string id = 2;
+}
+
+// Playability inputs, measured against 10,472 real TrackV4 payloads (461 extended-metadata responses). The corpus falls
+// into exactly three classes, and they are what the availability rule is built from:
+//
+//   8,378 (80.0%)  file[] present, no alternative, no restriction        → normal, playable
+//   2,050 (19.6%)  NO file[], alternative[] WITH its own file[], restriction present → RELINKED, still playable
+//      44 ( 0.4%)  NO file[], NO alternative, restriction present        → genuinely unplayable
+//
+// The lesson is that `restriction` is NOT a verdict: it appears on the relinked class and the dead class alike, and an
+// empty `countries_allowed` is an empty WHITELIST (i.e. no country gate), not "allowed nowhere". The verdict is
+// file-based: a track with no files AND no alternative carrying files cannot play. 0.4% is also a believable rate for
+// greyed-out rows, where treating the restriction as the signal would have dimmed a fifth of the library.
+message LeanTrack {
+    optional bytes gid = 1;
+    optional string name = 2;
+    optional LeanAlbumRef album = 3;
+    repeated LeanArtistRef artist = 4;
+    optional sint32 duration = 7;
+    optional bool explicit = 9;
+    repeated LeanExternalId external_id = 10;   // field 10 == metadata.proto Track.external_id (carries the ISRC)
+    // Country gate. Parsed for completeness, but see the note above: on its own it decides nothing.
+    repeated LeanRestriction restriction = 11;
+    // The playable renditions. EMPTY is the interesting case — see `alternative`.
+    repeated LeanAudioFile file = 12;
+    // Relink targets. When `file` is empty, the track is playable IFF one of these carries files of its own; that is
+    // the 2,050-payload class above, and missing it would mark a fifth of a normal library unplayable.
+    repeated LeanTrack alternative = 13;
+    // When the track goes (or went) live — unix SECONDS. Present on 100% of payloads (10,472/10,472; 1,970 distinct
+    // values spanning 1983–2026), which makes it the reliable per-track release instant and the reason availability
+    // need not come from getAlbum. A FUTURE value is a track announced but not out — the partially-released album
+    // case. The capture holds no future values (nothing unreleased was open during it), so that branch follows from
+    // the field's meaning rather than being demonstrated by these samples.
+    optional int64 earliest_live_timestamp = 17;
+    // Linked-URI alias → canonical playable (metadata.proto Track.canonical_uri = 36). Stamped onto Track.CanonicalUri
+    // so video recovery / miss-bridges do not re-parse the full Track proto per alias.
+    optional string canonical_uri = 36;
+}
+
+// Track.file / Track.alternative[].file. Only presence is read — the format/id detail belongs to the audio path.
+message LeanAudioFile {
+    optional bytes file_id = 1;
+    optional int32 format = 2;
+}
+
+// Track.restriction (field 11). Only the country oneof is modelled; catalogue/type are not read.
+message LeanRestriction {
+    optional string countries_allowed = 2;
+    optional string countries_forbidden = 3;
+}
+
+message LeanAlbum {
+    optional bytes gid = 1;
+    optional string name = 2;
+    repeated LeanArtistRef artist = 3;
+    optional int32 type = 4;                 // Album.Type: 1=ALBUM 2=SINGLE 3=COMPILATION 4=EP 5=AUDIOBOOK 6=PODCAST (read as int)
+    optional LeanDate date = 6;
+    repeated LeanDisc disc = 11;
+    optional LeanImageGroup cover_group = 17;
+}
+
+// The discography lean view: an ArtistV4 payload carries the WHOLE discography as release-groups. Each group is one
+// release with its version gids (album[0] is the representative release); we parse the group heads as gid-only stubs
+// (name/cover usually absent on the wire) and let AlbumV4 hydration + assembly upgrade them. top_track carries the
+// popular-list gid refs (resolved to named tracks at assembly time). SAME field numbers as metadata.proto Artist.
+message LeanTrackRef { optional bytes gid = 1; }                          // top_track[].track[] — a gid-only track ref
+message LeanTopTracks { optional string country = 1; repeated LeanTrackRef track = 2; }
+message LeanAlbumGroup { repeated LeanAlbumRef album = 1; }               // reuse LeanAlbumRef (gid+name+cover parse when present)
+message LeanBiography { optional string text = 1; }
+
+message LeanArtist {
+    optional bytes gid = 1;
+    optional string name = 2;
+    repeated LeanTopTracks top_track = 4;
+    repeated LeanAlbumGroup album_group = 5;
+    repeated LeanAlbumGroup single_group = 6;
+    repeated LeanAlbumGroup compilation_group = 7;
+    repeated LeanAlbumGroup appears_on_group = 8;
+    repeated LeanBiography biography = 12;
+    optional LeanImageGroup portrait_group = 17;
+}
+
+message LeanShowRef {            // an episode's embedded show: gid + name (for ShowName)
+    optional bytes gid = 1;
+    optional string name = 2;
+}
+
+message LeanShow {
+    optional bytes gid = 1;
+    optional string name = 2;
+    optional string description = 64;
+    optional string publisher = 66;
+    optional LeanImageGroup cover_image = 69;
+    // ShowV4 episode list (metadata.proto Show.episode = 70) — gid-only refs. Projected into the generic membership
+    // plane (SetMembership) so GetShowAsync can join resident Episode entities; previously discarded by the lean view.
+    repeated LeanEpisodeRef episode = 70;
+}
+
+message LeanEpisodeRef { optional bytes gid = 1; }
+
+message LeanEpisode {
+    optional bytes gid = 1;
+    optional string name = 2;
+    optional sint32 duration = 7;          // milliseconds
+    optional string description = 64;
+    optional LeanDate publish_time = 66;
+    optional LeanImageGroup cover_image = 68;
+    optional LeanShowRef show = 71;
+}

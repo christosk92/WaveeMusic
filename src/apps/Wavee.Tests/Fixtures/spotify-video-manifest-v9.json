@@ -1,0 +1,351 @@
+{
+  "contents": [
+    {
+      "encoding_id": "e04cc9307e5311f18f2b7ba46f79bc65",
+      "segment_length": 4,
+      "start_time_millis": 0,
+      "end_time_millis": 217561,
+      "profiles": [
+        {
+          "id": 13,
+          "audio_bitrate": 160000,
+          "audio_codec": "mp4a.40.2",
+          "file_type": "mp4",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 167662,
+          "mime_type": "audio/mp4",
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 5,
+          "file_type": "mp4",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 368818,
+          "mime_type": "video/mp4",
+          "video_bitrate": 253907,
+          "video_codec": "avc1.4d400d",
+          "video_height": 180,
+          "video_resolution": 180,
+          "video_width": 320,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 4,
+          "file_type": "mp4",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 626082,
+          "mime_type": "video/mp4",
+          "video_bitrate": 417111,
+          "video_codec": "avc1.4d4015",
+          "video_height": 240,
+          "video_resolution": 240,
+          "video_width": 426,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 3,
+          "file_type": "mp4",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 1096820,
+          "mime_type": "video/mp4",
+          "video_bitrate": 710110,
+          "video_codec": "avc1.4d401e",
+          "video_height": 320,
+          "video_resolution": 320,
+          "video_width": 568,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 2,
+          "file_type": "mp4",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 2425450,
+          "mime_type": "video/mp4",
+          "video_bitrate": 1523270,
+          "video_codec": "avc1.4d401f",
+          "video_height": 480,
+          "video_resolution": 480,
+          "video_width": 854,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 1,
+          "file_type": "mp4",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 5364554,
+          "mime_type": "video/mp4",
+          "video_bitrate": 3271525,
+          "video_codec": "avc1.4d4020",
+          "video_height": 720,
+          "video_resolution": 720,
+          "video_width": 1280,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 0,
+          "file_type": "mp4",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 11522122,
+          "mime_type": "video/mp4",
+          "video_bitrate": 7592853,
+          "video_codec": "avc1.4d402a",
+          "video_height": 1080,
+          "video_resolution": 1080,
+          "video_width": 1920,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 26,
+          "audio_bitrate": 160000,
+          "audio_codec": "mp4a.40.2",
+          "file_type": "ts",
+          "encryption_index": 2,
+          "encryption_indices": [
+            2
+          ],
+          "max_bitrate": 219960,
+          "mime_type": "audio/mp2t",
+          "key_id": "v++SsbsQuTbrEABjjPLVevrM"
+        },
+        {
+          "id": 24,
+          "file_type": "ts",
+          "encryption_index": 2,
+          "encryption_indices": [
+            2
+          ],
+          "max_bitrate": 394800,
+          "mime_type": "video/mp2t",
+          "video_bitrate": 278494,
+          "video_codec": "avc1.4d400d",
+          "video_height": 180,
+          "video_resolution": 180,
+          "video_width": 320,
+          "key_id": "v++SsbsQuTbrEABjjPLVevrM"
+        },
+        {
+          "id": 23,
+          "file_type": "ts",
+          "encryption_index": 2,
+          "encryption_indices": [
+            2
+          ],
+          "max_bitrate": 660632,
+          "mime_type": "video/mp2t",
+          "video_bitrate": 445281,
+          "video_codec": "avc1.4d4015",
+          "video_height": 240,
+          "video_resolution": 240,
+          "video_width": 426,
+          "key_id": "v++SsbsQuTbrEABjjPLVevrM"
+        },
+        {
+          "id": 22,
+          "file_type": "ts",
+          "encryption_index": 2,
+          "encryption_indices": [
+            2
+          ],
+          "max_bitrate": 1139656,
+          "mime_type": "video/mp2t",
+          "video_bitrate": 744332,
+          "video_codec": "avc1.4d401e",
+          "video_height": 320,
+          "video_resolution": 320,
+          "video_width": 568,
+          "key_id": "v++SsbsQuTbrEABjjPLVevrM"
+        },
+        {
+          "id": 21,
+          "file_type": "ts",
+          "encryption_index": 2,
+          "encryption_indices": [
+            2
+          ],
+          "max_bitrate": 2495136,
+          "mime_type": "video/mp2t",
+          "video_bitrate": 1575092,
+          "video_codec": "avc1.4d401f",
+          "video_height": 480,
+          "video_resolution": 480,
+          "video_width": 854,
+          "key_id": "v++SsbsQuTbrEABjjPLVevrM"
+        },
+        {
+          "id": 20,
+          "file_type": "ts",
+          "encryption_index": 2,
+          "encryption_indices": [
+            2
+          ],
+          "max_bitrate": 5499752,
+          "mime_type": "video/mp2t",
+          "video_bitrate": 3361521,
+          "video_codec": "avc1.4d4020",
+          "video_height": 720,
+          "video_resolution": 720,
+          "video_width": 1280,
+          "key_id": "v++SsbsQuTbrEABjjPLVevrM"
+        },
+        {
+          "id": 19,
+          "file_type": "ts",
+          "encryption_index": 2,
+          "encryption_indices": [
+            2
+          ],
+          "max_bitrate": 11792864,
+          "mime_type": "video/mp2t",
+          "video_bitrate": 7776458,
+          "video_codec": "avc1.4d402a",
+          "video_height": 1080,
+          "video_resolution": 1080,
+          "video_width": 1920,
+          "key_id": "v++SsbsQuTbrEABjjPLVevrM"
+        },
+        {
+          "id": 18,
+          "audio_bitrate": 160000,
+          "audio_codec": "opus",
+          "file_type": "webm",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 195134,
+          "mime_type": "audio/webm",
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 17,
+          "file_type": "webm",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 784802,
+          "mime_type": "video/webm",
+          "video_bitrate": 579833,
+          "video_codec": "vp9",
+          "video_height": 320,
+          "video_resolution": 320,
+          "video_width": 568,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 16,
+          "file_type": "webm",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 1751324,
+          "mime_type": "video/webm",
+          "video_bitrate": 1197713,
+          "video_codec": "vp9",
+          "video_height": 480,
+          "video_resolution": 480,
+          "video_width": 854,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 15,
+          "file_type": "webm",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 4166002,
+          "mime_type": "video/webm",
+          "video_bitrate": 2495538,
+          "video_codec": "vp9",
+          "video_height": 720,
+          "video_resolution": 720,
+          "video_width": 1280,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        },
+        {
+          "id": 14,
+          "file_type": "webm",
+          "encryption_index": 0,
+          "encryption_indices": [
+            0,
+            1
+          ],
+          "max_bitrate": 9794328,
+          "mime_type": "video/webm",
+          "video_bitrate": 5486614,
+          "video_codec": "vp9",
+          "video_height": 1080,
+          "video_resolution": 1080,
+          "video_width": 1920,
+          "key_id": "v++SsbsQuTbrEABjjPLVeg=="
+        }
+      ],
+      "encryption_infos": [
+        {
+          "key_system": "widevine",
+          "encryption_scheme": "cenc/ctr",
+          "license_server_endpoint": "/widevine-license/v1/video/license",
+          "encryption_data": "AAAAVXBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADUIARIQv++SsbsQuTbrEABjjPLVehoHc3BvdGlmeSIQ4EzJMH5TEfGPK3ukb3m8ZUjj3JWbBg=="
+        },
+        {
+          "key_system": "playready",
+          "encryption_scheme": "cenc/ctr",
+          "license_server_endpoint": "/playready-license/v1/video/license",
+          "encryption_data": "AAACWnBzc2gAAAAAmgTweZhAQoarkuZb4IhflQAAAjo6AgAAAQABADACPABXAFIATQBIAEUAQQBEAEUAUgAgAHgAbQBsAG4AcwA9ACIAaAB0AHQAcAA6AC8ALwBzAGMAaABlAG0AYQBzAC4AbQBpAGMAcgBvAHMAbwBmAHQALgBjAG8AbQAvAEQAUgBNAC8AMgAwADAANwAvADAAMwAvAFAAbABhAHkAUgBlAGEAZAB5AEgAZQBhAGQAZQByACIAIAB2AGUAcgBzAGkAbwBuAD0AIgA0AC4AMAAuADAALgAwACIAPgA8AEQAQQBUAEEAPgA8AFAAUgBPAFQARQBDAFQASQBOAEYATwA+ADwASwBFAFkATABFAE4APgAxADYAPAAvAEsARQBZAEwARQBOAD4APABBAEwARwBJAEQAPgBBAEUAUwBDAFQAUgA8AC8AQQBMAEcASQBEAD4APAAvAFAAUgBPAFQARQBDAFQASQBOAEYATwA+ADwASwBJAEQAPgBzAFoATAB2AHYAeABDADcATgByAG4AcgBFAEEAQgBqAGoAUABMAFYAZQBnAD0APQA8AC8ASwBJAEQAPgA8AEwAQQBfAFUAUgBMAD4AaAB0AHQAcAA6AC8ALwBhAC0AZgBhAGsAZQAtAHMAZQByAHYAZQByAC4AcwBwAG8AdABpAGYAeQAuAG4AZQB0ADoAOAAwADgAMAAvAHQAZQBzAHQAPAAvAEwAQQBfAFUAUgBMAD4APAAvAEQAQQBUAEEAPgA8AC8AVwBSAE0ASABFAEEARABFAFIAPgA="
+        },
+        {
+          "key_system": "fairplay",
+          "encryption_scheme": "cenc/cbcs",
+          "license_server_endpoint": "/fairplay-license/v2/video/license/e04cc9307e5311f18f2b7ba46f79bc65?mpegTs=true",
+          "encryption_data": "AAAANHBzc2gBAAAAlM6G+wf/T0OtuJPS+paMogAAAAG/75KxuxC5NusQAGOM8tV6AAAAAA==",
+          "key_format": "com.apple.streamingkeydelivery",
+          "key_method": "SAMPLE-AES",
+          "key_format_versions": "1",
+          "asset_id": "4EzJMH5TEfGPK3ukb3m8ZQ=="
+        }
+      ]
+    }
+  ],
+  "start_time_millis": 0,
+  "end_time_millis": 217561,
+  "initialization_template": "v1/origins/6b1e0b07781044c886534a46d96d34ec/sources/8c23c467a65f481a9dbcc4f5f8fc94d6/encodings/e04cc9307e5311f18f2b7ba46f79bc65/profiles/{{profile_id}}/inits/{{file_type}}?token=SCRUBBED&fauth=SCRUBBED&token_ak=SCRUBBED&token_cf=SCRUBBED",
+  "segment_template": "v1/origins/6b1e0b07781044c886534a46d96d34ec/sources/8c23c467a65f481a9dbcc4f5f8fc94d6/encodings/e04cc9307e5311f18f2b7ba46f79bc65/profiles/{{profile_id}}/{{segment_timestamp}}.{{file_type}}?token=SCRUBBED&fauth=SCRUBBED&token_ak=SCRUBBED&token_cf=SCRUBBED",
+  "base_urls": [
+    "https://video-fa.scdn.co/segments/",
+    "https://video-cf.spotifycdn.com/segments/"
+  ]
+}

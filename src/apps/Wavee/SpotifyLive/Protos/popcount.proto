@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package spotify.popcount.v2;
+
+option csharp_namespace = "Wavee.Protocol.Popcount";
+
+// GET {spclient}/popcount/v2/playlist/{id}/count  →  this message (protobuf, no Accept header on the wire).
+//
+// Field names are DERIVED FROM OBSERVED BYTES, not from a published schema — the responses are three or four
+// varints and carry no field names. What the corpus (VIDEO.saz, all.saz) shows across every sample:
+//
+//   04ZwFco4KsjgPlVMtzwfgS  08 9809     10 01  38 cc04        f1=1176      f2=1  f7=588
+//   37i9dQZF1E8Lh89wUVjZqo  08 fc9401   10 01  38 be4a        f1=19068     f2=1  f7=9534
+//   37i9dQZF1E37Yqr2urjnJt  08 00       10 01  38 01   40 01  f1=0         f2=1  f7=1        f8=1
+//   37i9dQZF1EYkqdzj48dyYq  08 00       10 01  38 90cf923d 40 01  f1=0     f2=1  f7=129279888 f8=1
+//
+// Wherever field 1 is non-zero it is exactly the ZIGZAG encoding of field 7 (1176>>1 == 588, 19068>>1 == 9534) —
+// i.e. the same number declared as a signed varint. It is 0 on other playlists whose field 7 is non-zero, so it is
+// NOT a reliable mirror. **Field 7 is the count**: populated and self-consistent in every sample. Field 1 is kept
+// as sint64 purely to document the encoding so nobody re-derives the "field 1 is double field 7" red herring.
+//
+// The 129,279,888 outlier is `37i9dQZF1EYkqdzj48dyYq` — the **DJ**, identified from its own home-card payload
+// (`home.card.jellyfish_animation`, `DJ_Lottie_tighter.json`, `lexicon_context_url`). That is a lexicon-backed
+// synthetic entity, not an editorial playlist, so its count is a platform aggregate rather than a save count.
+// SpotifyPlaylistPopcountService gates on that.
+message PlaylistPopcount {
+  // The count re-encoded as a signed varint. Mirrors `count` when non-zero; 0 otherwise. Do not read this.
+  sint64 signed_count = 1;
+  // 1 in every observed response. Unknown semantics (status/kind); carried so the shape round-trips.
+  uint32 status = 2;
+  // THE count — how many accounts have saved/followed the playlist.
+  uint64 count = 7;
+  // Present (=1) only on 37i9dQZF1E* server-generated playlists. Unknown semantics.
+  uint32 flag = 8;
+}

@@ -1,0 +1,47 @@
+#!/bin/sh
+# Guard: block committing out-of-scope reverse-engineering / native-derivation material
+# into the public fluent-gpu repo. This material belongs in the private companion repo.
+# Enabled via:  git config core.hooksPath .githooks   (see docs/guide/playplay-private-split.md)
+# Bypass (discouraged, use only for a verified false positive):  git commit --no-verify
+
+staged=$(git diff --cached --name-only --diff-filter=AM)
+[ -z "$staged" ] && exit 0
+
+block=""
+
+# 1) Path patterns that must never enter the public tree.
+path_re='(^|/)\.native/|(^|/)tmp_ghidra|(^|/)pyghidra|(^|/)Wavee\.PlayPlay/|tmp_.*playplay|playplay-probe-out|(^|/)x64_.*(decomp|derive|dispatch|vm_chain|consts)|fill_random_sweep|spotiload-offline-path|wavee-playplay-.*\.md|(^|/)playplay-[0-9].*\.md'
+
+# 2) Content keywords that signal RE/DRM mechanism material (tight list to avoid false positives).
+kw_re='ghidra|unplayplay|re-unplayplay|unicorn-engine|decrypt_key|spotiload'
+
+# Fence/config/doc files legitimately NAME the fenced paths — exempt them from content scanning.
+is_fence_file() {
+  case "$1" in
+    CLAUDE.md|AGENTS.md|.gitignore|.codexignore|.codex/*|.claude/*|.githooks/*|\
+    .github/workflows/no-drm-material.yml|docs/guide/playplay-private-split.md) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+for f in $staged; do
+  if printf '%s\n' "$f" | grep -Eiq "$path_re"; then
+    block="$block
+  [path]    $f"
+    continue
+  fi
+  is_fence_file "$f" && continue
+  # scan staged blob content for text files
+  if git show ":$f" 2>/dev/null | grep -Eiq "$kw_re"; then
+    block="$block
+  [content] $f"
+  fi
+done
+
+if [ -n "$block" ]; then
+  printf '\nBLOCKED by pre-commit guard — out-of-scope RE/DRM material staged:\n%s\n\n' "$block"
+  echo "These belong in the private wavee-playplay-private repo, not public fluent-gpu."
+  echo "False positive? Review carefully, then: git commit --no-verify"
+  exit 1
+fi
+exit 0

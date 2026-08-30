@@ -1,0 +1,52 @@
+// The payload Spotify returns for extension kind 183 PUBLISHING_METADATA_TRAIT — an entity's CALENDAR release date and,
+// on albums, the ©/℗ lines the "About this release" tile prints. Tracks carry the date alone (~27 B); the album payload
+// is the only one in the probe with copyright strings (262 B on Interstellar OST Expanded).
+//
+// Provenance: the message/package name comes from the wire's Any type_url:
+//   type.googleapis.com/spotify.contentagnostic.v2.PublishingMetadataTrait
+// Field NUMBERS and wire types are verified against a live 2026-08-15 extended-metadata probe over seven entities
+// (tmp/xm-probe/findings-credits-publishing.md §"Kind 183"). FIELD NAMES are best-effort — Spotify does not ship this
+// schema, so read them as documentation of intent, never as a contract.
+//
+// TRUST `date` (field 1), NOT the two unix timestamps. The probe's disagreements are systematic, not noise:
+//
+//   Interstellar OST Expanded   date 2014-11-18   f3 1605175200 -> 2020-11-12   (unix = the Expanded EDITION, not the album)
+//   Never Gonna Give You Up     date 1987-11-12   f3 1617215400 -> 2021-03-31   (unix = a remaster/reissue)
+//   Time / Mr. Brightside       date 2010-07-09   f3  413146860 -> 1983-02-03   (413146860 is a SENTINEL, shared verbatim)
+//
+// So `published`/`available` are declared here for completeness and deliberately left unread by the app: a release-date
+// UI fed from them would print a remaster year, or 1983, on ordinary catalogue albums.
+//
+// Kind 130 RELEASE_DATE_TRAIT carries the same two unix instants without the copyright strings; nothing reads it.
+
+syntax = "proto3";
+
+package spotify.contentagnostic.v2;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.ContentAgnostic";
+
+message PublishingMetadataTrait {
+    // A PARTIAL calendar date: month and day are 0 when the release is only known to the month or the year (which is
+    // exactly what drives Spotify's own YEAR / MONTH / DAY display precision). Not a google.type.Date import — the
+    // repo's protos stay self-contained.
+    message Date {
+        int32 year = 1;
+        int32 month = 2;
+        int32 day = 3;
+    }
+
+    // Seconds-only instant (the same shape prerelease.proto declares). No nanos field was ever observed.
+    message Timestamp {
+        int64 seconds = 1;
+    }
+
+    Date date = 1;             // the release date to show — see the trust note above
+    Timestamp published = 2;   // unread: sentinel / edition dates
+    Timestamp available = 3;   // unread: sentinel / edition dates
+
+    // REPEATED, album-only in the probe: the © line then the ℗ line, each already carrying its symbol, e.g.
+    //   "© 2020 Motion Picture Artwork and Photography 2020 Warner Bros. Entertainment Inc. …"
+    //   "℗ 2014 This compilation WaterTower Music as licensee for Warner Bros. Entertainment Inc."
+    repeated string copyright = 4;
+}

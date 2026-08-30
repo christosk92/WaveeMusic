@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-palette="neutral" data-material="mica">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wavee — Auto-update & What's new (Mica)</title>
+<style>
+  :root{
+    --solid-base:#202020;
+    --layer-default:rgba(58,58,58,0.30);
+    --card-default:rgba(255,255,255,0.0512);
+    --card-secondary:rgba(255,255,255,0.0837);
+    --ctrl-default:rgba(255,255,255,0.0605);
+    --subtle-hover:rgba(255,255,255,0.0605);
+    --stroke-ctrl:rgba(255,255,255,0.0698);
+    --divider:rgba(255,255,255,0.0837);
+    --text:#FFFFFF;
+    --text-2:rgba(255,255,255,0.786);
+    --text-3:rgba(255,255,255,0.5442);
+    --text-4:rgba(255,255,255,0.3628);
+    --accent:#60CDFF;
+    --accent-text:#99EBFF;
+    --on-accent:#003545;
+    --ok:#6CCB5F; --warn:#FCE100; --err:#FF99A4; --info:#60CDFF;
+    --open:#3fb950; --closed:#a371f7; --pr:#8b949e;
+    --r-ctrl:4px; --r-card:8px; --r-layer:8px;
+    --font:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+    --font-d:"Segoe UI Variable Display","Segoe UI Light","Segoe UI",sans-serif;
+    --mono:"Cascadia Code",Consolas,monospace;
+    --shadow-dialog:0 32px 64px rgba(0,0,0,0.37),0 0 2px rgba(0,0,0,0.5);
+    --mica-tint:rgba(32,32,32,0.86);
+    --mica-a:#3d5a8f; --mica-b:#6b3a63;
+    --mica-x:10%; --mica-y:0%;
+    --ease:cubic-bezier(.2,.8,.2,1);
+    --elev-card:0 2px 4px rgba(0,0,0,.14), 0 0 2px rgba(0,0,0,.12);
+    --inner-hi:inset 0 1px 0 rgba(255,255,255,.10);
+    --plate:#2c2c2c;
+    --scrim:rgba(0,0,0,.42);
+    --hero-a:#1c5b8a; --hero-b:#5a2a6e;
+  }
+  html[data-theme="light"]{
+    --solid-base:#f3f3f3;
+    --layer-default:rgba(255,255,255,0.45);
+    --card-default:#ffffff;
+    --card-secondary:#f7f7f7;
+    --ctrl-default:rgba(255,255,255,0.70);
+    --subtle-hover:rgba(0,0,0,0.0405);
+    --stroke-ctrl:rgba(0,0,0,0.0578);
+    --divider:rgba(0,0,0,0.0803);
+    --text:#1a1a1a;
+    --text-2:rgba(0,0,0,0.786);
+    --text-3:rgba(0,0,0,0.5442);
+    --text-4:rgba(0,0,0,0.3628);
+    --accent:#005FB8;
+    --accent-text:#003D92;
+    --on-accent:#ffffff;
+    --ok:#0f7b0f; --warn:#9d5d00; --err:#c42b1c;
+    --open:#1a7f37; --closed:#8250df; --pr:#57606a;
+    --mica-tint:rgba(243,243,243,0.78);
+    --mica-a:#8aa4c8; --mica-b:#c9a090;
+    --elev-card:0 2px 4px rgba(0,0,0,.06), 0 0 2px rgba(0,0,0,.06);
+    --inner-hi:inset 0 1px 0 rgba(255,255,255,.72);
+    --plate:#ffffff;
+    --scrim:rgba(0,0,0,.18);
+    --hero-a:#7fb6e0; --hero-b:#c8a0d8;
+  }
+  html[data-palette="warm"]{ --mica-a:#8a6238; --mica-b:#7a3a42; }
+  html[data-palette="slate"]{ --mica-a:#3d5a8f; --mica-b:#3a4a6b; }
+  html[data-palette="neutral"]{ --mica-a:#5a6270; --mica-b:#4a4450; }
+  html[data-palette="accent"]{ --mica-a:#1a6a88; --mica-b:#2a4a72; }
+  html[data-theme="light"][data-palette="warm"]{ --mica-a:#e0b888; --mica-b:#d8a090; }
+  html[data-theme="light"][data-palette="slate"]{ --mica-a:#8aa4c8; --mica-b:#a0b0c8; }
+  html[data-theme="light"][data-palette="neutral"]{ --mica-a:#c4c4c8; --mica-b:#d0c8c0; }
+  html[data-theme="light"][data-palette="accent"]{ --mica-a:#7ab8d0; --mica-b:#90b0d8; }
+
+  @property --mica-x { syntax: "<percentage>"; inherits: true; initial-value: 10%; }
+  @property --mica-y { syntax: "<percentage>"; inherits: true; initial-value: 0%; }
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:var(--font);font-size:14px;color:var(--text);
+    background-image:
+      radial-gradient(900px 700px at 12% 8%, #2b3a5e 0%, transparent 60%),
+      radial-gradient(1000px 800px at 88% 82%, #4a2a46 0%, transparent 62%),
+      linear-gradient(160deg,#161821,#0c0c10);
+    display:grid;grid-template-rows:auto 1fr;place-items:center;overflow:hidden;
+    padding:8px 12px 16px;
+  }
+  html[data-theme="light"] body{
+    background-image:
+      radial-gradient(900px 700px at 12% 8%, #c5d4e8 0%, transparent 60%),
+      radial-gradient(1000px 800px at 88% 82%, #e8d0c4 0%, transparent 62%),
+      linear-gradient(160deg,#e8eaee,#d8dce4);
+  }
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;}
+  button:focus-visible,[tabindex="0"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  a{color:var(--accent-text);text-decoration:none;}
+
+  .lab{
+    position:relative;z-index:8;width:min(1320px,96vw);
+    display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px 8px;
+    font-size:12px;color:rgba(255,255,255,.55);padding:4px 0 10px;
+  }
+  html[data-theme="light"] .lab{color:rgba(0,0,0,.5);}
+  .lab strong{color:var(--text-2);font-weight:600;}
+  .lab code{font-family:var(--mono);font-size:11px;color:var(--accent-text);}
+  .lab-chip{padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:var(--text-3);font-size:11.5px;}
+  html[data-theme="light"] .lab-chip{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.08);}
+  .lab-chip.on{color:var(--on-accent);background:var(--accent);border-color:transparent;font-weight:600;}
+  .lab-hint{width:100%;text-align:center;line-height:1.45;}
+  .lab-sep{width:1px;height:16px;background:rgba(255,255,255,.14);margin:0 4px;}
+
+  .win{
+    width:min(1320px,96vw);height:min(860px,calc(100vh - 96px));
+    display:grid;grid-template-rows:48px 1fr 84px;grid-template-columns:48px 280px 1fr;
+    grid-template-areas:"title title title" "rail sidebar content" "player player player";
+    border-radius:8px;overflow:hidden;position:relative;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow:var(--shadow-dialog);
+    background:
+      linear-gradient(var(--mica-tint),var(--mica-tint)),
+      radial-gradient(700px 500px at var(--mica-x) var(--mica-y), var(--mica-a) 0%, transparent 62%),
+      radial-gradient(760px 560px at 92% 96%, var(--mica-b) 0%, transparent 64%),
+      var(--solid-base);
+    background-blend-mode:normal,soft-light,soft-light,normal;
+    animation:zuneDrift 18s var(--ease) infinite alternate;
+  }
+  @keyframes zuneDrift{from{--mica-x:8%; --mica-y:0%;} to{--mica-x:18%; --mica-y:12%;}}
+  html[data-theme="light"] .win{border-color:rgba(0,0,0,0.08);}
+  .win::after{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.045;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  }
+  .titlebar,.rail,.sidebar,.content,.player,.scrim,.toasts{position:relative;z-index:2;}
+
+  .titlebar{grid-area:title;display:flex;align-items:center;gap:8px;padding-left:12px;}
+  .tb-name{font-size:12px;color:var(--text-2);font-weight:600;}
+  .tb-name span{font-weight:400;opacity:.7;margin-left:6px;}
+  .caption{margin-left:auto;display:flex;}
+  .caption button{width:46px;height:48px;color:var(--text-2);font-size:10px;}
+  .caption button:hover{background:var(--subtle-hover);}
+  .caption button.close:hover{background:#c42b1c;color:#fff;}
+
+  .rail{grid-area:rail;display:flex;flex-direction:column;align-items:center;gap:2px;padding-top:2px;}
+  .rail button{width:40px;height:36px;border-radius:var(--r-ctrl);color:var(--text-2);display:grid;place-items:center;position:relative;}
+  .rail button.on{background:var(--subtle-hover);}
+  .rail button.on::before{content:"";position:absolute;left:2px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent);}
+  .rail .sp{flex:1;}
+  .rail .badge{position:absolute;top:5px;right:7px;width:8px;height:8px;border-radius:4px;background:var(--accent);box-shadow:0 0 0 2px var(--solid-base);}
+
+  .sidebar{grid-area:sidebar;margin:4px 0 8px;border-radius:var(--r-layer);background:var(--layer-default);padding:10px 8px;display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden;}
+  .sb-search{height:28px;border-radius:var(--r-ctrl);background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);display:flex;align-items:center;padding:0 8px;color:var(--text-4);font-size:12px;}
+  .sb-row{height:34px;border-radius:var(--r-ctrl);display:flex;align-items:center;gap:8px;padding:0 8px;color:var(--text-2);font-size:12.5px;}
+  .sb-row.on{background:var(--subtle-hover);color:var(--text);}
+  .sb-dot{width:22px;height:22px;border-radius:4px;flex:none;background:linear-gradient(135deg,#4a6,#268);}
+  .sb-dot.a{background:linear-gradient(135deg,#c96,#842);}
+  .sb-dot.b{background:linear-gradient(135deg,#69c,#246);}
+  .sb-dot.c{background:linear-gradient(135deg,#db8,#864);}
+  .sb-hair{height:1px;background:var(--divider);margin:4px;}
+  .sb-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+  .sb-foot{margin-top:auto;}
+  /* the sidebar "update ready" pill — a persistent, quiet affordance while the toast has been dismissed */
+  .sb-update{
+    display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;
+    background:color-mix(in srgb, var(--accent) 14%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    font-size:12px;color:var(--text);
+  }
+  .sb-update .dot{width:8px;height:8px;border-radius:4px;background:var(--accent);flex:none;}
+  .sb-update b{display:block;font-size:12px;}
+  .sb-update span{color:var(--text-3);font-size:11px;}
+  .sb-update[hidden]{display:none;}
+
+  .content{grid-area:content;min-width:0;padding:8px 18px 0 12px;display:flex;flex-direction:column;gap:14px;overflow:hidden;position:relative;}
+  .scene{position:absolute;inset:8px 18px 0 12px;display:none;flex-direction:column;gap:12px;min-height:0;}
+  .scene.on{display:flex;}
+  .scroll{overflow:auto;min-height:0;padding-right:6px;display:flex;flex-direction:column;gap:14px;scrollbar-width:thin;}
+  .scroll>*{flex:none;}
+
+  .player{grid-area:player;display:grid;grid-template-columns:240px 1fr 240px;align-items:center;padding:0 16px;background:rgba(0,0,0,.18);border-top:1px solid var(--divider);}
+  .now{display:flex;align-items:center;gap:10px;}
+  .now .art{width:52px;height:52px;border-radius:4px;background:linear-gradient(145deg,#4a6,#268);}
+  .now b{display:block;font-size:13px;} .now span{font-size:12px;color:var(--text-3);}
+  .transport{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .t-btns{display:flex;gap:12px;align-items:center;color:var(--text-2);}
+  .t-btns .play{width:34px;height:34px;border-radius:17px;background:var(--text);color:var(--solid-base);display:grid;place-items:center;}
+  .scrub{width:min(420px,100%);height:4px;border-radius:2px;background:rgba(255,255,255,.18);position:relative;}
+  .scrub i{position:absolute;inset:0 auto 0 0;width:34%;background:var(--text);border-radius:2px;}
+
+  /* ---------- shared bits ---------- */
+  .btn{height:32px;padding:0 14px;border-radius:var(--r-ctrl);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:13.5px;font-weight:600;white-space:nowrap;}
+  .btn.std{background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);}
+  .btn.std:hover{background:var(--subtle-hover);}
+  .btn.accent{background:var(--accent);color:var(--on-accent);}
+  .btn.ghost{color:var(--accent-text);padding:0 6px;}
+  .btn.sm{height:26px;font-size:12px;padding:0 10px;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .eyebrow{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-4);}
+  .pill{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:10px;font-size:11px;font-weight:600;background:var(--card-secondary);color:var(--text-2);}
+  .pill.accent{background:color-mix(in srgb, var(--accent) 22%, transparent);color:var(--accent-text);}
+  .pill.beta{background:color-mix(in srgb, #d29922 26%, transparent);color:#e3b341;}
+  html[data-theme="light"] .pill.beta{color:#7a4b00;}
+  .pill.ok{background:color-mix(in srgb, var(--ok) 20%, transparent);color:var(--ok);}
+  .mono{font-family:var(--mono);}
+  .card{border-radius:var(--r-card);background:var(--card-default);border:1px solid var(--stroke-ctrl);}
+  .hair{height:1px;background:var(--divider);}
+
+  /* issue / PR chips — the GitHub state, fetched lazily, cached with the notes */
+  .ref{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px 0 5px;border-radius:9px;font:600 11px/1 var(--mono);border:1px solid var(--stroke-ctrl);background:var(--ctrl-default);color:var(--text-2);vertical-align:middle;margin-left:4px;}
+  .ref i{width:8px;height:8px;border-radius:4px;display:inline-block;}
+  .ref.open i{background:var(--open);} .ref.closed i{background:var(--closed);} .ref.pr i{background:var(--pr);border-radius:2px;}
+  .ref.unknown i{background:transparent;border:1px dashed var(--text-4);}
+  .ref:hover{background:var(--subtle-hover);}
+  .ref .st{color:var(--text-4);font-weight:500;}
+
+  /* ---------- scene 1: What's new page ---------- */
+  .wn{display:grid;grid-template-columns:1fr 208px;gap:14px;min-height:0;height:100%;}
+  .wn-main{min-width:0;min-height:0;display:flex;flex-direction:column;gap:12px;}
+  .wn-hero{
+    border-radius:12px;padding:22px 24px 20px;position:relative;overflow:hidden;
+    background:
+      radial-gradient(520px 260px at 90% -10%, color-mix(in srgb, var(--hero-b) 70%, transparent) 0%, transparent 65%),
+      radial-gradient(420px 260px at 0% 110%, color-mix(in srgb, var(--hero-a) 70%, transparent) 0%, transparent 60%),
+      var(--card-secondary);
+    box-shadow:var(--inner-hi);
+    display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;
+  }
+  .wn-hero .k{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .wn-hero h1{margin:0;font:600 30px/1.1 var(--font-d);letter-spacing:-.02em;}
+  .wn-hero h1 em{font-style:normal;color:var(--accent-text);}
+  .wn-hero p{margin:8px 0 0;color:var(--text-2);max-width:60ch;line-height:1.45;}
+  .wn-hero .meta{display:flex;gap:14px;font-size:12px;color:var(--text-3);margin-top:12px;flex-wrap:wrap;}
+  .wn-hero .meta b{color:var(--text-2);font-weight:600;}
+  .wn-hero .wave{position:absolute;right:-30px;bottom:-40px;width:320px;height:180px;opacity:.35;pointer-events:none;}
+  .wn-hero .cta{display:flex;flex-direction:column;gap:8px;align-items:flex-end;position:relative;}
+
+  .since{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;background:color-mix(in srgb, var(--accent) 10%, transparent);border:1px solid color-mix(in srgb, var(--accent) 24%, transparent);font-size:12.5px;}
+  .since b{font-weight:600;}
+  .since .sp{flex:1;}
+
+  .hl{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .hl-card{border-radius:10px;overflow:hidden;background:var(--card-default);border:1px solid var(--stroke-ctrl);display:flex;flex-direction:column;min-width:0;transition:transform .2s var(--ease),background .2s;}
+  .hl-card:hover{background:var(--card-secondary);transform:translateY(-1px);}
+  .hl-media{height:118px;position:relative;background:linear-gradient(135deg,#2d3f5a,#1a2436);display:grid;place-items:center;color:rgba(255,255,255,.75);}
+  .hl-media.m2{background:linear-gradient(135deg,#5a3a2d,#36201a);}
+  .hl-media.m3{background:linear-gradient(135deg,#2d5a45,#1a3628);}
+  .hl-media .tag{position:absolute;top:8px;left:8px;}
+  .hl-media .play{width:36px;height:36px;border-radius:18px;background:rgba(0,0,0,.45);display:grid;place-items:center;font-size:14px;backdrop-filter:blur(6px);}
+  .hl-body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:4px;}
+  .hl-body b{font-size:13.5px;}
+  .hl-body p{margin:0;font-size:12.5px;color:var(--text-3);line-height:1.4;}
+  .hl-body .go{margin-top:4px;font-size:12px;color:var(--accent-text);font-weight:600;}
+
+  .sec{display:flex;flex-direction:column;gap:6px;}
+  .sec-h{display:flex;align-items:center;gap:8px;height:28px;}
+  .sec-h .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:12px;font-weight:700;}
+  .sec-h .ic.add{background:color-mix(in srgb, var(--ok) 22%, transparent);color:var(--ok);}
+  .sec-h .ic.chg{background:color-mix(in srgb, var(--info) 22%, transparent);color:var(--accent-text);}
+  .sec-h .ic.fix{background:color-mix(in srgb, #d29922 22%, transparent);color:#e3b341;}
+  .sec-h .ic.rem{background:color-mix(in srgb, var(--err) 22%, transparent);color:var(--err);}
+  .sec-h .ic.known{background:var(--card-secondary);color:var(--text-3);}
+  .sec-h h3{margin:0;font-size:14px;font-weight:600;}
+  .sec-h .n{color:var(--text-4);font-size:12px;}
+  .sec-h .sp{flex:1;}
+  .items{display:flex;flex-direction:column;border-radius:var(--r-card);background:var(--card-default);border:1px solid var(--stroke-ctrl);overflow:hidden;}
+  .item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;padding:9px 12px;border-top:1px solid var(--divider);font-size:13px;line-height:1.45;}
+  .item:first-child{border-top:0;}
+  .item b{font-weight:600;}
+  .item code{font-family:var(--mono);font-size:12px;background:var(--ctrl-default);padding:1px 5px;border-radius:3px;}
+  .item .who{display:flex;gap:-4px;align-items:center;}
+  .av{width:18px;height:18px;border-radius:9px;background:linear-gradient(135deg,#69c,#246);border:1.5px solid var(--plate);margin-left:-5px;}
+  .av.b{background:linear-gradient(135deg,#c96,#842);} .av.c{background:linear-gradient(135deg,#6c9,#264);}
+  .who .av:first-child{margin-left:0;}
+  .item .scope{color:var(--text-4);font-weight:600;font-size:11px;letter-spacing:.04em;text-transform:uppercase;margin-right:6px;}
+
+  .vrail{display:flex;flex-direction:column;gap:6px;min-height:0;}
+  .vrail .eyebrow{padding:6px 4px 2px;}
+  .vlist{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0;scrollbar-width:thin;}
+  .v{display:grid;grid-template-columns:14px 1fr;gap:8px;align-items:start;padding:8px 8px;border-radius:6px;text-align:left;color:var(--text-2);}
+  .v:hover{background:var(--subtle-hover);}
+  .v.on{background:var(--subtle-hover);color:var(--text);}
+  .v .tl{position:relative;width:14px;height:100%;}
+  .v .tl::before{content:"";position:absolute;left:6px;top:14px;bottom:-14px;width:1px;background:var(--divider);}
+  .v:last-child .tl::before{display:none;}
+  .v .tl i{position:absolute;left:2px;top:4px;width:9px;height:9px;border-radius:5px;border:1.5px solid var(--text-4);background:var(--plate);}
+  .v.on .tl i,.v.cur .tl i{border-color:var(--accent);background:var(--accent);}
+  .v b{display:block;font-size:12.5px;font-weight:600;}
+  .v .sub{display:block;font-size:11px;color:var(--text-4);}
+  .v .nm{color:var(--accent-text);font-weight:600;}
+  .v .you{font-size:10px;color:var(--on-accent);background:var(--accent);padding:1px 5px;border-radius:6px;margin-left:6px;font-weight:700;}
+  .v .unread{width:6px;height:6px;border-radius:3px;background:var(--accent);display:inline-block;margin-left:6px;vertical-align:middle;}
+  .vrail .foot{margin-top:auto;padding:6px 4px;font-size:11.5px;color:var(--text-4);line-height:1.4;}
+
+  /* ---------- scene 2: settings › about ---------- */
+  .settings{display:grid;grid-template-columns:200px 1fr;gap:14px;min-height:0;height:100%;}
+  .snav{display:flex;flex-direction:column;gap:2px;}
+  .snav button{height:34px;padding:0 10px;border-radius:var(--r-ctrl);text-align:left;color:var(--text-2);font-size:13px;display:flex;align-items:center;gap:8px;}
+  .snav button.on{background:var(--subtle-hover);color:var(--text);position:relative;}
+  .snav button.on::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--accent);}
+  .about{display:flex;flex-direction:column;gap:12px;overflow:auto;min-height:0;padding-right:6px;scrollbar-width:thin;}
+  .about-hero{padding:22px 24px;border-radius:var(--r-card);background:var(--card-secondary);border:1px solid var(--stroke-ctrl);display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;}
+  .mark{width:64px;height:64px;border-radius:16px;background:color-mix(in srgb, var(--accent) 22%, transparent);display:grid;place-items:center;color:var(--accent);font-size:30px;}
+  .about-hero h2{margin:0;font:600 24px/1.1 var(--font-d);}
+  .about-hero h2 em{font-style:normal;color:var(--accent-text);}
+  .about-hero .ver{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;font-size:12.5px;color:var(--text-2);}
+  .about-hero .sub{margin-top:6px;font-size:12px;color:var(--text-3);}
+  .about-hero .right{display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+  .scard{border-radius:var(--r-card);background:var(--card-default);border:1px solid var(--stroke-ctrl);}
+  .srow{display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;padding:12px 14px;border-top:1px solid var(--divider);min-height:44px;}
+  .srow:first-child{border-top:0;}
+  .srow .ic{color:var(--text-2);text-align:center;}
+  .srow b{display:block;font-size:13.5px;font-weight:600;}
+  .srow span{display:block;font-size:12px;color:var(--text-3);margin-top:2px;line-height:1.35;}
+  .srow .ctl{display:flex;gap:8px;align-items:center;}
+  .sel{height:30px;padding:0 10px;border-radius:var(--r-ctrl);background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);font-size:13px;display:inline-flex;align-items:center;gap:8px;}
+  .sel::after{content:"⌄";opacity:.6;}
+  .toggle{width:40px;height:20px;border-radius:10px;background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);position:relative;}
+  .toggle::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:6px;background:var(--text-2);transition:left .2s var(--ease);}
+  .toggle.on{background:var(--accent);border-color:transparent;}
+  .toggle.on::after{left:23px;background:var(--on-accent);}
+  .radio-list{display:flex;flex-direction:column;gap:2px;padding:6px 14px 10px 50px;}
+  .radio{display:flex;gap:10px;align-items:flex-start;padding:6px 0;font-size:13px;}
+  .radio i{width:16px;height:16px;border-radius:8px;border:1.5px solid var(--text-3);flex:none;margin-top:2px;display:grid;place-items:center;}
+  .radio.on i{border-color:var(--accent);}
+  .radio.on i::after{content:"";width:8px;height:8px;border-radius:4px;background:var(--accent);}
+  .radio span{color:var(--text-3);font-size:12px;display:block;}
+  .status{display:flex;align-items:center;gap:10px;font-size:12.5px;}
+  .status .led{width:8px;height:8px;border-radius:4px;background:var(--ok);}
+  .status .led.busy{background:var(--accent);animation:pulse 1.2s ease-in-out infinite;}
+  @keyframes pulse{50%{opacity:.35}}
+  .prog{height:4px;border-radius:2px;background:rgba(255,255,255,.14);overflow:hidden;width:180px;}
+  html[data-theme="light"] .prog{background:rgba(0,0,0,.12);}
+  .prog i{display:block;height:100%;background:var(--accent);width:0;transition:width .4s var(--ease);border-radius:2px;}
+
+  /* ---------- toast stack (in-app) ---------- */
+  .toasts{position:absolute;right:20px;bottom:96px;z-index:7;display:flex;flex-direction:column;gap:8px;width:380px;pointer-events:none;}
+  .toast{pointer-events:auto;border-radius:8px;background:var(--plate);border:1px solid var(--stroke-ctrl);box-shadow:var(--shadow-dialog);padding:12px 12px 12px 14px;display:grid;grid-template-columns:20px 1fr auto;gap:10px;align-items:start;position:relative;overflow:hidden;transform:translateY(8px);opacity:0;transition:transform .3s var(--ease),opacity .3s;}
+  .toast.in{transform:none;opacity:1;}
+  .toast::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);}
+  .toast.ok::before{background:var(--ok);}
+  .toast .ic{color:var(--accent);font-size:14px;margin-top:1px;}
+  .toast.ok .ic{color:var(--ok);}
+  .toast b{display:block;font-size:13px;}
+  .toast p{margin:2px 0 0;font-size:12.5px;color:var(--text-3);line-height:1.4;}
+  .toast .acts{display:flex;gap:6px;align-items:center;margin-top:8px;}
+  .toast .x{color:var(--text-3);font-size:12px;width:24px;height:24px;border-radius:4px;display:grid;place-items:center;}
+  .toast .x:hover{background:var(--subtle-hover);}
+  .toast .tprog{grid-column:2/4;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:4px;}
+  .toast .tprog i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s linear;}
+
+  /* ---------- OS toast (Windows notification, rendered in the lab, off-window) ---------- */
+  .os-toast{position:absolute;right:14px;top:60px;z-index:9;width:364px;border-radius:8px;background:#2b2b2b;color:#fff;border:1px solid rgba(255,255,255,.12);box-shadow:0 8px 32px rgba(0,0,0,.5);padding:14px 14px 12px;display:none;font-size:13px;}
+  html[data-theme="light"] .os-toast{background:#f9f9f9;color:#1a1a1a;border-color:rgba(0,0,0,.1);}
+  .os-toast.on{display:block;}
+  .os-toast .h{display:flex;gap:8px;align-items:center;font-size:12px;opacity:.75;margin-bottom:8px;}
+  .os-toast .h i{width:16px;height:16px;border-radius:4px;background:var(--accent);display:inline-block;}
+  .os-toast .body{display:grid;grid-template-columns:48px 1fr;gap:12px;}
+  .os-toast .art{width:48px;height:48px;border-radius:8px;background:linear-gradient(135deg,var(--hero-a),var(--hero-b));}
+  .os-toast b{display:block;font-size:14px;}
+  .os-toast p{margin:2px 0 0;font-size:12.5px;opacity:.8;line-height:1.4;}
+  .os-toast .pb{height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden;margin:10px 0 4px;}
+  .os-toast .pb i{display:block;height:100%;background:var(--accent);width:62%;}
+  .os-toast .pst{display:flex;justify-content:space-between;font-size:11.5px;opacity:.7;}
+  .os-toast .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+  .os-toast .btns button{height:32px;border-radius:4px;background:rgba(255,255,255,.08);font-weight:600;font-size:13px;}
+  html[data-theme="light"] .os-toast .btns button{background:rgba(0,0,0,.06);}
+  .os-toast .btns button.acc{background:var(--accent);color:var(--on-accent);}
+
+  /* ---------- scene 3: first-launch-after-update dialog ---------- */
+  .scrim{position:absolute;inset:48px 0 0;z-index:6;background:var(--scrim);display:none;place-items:center;padding:20px;}
+  .scrim.on{display:grid;}
+  .dlg{width:min(720px,100%);border-radius:8px;overflow:hidden;background:var(--plate);border:1px solid rgba(255,255,255,.08);box-shadow:var(--shadow-dialog);display:grid;grid-template-rows:auto 1fr auto;max-height:100%;}
+  html[data-theme="light"] .dlg{border-color:rgba(0,0,0,.08);}
+  .dlg-hero{padding:22px 26px 18px;background:radial-gradient(520px 200px at 100% 0%, color-mix(in srgb, var(--hero-b) 60%, transparent), transparent 70%),radial-gradient(400px 200px at 0% 100%, color-mix(in srgb, var(--hero-a) 60%, transparent), transparent 70%);}
+  .dlg-hero h1{margin:6px 0 0;font:600 26px/1.15 var(--font-d);letter-spacing:-.02em;}
+  .dlg-hero h1 em{font-style:normal;color:var(--accent-text);}
+  .dlg-hero p{margin:6px 0 0;color:var(--text-2);line-height:1.45;max-width:56ch;}
+  .dlg-body{padding:6px 26px 14px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;overflow:auto;}
+  .dlg-body .hl-card .hl-media{height:92px;}
+  .dlg-foot{display:flex;align-items:center;gap:8px;padding:14px 26px;border-top:1px solid var(--divider);background:color-mix(in srgb, var(--plate) 88%, black);}
+  html[data-theme="light"] .dlg-foot{background:#f6f6f6;}
+  .dlg-foot .sp{flex:1;}
+  .dlg-foot label{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-3);}
+  .dlg-foot .cb{width:16px;height:16px;border-radius:3px;border:1.5px solid var(--text-3);display:inline-block;}
+
+  /* ---------- scene 4: notification center ---------- */
+  .nc{position:absolute;right:12px;top:52px;width:360px;max-height:calc(100% - 150px);border-radius:8px;background:var(--plate);border:1px solid var(--stroke-ctrl);box-shadow:var(--shadow-dialog);display:none;flex-direction:column;z-index:7;overflow:hidden;}
+  .nc.on{display:flex;}
+  .nc .h{display:flex;align-items:center;padding:12px 14px;font-weight:600;border-bottom:1px solid var(--divider);}
+  .nc .h .sp{flex:1;}
+  .nc .list{overflow:auto;display:flex;flex-direction:column;}
+  .ncard{display:grid;grid-template-columns:36px 1fr;gap:10px;padding:12px 14px;border-bottom:1px solid var(--divider);}
+  .ncard .ic{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;font-size:16px;background:var(--card-secondary);}
+  .ncard .ic.acc{background:color-mix(in srgb, var(--accent) 20%, transparent);color:var(--accent);}
+  .ncard b{display:block;font-size:13px;}
+  .ncard p{margin:2px 0 0;font-size:12.5px;color:var(--text-3);line-height:1.4;}
+  .ncard .acts{display:flex;gap:6px;margin-top:8px;}
+  .ncard .t{font-size:11px;color:var(--text-4);margin-top:6px;}
+  .ncard .pb{height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:8px;}
+  .ncard .pb i{display:block;height:100%;background:var(--accent);width:44%;}
+
+  .note{font-size:11.5px;color:var(--text-4);line-height:1.4;padding:4px 2px;}
+</style>
+</head>
+<body>
+  <div class="lab">
+    <span class="lab-hint"><strong>Auto-update &amp; What's new</strong> — one <code>ReleaseNotes</code> document → three surfaces (page · dialog · toasts). Codename + numeric version everywhere. Issue chips carry live GitHub state. <code>1–4</code> scenes · <code>U</code> step the update state machine · <code>N</code> notification center · <code>T</code> theme</span>
+    <button class="lab-chip on" data-scene="whatsnew">1 What's new page</button>
+    <button class="lab-chip" data-scene="about">2 Settings › About</button>
+    <button class="lab-chip" data-scene="dialog">3 After-update dialog</button>
+    <button class="lab-chip" data-scene="toasts">4 Update flow (toasts)</button>
+    <span class="lab-sep"></span>
+    <button class="lab-chip" id="stepBtn">U · state: <span id="stateName">idle</span></button>
+    <button class="lab-chip" id="ncBtn">N · notification center</button>
+    <button class="lab-chip" id="themeBtn">T · light</button>
+    <button class="lab-chip" id="chanBtn">channel: stable</button>
+  </div>
+
+  <div class="win" id="win">
+    <div class="titlebar">
+      <div class="tb-name">Wavee <span id="tbSub">What's new</span></div>
+      <div class="caption"><button>─</button><button>□</button><button class="close">✕</button></div>
+    </div>
+    <div class="rail" aria-hidden="true">
+      <button>⌂</button><button>⌕</button><button>☰</button><div class="sp"></div>
+      <button id="railBell">🔔<span class="badge" id="railBadge" hidden></span></button>
+      <button class="on">⚙</button>
+    </div>
+    <aside class="sidebar">
+      <div class="sb-search">Search</div>
+      <div class="sb-row"><span class="sb-dot"></span>Home</div>
+      <div class="sb-row"><span class="sb-dot b"></span>Your Library</div>
+      <div class="sb-hair"></div>
+      <div class="sb-row"><span class="sb-dot c"></span><span class="sb-name">Liked Songs</span></div>
+      <div class="sb-row"><span class="sb-dot a"></span><span class="sb-name">Discover Weekly</span></div>
+      <div class="sb-row"><span class="sb-dot b"></span><span class="sb-name">This is Radiohead</span></div>
+      <div class="sb-foot">
+        <button class="sb-update" id="sbUpdate" hidden>
+          <span class="dot"></span>
+          <span><b id="sbUpdateT">Update ready</b><span id="sbUpdateS">Restart to finish · 0.3.0 Crest</span></span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="content">
+
+      <!-- ===================== SCENE 1: WHAT'S NEW PAGE ===================== -->
+      <section class="scene on" data-scene="whatsnew">
+        <div class="wn">
+          <div class="wn-main">
+            <div class="since" id="since">
+              <span>✦</span>
+              <span>Since you last looked: <b>2 releases</b> — 0.2.1 Breaker → <b>0.3.0 Crest</b>. Showing everything new.</span>
+              <span class="sp"></span>
+              <button class="btn ghost sm" id="sinceOnly">Only the latest</button>
+            </div>
+            <div class="scroll" id="wnScroll">
+              <div class="wn-hero">
+                <div>
+                  <div class="k"><span class="pill accent">Latest</span><span class="pill" id="heroChan">Stable</span><span class="pill mono">0.3.0.312</span></div>
+                  <h1>Wavee 0.3 <em>Crest</em></h1>
+                  <p>Docked video, a rebuilt queue you can actually reorder, and lyrics that stay in sync when you scrub. Plus 14 fixes you reported.</p>
+                  <div class="meta">
+                    <span><b>Released</b> 29 Aug 2026</span>
+                    <span><b>Size</b> 7.4 MB (2.1 MB delta)</span>
+                    <span><b>Requires</b> Windows 10 1809+</span>
+                    <span><b>Tag</b> <span class="mono">wavee-v0.3.0</span></span>
+                  </div>
+                </div>
+                <div class="cta">
+                  <button class="btn std sm">Open on GitHub ↗</button>
+                  <button class="btn ghost sm">Copy link</button>
+                </div>
+                <svg class="wave" viewBox="0 0 320 180" aria-hidden="true"><path d="M0 120 C 40 80, 80 160, 120 120 S 200 80, 240 120 S 300 160, 340 120" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" opacity=".5"/><path d="M0 150 C 40 110, 80 190, 120 150 S 200 110, 240 150 S 300 190, 340 150" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" opacity=".35"/></svg>
+              </div>
+
+              <div class="sec">
+                <div class="sec-h"><span class="eyebrow">Highlights</span></div>
+                <div class="hl">
+                  <div class="hl-card">
+                    <div class="hl-media"><span class="pill tag">New</span><span class="play">▶</span></div>
+                    <div class="hl-body"><b>Docked video</b><p>Music videos and canvases dock into the sidebar and follow you between pages.</p><span class="go">Try it → Settings › Playback</span></div>
+                  </div>
+                  <div class="hl-card">
+                    <div class="hl-media m2"><span class="pill tag">Rebuilt</span><span>🖼</span></div>
+                    <div class="hl-body"><b>Queue you can rearrange</b><p>Drag to reorder, spring-load into playlists, and a proper "play next" lane.</p><span class="go">Open the queue →</span></div>
+                  </div>
+                  <div class="hl-card">
+                    <div class="hl-media m3"><span class="pill tag">Improved</span><span>🖼</span></div>
+                    <div class="hl-body"><b>Lyrics stay in sync</b><p>Scrubbing, gapless transitions and device hand-off no longer desync the line clock.</p><span class="go">See it while playing →</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sec">
+                <div class="sec-h"><span class="ic add">+</span><h3>Added</h3><span class="n">5</span><span class="sp"></span></div>
+                <div class="items">
+                  <div class="item"><div><span class="scope">Player</span><b>Docked video</b> — canvases and music videos play in a resizable dock with snap corners.<a class="ref closed" href="#"><i></i>#412<span class="st">closed</span></a><a class="ref pr" href="#"><i></i>!430</a></div><div class="who"><span class="av"></span></div></div>
+                  <div class="item"><div><span class="scope">Queue</span><b>Drag to reorder</b> the play queue, with a separate "play next" lane.<a class="ref closed" href="#"><i></i>#388<span class="st">closed</span></a></div><div class="who"><span class="av"></span><span class="av b"></span></div></div>
+                  <div class="item"><div><span class="scope">Settings</span><b>Release channel</b> picker (Stable / Beta) and an update policy: notify, download in the background, or install on quit.<a class="ref closed" href="#"><i></i>#455<span class="st">closed</span></a></div><div class="who"><span class="av"></span></div></div>
+                  <div class="item"><div><span class="scope">Shell</span>This page — <b>What's new</b> — with the changelog for every release you skipped.</div><div class="who"><span class="av"></span></div></div>
+                  <div class="item"><div><span class="scope">Search</span>Search results now include <b>audiobooks</b> where your market allows it.<a class="ref open" href="#"><i></i>#471<span class="st">open</span></a></div><div class="who"><span class="av c"></span></div></div>
+                </div>
+              </div>
+
+              <div class="sec">
+                <div class="sec-h"><span class="ic chg">~</span><h3>Changed</h3><span class="n">3</span></div>
+                <div class="items">
+                  <div class="item"><div><span class="scope">Lyrics</span>The line clock is driven by the <b>player position signal</b> instead of a wall-clock timer, so scrubbing and gapless no longer drift.<a class="ref closed" href="#"><i></i>#402<span class="st">closed</span></a></div><div class="who"><span class="av"></span></div></div>
+                  <div class="item"><div><span class="scope">Updates</span>Updates <b>download in the background</b> and apply on the next launch; the app no longer hands you to App Installer.<a class="ref closed" href="#"><i></i>#455<span class="st">closed</span></a></div><div class="who"><span class="av"></span></div></div>
+                  <div class="item"><div><span class="scope">Sidebar</span>Curated sidebar tiles use the <b>dominant art colour</b> for their wash.</div><div class="who"><span class="av b"></span></div></div>
+                </div>
+              </div>
+
+              <div class="sec">
+                <div class="sec-h"><span class="ic fix">✓</span><h3>Fixed</h3><span class="n">14</span><span class="sp"></span><button class="btn ghost sm" id="moreFixes">Show all 14</button></div>
+                <div class="items" id="fixes">
+                  <div class="item"><div><span class="scope">Playback</span>Skipping during a <b>crossfade</b> could play two tracks at once.<a class="ref closed" href="#"><i></i>#398<span class="st">closed</span></a></div><div class="who"><span class="av"></span></div></div>
+                  <div class="item"><div><span class="scope">Library</span><b>Liked Songs</b> lost its sort after a sync when the list was filtered.<a class="ref closed" href="#"><i></i>#417<span class="st">closed</span></a></div><div class="who"><span class="av"></span></div></div>
+                  <div class="item"><div><span class="scope">Shell</span>Expanders that know their own height — no more one-frame jump on open.<a class="ref closed" href="#"><i></i>#440<span class="st">closed</span></a></div><div class="who"><span class="av c"></span></div></div>
+                  <div class="item"><div><span class="scope">Updates</span>"Check for updates" reported <b>up to date</b> while a prerelease was the latest tag.<a class="ref closed" href="#"><i></i>#452<span class="st">closed</span></a></div><div class="who"><span class="av"></span></div></div>
+                  <div class="item"><div><span class="scope">Connect</span>Volume from a remote device jumped to 100% on reconnect — partially fixed; a race remains on some speakers.<a class="ref open" href="#"><i></i>#433<span class="st">open</span></a></div><div class="who"><span class="av"></span></div></div>
+                </div>
+              </div>
+
+              <div class="sec">
+                <div class="sec-h"><span class="ic rem">−</span><h3>Removed</h3><span class="n">1</span></div>
+                <div class="items">
+                  <div class="item"><div><span class="scope">Updates</span>The <code>ms-appinstaller:</code> hand-off. Windows disables that protocol by default, so it was a dead button for most people.<a class="ref closed" href="#"><i></i>#455<span class="st">closed</span></a></div><div class="who"><span class="av"></span></div></div>
+                </div>
+              </div>
+
+              <div class="sec">
+                <div class="sec-h"><span class="ic known">!</span><h3>Known limitations</h3><span class="n">3</span></div>
+                <div class="items">
+                  <div class="item"><div>No dedicated <b>episode</b> or <b>profile</b> pages yet.<a class="ref open" href="#"><i></i>#301<span class="st">open</span></a></div><div></div></div>
+                  <div class="item"><div><b>FLAC seek</b> is not implemented.<a class="ref open" href="#"><i></i>#377<span class="st">open</span></a></div><div></div></div>
+                  <div class="item"><div>Updating on a <b>metered connection</b> waits for Wi‑Fi unless you choose otherwise in Settings.</div><div></div></div>
+                </div>
+              </div>
+
+              <div class="note">Thanks to everyone who filed issues this cycle. Chips show the issue's <i>current</i> GitHub state — an open chip means the fix landed but the report is still being tracked.</div>
+              <div style="height:10px"></div>
+            </div>
+          </div>
+
+          <aside class="vrail">
+            <div class="eyebrow">Releases</div>
+            <div class="vlist" id="vlist"></div>
+            <div class="foot">Notes are fetched once per release and cached offline. Older releases load on demand.</div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ===================== SCENE 2: SETTINGS › ABOUT ===================== -->
+      <section class="scene" data-scene="about">
+        <div class="settings">
+          <nav class="snav">
+            <button>General</button><button>Playback</button><button>Notifications</button><button>Storage</button><button>Developer</button><button class="on">About</button>
+          </nav>
+          <div class="about">
+            <div class="about-hero">
+              <div class="mark">♪</div>
+              <div>
+                <h2>Wavee 0.3 <em>Crest</em></h2>
+                <div class="ver"><span class="mono">0.3.0.312</span><span class="pill" id="aboutChan">Stable</span><span class="pill ok" id="aboutState">Up to date</span><span class="mono" style="color:var(--text-4)">d4227b3 · arm64</span></div>
+                <div class="sub" id="aboutSub">Installed 29 Aug 2026 · last checked 4 minutes ago</div>
+              </div>
+              <div class="right">
+                <button class="btn accent" id="aboutPrimary">Check for updates</button>
+                <button class="btn ghost sm">What's new in Crest →</button>
+              </div>
+            </div>
+
+            <div class="scard">
+              <div class="srow"><span class="ic">⟳</span><div><b>Update status</b><span id="aboutStatusText">You're on the latest Stable release.</span><div class="status" id="aboutProg" hidden><span class="led busy"></span><span class="prog"><i id="aboutProgBar"></i></span><span id="aboutProgPct" class="mono">0%</span></div></div><div class="ctl"><button class="btn std sm" id="aboutSecondary" hidden>Restart now</button></div></div>
+              <div class="srow"><span class="ic">◍</span><div><b>Release channel</b><span>Beta gets new features a few weeks early and may be rougher. Switching back to Stable takes effect at the next Stable release.</span></div><div class="ctl"><span class="sel" id="aboutChanSel">Stable</span></div></div>
+              <div class="srow" style="align-items:start"><span class="ic">⇩</span><div><b>How updates install</b><span>Wavee always tells you what changed before anything restarts.</span></div><div></div></div>
+              <div class="radio-list">
+                <div class="radio on"><i></i><div>Download in the background, install on next launch <span>Recommended. You'll see a "restart to finish" pill; nothing interrupts playback.</span></div></div>
+                <div class="radio"><i></i><div>Install when I quit Wavee <span>Downloads in the background; applies when the app closes.</span></div></div>
+                <div class="radio"><i></i><div>Only notify me <span>Nothing downloads until you press Update.</span></div></div>
+              </div>
+              <div class="srow"><span class="ic">📶</span><div><b>Download on metered connections</b><span>Off: waits for an unmetered network.</span></div><div class="ctl"><span class="toggle"></span></div></div>
+              <div class="srow"><span class="ic">✦</span><div><b>Show "What's new" after an update</b><span>A short summary the first time the new version opens.</span></div><div class="ctl"><span class="toggle on"></span></div></div>
+            </div>
+
+            <div class="scard">
+              <div class="srow"><span class="ic">🗒</span><div><b>Release notes</b><span>Every release since 0.1.0, with the GitHub issues each one closed.</span></div><div class="ctl"><button class="btn std sm">Open What's new</button></div></div>
+              <div class="srow"><span class="ic">🐞</span><div><b>Send feedback</b><span>github.com/christosk92/WaveeMusic/issues</span></div><div class="ctl"><button class="btn std sm">Open ↗</button></div></div>
+              <div class="srow"><span class="ic">📋</span><div><b>Copy diagnostics</b><span>Version, channel, OS, data folder, playback runtime.</span></div><div class="ctl"><button class="btn std sm">Copy</button></div></div>
+            </div>
+
+            <div class="note">Version string anatomy: <span class="mono">0.3.0.312</span> = semver <span class="mono">0.3.0</span> + CI run <span class="mono">312</span> (MSIX needs four numeric parts). <b>Crest</b> is the minor-series codename; patches keep the name (0.3.1 is still Crest). Beta builds show as <span class="mono">0.4.0-beta.2</span> · <b>Breaker</b> with a Beta pill.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== SCENE 4: TOAST FLOW (content is the home page underneath) ===================== -->
+      <section class="scene" data-scene="toasts">
+        <div class="wn-hero" style="height:150px;align-items:end"><div><div class="k"><span class="eyebrow">Good evening</span></div><h1>Made for Christos</h1></div></div>
+        <div class="hl" style="grid-template-columns:repeat(4,1fr)">
+          <div class="hl-card"><div class="hl-media"></div><div class="hl-body"><b>Discover Weekly</b><p>Playlist · Spotify</p></div></div>
+          <div class="hl-card"><div class="hl-media m2"></div><div class="hl-body"><b>Daylist</b><p>Playlist · Spotify</p></div></div>
+          <div class="hl-card"><div class="hl-media m3"></div><div class="hl-body"><b>Release Radar</b><p>Playlist · Spotify</p></div></div>
+          <div class="hl-card"><div class="hl-media"></div><div class="hl-body"><b>On Repeat</b><p>Playlist · Spotify</p></div></div>
+        </div>
+        <div class="note" style="max-width:70ch">Press <b>U</b> to walk the state machine: <span class="mono">idle → checking → available → downloading → staged (restart pill) → updated (post-launch)</span>. Each state has exactly one in-app toast, one notification-center card, and (for <i>staged</i> / <i>updated</i>) one OS toast that survives the app being closed.</div>
+      </section>
+
+      <!-- notification center flyout (any scene) -->
+      <div class="nc" id="nc">
+        <div class="h">Notifications<span class="sp"></span><button class="btn ghost sm">Clear all</button></div>
+        <div class="list" id="ncList"></div>
+      </div>
+    </main>
+
+    <div class="player" aria-hidden="true">
+      <div class="now"><div class="art"></div><div><b>Weird Fishes / Arpeggi</b><span>Radiohead</span></div></div>
+      <div class="transport"><div class="t-btns"><span>⏮</span><span class="play">▶</span><span>⏭</span></div><div class="scrub"><i></i></div></div>
+      <div></div>
+    </div>
+
+    <!-- in-app toast stack -->
+    <div class="toasts" id="toasts"></div>
+
+    <!-- OS toast (shown at the window's top-right to suggest the Windows notification) -->
+    <div class="os-toast" id="osToast">
+      <div class="h"><i></i>Wavee</div>
+      <div class="body"><div class="art"></div><div><b id="osT">Wavee 0.3 Crest is ready</b><p id="osP">Restart to finish updating. Playback won't be interrupted until you do.</p></div></div>
+      <div id="osProg" hidden><div class="pb"><i></i></div><div class="pst"><span>Downloading Crest…</span><span>4.6 / 7.4 MB</span></div></div>
+      <div class="btns" id="osBtns"><button class="acc">Restart now</button><button>See what's new</button></div>
+    </div>
+
+    <!-- ===================== SCENE 3: AFTER-UPDATE DIALOG ===================== -->
+    <div class="scrim" id="dlgScrim">
+      <div class="dlg" role="dialog" aria-modal="true">
+        <div class="dlg-hero">
+          <div style="display:flex;gap:8px;align-items:center"><span class="pill accent">Updated</span><span class="pill mono">0.2.1 → 0.3.0.312</span></div>
+          <h1>Welcome to Wavee 0.3 <em>Crest</em></h1>
+          <p>Docked video, a rebuilt queue and lyrics that stay in sync. Here's the short version — the full notes are one click away.</p>
+        </div>
+        <div class="dlg-body">
+          <div class="hl-card"><div class="hl-media"><span class="pill tag">New</span><span class="play">▶</span></div><div class="hl-body"><b>Docked video</b><p>Videos follow you between pages.</p></div></div>
+          <div class="hl-card"><div class="hl-media m2"><span class="pill tag">Rebuilt</span></div><div class="hl-body"><b>Reorderable queue</b><p>Drag, drop, play next.</p></div></div>
+          <div class="hl-card"><div class="hl-media m3"><span class="pill tag">Improved</span></div><div class="hl-body"><b>Lyrics in sync</b><p>Scrub without drift.</p></div></div>
+        </div>
+        <div class="dlg-foot">
+          <label><span class="cb"></span>Don't show this after updates</label>
+          <span class="sp"></span>
+          <button class="btn std" id="dlgFull">Full release notes</button>
+          <button class="btn accent" id="dlgClose">Got it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+  const html = document.documentElement;
+
+  // ---- data: one ReleaseNotes document per release (mirrors whatsnew.json) ----
+  const RELEASES = [
+    { v:"0.4.0-beta.2", n:"Drift",  d:"Sep 2026", chan:"beta",   unread:true },
+    { v:"0.3.0",        n:"Crest", d:"29 Aug 2026", chan:"stable", cur:true },
+    { v:"0.2.1",        n:"Breaker",  d:"14 Aug 2026", chan:"stable", you:true },
+    { v:"0.2.0",        n:"Breaker",  d:"2 Aug 2026",  chan:"stable" },
+    { v:"0.1.2",        n:"Abyss",      d:"9 Jul 2026",  chan:"stable" },
+    { v:"0.1.1",        n:"Abyss",      d:"1 Jul 2026",  chan:"stable" },
+    { v:"0.1.0",        n:"Abyss",      d:"20 Jun 2026", chan:"stable" },
+  ];
+  const state = { scene:"whatsnew", upd:0, chan:"stable", nc:false };
+  const STATES = ["idle","checking","available","downloading","staged","updated"];
+
+  function paintVersions(){
+    const host = $("#vlist"); host.replaceChildren();
+    RELEASES.filter(r => state.chan === "beta" || r.chan !== "beta").forEach(r => {
+      const b = document.createElement("button");
+      b.className = "v" + (r.cur ? " on cur" : "");
+      b.innerHTML = `<span class="tl"><i></i></span><span><b>${r.v}${r.you ? '<span class="you">YOU</span>' : ''}${r.unread ? '<span class="unread"></span>' : ''}</b><span class="sub"><span class="nm">${r.n}</span> · ${r.d}${r.chan==="beta" ? ' · <span class="pill beta" style="height:16px">Beta</span>' : ''}</span></span>`;
+      b.addEventListener("click", () => { $$(".v", host).forEach(x => x.classList.remove("on")); b.classList.add("on"); });
+      host.append(b);
+    });
+  }
+
+  // ---- scenes ----
+  function setScene(name){
+    state.scene = name;
+    $$(".scene").forEach(s => s.classList.toggle("on", s.dataset.scene === name));
+    $$("[data-scene]", $(".lab")).forEach(c => c.classList.toggle("on", c.dataset.scene === name));
+    $("#dlgScrim").classList.toggle("on", name === "dialog");
+    $("#tbSub").textContent = { whatsnew:"What's new", about:"Settings › About", dialog:"Home", toasts:"Home" }[name];
+    if (name === "dialog") { $$(".scene").forEach(s => s.classList.toggle("on", s.dataset.scene === "toasts")); }
+    if (name === "toasts" && state.upd === 0) stepUpdate();
+  }
+  $$("[data-scene]", $(".lab")).forEach(c => c.addEventListener("click", () => setScene(c.dataset.scene)));
+  $("#dlgClose").addEventListener("click", () => setScene("whatsnew"));
+  $("#dlgFull").addEventListener("click", () => setScene("whatsnew"));
+
+  // ---- theme / channel ----
+  $("#themeBtn").addEventListener("click", () => {
+    const light = html.dataset.theme !== "light";
+    html.dataset.theme = light ? "light" : "dark";
+    $("#themeBtn").textContent = "T · " + (light ? "dark" : "light");
+  });
+  $("#chanBtn").addEventListener("click", () => {
+    state.chan = state.chan === "stable" ? "beta" : "stable";
+    $("#chanBtn").textContent = "channel: " + state.chan;
+    const beta = state.chan === "beta";
+    ["#heroChan","#aboutChan"].forEach(s => { const el = $(s); el.textContent = beta ? "Beta" : "Stable"; el.classList.toggle("beta", beta); });
+    $("#aboutChanSel").textContent = beta ? "Beta" : "Stable";
+    paintVersions();
+  });
+
+  // ---- update state machine ----
+  let dlTimer = null, pct = 0;
+  const toastsHost = $("#toasts");
+  function toast(id, {kind="", icon="↓", title, body, actions=[], progress=false}){
+    let t = $("#toast-" + id);
+    if (!t) { t = document.createElement("div"); t.id = "toast-" + id; toastsHost.append(t); requestAnimationFrame(() => t.classList.add("in")); }
+    t.className = "toast " + kind;
+    t.innerHTML = `<span class="ic">${icon}</span><div><b>${title}</b><p>${body}</p>${actions.length ? `<div class="acts">${actions.map(a => `<button class="btn ${a.primary ? "accent" : "std"} sm">${a.label}</button>`).join("")}</div>` : ""}</div><button class="x" aria-label="Dismiss">✕</button>${progress ? '<div class="tprog"><i></i></div>' : ""}`;
+    $(".x", t).addEventListener("click", () => dismiss(id));
+    return t;
+  }
+  function dismiss(id){ const t = $("#toast-" + id); if (!t) return; t.classList.remove("in"); setTimeout(() => t.remove(), 300); }
+  function clearToasts(){ $$(".toast").forEach(t => t.remove()); }
+
+  function ncCards(){
+    const s = STATES[state.upd];
+    const cards = [];
+    if (s === "available") cards.push({ic:"↓",acc:true,title:"Wavee 0.3 Crest is available",p:"Docked video, reorderable queue, synced lyrics + 14 fixes. 2.1 MB delta.",acts:["Update now","What's new"],t:"just now"});
+    if (s === "downloading") cards.push({ic:"↓",acc:true,title:"Downloading Crest…",p:"Installs on next launch. Playback continues.",pb:true,t:"just now"});
+    if (s === "staged") cards.push({ic:"⟳",acc:true,title:"Restart to finish updating",p:"Wavee 0.3 Crest is staged. Your queue and position are restored after restart.",acts:["Restart now","Later"],t:"2 min ago"});
+    if (s === "updated") cards.push({ic:"✦",acc:true,title:"Updated to Wavee 0.3 Crest",p:"See what changed since 0.2.1.",acts:["What's new"],t:"on launch"});
+    cards.push({ic:"♪",title:"New from Radiohead",p:"\"Hail to the Thief (Live)\" was added to Release Radar.",t:"yesterday"});
+    cards.push({ic:"🔗",title:"Connected to Living room",p:"Playback moved to the Sonos in the living room.",t:"yesterday"});
+    const host = $("#ncList"); host.replaceChildren();
+    cards.forEach(c => {
+      const d = document.createElement("div"); d.className = "ncard";
+      d.innerHTML = `<div class="ic ${c.acc ? "acc" : ""}">${c.ic}</div><div><b>${c.title}</b><p>${c.p}</p>${c.pb ? '<div class="pb"><i></i></div>' : ""}${c.acts ? `<div class="acts">${c.acts.map((a,i) => `<button class="btn ${i===0?"accent":"std"} sm">${a}</button>`).join("")}</div>` : ""}<div class="t">${c.t}</div></div>`;
+      host.append(d);
+    });
+    $("#railBadge").hidden = !(s === "available" || s === "staged" || s === "updated");
+  }
+
+  function paintOs(){
+    const s = STATES[state.upd];
+    const os = $("#osToast");
+    os.classList.toggle("on", s === "staged" || s === "updated" || s === "downloading");
+    $("#osProg").hidden = s !== "downloading";
+    $("#osBtns").hidden = s === "downloading";
+    if (s === "downloading") { $("#osT").textContent = "Updating Wavee"; $("#osP").textContent = "Crest is downloading in the background."; }
+    if (s === "staged") { $("#osT").textContent = "Wavee 0.3 Crest is ready"; $("#osP").textContent = "Restart to finish updating. Playback won't be interrupted until you do."; $("#osBtns").innerHTML = '<button class="acc">Restart now</button><button>See what\'s new</button>'; }
+    if (s === "updated") { $("#osT").textContent = "Wavee updated to 0.3 Crest"; $("#osP").textContent = "Docked video, a reorderable queue, lyrics that stay in sync."; $("#osBtns").innerHTML = '<button class="acc">See what\'s new</button><button>Dismiss</button>'; }
+  }
+
+  function paintAbout(){
+    const s = STATES[state.upd];
+    const st = $("#aboutState"), txt = $("#aboutStatusText"), prog = $("#aboutProg"), pri = $("#aboutPrimary"), sec = $("#aboutSecondary");
+    prog.hidden = s !== "downloading"; sec.hidden = s !== "staged";
+    st.className = "pill " + (s === "idle" ? "ok" : "accent");
+    st.textContent = { idle:"Up to date", checking:"Checking…", available:"Update available", downloading:"Downloading", staged:"Restart to finish", updated:"Just updated" }[s];
+    txt.textContent = {
+      idle:"You're on the latest Stable release.",
+      checking:"Contacting github.com/christosk92/WaveeMusic…",
+      available:"Wavee 0.3.0.312 Crest is available (2.1 MB delta).",
+      downloading:"Downloading Crest in the background. Playback continues.",
+      staged:"0.3.0.312 Crest is staged and will apply the next time Wavee starts.",
+      updated:"Updated from 0.2.1 Breaker 3 minutes ago.",
+    }[s];
+    pri.textContent = { idle:"Check for updates", checking:"Checking…", available:"Update now", downloading:"Downloading…", staged:"Restart now", updated:"Check for updates" }[s];
+    pri.disabled = s === "checking" || s === "downloading";
+    $("#aboutSub").textContent = s === "idle" ? "Installed 29 Aug 2026 · last checked 4 minutes ago" : "Installed 14 Aug 2026 · checked just now";
+  }
+
+  function stepUpdate(){
+    state.upd = (state.upd + 1) % STATES.length;
+    const s = STATES[state.upd];
+    $("#stateName").textContent = s;
+    clearInterval(dlTimer); clearToasts();
+    $("#sbUpdate").hidden = s !== "staged";
+    if (s === "checking") toast("chk", {icon:"⟳", title:"Checking for updates…", body:"github.com · Stable channel"});
+    if (s === "available") toast("avail", {icon:"↓", title:"Wavee 0.3 Crest is available", body:"Docked video, a reorderable queue, synced lyrics — and 14 fixes. 2.1 MB delta download.", actions:[{label:"Update now",primary:true},{label:"What's new"},{label:"Later"}]});
+    if (s === "downloading") {
+      const t = toast("dl", {icon:"↓", title:"Downloading Crest…", body:"Installs the next time Wavee starts. Playback continues.", progress:true});
+      pct = 0; dlTimer = setInterval(() => { pct = Math.min(100, pct + 3); const i = $(".tprog i", t); if (i) i.style.width = pct + "%"; $("#aboutProgBar").style.width = pct + "%"; $("#aboutProgPct").textContent = pct + "%"; if (pct >= 100) clearInterval(dlTimer); }, 120);
+    }
+    if (s === "staged") toast("staged", {icon:"⟳", title:"Restart to finish updating", body:"Wavee 0.3 Crest is ready. Your queue and position are restored after restart.", actions:[{label:"Restart now",primary:true},{label:"Later"}]});
+    if (s === "updated") toast("upd", {kind:"ok", icon:"✦", title:"Updated to Wavee 0.3 Crest", body:"See what changed since 0.2.1 Breaker.", actions:[{label:"What's new",primary:true}]});
+    ncCards(); paintOs(); paintAbout();
+  }
+  $("#stepBtn").addEventListener("click", stepUpdate);
+
+  // ---- notification center ----
+  function toggleNc(force){ state.nc = force ?? !state.nc; $("#nc").classList.toggle("on", state.nc); }
+  $("#ncBtn").addEventListener("click", () => toggleNc());
+  $("#railBell").addEventListener("click", () => toggleNc());
+
+  // ---- misc ----
+  $("#moreFixes").addEventListener("click", e => {
+    const host = $("#fixes");
+    const extra = [
+      ["Search","Typing fast in search could drop the last keystroke.","#461","closed"],
+      ["Lyrics","Instrumental tracks showed an empty lyrics pane instead of the artwork wash.","#409","closed"],
+      ["Shell","The window sometimes restored off-screen after a monitor change.","#390","closed"],
+      ["Playback","Track-end events fired twice on very short tracks.","#421","closed"],
+      ["Library","Duplicate albums after re-linking an account.","#428","closed"],
+      ["Connect","Device list didn't refresh after sleep.","#436","closed"],
+      ["Shell","High-DPI icons rendered blurry on 150% scaling.","#444","closed"],
+      ["Settings","Language picker showed hidden partial locales.","#449","closed"],
+      ["Playback","Seek bar tooltip stuck after drag.","#451","closed"],
+    ];
+    extra.forEach(([sc,txt,ref,st]) => { const d = document.createElement("div"); d.className = "item"; d.innerHTML = `<div><span class="scope">${sc}</span>${txt}<a class="ref ${st}" href="#"><i></i>${ref}<span class="st">${st}</span></a></div><div class="who"><span class="av"></span></div>`; host.append(d); });
+    e.target.remove();
+  });
+  $("#sinceOnly").addEventListener("click", e => { $("#since").innerHTML = '<span>✦</span><span>Showing <b>0.3.0 Crest</b> only.</span><span class="sp"></span><button class="btn ghost sm" disabled>Since you last looked</button>'; });
+
+  document.addEventListener("keydown", e => {
+    if (e.target.matches("input,textarea")) return;
+    const k = e.key.toLowerCase();
+    if (k === "1") setScene("whatsnew"); if (k === "2") setScene("about"); if (k === "3") setScene("dialog"); if (k === "4") setScene("toasts");
+    if (k === "u") stepUpdate(); if (k === "n") toggleNc(); if (k === "t") $("#themeBtn").click();
+    if (k === "escape") { toggleNc(false); if (state.scene === "dialog") setScene("whatsnew"); }
+  });
+
+  paintVersions(); ncCards(); paintOs(); paintAbout();
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h) {
+    const [scene, ...opts] = h.split(":");
+    if (opts.includes("light")) $("#themeBtn").click();
+    if (opts.includes("beta")) $("#chanBtn").click();
+    const st = opts.find(o => STATES.includes(o));
+    if (st) { state.upd = STATES.indexOf(st) - 1; stepUpdate(); }
+    if (opts.includes("nc")) toggleNc(true);
+    if (["whatsnew","about","dialog","toasts"].includes(scene)) setScene(scene);
+  }
+})();
+</script>
+</body>
+</html>

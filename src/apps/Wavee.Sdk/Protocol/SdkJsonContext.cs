@@ -1,0 +1,80 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Wavee.Sdk.Protocol;
+
+/// <summary>
+/// The single source-generated serializer context for every shape on the wire. Nothing in this SDK ever uses
+/// reflection-based serialization, so a module (and the app) stay NativeAOT- and trim-clean. Property names are
+/// camelCase; enums are written as their explicit string names.
+/// </summary>
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(JsonRpcMessage))]
+[JsonSerializable(typeof(JsonRpcError))]
+[JsonSerializable(typeof(JsonRpcErrorData))]
+[JsonSerializable(typeof(CancelParams))]
+[JsonSerializable(typeof(RpcUnit))]
+[JsonSerializable(typeof(InitializeParams))]
+[JsonSerializable(typeof(InitializeResult))]
+[JsonSerializable(typeof(MatchParams))]
+[JsonSerializable(typeof(ResolveParams))]
+[JsonSerializable(typeof(WarmParams))]
+[JsonSerializable(typeof(StreamOpenParams))]
+[JsonSerializable(typeof(StreamOpenResult))]
+[JsonSerializable(typeof(StreamReadParams))]
+[JsonSerializable(typeof(StreamCloseParams))]
+[JsonSerializable(typeof(PageParams))]
+[JsonSerializable(typeof(ModulePageDoc))]
+[JsonSerializable(typeof(PageHero))]
+[JsonSerializable(typeof(PageAction))]
+[JsonSerializable(typeof(PageAction[]))]
+[JsonSerializable(typeof(PageSection))]
+[JsonSerializable(typeof(PageSection[]))]
+[JsonSerializable(typeof(PageItem))]
+[JsonSerializable(typeof(PageItem[]))]
+[JsonSerializable(typeof(ModuleActionParams))]
+[JsonSerializable(typeof(ModuleActionResult))]
+[JsonSerializable(typeof(LogNotification))]
+[JsonSerializable(typeof(ExpiredNotification))]
+[JsonSerializable(typeof(ProgressNotification))]
+[JsonSerializable(typeof(AuthTokenParams))]
+[JsonSerializable(typeof(AuthContextParams))]
+[JsonSerializable(typeof(SecretGetParams))]
+[JsonSerializable(typeof(SecretGetResult))]
+[JsonSerializable(typeof(SecretSetParams))]
+[JsonSerializable(typeof(AudioKeyParams))]
+[JsonSerializable(typeof(AudioKeyResult))]
+[JsonSerializable(typeof(ModuleManifest))]
+[JsonSerializable(typeof(ModuleMenu))]
+[JsonSerializable(typeof(MatchResult))]
+[JsonSerializable(typeof(MediaLocator))]
+[JsonSerializable(typeof(WireMeta))]
+[JsonSerializable(typeof(ResolvePreferences))]
+[JsonSerializable(typeof(ResolvedPlayable))]
+[JsonSerializable(typeof(MetadataUpdate))]
+[JsonSerializable(typeof(ModuleStatus))]
+[JsonSerializable(typeof(ModuleAction))]
+[JsonSerializable(typeof(ModuleAction[]))]
+[JsonSerializable(typeof(DiagnosticsReport))]
+[JsonSerializable(typeof(DiagnosticsSection))]
+[JsonSerializable(typeof(DiagnosticsSection[]))]
+[JsonSerializable(typeof(AuthToken))]
+[JsonSerializable(typeof(AuthContext))]
+[JsonSerializable(typeof(AuthSession))]
+[JsonSerializable(typeof(ModuleContext))]
+[JsonSerializable(typeof(MediaForm))]
+[JsonSerializable(typeof(ModuleErrorCode))]
+[JsonSerializable(typeof(ModuleLogLevel))]
+[JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(string[]))]
+[JsonSerializable(typeof(string[][]))]
+[JsonSerializable(typeof(byte[]))]
+[JsonSerializable(typeof(bool))]
+[JsonSerializable(typeof(long))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
+[JsonSerializable(typeof(JsonElement))]
+public partial class SdkJsonContext : JsonSerializerContext
+{
+}

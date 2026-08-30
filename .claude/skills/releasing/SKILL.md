@@ -1,0 +1,58 @@
+---
+name: releasing
+description: Use when cutting, publishing, or troubleshooting a Wavee MSIX release — the local `ops/release/wavee-release.ps1` runbook (no CI job), the `wavee-v*` tag and the rolling `wavee-stable` update feed, building/signing the NativeAOT MSIX, Azure Trusted Signing failures (Invalid tenant id, SignerSign 0x80004005, publisher 0x8007000B), the GitHub release, or the .appinstaller.
+---
+
+# Releasing Wavee (signed MSIX, local only)
+
+Wavee ships as a **NativeAOT, packaged-Win32 full-trust MSIX** (arm64 + x64, x64 via the MSVC `HostArm64\x64` cross
+toolchain), signed by **Azure Trusted Signing** and published to GitHub Releases on **this** repo. **There is no CI
+job**: a CI checkout has no `src/apps/Wavee.PlayPlay` junction and would silently publish the public-only variant, so a
+release is cut on the dev box by `ops/release/wavee-release.ps1`.
+
+## Cut a release
+
+```powershell
+# 1. hand edits: src/apps/Wavee/Wavee.Version.props (<WaveeVersion> semver, <WaveeCodename> one per MINOR - NEVER <WaveeBuild>),
+#    CHANGELOG.md "## [X.Y.Z] - unreleased", ops/release/wavee/<semver>/whatsnew.json (+ media/)
+# 2. rehearse
+powershell -File ops\release\wavee-release.ps1 -DryRun -SkipTests
+# 3. ship (13 phases; the feed is repointed LAST)
+powershell -File ops\release\wavee-release.ps1
+# failure after the tag was pushed -> re-run with -Resume; abandon -> -Abort; feed only -> -RepointFeed
+```
+
+| Thing | Value |
+|---|---|
+| Tag | `wavee-vX.Y.Z` — created **by the script**, annotated, never deleted |
+| Script chain | `ops/release/wavee-release.ps1` → `ops/build/pack-wavee-msix.ps1` (one arch per call) + `ops/build/Wavee.Build.psm1` + `ops/release/Wavee.Release.psm1` |
+| Manifest / template | `ops/build/Wavee.AppxManifest.xml`, `ops/build/Wavee.AppInstaller.template.xml` (silent: `ShowPrompt="false"`) |
+| Package identity | `cproducts.Wavee` (publisher `CN=cproducts, O=cproducts, L=Utrecht, S=Utrecht, C=NL` — must equal the cert subject) |
+| Version | `Wavee.Version.props`; MSIX quad = `M.m.p.<WaveeBuild>` (the script bumps `WaveeBuild`) |
+| Notes | `CHANGELOG.md` + `ops/release/wavee/<semver>/whatsnew.json`, validated/rendered by `Wavee.ReleaseTool` |
+| Version-release assets | `Wavee_<quad>_arm64.msix`, `Wavee_<quad>_x64.msix`, `whatsnew.json`, media, `THIRD-PARTY-NOTICES.txt`, `MANIFEST.txt` |
+| Update feed | rolling release **`wavee-stable`** → `Wavee.arm64.appinstaller`, `Wavee.x64.appinstaller`, `whatsnew-index.json` (`--clobber`, repointed last); every install has this URL baked in |
+
+Verify:
+
+```powershell
+gh release view wavee-vX.Y.Z --repo christosk92/WaveeMusic --json assets -q '.assets[].name'
+Import-Module ops\release\Wavee.Release.psm1
+Get-WaveeFeedVersion christosk92/WaveeMusic wavee-stable arm64   # the feed head clients poll
+```
+
+**Full runbook — prerequisites, the `-DryRun` review, the phase table, failure/recovery, rollback, the local E2E
+harness (`ops/release/tests/local-update-e2e.ps1 -Scenario inapp|os`, elevated) and the scratch-feed rehearsal:
+`docs/guide/releasing-wavee.md`.**
+
+## Gotchas (every one of these actually happened)
+- **The active Azure subscription is usually REDLAB** → Trusted Signing fails (`SignerSign() failed` / "Service request failed"). `az account set --subscription "Azure subscription 1"`.
+- **`0x8007000B` publisher mismatch** → manifest `Publisher` must EXACTLY equal the cert subject.
+- **Timestamp**: `http://timestamp.acs.microsoft.com` (HTTP, not HTTPS).
+- **AOT link fails / `vswhere` not found** → needs VS Build Tools (MSVC); the pack script prepends the VS Installer dir to PATH.
+- **Tag pushed but the upload failed** → `-Resume`. Staging is hash-verified against `MANIFEST.txt`, then the run continues.
+- **Never delete a pushed release tag; never delete or re-tag `wavee-stable`.** The feed's `MainPackage/@Uri` and `whatsnew-index.json` resolve through them; destroying the feed orphans every client. A bad build is fixed by the next release.
+- **`releases/latest` is never used** (`--latest=false` on every Wavee release) — clients poll `wavee-stable`.
+- **`.gitignore` has `[Rr]elease/`**, so `!ops/release/` is what keeps the release tooling tracked.
+- **Testing the tooling never touches production**: `-FeedRelease wavee-stable-test -TagPrefix wavee-test-v -Branch release-test -Force -SkipTests`, or the fully local E2E harness (no GitHub at all).
+- **Packaged runs write into the package's LocalCache.** A real `%LOCALAPPDATA%\Wavee` (from an unpackaged `dotnet run`) captures a packaged app's writes; wipe it before testing a package — the startup line prints `logResolved=`.

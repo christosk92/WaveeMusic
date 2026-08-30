@@ -1,0 +1,23 @@
+<Solution>
+  <!-- The Wavee app solution. The engine projects are the SIBLING checkout (..\fluent-gpu, see Directory.Build.props
+       $(EngineRoot)) referenced by path so the IDE and `dotnet build Wavee.slnx` build them together. -->
+  <Folder Name="/Engine/">
+    <Project Path="../fluent-gpu/src/FluentGpu.Engine/FluentGpu.Engine.csproj" />
+    <Project Path="../fluent-gpu/src/FluentGpu.Controls/FluentGpu.Controls.csproj" />
+    <Project Path="../fluent-gpu/src/FluentGpu.Windows/FluentGpu.Windows.csproj" />
+    <Project Path="../fluent-gpu/src/FluentGpu.WindowsApi/FluentGpu.WindowsApi.csproj" />
+    <Project Path="../fluent-gpu/src/FluentGpu.SourceGen/FluentGpu.SourceGen.csproj" />
+  </Folder>
+  <Folder Name="/App/">
+    <Project Path="src/apps/Wavee/Wavee.csproj" />
+    <Project Path="src/apps/Wavee.Core/Wavee.Core.csproj" />
+    <Project Path="src/apps/Wavee.Sdk/Wavee.Sdk.csproj" />
+    <Project Path="src/apps/Wavee.Tests/Wavee.Tests.csproj" />
+    <Project Path="src/apps/Wavee.ReleaseTool/Wavee.ReleaseTool.csproj" />
+  </Folder>
+  <Folder Name="/Playback-Modules/">
+    <Project Path="src/apps/modules/Wavee.Module.YouTube/Wavee.Module.YouTube.csproj" />
+    <Project Path="src/apps/modules/Wavee.Module.Twitch/Wavee.Module.Twitch.csproj" />
+    <Project Path="src/apps/modules/Wavee.Module.Radio/Wavee.Module.Radio.csproj" />
+  </Folder>
+</Solution>

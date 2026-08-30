@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The bundled Radio playback module: an out-of-process exe speaking the Wavee module protocol over stdio.
+       Refs Wavee.Sdk ONLY (the public SDK) — a module never sees the app's types. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Wavee.Sdk\Wavee.Sdk.csproj" />
+  </ItemGroup>
+
+  <!-- The manifest, twice.
+       `dotnet build` produces a framework-dependent Wavee.Module.Radio.dll that the host launches as
+       `dotnet Wavee.Module.Radio.dll`, so the BUILD output needs `"entry": "Wavee.Module.Radio.dll"`.
+       `dotnet publish -r <rid>` produces a NativeAOT Wavee.Module.Radio.exe, so the PUBLISH output needs
+       `"entry": "Wavee.Module.Radio.exe"`.
+       Two checked-in files — `wavee-module.dev.json` (dll) and `wavee-module.json` (exe, the canonical one) — placed
+       by the two targets below. They are deliberately NOT `CopyToOutputDirectory`/`CopyToPublishDirectory` items:
+       those flow transitively into every project that references this one, where all three modules' manifests would
+       collide on the same file name. Explicit copies stay inside this project's own output. -->
+  <ItemGroup>
+    <None Update="wavee-module.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+    <None Update="wavee-module.dev.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <Target Name="CopyModuleDataToOutput" AfterTargets="Build">
+    <Copy SourceFiles="wavee-module.dev.json" DestinationFiles="$(TargetDir)wavee-module.json" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyModuleDataToPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="wavee-module.json" RelativePath="wavee-module.json" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+</Project>

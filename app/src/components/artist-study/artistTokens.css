@@ -1,0 +1,166 @@
+/**
+ * Artist study tokens — the Warm shipping preset (PaletteBuilder.BuildWarmLight/Dark) with the
+ * WinUI stock accent. Scoped to the study so the monolithic prototype styling is untouched.
+ *
+ * Discipline this file enforces, and the v1 defect each rule closes:
+ *   · 6 type steps, weights 400/600 only      (v1: ~14 sizes from 7.5px, 4 weights)
+ *   · 3 radii: 4 / 8 / 16                      (v1: 8 radii)
+ *   · exactly 2 shadow tokens                  (v1: shadows as the only depth cue in dark theme)
+ *   · one accent FILL per view                 (v1: 7 accent objects)
+ */
+
+.artist-study {
+  /* ── surfaces ──────────────────────────────────────────── */
+  --wv-page-bg: #e9e7e2;
+  --wv-solid-base: #efeeeb;
+  --wv-layer: #faf9f6;
+  --wv-fill-card: #fcfbf9;
+  --wv-fill-card-secondary: #f5f3ef;
+  --wv-fill-control: #fcfbf9;
+  --wv-subtle-hover: rgba(31, 30, 27, 0.055);
+  --wv-subtle-press: rgba(31, 30, 27, 0.03);
+
+  /* ── strokes ───────────────────────────────────────────── */
+  --wv-stroke-card: #dcdad4;
+  --wv-stroke-control: #dedddb;
+  --wv-divider: rgba(31, 30, 27, 0.09);
+  --wv-art-inset: rgba(0, 0, 0, 0.06);
+
+  /* ── text ──────────────────────────────────────────────── */
+  --wv-text-primary: #1f1e1b;
+  --wv-text-secondary: #5c5b57;
+  --wv-text-tertiary: #656460;
+  --wv-text-on-accent: #ffffff;
+
+  /* ── accent: one filled object per view ────────────────── */
+  --wv-accent: #005fb8;
+  --wv-accent-hover: #0a6cc6;
+  --wv-accent-press: #1a76cc;
+
+  /* ── palette-derived wash ────────────────────────────────
+     Overwritten at runtime by useArtworkPalette, which extracts a dominant hue from the artwork
+     and harmonises it (clamped chroma/lightness) so it can never move text contrast. These are
+     the pre-extraction fallbacks. */
+  --wv-wash-rgb: 74, 96, 118;
+  --wv-seed-rgb: 52, 68, 86;
+  --wv-wash-alpha: 0.06;
+  --wv-wash: rgba(var(--wv-wash-rgb), var(--wv-wash-alpha));
+
+  /* ── elevation: exactly two shadow tokens exist ────────── */
+  --wv-shadow-2: 0 0 2px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.14);
+  --wv-shadow-8: 0 0 2px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.14);
+
+  /**
+   * WinUI control signatures, read from microsoft-ui-xaml
+   * controls/dev/CommonStyles/Common_themeresources_any.xaml (light theme block).
+   *
+   * The one that makes a control read as WinUI rather than as web CSS is
+   * ControlElevationBorderBrush: a 3px absolute vertical gradient from
+   * ControlStrokeColorSecondary to ControlStrokeColorDefault which, in the LIGHT theme, carries
+   * `ScaleY="-1"` — so the stronger stroke lands on the BOTTOM edge. In dark theme it is not
+   * flipped, so the brighter stroke sits on the TOP edge. Reproduced below per theme.
+   */
+  --wv-ctrl-stroke: rgba(0, 0, 0, 0.0588);        /* ControlStrokeColorDefault   #0F000000 */
+  --wv-ctrl-stroke-strong: rgba(0, 0, 0, 0.1608); /* ControlStrokeColorSecondary #29000000 */
+  --wv-ctrl-edge: var(--wv-ctrl-stroke-strong);   /* bottom edge in light theme */
+  --wv-on-accent-stroke: rgba(255, 255, 255, 0.08);  /* ControlStrokeColorOnAccentDefault   */
+  --wv-on-accent-edge: rgba(0, 0, 0, 0.4);           /* ControlStrokeColorOnAccentSecondary */
+  --wv-card-stroke-solid: #ebebeb;                /* CardStrokeColorDefaultSolid */
+
+  /* Focus visual: 2px FocusStrokeColorOuter over 1px FocusStrokeColorInner. */
+  --wv-focus-outer: rgba(0, 0, 0, 0.8941);        /* #E4000000 */
+  --wv-focus-inner: rgba(255, 255, 255, 0.7);     /* #B3FFFFFF */
+
+  /* SubtleFillColor* — the NavigationView / list backplate fills. */
+  --wv-subtle-secondary: rgba(0, 0, 0, 0.0353);   /* #09000000 */
+  --wv-subtle-tertiary: rgba(0, 0, 0, 0.0235);    /* #06000000 */
+
+  /* Accent text (HyperlinkButton foreground). */
+  --wv-accent-text: #003e92;
+
+  /* ── radii: 3 values, no others ────────────────────────── */
+  --wv-r-control: 4px;
+  --wv-r-card: 8px;
+  --wv-r-pill: 16px;
+
+  /* ── spacing: 4px grid, shipping Spacing.* ─────────────── */
+  --wv-xxs: 2px;
+  --wv-xs: 4px;
+  --wv-s: 8px;
+  --wv-m: 12px;
+  --wv-l: 16px;
+  --wv-xl: 20px;
+  --wv-xxl: 24px;
+  --wv-xxxl: 32px;
+  --wv-gutter: var(--wv-xxxl);
+
+  /* ── type: 6 steps, weights 400/600 only ───────────────── */
+  --wv-font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --wv-font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --wv-t-caption: 400 12px/16px var(--wv-font);
+  --wv-t-body: 400 14px/20px var(--wv-font);
+  --wv-t-body-str: 600 14px/20px var(--wv-font);
+  --wv-t-body-lg: 600 18px/24px var(--wv-font-display);
+  --wv-t-subtitle: 600 20px/28px var(--wv-font-display);
+  --wv-t-title: 600 28px/36px var(--wv-font-display);
+  --wv-t-title-lg: 600 40px/52px var(--wv-font-display);
+  /* Display — the top of the real Fluent ramp. Oversized editorial type without leaving it. */
+  --wv-t-display: 600 68px/76px var(--wv-font-display);
+
+  /* ── page metrics: real shell, not a framed mock ────────── */
+  --wv-titlebar-h: 48px;
+  --wv-player-h: 72px;
+  --wv-sidebar-w: 280px;
+  --wv-row-h: 56px;
+  --wv-bio-measure: 640px;
+
+  color-scheme: light;
+}
+
+.artist-study[data-theme="dark"] {
+  --wv-page-bg: #1f1e1c;
+  --wv-solid-base: #252422;
+  --wv-layer: #1c1b19;
+  --wv-fill-card: #2a2927;
+  --wv-fill-card-secondary: #242321;
+  --wv-fill-control: rgba(255, 255, 255, 0.06);
+  --wv-subtle-hover: rgba(255, 255, 255, 0.065);
+  --wv-subtle-press: rgba(255, 255, 255, 0.035);
+
+  --wv-stroke-card: rgba(255, 255, 255, 0.09);
+  --wv-stroke-control: rgba(255, 255, 255, 0.09);
+  --wv-divider: rgba(255, 255, 255, 0.08);
+  --wv-art-inset: rgba(255, 255, 255, 0.08);
+
+  --wv-text-primary: #ffffff;
+  --wv-text-secondary: rgba(255, 255, 255, 0.78);
+  --wv-text-tertiary: rgba(255, 255, 255, 0.62);
+  --wv-text-on-accent: #000000;
+
+  --wv-accent: #60cdff;
+  --wv-accent-hover: #74d5ff;
+  --wv-accent-press: #4fbcee;
+
+  --wv-wash-alpha: 0.12;
+
+  --wv-shadow-2: 0 0 2px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.28);
+  --wv-shadow-8: 0 0 2px rgba(0, 0, 0, 0.24), 0 4px 8px rgba(0, 0, 0, 0.28);
+
+  /* Dark theme: ControlElevationBorderBrush is NOT flipped, so the brighter stroke is on TOP. */
+  --wv-ctrl-stroke: rgba(255, 255, 255, 0.0706); /* #12FFFFFF */
+  --wv-ctrl-stroke-strong: rgba(255, 255, 255, 0.0941); /* #18FFFFFF */
+  --wv-ctrl-edge: var(--wv-ctrl-stroke);
+  --wv-on-accent-stroke: rgba(255, 255, 255, 0.08);
+  --wv-on-accent-edge: rgba(0, 0, 0, 0.14); /* #23000000 */
+  --wv-card-stroke-solid: rgba(255, 255, 255, 0.0902);
+
+  --wv-focus-outer: #ffffff; /* FocusStrokeColorOuter (dark) */
+  --wv-focus-inner: rgba(0, 0, 0, 0.7); /* #B3000000 */
+
+  --wv-subtle-secondary: rgba(255, 255, 255, 0.0605); /* #0FFFFFFF */
+  --wv-subtle-tertiary: rgba(255, 255, 255, 0.0419);
+
+  --wv-accent-text: #99ebff;
+
+  color-scheme: dark;
+}

@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.2.0",
+  "packageVersion": "",
+  "name": "Breaker",
+  "tagline": "Welcome to the new Wavee — redesigned from the ground up on FluentGpu.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "rebuilt-on-fluentgpu",
+      "title": "Redesigned from the ground up",
+      "body": "Wavee now runs on FluentGpu, a GPU-rendered native engine built for it: faster to open, smoother to scroll, lighter on memory.",
+      "kind": "new",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/redesigned.jpg",
+        "alt": "The redesigned Wavee home page, rendered by FluentGpu",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "contributors": [],
+  "generatedAt": "",
+  "media": []
+}

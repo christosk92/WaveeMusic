@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-palette="neutral" data-material="mica" data-sidebar="curated">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wavee — Onboarding v2 (Mica)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+<style>
+  :root{
+    --solid-base:#202020;
+    --layer-default:rgba(58,58,58,0.30);
+    --card-default:rgba(255,255,255,0.0512);
+    --card-secondary:rgba(255,255,255,0.0837);
+    --ctrl-default:rgba(255,255,255,0.0605);
+    --subtle-hover:rgba(255,255,255,0.0605);
+    --stroke-ctrl:rgba(255,255,255,0.0698);
+    --divider:rgba(255,255,255,0.0837);
+    --text:#FFFFFF;
+    --text-2:rgba(255,255,255,0.786);
+    --text-3:rgba(255,255,255,0.5442);
+    --text-4:rgba(255,255,255,0.3628);
+    --accent:#60CDFF;
+    --accent-text:#99EBFF;
+    --on-accent:#003545;
+    --spotify:#1DB954;
+    --ok:#6CCB5F;
+    --r-ctrl:4px; --r-card:8px; --r-layer:8px;
+    --font:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+    --font-d:"Segoe UI Variable Display","Segoe UI Light","Segoe UI",sans-serif;
+    --shadow-dialog:0 32px 64px rgba(0,0,0,0.37),0 0 2px rgba(0,0,0,0.5);
+    --mica-tint:rgba(32,32,32,0.86);
+    --mica-a:#3d5a8f; --mica-b:#6b3a63;
+    --mica-x:10%; --mica-y:0%;
+    --ease:cubic-bezier(.2,.8,.2,1);
+    --elev-card:0 2px 4px rgba(0,0,0,.14), 0 0 2px rgba(0,0,0,.12);
+    --inner-hi:inset 0 1px 0 rgba(255,255,255,.10);
+    --plate:#2c2c2c;
+    --scrim:rgba(0,0,0,.42);
+  }
+  html[data-theme="light"]{
+    --solid-base:#f3f3f3;
+    --layer-default:rgba(255,255,255,0.45);
+    --card-default:#ffffff;
+    --card-secondary:#f7f7f7;
+    --ctrl-default:rgba(255,255,255,0.70);
+    --subtle-hover:rgba(0,0,0,0.0405);
+    --stroke-ctrl:rgba(0,0,0,0.0578);
+    --divider:rgba(0,0,0,0.0803);
+    --text:#1a1a1a;
+    --text-2:rgba(0,0,0,0.786);
+    --text-3:rgba(0,0,0,0.5442);
+    --text-4:rgba(0,0,0,0.3628);
+    --accent:#005FB8;
+    --accent-text:#003D92;
+    --on-accent:#ffffff;
+    --mica-tint:rgba(243,243,243,0.78);
+    --mica-a:#8aa4c8; --mica-b:#c9a090;
+    --elev-card:0 2px 4px rgba(0,0,0,.06), 0 0 2px rgba(0,0,0,.06);
+    --inner-hi:inset 0 1px 0 rgba(255,255,255,.72);
+    --plate:#ffffff;
+    --scrim:rgba(0,0,0,.18);
+  }
+  html[data-palette="warm"]{ --mica-a:#8a6238; --mica-b:#7a3a42; }
+  html[data-palette="slate"]{ --mica-a:#3d5a8f; --mica-b:#3a4a6b; }
+  html[data-palette="neutral"]{ --mica-a:#5a6270; --mica-b:#4a4450; }
+  html[data-palette="accent"]{ --mica-a:#1a6a88; --mica-b:#2a4a72; }
+  html[data-theme="light"][data-palette="warm"]{ --mica-a:#e0b888; --mica-b:#d8a090; }
+  html[data-theme="light"][data-palette="slate"]{ --mica-a:#8aa4c8; --mica-b:#a0b0c8; }
+  html[data-theme="light"][data-palette="neutral"]{ --mica-a:#c4c4c8; --mica-b:#d0c8c0; }
+  html[data-theme="light"][data-palette="accent"]{ --mica-a:#7ab8d0; --mica-b:#90b0d8; }
+  html[data-material="mica-alt"]{ --mica-tint:rgba(24,24,24,0.92); }
+  html[data-theme="light"][data-material="mica-alt"]{ --mica-tint:rgba(232,232,232,0.88); }
+
+  @property --mica-x { syntax: "<percentage>"; inherits: true; initial-value: 10%; }
+  @property --mica-y { syntax: "<percentage>"; inherits: true; initial-value: 0%; }
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:var(--font);font-size:14px;color:var(--text);
+    background-image:
+      radial-gradient(900px 700px at 12% 8%, #2b3a5e 0%, transparent 60%),
+      radial-gradient(1000px 800px at 88% 82%, #4a2a46 0%, transparent 62%),
+      linear-gradient(160deg,#161821,#0c0c10);
+    display:grid;grid-template-rows:auto 1fr;place-items:center;overflow:hidden;
+    padding:8px 12px 16px;
+  }
+  html[data-theme="light"] body{
+    background-image:
+      radial-gradient(900px 700px at 12% 8%, #c5d4e8 0%, transparent 60%),
+      radial-gradient(1000px 800px at 88% 82%, #e8d0c4 0%, transparent 62%),
+      linear-gradient(160deg,#e8eaee,#d8dce4);
+  }
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;}
+  button:focus-visible,[tabindex="0"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  .lab{
+    position:relative;z-index:8;width:min(1320px,96vw);
+    display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px 8px;
+    font-size:12px;color:rgba(255,255,255,.55);padding:4px 0 10px;
+  }
+  html[data-theme="light"] .lab{color:rgba(0,0,0,.5);}
+  .lab strong{color:var(--text-2);font-weight:600;}
+  .lab code{font-family:"Cascadia Code",Consolas,monospace;font-size:11px;color:var(--accent-text);}
+  .lab-chip{
+    padding:3px 9px;border-radius:999px;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
+    color:var(--text-3);font-size:11.5px;
+  }
+  html[data-theme="light"] .lab-chip{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.08);}
+  .lab-chip.on{color:var(--on-accent);background:var(--accent);border-color:transparent;font-weight:600;}
+  .lab-hint{max-width:820px;text-align:center;line-height:1.45;}
+
+  .win{
+    width:min(1320px,96vw);height:min(860px,calc(100vh - 88px));
+    display:grid;grid-template-rows:48px 1fr 84px;grid-template-columns:48px 280px 1fr;
+    grid-template-areas:"title title title" "rail sidebar content" "player player player";
+    border-radius:8px;overflow:hidden;position:relative;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow:var(--shadow-dialog);
+    background:
+      linear-gradient(var(--mica-tint),var(--mica-tint)),
+      radial-gradient(700px 500px at var(--mica-x) var(--mica-y), var(--mica-a) 0%, transparent 62%),
+      radial-gradient(760px 560px at 92% 96%, var(--mica-b) 0%, transparent 64%),
+      var(--solid-base);
+    background-blend-mode:normal,soft-light,soft-light,normal;
+    animation:zuneDrift 18s var(--ease) infinite alternate;
+    transition:background-color .45s var(--ease);
+  }
+  @keyframes zuneDrift{
+    from{--mica-x:8%; --mica-y:0%;}
+    to{--mica-x:18%; --mica-y:12%;}
+  }
+  html[data-theme="light"] .win{border-color:rgba(0,0,0,0.08);}
+  .win::after{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.045;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  }
+  .win.bare{grid-template-columns:1fr;grid-template-rows:48px 1fr;grid-template-areas:"title" "stage";}
+  .win.bare .rail,.win.bare .sidebar,.win.bare .content,.win.bare .player{display:none;}
+  .titlebar,.rail,.sidebar,.content,.player,.scrim,.dialog{position:relative;z-index:2;}
+
+  .titlebar{grid-area:title;display:flex;align-items:center;gap:8px;padding-left:12px;}
+  .tb-name{font-size:12px;color:var(--text-2);font-weight:600;}
+  .tb-name span{font-weight:400;opacity:.7;margin-left:6px;}
+  .caption{margin-left:auto;display:flex;}
+  .caption button{width:46px;height:48px;color:var(--text-2);font-size:10px;}
+  .caption button:hover{background:var(--subtle-hover);}
+  .caption button.close:hover{background:#c42b1c;color:#fff;}
+
+  .rail{grid-area:rail;display:flex;flex-direction:column;align-items:center;gap:2px;padding-top:2px;}
+  .rail button{width:40px;height:36px;border-radius:var(--r-ctrl);color:var(--text-2);display:grid;place-items:center;position:relative;}
+  .rail button.on{background:var(--subtle-hover);}
+  .rail button.on::before{content:"";position:absolute;left:2px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent);}
+  .rail .sp{flex:1;}
+
+  .sidebar{
+    grid-area:sidebar;margin:4px 0 8px;border-radius:var(--r-layer);
+    background:var(--layer-default);padding:10px 8px;display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden;
+  }
+  .sb-search{height:28px;border-radius:var(--r-ctrl);background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);display:flex;align-items:center;padding:0 8px;color:var(--text-4);font-size:12px;}
+  .sb-row{height:34px;border-radius:var(--r-ctrl);display:flex;align-items:center;gap:8px;padding:0 8px;color:var(--text-2);font-size:12.5px;}
+  .sb-row.on{background:var(--subtle-hover);color:var(--text);}
+  .sb-dot{width:22px;height:22px;border-radius:4px;flex:none;background:linear-gradient(135deg,#4a6,#268);}
+  .sb-dot.a{background:linear-gradient(135deg,#c96,#842);}
+  .sb-dot.b{background:linear-gradient(135deg,#69c,#246);}
+  .sb-dot.c{background:linear-gradient(135deg,#db8,#864);}
+  .sb-hair{height:1px;background:var(--divider);margin:4px;}
+  .sb-chips{display:flex;gap:4px;padding:2px 2px 6px;}
+  .sb-chip{height:22px;padding:0 8px;border-radius:999px;background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);font-size:11px;color:var(--text-3);display:grid;place-items:center;}
+  .sb-chip.on{background:var(--accent);color:var(--on-accent);border-color:transparent;}
+  .sb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:2px;}
+  .sb-tile{height:54px;border-radius:6px;background:var(--card-default);display:flex;align-items:center;gap:6px;padding:6px;overflow:hidden;}
+  .sb-tile .sb-dot{width:40px;height:40px;}
+  .sb-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+  html[data-sidebar="classic"] .v3-only, html[data-sidebar="classic"] .curated-only{display:none;}
+  html[data-sidebar="v3"] .classic-only, html[data-sidebar="v3"] .curated-only{display:none;}
+  html[data-sidebar="curated"] .classic-only, html[data-sidebar="curated"] .v3-only{display:none;}
+
+  .content{grid-area:content;min-width:0;padding:8px 18px 0 12px;display:flex;flex-direction:column;gap:14px;overflow:hidden;}
+  .hero{height:168px;border-radius:var(--r-card);background:linear-gradient(120deg,rgba(96,205,255,.18),transparent 55%),var(--card-default);padding:22px 24px;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;}
+  .hero h2{margin:0;font:600 28px/1.1 var(--font-d);}
+  .hero p{margin:0;color:var(--text-3);font-size:13px;}
+  .strips{display:flex;gap:10px;}
+  .card{width:132px;display:flex;flex-direction:column;gap:8px;}
+  .cover{height:132px;border-radius:6px;background:linear-gradient(145deg,#3a5a78,#1a2838);box-shadow:var(--elev-card);}
+  .cover.c2{background:linear-gradient(145deg,#7a4a38,#301810);}
+  .cover.c3{background:linear-gradient(145deg,#3a6a4a,#102018);}
+  .cover.c4{background:linear-gradient(145deg,#5a3a6a,#201028);}
+  .card b{font-size:12.5px;} .card span{font-size:11.5px;color:var(--text-4);}
+
+  .player{grid-area:player;display:grid;grid-template-columns:240px 1fr 240px;align-items:center;padding:0 16px;background:rgba(0,0,0,.18);border-top:1px solid var(--divider);}
+  .now{display:flex;align-items:center;gap:10px;}
+  .now .art{width:52px;height:52px;border-radius:4px;background:linear-gradient(145deg,#4a6,#268);}
+  .now b{display:block;font-size:13px;} .now span{font-size:12px;color:var(--text-3);}
+  .transport{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .t-btns{display:flex;gap:12px;align-items:center;color:var(--text-2);}
+  .t-btns .play{width:34px;height:34px;border-radius:17px;background:var(--text);color:var(--solid-base);display:grid;place-items:center;}
+  .scrub{width:min(420px,100%);height:4px;border-radius:2px;background:rgba(255,255,255,.18);position:relative;}
+  .scrub i{position:absolute;inset:0 auto 0 0;width:34%;background:var(--text);border-radius:2px;}
+
+  .scrim{
+    position:absolute;inset:48px 0 0;z-index:6;background:var(--scrim);
+    display:grid;place-items:center;padding:20px;
+    transition:opacity .35s var(--ease);
+  }
+  .win.bare .scrim{background:transparent;}
+  .win.done .scrim{pointer-events:none;opacity:0;}
+
+  .dialog{
+    width:min(840px,100%);height:min(540px,100%);
+    display:grid;grid-template-rows:1fr 80px;
+    border-radius:8px;overflow:hidden;position:relative;
+    background:var(--plate);border:1px solid rgba(255,255,255,.08);
+    box-shadow:var(--shadow-dialog);
+    transition:transform .4s var(--ease), opacity .35s var(--ease);
+  }
+  html[data-theme="light"] .dialog{border-color:rgba(0,0,0,.08);}
+  .win.done .dialog{transform:translateY(10px) scale(.98);opacity:0;}
+
+  .back{
+    position:absolute;top:12px;left:12px;z-index:3;
+    width:30px;height:30px;border-radius:var(--r-ctrl);
+    display:grid;place-items:center;color:var(--text-2);
+  }
+  .back:hover{background:var(--subtle-hover);color:var(--text);}
+  .back[hidden]{display:none;}
+
+  .pages{position:relative;overflow:hidden;min-height:0;}
+  .page{
+    position:absolute;inset:0;padding:24px 28px 8px 28px;
+    display:grid;grid-template-columns:192px 1fr;gap:24px;align-items:stretch;
+    opacity:0;transform:translateX(28px);pointer-events:none;
+    transition:opacity .32s var(--ease), transform .32s var(--ease);
+  }
+  .page.on{opacity:1;transform:none;pointer-events:auto;position:relative;}
+  .page.wide{grid-template-columns:1fr;}
+  .page.wide .illus{display:none;}
+  .page h1{margin:0 0 6px;font:600 26px/1.15 var(--font-d);letter-spacing:-.02em;}
+  .lead{margin:0 0 16px;color:var(--text-2);line-height:1.45;max-width:54ch;}
+  .copy{overflow:auto;min-width:0;min-height:0;}
+
+  .illus{
+    border-radius:12px;min-height:0;
+    background:var(--card-secondary);box-shadow:var(--inner-hi);
+    display:grid;place-items:center;overflow:hidden;
+  }
+  .lottie{width:192px;height:192px;}
+
+  .footer{
+    display:grid;grid-template-columns:210px 1fr 1fr;gap:6px;align-items:center;
+    padding:16px 24px;background:color-mix(in srgb, var(--plate) 88%, black);
+    border-top:1px solid var(--divider);
+  }
+  html[data-theme="light"] .footer{background:#f6f6f6;}
+  .footer.solo{grid-template-columns:210px 1fr;}
+  .footer.solo #priBtn{grid-column:2;}
+  .prog-label{font-size:12px;font-weight:600;color:var(--text-3);margin-bottom:6px;}
+  .pbar{width:162px;height:4px;border-radius:2px;background:rgba(255,255,255,.14);overflow:hidden;}
+  html[data-theme="light"] .pbar{background:rgba(0,0,0,.12);}
+  .pbar i{display:block;height:100%;width:0;background:var(--accent);border-radius:2px;transition:width .35s var(--ease);}
+  .btn{
+    height:32px;padding:0 16px;border-radius:var(--r-ctrl);
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    font-size:14px;font-weight:600;
+  }
+  .btn.std{background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);}
+  .btn.std:hover{background:var(--subtle-hover);}
+  .btn.accent{background:var(--accent);color:var(--on-accent);}
+  .btn.spotify{background:var(--spotify);color:#053;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.stretch{width:100%;}
+  .btn.ghost{color:var(--accent-text);font-weight:600;height:auto;padding:0;}
+
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .brand .mark{width:36px;height:36px;border-radius:10px;background:color-mix(in srgb, var(--accent) 22%, transparent);display:grid;place-items:center;color:var(--accent);}
+  .brand b{font:700 22px/1 var(--font-d);}
+
+  .login{display:grid;grid-template-columns:1fr 48px 1fr;align-items:stretch;height:100%;}
+  .lpane{padding:8px 28px 8px 8px;display:flex;flex-direction:column;gap:14px;}
+  .spot{display:flex;align-items:center;gap:8px;color:var(--spotify);font-weight:700;font-size:24px;}
+  .or{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text-3);}
+  .or .line{width:1px;flex:1;background:var(--divider);}
+  .or span{font-size:11px;font-weight:600;letter-spacing:.08em;padding:3px 8px;border-radius:11px;background:var(--card-secondary);}
+  .rpane{padding:4px 8px 8px 28px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;}
+  .qr{width:156px;height:156px;padding:7px;border-radius:8px;background:#fff;display:grid;grid-template-columns:repeat(21,1fr);grid-template-rows:repeat(21,1fr);gap:1px;}
+  .qr b{background:#111;border-radius:.5px;}
+  .code{font:700 26px/1 "Cascadia Code",Consolas,monospace;letter-spacing:.12em;}
+  .waiting{color:var(--text-3);font-size:12.5px;}
+  .waiting::after{content:"";animation:dots 1.4s steps(4,end) infinite;}
+  @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+  .fine{font-size:11.5px;line-height:1.45;color:var(--text-4);max-width:36ch;}
+  .link{color:var(--accent-text);font-weight:600;}
+
+  .live-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden;margin:4px 0 14px;max-width:280px;}
+  .live-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .35s var(--ease);}
+  .srow{display:flex;align-items:center;gap:10px;color:var(--text-4);font-size:13.5px;height:28px;transition:color .25s;}
+  .srow.on{color:var(--text);}
+  .srow.done{color:var(--text-2);}
+  .srow .ck{
+    width:18px;height:18px;border-radius:9px;border:1.5px solid currentColor;
+    display:grid;place-items:center;font-size:10px;flex:none;
+  }
+  .srow.done .ck{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+  .srow.on .ck{border-color:var(--accent);color:var(--accent);}
+
+  .choice-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .seg{
+    height:32px;padding:0 12px;border-radius:var(--r-ctrl);
+    background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);
+    color:var(--text-2);font-weight:600;font-size:13px;
+  }
+  .seg.on{background:var(--accent);color:var(--on-accent);border-color:transparent;}
+  .swatches{display:flex;gap:10px;margin:0 0 16px;}
+  .swatch{width:64px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text-3);font-size:11.5px;}
+  .swatch i{width:40px;height:40px;border-radius:20px;border:2px solid transparent;display:block;box-shadow:var(--elev-card);}
+  .swatch.on{color:var(--text);font-weight:600;}
+  .swatch.on i{border-color:var(--accent);}
+  .swatch.warm i{background:conic-gradient(from 200deg,#e8b06a,#c4784a,#e8b06a);}
+  .swatch.slate i{background:conic-gradient(from 200deg,#6a88b8,#3a5a88,#6a88b8);}
+  .swatch.neutral i{background:conic-gradient(from 200deg,#c8c8c8,#6a6a6a,#c8c8c8);}
+  .swatch.accent i{background:conic-gradient(from 200deg,#60cdff,#1a6a88,#60cdff);}
+  .eyebrow{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-4);margin:2px 0 8px;}
+
+  .pickers{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .pcard{
+    border-radius:var(--r-card);padding:8px 8px 10px;text-align:left;
+    background:var(--card-default);border:1px solid transparent;
+    display:flex;flex-direction:column;gap:8px;min-width:0;
+  }
+  .pcard:hover{background:var(--card-secondary);}
+  .pcard.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 8%, var(--card-default));}
+  .mini{height:100px;border-radius:6px;padding:8px 8px 0;display:flex;flex-direction:column;gap:5px;background:color-mix(in srgb, var(--accent) 6%, transparent);overflow:hidden;}
+  .mini .r{height:10px;border-radius:2px;background:rgba(255,255,255,.22);display:flex;align-items:center;gap:4px;padding:0 4px;}
+  html[data-theme="light"] .mini .r{background:rgba(0,0,0,.12);}
+  .mini .sq{width:8px;height:8px;border-radius:2px;background:var(--accent);opacity:.7;flex:none;}
+  .mini .ln{height:4px;flex:1;border-radius:2px;background:rgba(255,255,255,.28);}
+  .mini .hair{height:1px;background:rgba(255,255,255,.16);}
+  .mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+  .mini-tile{height:26px;border-radius:3px;background:rgba(255,255,255,.12);}
+  .pcard .ttl{display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;}
+  .tag{height:16px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:9.5px;font-weight:600;display:grid;place-items:center;}
+  .pcard .sub{font-size:11.5px;color:var(--text-3);line-height:1.35;}
+
+  .settings{display:flex;flex-direction:column;gap:8px;}
+  .scard{
+    display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;
+    padding:11px 14px;border-radius:var(--r-card);background:var(--card-default);
+    border:1px solid rgba(255,255,255,.04);
+  }
+  .scard b{display:block;font-size:13.5px;font-weight:600;}
+  .scard span{display:block;font-size:12px;color:var(--text-3);margin-top:2px;}
+  .combo{height:32px;padding:0 10px;border-radius:var(--r-ctrl);background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);color:var(--text);min-width:168px;font:inherit;}
+  .toggle{width:40px;height:20px;border-radius:10px;background:rgba(255,255,255,.18);position:relative;transition:background .2s;}
+  .toggle::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:8px;background:#fff;transition:transform .2s var(--ease);}
+  .toggle.on{background:var(--accent);}
+  .toggle.on::after{transform:translateX(20px);}
+
+  .dl-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:8px;}
+  .dl-bar i{display:block;height:100%;width:0;background:var(--accent);}
+  .ready-box{padding:12px;border-radius:var(--r-ctrl);background:var(--card-secondary);display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+  .kv{display:grid;grid-template-columns:92px 1fr;gap:6px;font-size:12px;}
+  .kv em{color:var(--text-3);font-style:normal;}
+  .okline{display:flex;align-items:center;gap:8px;font-weight:600;}
+  .badge{width:18px;height:18px;border-radius:9px;background:var(--ok);color:#042;display:grid;place-items:center;font-size:11px;flex:none;}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .sum{height:28px;padding:0 10px;border-radius:999px;background:var(--card-secondary);display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-2);}
+  .sum i{width:10px;height:10px;border-radius:5px;background:var(--accent);}
+  .hello{font:600 18px/1.25 var(--font-d);margin-bottom:8px;}
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{transition:none !important;animation:none !important;}
+  }
+  @media (max-width: 860px){
+    .page:not(.wide){grid-template-columns:1fr;grid-template-rows:132px 1fr;gap:12px;}
+    .illus{height:132px;}
+    .lottie{width:132px;height:132px;}
+    .pickers{grid-template-columns:1fr;}
+    .login{grid-template-columns:1fr;gap:16px;}
+    .or{flex-direction:row;height:auto;}
+    .or .line{height:1px;width:auto;flex:1;}
+    .lpane,.rpane{padding:0;}
+    .footer{grid-template-columns:1fr 1fr;}
+    .footer > div:first-child{grid-column:1 / -1;}
+    .footer.solo{grid-template-columns:1fr;}
+    .footer.solo #priBtn{grid-column:auto;}
+  }
+</style>
+</head>
+<body>
+  <div class="lab">
+    <span class="lab-hint"><strong>Onboarding v2</strong> — Rise plate (Lottie + back + step bar). Sign-in finalizes <em>in place</em>. Local playback download is a real step. <code>1–7</code> jump · <code>R</code> reset</span>
+    <button class="lab-chip on" data-jump="0">1 Welcome</button>
+    <button class="lab-chip" data-jump="1">2 Sign in</button>
+    <button class="lab-chip" data-jump="2">3 Playback</button>
+    <button class="lab-chip" data-jump="3">4 Appearance</button>
+    <button class="lab-chip" data-jump="4">5 Sidebar</button>
+    <button class="lab-chip" data-jump="5">6 Desktop</button>
+    <button class="lab-chip" data-jump="6">7 Ready</button>
+    <button class="lab-chip" id="labReset">Reset</button>
+  </div>
+
+  <div class="win bare" id="win">
+    <div class="titlebar">
+      <div class="tb-name">Wavee <span id="tbSub">Welcome</span></div>
+      <div class="caption"><button>─</button><button>□</button><button class="close">✕</button></div>
+    </div>
+    <div class="rail" aria-hidden="true">
+      <button class="on">⌂</button><button>⌕</button><button>☰</button><div class="sp"></div><button>⚙</button>
+    </div>
+    <aside class="sidebar">
+      <div class="sb-search">Search</div>
+      <div class="classic-only">
+        <div class="sb-row on"><span class="sb-dot"></span>Home</div>
+        <div class="sb-row"><span class="sb-dot b"></span>Your Library</div>
+        <div class="sb-hair"></div>
+        <div class="sb-row"><span class="sb-dot c"></span><span class="sb-name">Liked Songs</span></div>
+        <div class="sb-row"><span class="sb-dot a"></span><span class="sb-name">Discover Weekly</span></div>
+      </div>
+      <div class="v3-only">
+        <div class="sb-chips"><span class="sb-chip on">All</span><span class="sb-chip">Playlists</span><span class="sb-chip">Albums</span></div>
+        <div class="sb-row on"><span class="sb-dot c"></span><span class="sb-name">Liked Songs</span></div>
+        <div class="sb-row"><span class="sb-dot a"></span><span class="sb-name">Discover Weekly</span></div>
+        <div class="sb-row"><span class="sb-dot b"></span><span class="sb-name">This is Radiohead</span></div>
+      </div>
+      <div class="curated-only">
+        <div class="sb-row on"><span class="sb-dot"></span>Home</div>
+        <div class="sb-row"><span class="sb-dot b"></span>What’s New</div>
+        <div class="sb-hair"></div>
+        <div class="sb-grid">
+          <div class="sb-tile"><span class="sb-dot a"></span><span class="sb-name">Liked Songs</span></div>
+          <div class="sb-tile"><span class="sb-dot c"></span><span class="sb-name">Daylist</span></div>
+        </div>
+      </div>
+    </aside>
+    <main class="content" aria-hidden="true">
+      <div class="hero"><p>Good evening</p><h2>Made for Christos</h2></div>
+      <div class="strips">
+        <div class="card"><div class="cover"></div><b>Discover Weekly</b><span>Playlist · Spotify</span></div>
+        <div class="card"><div class="cover c2"></div><b>Daylist</b><span>Playlist · Spotify</span></div>
+        <div class="card"><div class="cover c3"></div><b>Release Radar</b><span>Playlist · Spotify</span></div>
+        <div class="card"><div class="cover c4"></div><b>On Repeat</b><span>Playlist · Spotify</span></div>
+      </div>
+    </main>
+    <div class="player" aria-hidden="true">
+      <div class="now"><div class="art"></div><div><b>Weird Fishes / Arpeggi</b><span>Radiohead</span></div></div>
+      <div class="transport"><div class="t-btns"><span>⏮</span><span class="play">▶</span><span>⏭</span></div><div class="scrub"><i></i></div></div>
+      <div></div>
+    </div>
+
+    <div class="scrim">
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="pageTitle">
+        <button class="back" id="backBtn" hidden aria-label="Back">
+          <svg width="12" height="12" viewBox="0 0 12 12"><path fill="none" stroke="currentColor" stroke-width="1.6" d="M8 2 3.5 6 8 10"/></svg>
+        </button>
+        <div class="pages" id="pages">
+
+          <!-- 0 Welcome -->
+          <section class="page on" data-step="0" data-lottie="EulaLottie.json">
+            <div class="illus"><div class="lottie"></div></div>
+            <div class="copy">
+              <div class="brand"><span class="mark">♪</span><b>Wavee</b></div>
+              <h1 id="pageTitle">Welcome in.</h1>
+              <p class="lead">A few short steps and you’re listening. Sign in with Spotify, set up local playback, then shape the window — one dialog, no second takeover after login.</p>
+            </div>
+          </section>
+
+          <!-- 1 Sign in: pair (wide) swaps in-place to live (lottie + steps) -->
+          <section class="page wide" data-step="1" data-lottie="ConnectLottie.json" hidden>
+            <div class="illus"><div class="lottie"></div></div>
+            <div class="copy" id="signinCopy">
+              <div class="login" id="signinPair">
+                <div class="lpane">
+                  <div class="spot">♫ Spotify</div>
+                  <p class="lead" style="margin:0;">Log in with your Spotify account in the browser. Wavee never sees your password.</p>
+                  <button class="btn accent stretch" id="loginBrowser" style="min-height:44px;">Log in <span aria-hidden="true">↗</span></button>
+                  <p class="fine">Spotify is a trademark of Spotify AB. Wavee is an independent client and is not affiliated with Spotify.</p>
+                </div>
+                <div class="or"><div class="line"></div><span>OR</span><div class="line"></div></div>
+                <div class="rpane">
+                  <div class="qr" id="qr"></div>
+                  <b>Scan to log in</b>
+                  <div style="color:var(--text-3);font-size:12.5px;">Or go to <button class="link">spotify.com/pair</button> and enter:</div>
+                  <div class="code">BQXT-7K2M</div>
+                  <div class="waiting">Waiting for you to authorize</div>
+                </div>
+              </div>
+              <div id="signinLive" hidden>
+                <h1>Signing in</h1>
+                <div class="live-bar"><i id="liveBar"></i></div>
+                <div class="srow" data-k="0"><span class="ck">✓</span> Connecting to Spotify</div>
+                <div class="srow" data-k="1"><span class="ck">✓</span> Loading your library</div>
+                <div class="srow" data-k="2"><span class="ck">✓</span> Preparing audio</div>
+                <div class="srow" data-k="3"><span class="ck">✓</span> Fetching your profile</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 2 Local playback / audio SDK -->
+          <section class="page" data-step="2" data-lottie="PatchLottie.json" hidden>
+            <div class="illus"><div class="lottie"></div></div>
+            <div class="copy">
+              <h1>Play on this PC</h1>
+              <p class="lead">Play tracks directly on this device. Wavee downloads a small one-time playback component — nothing else is installed.</p>
+              <div id="sdkOffer">
+                <div class="settings">
+                  <div class="scard">
+                    <div><b>Audio engine</b><span>Spotify 1.2.93.667 · Arm64 · about 18 MB, signed.</span></div>
+                    <span style="color:var(--text-3);font-size:12px;">Required for local play</span>
+                  </div>
+                  <div class="scard">
+                    <div><b>Use installed Spotify</b><span>Reuse a Spotify.dll already on this PC instead of downloading.</span></div>
+                    <button class="btn ghost" id="sdkAdvanced" type="button">Advanced</button>
+                  </div>
+                </div>
+                <p class="fine" id="sdkAdvHint" hidden style="margin-top:10px;">Supply a Spotify.dll yourself — Wavee recognizes supported builds by fingerprint. Same path as Settings → Playback → Advanced.</p>
+              </div>
+              <div id="sdkBusy" hidden>
+                <div class="scard" style="grid-template-columns:1fr;">
+                  <div>
+                    <b id="sdkTitle">Checking what’s available for your device…</b>
+                    <span id="sdkCaption"></span>
+                    <div class="dl-bar"><i id="sdkBar"></i></div>
+                  </div>
+                </div>
+              </div>
+              <div id="sdkReady" hidden>
+                <div class="okline"><span class="badge">✓</span> Local playback is ready</div>
+                <div class="ready-box">
+                  <div class="kv"><em>Version</em><span>1.2.93.667</span></div>
+                  <div class="kv"><em>Architecture</em><span>Arm64</span></div>
+                  <div class="kv"><em>Signature</em><span>Verified</span></div>
+                </div>
+                <div class="eyebrow" style="margin-top:16px;">Streaming quality</div>
+                <div class="scard">
+                  <div><b>Default quality</b><span>You can change this any time in Settings → Playback.</span></div>
+                  <select class="combo" id="quality">
+                    <option>Normal · 96 kbps</option>
+                    <option>High · 160 kbps</option>
+                    <option selected>Very high · 320 kbps</option>
+                    <option disabled>Lossless</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 3 Appearance -->
+          <section class="page" data-step="3" data-lottie="SettingsLottie.json" hidden>
+            <div class="illus"><div class="lottie"></div></div>
+            <div class="copy">
+              <h1>Make it yours</h1>
+              <p class="lead">Theme, palette, and window material apply live — the mica behind this dialog is already listening.</p>
+              <div class="eyebrow">Theme</div>
+              <div class="choice-row" id="themeRow">
+                <button class="seg" data-theme="system">System</button>
+                <button class="seg" data-theme="light">Light</button>
+                <button class="seg on" data-theme="dark">Dark</button>
+              </div>
+              <div class="eyebrow">Palette</div>
+              <div class="swatches" id="paletteRow">
+                <button class="swatch warm" data-palette="warm"><i></i>Warm</button>
+                <button class="swatch slate" data-palette="slate"><i></i>Slate</button>
+                <button class="swatch neutral on" data-palette="neutral"><i></i>Neutral</button>
+                <button class="swatch accent" data-palette="accent"><i></i>Accent</button>
+              </div>
+              <div class="eyebrow">Window material</div>
+              <div class="choice-row" id="materialRow">
+                <button class="seg on" data-material="mica">Mica</button>
+                <button class="seg" data-material="mica-alt">Mica Alt</button>
+              </div>
+              <div class="eyebrow">Motion</div>
+              <div class="settings">
+                <div class="scard">
+                  <div><b>Color washes</b><span>Album-color glow behind heroes and the player.</span></div>
+                  <button class="toggle on" id="washes" role="switch" aria-checked="true"></button>
+                </div>
+                <div class="scard">
+                  <div><b>Marquee titles</b><span>Long names scroll instead of ellipsizing.</span></div>
+                  <button class="toggle on" id="marquee" role="switch" aria-checked="true"></button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 4 Sidebar -->
+          <section class="page wide" data-step="4" data-lottie="SettingsLottie.json" hidden>
+            <div class="illus"><div class="lottie"></div></div>
+            <div class="copy">
+              <h1>Choose your sidebar</h1>
+              <p class="lead">Pick the left-hand navigation that suits you. The pane behind the scrim changes as you click.</p>
+              <div class="pickers" id="sidebarRow">
+                <button class="pcard" data-sidebar="classic">
+                  <div class="mini">
+                    <div class="r"><span class="sq"></span><span class="ln"></span></div>
+                    <div class="r"><span class="sq"></span><span class="ln"></span></div>
+                    <div class="hair"></div>
+                    <div class="r"><span class="sq"></span><span class="ln"></span></div>
+                    <div class="r"><span class="sq"></span><span class="ln"></span></div>
+                  </div>
+                  <div class="ttl">Spotify Classic <span class="tag" hidden>Active</span></div>
+                  <div class="sub">Library shortcuts, then a flat playlist list.</div>
+                </button>
+                <button class="pcard" data-sidebar="v3">
+                  <div class="mini">
+                    <div class="r" style="height:14px;"><span class="ln" style="flex:none;width:28px;height:10px;border-radius:8px;"></span><span class="ln" style="flex:none;width:40px;height:10px;border-radius:8px;"></span></div>
+                    <div class="r"><span class="sq"></span><span class="ln"></span></div>
+                    <div class="r"><span class="sq"></span><span class="ln"></span></div>
+                    <div class="r"><span class="sq"></span><span class="ln"></span></div>
+                  </div>
+                  <div class="ttl">LibraryV3 <span class="tag" hidden>Active</span></div>
+                  <div class="sub">Filters, sort, one unified library list.</div>
+                </button>
+                <button class="pcard on" data-sidebar="curated">
+                  <div class="mini">
+                    <div class="r"><span class="sq"></span><span class="ln"></span></div>
+                    <div class="hair"></div>
+                    <div class="mini-grid"><div class="mini-tile"></div><div class="mini-tile"></div></div>
+                    <div class="r"><span class="sq"></span><span class="ln"></span></div>
+                  </div>
+                  <div class="ttl">Custom <span class="tag">Active</span></div>
+                  <div class="sub">Build your own sidebar. Default for new installs.</div>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 5 Desktop / privacy / language -->
+          <section class="page" data-step="5" data-lottie="PrivacyLottie.json" hidden>
+            <div class="illus"><div class="lottie"></div></div>
+            <div class="copy">
+              <h1>Desktop &amp; language</h1>
+              <p class="lead">How Wavee talks to Windows, and the language of the chrome. Skip and we’ll keep the defaults.</p>
+              <div class="settings">
+                <div class="scard">
+                  <div><b>Language</b><span>Applies after setup. Matches Settings → General.</span></div>
+                  <select class="combo" id="language">
+                    <option selected>System default</option>
+                    <option>English (US)</option>
+                    <option>Nederlands</option>
+                    <option>한국어</option>
+                  </select>
+                </div>
+                <div class="scard">
+                  <div><b>Track list density</b><span>Compact through comfortable row height.</span></div>
+                  <select class="combo" id="density">
+                    <option>Compact</option>
+                    <option selected>Default</option>
+                    <option>Cozy</option>
+                    <option>Comfortable</option>
+                  </select>
+                </div>
+                <div class="scard">
+                  <div><b>Lyrics second line</b><span>Translation or romanization under the current line.</span></div>
+                  <select class="combo" id="lyrics">
+                    <option selected>Off</option>
+                    <option>Translation</option>
+                    <option>Romanization</option>
+                  </select>
+                </div>
+                <div class="scard">
+                  <div><b>Windows notifications</b><span>Release drops and followed-artist albums as toasts.</span></div>
+                  <button class="toggle" id="notify" role="switch" aria-checked="false"></button>
+                </div>
+                <div class="scard">
+                  <div><b>Open Spotify links in Wavee</b><span>Handle spotify: and open.spotify.com URLs.</span></div>
+                  <button class="toggle" id="protocol" role="switch" aria-checked="false"></button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 6 Ready -->
+          <section class="page" data-step="6" data-lottie="EulaLottie.json" hidden>
+            <div class="illus"><div class="lottie"></div></div>
+            <div class="copy">
+              <h1>You’re in</h1>
+              <div class="hello">Welcome, Christos. The app is ready.</div>
+              <p class="lead">Everything here can be changed later in Settings. If you picked Custom, rearrange the sidebar any time from its layout menu.</p>
+              <div class="chips" id="summary"></div>
+            </div>
+          </section>
+        </div>
+        <div class="footer solo" id="footer">
+          <div>
+            <div class="prog-label" id="progLabel">Pre-setup</div>
+            <div class="pbar"><i id="progBar"></i></div>
+          </div>
+          <button class="btn std stretch" id="secBtn" hidden>Skip</button>
+          <button class="btn accent stretch" id="priBtn">Start setup</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const TOTAL = 6;
+  const STEPS = [
+    { sub:"Welcome",    label:"Pre-setup",     primary:"Start setup",          secondary:"",              lottie:"EulaLottie.json" },
+    { sub:"Sign in",    label:"Step 1 of 6",   primary:"Log in in browser",    secondary:"Close",         lottie:"ConnectLottie.json" },
+    { sub:"Playback",   label:"Step 2 of 6",   primary:"Download & set up",    secondary:"Not now",       lottie:"PatchLottie.json" },
+    { sub:"Appearance", label:"Step 3 of 6",   primary:"Continue",             secondary:"Decide for me", lottie:"SettingsLottie.json" },
+    { sub:"Sidebar",    label:"Step 4 of 6",   primary:"Use this layout",      secondary:"Decide for me", lottie:"SettingsLottie.json" },
+    { sub:"Desktop",    label:"Step 5 of 6",   primary:"Continue",             secondary:"Decide for me", lottie:"PrivacyLottie.json" },
+    { sub:"Ready",      label:"Step 6 of 6",   primary:"Open Wavee",           secondary:"Not now",       lottie:"EulaLottie.json" },
+  ];
+
+  const state = {
+    step:0, signed:false, signing:false, sdk:"offer",
+    theme:"dark", palette:"neutral", material:"mica", sidebar:"curated",
+    quality:"Very high · 320 kbps", language:"System default", density:"Default", lyrics:"Off",
+    notify:false, protocol:false, washes:true, marquee:true, done:false,
+  };
+
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+  const html = document.documentElement;
+  const win = $("#win");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let anim = null, lottieFile = "";
+
+  function paintQr(){
+    const qr = $("#qr"); qr.replaceChildren();
+    const n=21, seed=0xB97A;
+    const is = (r,c) => {
+      if ((r<7&&c<7)||(r<7&&c>13)||(r>13&&c<7)) {
+        return r===0||c===0||r===6||c===6||r===14||c===20||c===14||c===20
+          || (r>2&&r<5&&((c>2&&c<5)||(c>16&&c<19))) || (r>16&&r<19&&c>2&&c<5);
+      }
+      return ((r*13+c*7+seed)%5)>2;
+    };
+    for (let r=0;r<n;r++) for (let c=0;c<n;c++) qr.append(document.createElement(is(r,c)?"b":"i"));
+  }
+  paintQr();
+
+  function playLottie(page){
+    const host = page.querySelector(".lottie");
+    const file = page.dataset.lottie;
+    if (!host || !file || reduce || typeof lottie === "undefined") return;
+    if (anim && lottieFile === file && host.childElementCount) return;
+    if (anim) { anim.destroy(); anim = null; }
+    host.replaceChildren();
+    lottieFile = file;
+    anim = lottie.loadAnimation({
+      container: host, renderer: "svg", loop: false, autoplay: false,
+      path: "onboarding-v2-assets/" + file,
+    });
+    anim.addEventListener("DOMLoaded", () => {
+      const half = Math.floor(anim.totalFrames * 0.5);
+      anim.playSegments([0, half], true);
+    });
+  }
+
+  function applyChrome(){
+    html.dataset.theme = state.theme === "system" ? "dark" : state.theme;
+    html.dataset.palette = state.palette;
+    html.dataset.material = state.material;
+    html.dataset.sidebar = state.sidebar;
+  }
+
+  function renderSummary(){
+    const names = { classic:"Spotify Classic", v3:"LibraryV3", curated:"Custom", mica:"Mica", "mica-alt":"Mica Alt" };
+    const items = [
+      (state.theme==="system"?"System":state.theme[0].toUpperCase()+state.theme.slice(1)) + " theme",
+      state.palette[0].toUpperCase()+state.palette.slice(1)+" palette",
+      names[state.material],
+      names[state.sidebar]+" sidebar",
+      state.sdk==="ready" ? "Local playback ready" : "Remote-only playback",
+      state.quality.split(" · ")[0]+" quality",
+      state.language,
+      state.notify ? "Windows toasts on" : "In-app notifications",
+    ];
+    $("#summary").innerHTML = items.map(t => `<span class="sum"><i></i>${t}</span>`).join("");
+  }
+
+  function footerFor(n){
+    const s = STEPS[n];
+    let primary = s.primary, secondary = s.secondary, disabled = false;
+    if (n===1 && state.signing) { primary = "Signing in…"; disabled = true; secondary = ""; }
+    if (n===1 && state.signed) { primary = "Continue"; secondary = ""; }
+    if (n===2 && (state.sdk==="fetching"||state.sdk==="downloading"||state.sdk==="verifying")) {
+      primary = state.sdk==="verifying" ? "Verifying…" : "Downloading…"; disabled = true; secondary = "";
+    }
+    if (n===2 && state.sdk==="ready") { primary = "Continue"; secondary = ""; }
+    $("#priBtn").textContent = primary;
+    $("#priBtn").disabled = disabled;
+    $("#priBtn").className = "btn stretch " + (n===1 && !state.signed && !state.signing ? "spotify" : "accent");
+    $("#secBtn").textContent = secondary;
+    $("#secBtn").hidden = !secondary;
+    $("#footer").classList.toggle("solo", !secondary);
+  }
+
+  function setStep(n){
+    if (n>=2 && !state.signed) state.signed = true;
+    state.step = n;
+    const pages = $$(".page");
+    pages.forEach(p => {
+      const on = +p.dataset.step === n;
+      p.classList.toggle("on", on);
+      p.hidden = !on;
+    });
+    const page = pages.find(p => +p.dataset.step === n);
+    const pair = n===1 && !state.signing && !state.signed;
+    page.classList.toggle("wide", n===4 || pair);
+    if (n===1) {
+      $("#signinPair").hidden = !pair;
+      $("#signinLive").hidden = pair;
+    }
+    const s = STEPS[n];
+    $("#tbSub").textContent = s.sub;
+    $("#progLabel").textContent = s.label;
+    $("#progBar").style.width = n===0 ? "0%" : (n / TOTAL * 100) + "%";
+    $("#backBtn").hidden = n < 2 || state.signing || (n===2 && state.sdk!=="offer" && state.sdk!=="ready");
+    $$(".lab-chip[data-jump]").forEach(b => b.classList.toggle("on", +b.dataset.jump === n));
+    win.classList.toggle("bare", !(state.signed && n>=2 && !state.done));
+    footerFor(n);
+    if (n===6) renderSummary();
+    applyChrome();
+    requestAnimationFrame(() => playLottie(page));
+  }
+
+  function startSignIn(){
+    if (state.signing || state.signed) return;
+    state.signing = true;
+    const page = $$(".page").find(p => +p.dataset.step===1);
+    page.classList.remove("wide");
+    $("#signinPair").hidden = true;
+    $("#signinLive").hidden = false;
+    footerFor(1);
+    playLottie(page);
+    $$("#signinLive .srow").forEach(r => r.classList.remove("on","done"));
+    let i = 0;
+    const tick = () => {
+      $$("#signinLive .srow").forEach((r, idx) => {
+        r.classList.toggle("done", idx < i);
+        r.classList.toggle("on", idx === i);
+      });
+      $("#liveBar").style.width = ((i) / 4 * 100) + "%";
+      if (i < 4) { i++; setTimeout(tick, 320); }
+      else {
+        $("#liveBar").style.width = "100%";
+        state.signing = false; state.signed = true;
+        setTimeout(() => setStep(2), 380);
+      }
+    };
+    setTimeout(tick, 120);
+  }
+
+  function startSdk(){
+    if (state.sdk !== "offer") { setStep(3); return; }
+    state.sdk = "fetching";
+    $("#sdkOffer").hidden = true;
+    $("#sdkBusy").hidden = false;
+    $("#sdkReady").hidden = true;
+    $("#sdkTitle").textContent = "Checking what’s available for your device…";
+    $("#sdkCaption").textContent = "";
+    $("#sdkBar").style.width = "8%";
+    footerFor(2);
+    setTimeout(() => {
+      state.sdk = "downloading";
+      $("#sdkTitle").textContent = "Spotify 1.2.93.667 · Arm64";
+      footerFor(2);
+      let received = 0, total = 18.4;
+      const iv = setInterval(() => {
+        received = Math.min(total, received + 1.15);
+        $("#sdkBar").style.width = (received/total*100) + "%";
+        $("#sdkCaption").textContent = received.toFixed(1) + " MB of " + total.toFixed(1) + " MB";
+        if (received >= total) {
+          clearInterval(iv);
+          state.sdk = "verifying";
+          $("#sdkTitle").textContent = "Verifying download…";
+          $("#sdkCaption").textContent = "Checking integrity and signature";
+          footerFor(2);
+          setTimeout(() => {
+            state.sdk = "ready";
+            $("#sdkBusy").hidden = true;
+            $("#sdkReady").hidden = false;
+            footerFor(2);
+            $("#backBtn").hidden = false;
+          }, 520);
+        }
+      }, 90);
+    }, 640);
+  }
+
+  function decide(n){
+    if (n===2) state.sdk = "offer";
+    if (n===3) { state.theme="dark"; state.palette="neutral"; state.material="mica"; state.washes=true; state.marquee=true; syncChoices(); }
+    if (n===4) { state.sidebar="curated"; syncChoices(); }
+    if (n===5) {
+      state.notify=false; state.protocol=false; state.language="System default"; state.density="Default"; state.lyrics="Off";
+      $("#language").value=state.language; $("#density").value=state.density; $("#lyrics").value=state.lyrics;
+      $("#notify").classList.remove("on"); $("#protocol").classList.remove("on");
+    }
+  }
+
+  function syncChoices(){
+    $$("#themeRow .seg").forEach(b => b.classList.toggle("on", b.dataset.theme===state.theme));
+    $$("#paletteRow .swatch").forEach(b => b.classList.toggle("on", b.dataset.palette===state.palette));
+    $$("#materialRow .seg").forEach(b => b.classList.toggle("on", b.dataset.material===state.material));
+    $$("#sidebarRow .pcard").forEach(b => {
+      const on = b.dataset.sidebar===state.sidebar;
+      b.classList.toggle("on", on);
+      const tag = b.querySelector(".tag"); if (tag) tag.hidden = !on;
+    });
+    $("#washes").classList.toggle("on", state.washes);
+    $("#marquee").classList.toggle("on", state.marquee);
+    applyChrome();
+  }
+
+  function finish(open){
+    state.done = true; win.classList.add("done");
+    win.classList.toggle("bare", !open);
+    $("#tbSub").textContent = open ? "Home" : "Welcome";
+  }
+
+  $("#priBtn").addEventListener("click", () => {
+    const n = state.step;
+    if (n===0) return setStep(1);
+    if (n===1 && !state.signed) return startSignIn();
+    if (n===1 && state.signed) return setStep(2);
+    if (n===2 && state.sdk==="offer") return startSdk();
+    if (n===2 && state.sdk==="ready") return setStep(3);
+    if (n===6) return finish(true);
+    setStep(n+1);
+  });
+  $("#secBtn").addEventListener("click", () => {
+    const n = state.step;
+    if (n===1) return;
+    if (n===6) return finish(true);
+    decide(n);
+    setStep(n+1);
+  });
+  $("#backBtn").addEventListener("click", () => { if (state.step>=2) setStep(state.step-1); });
+  $("#loginBrowser").addEventListener("click", startSignIn);
+  $("#sdkAdvanced").addEventListener("click", () => {
+    const h = $("#sdkAdvHint");
+    h.hidden = !h.hidden;
+  });
+
+  $("#themeRow").addEventListener("click", e => { const b=e.target.closest("[data-theme]"); if(!b) return; state.theme=b.dataset.theme; syncChoices(); });
+  $("#paletteRow").addEventListener("click", e => { const b=e.target.closest("[data-palette]"); if(!b) return; state.palette=b.dataset.palette; syncChoices(); });
+  $("#materialRow").addEventListener("click", e => { const b=e.target.closest("[data-material]"); if(!b) return; state.material=b.dataset.material; syncChoices(); });
+  $("#sidebarRow").addEventListener("click", e => { const b=e.target.closest("[data-sidebar]"); if(!b) return; state.sidebar=b.dataset.sidebar; syncChoices(); });
+  $("#quality").addEventListener("change", e => state.quality = e.target.value);
+  $("#language").addEventListener("change", e => state.language = e.target.value);
+  $("#density").addEventListener("change", e => state.density = e.target.value);
+  $("#lyrics").addEventListener("change", e => state.lyrics = e.target.value);
+  function bindToggle(el, key){
+    el.addEventListener("click", () => { state[key]=!state[key]; el.classList.toggle("on", state[key]); el.setAttribute("aria-checked", String(state[key])); });
+  }
+  bindToggle($("#notify"), "notify");
+  bindToggle($("#protocol"), "protocol");
+  bindToggle($("#washes"), "washes");
+  bindToggle($("#marquee"), "marquee");
+
+  $$(".lab-chip[data-jump]").forEach(b => b.addEventListener("click", () => {
+    state.done=false; win.classList.remove("done");
+    const j = +b.dataset.jump;
+    if (j>=2) { state.signed=true; state.signing=false; }
+    if (j>=3) state.sdk="ready";
+    setStep(j);
+  }));
+  $("#labReset").addEventListener("click", () => location.reload());
+  document.addEventListener("keydown", e => {
+    if (e.target.matches("select,input,textarea")) return;
+    if (e.key>="1" && e.key<="7") {
+      state.done=false; win.classList.remove("done");
+      const j=+e.key-1;
+      if (j>=2) { state.signed=true; state.signing=false; }
+      if (j>=3) state.sdk="ready";
+      setStep(j);
+    }
+    if (e.key==="r"||e.key==="R") location.reload();
+    if (e.key==="Enter" && !state.signing) $("#priBtn").click();
+    if (e.key==="Backspace" && state.step>=2) { e.preventDefault(); $("#backBtn").click(); }
+  });
+
+  syncChoices();
+  setStep(0);
+})();
+</script>
+</body>
+</html>

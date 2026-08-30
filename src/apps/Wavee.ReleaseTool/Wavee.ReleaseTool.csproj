@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The release notes validator/emitter. Run by hand (or by ops\release\wavee-release.ps1) with `dotnet run`;
+       never published, never packaged. It refs Wavee.Core ONLY, so the release-notes model and the changelog
+       parser it validates are literally the ones the app deserializes at runtime.
+       AOT-clean by construction: STJ source-gen contexts only (Wavee.Core's for the documents, a local one for
+       the two GitHub response shapes) — no reflection-based JSON, no third-party packages. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Wavee.ReleaseTool</RootNamespace>
+    <AssemblyName>Wavee.ReleaseTool</AssemblyName>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsPackable>false</IsPackable>
+    <!-- A dev box may only have a newer 10.x runtime installed; this is a build-time tool, not a shipped binary. -->
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Wavee.Core\Wavee.Core.csproj" />
+  </ItemGroup>
+
+</Project>

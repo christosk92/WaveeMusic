@@ -1,0 +1,34 @@
+// The payload Spotify returns for extension kind 237 — a track's drawable waveform, split into three energy bands.
+//
+// Provenance: message/package from the wire's Any type_url:
+//   type.googleapis.com/spotify.playlistmixing.extensions.mixthreebandwaveforms.ThreeBandWaveforms
+// Field NUMBERS and wire types are verified against live 2026 responses (waveforms.saz). FIELD NAMES are best-effort:
+// the low/mid/high ordering is INFERRED from descending mean energy, not named on the wire.
+//
+// Observed (waveforms.saz, track 3UEwPrMwvnqXs2nv4yDwTm "sacrifice", stated ~4:09):
+//
+//   sample_rate = 44100
+//   hop_ms      = 20                    -> 50 Hz, one byte per band per 20 ms
+//   band_low    = bytes[12886]  max 211  mean 52.0
+//   band_mid    = bytes[12466]  max 125  mean 47.0
+//   band_high   = bytes[12466]  max  89  mean 17.1
+//
+// Rate confirmed against the duration: 12466 / 50 Hz = 249.3 s = 4:09.3.
+//
+// KNOWN ODDITY, and the reason nothing here assumes a shared timebase: band_low came back 420 bytes LONGER than the
+// other two (which are exactly equal). Rendering all three against one index drifts by ~8 s at the end of the track.
+// A renderer must map each band across its OWN length, or use the shortest.
+//
+// Size: ~38 KB per track. That is why this kind rides the on-EXPAND fetch (SpotifyTrackExpansionService) and is never
+// added to the row bundle — a realizing list of 300 rows would pull ~11 MB for data nobody has asked to see.
+syntax = "proto2";
+
+package wavee.waveforms;
+
+message ThreeBandWaveforms {
+    optional uint32 sample_rate = 1;   // 44100
+    optional uint32 hop_ms      = 2;   // 20 -> one sample per band per 20 ms
+    optional bytes  band_low    = 3;   // 0..255 magnitude per hop
+    optional bytes  band_mid    = 4;
+    optional bytes  band_high   = 5;
+}

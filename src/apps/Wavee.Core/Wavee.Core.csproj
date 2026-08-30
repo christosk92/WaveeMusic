@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- AOT analyzer on; the records/interfaces here are reflection-free and AOT-clean. -->
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <!-- FRAMEWORK-NEUTRAL by design: deliberately ZERO ProjectReference / PackageReference.
+       Wavee.Core is plain POCO records + interfaces + a hand-rolled IObservable (SimpleSubject).
+       It must never reference FluentGpu (the app bridges Core state into Signal<T>), nor pull in
+       System.Reactive (kept out for NativeAOT/zero-alloc). This is the seam the real Spotify /
+       playback backend ports behind, incrementally. -->
+
+</Project>

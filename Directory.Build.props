@@ -1,0 +1,43 @@
+<Project>
+
+  <!-- Wavee repo baseline (root Directory.Build.props: every project under src/apps, modules and vendor inherits it).
+       Mirrors the engine's src/Directory.Build.props PropertyGroup so the Wavee projects share the engine's
+       net10 / zero-alloc / GC posture; the engine itself lives in the sibling checkout named by $(EngineRoot) below.
+       `PublishAot` is set ONLY on the WinExe csproj (avoids NETSDK1207 on the class lib). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <Deterministic>true</Deterministic>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+
+    <!-- Warning-clean is enforced (mirrors src/Directory.Build.props); Wavee.Tests and vendored NVorbis opt out
+         per-csproj until their pre-existing warning backlog is cleared. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>$(MSBuildProjectName)</RootNamespace>
+  </PropertyGroup>
+
+  <!-- FLUENTGPU_DIAG: mirrors src/Directory.Build.props (which this file does NOT inherit — see the header above).
+       [Conditional] erasure is decided by the CALLING assembly, so without this the app's ScrollTrace.Note / OffsetWrite
+       call sites stay erased even when the engine is compiled with the symbol. See ops/diag/README.md. -->
+  <PropertyGroup Condition="'$(FluentGpuDiag)' == 'true'">
+    <DefineConstants>$(DefineConstants);FLUENTGPU_DIAG</DefineConstants>
+  </PropertyGroup>
+
+  <!-- The FluentGpu engine is a SIBLING checkout, never a package: C:\wavee\fluent-gpu next to C:\wavee\WaveeMusic.
+       Every engine ProjectReference in this repo goes through $(EngineRoot) so there is exactly one place to change,
+       and a missing checkout fails the build with a sentence instead of forty NU1105s. -->
+  <PropertyGroup>
+    <EngineRoot Condition="'$(EngineRoot)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..\fluent-gpu'))</EngineRoot>
+  </PropertyGroup>
+  <Target Name="WaveeRequireEngineCheckout" BeforeTargets="BeforeBuild;Restore;CollectPackageReferences"
+          Condition="!Exists('$(EngineRoot)src\FluentGpu.Engine\FluentGpu.Engine.csproj')">
+    <Error Text="FluentGpu engine checkout not found at '$(EngineRoot)'. Clone https://github.com/christosk92/fluent-gpu next to this repository (C:\wavee\fluent-gpu beside C:\wavee\WaveeMusic) or set EngineRoot." />
+  </Target>
+
+</Project>

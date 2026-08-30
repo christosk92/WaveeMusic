@@ -1,0 +1,94 @@
+
+> wavee-sidebar-prototype@0.1.0 dev
+> vite --host 127.0.0.1 --port 4173
+
+
+  [32m[1mVITE[22m v8.1.5[39m  [2mready in [0m[1m229[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m4173[22m/[39m
+[2m16:29:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/main.tsx[22m
+[2m16:35:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistHeroStudy.tsx[22m
+[2m16:36:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistHeroStudy.css[22m
+[2m17:06:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/main.tsx[22m
+[2m17:06:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/main.tsx[22m
+[2m17:07:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistHeroStudy.tsx[22m
+[2m17:07:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistHeroStudy.css[22m
+[2m17:10:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:11:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:11:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:12:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:14:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:14:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:14:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:14:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:33:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:34:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:34:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/components/artist-study/Parts.tsx[22m Could not Fast Refresh (export removed)
+[2m17:34:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:37:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:37:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:37:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistTokens.css[22m
+[2m17:38:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistTokens.css[22m
+[2m17:38:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:41:10[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:41:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:41:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:41:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:41:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:41:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:41:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:42:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:43:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:44:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:44:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:44:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Heroes.tsx[22m
+[2m17:45:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:45:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:45:41[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:45:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:46:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:46:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:46:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:46:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:46:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:47:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistTokens.css[22m
+[2m17:47:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistTokens.css[22m
+[2m17:47:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:47:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:47:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:47:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:47:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Heroes.tsx[22m
+[2m17:48:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:48:10[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx[22m
+[2m17:49:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:51:25[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:51:25[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:52:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:52:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:52:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/components/artist-study/Parts.tsx[22m Could not Fast Refresh (export removed)
+[2m17:52:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m17:53:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:53:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:53:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:53:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistTokens.css[22m
+[2m17:54:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:55:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m17:55:15[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:56:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m17:56:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m18:10:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m18:11:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m18:12:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m18:13:51[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Parts.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m18:14:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m18:16:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m18:16:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/components/artist-study/Parts.tsx[22m Could not Fast Refresh (new export)
+[2m18:16:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/ArtistStudyPage.tsx, /src/components/artist-study/Heroes.tsx[22m
+[2m18:16:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m18:16:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m18:16:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m18:16:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m18:18:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m18:18:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/Parts.tsx[22m
+[2m18:18:59[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m
+[2m18:19:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/artist-study/artistStudy.css[22m

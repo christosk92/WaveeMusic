@@ -1,0 +1,230 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- WinExe = Windows GUI subsystem: no console window spawns on launch. -->
+    <OutputType>WinExe</OutputType>
+    <!-- NativeAOT is the publish target (single self-contained native exe). Scoped to THIS csproj so
+         the net10 app build/run stay JIT; AOT/trim analyzers engage here, never on Wavee.Core's path. -->
+    <PublishAot>true</PublishAot>
+    <!-- The Windows composition root references the Windows-only backend, so CA1416 is noise here: the Win32 paths are
+         intentional. The portable Backend/ subtree's cross-platform discipline is enforced by TerraFX-freedom (the
+         VerticalSlice guard), not by this analyzer — and Wavee.Tests, which builds Backend/ cross-platform, likewise
+         suppresses CA1416. The macOS/Linux credential paths (KeyringProtector) stay guarded by OperatingSystem checks. -->
+    <NoWarn>$(NoWarn);CA1416;NU1701</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Embeds the Wavee W-ribbon into the PE (Explorer / taskbar / Alt-Tab fallback). The Win32 window also loads
+         assets/AppIcon/appicon.ico next to the exe (Win32Platform.LoadAppIcon). Regenerate with
+         assets/AppIcon/generate-appicon.ps1 from the WaveeMusic source artwork. -->
+    <ApplicationIcon>assets\AppIcon\appicon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- Build identity. Wavee.Version.props is the single source of the semver, the per-minor codename and the
+       monotonic release counter (WaveeBuild); ops/build/pack-wavee-msix.ps1 stamps the rest via /p: properties and
+       ops/release/wavee-release.ps1 owns the counter. Settings → About / crash headers / the update checker read all
+       of it back through AssemblyMetadataAttribute (Wavee.Core WaveeVersionInfo.Parse). -->
+  <Import Project="Wavee.Version.props" />
+  <PropertyGroup>
+    <Version>$(WaveeVersion)</Version>
+    <WaveeChannel Condition="'$(WaveeChannel)' == ''">dev</WaveeChannel>
+    <!-- The rolling GitHub release that carries the .appinstaller feed this build polls. Build-time metadata, never a
+         runtime switch: a test package is packed with -FeedRelease wavee-stable-test and cannot touch the real feed. -->
+    <WaveeFeedRelease Condition="'$(WaveeFeedRelease)' == ''">wavee-stable</WaveeFeedRelease>
+    <!-- Where the release assets that carry the feed (and the release-notes documents) are downloaded from. Build-time
+         metadata for the same reason as WaveeFeedRelease: the local end-to-end update test packs a build that polls a
+         loopback HTTP feed (ops/release/tests/local-update-e2e.ps1) without a single runtime branch or env var.
+         Must end in "/" — WaveeVersionInfo.NormalizeUpdateBaseUrl repairs it if it does not. -->
+    <WaveeUpdateBaseUrl Condition="'$(WaveeUpdateBaseUrl)' == ''">https://github.com/christosk92/WaveeMusic/releases/download/</WaveeUpdateBaseUrl>
+    <!-- A local `dotnet run` is "0.2.0-dev"; the pack script stamps "<semver>+build.<N>.sha.<sha7>". -->
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(WaveeVersion)-dev</InformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="Codename"       Value="$(WaveeCodename)" />
+    <AssemblyMetadata Include="Channel"        Value="$(WaveeChannel)" />
+    <AssemblyMetadata Include="PackageVersion" Value="$(WaveePackageVersion)" />
+    <AssemblyMetadata Include="Commit"         Value="$(WaveeCommit)" />
+    <AssemblyMetadata Include="BuildDate"      Value="$(WaveeBuildDate)" />
+    <AssemblyMetadata Include="FeedRelease"    Value="$(WaveeFeedRelease)" />
+    <AssemblyMetadata Include="UpdateBaseUrl"  Value="$(WaveeUpdateBaseUrl)" />
+  </ItemGroup>
+
+  <!-- Memory posture (2026-07 heap audit): the engine's PixelBufferPool bounds decoded-pixel retention; these bound
+       what remains. SharedArrayPool defaults to 8 arrays/bucket × ProcessorCount partitions — on a 12-core machine
+       that legally parks hundreds of MB; 4×4 keeps the remaining users (encoded fetch buffers, BCL/HTTP) to a few MB.
+       ConserveMemory=5 makes the workstation-concurrent GC decommit the churned heap floor more aggressively. -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxPartitionCount" Value="4" />
+    <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxArraysPerPartition" Value="4" />
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+  </ItemGroup>
+
+  <Import Project="Wavee.Publish.props" />
+
+  <!-- Native in-process PlayReady CDM DLL (ops/tools/playready-native): build it if its sources changed, then copy it
+       NEXT TO Wavee.exe so DesktopProtectedVideoPlayer's P/Invokes resolve at runtime. Without this the DLL is absent
+       from Wavee's bin and DRM video fails to load (it now degrades to a typed DRM error, but the DLL is required to
+       actually play). Mirrors FluentGpu.WindowsApp.csproj; the Exec is tolerant so a machine without the C++ toolchain
+       still builds Wavee (DRM just stays unavailable). -->
+  <PropertyGroup>
+    <_PlayReadyNativeArch Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</_PlayReadyNativeArch>
+    <_PlayReadyNativeArch Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</_PlayReadyNativeArch>
+    <_PlayReadyNativeArch Condition="'$(_PlayReadyNativeArch)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'AMD64'">x64</_PlayReadyNativeArch>
+    <_PlayReadyNativeArch Condition="'$(_PlayReadyNativeArch)' == ''">arm64</_PlayReadyNativeArch>
+    <_PlayReadyNativeDir>$(MSBuildProjectDirectory)\..\..\..\ops\tools\playready-native</_PlayReadyNativeDir>
+    <_PlayReadyNativeDll>$(_PlayReadyNativeDir)\out\$(_PlayReadyNativeArch)\FluentGpu.PlayReady.Native.dll</_PlayReadyNativeDll>
+  </PropertyGroup>
+  <Target Name="BuildDesktopPlayReadyNative" BeforeTargets="PrepareForBuild"
+          Inputs="$(_PlayReadyNativeDir)\PlayReadyNative.cpp;$(_PlayReadyNativeDir)\CencMediaSource.h;$(_PlayReadyNativeDir)\build.cmd"
+          Outputs="$(_PlayReadyNativeDll)">
+    <Exec Command="cmd /c &quot;$(_PlayReadyNativeDir)\build.cmd&quot; $(_PlayReadyNativeArch)" ContinueOnError="true" />
+  </Target>
+  <Target Name="CopyDesktopPlayReadyNative" AfterTargets="Build" DependsOnTargets="BuildDesktopPlayReadyNative">
+    <Copy SourceFiles="$(_PlayReadyNativeDll)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true"
+          Condition="Exists('$(_PlayReadyNativeDll)')" />
+  </Target>
+  <Target Name="PublishDesktopPlayReadyNative" BeforeTargets="ComputeFilesToPublish"
+          DependsOnTargets="BuildDesktopPlayReadyNative">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(_PlayReadyNativeDll)" RelativePath="FluentGpu.PlayReady.Native.dll"
+                             CopyToPublishDirectory="PreserveNewest" Condition="Exists('$(_PlayReadyNativeDll)')" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Composition root: the Windows backend (D3D12 / Win32 / DirectWrite / WIC) wired into the
+       portable engine + control kit, plus the framework-neutral Wavee.Core backend seam. -->
+  <ItemGroup>
+    <ProjectReference Include="$(EngineRoot)src\FluentGpu.Engine\FluentGpu.Engine.csproj" />
+    <ProjectReference Include="$(EngineRoot)src\FluentGpu.Controls\FluentGpu.Controls.csproj" />
+    <ProjectReference Include="$(EngineRoot)src\FluentGpu.Windows\FluentGpu.Windows.csproj" />
+    <ProjectReference Include="$(EngineRoot)src\FluentGpu.WindowsApi\FluentGpu.WindowsApi.csproj" />
+    <ProjectReference Include="..\Wavee.Core\Wavee.Core.csproj" />
+    <ProjectReference Include="..\Wavee.Sdk\Wavee.Sdk.csproj" />
+    <ProjectReference Include="..\vendor\NVorbis\NVorbis\NVorbis.csproj" />
+  </ItemGroup>
+
+  <!-- ── Bundled playback modules ─────────────────────────────────────────────────────────────────────────────
+       A playback module is an out-of-process exe that speaks the Wavee.Sdk JSON-RPC protocol over stdio; the app
+       discovers it at "<app dir>\modules\<id>\wavee-module.json" (docs/guide/playback-modules.md). The app NEVER
+       links a module: the ProjectReference exists only to order the build, hence ReferenceOutputAssembly=false +
+       Private=false, and UndefineProperties keeps the module a plain framework-dependent build even while Wavee
+       itself is being published for a RID (so the staged path below stays predictable). Each reference is
+       Exists()-guarded: a checkout without the module projects still builds, it just cannot play those sources.
+
+       Dev layout is staged by CopyBundledModules below; the PUBLISH layout (one NativeAOT exe per module) is
+       produced by ops/build/publish-wavee-modules.ps1, which publish-wavee-aot.ps1 and pack-wavee-msix.ps1 both
+       call. The dev manifest's entry is the .dll (host runs `dotnet <dll>`), the published one is the .exe -
+       one host code path, the manifest decides. -->
+  <ItemGroup>
+    <WaveeModule Include="YouTube" ModuleId="wavee.youtube"
+                 Condition="Exists('$(MSBuildProjectDirectory)\..\modules\Wavee.Module.YouTube\Wavee.Module.YouTube.csproj')" />
+    <WaveeModule Include="Twitch" ModuleId="wavee.twitch"
+                 Condition="Exists('$(MSBuildProjectDirectory)\..\modules\Wavee.Module.Twitch\Wavee.Module.Twitch.csproj')" />
+    <WaveeModule Include="Radio" ModuleId="wavee.radio"
+                 Condition="Exists('$(MSBuildProjectDirectory)\..\modules\Wavee.Module.Radio\Wavee.Module.Radio.csproj')" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="@(WaveeModule->'..\modules\Wavee.Module.%(Identity)\Wavee.Module.%(Identity).csproj')"
+                      ReferenceOutputAssembly="false" Private="false" PrivateAssets="all"
+                      UndefineProperties="SelfContained;PublishAot;PublishTrimmed;PublishSingleFile" />
+    <!-- RuntimeIdentifier is deliberately NOT undefined above: each module carries PublishAot=true itself, and the SDK
+         infers the HOST rid for such a project when none is given - so a cross-arch `dotnet publish -r win-x64` from an
+         arm64 box restored the modules for win-x64 (the restore graph carries the global rid) but built them for
+         win-arm64 (NETSDK1047). Passing the rid through keeps restore and build on the same target; the modules'
+         real AOT layout still comes from ops/build/publish-wavee-modules.ps1. -->
+  </ItemGroup>
+
+  <!-- Stage each module's framework-dependent build output next to Wavee.exe so `dotnet run` finds it at
+       $(TargetDir)modules\<id>\. Batched once per WaveeModule; ref\ holds reference assemblies the host never
+       loads. Published builds get the AOT layout from the script above instead. -->
+  <Target Name="CopyBundledModules" AfterTargets="Build" Condition="'@(WaveeModule)' != ''"
+          Outputs="%(WaveeModule.Identity)">
+    <PropertyGroup>
+      <_WaveeModuleBin>$(MSBuildProjectDirectory)\..\modules\Wavee.Module.%(WaveeModule.Identity)\bin\$(Configuration)\net10.0\</_WaveeModuleBin>
+      <_WaveeModuleDest>$(TargetDir)modules\%(WaveeModule.ModuleId)\</_WaveeModuleDest>
+    </PropertyGroup>
+    <ItemGroup>
+      <_WaveeModuleFile Include="$(_WaveeModuleBin)**\*" Exclude="$(_WaveeModuleBin)ref\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WaveeModuleFile)"
+          DestinationFiles="@(_WaveeModuleFile->'$(_WaveeModuleDest)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Gate on the client deriver, not just the sibling csproj: a partial PlayPlay junction (csproj only, no Client/)
+       must not flip WAVEE_PLAYPLAY_LOCAL or AudioPlaybackStack references a type that never compiles. -->
+  <PropertyGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\InProcessPlayPlayKeyDeriver.cs')">
+    <DefineConstants>$(DefineConstants);WAVEE_PLAYPLAY_LOCAL</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\InProcessPlayPlayKeyDeriver.cs')">
+    <Compile Include="..\Wavee.PlayPlay\**\*.cs" Exclude="..\Wavee.PlayPlay\**\bin\**;..\Wavee.PlayPlay\**\obj\**;..\Wavee.PlayPlay\Tests\**" Link="Wavee.PlayPlay\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Protobuf Include="..\Wavee.PlayPlay\Protos\playplay.proto" GrpcServices="None" ProtoRoot="..\Wavee.PlayPlay\Protos" Condition="Exists('..\Wavee.PlayPlay\Protos\playplay.proto')" />
+  </ItemGroup>
+
+  <!-- Real Spotify wire protocol (handshake + login). Vendored .proto compiled via Grpc.Tools → the Wavee.Protocol
+       namespace. Used ONLY by src/apps/Wavee/SpotifyLive (the live-network layer); the unit-tested Backend stays protobuf-free. -->
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.35.0" />
+    <PackageReference Include="FlacBox" Version="1.0.0" />
+    <PackageReference Include="NLayer" Version="1.15.0" />
+    <!-- DPAPI (Windows) — the OPTIONAL at-rest protector swapped behind the portable ICredentialProtector seam. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+    <!-- §2.7 — pure-managed (AOT-safe) zstd decode for the Content-Encoding: zstd /changes + /diff playlist-v2 responses. -->
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.6" />
+    <!-- STEP 4 — the persistent cold tier (offline-first source of truth). Portable native bundle (win/mac/linux). -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <!-- NU1903: Microsoft.Data.Sqlite 10.0.8 pulls the transitive SQLitePCLRaw.lib.e_sqlite3 2.1.11, which ships a SQLite
+         build with a known vulnerability (GHSA-2m69-gcr7-jv3q). The first patched release is 3.0.0 (bundles SQLite 3.50.3) —
+         there is no 2.1.12. Pin the bundle directly to override the transitive one (the vulnerability scan is then clean). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.81.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="SpotifyLive\Protos\**\*.proto" GrpcServices="None" ProtoRoot="SpotifyLive\Protos" />
+  </ItemGroup>
+
+  <!-- Bundled fake-catalog cover art + the loc JSON: copied next to the exe (FakeData.Cover resolves
+       AppContext.BaseDirectory/assets/covers/coverNN.jpg; Localization.LoadFolder reads assets/loc/*.json). -->
+  <ItemGroup>
+    <Content Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- ── Compile-safe localization keys (FluentGpu.SourceGen Localization generator) ──────────────────────────
+       The base-culture JSON feeds the generator, which emits `static class Strings` of dotted-key consts (+ typed
+       ICU-format methods) into the `Wavee` namespace, so call sites use Loc.Get(Strings.Detail.Play). -->
+  <PropertyGroup>
+    <FluentGpuLocNamespace>Wavee</FluentGpuLocNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <AdditionalFiles Include="assets\loc\en-US.json" FluentGpuLocBase="true" />
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="FluentGpuLocBase" />
+    <CompilerVisibleProperty Include="FluentGpuLocNamespace" />
+    <ProjectReference Include="$(EngineRoot)src\FluentGpu.SourceGen\FluentGpu.SourceGen.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Features\Diagnostics\" />
+    <Folder Include="Features\Home\" />
+    <Folder Include="Features\Library\" />
+    <Folder Include="Features\Player\" />
+    <Folder Include="Features\Search\" />
+    <Folder Include="Features\Shell\" />
+  </ItemGroup>
+
+  <!-- JIT Debug/Release: NuGet drops e_sqlite3.dll under runtimes/ only; publish colocates it. Copy the arch-matching
+       binary next to Wavee.exe so Rider F5 and the publish preflight share the same layout. -->
+  <Target Name="CopyESqlite3ToAppRoot" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <PropertyGroup>
+      <_WaveeRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_WaveeRid>
+      <_WaveeRid Condition="'$(_WaveeRid)' == '' AND '$(PlatformTarget)' == 'x86'">win-x86</_WaveeRid>
+      <_WaveeRid Condition="'$(_WaveeRid)' == '' AND '$(PlatformTarget)' == 'arm64'">win-arm64</_WaveeRid>
+      <_WaveeRid Condition="'$(_WaveeRid)' == ''">win-x64</_WaveeRid>
+      <_ESqliteSrc>$(OutputPath)runtimes\$(_WaveeRid)\native\e_sqlite3.dll</_ESqliteSrc>
+    </PropertyGroup>
+    <Copy SourceFiles="$(_ESqliteSrc)" DestinationFiles="$(OutputPath)e_sqlite3.dll"
+          Condition="Exists('$(_ESqliteSrc)')" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

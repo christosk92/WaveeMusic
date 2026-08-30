@@ -1,0 +1,178 @@
+syntax = "proto3";
+
+package connectstate;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.Player";
+
+message PlayerState {
+    int64 timestamp = 1;
+    string context_uri = 2;
+    string context_url = 3;
+    Restrictions context_restrictions = 4;
+    PlayOrigin play_origin = 5;
+    ContextIndex index = 6;
+    ProvidedTrack track = 7;
+    string playback_id = 8;
+    double playback_speed = 9;
+    int64 position_as_of_timestamp = 10;
+    int64 duration = 11;
+    bool is_playing = 12;
+    bool is_paused = 13;
+    bool is_buffering = 14;
+    bool is_system_initiated = 15;
+    ContextPlayerOptions options = 16;
+    Restrictions restrictions = 17;
+    Suppressions suppressions = 18;
+    repeated ProvidedTrack prev_tracks = 19;
+    repeated ProvidedTrack next_tracks = 20;
+    map<string, string> context_metadata = 21;
+    map<string, string> page_metadata = 22;
+    string session_id = 23;
+    string queue_revision = 24;
+    int64 position = 25;
+    string entity_uri = 26;
+    repeated ProvidedTrack reverse = 27;
+    repeated ProvidedTrack future = 28;
+    PlaybackQuality playback_quality = 32;
+    // The offered mode signals. Carries "switch-to-video" while an associated music video is known (desktop pairs it with
+    // track.metadata["associated_video_id"]); the always-present "interact"/preview entries are unrelated to video.
+    repeated string signals = 33;
+    // Per-playback-session opaque 32-hex id; changes iff session_id changes (24/24 captured desktop PUTs). Generator UNPROVEN.
+    string session_command_id = 35;
+    // UNNAMED (desktop 1.2.94.583): always the 5 bytes `c2 02 02 0a 00` in 24/24 captured PUTs, i.e. {1: ""}.
+    PlayerStateUnknown38 unknown_field_38 = 38;
+}
+
+// UNNAMED placeholder for PlayerState field 38. `optional` = explicit presence, so setting "" still emits `0a 00`
+// (a plain proto3 string would be omitted and the message would come out empty).
+message PlayerStateUnknown38 {
+    optional string unknown_1 = 1;
+}
+
+message ProvidedTrack {
+    string uri = 1;
+    string uid = 2;
+    map<string, string> metadata = 3;
+    repeated string removed = 4;
+    repeated string blocked = 5;
+    string provider = 6;
+    Restrictions restrictions = 7;
+    string album_uri = 8;
+    repeated string disallow_reasons = 9;
+    string artist_uri = 10;
+    repeated string disallow_undecided = 11;
+}
+
+message ContextIndex {
+    uint32 page = 1;
+    uint32 track = 2;
+}
+
+message Restrictions {
+    repeated string disallow_pausing_reasons = 1;
+    repeated string disallow_resuming_reasons = 2;
+    repeated string disallow_seeking_reasons = 3;
+    repeated string disallow_peeking_prev_reasons = 4;
+    repeated string disallow_peeking_next_reasons = 5;
+    repeated string disallow_skipping_prev_reasons = 6;
+    repeated string disallow_skipping_next_reasons = 7;
+    repeated string disallow_toggling_repeat_context_reasons = 8;
+    repeated string disallow_toggling_repeat_track_reasons = 9;
+    repeated string disallow_toggling_shuffle_reasons = 10;
+    repeated string disallow_set_queue_reasons = 11;
+    repeated string disallow_interrupting_playback_reasons = 12;
+    repeated string disallow_transferring_playback_reasons = 13;
+    repeated string disallow_remote_control_reasons = 14;
+    repeated string disallow_inserting_into_next_tracks_reasons = 15;
+    repeated string disallow_inserting_into_context_tracks_reasons = 16;
+    repeated string disallow_reordering_in_next_tracks_reasons = 17;
+    repeated string disallow_reordering_in_context_tracks_reasons = 18;
+    repeated string disallow_removing_from_next_tracks_reasons = 19;
+    repeated string disallow_removing_from_context_tracks_reasons = 20;
+    repeated string disallow_updating_context_reasons = 21;
+    repeated string disallow_playing_reasons = 22;
+    repeated string disallow_stopping_reasons = 23;
+    // Names/numbers verbatim from librespot player.proto (extracted from Spotify 1.2.52.442 windows).
+    // 24 is defined for completeness only — it is absent in 24/24 captured desktop PUTs, so nothing emits it.
+    repeated string disallow_add_to_queue_reasons = 24;
+    repeated string disallow_setting_playback_speed_reasons = 25;
+    map<string, ModeRestrictions> disallow_setting_modes = 28;
+    // Why a mode signal is NOT offered — "switch-to-video"/"switch-to-audio" -> ["no_associated_track"].
+    map<string, RestrictionReasons> disallow_signals = 29;
+    // UNNAMED (desktop 1.2.94.583): always exactly ["already_set"] in 24/24 captured PUTs, on PlayerState.restrictions only.
+    // Neither defined nor reserved by librespot; the name here is a placeholder and the semantics are unknown.
+    repeated string unknown_disallow_reasons_31 = 31;
+}
+
+message RestrictionReasons {
+    repeated string reasons = 1;
+}
+
+message ModeRestrictions {
+    map<string, RestrictionReasons> values = 1;
+}
+
+message PlayOrigin {
+    string feature_identifier = 1;
+    string feature_version = 2;
+    string view_uri = 3;
+    string external_referrer = 4;
+    string referrer_identifier = 5;
+    string device_identifier = 6;
+    repeated string feature_classes = 7;
+}
+
+message ContextPlayerOptions {
+    bool shuffling_context = 1;
+    bool repeating_context = 2;
+    bool repeating_track = 3;
+    // Desktop always publishes exactly three: context_enhancement="NONE", media="", jam="off" (24/24 captured PUTs).
+    // librespot declares this `map<string, string> modes = 5;`. We model it as the wire-identical repeated map-entry
+    // message instead, for ONE reason: desktop explicitly serializes the empty `media` value (`12 00`), and Google.Protobuf's
+    // map codec drops default-valued entries — a proto3 map here would emit the key with no value tag. Parsers see the same
+    // thing either way; the repeated form additionally reproduces desktop's bytes.
+    repeated ModeEntry modes = 5;
+}
+
+// Wire-identical to a `map<string, string>` entry. `optional` on the value = explicit presence, so "" is serialized.
+message ModeEntry {
+    string key = 1;
+    optional string value = 2;
+}
+
+message Suppressions {
+    repeated string providers = 1;
+}
+
+enum BitrateLevel {
+    unknown = 0;
+    low = 1;
+    normal = 2;
+    high = 3;
+    veryhigh = 4;
+    normalized = 5;
+}
+
+enum BitrateStrategy {
+    unknown_strategy = 0;
+    best_matching = 1;
+    backend_advised = 2;
+    offlined_file = 3;
+    cached_file = 4;
+    local_file = 5;
+}
+
+enum HiFiStatus {
+    none = 0;
+    off = 1;
+    on = 2;
+}
+
+message PlaybackQuality {
+    BitrateLevel bitrate_level = 1;
+    BitrateStrategy strategy = 2;
+    BitrateLevel target_bitrate_level = 3;
+    bool target_bitrate_available = 4;
+    HiFiStatus hifi_status = 5;
+}

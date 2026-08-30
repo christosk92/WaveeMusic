@@ -1,0 +1,1456 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Wavee — Pressure Dock prototype</title>
+  <style>
+    :root {
+      --lab-bg: #111318;
+      --lab-panel: rgba(27, 30, 37, .82);
+      --lab-panel-strong: #20242c;
+      --lab-stroke: rgba(255, 255, 255, .09);
+      --lab-text: #f5f6f8;
+      --lab-muted: #9da4b0;
+      --chrome: #202020;
+      --chrome-raised: #282828;
+      --content: #282828;
+      --sidebar: #232323;
+      --text: #f5f5f5;
+      --text-secondary: #b8b8b8;
+      --text-tertiary: #858585;
+      --stroke: rgba(255, 255, 255, .09);
+      --stroke-strong: rgba(255, 255, 255, .15);
+      --hover: rgba(255, 255, 255, .075);
+      --pressed: rgba(255, 255, 255, .045);
+      --accent: #4cc2ff;
+      --accent-soft: rgba(76, 194, 255, .15);
+      --danger: #ff6b70;
+      --shadow-window: 0 28px 80px rgba(0, 0, 0, .45), 0 4px 16px rgba(0, 0, 0, .28);
+      --shadow-flyout: 0 18px 48px rgba(0, 0, 0, .38), 0 3px 10px rgba(0, 0, 0, .24);
+      --motion-fast: 160ms;
+      --motion-medium: 240ms;
+      --ease-out: cubic-bezier(.2, .8, .2, 1);
+      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    }
+
+    [data-theme="light"] {
+      --lab-bg: #e9ebef;
+      --lab-panel: rgba(255, 255, 255, .78);
+      --lab-panel-strong: #ffffff;
+      --lab-stroke: rgba(20, 24, 33, .11);
+      --lab-text: #17191d;
+      --lab-muted: #656b76;
+      --chrome: #ededed;
+      --chrome-raised: #f6f6f6;
+      --content: #f9f9f9;
+      --sidebar: #f1f1f1;
+      --text: #1a1a1a;
+      --text-secondary: #5f5f5f;
+      --text-tertiary: #858585;
+      --stroke: rgba(0, 0, 0, .08);
+      --stroke-strong: rgba(0, 0, 0, .14);
+      --hover: rgba(0, 0, 0, .055);
+      --pressed: rgba(0, 0, 0, .035);
+      --accent: #0067c0;
+      --accent-soft: rgba(0, 103, 192, .12);
+      --danger: #c42b1c;
+      --shadow-window: 0 28px 70px rgba(50, 58, 72, .22), 0 4px 14px rgba(50, 58, 72, .16);
+      --shadow-flyout: 0 18px 46px rgba(50, 58, 72, .22), 0 3px 10px rgba(50, 58, 72, .12);
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--lab-bg); }
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--lab-text);
+      background:
+        radial-gradient(circle at 15% -5%, rgba(76, 194, 255, .11), transparent 30rem),
+        radial-gradient(circle at 92% 12%, rgba(138, 113, 255, .09), transparent 34rem),
+        var(--lab-bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input { font: inherit; color: inherit; }
+    button { border: 0; }
+    svg.icon {
+      width: 16px;
+      height: 16px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+
+    .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+    .lab-shell { width: min(100%, 2280px); margin: 0 auto; padding: 34px 28px 56px; }
+    .lab-header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin: 0 auto 24px;
+      max-width: 2160px;
+    }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: #70d2ff;
+      font-size: 11px;
+      font-weight: 760;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    [data-theme="light"] .eyebrow { color: #0067c0; }
+    h1 { margin: 0; font-size: clamp(30px, 4vw, 50px); line-height: 1; letter-spacing: -.045em; }
+    .intro { max-width: 660px; margin: 12px 0 0; color: var(--lab-muted); font-size: 15px; line-height: 1.55; }
+    .theme-button {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      cursor: pointer;
+      border: 1px solid var(--lab-stroke);
+      border-radius: 12px;
+      background: var(--lab-panel);
+      transition: background var(--motion-fast), transform var(--motion-fast) var(--ease-out);
+    }
+    .theme-button:hover { background: var(--lab-panel-strong); transform: translateY(-1px); }
+
+    .lab-card {
+      max-width: 2160px;
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid var(--lab-stroke);
+      border-radius: 20px;
+      background: var(--lab-panel);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, .12);
+      backdrop-filter: blur(24px) saturate(1.2);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(280px, 1.15fr) minmax(250px, .9fr) auto;
+      gap: 18px;
+      align-items: center;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--lab-stroke);
+    }
+    .control-group { min-width: 0; }
+    .control-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      color: var(--lab-muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .width-value { color: var(--lab-text); font-variant-numeric: tabular-nums; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .segmented { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: rgba(127, 127, 127, .09); }
+    .segment {
+      min-width: 42px;
+      height: 30px;
+      padding: 0 10px;
+      cursor: pointer;
+      border-radius: 7px;
+      color: var(--lab-muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 670;
+    }
+    .segment:hover { color: var(--lab-text); background: rgba(127, 127, 127, .1); }
+    .segment[aria-pressed="true"] { color: var(--lab-text); background: var(--lab-panel-strong); box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
+    .mode-readout { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+    .mode-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 30px;
+      padding: 0 11px;
+      border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+      border-radius: 999px;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      font-size: 12px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+    .mode-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 14%, transparent); }
+    .budget { color: var(--lab-muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .canvas {
+      min-height: 650px;
+      padding: 32px;
+      overflow: auto;
+      background:
+        linear-gradient(var(--lab-stroke) 1px, transparent 1px),
+        linear-gradient(90deg, var(--lab-stroke) 1px, transparent 1px),
+        color-mix(in srgb, var(--lab-bg) 80%, transparent);
+      background-size: 24px 24px;
+      scrollbar-color: color-mix(in srgb, var(--lab-muted) 45%, transparent) transparent;
+    }
+    .window {
+      position: relative;
+      height: 560px;
+      margin: 0 auto;
+      overflow: hidden;
+      color: var(--text);
+      border: 1px solid var(--stroke-strong);
+      border-radius: 12px;
+      background: var(--chrome);
+      box-shadow: var(--shadow-window);
+      transition: width var(--motion-medium) var(--ease-out);
+    }
+    .window.resizing { transition: none; }
+    .chrome { position: relative; z-index: 10; background: var(--chrome); }
+    .titlebar {
+      display: flex;
+      align-items: center;
+      height: 48px;
+      padding-left: 4px;
+      user-select: none;
+      overflow: hidden;
+    }
+    .title-left, .title-trailing, .captions, .shelf-tools, .pinned-lane { display: flex; align-items: center; flex: 0 0 auto; }
+    .title-left { gap: 0; }
+    .title-trailing { gap: 0; }
+    .chrome-button {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      padding: 0;
+      cursor: pointer;
+      border-radius: 7px;
+      color: var(--text-secondary);
+      background: transparent;
+    }
+    .chrome-button:hover { color: var(--text); background: var(--hover); }
+    .chrome-button:active { background: var(--pressed); }
+    .chrome-button:disabled { opacity: .35; pointer-events: none; }
+    .pane-button { margin-right: 4px; }
+    .caption-drag { width: 48px; height: 48px; flex: 0 0 auto; }
+    .drag-band { min-width: 8px; height: 48px; flex: 1 1 8px; }
+    .captions { height: 48px; }
+    .caption {
+      width: 46px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      cursor: default;
+      color: var(--text-secondary);
+      background: transparent;
+    }
+    .caption:hover { color: var(--text); background: var(--hover); }
+    .caption.close:hover { color: white; background: #c42b1c; }
+    .caption .icon { width: 12px; height: 12px; stroke-width: 1.5; }
+    .avatar {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      margin: 0 4px;
+      border-radius: 50%;
+      color: #e5e5e5;
+      background: linear-gradient(145deg, #3a4353, #2e3138);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    [data-theme="light"] .avatar { color: #34373d; background: linear-gradient(145deg, #e2e6ec, #cfd5de); }
+    .profile-name { max-width: 90px; margin-right: 4px; overflow: hidden; color: var(--text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+
+    .search-host {
+      position: relative;
+      z-index: 6;
+      flex: 0 0 auto;
+    }
+    .search-box {
+      position: relative;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 10px 0 12px;
+      border: 1px solid var(--stroke);
+      border-radius: 7px;
+      color: var(--text-secondary);
+      background: color-mix(in srgb, var(--chrome-raised) 92%, transparent);
+      box-shadow: inset 0 1px rgba(255, 255, 255, .025);
+      transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
+    }
+    .search-box:focus-within {
+      border-color: color-mix(in srgb, var(--accent) 58%, var(--stroke));
+      background: var(--chrome-raised);
+      box-shadow: 0 0 0 2px var(--accent-soft), inset 0 -2px var(--accent);
+    }
+    .search-input {
+      min-width: 0;
+      flex: 1 1 auto;
+      height: 30px;
+      padding: 0;
+      outline: 0;
+      border: 0;
+      color: var(--text);
+      background: transparent;
+      font-size: 13px;
+    }
+    .search-input::placeholder { color: var(--text-tertiary); }
+    .search-kbd { color: var(--text-tertiary); font-size: 10px; white-space: nowrap; }
+    .search-clear { width: 24px; height: 24px; border-radius: 5px; }
+    .search-clear .icon { width: 11px; height: 11px; }
+    .suggestion-sheet {
+      position: absolute;
+      z-index: 30;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      min-width: 280px;
+      padding: 7px;
+      overflow: hidden;
+      border: 1px solid var(--stroke-strong);
+      border-radius: 11px;
+      background: color-mix(in srgb, var(--chrome-raised) 96%, transparent);
+      box-shadow: var(--shadow-flyout);
+      backdrop-filter: blur(24px) saturate(1.35);
+      transform-origin: top center;
+      animation: sheet-in var(--motion-fast) var(--ease-out) both;
+    }
+    .suggestion-label { padding: 6px 8px 5px; color: var(--text-tertiary); font-size: 10px; font-weight: 730; letter-spacing: .1em; text-transform: uppercase; }
+    .suggestion {
+      width: 100%;
+      min-height: 38px;
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 8px;
+      cursor: pointer;
+      border-radius: 7px;
+      text-align: left;
+      background: transparent;
+    }
+    .suggestion:hover, .suggestion[aria-selected="true"] { background: var(--hover); }
+    .suggestion-icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 7px; color: var(--accent); background: var(--accent-soft); }
+    .suggestion-title { display: block; overflow: hidden; color: var(--text); font-size: 12px; font-weight: 630; text-overflow: ellipsis; white-space: nowrap; }
+    .suggestion-sub { display: block; margin-top: 1px; overflow: hidden; color: var(--text-tertiary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .suggestion-type { color: var(--text-tertiary); font-size: 10px; }
+
+    .inline-tabs { height: 48px; display: flex; align-items: center; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+    .search-flyout {
+      position: absolute;
+      z-index: 40;
+      top: 43px;
+      padding: 7px;
+      border: 1px solid var(--stroke-strong);
+      border-radius: 11px;
+      background: color-mix(in srgb, var(--chrome-raised) 97%, transparent);
+      box-shadow: var(--shadow-flyout);
+      backdrop-filter: blur(24px) saturate(1.35);
+      transform-origin: top right;
+      animation: sheet-in var(--motion-fast) var(--ease-out) both;
+    }
+    .search-flyout .search-host { width: 100% !important; }
+    .search-flyout .suggestion-sheet {
+      position: static;
+      min-width: 0;
+      margin-top: 5px;
+      padding: 2px 0 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      backdrop-filter: none;
+      animation: none;
+    }
+
+    .pinned-lane { height: 40px; gap: 2px; }
+    .pinned-divider { width: 1px; height: 20px; margin: 0 6px; flex: 0 0 auto; background: var(--stroke-strong); }
+    .pinned-tab, .pinned-overflow {
+      position: relative;
+      width: 40px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      padding: 0;
+      cursor: pointer;
+      border-radius: 7px;
+      color: var(--text-secondary);
+      background: transparent;
+    }
+    .pinned-tab:hover, .pinned-overflow:hover { color: var(--text); background: var(--hover); }
+    .pinned-tab.active { color: var(--text); background: var(--accent-soft); }
+    .pinned-tab.active::after {
+      content: "";
+      position: absolute;
+      right: 8px;
+      bottom: 1px;
+      left: 8px;
+      height: 2px;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+    .pin-mark { position: absolute; top: 4px; right: 5px; width: 7px; height: 7px; color: var(--accent); }
+    .pin-mark.icon { width: 8px; height: 8px; stroke-width: 2; }
+    .pinned-overflow { color: var(--text-tertiary); font-size: 11px; font-weight: 720; }
+
+    .scroll-frame { position: relative; min-width: 0; height: 40px; flex: 1 1 auto; overflow: hidden; }
+    .tab-scroll {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+      scroll-behavior: smooth;
+      overscroll-behavior-inline: contain;
+    }
+    .tab-scroll::-webkit-scrollbar { display: none; }
+    .scroll-frame::before, .scroll-frame::after {
+      content: "";
+      position: absolute;
+      z-index: 3;
+      top: 0;
+      bottom: 0;
+      width: 30px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity var(--motion-fast);
+    }
+    .scroll-frame::before { left: 0; background: linear-gradient(90deg, var(--chrome), transparent); }
+    .scroll-frame::after { right: 0; background: linear-gradient(270deg, var(--chrome), transparent); }
+    .scroll-frame.can-left::before, .scroll-frame.can-right::after { opacity: 1; }
+    .scroll-pip {
+      position: absolute;
+      z-index: 5;
+      top: 6px;
+      width: 26px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      cursor: pointer;
+      border: 1px solid var(--stroke);
+      border-radius: 8px;
+      color: var(--text-secondary);
+      background: color-mix(in srgb, var(--chrome-raised) 94%, transparent);
+      box-shadow: 0 3px 12px rgba(0, 0, 0, .18);
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(.9);
+      transition: opacity var(--motion-fast), transform var(--motion-fast) var(--ease-out);
+    }
+    .scroll-pip.left { left: 2px; }
+    .scroll-pip.right { right: 2px; }
+    .scroll-frame:hover.can-left .scroll-pip.left,
+    .scroll-frame:focus-within.can-left .scroll-pip.left,
+    .scroll-frame:hover.can-right .scroll-pip.right,
+    .scroll-frame:focus-within.can-right .scroll-pip.right { opacity: 1; pointer-events: auto; transform: scale(1); }
+    .scroll-pip:hover { color: var(--text); background: var(--chrome-raised); }
+    .scroll-pip .icon { width: 11px; height: 11px; }
+
+    .tab {
+      position: relative;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      min-width: 110px;
+      max-width: 200px;
+      flex: 0 0 auto;
+      padding: 0 7px 0 12px;
+      cursor: pointer;
+      outline: none;
+      border-radius: 7px;
+      color: var(--text-secondary);
+      background: transparent;
+      user-select: none;
+    }
+    .tab:hover { color: var(--text); background: var(--hover); }
+    .tab:active { background: var(--pressed); }
+    .tab:focus-visible { box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 2px var(--accent-soft); }
+    .tab.active { color: var(--text); font-weight: 650; }
+    .tab.active::after {
+      content: "";
+      position: absolute;
+      right: 12px;
+      bottom: 0;
+      left: 12px;
+      height: 2px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 28%, transparent);
+    }
+    .tab > .icon { width: 15px; height: 15px; flex: 0 0 auto; margin-right: 8px; }
+    .tab-label { min-width: 0; flex: 1 1 auto; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .tab-close {
+      width: 20px;
+      height: 20px;
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      margin-left: 4px;
+      padding: 0;
+      cursor: pointer;
+      border-radius: 5px;
+      color: var(--text-secondary);
+      background: transparent;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--motion-fast), background var(--motion-fast);
+    }
+    .tab:hover .tab-close, .tab:focus-within .tab-close { opacity: 1; pointer-events: auto; }
+    .tab-close:hover { color: var(--text); background: var(--hover); }
+    .tab-close .icon { width: 10px; height: 10px; }
+    .shelf-tools { height: 40px; gap: 1px; padding-left: 4px; }
+    .shelf-tools .chrome-button { width: 34px; height: 32px; }
+    .tool-count {
+      position: absolute;
+      right: 3px;
+      bottom: 2px;
+      min-width: 13px;
+      height: 13px;
+      display: grid;
+      place-items: center;
+      padding: 0 3px;
+      border-radius: 999px;
+      color: var(--chrome);
+      background: var(--accent);
+      font-size: 8px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .popover {
+      position: fixed;
+      z-index: 100;
+      width: 250px;
+      max-height: 360px;
+      padding: 7px;
+      overflow-y: auto;
+      border: 1px solid var(--stroke-strong);
+      border-radius: 11px;
+      color: var(--text);
+      background: color-mix(in srgb, var(--chrome-raised) 97%, transparent);
+      box-shadow: var(--shadow-flyout);
+      backdrop-filter: blur(24px) saturate(1.3);
+      animation: sheet-in var(--motion-fast) var(--ease-out) both;
+    }
+    .popover[hidden] { display: none; }
+    .menu-heading { padding: 7px 9px 8px; color: var(--text-tertiary); font-size: 11px; font-weight: 700; }
+    .menu-item {
+      width: 100%;
+      min-height: 34px;
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 9px;
+      cursor: pointer;
+      border-radius: 6px;
+      color: var(--text);
+      background: transparent;
+      text-align: left;
+      font-size: 12px;
+    }
+    .menu-item:hover, .menu-item:focus-visible { outline: 0; background: var(--hover); }
+    .menu-item:disabled { opacity: .4; pointer-events: none; }
+    .menu-item .icon { width: 14px; height: 14px; color: var(--text-secondary); }
+    .menu-item .meta { color: var(--text-tertiary); font-size: 10px; }
+    .menu-separator { height: 1px; margin: 5px 8px; background: var(--stroke); }
+    .overview-list { display: grid; gap: 2px; }
+    .overview-item.active { background: var(--accent-soft); }
+
+    .app-body { height: calc(100% - var(--chrome-height, 48px)); display: flex; min-height: 0; background: var(--chrome); }
+    .sidebar {
+      width: var(--sidebar-width, 238px);
+      flex: 0 0 auto;
+      padding: 13px 8px;
+      overflow: hidden;
+      background: var(--sidebar);
+      transition: width var(--motion-medium) var(--ease-out);
+    }
+    .side-item {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 12px;
+      border-radius: 7px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .side-item.active { color: var(--text); background: var(--accent-soft); }
+    .side-item .icon { flex: 0 0 auto; }
+    .side-label { overflow: hidden; text-overflow: ellipsis; }
+    .side-rule { height: 1px; margin: 10px 8px; background: var(--stroke); }
+    .page {
+      position: relative;
+      min-width: 0;
+      flex: 1 1 auto;
+      overflow: hidden;
+      border-top: 1px solid var(--stroke);
+      border-left: 1px solid var(--stroke);
+      border-radius: 10px 0 0;
+      background:
+        radial-gradient(circle at 20% 8%, rgba(76, 194, 255, .08), transparent 22rem),
+        var(--content);
+    }
+    .page-inner { padding: clamp(20px, 4vw, 48px); }
+    .page-kicker { margin: 0 0 7px; color: var(--accent); font-size: 10px; font-weight: 760; letter-spacing: .14em; text-transform: uppercase; }
+    .page h2 { margin: 0; color: var(--text); font-size: clamp(26px, 4vw, 48px); letter-spacing: -.045em; }
+    .page-copy { max-width: 560px; margin: 8px 0 24px; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+    .cards { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 12px; }
+    .card { min-width: 0; padding: 10px; border: 1px solid var(--stroke); border-radius: 10px; background: rgba(127, 127, 127, .055); }
+    .cover { aspect-ratio: 1; border-radius: 7px; background: linear-gradient(145deg, #6ed7ff, #5b56d9 52%, #d24b9d); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+    .card:nth-child(2) .cover { background: linear-gradient(145deg, #2c313c, #9f705a 62%, #d6ad7f); }
+    .card:nth-child(3) .cover { background: linear-gradient(145deg, #d0b85c, #4a695a 50%, #172b2b); }
+    .card:nth-child(4) .cover { background: linear-gradient(145deg, #ff896d, #6b3a6f 58%, #232441); }
+    .card-title { margin-top: 9px; overflow: hidden; color: var(--text); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .card-sub { margin-top: 2px; color: var(--text-tertiary); font-size: 10px; }
+
+    .algorithm-note {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      border-top: 1px solid var(--lab-stroke);
+      background: var(--lab-stroke);
+    }
+    .algorithm-step { min-height: 84px; padding: 16px 18px; background: var(--lab-panel); }
+    .algorithm-step strong { display: block; margin-bottom: 5px; font-size: 12px; }
+    .algorithm-step span { color: var(--lab-muted); font-size: 11px; line-height: 1.45; }
+
+    .toast {
+      position: fixed;
+      z-index: 150;
+      left: 50%;
+      bottom: 24px;
+      padding: 9px 13px;
+      border: 1px solid var(--stroke-strong);
+      border-radius: 9px;
+      color: var(--text);
+      background: var(--chrome-raised);
+      box-shadow: var(--shadow-flyout);
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 8px);
+      transition: opacity var(--motion-fast), transform var(--motion-fast) var(--ease-out);
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @keyframes sheet-in { from { opacity: 0; transform: translateY(-5px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+    @media (max-width: 860px) {
+      .lab-shell { padding: 24px 14px 40px; }
+      .lab-header { align-items: start; }
+      .controls { grid-template-columns: 1fr; }
+      .mode-readout { justify-content: flex-start; }
+      .canvas { padding: 24px 14px; }
+      .algorithm-note { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6M9 12h11"/></symbol>
+    <symbol id="i-forward" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6M15 12H4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.6-4 2.8-6 6.5-6s5.9 2 6.5 6"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M7 12h10"/></symbol>
+    <symbol id="i-max" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="m9 4 6 1-1 5 3 3-4 1-4 6 1-7-3-3 4-1Z"/></symbol>
+    <symbol id="i-tabs" viewBox="0 0 24 24"><rect x="4" y="5" width="13" height="14" rx="2"/><path d="M8 2h10a2 2 0 0 1 2 2v11"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m4 11 8-7 8 7v9h-5v-6H9v6H4Z"/></symbol>
+    <symbol id="i-album" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2"/><path d="M12 3.5V7"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20 8.5c0 5-8 10-8 10s-8-5-8-10A4.5 4.5 0 0 1 12 5a4.5 4.5 0 0 1 8 3.5Z"/></symbol>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5Z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m14 7-5 5 5 5"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m10 7 5 5-5 5"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 15.5A8 8 0 0 1 8.5 4.5a8 8 0 1 0 11 11Z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  </svg>
+
+  <main class="lab-shell">
+    <header class="lab-header">
+      <div>
+        <p class="eyebrow">Wavee interaction study · 08/2026</p>
+        <h1>Pressure Dock</h1>
+        <p class="intro">One 48-DIP bar at every width. Tabs stay in document order and scroll like an editor; search yields early to tab pressure, then reappears as a focused flyout from the magnifier beside the window controls.</p>
+      </div>
+      <button class="theme-button" id="themeButton" type="button" aria-label="Switch to light theme"><svg class="icon"><use href="#i-sun"/></svg></button>
+    </header>
+
+    <section class="lab-card" aria-label="Responsive top-bar prototype">
+      <div class="controls">
+        <div class="control-group">
+          <label class="control-label" for="widthRange"><span>Window width</span><span class="width-value" id="widthValue">1337 DIP</span></label>
+          <input id="widthRange" type="range" min="300" max="1968" step="1" value="1337">
+        </div>
+        <div class="control-group">
+          <div class="control-label"><span>Scroll pressure</span><span>Same bar, more tabs</span></div>
+          <div class="segmented" id="tabPresets" aria-label="Tab count presets">
+            <button class="segment" type="button" data-count="2">2</button>
+            <button class="segment" type="button" data-count="6">6</button>
+            <button class="segment" type="button" data-count="10" aria-pressed="true">10</button>
+            <button class="segment" type="button" data-count="16">16</button>
+          </div>
+        </div>
+        <div class="mode-readout">
+          <span class="mode-badge"><span class="mode-dot"></span><span id="modeName">One row · full search</span></span>
+          <span class="budget" id="budgetReadout"></span>
+        </div>
+      </div>
+
+      <div class="canvas" id="canvas">
+        <div class="window" id="window" style="width:1337px">
+          <div class="chrome" id="chrome"></div>
+          <div class="app-body" id="appBody">
+            <aside class="sidebar" id="sidebar" aria-label="Mock navigation">
+              <div class="side-item active"><svg class="icon"><use href="#i-home"/></svg><span class="side-label">Home</span></div>
+              <div class="side-item"><svg class="icon"><use href="#i-search"/></svg><span class="side-label">Search</span></div>
+              <div class="side-rule"></div>
+              <div class="side-item"><svg class="icon"><use href="#i-heart"/></svg><span class="side-label">Liked songs</span></div>
+              <div class="side-item"><svg class="icon"><use href="#i-album"/></svg><span class="side-label">Albums</span></div>
+              <div class="side-item"><svg class="icon"><use href="#i-music"/></svg><span class="side-label">Playlists</span></div>
+            </aside>
+            <section class="page" aria-label="Mock Wavee page">
+              <div class="page-inner">
+                <p class="page-kicker">Made for your evening</p>
+                <h2>Everything in reach.</h2>
+                <p class="page-copy">Resize the window, add tabs, pin a few, use the scroll edges, then press Ctrl+K. The chrome changes address without hiding the work.</p>
+                <div class="cards">
+                  <div class="card"><div class="cover"></div><div class="card-title">Night signal</div><div class="card-sub">Daily mix</div></div>
+                  <div class="card"><div class="cover"></div><div class="card-title">Soft focus</div><div class="card-sub">Made for Arash</div></div>
+                  <div class="card"><div class="cover"></div><div class="card-title">Golden hour</div><div class="card-sub">Radio</div></div>
+                  <div class="card"><div class="cover"></div><div class="card-title">Afterglow</div><div class="card-sub">Playlist</div></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <div class="algorithm-note">
+        <div class="algorithm-step"><strong>1 · Protect one line</strong><span>The custom caption cluster, a real drag target and one active-tab viewport are reserved before optional identity controls.</span></div>
+        <div class="algorithm-step"><strong>2 · Scroll, never evict</strong><span>Every tab remains in document order inside one horizontal track. No second row and no MRU-only visible slice.</span></div>
+        <div class="algorithm-step"><strong>3 · Search yields first</strong><span>The full field stays only while a comfortable tab viewport remains. Under pressure it becomes one trailing icon; click or Ctrl+K opens an anchored flyout without moving the tabs.</span></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="popover" id="contextMenu" role="menu" hidden></div>
+  <div class="popover" id="overview" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const C = Object.freeze({
+        promotionReserve: 40,
+        titleHeight: 48,
+        // Fixed captions/nav/drag/identity/tools. A full field is admitted only after the
+        // tab lane receives a pressure-weighted comfort budget; search therefore yields early.
+        fieldFixed: 390,
+        iconNeed: 400,
+        essentialNeed: 300,
+        searchMin: 280,
+        searchMax: 420,
+        tabMin: 110,
+        tabMax: 200,
+        pinnedWidth: 40,
+        tabUtilities: 68,
+      });
+
+      const catalog = [
+        ['Home', 'home'], ['Album', 'album'], ["90's Mix", 'music'], ['Arash', 'mic'],
+        ['Lyrics', 'list'], ['Discover', 'compass'], ['Queue', 'list'], ['Liked Songs', 'heart'],
+        ['Lo-fi at Night', 'music'], ['Release Radar', 'clock'], ['New Music Friday', 'album'],
+        ['Daily Mix 2', 'music'], ['On Repeat', 'clock'], ['Your Episodes', 'mic'],
+        ['Deep Focus', 'album'], ['Dinner Jazz', 'music'], ['Daylist', 'compass'], ['History', 'clock'],
+      ];
+
+      const state = {
+        width: 1337,
+        tabs: [],
+        activeId: 0,
+        nextId: 0,
+        previousMode: null,
+        mode: 'field',
+        searchOpen: false,
+        query: '',
+        sidebarPins: new Set(),
+        contextTabId: null,
+        suggestionIndex: 0,
+      };
+
+      const el = {
+        root: document.documentElement,
+        window: document.getElementById('window'),
+        chrome: document.getElementById('chrome'),
+        appBody: document.getElementById('appBody'),
+        sidebar: document.getElementById('sidebar'),
+        widthRange: document.getElementById('widthRange'),
+        widthValue: document.getElementById('widthValue'),
+        modeName: document.getElementById('modeName'),
+        budget: document.getElementById('budgetReadout'),
+        presets: document.getElementById('tabPresets'),
+        context: document.getElementById('contextMenu'),
+        overview: document.getElementById('overview'),
+        toast: document.getElementById('toast'),
+        theme: document.getElementById('themeButton'),
+      };
+
+      const icon = name => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+      const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+      const rank = mode => mode === 'field' ? 2 : mode === 'icon' ? 1 : 0;
+      const activeTab = () => state.tabs.find(t => t.id === state.activeId) || state.tabs[0];
+      const pinnedTabs = () => state.tabs.filter(t => t.pinned);
+      const regularTabs = () => state.tabs.filter(t => !t.pinned);
+      const esc = value => String(value).replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+
+      function seedTabs(count) {
+        const pinnedLabels = new Set(state.tabs.filter(t => t.pinned).map(t => t.label));
+        state.tabs = [];
+        state.nextId = 0;
+        for (let i = 0; i < count; i++) {
+          const [label, glyph] = catalog[i % catalog.length];
+          state.tabs.push({ id: state.nextId++, label, glyph, pinned: pinnedLabels.has(label) && i < 4 });
+        }
+        state.activeId = state.tabs[Math.min(3, state.tabs.length - 1)].id;
+        state.previousMode = null;
+        state.searchOpen = false;
+        render();
+      }
+
+      function preferredSearch(width) {
+        return Math.floor(clamp(width * .28, C.searchMin, C.searchMax) / 10) * 10;
+      }
+
+      function demands(width, tabs) {
+        const search = preferredSearch(width);
+        const pinned = tabs.filter(tab => tab.pinned);
+        const regular = tabs.filter(tab => !tab.pinned);
+        const naturalLane = pinned.length * C.pinnedWidth
+          + regular.reduce((total, tab) => total + naturalTabWidth(tab), 0)
+          + (pinned.length && regular.length ? 13 : 0)
+          + C.tabUtilities;
+        // Preserve roughly four-fifths of the natural tab strip before admitting a full search field.
+        const tabComfort = clamp(Math.round(naturalLane * .78), 240, 720);
+        return {
+          search,
+          tabComfort,
+          fieldNeed: C.fieldFixed + search + tabComfort,
+          iconNeed: C.iconNeed,
+        };
+      }
+
+      function resolveChrome(width, tabs, previousMode) {
+        const d = demands(width, tabs);
+        let candidate = width >= d.fieldNeed ? 'field' : width >= d.iconNeed ? 'icon' : 'essential';
+        if (previousMode && rank(candidate) > rank(previousMode)) {
+          const threshold = candidate === 'field' ? d.fieldNeed : d.iconNeed;
+          if (width < threshold + C.promotionReserve) candidate = previousMode;
+        }
+
+        const threshold = candidate === 'field' ? d.fieldNeed : candidate === 'icon' ? d.iconNeed : C.essentialNeed;
+        let surplus = Math.max(0, width - threshold);
+        const showForward = candidate !== 'essential' && surplus >= 40;
+        if (showForward) surplus -= 40;
+        const showAvatar = candidate === 'field' || (candidate === 'icon' && surplus >= 32);
+        if (candidate === 'icon' && showAvatar) surplus -= 32;
+        const showMore = candidate === 'field' ? surplus >= 40 : candidate === 'icon' && surplus >= 40;
+        if (showMore) surplus -= 40;
+        const showFriends = candidate === 'field' && surplus >= 40;
+        if (showFriends) surplus -= 40;
+        const showName = candidate === 'field' && surplus >= 90;
+        if (showName) surplus -= 90;
+
+        return {
+          ...d,
+          mode: candidate,
+          searchMode: candidate === 'field' ? 'field' : 'icon',
+          showBack: candidate !== 'essential',
+          showForward,
+          showAvatar,
+          showMore,
+          showFriends,
+          showName,
+          showAdd: candidate !== 'essential',
+          dragWidth: candidate === 'field' ? 48 : candidate === 'icon' ? 16 : 4,
+        };
+      }
+
+      function naturalTabWidth(tab) {
+        const canvas = naturalTabWidth.canvas || (naturalTabWidth.canvas = document.createElement('canvas'));
+        const ctx = canvas.getContext('2d');
+        ctx.font = '12px "Segoe UI Variable Text", "Segoe UI", sans-serif';
+        return clamp(Math.ceil(ctx.measureText(tab.label).width + 72), C.tabMin, C.tabMax);
+      }
+
+      function chromeButton(name, label, extra = '') {
+        return `<button class="chrome-button ${extra}" type="button" aria-label="${esc(label)}" title="${esc(label)}">${icon(name)}</button>`;
+      }
+
+      function titleLeft(layout) {
+        return `<div class="title-left">
+          ${chromeButton('menu', 'Open navigation', 'pane-button')}
+          ${layout.showBack ? chromeButton('back', 'Back') : ''}
+          ${layout.showForward ? chromeButton('forward', 'Forward') : ''}
+        </div>`;
+      }
+
+      function captions() {
+        return `<div class="captions" aria-label="Window controls">
+          <button class="caption" type="button" aria-label="Minimize">${icon('minus')}</button>
+          <button class="caption" type="button" aria-label="Maximize">${icon('max')}</button>
+          <button class="caption close" type="button" aria-label="Close">${icon('close')}</button>
+        </div>`;
+      }
+
+      function trailing(layout) {
+        if (!layout.showAvatar && !layout.showFriends && !layout.showMore) return '';
+        return `<div class="title-trailing">
+          ${layout.showName ? '<span class="profile-name">Arash</span>' : ''}
+          ${layout.showAvatar ? '<button class="avatar" type="button" aria-label="Open profile" title="Profile">A</button>' : ''}
+          ${layout.showFriends ? chromeButton('user', 'Friends') : ''}
+          ${layout.showMore ? chromeButton('more', 'More actions') : ''}
+        </div>`;
+      }
+
+      const suggestionSource = [
+        { title: 'Love Me Again', sub: 'John Newman · Tribute', type: 'Song', glyph: 'music' },
+        { title: 'Love Me Like You Do', sub: 'Ellie Goulding · Delirium', type: 'Song', glyph: 'music' },
+        { title: 'Songs you love', sub: 'Your liked songs', type: 'Collection', glyph: 'heart' },
+        { title: 'Arash Radio', sub: 'Based on your recent listening', type: 'Radio', glyph: 'mic' },
+        { title: 'Search everything', sub: 'Songs, artists, albums, playlists and podcasts', type: 'Command', glyph: 'search' },
+      ];
+
+      function filteredSuggestions() {
+        const q = state.query.trim().toLocaleLowerCase();
+        if (!q) return suggestionSource.slice(2);
+        const hits = suggestionSource.filter(s => `${s.title} ${s.sub} ${s.type}`.toLocaleLowerCase().includes(q));
+        return hits.length ? hits : [{ title: `Search for “${state.query}”`, sub: 'Open the full Search page', type: 'Search', glyph: 'search' }];
+      }
+
+      function suggestionSheet() {
+        const rows = filteredSuggestions();
+        state.suggestionIndex = clamp(state.suggestionIndex, 0, rows.length - 1);
+        return `<div class="suggestion-sheet" id="searchSuggestions" role="listbox">
+          <div class="suggestion-label">${state.query ? 'Best matches' : 'Jump back in'}</div>
+          ${rows.map((s, i) => `<button class="suggestion" type="button" role="option" aria-selected="${i === state.suggestionIndex}" data-suggestion="${i}">
+            <span class="suggestion-icon">${icon(s.glyph)}</span>
+            <span><span class="suggestion-title">${esc(s.title)}</span><span class="suggestion-sub">${esc(s.sub)}</span></span>
+            <span class="suggestion-type">${esc(s.type)}</span>
+          </button>`).join('')}
+        </div>`;
+      }
+
+      function searchField(width) {
+        const open = state.searchOpen;
+        return `<div class="search-host" style="width:${width}px">
+          <div class="search-box">
+            ${icon('search')}
+            <input class="search-input" id="searchInput" type="text" value="${esc(state.query)}" placeholder="Search songs, artists, albums…" role="combobox" aria-controls="searchSuggestions" aria-expanded="${open}" aria-autocomplete="list" autocomplete="off" spellcheck="false">
+            ${state.query ? `<button class="chrome-button search-clear" id="searchClear" type="button" aria-label="Clear search">${icon('close')}</button>` : '<span class="search-kbd">Ctrl K</span>'}
+          </div>
+          ${open ? suggestionSheet() : ''}
+        </div>`;
+      }
+
+      function searchTrigger() {
+        return `<button class="chrome-button" id="searchIconButton" type="button" aria-label="Search" aria-haspopup="dialog" aria-expanded="${state.searchOpen}" title="Search (Ctrl+K)">${icon('search')}</button>`;
+      }
+
+      function searchFlyout() {
+        const width = clamp(state.width - 16, 260, 420);
+        const availableRight = Math.max(8, state.width - width - 8);
+        const right = clamp(138, 8, availableRight);
+        return `<div class="search-flyout" role="dialog" aria-label="Search" style="width:${width}px;right:${right}px">
+          ${searchField(width - 14)}
+        </div>`;
+      }
+
+      function pinnedLane() {
+        const pinned = pinnedTabs();
+        const regular = regularTabs();
+        if (!pinned.length) return '';
+        const limit = state.width < 520 ? 2 : 4;
+        const visible = pinned.slice(0, limit);
+        const hidden = pinned.length - visible.length;
+        return `<div class="pinned-lane" role="tablist" aria-label="Pinned tabs">
+          ${visible.map(t => `<button class="pinned-tab ${t.id === state.activeId ? 'active' : ''}" type="button" role="tab" aria-selected="${t.id === state.activeId}" data-tab-id="${t.id}" title="${esc(t.label)} · Pinned">
+            ${icon(t.glyph)}${icon('pin').replace('class="icon"', 'class="icon pin-mark"')}
+          </button>`).join('')}
+          ${hidden ? `<button class="pinned-overflow" type="button" data-pinned-overflow title="${hidden} more pinned tabs">+${hidden}</button>` : ''}
+        </div>${regular.length ? '<span class="pinned-divider" aria-hidden="true"></span>' : ''}`;
+      }
+
+      function regularTabMarkup(tab, width) {
+        return `<div class="tab ${tab.id === state.activeId ? 'active' : ''}" style="width:${width}px" role="tab" tabindex="${tab.id === state.activeId ? '0' : '-1'}" aria-selected="${tab.id === state.activeId}" data-tab-id="${tab.id}" title="${esc(tab.label)}">
+          ${icon(tab.glyph)}<span class="tab-label">${esc(tab.label)}</span>
+          <button class="tab-close" type="button" tabindex="-1" aria-label="Close ${esc(tab.label)}" data-close-id="${tab.id}">${icon('close')}</button>
+        </div>`;
+      }
+
+      function tabLane(layout) {
+        const regular = regularTabs();
+        const frame = `<div class="scroll-frame">
+          <div class="tab-scroll" role="tablist" aria-label="Open tabs">
+            ${regular.map(t => regularTabMarkup(t, naturalTabWidth(t))).join('')}
+          </div>
+          <button class="scroll-pip left" type="button" aria-label="Scroll tabs left">${icon('chevron-left')}</button>
+          <button class="scroll-pip right" type="button" aria-label="Scroll tabs right">${icon('chevron-right')}</button>
+        </div>`;
+        const tools = `<div class="shelf-tools">
+          <button class="chrome-button" id="overviewButton" type="button" aria-label="Show all ${state.tabs.length} tabs" title="All tabs">${icon('tabs')}<span class="tool-count">${state.tabs.length}</span></button>
+          ${layout.showAdd ? `<button class="chrome-button" id="addTabButton" type="button" aria-label="New tab" title="New tab (Ctrl+T)">${icon('plus')}</button>` : ''}
+        </div>`;
+        return `${pinnedLane()}${frame}${tools}`;
+      }
+
+      function renderChrome(layout) {
+        el.chrome.innerHTML = `<div class="titlebar">
+          ${titleLeft(layout)}
+          <div class="inline-tabs">${tabLane(layout)}</div>
+          ${layout.searchMode === 'field' ? `<div class="drag-band"></div>${searchField(layout.search)}<div class="drag-band"></div>` : ''}
+          ${trailing(layout)}<div class="caption-drag" style="width:${layout.dragWidth}px"></div>${layout.searchMode === 'icon' ? searchTrigger() : ''}${captions()}
+        </div>
+        ${state.searchOpen && layout.searchMode === 'icon' ? searchFlyout() : ''}`;
+        el.window.className = `window mode-${layout.mode}`;
+      }
+
+      function render() {
+        const layout = resolveChrome(state.width, state.tabs, state.previousMode);
+        state.mode = layout.mode;
+        state.previousMode = layout.mode;
+        el.window.style.width = `${state.width}px`;
+        el.widthValue.textContent = `${state.width} DIP`;
+        el.modeName.textContent = layout.mode === 'field' ? 'One row · search field' : layout.mode === 'icon' ? 'One row · search flyout' : 'One row · essential';
+        el.budget.textContent = `${state.tabs.length} tabs · horizontal scroll`;
+        el.window.style.setProperty('--chrome-height', `${C.titleHeight}px`);
+        el.sidebar.style.setProperty('--sidebar-width', state.width < 760 ? '56px' : state.width < 1100 ? '200px' : '238px');
+        renderChrome(layout);
+        bindChrome(layout);
+        updatePresetState();
+        requestAnimationFrame(() => {
+          updateScrollAffordances();
+          revealActive(false);
+          if (state.searchOpen) document.getElementById('searchInput')?.focus({ preventScroll: true });
+        });
+      }
+
+      function bindChrome(layout) {
+        el.chrome.querySelectorAll('[data-tab-id]').forEach(node => {
+          const id = Number(node.dataset.tabId);
+          node.addEventListener('click', event => {
+            if (event.target.closest('[data-close-id]')) return;
+            activateTab(id);
+          });
+          node.addEventListener('contextmenu', event => openContext(event, id));
+          node.addEventListener('auxclick', event => { if (event.button === 1) closeTab(id); });
+          node.addEventListener('keydown', event => tabKeydown(event, id));
+        });
+        el.chrome.querySelectorAll('[data-close-id]').forEach(node => node.addEventListener('click', event => {
+          event.stopPropagation();
+          closeTab(Number(node.dataset.closeId));
+        }));
+        el.chrome.querySelector('#addTabButton')?.addEventListener('click', addTab);
+        el.chrome.querySelector('#searchIconButton')?.addEventListener('click', () => state.searchOpen ? closeSearch() : openSearch(true));
+        el.chrome.querySelector('#overviewButton')?.addEventListener('click', event => toggleOverview(event.currentTarget));
+        el.chrome.querySelector('[data-pinned-overflow]')?.addEventListener('click', event => toggleOverview(event.currentTarget, true));
+
+        const frame = el.chrome.querySelector('.scroll-frame');
+        const scroll = el.chrome.querySelector('.tab-scroll');
+        if (frame && scroll) {
+          scroll.addEventListener('scroll', updateScrollAffordances, { passive: true });
+          scroll.addEventListener('wheel', event => {
+            if (scroll.scrollWidth <= scroll.clientWidth + 1) return;
+            const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+            scroll.scrollLeft += delta;
+            event.preventDefault();
+          }, { passive: false });
+          frame.querySelector('.scroll-pip.left')?.addEventListener('click', () => scrollByTabs(-1));
+          frame.querySelector('.scroll-pip.right')?.addEventListener('click', () => scrollByTabs(1));
+        }
+
+        const input = el.chrome.querySelector('#searchInput');
+        if (input) {
+          input.addEventListener('focus', () => { if (!state.searchOpen) { state.searchOpen = true; render(); } });
+          input.addEventListener('input', event => {
+            state.query = event.target.value;
+            state.searchOpen = true;
+            state.suggestionIndex = 0;
+            refreshSearchSurface();
+          });
+          input.addEventListener('keydown', searchKeydown);
+        }
+        el.chrome.querySelector('#searchClear')?.addEventListener('click', event => {
+          event.stopPropagation();
+          state.query = '';
+          state.suggestionIndex = 0;
+          render();
+        });
+        bindSuggestions();
+      }
+
+      function refreshSearchSurface() {
+        const host = el.chrome.querySelector('.search-host');
+        if (!host) return;
+        const input = host.querySelector('#searchInput');
+        const selection = input ? [input.selectionStart, input.selectionEnd] : [state.query.length, state.query.length];
+        const layout = resolveChrome(state.width, state.tabs, state.mode);
+        host.outerHTML = searchField(layout.search);
+        const next = el.chrome.querySelector('#searchInput');
+        next?.focus({ preventScroll: true });
+        next?.setSelectionRange(...selection);
+        next?.addEventListener('input', event => {
+          state.query = event.target.value;
+          state.suggestionIndex = 0;
+          refreshSearchSurface();
+        });
+        next?.addEventListener('keydown', searchKeydown);
+        el.chrome.querySelector('#searchClear')?.addEventListener('click', () => { state.query = ''; render(); });
+        bindSuggestions();
+      }
+
+      function bindSuggestions() {
+        el.chrome.querySelectorAll('[data-suggestion]').forEach(node => node.addEventListener('click', () => chooseSuggestion(Number(node.dataset.suggestion))));
+      }
+
+      function searchKeydown(event) {
+        const rows = filteredSuggestions();
+        if (event.key === 'ArrowDown') {
+          state.suggestionIndex = (state.suggestionIndex + 1) % rows.length;
+          refreshSearchSurface();
+          event.preventDefault();
+        } else if (event.key === 'ArrowUp') {
+          state.suggestionIndex = (state.suggestionIndex - 1 + rows.length) % rows.length;
+          refreshSearchSurface();
+          event.preventDefault();
+        } else if (event.key === 'Enter') {
+          chooseSuggestion(state.suggestionIndex);
+          event.preventDefault();
+        } else if (event.key === 'Escape') {
+          if (state.query) {
+            state.query = '';
+            render();
+          } else {
+            closeSearch();
+          }
+          event.preventDefault();
+        }
+      }
+
+      function chooseSuggestion(index) {
+        const choice = filteredSuggestions()[index];
+        if (!choice) return;
+        state.query = choice.title.startsWith('Search for') ? state.query : choice.title;
+        state.searchOpen = false;
+        showToast(`Opening ${choice.title}`);
+        render();
+      }
+
+      function openSearch(focus = true) {
+        state.searchOpen = true;
+        state.suggestionIndex = 0;
+        render();
+        if (focus) requestAnimationFrame(() => document.getElementById('searchInput')?.focus({ preventScroll: true }));
+      }
+
+      function closeSearch() {
+        state.searchOpen = false;
+        render();
+        requestAnimationFrame(() => {
+          const layout = resolveChrome(state.width, state.tabs, state.mode);
+          const target = layout.searchMode === 'field'
+            ? el.chrome.querySelector('[data-tab-id][aria-selected="true"]')
+            : document.getElementById('searchIconButton');
+          target?.focus({ preventScroll: true });
+        });
+      }
+
+      function activateTab(id) {
+        if (!state.tabs.some(t => t.id === id)) return;
+        state.activeId = id;
+        state.searchOpen = false;
+        hidePopovers();
+        render();
+        requestAnimationFrame(() => revealActive(true));
+      }
+
+      function addTab() {
+        const source = catalog[state.nextId % catalog.length];
+        const tab = { id: state.nextId++, label: source[0], glyph: source[1], pinned: false };
+        state.tabs.push(tab);
+        state.activeId = tab.id;
+        hidePopovers();
+        render();
+        requestAnimationFrame(() => revealActive(true));
+      }
+
+      function ensureHome() {
+        if (state.tabs.length) return;
+        const tab = { id: state.nextId++, label: 'Home', glyph: 'home', pinned: false };
+        state.tabs.push(tab);
+        state.activeId = tab.id;
+      }
+
+      function closeTab(id) {
+        const index = state.tabs.findIndex(t => t.id === id);
+        if (index < 0) return;
+        const wasActive = state.activeId === id;
+        state.tabs.splice(index, 1);
+        if (wasActive && state.tabs.length) state.activeId = state.tabs[Math.min(index, state.tabs.length - 1)].id;
+        ensureHome();
+        hidePopovers();
+        render();
+      }
+
+      function pinTab(id) {
+        const tab = state.tabs.find(t => t.id === id);
+        if (!tab) return;
+        tab.pinned = !tab.pinned;
+        showToast(tab.pinned ? `Pinned ${tab.label} to the workspace` : `Unpinned ${tab.label}`);
+        hidePopovers();
+        render();
+      }
+
+      function closeOthers(id) {
+        state.tabs = state.tabs.filter(t => t.id === id || t.pinned);
+        if (!state.tabs.some(t => t.id === state.activeId)) state.activeId = id;
+        ensureHome();
+        hidePopovers();
+        render();
+      }
+
+      function closeRight(id) {
+        const tab = state.tabs.find(t => t.id === id);
+        if (!tab) return;
+        const regular = regularTabs();
+        const index = regular.findIndex(t => t.id === id);
+        // Pinned tabs are visually docked before the scrolling lane, so every unpinned tab is "to the right" of one.
+        const closing = new Set((tab.pinned ? regular : regular.slice(index + 1)).map(t => t.id));
+        state.tabs = state.tabs.filter(t => !closing.has(t.id));
+        if (closing.has(state.activeId)) state.activeId = id;
+        ensureHome();
+        hidePopovers();
+        render();
+      }
+
+      function closeAllUnpinned() {
+        const pinned = state.tabs.filter(t => t.pinned);
+        state.tabs = pinned;
+        ensureHome();
+        if (!state.tabs.some(t => t.id === state.activeId)) state.activeId = state.tabs[0].id;
+        hidePopovers();
+        render();
+      }
+
+      function toggleSidebarPin(id) {
+        if (state.sidebarPins.has(id)) state.sidebarPins.delete(id); else state.sidebarPins.add(id);
+        showToast(state.sidebarPins.has(id) ? 'Pinned page to sidebar' : 'Removed page from sidebar');
+        hidePopovers();
+      }
+
+      function openContext(event, id) {
+        event.preventDefault();
+        state.contextTabId = id;
+        const tab = state.tabs.find(t => t.id === id);
+        if (!tab) return;
+        const regular = regularTabs();
+        const index = regular.findIndex(t => t.id === id);
+        const closableOthers = state.tabs.some(t => t.id !== id && !t.pinned);
+        const closableRight = tab.pinned ? regular.length > 0 : regular.slice(index + 1).length > 0;
+        const unpinned = state.tabs.filter(t => !t.pinned).length;
+        el.context.innerHTML = `<div class="menu-heading">${esc(tab.label)}</div>
+          ${menuItem('pin', tab.pinned ? 'Unpin tab' : 'Pin tab', 'Workspace', 'pin')}
+          <div class="menu-separator"></div>
+          ${menuItem('close', 'Close', '', 'close')}
+          ${menuItem('tabs', 'Close others', 'Pinned survive', 'others', !closableOthers)}
+          ${menuItem('forward', 'Close tabs to the right', '', 'right', !closableRight)}
+          ${menuItem('close', unpinned === state.tabs.length ? 'Close all' : 'Close all unpinned', '', 'all', !unpinned)}
+          <div class="menu-separator"></div>
+          ${menuItem('home', state.sidebarPins.has(id) ? 'Unpin page from sidebar' : 'Pin page to sidebar', 'Page pin', 'sidebar')}`;
+        el.context.hidden = false;
+        positionPopover(el.context, event.clientX, event.clientY);
+        el.overview.hidden = true;
+        el.context.querySelectorAll('[data-action]').forEach(node => node.addEventListener('click', () => contextAction(node.dataset.action, id)));
+        requestAnimationFrame(() => el.context.querySelector('[data-action]')?.focus());
+      }
+
+      function menuItem(glyph, label, meta, action, disabled = false) {
+        return `<button class="menu-item" type="button" role="menuitem" data-action="${action}" ${disabled ? 'disabled' : ''}>${icon(glyph)}<span>${esc(label)}</span><span class="meta">${esc(meta)}</span></button>`;
+      }
+
+      function contextAction(action, id) {
+        if (action === 'pin') pinTab(id);
+        else if (action === 'close') closeTab(id);
+        else if (action === 'others') closeOthers(id);
+        else if (action === 'right') closeRight(id);
+        else if (action === 'all') closeAllUnpinned();
+        else if (action === 'sidebar') toggleSidebarPin(id);
+      }
+
+      function toggleOverview(anchor, pinnedOnly = false) {
+        if (!el.overview.hidden) { el.overview.hidden = true; return; }
+        const tabs = pinnedOnly ? pinnedTabs() : state.tabs;
+        el.overview.innerHTML = `<div class="menu-heading">${pinnedOnly ? 'Pinned tabs' : `All tabs · ${state.tabs.length}`}</div>
+          <div class="overview-list">${tabs.map(t => `<button class="menu-item overview-item ${t.id === state.activeId ? 'active' : ''}" type="button" data-overview-id="${t.id}">
+            ${icon(t.glyph)}<span>${esc(t.label)}</span><span class="meta">${t.pinned ? 'Pinned' : t.id === state.activeId ? 'Active' : ''}</span>
+          </button>`).join('')}</div>`;
+        el.overview.hidden = false;
+        const rect = anchor.getBoundingClientRect();
+        positionPopover(el.overview, rect.right - 250, rect.bottom + 6);
+        el.context.hidden = true;
+        el.overview.querySelectorAll('[data-overview-id]').forEach(node => node.addEventListener('click', () => activateTab(Number(node.dataset.overviewId))));
+      }
+
+      function positionPopover(popover, x, y) {
+        const margin = 8;
+        const width = 250;
+        const maxX = window.innerWidth - width - margin;
+        popover.style.left = `${clamp(x, margin, Math.max(margin, maxX))}px`;
+        popover.style.top = `${clamp(y, margin, Math.max(margin, window.innerHeight - 380))}px`;
+      }
+
+      function hidePopovers() {
+        el.context.hidden = true;
+        el.overview.hidden = true;
+      }
+
+      function updateScrollAffordances() {
+        const frame = el.chrome.querySelector('.scroll-frame');
+        const scroll = el.chrome.querySelector('.tab-scroll');
+        if (!frame || !scroll) return;
+        const max = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+        frame.classList.toggle('can-left', scroll.scrollLeft > 1);
+        frame.classList.toggle('can-right', scroll.scrollLeft < max - 1);
+      }
+
+      function scrollByTabs(direction) {
+        const scroll = el.chrome.querySelector('.tab-scroll');
+        if (!scroll) return;
+        scroll.scrollBy({ left: direction * Math.max(160, scroll.clientWidth * .68), behavior: 'smooth' });
+      }
+
+      function revealActive(smooth) {
+        const scroll = el.chrome.querySelector('.tab-scroll');
+        const tab = scroll?.querySelector(`[data-tab-id="${state.activeId}"]`);
+        if (!scroll || !tab) return;
+        const left = tab.offsetLeft;
+        const right = left + tab.offsetWidth;
+        const pad = 30;
+        if (left < scroll.scrollLeft + pad) scroll.scrollTo({ left: Math.max(0, left - pad), behavior: smooth ? 'smooth' : 'auto' });
+        else if (right > scroll.scrollLeft + scroll.clientWidth - pad) scroll.scrollTo({ left: right - scroll.clientWidth + pad, behavior: smooth ? 'smooth' : 'auto' });
+      }
+
+      function tabKeydown(event, id) {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
+        const visual = [...pinnedTabs(), ...regularTabs()];
+        const index = visual.findIndex(t => t.id === id);
+        let next = index;
+        if (event.key === 'ArrowLeft') next = Math.max(0, index - 1);
+        if (event.key === 'ArrowRight') next = Math.min(visual.length - 1, index + 1);
+        if (event.key === 'Home') next = 0;
+        if (event.key === 'End') next = visual.length - 1;
+        activateTab(visual[next].id);
+        event.preventDefault();
+      }
+
+      let toastTimer = 0;
+      function showToast(message) {
+        el.toast.textContent = message;
+        el.toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.toast.classList.remove('show'), 1800);
+      }
+
+      function updatePresetState() {
+        el.presets.querySelectorAll('[data-count]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.count) === state.tabs.length)));
+      }
+
+      el.widthRange.addEventListener('input', event => {
+        state.width = Number(event.target.value);
+        el.window.classList.add('resizing');
+        render();
+      });
+      el.widthRange.addEventListener('change', () => el.window.classList.remove('resizing'));
+      el.presets.addEventListener('click', event => {
+        const button = event.target.closest('[data-count]');
+        if (button) seedTabs(Number(button.dataset.count));
+      });
+      el.theme.addEventListener('click', () => {
+        const light = el.root.dataset.theme !== 'light';
+        el.root.dataset.theme = light ? 'light' : 'dark';
+        el.theme.innerHTML = icon(light ? 'moon' : 'sun');
+        el.theme.setAttribute('aria-label', light ? 'Switch to dark theme' : 'Switch to light theme');
+      });
+      document.addEventListener('pointerdown', event => {
+        if (!event.target.closest('.popover') && !event.target.closest('#overviewButton') && !event.target.closest('[data-pinned-overflow]')) hidePopovers();
+      });
+      document.addEventListener('click', event => {
+        if (state.searchOpen && !event.target.closest('.search-host, .search-flyout') && !event.target.closest('#searchIconButton')) {
+          state.searchOpen = false;
+          render();
+        }
+      });
+      document.addEventListener('keydown', event => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'k') {
+          openSearch(true);
+          event.preventDefault();
+        } else if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 't') {
+          addTab();
+          event.preventDefault();
+        } else if (event.key === 'Escape' && !event.target.closest('.search-input')) {
+          if (!el.context.hidden || !el.overview.hidden) hidePopovers();
+          else if (state.searchOpen) closeSearch();
+        }
+      });
+      window.addEventListener('resize', hidePopovers);
+
+      // Shareable review states: add `&search=open` to capture the compact flyout without hand-driving it.
+      const review = new URLSearchParams(window.location.search);
+      const reviewWidth = Number(review.get('width'));
+      const reviewTabs = Number(review.get('tabs'));
+      if (Number.isFinite(reviewWidth) && reviewWidth > 0) state.width = clamp(Math.round(reviewWidth), 300, 1968);
+      el.widthRange.value = String(state.width);
+      const reviewTheme = review.get('theme');
+      if (reviewTheme === 'light' || reviewTheme === 'dark') {
+        el.root.dataset.theme = reviewTheme;
+        const light = reviewTheme === 'light';
+        el.theme.innerHTML = icon(light ? 'moon' : 'sun');
+        el.theme.setAttribute('aria-label', light ? 'Switch to dark theme' : 'Switch to light theme');
+      }
+      seedTabs(Number.isFinite(reviewTabs) && reviewTabs > 0 ? clamp(Math.round(reviewTabs), 1, catalog.length) : 10);
+      if (review.get('search') === 'open') {
+        state.searchOpen = true;
+        render();
+      }
+    })();
+  </script>
+</body>
+</html>

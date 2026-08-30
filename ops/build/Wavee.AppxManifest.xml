@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MSIX manifest for Wavee — packaged Win32 FULL-TRUST (NativeAOT, no WindowsAppSDK).
+     pack-wavee-msix.ps1 substitutes __PUBLISHER__ / __VERSION__ / __ARCH__ / __IDENTITY__ / __DISPLAY__ /
+     __PROTOCOL__ before makeappx. Identity/@Name, the display name and the protocol are parameterised so an
+     end-to-end test package can be built into its own namespace (-IdentityName / -DisplayName / -Protocol) without
+     ever colliding with, or updating over, the real cproducts.Wavee installation. -->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  IgnorableNamespaces="uap rescap desktop com">
+
+  <Identity Name="__IDENTITY__"
+            Publisher="__PUBLISHER__"
+            Version="__VERSION__"
+            ProcessorArchitecture="__ARCH__" />
+
+  <Properties>
+    <DisplayName>__DISPLAY__</DisplayName>
+    <PublisherDisplayName>cproducts</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <!-- 10.0.19041 (2004) is the floor for IPackageManager6.AddPackageByAppInstallerFileAsync and
+         IPackage8.GetAppInstallerInfo - how the app applies its own updates. -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Wavee"
+                 Executable="Wavee.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="__DISPLAY__"
+        Description="Wavee — a Spotify desktop client on FluentGpu."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- __PROTOCOL__:// deep links. Packaged identity owns the protocol registration outright: ProtocolRegistrar
+             (the HKCU writer) must NOT run when packaged (E_ILLEGAL_METHOD_CALL). -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="__PROTOCOL__">
+            <uap:DisplayName>__DISPLAY__</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+
+        <!-- Toast activation. The CLSID is the app's toast activator; the same GUID is registered by the process at
+             startup with CoRegisterClassObject, and is what the manifest hands the Action Center. -->
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="C8E4A91B-3D52-4F07-9B6A-1E7C4D8F2A30" />
+        </desktop:Extension>
+
+        <!-- The COM server the Shell cold-launches for a toast click. Arguments MUST be the sentinel the app's own
+             parser matches: ActivationArgs.ToastActivatedSentinel (src/FluentGpu.WindowsApi/Activation/ActivationArgs.cs),
+             which is four hyphens followed by "AppNotificationActivated:". Spelled out rather than quoted because an
+             XML comment may not contain two adjacent hyphens, and Get-MsixIdentity parses this manifest as real XML;
+             the literal itself lives in the Arguments attribute below. The classifier strips that prefix and treats
+             the remainder as the toast args string. Changing one without the other silently breaks cold-launch toasts. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="Wavee.exe" Arguments="----AppNotificationActivated:" DisplayName="Wavee">
+              <com:Class Id="C8E4A91B-3D52-4F07-9B6A-1E7C4D8F2A30" DisplayName="Wavee" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+
+        <!-- Start at sign-in. Declared disabled: WaveeSettings.StartOnLogin (app.startOnLogin) is the user-facing
+             switch, and when packaged it flips this task rather than writing the HKCU Run value. -->
+        <desktop:Extension Category="windows.startupTask" Executable="Wavee.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="WaveeStartup" Enabled="false" DisplayName="Wavee" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <!-- Required for the in-app "Update now" path: PackageManager.AddPackageByAppInstallerFileAsync applies an update
+         to this very package from the .appinstaller feed. Restricted capabilities need no approval to SIDELOAD (they
+         are only gated for Store submission), which is exactly how Wavee ships. -->
+    <rescap:Capability Name="packageManagement" />
+  </Capabilities>
+</Package>

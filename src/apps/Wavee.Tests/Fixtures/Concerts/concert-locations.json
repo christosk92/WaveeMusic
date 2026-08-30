@@ -1,0 +1,65 @@
+{
+  "userLocation": {
+    "data": {
+      "me": {
+        "profile": {
+          "location": { "geoHash": "u123456789ab", "geonameId": "1001", "name": "Example City" }
+        }
+      }
+    }
+  },
+  "artistConcertsPageLocation": {
+    "data": {
+      "me": {
+        "profile": {
+          "location": { "geoHash": "u123456789ab", "name": "Example City" }
+        }
+      }
+    }
+  },
+  "inferredUserLocation": {
+    "data": {
+      "me": {
+        "profile": {
+          "location": { "isInferred": true }
+        }
+      }
+    }
+  },
+  "searchConcertLocations": {
+    "data": {
+      "concertLocations": {
+        "items": [
+          { "geonameId": "1001", "name": "Example City" },
+          { "geonameId": "1002", "name": "Example City North" }
+        ]
+      }
+    }
+  },
+  "concertLocationsByLatLon": {
+    "data": {
+      "concertLocations": {
+        "items": [
+          { "geonameId": "1001", "name": "Example City" }
+        ]
+      }
+    }
+  },
+  "concertLocationDetails": {
+    "data": {
+      "concertLocations": {
+        "items": [
+          { "geoHash": "u123456789ab", "geonameId": "1001", "name": "Example City" }
+        ]
+      },
+      "me": {
+        "profile": {
+          "location": { "geoHash": "v987654321zy", "geonameId": "2001", "name": "Saved City" }
+        }
+      }
+    }
+  },
+  "saveLocation": {
+    "data": { "storeUserLocation": { "success": true } }
+  }
+}

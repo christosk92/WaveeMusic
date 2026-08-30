@@ -1,0 +1,235 @@
+{
+  "browsePage": {
+    "sid": 846,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "browse"
+      ],
+      "typenames": [
+        "BrowseGenericSectionData",
+        "BrowseSection",
+        "BrowseSectionContainer"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"browse\": {\"__typename\": \"BrowseSectionContainer\", \"header\": {\"backgroundImage\": null, \"color\": null, \"subtitle\": null, \"title\": {\"transformedLabel\": \"Economics\"}}, \"sections\": {\"items\": [{\"__typename\": \"BrowseSection\", \"data\": {\"__typename\": \"BrowseGenericSectionData\", \"subtitle\": null, \"title\": null}, \"sectionItems\": {\"items\": [{\"content\": {\"__typename\": \"PodcastOrAudiobookResponseWrapper\", \"data\": {\"__typename\": \"Podcast\", \"coverArt\": {\"sources\": [{\"height\": 64, \"url\": \"https://i.scdn.co/image/ab6765630000f68dce57819cc109091c229040ae\", \"width\": 64}, {\"height\": 300, \"url\": \"https://i.scdn.co/image/ab67656300005f1fce57819cc109091c229040ae\", \"width\": 300}, {\"height\": 640, \"url\": \"https://i.scdn.co/image/ab6765630000ba8ace57819cc109091c229040ae\", \"width\": 640}]}, \"mediaType\": \"AUDIO\", \"name\": \"Beurs | BNR\", \"publisher\": {\"name\": \"BNR Nieuwsradio\"}, \"uri\": \"spotify:show:2BuBhOIFd"
+    }
+  },
+  "browseSection": {
+    "sid": 847,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "browseSection"
+      ],
+      "typenames": [
+        "BrowseGenericSectionData",
+        "BrowseSection",
+        "PodcastOrAudiobookResponseWrapper"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"browseSection\": {\"__typename\": \"BrowseSection\", \"data\": {\"__typename\": \"BrowseGenericSectionData\", \"subtitle\": null, \"title\": {\"transformedLabel\": \"Economics\"}}, \"sectionItems\": {\"items\": [{\"content\": {\"__typename\": \"PodcastOrAudiobookResponseWrapper\", \"data\": {\"__typename\": \"Podcast\", \"coverArt\": {\"sources\": [{\"height\": 64, \"url\": \"https://i.scdn.co/image/ab6765630000f68dce57819cc109091c229040ae\", \"width\": 64}, {\"height\": 300, \"url\": \"https://i.scdn.co/image/ab67656300005f1fce57819cc109091c229040ae\", \"width\": 300}, {\"height\": 640, \"url\": \"https://i.scdn.co/image/ab6765630000ba8ace57819cc109091c229040ae\", \"width\": 640}]}, \"mediaType\": \"AUDIO\", \"name\": \"Beurs | BNR\", \"publisher\": {\"name\": \"BNR Nieuwsradio\"}, \"uri\": \"spotify:show:2BuBhOIFdutoVEmWuX7F6D\"}}, \"uri\": \"spotify:show:2BuBhOIFdutoVEmWuX7F6D\"}, {\"content\": {\"__typename\": \"PodcastOrAudiobookResponseWrapper\", \"data\": {\"__t"
+    }
+  },
+  "episodeSponsoredContent": {
+    "sid": 909,
+    "enc": "gzip-fail",
+    "status": "200",
+    "summary": {
+      "error": "GZIP_FAIL:Not a gzipped file (b'00')"
+    }
+  },
+  "feedBaselineLookup": {
+    "sid": 167,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "lookup"
+      ],
+      "typenames": [
+        "Playlist",
+        "PlaylistResponseWrapper"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"lookup\": [{\"__typename\": \"PlaylistResponseWrapper\", \"_uri\": \"spotify:playlist:37i9dQZF1E8OkZF2FT6MQO\", \"data\": {\"__typename\": \"Playlist\", \"previewItems\": {\"items\": [{\"__typename\": \"TrackResponseWrapper\", \"data\": {\"__typename\": \"Track\", \"albumOfTrack\": {\"coverArt\": {\"extractedColors\": {\"colorDark\": {\"hex\": \"#CA4E2E\"}}, \"sources\": [{\"height\": 300, \"url\": \"https://i.scdn.co/image/ab67616d00001e0245722163117b079f3f95b47b\", \"width\": 300}, {\"height\": 64, \"url\": \"https://i.scdn.co/image/ab67616d0000485145722163117b079f3f95b47b\", \"width\": 64}, {\"height\": 640, \"url\": \"https://i.scdn.co/image/ab67616d0000b27345722163117b079f3f95b47b\", \"width\": 640}]}}, \"canvas\": {\"fileId\": \"5373284b1a5a39b1832b56a60bdc5508\", \"thumbnail\": {\"sources\": [{\"url\": \"https://canvaz.scdn.co/upload/artist/4Db1gte7TUAeZyRdo4FLE7/video/98d5b5f2b116436ca3a6269777d2b9de.thmb.288x512.jpg\"}, {\"url\": \"https://canvaz.scd"
+    }
+  },
+  "fetchExtractedColors": {
+    "sid": 172,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "extractedColors"
+      ],
+      "typenames": [
+        "ExtractedColors"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"extractedColors\": [{\"__typename\": \"ExtractedColors\", \"colorDark\": {\"hex\": \"#7860E8\", \"isFallback\": false}, \"colorLight\": {\"hex\": \"#7860E8\", \"isFallback\": false}, \"colorRaw\": {\"hex\": \"#7860E8\", \"isFallback\": false}}, {\"__typename\": \"ExtractedColors\", \"colorDark\": {\"hex\": \"#D93F2A\", \"isFallback\": false}, \"colorLight\": {\"hex\": \"#F84830\", \"isFallback\": false}, \"colorRaw\": {\"hex\": \"#F84830\", \"isFallback\": false}}, {\"__typename\": \"ExtractedColors\", \"colorDark\": {\"hex\": \"#C0574A\", \"isFallback\": false}, \"colorLight\": {\"hex\": \"#F87060\", \"isFallback\": false}, \"colorRaw\": {\"hex\": \"#F87060\", \"isFallback\": false}}, {\"__typename\": \"ExtractedColors\", \"colorDark\": {\"hex\": \"#E02010\", \"isFallback\": false}, \"colorLight\": {\"hex\": \"#E82111\", \"isFallback\": false}, \"colorRaw\": {\"hex\": \"#E02010\", \"isFallback\": false}}, {\"__typename\": \"ExtractedColors\", \"colorDark\": {\"hex\": \"#7B7676\", \"isFallback\": fa"
+    }
+  },
+  "getAlbum": {
+    "sid": 714,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "albumUnion"
+      ],
+      "typenames": [
+        "Album",
+        "ImageV2",
+        "VisualIdentityImage"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"albumUnion\": {\"__typename\": \"Album\", \"copyright\": {\"items\": [{\"text\": \"2020 EDAM Entertainment,under license to Kakao Entertainment\", \"type\": \"C\"}, {\"text\": \"2020 EDAM Entertainment,under license to Kakao Entertainment\", \"type\": \"P\"}], \"totalCount\": 2}, \"courtesyLine\": \"\", \"date\": {\"isoString\": \"2020-06-19T00:00:00Z\", \"precision\": \"DAY\"}, \"isPreRelease\": false, \"label\": \"EDAM Entertainment\", \"name\": \"I-LAND Part.1 Signal Song\", \"playability\": {\"playable\": true, \"reason\": \"PLAYABLE\"}, \"preReleaseEndDateTime\": null, \"saved\": false, \"sharingInfo\": {\"shareId\": \"PiZBNhneSt6omdlp_oHxdA\", \"shareUrl\": \"https://open.spotify.com/album/5hytFjwacV5ObltOLMAqfA?si=PiZBNhneSt6omdlp_oHxdA\"}, \"tracksV2\": {\"items\": [{\"track\": {\"artists\": {\"items\": [{\"profile\": {\"name\": \"IU\"}, \"uri\": \"spotify:artist:3HqSLMAZ3g3d5poNaI7GOU\"}]}, \"associationsV3\": {\"videoAssociations\": {\"totalCount\": 1}}, \"contentR"
+    }
+  },
+  "getCommentsForEntity": {
+    "sid": 857,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "comments"
+      ],
+      "typenames": [
+        "CommentPage",
+        "UserResponseWrapper"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"comments\": [{\"__typename\": \"CommentPage\", \"eligibilityStatus\": \"ELIGIBILITY_STATUS_UNRESTRICTED\", \"entityUri\": \"spotify:episode:5AUBkkFGq9GlIq4gF9T1oH\", \"items\": [{\"author\": {\"__typename\": \"UserResponseWrapper\", \"data\": {\"__typename\": \"User\", \"avatar\": null, \"name\": \"hollick.jonathan\", \"uri\": \"spotify:user:hollick.jonathan\"}}, \"commentString\": \"I miss the Korean Stock Market chat\", \"coverImagesReacted\": [], \"coverImagesReplied\": [], \"createDate\": {\"isoString\": \"2026-07-27T19:44:14.401Z\", \"precision\": \"MINUTE\"}, \"hasUserReachedReplyLimit\": false, \"isPendingReview\": false, \"isPinned\": false, \"isSensitive\": false, \"numberOfRepliesWithThreads\": 0, \"reactionsMetadata\": {\"highlightedReactions\": [], \"numberOfReactions\": 29, \"topReactionUnicode\": [\"😂\", \"❤️\"], \"usersReactionUnicode\": \"\"}, \"replies\": [], \"topRepliesAuthors\": [], \"uri\": \"spotify:comment:6UzVxR5flsIIkpQsSsdiP1\"}, {\"author"
+    }
+  },
+  "home": {
+    "sid": 171,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "home"
+      ],
+      "typenames": [
+        "HomeResponsePayload"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"home\": {\"__typename\": \"HomeResponsePayload\", \"greeting\": {\"transformedLabel\": \"Good afternoon\", \"translatedBaseText\": \"Good afternoon\"}, \"sectionContainer\": {\"sections\": {\"items\": [{\"data\": {\"__typename\": \"HomeShortsSectionData\"}, \"sectionItems\": {\"items\": [{\"content\": {\"__typename\": \"PlaylistResponseWrapper\", \"data\": {\"__typename\": \"Playlist\", \"attributes\": [], \"content\": {\"__typename\": \"PlaylistItemsPage\", \"totalCount\": 229}, \"description\": \"one of the Best music eras ever. 2016 has a special place in my heart.\", \"format\": \"\", \"images\": {\"items\": [{\"extractedColors\": {\"colorDark\": {\"hex\": \"#B82028\", \"isFallback\": false}}, \"sources\": [{\"height\": null, \"url\": \"https://image-cdn-fa.spotifycdn.com/image/ab67706c0000da84deb32554917d4dbe08d76d48\", \"width\": null}]}]}, \"name\": \"Summer 2016 vibes 🌊🏖️🌅\", \"ownerV2\": {\"data\": {\"__typename\": \"User\", \"name\": \"#Catherine🌞\", \"uri\": \"spotify"
+    }
+  },
+  "lookupChildEntities": {
+    "sid": 166,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "lookupEntities"
+      ],
+      "typenames": [
+        "Entity",
+        "VisualIdentityTrait"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"lookupEntities\": [{\"__typename\": \"Entity\", \"uri\": \"spotify:track:75InM94w13mJcj0wCpyaTn\", \"visualIdentityTrait\": {\"__typename\": \"VisualIdentityTrait\", \"squareCoverImage\": {\"image\": {\"data\": {\"__typename\": \"ImageV2\", \"sources\": [{\"imageFormat\": \"JPEG\", \"maxHeight\": 300, \"maxWidth\": 300, \"url\": \"https://image-cdn-fa.spotifycdn.com/image/ab67616d00001e02bf412292a79d399d52c3f3f9\"}, {\"imageFormat\": \"JPEG\", \"maxHeight\": 64, \"maxWidth\": 64, \"url\": \"https://image-cdn-fa.spotifycdn.com/image/ab67616d00004851bf412292a79d399d52c3f3f9\"}, {\"imageFormat\": \"JPEG\", \"maxHeight\": 640, \"maxWidth\": 640, \"url\": \"https://image-cdn-fa.spotifycdn.com/image/ab67616d0000b273bf412292a79d399d52c3f3f9\"}]}}, \"originalInstances\": [{\"flatFile\": {\"cdnUrl\": \"https://i.scdn.co/image/ab67616d00004851bf412292a79d399d52c3f3f9\"}, \"size\": \"IMAGE_SIZE_SMALL\"}, {\"flatFile\": {\"cdnUrl\": \"https://i.scdn.co/image/ab67616d"
+    }
+  },
+  "queryAlbumMerch": {
+    "sid": 716,
+    "enc": "gzip-fail",
+    "status": "200",
+    "summary": {
+      "error": "GZIP_FAIL:Not a gzipped file (b'00')"
+    }
+  },
+  "queryArtistOverview": {
+    "sid": 720,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "artistUnion"
+      ],
+      "typenames": [
+        "Artist",
+        "ImageV2",
+        "MusicVideosPage",
+        "VisualIdentityImage"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"artistUnion\": {\"__typename\": \"Artist\", \"discography\": {\"albums\": {\"items\": [{\"releases\": {\"items\": [{\"copyright\": {\"items\": [{\"text\": \"2021 EDAM Entertainment,under license to Kakao Entertainment\", \"type\": \"C\"}, {\"text\": \"2021 EDAM Entertainment,under license to Kakao Entertainment\", \"type\": \"P\"}]}, \"coverArt\": {\"sources\": [{\"height\": 300, \"url\": \"https://i.scdn.co/image/ab67616d00001e024ed058b71650a6ca2c04adff\", \"width\": 300}, {\"height\": 64, \"url\": \"https://i.scdn.co/image/ab67616d000048514ed058b71650a6ca2c04adff\", \"width\": 64}, {\"height\": 640, \"url\": \"https://i.scdn.co/image/ab67616d0000b2734ed058b71650a6ca2c04adff\", \"width\": 640}]}, \"date\": {\"day\": 25, \"month\": 3, \"precision\": \"DAY\", \"year\": 2021}, \"id\": \"01dPJcwyht77brL4JQiR8R\", \"label\": \"EDAM Entertainment\", \"name\": \"IU 5th Album 'LILAC'\", \"playability\": {\"playable\": true, \"reason\": \"PLAYABLE\"}, \"sharingInfo\": {\"shareId\":"
+    }
+  },
+  "queryNpvArtist": {
+    "sid": 995,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "artistUnion",
+        "trackUnion"
+      ],
+      "typenames": [
+        "Artist",
+        "Credit",
+        "ImageV2",
+        "RelatedVideo",
+        "RelatedVideoPage",
+        "Track",
+        "TrackResponseWrapper"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"artistUnion\": {\"__typename\": \"Artist\", \"goods\": {\"concerts\": {\"items\": [], \"totalCount\": 0}}, \"headerImage\": {\"data\": {\"__typename\": \"ImageV2\", \"sources\": [{\"maxHeight\": 1140, \"maxWidth\": 2660, \"url\": \"https://image-cdn-fa.spotifycdn.com/image/ab676186000010169867ab334470a7f6a4805e3f\"}, {\"maxHeight\": 1080, \"maxWidth\": 1920, \"url\": \"https://i2o.scdn.co/image/ab676186000016669867ab334470a7f6a4805e3f\"}, {\"maxHeight\": 1080, \"maxWidth\": 1920, \"url\": \"https://i2o.scdn.co/image/ab676186000016669867ab334470a7f6a4805e3f\"}, {\"maxHeight\": 640, \"maxWidth\": 1494, \"url\": \"https://image-cdn-fa.spotifycdn.com/image/ab6761860000660e9867ab334470a7f6a4805e3f\"}, {\"maxHeight\": 641, \"maxWidth\": 1495, \"url\": \"https://image-cdn-fa.spotifycdn.com/image/ab67618600006fba9867ab334470a7f6a4805e3f\"}]}}, \"id\": \"4k5fFEYgkWYrYvtOK3zVBl\", \"onPlatformReputationTrait\": {\"verification\": {\"isRegistered\": true, \"is"
+    }
+  },
+  "queryNpvEpisode": {
+    "sid": 912,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "episodeUnionV2"
+      ],
+      "typenames": [
+        "Episode",
+        "Podcast"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"episodeUnionV2\": {\"__typename\": \"Episode\", \"aiDubbedEpisodes\": {\"items\": []}, \"coverArt\": {\"extractedColors\": {\"colorDark\": {\"hex\": \"#903848\"}}}, \"gatedEntityRelations\": [], \"htmlDescription\": \"<p>When the United States took control of Venezuela&#39;s oil exports in early 2026, it collected an estimated $13 billion in crude sales — but the official ledger in Caracas records almost none of it, and six months on there is still no public accounting of where the money went. In this video we look at what happened to Venezuela&#39;s sovereign wealth: the missing oil revenues now sitting in an offshore account in Qatar, the four billion dollars of Venezuelan gold frozen in the vaults of the Bank of England that no one can legally claim, and the court-ordered auction that handed Citgo&#39;s parent company to an affiliate of Paul Singer&#39;s Elliott Management for nearly $6 billion. A"
+    }
+  },
+  "showItemsPlayedState": {
+    "sid": 829,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "lookup"
+      ],
+      "typenames": [
+        "ContextEpisodePage",
+        "Podcast",
+        "PodcastOrAudiobookResponseWrapper"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"lookup\": [{\"__typename\": \"PodcastOrAudiobookResponseWrapper\", \"data\": {\"__typename\": \"Podcast\", \"episodesV2\": {\"__typename\": \"ContextEpisodePage\", \"items\": [{\"entity\": {\"data\": {\"__typename\": \"Episode\", \"playedState\": {\"playPositionMilliseconds\": 0, \"state\": \"NOT_STARTED\"}}}}, {\"entity\": {\"data\": {\"__typename\": \"Episode\", \"playedState\": {\"playPositionMilliseconds\": 0, \"state\": \"NOT_STARTED\"}}}}, {\"entity\": {\"data\": {\"__typename\": \"Episode\", \"playedState\": {\"playPositionMilliseconds\": 0, \"state\": \"NOT_STARTED\"}}}}, {\"entity\": {\"data\": {\"__typename\": \"Episode\", \"playedState\": {\"playPositionMilliseconds\": 141122, \"state\": \"IN_PROGRESS\"}}}}, {\"entity\": {\"data\": {\"__typename\": \"Episode\", \"playedState\": {\"playPositionMilliseconds\": 0, \"state\": \"NOT_STARTED\"}}}}, {\"entity\": {\"data\": {\"__typename\": \"Episode\", \"playedState\": {\"playPositionMilliseconds\": 0, \"state\": \"NOT_STARTED\"}}}}, {"
+    }
+  },
+  "userTopContent": {
+    "sid": 1115,
+    "enc": "zstd",
+    "status": "200",
+    "summary": {
+      "data_keys": [
+        "me"
+      ],
+      "typenames": [
+        "ArtistPageV2"
+      ],
+      "errors": null,
+      "preview": "{\"data\": {\"me\": {\"profile\": {\"topArtists\": {\"__typename\": \"ArtistPageV2\", \"items\": [{\"data\": {\"__typename\": \"Artist\", \"profile\": {\"name\": \"Henry Moodie\"}, \"uri\": \"spotify:artist:7hr9W3IjXcm3UlLY7guLk5\", \"visuals\": {\"avatarImage\": {\"sources\": [{\"height\": 640, \"url\": \"https://i.scdn.co/image/ab6761610000e5ebeb112262ba2e60bf90053a02\", \"width\": 640}, {\"height\": 160, \"url\": \"https://i.scdn.co/image/ab6761610000f178eb112262ba2e60bf90053a02\", \"width\": 160}, {\"height\": 320, \"url\": \"https://i.scdn.co/image/ab67616100005174eb112262ba2e60bf90053a02\", \"width\": 320}]}}}}, {\"data\": {\"__typename\": \"Artist\", \"profile\": {\"name\": \"vaultboy\"}, \"uri\": \"spotify:artist:0K87f3owemzI8NUCoEIXOB\", \"visuals\": {\"avatarImage\": {\"sources\": [{\"height\": 640, \"url\": \"https://i.scdn.co/image/ab6761610000e5eb8649ee9bca72872856ab328e\", \"width\": 640}, {\"height\": 160, \"url\": \"https://i.scdn.co/image/ab6761610000f1788649ee9bc"
+    }
+  }
+}

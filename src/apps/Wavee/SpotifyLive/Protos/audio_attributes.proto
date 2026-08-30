@@ -1,0 +1,44 @@
+// The payload Spotify returns for extension kind 222 — a track's tempo and musical key.
+//
+// Provenance: message/package from the wire's Any type_url:
+//   type.googleapis.com/spotify.playlistmixing.extensions.audio_attributes.v2.AudioAttributes
+// Field NUMBERS and wire types are verified against live 2026 responses (omg.saz, waveforms.saz, all.saz — 11,559
+// payloads across the captured corpus). FIELD NAMES are best-effort.
+//
+// Observed (omg.saz / waveforms.saz):
+//
+//   spotify:track:1kPBHRXyXdrtYfUfeRwBko   tempo 101.01   key "A"   mode 2   camelot 11B  #56d9f8
+//   spotify:track:2v7ywbUzCgcVohHaKUcacV   tempo 111.93   key "F"   mode 2   camelot  7B  #ff80b4
+//   spotify:track:3yUcJwYu7fXAfqMj9krY6l   tempo  80.00   key "B"   mode 2   camelot  1B  #05eccb
+//
+// The payload cross-validates itself: the Camelot wheel's MAJOR ring is 1B=B, 7B=F, 11B=A, and all three rows match
+// their key name exactly. That is how `key`/`camelot` were identified rather than guessed.
+//
+// `mode` was 2 on every observed sample. 2 = major is the reading implied by the Camelot B-ring; 1 = minor is the
+// natural counterpart but is NOT observed, so treat any value other than 2 as "unknown" rather than asserting minor.
+//
+// NOTE: tempo is a DOUBLE (fixed64), not a float. Reading it as float32 yields garbage.
+
+syntax = "proto3";
+
+package spotify.playlistmixing.extensions.audio_attributes.v2;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.AudioAttributes";
+
+// Camelot-wheel position — the DJ notation Spotify pairs with a per-slot colour for its Mix lens.
+message Camelot {
+    string code = 1;    // "11B", "7B", "1B"
+    string color = 2;   // "#56d9f8" — CSS hex, lowercase, always 7 chars in observed samples
+}
+
+message MusicalKey {
+    string name = 1;    // "A", "F", "B"
+    uint32 mode = 2;    // 2 = major (only value observed)
+    Camelot camelot = 3;
+}
+
+message AudioAttributes {
+    double tempo = 1;   // BPM
+    MusicalKey key = 2;
+}

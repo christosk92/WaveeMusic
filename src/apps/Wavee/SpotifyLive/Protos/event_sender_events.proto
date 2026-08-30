@@ -1,0 +1,187 @@
+syntax = "proto3";
+
+package spotify.event_sender.proto;
+
+option csharp_namespace = "Wavee.Protocol.EventSender.Events";
+option optimize_for = CODE_SIZE;
+
+message RawCoreStream {
+  bytes  playback_id                = 1;
+  bytes  parent_playback_id         = 2;
+  string video_session_id           = 3;
+  bytes  media_id                   = 4;
+  string media_type                 = 5;
+  string feature_identifier         = 6;
+  string feature_version            = 7;
+  string view_uri                   = 8;
+  string source_start               = 9;
+  string reason_start               = 10;
+  string source_end                 = 11;
+  string reason_end                 = 12;
+  int64  playback_start_time        = 13;
+  int32  ms_played                  = 14;
+  int32  ms_played_nominal          = 15;
+  int32  ms_played_overlapping      = 16;
+  int32  ms_played_video            = 17;
+  int32  ms_played_background       = 18;
+  int32  ms_played_fullscreen       = 19;
+  bool   live                       = 20;
+  bool   shuffle                    = 21;
+  string audio_format               = 22;
+  string play_context               = 23;
+  string content_uri                = 24;
+  string displayed_content_uri      = 25;
+  bool   content_is_downloaded      = 26;
+  bool   incognito_mode             = 27;
+  string provider                   = 28;
+  string referrer                   = 29;
+  string referrer_version           = 30;
+  string referrer_vendor            = 31;
+  string streaming_rule             = 32;
+  string connect_controller_device_id = 33;
+  string page_instance_id           = 34;
+  string interaction_id             = 35;
+  string parent_content_uri         = 36;
+  int64  core_version               = 37;
+  string play_type                  = 38;
+  bool   is_assumed_premium         = 39;
+  int32  ms_played_external         = 40;
+  string local_content_uri          = 41;
+  bool   client_offline_at_stream_start = 42;
+  bool   social_listening           = 43;
+  string core_bundle                = 44;
+  string playback_stack             = 45;
+  int32  ms_narration_overlapping   = 46;
+  string custom_reporting_attribution = 47;
+  string decision_id                = 48;
+  string play_context_decision_id   = 49;
+  int32  ms_trimmed                 = 50;
+  int32  ms_nominal_trimmed         = 51;
+  string feature_uuid               = 52;
+  bytes  stream_id                  = 53;
+  string next_content_uri_base62    = 59;
+  string command_id                 = 63;
+  string playback_stack_secondary   = 69;
+  string orchestration_stack        = 71;
+  string device_brand               = 78;
+  string device_model_name          = 79;
+  string device_type_name           = 80;
+}
+
+message RawCoreStreamSegment {
+  bytes  playback_id              = 1;
+  int64  start_position           = 2;
+  int64  end_position             = 3;
+  int32  ms_played                = 4;
+  string reason_start             = 5;
+  string reason_end               = 6;
+  double playback_speed           = 7;
+  int64  start_timestamp          = 8;
+  int64  end_timestamp            = 9;
+  bool   is_seek                   = 10;
+  bool   is_pause                  = 11;
+  int64  sequence_id              = 12;
+  string media_type               = 13;
+  int64  core_version             = 14;
+  string content_uri              = 15;
+  int64  start_monotonic_timestamp = 16;
+  int64  end_monotonic_timestamp  = 17;
+  bool   is_last                  = 18;
+  string provider                 = 19;
+  string playback_stack           = 20;
+  string feature_uuid             = 21;
+  bytes  stream_id                = 22;
+  string page_instance_id         = 23;
+  string interaction_id           = 24;
+  string play_context             = 25;
+  int64  start_timestamp_internal = 26;
+  int64  end_timestamp_internal   = 27;
+  int64  sequence_id_internal     = 28;
+  string device_brand             = 79;
+  string device_model_name        = 80;
+  string device_type_name         = 81;
+}
+
+message CorePlaybackCommandCorrelation {
+  bytes  playback_id = 1;
+  string command_id  = 2;
+}
+
+message AudioResolve {
+  bytes  playback_id = 1;
+  int64  resolve_ms  = 2;
+  string content_uri = 3;
+  string command_id  = 4;
+}
+
+message AudioFileSelection {
+  bytes  playback_id = 1;
+  string reason        = 2;
+  int32  selected_bitrate = 3;
+  string quality       = 5;
+  int32  target_bitrate = 6;
+}
+
+message BoomboxPlaybackSession {
+  bytes  playback_id  = 1;
+  int64  audio_key_ms   = 2;
+  int64  resolve_ms     = 3;
+  int64  total_setup_ms = 4;
+  int64  buffering_ms   = 5;
+  int64  duration_ms    = 12;
+  string preset         = 13;
+  bool   first_play     = 17;
+}
+
+message AudioSessionEvent {
+  string event              = 1;
+  string context            = 2;
+  bytes  playback_id        = 4;
+  string reason             = 5;
+  string feature_identifier = 6;
+  int32  seek_position      = 7;
+  bool   paused             = 8;
+  int64  speed              = 9;
+}
+
+message HeadFileDownload {
+  bytes  file_id          = 1;
+  bytes  playback_id      = 2;
+  string cdn_domain         = 4;
+  int64  head_file_size     = 5;
+  int64  http_result        = 11;
+  string request_type       = 16;
+}
+
+message Download {
+  bytes  file_id          = 1;
+  bytes  playback_id      = 2;
+  int64  file_size          = 7;
+  int64  bytes_downloaded   = 10;
+  string realm              = 11;
+  string cdn_uri_scheme     = 30;
+  string cdn_domain         = 31;
+  string request_type       = 38;
+  int64  bitrate            = 40;
+}
+
+message ContentIntegrity {
+  bytes  playback_id               = 1;
+  int32  ripping_categories        = 2;
+  bool   is_ripping_faster_than_rt = 3;
+}
+
+message AudioRouteSegmentEnd {
+  bytes playback_id = 1;
+}
+
+message AdOpportunityEvent {
+  string trigger_state = 4;
+  string content_uri   = 6;
+  string playback_id   = 7;
+}
+
+message WasapiAudioDriverInfo {
+  string driver_name = 1;
+  string output_device_name = 2;
+}

@@ -1,0 +1,56 @@
+// The payload Spotify returns for extension kind 186 CREDITS_V2_TRAIT — the FULL credits drawer for a track: every
+// contributor row, already grouped and already ordered, plus the record label the attribution line names. This is the
+// surface source: the GraphQL `queryNpvArtist` path Wavee used before caps its contributor list at 10, while 186 hands
+// back the whole liner note (16–40 rows on the five probed tracks) with no cap and no second round trip.
+//
+// Provenance: the message/package name comes from the wire's Any type_url:
+//   type.googleapis.com/spotify.contentagnostic.v2.CreditsTrait
+// Field NUMBERS and wire types are verified against the live 2026 kind probe (tmp/xm-probe, 7 entities × kinds 1–258).
+// FIELD NAMES are best-effort — Spotify does not ship this schema.
+//
+// TRACKS ONLY. The probe's album and artist entities 404 on this kind (TTL 3600 on the miss), which is why a miss is a
+// cached null and never an error: "no credits here" is the correct answer for every non-track entity.
+//
+// Observed rows / label (probe):
+//
+//   spotify:track:…  Time                      30 rows   WaterTower Music
+//   spotify:track:…  Blinding Lights           40 rows   Republic Records
+//   spotify:track:…  Never Gonna Give You Up   16 rows   BMG Rights Management (UK) Ltd.
+//
+// `group.name` was one of four values on every probed track, in this wire order: "Artist", "Composition & Lyrics",
+// "Production & Engineering", "Performers". The group is a NESTED message, so a naive UTF-8 sniff of the payload reads
+// it as "\n\nPerformers" — the leading bytes are the nested length prefix, not part of the name.
+
+syntax = "proto3";
+
+package spotify.contentagnostic.v2;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.ContentAgnostic";
+
+// One contributor line. `artist_uri` (and its `nav` companion) are OMITTED for people Spotify has no artist page for —
+// many engineers have a name and a role and nothing else — so a row is linkable only when field 3 is present.
+message CreditRow {
+    // The group heading this row sits under ("Artist", "Composition & Lyrics", "Production & Engineering",
+    // "Performers"). Server-supplied, server-cased, server-ordered.
+    message Group {
+        string name = 1;
+    }
+
+    string name = 1;             // the person or act ("Hans Zimmer", "Serban Ghenea")
+    string role = 2;             // "Main Artist", "Composer", "Mixing Engineer", "Cello", …
+    string artist_uri = 3;       // optional — absent on unlinked contributors
+    string nav = 4;              // the client's own nav target, e.g. "spotify:artist:…"; absent with artist_uri
+    string songwriter_url = 5;   // https://artists.spotify.com/songwriter/{id} — sparse, writers only
+    Group group = 6;
+}
+
+message CreditsTrait {
+    // The record label the drawer prints as its source attribution ("Republic Records", "WaterTower Music").
+    message Label {
+        string name = 1;
+    }
+
+    repeated CreditRow rows = 1;   // already grouped and ordered by the server — preserve wire order
+    Label label = 2;
+}

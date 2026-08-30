@@ -1,0 +1,39 @@
+syntax = "proto2";
+
+package spotify.extendedmetadata.proto;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.ExtendedMetadata";
+
+// The payload Spotify returns for an entity's VIDEO_ASSOCIATIONS (99) extension, and — symmetrically — for
+// AUDIO_ASSOCIATIONS (98). Reverse-engineered from a live extended-metadata response (field NUMBERS verified
+// against the wire; field NAMES are best-effort). Dispatch is by the array's ExtensionKind, not the Any.type_url,
+// so the one symmetric message parses both kinds (the audio direction carries audio file ids, width/height absent).
+//
+//   VideoAssociations { Association association = 1 }
+//   Association { string associated_uri = 1; VideoFileGroup files = 2 }
+//   VideoFileGroup { repeated VideoFile file = 1 }
+//   VideoFile { bytes file_id = 1; int32 variant = 2; int32 width = 3; int32 height = 4 }
+//
+// associated_uri is the paired entity (the video track for an audio track, or vice-versa); each file is one
+// quality variant of the counterpart's media (e.g. 2560x1440 / 1280x720 for video). The file list is nested one
+// level under a wrapper message (field 2 is the group, not the repeated file directly) — confirmed against the wire.
+message VideoAssociations {
+	optional Association association = 1;
+}
+
+message Association {
+	optional string associated_uri = 1;
+	optional VideoFileGroup files = 2;
+}
+
+message VideoFileGroup {
+	repeated VideoFile file = 1;
+}
+
+message VideoFile {
+	optional bytes file_id = 1;   // 20-byte content file id (hex-encoded for storage-resolve)
+	optional int32 variant = 2;   // quality/index discriminator (0, 2, 4 seen)
+	optional int32 width = 3;
+	optional int32 height = 4;
+}

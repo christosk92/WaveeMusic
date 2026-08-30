@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Wavee — Artist pick D · states, sizes, pre-save (Zune voice)</title>
+  <style>
+    :root {
+      --canvas: #f5f6f8;
+      --surface-solid: #ffffff;
+      --surface-muted: #eceef2;
+      --text: #17191d;
+      --muted: #666b75;
+      --faint: #8b9099;
+      --stroke: rgba(26, 29, 35, .09);
+      --stroke-strong: rgba(26, 29, 35, .16);
+      --accent: #c0392b;            /* stands in for the artwork-derived accent */
+      --accent-ink: #ffffff;
+      --accent-soft: rgba(192, 57, 43, .12);
+      --accent-soft-2: rgba(192, 57, 43, .05);
+      --shadow-sm: 0 1px 2px rgba(13, 17, 28, .06), 0 8px 24px rgba(13, 17, 28, .05);
+      --radius-card: 8px;
+      --radius-ctl: 4px;
+      --ease: cubic-bezier(.2, .8, .2, 1);
+    }
+
+    [data-theme="dark"] {
+      --canvas: #0d0e11;
+      --surface-solid: #1c1d22;
+      --surface-muted: #24262c;
+      --text: #f5f5f7;
+      --muted: #aaaeb7;
+      --faint: #7b7f89;
+      --stroke: rgba(255, 255, 255, .08);
+      --stroke-strong: rgba(255, 255, 255, .16);
+      --accent: #e0604f;
+      --accent-ink: #17191d;
+      --accent-soft: rgba(224, 96, 79, .16);
+      --accent-soft-2: rgba(224, 96, 79, .06);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .2), 0 8px 28px rgba(0, 0, 0, .16);
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--canvas); }
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--canvas);
+      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+      padding: 48px clamp(20px, 5vw, 72px) 140px;
+    }
+
+    header.page { max-width: 900px; margin-bottom: 12px; }
+    header.page h1 {
+      font-family: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", sans-serif;
+      font-weight: 300; font-size: 40px; letter-spacing: -0.5px;
+      margin: 0 0 8px; text-transform: lowercase;
+    }
+    header.page p { color: var(--muted); margin: 0 0 6px; max-width: 70ch; }
+    header.page code { background: var(--surface-muted); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+
+    h2.part {
+      font-family: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", sans-serif;
+      font-weight: 300; font-size: 26px; letter-spacing: -0.4px; text-transform: lowercase;
+      margin: 64px 0 6px;
+    }
+    p.part-note { color: var(--muted); margin: 0 0 24px; max-width: 74ch; }
+
+    .toggle {
+      position: fixed; top: 20px; right: 20px; z-index: 9;
+      background: var(--surface-solid); color: var(--text);
+      border: 1px solid var(--stroke-strong); border-radius: 999px;
+      padding: 8px 16px; cursor: pointer; font: inherit; box-shadow: var(--shadow-sm);
+    }
+
+    .row { display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
+
+    .frame { }
+    .frame > .cap { font-size: 12px; color: var(--faint); margin: 0 0 10px; }
+    .frame > .cap b { color: var(--muted); font-weight: 600; }
+    .frame .holder {
+      background: var(--canvas);
+      border: 1px dashed var(--stroke-strong);
+      border-radius: 12px; padding: 20px;
+    }
+    .w-320 .holder { width: 320px; }
+    .w-420 .holder { width: 420px; }
+    .w-720 .holder { width: 720px; }
+    .w-full .holder { width: min(1040px, 100%); }
+
+    .section-h { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+    .section-h .bar { width: 3px; height: 16px; background: var(--accent); border-radius: 2px; }
+    .section-h span { font-size: 15px; font-weight: 600; }
+
+    .note { margin-top: 10px; font-size: 12px; color: var(--faint); max-width: 46ch; }
+
+    /* ── shared fakes ────────────────────────────────────────────── */
+    .photo {
+      position: relative; overflow: hidden;
+      background:
+        radial-gradient(120% 90% at 70% 20%, #d9a066 0%, transparent 55%),
+        radial-gradient(80% 90% at 25% 75%, #27404e 0%, transparent 70%),
+        linear-gradient(160deg, #b3722f 0%, #6d4a33 40%, #22333d 100%);
+      cursor: pointer;
+    }
+    .photo::after {
+      content: ""; position: absolute; inset: 0;
+      background: radial-gradient(120% 120% at 50% 30%, transparent 60%, rgba(0,0,0,.18) 100%);
+    }
+    .photo .figure {
+      position: absolute; right: 12%; bottom: -6%;
+      width: 46%; height: 78%;
+      background: radial-gradient(50% 34% at 50% 12%, #e8c39a 0%, #c99b70 58%, transparent 60%),
+                  linear-gradient(180deg, transparent 22%, #1d2b33 24%, #16222a 100%);
+      border-radius: 40% 40% 0 0 / 24% 24% 0 0;
+      filter: blur(.4px);
+    }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%; flex: none;
+      border: 1px solid var(--stroke-strong);
+      background: radial-gradient(60% 45% at 50% 32%, #e8c39a 0%, #c99b70 55%, #35505f 57%, #22333d 100%);
+    }
+    .cover {
+      border-radius: var(--radius-ctl); flex: none; width: 44px; height: 44px;
+      background:
+        radial-gradient(70% 70% at 30% 30%, #4a7c9b 0%, transparent 60%),
+        linear-gradient(140deg, #16222a, #0d3b4f 60%, #b3722f 130%);
+    }
+    .t-title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .t-meta  { color: var(--muted); font-size: 12px; }
+    .t-meta .due { color: var(--accent); font-weight: 600; }
+
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      height: 32px; padding: 0 14px; border-radius: 999px;
+      background: var(--accent); color: var(--accent-ink);
+      font-weight: 700; font-size: 13px; border: none; cursor: pointer;
+      transition: transform .12s var(--ease); flex: none;
+    }
+    .pill:hover { transform: scale(1.04); }
+    .pill.ghost { background: transparent; color: var(--text); border: 1px solid var(--stroke-strong); font-weight: 600; }
+
+    /* ── D panel ─────────────────────────────────────────────────── */
+    .d {
+      border-radius: var(--radius-card); overflow: hidden;
+      background: linear-gradient(170deg, var(--accent-soft), var(--accent-soft-2) 55%, transparent 80%), var(--surface-solid);
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      transition: transform .16s var(--ease);
+    }
+    .d:hover { transform: translateY(-4px); }
+    .d-head { display: flex; gap: 10px; padding: 14px 16px 0; align-items: center; }
+    .d-head .who { font-size: 12px; color: var(--muted); line-height: 1.3; }
+    .d-head .who b { display: block; color: var(--text); font-size: 13px; }
+    .d-quote {
+      font-family: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", sans-serif;
+      font-weight: 400; font-size: 28px; line-height: 1.18; letter-spacing: -0.4px;
+      padding: 10px 16px 16px; margin: 0;
+      text-wrap: balance;
+    }
+    .d-photo { height: 150px; }
+    .d-foot { display: flex; gap: 12px; align-items: center; padding: 12px 16px; }
+    .d-foot .grow { min-width: 0; flex: 1; }
+    .d-divider { border-top: 1px solid var(--stroke); margin: 0 16px; }
+    .d-foot.second { padding-top: 12px; }
+
+    /* horizontal (full-width band) arm of D */
+    .d.wide { display: grid; grid-template-columns: 1fr 300px; }
+    .d.wide .d-copy { display: flex; flex-direction: column; min-width: 0; }
+    .d.wide .d-quote { font-size: 34px; padding-bottom: 12px; flex: 1; }
+    .d.wide .d-photo { height: 100%; min-height: 220px; }
+    .d.wide.no-photo { grid-template-columns: 1fr; }
+
+    /* ── pre-save / upcoming, zune voice ─────────────────────────── */
+    .p {
+      border-radius: var(--radius-card); overflow: hidden;
+      background: linear-gradient(170deg, var(--accent-soft), var(--accent-soft-2) 55%, transparent 80%), var(--surface-solid);
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow-sm);
+      padding: 16px;
+    }
+    .p .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 2.2px; text-transform: lowercase; color: var(--accent); margin-bottom: 10px; }
+    .p .bigdate {
+      font-family: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", sans-serif;
+      font-weight: 200; font-size: 64px; line-height: 1; letter-spacing: -2px;
+      margin: 0 0 2px;
+    }
+    .p .bigdate small { font-size: 22px; font-weight: 300; letter-spacing: 0; color: var(--muted); margin-left: 6px; }
+    .p .title {
+      font-family: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", sans-serif;
+      font-weight: 400; font-size: 22px; line-height: 1.2; letter-spacing: -0.3px;
+      margin: 6px 0 2px;
+    }
+    .p .kind { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+    .p .actions { display: flex; gap: 10px; align-items: center; }
+
+    .count { display: flex; gap: 6px; align-items: baseline; margin: 10px 0 14px; }
+    .count .cell {
+      font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+      font-weight: 300; font-size: 22px; line-height: 1;
+      background: var(--surface-muted); border-radius: 4px; padding: 6px 7px;
+      font-variant-numeric: tabular-nums;
+    }
+    .count .sep { color: var(--faint); font-size: 18px; }
+    .count .unit { color: var(--faint); font-size: 10px; letter-spacing: 1.4px; text-transform: lowercase; align-self: flex-end; padding-bottom: 2px; margin-right: 6px; }
+
+    /* full-band pre-save */
+    .p.band { display: flex; gap: 24px; align-items: center; padding: 16px 20px; }
+    .p.band .cover { width: 88px; height: 88px; }
+    .p.band .mid { flex: 1; min-width: 0; }
+    .p.band .bigdate { font-size: 44px; }
+    .p.band .title { margin: 2px 0; font-size: 24px; }
+    .p.band .right { display: flex; flex-direction: column; gap: 10px; align-items: flex-end; flex: none; }
+
+    /* ── page-shape wireframes ───────────────────────────────────── */
+    .wire { display: flex; gap: 14px; }
+    .wire .col { display: flex; flex-direction: column; gap: 10px; }
+    .wire .blk {
+      border: 1px solid var(--stroke-strong); border-radius: 6px;
+      color: var(--faint); font-size: 11px; display: flex; align-items: center; justify-content: center;
+      background: var(--surface-solid); text-align: center; padding: 4px;
+    }
+    .wire .blk.tone { background: linear-gradient(170deg, var(--accent-soft), transparent), var(--surface-solid); }
+    .wire .blk.ghost { border-style: dashed; background: transparent; }
+  </style>
+</head>
+<body>
+  <button class="toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">light / dark</button>
+
+  <header class="page">
+    <h1>artist pick D — sizes, states, pre-save</h1>
+    <p>Direction locked on <b>D · type on tone</b>: the quote leads on an accent-soft panel, the photograph follows,
+       the record is a footer row. This page works D through the real rail widths and every wire state, and gives the
+       pre-save/upcoming card the same Zune voice so the rail reads as one family.</p>
+    <p>Engine mapping: panel = <code>Tok.FillCardDefault</code> + accent-soft wash (<code>accent @ .16 → 0</code>, the
+       <code>Tok.AccentSubtle</code> alpha); quote = <code>WaveeType.PickQuote</code> (28/36/400 display); Play/Pre-save =
+       <code>WaveeCta</code> capsules; countdown = <code>FlipCountdown</code> compact cells.</p>
+  </header>
+
+  <!-- ════════════════════ PART 1 — SIZES ════════════════════ -->
+  <h2 class="part">1 · the three widths that actually occur</h2>
+  <p class="part-note">The featured column is <b>Grow 1 against the tracks' Grow 2</b>, so on a wide window the rail is
+     ~⅓ of the band (320–460 DIP). Below the 760 tier the featured column leaves the rail and goes <b>full width under
+     Top tracks</b> — D flips horizontal there (quote left, photo right) instead of stretching a 28px quote across 700px.</p>
+
+  <div class="row">
+    <div class="frame w-320">
+      <p class="cap"><b>320 rail</b> — narrow desktop, rail at minimum</p>
+      <div class="holder">
+        <div class="section-h"><div class="bar"></div><span>Artist pick</span></div>
+        <div class="d">
+          <div class="d-head"><div class="avatar"></div><div class="who"><b>Conan Gray</b>artist pick</div></div>
+          <p class="d-quote">wishbone deluxe, out now.</p>
+          <div class="photo d-photo"><div class="figure"></div></div>
+          <div class="d-foot">
+            <div class="cover"></div>
+            <div class="grow"><div class="t-title">Wishbone Deluxe</div><div class="t-meta">Album</div></div>
+            <button class="pill">▶ Play</button>
+          </div>
+        </div>
+        <p class="note">Quote wraps to 2–3 lines; photo drops to 120 if the rail is under 340 so the panel never
+           out-runs five track rows.</p>
+      </div>
+    </div>
+
+    <div class="frame w-420">
+      <p class="cap"><b>420 rail</b> — the common wide-window case</p>
+      <div class="holder">
+        <div class="section-h"><div class="bar"></div><span>Artist pick</span></div>
+        <div class="d">
+          <div class="d-head"><div class="avatar"></div><div class="who"><b>Conan Gray</b>artist pick</div></div>
+          <p class="d-quote">wishbone deluxe, out now.</p>
+          <div class="photo d-photo"><div class="figure"></div></div>
+          <div class="d-foot">
+            <div class="cover"></div>
+            <div class="grow"><div class="t-title">Wishbone Deluxe</div><div class="t-meta">Album</div></div>
+            <button class="pill">▶ Play</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame w-720">
+      <p class="cap"><b>full width</b> — below the 760 tier the featured column stacks under Top tracks; D goes horizontal</p>
+      <div class="holder">
+        <div class="section-h"><div class="bar"></div><span>Artist pick</span></div>
+        <div class="d wide">
+          <div class="d-copy">
+            <div class="d-head"><div class="avatar"></div><div class="who"><b>Conan Gray</b>artist pick</div></div>
+            <p class="d-quote">wishbone deluxe, out now.</p>
+            <div class="d-foot">
+              <div class="cover"></div>
+              <div class="grow"><div class="t-title">Wishbone Deluxe</div><div class="t-meta">Album</div></div>
+              <button class="pill">▶ Play</button>
+            </div>
+          </div>
+          <div class="photo d-photo"><div class="figure"></div></div>
+        </div>
+        <p class="note">Same elements, reflowed — not a second design. Photo becomes the right column
+           (like the hero's horizontal arm); quote gets the elastic lane.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════ PART 2 — STATES ════════════════════ -->
+  <h2 class="part">2 · the wire states</h2>
+  <p class="part-note">Four things actually arrive on the wire: a pick of a <b>released</b> record; a pick of an
+     <b>upcoming</b> record (pre-save inside the pick); a pick <b>plus a separate</b> upcoming record (the Vaultboy
+     screenshot — today this stacks two sections and the rail out-runs Top tracks); and a pick with <b>no art</b>.</p>
+
+  <div class="row">
+    <div class="frame w-320">
+      <p class="cap"><b>S1 · released</b> — the baseline D (Play)</p>
+      <div class="holder">
+        <div class="section-h"><div class="bar"></div><span>Artist pick</span></div>
+        <div class="d">
+          <div class="d-head"><div class="avatar"></div><div class="who"><b>Conan Gray</b>artist pick</div></div>
+          <p class="d-quote">wishbone deluxe, out now.</p>
+          <div class="photo d-photo"><div class="figure"></div></div>
+          <div class="d-foot">
+            <div class="cover"></div>
+            <div class="grow"><div class="t-title">Wishbone Deluxe</div><div class="t-meta">Album</div></div>
+            <button class="pill">▶ Play</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame w-320">
+      <p class="cap"><b>S2 · upcoming pick</b> — the pin IS a pre-release: Play becomes Pre-save, the date joins the meta</p>
+      <div class="holder">
+        <div class="section-h"><div class="bar"></div><span>Artist pick</span></div>
+        <div class="d">
+          <div class="d-head"><div class="avatar"></div><div class="who"><b>vaultboy</b>artist pick</div></div>
+          <p class="d-quote">album out 8/4. this one is everything i have.</p>
+          <div class="photo d-photo"><div class="figure" style="right:30%; width:32%"></div></div>
+          <div class="d-foot">
+            <div class="cover"></div>
+            <div class="grow">
+              <div class="t-title">ARE YOU EVER COMING BACK?</div>
+              <div class="t-meta">Album · <span class="due">out Aug 4</span></div>
+            </div>
+            <button class="pill">♡ Pre-save</button>
+          </div>
+        </div>
+        <p class="note">One card, one story: <code>PinnedItem.IsUpcoming</code> already gates this — Play is illegal
+           here (nothing to stream), so the slot swaps to the pre-save toggle.</p>
+      </div>
+    </div>
+
+    <div class="frame w-320">
+      <p class="cap"><b>S3 · pick + separate upcoming</b> — ONE panel, two footer rows. Kills the double-section rail
+         that out-ran Top tracks</p>
+      <div class="holder">
+        <div class="section-h"><div class="bar"></div><span>Artist pick</span></div>
+        <div class="d">
+          <div class="d-head"><div class="avatar"></div><div class="who"><b>vaultboy</b>artist pick</div></div>
+          <p class="d-quote">everything sucks — but the album won't.</p>
+          <div class="photo d-photo"><div class="figure" style="right:30%; width:32%"></div></div>
+          <div class="d-foot">
+            <div class="cover"></div>
+            <div class="grow"><div class="t-title">ARE YOU EVER COMING BACK?</div><div class="t-meta">Single · New release</div></div>
+            <button class="pill">▶ Play</button>
+          </div>
+          <div class="d-divider"></div>
+          <div class="d-foot second">
+            <div class="cover" style="filter: saturate(.7) brightness(1.06)"></div>
+            <div class="grow">
+              <div class="t-title">ARE YOU EVER COMING BACK?</div>
+              <div class="t-meta">Album · <span class="due">out Aug 4</span></div>
+            </div>
+            <button class="pill ghost">♡ Pre-save</button>
+          </div>
+        </div>
+        <p class="note">The upcoming record rides the pick panel as a second row instead of claiming its own
+           "Upcoming" section + header + card (~170 DIP saved). Standalone "Upcoming" section only renders when
+           there is NO pick.</p>
+      </div>
+    </div>
+
+    <div class="frame w-320">
+      <p class="cap"><b>S4 · no art</b> — quote on tone only; the panel hugs its height</p>
+      <div class="holder">
+        <div class="section-h"><div class="bar"></div><span>Artist pick</span></div>
+        <div class="d">
+          <div class="d-head"><div class="avatar"></div><div class="who"><b>Conan Gray</b>artist pick</div></div>
+          <p class="d-quote">wishbone deluxe, out now.</p>
+          <div class="d-foot">
+            <div class="cover"></div>
+            <div class="grow"><div class="t-title">Wishbone Deluxe</div><div class="t-meta">Album</div></div>
+            <button class="pill">▶ Play</button>
+          </div>
+        </div>
+        <p class="note">The tone wash carries the identity when no campaign art / header / cover exists — no blurred
+           stand-in needed at all in D.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════ PART 3 — PRE-SAVE, ZUNE VOICE ════════════════════ -->
+  <h2 class="part">3 · pre-save / upcoming — the zune arm</h2>
+  <p class="part-note">When there is <b>no pick</b>, the upcoming record stands alone. Zune's move for "a thing that
+     happens on a date" was the DATE as typography — huge, light, lowercase — not a UI card with a chip. Two cuts:
+     the rail card (P1) and the full-band placement above Latest release (P2), same family as D.</p>
+
+  <div class="row">
+    <div class="frame w-320">
+      <p class="cap"><b>P1 · rail card</b> — the date IS the headline; countdown in compact cells</p>
+      <div class="holder">
+        <div class="section-h"><div class="bar"></div><span>Upcoming</span></div>
+        <div class="p">
+          <div class="eyebrow">upcoming · album</div>
+          <p class="bigdate">aug 4<small>2026</small></p>
+          <p class="title">ARE YOU EVER COMING BACK?</p>
+          <div class="kind">vaultboy</div>
+          <div class="count">
+            <span class="cell">11</span><span class="unit">days</span>
+            <span class="cell">14</span><span class="sep">:</span><span class="cell">32</span><span class="unit">hrs</span>
+          </div>
+          <div class="actions">
+            <button class="pill">♡ Pre-save</button>
+            <button class="pill ghost">View</button>
+          </div>
+        </div>
+        <p class="note">64px SemiLight date = the Zune clock voice. Countdown reuses FlipCountdown's compact cells;
+           it collapses to just the date once &gt; 14 days out (a month of "327 hrs" is noise).</p>
+      </div>
+    </div>
+
+    <div class="frame w-full">
+      <p class="cap"><b>P2 · full band</b> — when the rail is owned by the pick, upcoming takes a quiet band above
+         Latest release (LatestReleaseBanner's slot grammar)</p>
+      <div class="holder">
+        <div class="section-h"><div class="bar"></div><span>Upcoming</span></div>
+        <div class="p band">
+          <div class="cover"></div>
+          <div class="mid">
+            <div class="eyebrow">upcoming · album</div>
+            <p class="title">ARE YOU EVER COMING BACK?</p>
+            <div class="kind">vaultboy · releases Aug 4, 2026</div>
+          </div>
+          <p class="bigdate">aug 4</p>
+          <div class="right">
+            <div class="actions">
+              <button class="pill">♡ Pre-save</button>
+              <button class="pill ghost">View</button>
+            </div>
+          </div>
+        </div>
+        <p class="note">Same tone panel, horizontal: cover · copy · the big date · actions. One elastic lane (the
+           copy); date and actions are fixed cells.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════ PART 4 — PLACEMENT ════════════════════ -->
+  <h2 class="part">4 · where things go — the empty-space fix</h2>
+  <p class="part-note">The Vaultboy screenshot's dead band under Top tracks is the rail carrying TWO sections
+     (pick + upcoming) while the tracks column carries one. Two moves fix it, both already drawn above.</p>
+
+  <div class="row">
+    <div class="frame">
+      <p class="cap"><b>today</b> — rail out-runs tracks → dead band on the left</p>
+      <div class="holder" style="width:420px">
+        <div class="wire">
+          <div class="col" style="flex:2">
+            <div class="blk" style="height:150px">Top tracks (5 rows)</div>
+            <div class="blk ghost" style="height:110px">empty</div>
+          </div>
+          <div class="col" style="flex:1">
+            <div class="blk tone" style="height:130px">Artist pick</div>
+            <div class="blk tone" style="height:120px">Upcoming</div>
+          </div>
+        </div>
+        <div class="wire" style="margin-top:10px"><div class="blk" style="flex:1; height:44px">Latest release</div></div>
+      </div>
+    </div>
+
+    <div class="frame">
+      <p class="cap"><b>proposed</b> — S3 merges upcoming into the pick panel; standalone upcoming becomes the P2 band</p>
+      <div class="holder" style="width:420px">
+        <div class="wire">
+          <div class="col" style="flex:2">
+            <div class="blk" style="height:190px">Top tracks (5 rows)</div>
+          </div>
+          <div class="col" style="flex:1">
+            <div class="blk tone" style="height:190px">Artist pick D<br>(+ upcoming row when both exist)</div>
+          </div>
+        </div>
+        <div class="wire" style="margin-top:10px"><div class="blk tone" style="flex:1; height:44px">Upcoming P2 band (only when no pick)</div></div>
+        <div class="wire" style="margin-top:10px"><div class="blk" style="flex:1; height:44px">Latest release</div></div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+option csharp_namespace = "Wavee.Protocol.ExtendedMetadata";
+
+// RECOMMENDED_PLAYLISTS (extension kind 151): ordered playlist references associated with an entity.
+message RecommendedPlaylists {
+    message Item {
+        string uri = 1;
+    }
+    repeated Item recommendation = 1;
+}

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Vendored from WaveeMusic's optimized NVorbis fork (the NuGet NVorbis has decoding issues fixed here).
+       Pure-managed AnyCPU: one dll loads into ARM64-native, x64-native, AND x64-emulated processes — so the win-x64
+       AudioHost and the win-arm64 app share the same build. Third-party source → lenient analyzers/nullable. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>NVorbis</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <Platforms>AnyCPU</Platforms>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS0169;CS0649;CS0618;CS0219;CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CA1050;CA1416;IDE0005</NoWarn>
+    <Description>Fully-managed Ogg Vorbis decoder (WaveeMusic-optimized NVorbis fork).</Description>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en" data-page="default">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Playlist facts v2</title>
+</head>
+<body>
+<style>
+  /* ── Tokens: 1:1 with playlist-facts-mica.html (Fluent / Mica) ─────────────────────────────────────────────── */
+  :root{
+    --solid-base:#f3f3f3;
+    --layer-default:rgba(255,255,255,0.45);
+    --card-default:rgba(255,255,255,0.70);
+    --card-secondary:#f7f7f7;
+    --ctrl-default:rgba(255,255,255,0.70);
+    --subtle-hover:rgba(0,0,0,0.0405);
+    --subtle-press:rgba(0,0,0,0.0241);
+    --stroke-ctrl:rgba(0,0,0,0.0578);
+    --divider:rgba(0,0,0,0.0803);
+    --text:#1a1a1a;
+    --text-2:rgba(0,0,0,0.786);
+    --text-3:rgba(0,0,0,0.5442);
+    --text-4:rgba(0,0,0,0.3628);
+    --accent:#005FB8;
+    --accent-text:#003D92;
+    --on-accent:#ffffff;
+    --mica-tint:rgba(243,243,243,0.78);
+    --mica-a:#8aa4c8; --mica-b:#c9a090;
+    --cover-shadow:0 6px 14px rgba(20,24,32,.18), 0 0 1px rgba(20,24,32,.14);
+    --elev-card:0 2px 4px rgba(0,0,0,.06), 0 0 2px rgba(0,0,0,.06);
+    --inner-hi:inset 0 1px 0 rgba(255,255,255,.72);
+    --shadow-dialog:0 32px 64px rgba(0,0,0,0.22),0 0 2px rgba(0,0,0,0.3);
+    --win-border:rgba(0,0,0,0.08);
+    --layer-edge:rgba(0,0,0,0.04);
+    --scrollbar:rgba(0,0,0,0.18);
+    --lab-text:rgba(0,0,0,.55);
+    --lab-bg:rgba(255,255,255,.55);
+    --page-a:#c5d4e8; --page-b:#e8d0c4; --page-c:#e8eaee; --page-d:#d8dce4;
+    --r-ctrl:4px; --r-card:8px; --r-layer:8px;
+    --font:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+    --font-d:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+    --mono:"Cascadia Code",Consolas,monospace;
+    --ease:cubic-bezier(.2,.8,.2,1);
+    --t1:#5a6fa8; --t2:#a0557c; --t3:#3f8f9a; --t4:#c28a4a; --t5:#6f5aa8;
+    --tone-alpha:.16;
+    --key-l:42%;              /* Camelot swatch lightness on a LIGHT surface (DataDotInk darkens the wire hue) */
+    --rail:240px;             /* WaveeSize.RailPlaylist */
+  }
+  html[data-page="editorial"]{
+    --accent:#C42B1C; --accent-text:#9A1B12; --on-accent:#fff;
+    --t1:#c42b1c; --t2:#e07a3d; --t3:#7a1f48; --t4:#d4a017; --t5:#5a2a6e;
+    --mica-a:#c45a4a; --mica-b:#c9a090;
+    --page-a:#e8c4c0; --page-b:#e8d0c4;
+  }
+  html[data-page="owned"]{
+    --accent:#5B4AE0; --accent-text:#3D2FB0; --on-accent:#fff;
+    --t1:#5B4AE0; --t2:#2f9e8a; --t3:#c45a8c; --t4:#c28a4a; --t5:#3f6fa8;
+    --mica-a:#8a84d0; --mica-b:#90c4b8;
+    --page-a:#c5c4e8; --page-b:#c4e8dc;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --solid-base:#202020;
+      --layer-default:rgba(58,58,58,0.30);
+      --card-default:rgba(255,255,255,0.0512);
+      --card-secondary:rgba(255,255,255,0.0837);
+      --ctrl-default:rgba(255,255,255,0.0605);
+      --subtle-hover:rgba(255,255,255,0.0605);
+      --subtle-press:rgba(255,255,255,0.0419);
+      --stroke-ctrl:rgba(255,255,255,0.0698);
+      --divider:rgba(255,255,255,0.0837);
+      --text:#FFFFFF;
+      --text-2:rgba(255,255,255,0.786);
+      --text-3:rgba(255,255,255,0.5442);
+      --text-4:rgba(255,255,255,0.3628);
+      --accent:#60CDFF; --accent-text:#99EBFF; --on-accent:#003545;
+      --mica-tint:rgba(32,32,32,0.86);
+      --mica-a:#3d5a8f; --mica-b:#6b3a63;
+      --cover-shadow:0 8px 18px rgba(0,0,0,.40), 0 0 1px rgba(0,0,0,.45);
+      --elev-card:0 2px 4px rgba(0,0,0,.14), 0 0 2px rgba(0,0,0,.12);
+      --inner-hi:inset 0 1px 0 rgba(255,255,255,.10);
+      --shadow-dialog:0 32px 64px rgba(0,0,0,0.37),0 0 2px rgba(0,0,0,0.5);
+      --win-border:rgba(255,255,255,0.08);
+      --layer-edge:rgba(255,255,255,0.06);
+      --scrollbar:rgba(255,255,255,0.18);
+      --lab-text:rgba(255,255,255,.55);
+      --lab-bg:rgba(20,20,24,.55);
+      --page-a:#2b3a5e; --page-b:#4a2a46; --page-c:#161821; --page-d:#0c0c10;
+      --tone-alpha:.22; --key-l:60%;
+    }
+    html[data-page="editorial"]:not([data-theme="light"]){
+      --accent:#FF8A80; --accent-text:#FFB4AB; --on-accent:#3B0909;
+      --mica-a:#8f3d3d; --mica-b:#6b3a3a; --page-a:#5e2b2b; --page-b:#4a2a2a;
+    }
+    html[data-page="owned"]:not([data-theme="light"]){
+      --accent:#B4A8FF; --accent-text:#D0C8FF; --on-accent:#1C1448;
+      --mica-a:#4a3d8f; --mica-b:#3a6b63; --page-a:#2b2b5e; --page-b:#2a4a46;
+    }
+  }
+  :root[data-theme="dark"]{
+    --solid-base:#202020; --layer-default:rgba(58,58,58,0.30);
+    --card-default:rgba(255,255,255,0.0512); --card-secondary:rgba(255,255,255,0.0837);
+    --ctrl-default:rgba(255,255,255,0.0605); --subtle-hover:rgba(255,255,255,0.0605); --subtle-press:rgba(255,255,255,0.0419);
+    --stroke-ctrl:rgba(255,255,255,0.0698); --divider:rgba(255,255,255,0.0837);
+    --text:#FFFFFF; --text-2:rgba(255,255,255,0.786); --text-3:rgba(255,255,255,0.5442); --text-4:rgba(255,255,255,0.3628);
+    --accent:#60CDFF; --accent-text:#99EBFF; --on-accent:#003545;
+    --mica-tint:rgba(32,32,32,0.86); --mica-a:#3d5a8f; --mica-b:#6b3a63;
+    --cover-shadow:0 8px 18px rgba(0,0,0,.40), 0 0 1px rgba(0,0,0,.45);
+    --elev-card:0 2px 4px rgba(0,0,0,.14), 0 0 2px rgba(0,0,0,.12);
+    --inner-hi:inset 0 1px 0 rgba(255,255,255,.10);
+    --shadow-dialog:0 32px 64px rgba(0,0,0,0.37),0 0 2px rgba(0,0,0,.5);
+    --win-border:rgba(255,255,255,0.08); --layer-edge:rgba(255,255,255,0.06);
+    --scrollbar:rgba(255,255,255,0.18); --lab-text:rgba(255,255,255,.55); --lab-bg:rgba(20,20,24,.55);
+    --page-a:#2b3a5e; --page-b:#4a2a46; --page-c:#161821; --page-d:#0c0c10; --tone-alpha:.22; --key-l:60%;
+  }
+  html[data-theme="dark"][data-page="editorial"]{
+    --accent:#FF8A80; --accent-text:#FFB4AB; --on-accent:#3B0909;
+    --mica-a:#8f3d3d; --mica-b:#6b3a3a; --page-a:#5e2b2b; --page-b:#4a2a2a;
+  }
+  html[data-theme="dark"][data-page="owned"]{
+    --accent:#B4A8FF; --accent-text:#D0C8FF; --on-accent:#1C1448;
+    --mica-a:#4a3d8f; --mica-b:#3a6b63; --page-a:#2b2b5e; --page-b:#2a4a46;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:var(--font);font-size:14px;color:var(--text);
+    background:var(--page-d);
+    background-image:
+      radial-gradient(900px 700px at 12% 8%, var(--page-a) 0%, transparent 60%),
+      radial-gradient(1000px 800px at 88% 82%, var(--page-b) 0%, transparent 62%),
+      linear-gradient(160deg,var(--page-c),var(--page-d));
+    display:grid;place-items:center;overflow:hidden;
+  }
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none;}
+
+  /* ── Lab toolbar ─────────────────────────────────────────────────────────────────────────────────────────────── */
+  .lab{
+    position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:5;
+    display:flex;align-items:center;gap:8px;
+    padding:6px 8px 6px 12px;border-radius:999px;
+    background:var(--lab-bg);backdrop-filter:blur(18px);
+    border:1px solid var(--stroke-ctrl);
+    font-size:12px;color:var(--lab-text);white-space:nowrap;
+  }
+  .lab .k{font-family:var(--mono);font-size:11px;color:var(--text-3);}
+  .seg{display:flex;gap:2px;padding:2px;border-radius:999px;background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);}
+  .seg button{padding:4px 9px;border-radius:999px;color:var(--text-2);font-size:12px;font-weight:500;}
+  .seg button:hover{background:var(--subtle-hover);}
+  .seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);font-weight:600;}
+  .lab .tg{padding:4px 9px;border-radius:999px;color:var(--text-2);border:1px solid transparent;}
+  .lab .tg:hover{background:var(--subtle-hover);}
+  .lab .tg[aria-pressed="true"]{border-color:var(--accent);color:var(--accent-text);}
+  .lab .note{position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:8px;
+    width:max-content;max-width:900px;text-align:center;color:var(--lab-text);font-size:12px;line-height:1.4;}
+  .lab .note b{color:var(--text-2);font-weight:600;}
+
+  /* ── Window ──────────────────────────────────────────────────────────────────────────────────────────────────── */
+  .win{
+    width:min(1340px,97vw);height:min(880px,93vh);margin-top:44px;
+    display:grid;grid-template-rows:44px 1fr 76px;grid-template-columns:48px 1fr;
+    grid-template-areas:"title title" "nav content" "player player";
+    border-radius:8px;overflow:hidden;position:relative;
+    border:1px solid var(--win-border);
+    box-shadow:var(--shadow-dialog);
+    background:
+      linear-gradient(var(--mica-tint),var(--mica-tint)),
+      radial-gradient(700px 500px at 10% 0%, var(--mica-a) 0%, transparent 62%),
+      radial-gradient(760px 560px at 92% 96%, var(--mica-b) 0%, transparent 64%),
+      var(--solid-base);
+    background-blend-mode:normal,soft-light,soft-light,normal;
+  }
+  .win::after{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+    opacity:.045;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  }
+  .titlebar,.nav,.content,.player{position:relative;z-index:2;}
+
+  .titlebar{grid-area:title;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 0 0 8px;}
+  .tb-l{display:flex;align-items:center;gap:2px;}
+  .tb-btn{width:32px;height:32px;border-radius:var(--r-ctrl);color:var(--text-2);display:grid;place-items:center;}
+  .tb-btn:hover{background:var(--subtle-hover);color:var(--text);}
+  .tb-btn[disabled]{color:var(--text-4);}
+  .tab{display:flex;align-items:center;gap:8px;padding:6px 12px;margin-left:6px;color:var(--text);font-weight:600;font-size:13px;position:relative;}
+  .tab::after{content:"";position:absolute;left:8px;right:8px;bottom:-4px;height:2px;border-radius:2px;background:var(--accent);}
+  .search{justify-self:center;width:420px;height:30px;border-radius:var(--r-ctrl);background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);border-bottom-color:var(--text-4);
+    display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--text-3);font-size:13px;}
+  .search svg{margin-left:auto;}
+  .tb-r{display:flex;justify-content:flex-end;align-items:center;}
+  .caption{display:flex;margin-left:10px;}
+  .caption button{width:46px;height:44px;color:var(--text-2);display:grid;place-items:center;}
+  .caption button:hover{background:var(--subtle-hover);}
+  .caption button.close:hover{background:#c42b1c;color:#fff;}
+
+  .nav{grid-area:nav;display:flex;flex-direction:column;align-items:center;gap:2px;padding-top:2px;}
+  .nav button{width:40px;height:36px;border-radius:var(--r-ctrl);color:var(--text-2);display:grid;place-items:center;position:relative;}
+  .nav button:hover{background:var(--subtle-hover);}
+  .nav button.on{background:var(--subtle-hover);color:var(--text);}
+  .nav button.on::before{content:"";position:absolute;left:2px;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--accent);}
+  .nav .gap{height:10px;}
+  .nav .pin{width:40px;height:40px;border-radius:4px;margin:1px 0;box-shadow:var(--elev-card);}
+
+  .content{
+    grid-area:content;min-width:0;min-height:0;position:relative;
+    background:var(--layer-default);
+    border-top:1px solid var(--layer-edge);border-left:1px solid var(--layer-edge);
+    border-top-left-radius:var(--r-layer);
+    display:grid;grid-template-columns:calc(var(--rail) + 24px) 1fr 320px;overflow:hidden;isolation:isolate;
+  }
+  .content::before{
+    content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:var(--tone-alpha);
+    background:
+      linear-gradient(180deg, transparent 0, var(--layer-default) 540px),
+      radial-gradient(720px 420px at 0% 0%, color-mix(in srgb, var(--t1) 80%, transparent), transparent 70%),
+      radial-gradient(620px 380px at 36% 0%, color-mix(in srgb, var(--t2) 70%, transparent), transparent 70%);
+  }
+  .rail,.list,.rules{position:relative;z-index:1;min-height:0;}
+
+  /* ── Rail (the playlist column) ──────────────────────────────────────────────────────────────────────────────── */
+  .rail{
+    overflow-y:auto;overflow-x:hidden;padding:16px 8px 24px 16px;
+    display:flex;flex-direction:column;gap:10px;
+    scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent;
+  }
+  .cover{
+    position:relative;width:var(--rail);height:var(--rail);border-radius:var(--r-card);overflow:hidden;
+    box-shadow:var(--cover-shadow);flex:none;background:var(--cv);
+    display:grid;place-items:end start;
+  }
+  .cover .banner{padding:10px 12px 12px;color:#fff;font-family:var(--font-d);font-size:22px;font-weight:700;letter-spacing:-.3px;line-height:1.1;text-shadow:0 1px 8px rgba(0,0,0,.35);}
+  .cover .spot{position:absolute;left:10px;top:10px;width:24px;height:24px;border-radius:50%;background:#1DB954;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+  .cover .spot svg{width:14px;height:14px;fill:#fff;}
+  .cover.liked{place-items:center;}
+  .cover.liked svg.heart{width:58%;height:58%;fill:#fff;filter:drop-shadow(0 10px 24px rgba(0,0,0,.35));}
+
+  .owner{display:flex;align-items:center;gap:8px;width:var(--rail);margin-top:2px;}
+  .owner .av{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--accent);}
+  .owner .av svg{width:12px;height:12px;fill:var(--on-accent);}
+  .owner .nm{font-size:13px;font-weight:600;color:var(--text);}
+  .rail h1{font-family:var(--font-d);font-size:32px;line-height:38px;font-weight:600;letter-spacing:-.6px;margin:2px 0 0;width:var(--rail);text-wrap:balance;}
+  .rail .meta{color:var(--text-3);font-size:13px;font-variant-numeric:tabular-nums;margin-top:-4px;}
+  .cta{display:flex;align-items:center;gap:8px;margin-top:2px;}
+  .btn-acc{height:40px;padding:0 20px 0 16px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-weight:600;display:flex;align-items:center;gap:8px;box-shadow:var(--inner-hi);}
+  .btn-acc svg{width:18px;height:18px;fill:currentColor;}
+  .fab{width:40px;height:40px;border-radius:var(--r-ctrl);display:grid;place-items:center;color:var(--text-2);}
+  .fab:hover{background:var(--subtle-hover);color:var(--text);}
+  .desc{width:var(--rail);font-size:12px;line-height:1.45;color:var(--text-3);margin-top:2px;}
+  .desc:empty{display:none;}
+  .desc a{color:var(--accent-text);text-decoration:none;}
+
+  /* ── Facts (the prototype's .fact numbers are what LikedFactsPanel copies 1:1) ───────────────────────────────── */
+  .facts{display:flex;flex-direction:column;gap:8px;width:var(--rail);margin-top:6px;}
+  .fact{
+    background:var(--card-default);border:1px solid var(--stroke-ctrl);border-radius:var(--r-card);
+    padding:10px 12px 11px;box-shadow:var(--elev-card);
+    animation:fadeUp .32s var(--ease) both;
+  }
+  .fact:nth-child(2){animation-delay:.05s}.fact:nth-child(3){animation-delay:.1s}.fact:nth-child(4){animation-delay:.15s}.fact:nth-child(5){animation-delay:.2s}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .fact .h{display:flex;align-items:baseline;gap:8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);font-weight:600;}
+  .fact .h .r{margin-left:auto;letter-spacing:0;text-transform:none;font-weight:400;color:var(--text-4);font-variant-numeric:tabular-nums;white-space:nowrap;}
+
+  .lately{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:end;margin-top:6px;}
+  .lately .big{font-family:var(--font-d);font-size:30px;line-height:1;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums;}
+  .lately .big small{display:block;font-family:var(--font);font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-3);margin-top:4px;white-space:nowrap;}
+  .spark{display:flex;align-items:flex-end;gap:3px;height:38px;min-width:0;}
+  .spark button{flex:1;height:38px;display:flex;align-items:flex-end;border-radius:3px;padding:0 1px;min-width:0;}
+  .spark button:hover{background:var(--subtle-hover);}
+  .spark button[aria-pressed="true"]{background:color-mix(in srgb, var(--accent) 18%, transparent);}
+  .spark i{display:block;width:100%;border-radius:2px 2px 1px 1px;background:color-mix(in srgb, var(--accent) 38%, transparent);min-height:3px;pointer-events:none;}
+  .spark button[aria-pressed="true"] i,.spark button.peak i{background:var(--accent);}
+  .spark button:hover i{background:var(--accent-text);}
+  .yrs{display:flex;gap:3px;margin-top:4px;font-size:9px;color:var(--text-4);font-variant-numeric:tabular-nums;}
+  .yrs span{flex:1;text-align:center;min-width:0;overflow:hidden;}
+
+  /* Tempo plot: same 38px stage as the sparkline, axis row underneath in the .yrs style. */
+  .tempo{display:block;width:100%;height:38px;overflow:visible;}
+  .tempo .band{fill:transparent;cursor:pointer;}
+  .tempo .band:hover{fill:var(--subtle-hover);}
+  .tempo .band[aria-pressed="true"]{fill:color-mix(in srgb, var(--accent) 18%, transparent);}
+  .tempo .hair{stroke:var(--divider);stroke-width:1;}
+  .tempo .area{fill:url(#ridgeFill);}
+  .tempo .line{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-linejoin:round;}
+  .tempo .rug{fill:color-mix(in srgb, var(--accent) 55%, transparent);}
+  .tempo .rug.key{opacity:.85;}
+  .tempo .med{stroke:var(--accent-text);stroke-width:1;stroke-dasharray:2 2;}
+  .tempo .bar{fill:color-mix(in srgb, var(--accent) 38%, transparent);}
+  .tempo .bar.peak{fill:var(--accent);}
+  .tempo .band:hover ~ .bar{}
+  .tempo .plot{pointer-events:none;}
+  .tempo .plot.grow{transform-origin:50% 100%;animation:rise .42s var(--ease) both;}
+  @keyframes rise{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+  .axis{display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--text-4);font-variant-numeric:tabular-nums;position:relative;height:11px;}
+  .axis span{position:absolute;transform:translateX(-50%);}
+
+  /* Top artists — the BUILT card (face row + ranked names), not v1's inline pile. */
+  .faces{display:flex;align-items:center;margin-top:8px;}
+  .face{width:28px;height:28px;border-radius:50%;margin-left:-12px;display:grid;place-items:center;font-size:10px;font-weight:700;color:#fff;border:2px solid var(--card-secondary);box-shadow:var(--elev-card);cursor:pointer;}
+  .face:first-child{margin-left:0;}
+  .face.more{background:var(--ctrl-default);color:var(--text-2);font-size:11px;font-weight:600;}
+  .face[aria-pressed="true"]{outline:2px solid var(--accent-text);outline-offset:1px;}
+  .ranked{display:flex;flex-direction:column;gap:2px;margin-top:8px;}
+  .ranked button{display:flex;align-items:baseline;gap:6px;text-align:left;padding:2px 4px;margin:0 -4px;border-radius:4px;font-size:13.5px;font-weight:600;color:var(--text);min-width:0;}
+  .ranked button:hover{background:var(--subtle-hover);}
+  .ranked button[aria-pressed="true"]{color:var(--accent-text);background:color-mix(in srgb, var(--accent) 12%, transparent);}
+  .ranked button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ranked button em{font-style:normal;color:var(--text-4);font-weight:400;font-variant-numeric:tabular-nums;flex:none;}
+  .ranked .more{font-weight:400;color:var(--text-3);font-size:12.5px;gap:4px;}
+
+  .blend{margin-top:8px;}
+  .bbar{display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px;}
+  .bbar button{display:block;height:100%;padding:0;min-width:0;background:var(--accent);opacity:var(--a,1);}
+  .bbar button.other{background:var(--text-4);}
+  .bbar button:hover{filter:brightness(1.12);}
+  .bbar button[aria-pressed="true"]{outline:2px solid var(--accent-text);outline-offset:1px;}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;font-size:12px;color:var(--text-2);}
+  .legend button{display:inline-flex;align-items:center;gap:6px;border-radius:4px;padding:2px 4px;margin:-2px;}
+  .legend button:hover,.legend button[aria-pressed="true"]{background:var(--subtle-hover);}
+  .legend button[aria-pressed="true"]{color:var(--accent-text);}
+  .legend i{display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--accent);opacity:var(--a,1);}
+  .legend i.other{background:var(--text-4);}
+  .legend em{font-style:normal;color:var(--text-4);font-variant-numeric:tabular-nums;}
+
+  .redisc{display:flex;align-items:center;gap:10px;margin-top:8px;}
+  .redisc .t{font-size:12.5px;line-height:1.35;color:var(--text-2);flex:1;}
+  .redisc .t b{color:var(--text);font-weight:600;}
+  .btn-mini{height:28px;padding:0 10px;border-radius:var(--r-ctrl);background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);font-size:12px;font-weight:600;color:var(--text);flex:none;}
+  .btn-mini:hover{background:var(--subtle-hover);}
+
+  /* Pills: collapsed facts. A FACT glyph + a distinct idle look so an unlit pill does not read as an active filter chip. */
+  .pills{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 0;animation:fadeUp .32s var(--ease) both;animation-delay:.2s;}
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px 0 8px;border-radius:13px;
+    background:var(--card-default);border:1px solid var(--stroke-ctrl);box-shadow:var(--elev-card);
+    font-size:12px;color:var(--text-2);white-space:nowrap;max-width:100%;
+  }
+  .pill svg{width:13px;height:13px;fill:none;stroke:var(--text-3);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none;}
+  .pill b{font-weight:600;color:var(--text);}
+  .pill em{font-style:normal;color:var(--text-4);font-variant-numeric:tabular-nums;}
+  .pill.lens:hover{background:var(--subtle-hover);}
+  .pill.lens[aria-pressed="true"]{background:color-mix(in srgb, var(--accent) 14%, transparent);border-color:color-mix(in srgb, var(--accent) 35%, transparent);color:var(--accent-text);}
+  .pill.lens[aria-pressed="true"] b,.pill.lens[aria-pressed="true"] svg{color:var(--accent-text);stroke:var(--accent-text);}
+  .pill.plain{cursor:default;}
+  @container (max-width:230px){ .pill em{display:none;} }
+  .facts{container-type:inline-size;}
+
+  .since{font-size:12px;color:var(--text-4);padding:2px 2px 0;line-height:1.4;}
+  .since b{color:var(--text-3);font-weight:500;}
+
+  /* ── Track list ──────────────────────────────────────────────────────────────────────────────────────────────── */
+  .list{display:flex;flex-direction:column;padding:12px 12px 0 4px;overflow:hidden;min-width:0;}
+  .tools{display:flex;align-items:center;gap:4px;height:40px;padding:0 4px;color:var(--text-2);font-size:13px;}
+  .tools .tb{display:flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--r-ctrl);}
+  .tools .tb:hover{background:var(--subtle-hover);}
+  .tools .sp{flex:1;}
+  .lensbar{display:none;align-items:center;gap:8px;min-height:28px;margin:0 4px 8px;flex-wrap:wrap;}
+  .lensbar.on{display:flex;}
+  .lpill{display:flex;align-items:center;gap:4px;height:28px;padding:0 6px 0 12px;border-radius:999px;
+    background:color-mix(in srgb, var(--accent) 14%, transparent);border:1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    font-size:12px;font-weight:600;}
+  .lpill .x{width:22px;height:22px;border-radius:11px;display:grid;place-items:center;}
+  .lpill .x:hover{background:var(--subtle-hover);}
+  .lensbar .cnt{color:var(--text-3);font-size:12px;font-variant-numeric:tabular-nums;}
+  .hdr,.row{display:grid;grid-template-columns:28px 36px minmax(0,1.2fr) minmax(0,1fr) 52px 92px 48px;align-items:center;gap:8px;padding:0 8px;}
+  .hdr{height:36px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);font-weight:600;border-bottom:1px solid var(--divider);}
+  .rows{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent;}
+  .row{height:52px;border-bottom:1px solid var(--divider);font-size:14px;}
+  .row:hover{background:var(--subtle-hover);border-radius:var(--r-ctrl);}
+  .row .ti{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .row .ar,.row .yr,.row .du,.row .bp{color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400;font-variant-numeric:tabular-nums;}
+  .row .du{text-align:right;}
+  .row .bp{display:flex;align-items:center;gap:6px;font-size:13px;}
+  .row .bp i{width:6px;height:6px;border-radius:1.5px;opacity:.85;background:var(--c);flex:none;}
+  .row .bp .k{color:var(--text-3);}
+  .row .th{width:36px;height:36px;border-radius:4px;background:var(--g);}
+  .row.off{opacity:.28;}
+  .row.now .ti,.row.now .ar{color:var(--accent-text);}
+  .row .n{color:var(--text-3);font-size:12px;font-variant-numeric:tabular-nums;}
+
+  /* ── Rules readout (the lab's inspector — replaces the queue column) ─────────────────────────────────────────── */
+  .rules{border-left:1px solid var(--divider);padding:16px 16px 0 18px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent;}
+  .rules h2{margin:0;font-family:var(--font-d);font-size:22px;font-weight:600;letter-spacing:-.3px;}
+  .rules .sub{font-size:12px;color:var(--text-3);line-height:1.45;margin-top:-6px;}
+  .knobs{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;font-size:12px;color:var(--text-2);padding:10px 12px;border-radius:var(--r-card);background:var(--card-default);border:1px solid var(--stroke-ctrl);}
+  .knobs label{display:contents;}
+  .knobs input[type=range]{width:100%;accent-color:var(--accent);grid-column:1/-1;margin:0 0 4px;}
+  .knobs .v{font-family:var(--mono);font-size:11px;color:var(--text-3);}
+  .fr{padding:10px 12px;border-radius:var(--r-card);background:var(--card-default);border:1px solid var(--stroke-ctrl);display:flex;flex-direction:column;gap:6px;}
+  .fr .t{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;}
+  .fr .t .st{margin-left:auto;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:2px 7px;border-radius:999px;}
+  .st.graph{background:color-mix(in srgb, var(--accent) 16%, transparent);color:var(--accent-text);}
+  .st.label{background:var(--ctrl-default);color:var(--text-2);border:1px solid var(--stroke-ctrl);}
+  .st.absent{background:transparent;color:var(--text-4);border:1px dashed var(--stroke-ctrl);}
+  .fr .m{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:11.5px;color:var(--text-3);font-variant-numeric:tabular-nums;}
+  .fr .m b{font-weight:500;color:var(--text-2);font-family:var(--mono);font-size:11px;}
+  .fr .why{font-size:11.5px;color:var(--text-3);line-height:1.4;border-top:1px solid var(--divider);padding-top:6px;}
+  .fr .why b{color:var(--text-2);font-weight:600;}
+
+  /* ── Player ──────────────────────────────────────────────────────────────────────────────────────────────────── */
+  .player{grid-area:player;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 16px 0 0;border-top:1px solid var(--divider);}
+  .np-left{display:flex;align-items:center;gap:12px;}
+  .np-left .art{width:62px;height:62px;background:linear-gradient(135deg,#3a4a6a,#1a2030);}
+  .np-left .t{font-weight:600;font-size:15px;}
+  .np-left .a{font-size:13px;color:var(--text-3);}
+  .np-mid{display:flex;align-items:center;gap:14px;color:var(--text-2);}
+  .np-mid .tm{font-size:12px;color:var(--text-3);font-variant-numeric:tabular-nums;}
+  .np-mid .pbar{width:460px;height:4px;background:var(--divider);border-radius:2px;overflow:hidden;}
+  .np-mid .pbar i{display:block;width:28%;height:100%;background:var(--accent);}
+  .np-mid .tr{display:flex;gap:6px;}
+  .np-mid .tr button{width:36px;height:36px;display:grid;place-items:center;border-radius:var(--r-ctrl);}
+  .np-mid .tr button:hover{background:var(--subtle-hover);}
+  .np-right{display:flex;justify-content:flex-end;align-items:center;gap:6px;color:var(--text-2);}
+  .np-right button{width:36px;height:36px;display:grid;place-items:center;border-radius:var(--r-ctrl);}
+
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important;animation:none !important;} }
+</style>
+
+<div class="lab" role="toolbar" aria-label="Prototype controls">
+  <span class="k">list</span>
+  <div class="seg" id="segScn"></div>
+  <span class="k">tempo</span>
+  <div class="seg" id="segRend">
+    <button aria-pressed="true" data-rend="ridge">ridge</button>
+    <button aria-pressed="false" data-rend="bars">bars</button>
+  </div>
+  <button class="tg" id="tgKeys" aria-pressed="false">keys</button>
+  <button class="tg" id="tgRail" aria-pressed="false">rail 280</button>
+  <button class="tg" id="tgTheme" aria-pressed="false">light</button>
+  <div class="note" id="note"></div>
+</div>
+
+<div class="win" role="application" aria-label="Wavee">
+  <div class="titlebar">
+    <div class="tb-l">
+      <button class="tb-btn" aria-label="Back"><svg class="i" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button class="tb-btn" disabled aria-label="Forward"><svg class="i" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      <div class="tab" id="tabLabel"></div>
+    </div>
+    <div class="search">Search songs, artists, albums…<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg></div>
+    <div class="tb-r">
+      <button class="tb-btn" aria-label="Account"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6"/></svg></button>
+      <div class="caption">
+        <button aria-label="Minimize"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <button aria-label="Maximize"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+        <button class="close" aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <nav class="nav" aria-label="Sidebar">
+    <button aria-label="Home"><svg class="i" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg></button>
+    <div class="gap"></div>
+    <button class="on" aria-current="page" aria-label="Library"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
+    <div class="gap"></div>
+    <div class="pin" style="background:linear-gradient(135deg,#c42b1c,#7a1020)"></div>
+    <div class="pin" style="background:linear-gradient(135deg,#5B4AE0,#2f9e8a)"></div>
+    <div class="pin" style="background:linear-gradient(135deg,#5a6fa8,#a0557c)"></div>
+  </nav>
+
+  <div class="content">
+    <aside class="rail" aria-label="Playlist">
+      <div class="cover" id="cover"></div>
+      <div class="owner" id="owner"><div class="av"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.6 14.4a.8.8 0 0 1-1.1.28c-3-1.84-6.78-2.26-11.22-1.24a.8.8 0 1 1-.36-1.56c4.86-1.12 9.06-.64 12.4 1.4a.8.8 0 0 1 .28 1.12z"/></svg></div><div class="nm" id="ownerName"></div></div>
+      <h1 id="heroTitle"></h1>
+      <div class="meta" id="heroMeta"></div>
+      <div class="cta">
+        <button class="btn-acc"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg>Play</button>
+        <button class="fab" aria-label="Save"><svg class="i" viewBox="0 0 24 24"><path d="M12 20.5l-1.3-1.2C5.6 14.7 2.5 11.9 2.5 8.4 2.5 5.6 4.7 3.5 7.4 3.5c1.6 0 3.1.7 4.1 1.9 1-1.2 2.5-1.9 4.1-1.9 2.7 0 4.9 2.1 4.9 4.9 0 3.5-3.1 6.3-8.2 10.9L12 20.5z"/></svg></button>
+        <button class="fab" aria-label="More"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+      </div>
+      <div class="desc" id="heroDesc"></div>
+      <div class="facts" id="facts"></div>
+    </aside>
+
+    <section class="list" aria-label="Tracks">
+      <div class="tools">
+        <button class="tb"><svg class="i" viewBox="0 0 24 24"><path d="M16 3l4 4-4 4M4 7h5c2 0 3 1 4 3M20 7h-4"/></svg>Shuffle</button>
+        <div class="sp"></div>
+        <button class="tb" aria-label="Find"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg></button>
+      </div>
+      <div class="lensbar" id="lensbar"></div>
+      <div class="hdr"><span></span><span></span><span>Title</span><span>Artist</span><span>Year</span><span>BPM · Key</span><span style="text-align:right">Time</span></div>
+      <div class="rows" id="rows"></div>
+    </section>
+
+    <aside class="rules" aria-label="Rules readout">
+      <h2>Which facts earn a card</h2>
+      <div class="sub">Every distribution is measured over <b>its own lens categories</b> (year bucket · tempo band · primary tag) and resolves to GRAPH, LABEL or ABSENT. Move the caps; the rail re-decides live.</div>
+      <div class="knobs" id="knobs"></div>
+      <div id="readout"></div>
+    </aside>
+  </div>
+
+  <footer class="player">
+    <div class="np-left">
+      <div class="art"></div>
+      <div><div class="t" id="npTitle"></div><div class="a" id="npArtist"></div></div>
+    </div>
+    <div class="np-mid">
+      <div class="tr">
+        <button aria-label="Previous"><svg class="i" viewBox="0 0 24 24"><path d="M6 5v14M18 5l-10 7 10 7z"/></svg></button>
+        <button aria-label="Pause"><svg class="i" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
+        <button aria-label="Next"><svg class="i" viewBox="0 0 24 24"><path d="M18 5v14M6 5l10 7-10 7z"/></svg></button>
+      </div>
+      <span class="tm">0:48</span>
+      <div class="pbar"><i></i></div>
+      <span class="tm">3:11</span>
+    </div>
+    <div class="np-right">
+      <button aria-label="Queue"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  // ── Thresholds (the sliders edit these) ─────────────────────────────────────────────────────────────────────────
+  const T = {
+    minKnown: 10,       // LikedFactsRules.MinDecadeEvidence — below this a fact is trivia (ABSENT)
+    minCoverage: 0.60,  // share of tracks that must carry the value (tempo / years)
+    minGraph: 20,       // known values a GRAPH needs; 10–19 known is LABEL-only
+    minCats: 3,         // non-empty categories a GRAPH needs
+    yearCap: 0.50,      // top year-bucket share at/above which years collapse to a pill
+    tempoCap: 0.70,     // top tempo-band share (bands are 20–30 bpm wide, so demand more)
+    blendCap: 0.85,     // top primary-tag share
+    blendFlat: 0.15,    // top tag UNDER this = "no style leads" → pill
+    blendFloor: 3,      // ContentFilterTags.MinTrackCount
+  };
+  const KNOBS = [
+    ["yearCap","years cap · top bucket ≥",0.2,0.9,0.05, v=>Math.round(v*100)+" %"],
+    ["tempoCap","tempo cap · top band ≥",0.4,0.95,0.05, v=>Math.round(v*100)+" %"],
+    ["blendCap","blend cap · top tag ≥",0.5,0.98,0.01, v=>Math.round(v*100)+" %"],
+    ["minGraph","graph needs · known ≥",10,60,1, v=>String(v)],
+    ["minCoverage","eligible · coverage ≥",0.3,1,0.05, v=>Math.round(v*100)+" %"],
+  ];
+
+  // ── Seeded randomness (scenarios must reproduce their headline numbers exactly) ────────────────────────────────
+  function rng(seed){
+    let a = seed >>> 0;
+    const r = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    r.gauss = () => { const u = 1 - r(), v = r(); return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v); };
+    r.pick = arr => arr[Math.floor(r()*arr.length)];
+    r.shuffle = arr => { for (let i = arr.length-1; i > 0; i--){ const j = Math.floor(r()*(i+1)); [arr[i],arr[j]] = [arr[j],arr[i]]; } return arr; };
+    return r;
+  }
+  // quotas {value: count, ...} → a shuffled list of exactly n values ('?' = unknown)
+  function expand(quotas, n, r){
+    const out = [];
+    for (const k in quotas) for (let i = 0; i < quotas[k]; i++) out.push(k === "?" ? null : k);
+    while (out.length < n) out.push(null);
+    return r.shuffle(out.slice(0, n));
+  }
+
+  // ── Camelot wheel (stand-in hues; the app uses the server's per-slot colour through DataDotInk) ─────────────────
+  const MAJOR = ["B","F♯","D♭","A♭","E♭","B♭","F","C","G","D","A","E"];
+  const MINOR = ["A♭m","E♭m","B♭m","Fm","Cm","Gm","Dm","Am","Em","Bm","F♯m","D♭m"];
+  function camelot(slot, ring){ return { code: slot + ring, name: (ring === "B" ? MAJOR : MINOR)[slot-1], hue: (slot-1)*30 + (ring==="A" ? 12 : 0) }; }
+  const keyColor = hue => `hsl(${hue} 78% var(--key-l))`;
+
+  // ── Scenarios ───────────────────────────────────────────────────────────────────────────────────────────────────
+  // years / tags are QUOTAS (exact counts); tempo is a mixture of gaussian modes + a coverage share.
+  const S = [
+    { id:"kpop", seg:"K-Pop", page:"default", seed:11, n:50, liked:false, spread:false,
+      title:"Fridays in the morning", owner:"Spotify", desc:"Here's some <a>beat drop</a>, <a>165 bpm</a>, <a>dance covers</a>, <a>hallyu</a>, <a>bouncy</a>, <a>global</a> – inspired by your listening on Fridays in the morning",
+      cv:"radial-gradient(80% 70% at 30% 20%,#ff7ab8,transparent 60%),radial-gradient(70% 80% at 80% 70%,#2a1a6a,transparent 55%),linear-gradient(160deg,#ff4f9a,#3a1c7a)",
+      artists:[["MEOVV",4],["ROSÉ",4],["BLACKPINK",3],["KATSEYE",3],["TOMORROW X TOGETHER",3],["aespa",3],["NewJeans",3],["LE SSERAFIM",2],["IVE",2],["ILLIT",2],["BABYMONSTER",2],["Stray Kids",2],["ENHYPEN",2],["NMIXX",2],["Jennie",2],["Lisa",2],["BIGBANG",1],["(G)I-DLE",1],["Red Velvet",1],["TWICE",1],["ITZY",1],["RIIZE",1],["ZEROBASEONE",1],["BOYNEXTDOOR",1],["Kiss of Life",1]],
+      titles:["Body","APT.","Jump","Gnarly","Drama","Supernova","Deja Vu","Toxic Till the End","Crazy","Whiplash","Magnetic","Sheesh","Chk Chk Boom","Number One Girl","Bad Guy","Armageddon","Touch","Fate","Attention","Perfect Night","Love Hangover","Baddie","Fantastic Baby","Klaxon","Cosmic","Igloo","Batter Up","Boom Boom Bass","Bubble Gum","ETA","Mantra","Hot Mess","Unforgiven","Smart","Talk Saxy","Right Now","Like Jennie","Rockstar","Fe3O4","Girls Never Die","How Sweet","Get Up","OMG","After Like","Nxde","Queencard","Kill Bill","Spicy","Hype Boy","Earthquake"],
+      years:{2024:41, 2025:3, 2023:2, 2022:1, 2019:1, 2016:1, 2012:1},
+      tempo:{ coverage:0.96, modes:[{mu:100,sd:6,w:.42},{mu:128,sd:5,w:.18},{mu:165,sd:6,w:.40}] },
+      tags:{"K-Pop":49,"Pop":1},
+      note:"<b>The screenshot.</b> 41 of 50 tracks are 2024 → the years card is a wasted 80 DIP, so it collapses to a pill (still a lens). Tempo has two humps (≈100 and ≈165 — the description literally says <b>165 bpm</b>) and no band reaches the cap → it earns the card. K-Pop 98 % → pill." },
+
+    { id:"tens", seg:"10's", page:"editorial", seed:21, n:99, liked:false, spread:false,
+      title:"10's Allerbeste", owner:"Spotify", desc:"De allerbeste songs van de 10's! Cover: Martin Garrix",
+      cv:"radial-gradient(80% 70% at 30% 20%,#ff6a4a,transparent 60%),radial-gradient(70% 80% at 80% 70%,#7a1020,transparent 55%),linear-gradient(160deg,#d42a1c,#8a0c18)",
+      artists:[["Martin Garrix",12],["Avicii",9],["Calvin Harris",8],["David Guetta",6],["Swedish House Mafia",5],["Afrojack",4],["Tiësto",4],["Hardwell",4],["Kygo",4],["The Chainsmokers",4],["Zedd",3],["Alesso",3],["DJ Snake",3],["Major Lazer",3],["Rihanna",3],["Sia",3],["Dua Lipa",3],["Ed Sheeran",3],["Armin van Buuren",3],["Oliver Heldens",2],["Robin Schulz",2],["Lost Frequencies",2],["Sam Feldt",2],["Don Diablo",2],["Nicky Romero",2]],
+      titles:["Animals","Wake Me Up","Summer","Titanium","Don't You Worry Child","Turn Down for What","Outside","The Nights","This Is What You Came For","Scared to Be Lonely","Levels","Feel So Close","In the Name of Love","Firestone","Closer","Clarity","Heroes","Lean On","Waiting for Love","Cheap Thrills","One Kiss","Shape of You","Hey Brother","Sweet Nothing","Reality","Prayer in C","Are You With Me","Show Me Love","Take Over Control","Red Lights","Stay the Night","Spaceman","Apollo","Save the World","I Could Be the One","Wasted","Don't Let Me Down","Something Just Like This","Roses","How Deep Is Your Love","Hey Mama","Dangerous","Bad","Tremor","Wizard","Forever","Gecko","Koala","Runaway (U & I)","Middle"],
+      years:{2010:4,2011:6,2012:8,2013:11,2014:18,2015:14,2016:12,2017:9,2018:7,2019:5,2020:3,2021:2},
+      tempo:{ coverage:0.98, modes:[{mu:127,sd:2.6,w:.86},{mu:102,sd:6,w:.14}] },
+      tags:{"Dance":28,"EDM":21,"Pop":18,"House":12,"Electro":8,"Progressive":5,"Tropical":4,"Big Room":3},
+      note:"<b>Editorial, one decade.</b> Years are spread across 2010–2021 → a real shape → GRAPH (decade concentration alone never demotes). Tempo sits at 124–130 like every house set: top band 120–139 clears the cap → a pill that names the BAND it filters, with the median in its tooltip." },
+
+    { id:"liked", seg:"Liked", page:"default", seed:31, n:276, liked:true, spread:true,
+      title:"Liked Songs", owner:"", desc:"",
+      cv:"radial-gradient(70% 60% at 30% 20%,#7d8fd6,transparent 70%),radial-gradient(80% 70% at 80% 80%,#5a2e6a,transparent 70%),#4a3a8a",
+      artists:[["TOTO",8],["Billy Idol",6],["Clouseau",5],["aespa",5],["Adele",4],["Fleetwood Mac",4],["Coldplay",4],["Daft Punk",4],["Kate Bush",3],["Tame Impala",3],["London Grammar",3],["Bon Iver",3],["Nirvana",3],["Massive Attack",3],["Radiohead",3],["Phoenix",3],["Ludovico Einaudi",3],["Hans Zimmer",2],["Portishead",2],["The Weeknd",2],["Billie Eilish",2],["Lorde",2],["Frank Ocean",2],["Röyksopp",2],["Air",2]],
+      titles:["Africa","Rebel Yell","Daar Gaat Ze","Spicy","Easy On Me","Dreams","Yellow","Around the World","Running Up That Hill","The Less I Know the Better","Hey Now","Holocene","Come as You Are","Teardrop","Karma Police","1901","Nuvole Bianche","Time","Glory Box","Blinding Lights","when the party's over","Royals","Pink + White","Eple","Sexy Boy","Hold the Line","Eyes Without a Face","Supernova","Hello","Close To You","Everywhere","Fix You","Get Lucky","Wuthering Heights","Let It Happen","Strong","Skinny Love","Lithium","Unfinished Sympathy","No Surprises","Lisztomania","Experience","Cornfield Chase","Roads","Save Your Tears","bad guy","Team","Nights","Remind Me","La Femme d'Argent"],
+      years:Object.assign({"?":30}, Object.fromEntries(Array.from({length:44},(_,i)=>[1982+i, [3,2,6,4,3,5,4,3,6,5,4,6,7,5,3,4,5,6,4,3,5,7,6,4,5,6,8,7,5,6,8,9,7,6,8,7,9,6,8,7,5,6,4,3][i]]))),
+      tempo:{ coverage:0.88, modes:[{mu:78,sd:8,w:.18},{mu:100,sd:9,w:.30},{mu:124,sd:8,w:.32},{mu:150,sd:12,w:.20}] },
+      tags:{"Pop":68,"Soft":48,"K-Pop":31,"Nostalgia":26,"Electronic":20,"Indie":14,"Rock":12,"Classical":9,"Trip Hop":7,"Ambient":5,"?":36},
+      note:"<b>Liked Songs.</b> AddedAt spreads, so the WEEK card owns the time slot — and years no longer vanish: they fall to a pill. Tempo is an independent slot (60–180, four humps) → GRAPH. Blend stays a bar; Rediscover as before." },
+
+    { id:"crate", seg:"Crate", page:"owned", seed:41, n:64, liked:false, spread:false,
+      title:"Crate digs 65–24", owner:"You", desc:"Records, reissues, one-offs.",
+      cv:"radial-gradient(70% 60% at 30% 20%,#c9a066,transparent 70%),radial-gradient(80% 70% at 80% 80%,#3a2a1a,transparent 70%),#6a4a2a",
+      artists:[["Nina Simone",5],["Curtis Mayfield",4],["Fela Kuti",4],["Khruangbin",6],["Alabama Shakes",3],["Leon Bridges",3],["Sault",4],["Gil Scott-Heron",3],["Marvin Gaye",3],["Erykah Badu",3],["D'Angelo",3],["Herbie Hancock",2],["Serge Gainsbourg",2],["Mulatu Astatke",2],["Michael Kiwanuka",3],["Anderson .Paak",3],["Little Simz",3],["Yussef Dayes",2],["Bill Withers",2],["Roy Ayers",2],["Sade",2]],
+      titles:["Feeling Good","Move On Up","Water No Get Enemy","Maria También","Hold On","Coming Home","Wildfires","The Revolution Will Not Be Televised","Inner City Blues","On & On","Brown Sugar","Cantaloupe Island","Bonnie and Clyde","Yèkèrmo Sèw","Cold Little Heart","Come Down","Woman","Black Classical Music","Lovely Day","Everybody Loves the Sunshine","Smooth Operator","Sinnerman","Pusherman","Zombie","Time (You and I)","Don't Wanna Fight","River","Free","Home Is Where the Hatred Is","What's Going On","Didn't Cha Know","Untitled (How Does It Feel)","Chameleon","Je t'aime… moi non plus","Tezeta","Love & Hate","Tints","Venom","For My Ladies","Ain't No Sunshine","Searching","No Ordinary Love"],
+      years:{1965:1,1968:1,1971:2,1972:2,1974:1,1975:1,1977:1,1980:1,1984:1,1995:1,1997:2,2000:1,2005:1,2012:1,2015:2,2016:2,2017:3,2018:4,2019:5,2020:6,2021:7,2022:6,2023:6,2024:5},
+      tempo:{ coverage:0.92, modes:[{mu:92,sd:9,w:.55},{mu:118,sd:9,w:.45}] },
+      tags:{"Soul":18,"Funk":11,"Jazz":10,"R&B":9,"Afrobeat":6,"Hip Hop":5,"Psych":5},
+      note:"<b>Span &gt; 12.</b> 1965–2024 is binned into twelve 5-year buckets; the last bin holds most of the list. The rule measures the HISTOGRAM'S buckets (not single years), so it correctly reads this as dominated → pill — one tall bar plus noise was never a chart. Tempo → graph." },
+
+    { id:"dnb", seg:"DnB", page:"owned", seed:51, n:48, liked:false, spread:false,
+      title:"Liquid + rollers", owner:"You", desc:"",
+      cv:"radial-gradient(70% 60% at 30% 20%,#2fd0c0,transparent 70%),radial-gradient(80% 70% at 80% 80%,#0a2a3a,transparent 70%),#0f4a5a",
+      artists:[["Calibre",5],["LTJ Bukem",4],["High Contrast",4],["Netsky",4],["Sub Focus",4],["Wilkinson",3],["Chase & Status",3],["Hybrid Minds",3],["Camo & Krooked",3],["London Elektricity",3],["Goldie",2],["Roni Size",2],["Etherwood",2],["Nu:Tone",2],["Logistics",2],["Bou",2]],
+      titles:["Even If","Horizons","Racing Green","Rio","Rock It","Afterglow","Blind Faith","Kismet","Climax","Just One Second","Inner City Life","Brown Paper Bag","Begin Again","Balaclava","Together","Poison","Mr Majestic","Music","Return of Forever","Love Sick","Tidal Wave","Hypest Hype","Meant to Be","Cross the Line","Hold Tight","Timeless","Share the Fall","Souvenir","Heartbeat","Cold Hands","Tender Trap","Iron Shirt","Wild Hearts","Falling Slowly"],
+      years:{1994:2,1995:1,1997:1,2003:2,2005:2,2007:2,2009:3,2010:3,2011:3,2012:4,2013:3,2014:4,2016:3,2018:4,2020:3,2022:4,2024:4},
+      tempo:{ coverage:1, modes:[{mu:174,sd:1.8,w:.80},{mu:87,sd:1,w:.20}] },
+      tags:{"Drum and Bass":34,"Liquid Funk":9,"Jungle":5},
+      note:"<b>Half-time reporting.</b> Every track here is 174 bpm to a human, but Spotify reports a fifth of them at 87. Top band 140+ holds 80 % → pill (\"mostly 140 bpm and up\"). The pill never says \"steady\" — that adjective would be a lie — and the rug in the graph variant would show the phantom cluster honestly. (Lower the tempo cap to see the graph.)" },
+
+    { id:"split", seg:"50/50", page:"owned", seed:61, n:40, liked:false, spread:false,
+      title:"Warm-up → peak", owner:"You", desc:"House first hour, rollers second.",
+      cv:"radial-gradient(70% 60% at 30% 20%,#ff9a5a,transparent 70%),radial-gradient(80% 70% at 80% 80%,#2a1a4a,transparent 70%),#5a2a6a",
+      artists:[["Disclosure",4],["Kaytranada",3],["Fred again..",3],["Peggy Gou",3],["Folamour",3],["Chaos in the CBD",2],["Sub Focus",3],["Wilkinson",3],["Netsky",3],["Hybrid Minds",3],["Dimension",2],["Culture Shock",2],["Bou",2],["Kanine",2],["Andy C",2]],
+      titles:["Latch","10%","Delilah (pull me out of this)","(It Goes Like) Nanana","Devoted to the Sunshine","Midnight in Peckham","Rock It","Afterglow","Rio","Meant to Be","Offender","Bunker","Poison","Superstar","Heartbeat Loud","You & Me","Glowed Up","Marea","Starry Night","Pied Piper","Luv Deluxe","Solar System","Tidal Wave","Hold Tight","Time (Is Fading)","Discotheque","Ride","Reset","Bagatelle","Bawlin'"],
+      years:{2012:2,2013:3,2015:3,2016:4,2017:3,2018:4,2019:4,2020:3,2021:4,2022:4,2023:3,2024:3},
+      tempo:{ coverage:1, modes:[{mu:124,sd:2.5,w:.5},{mu:174,sd:2,w:.5}] },
+      tags:{"House":19,"Drum and Bass":17,"Disco":4},
+      note:"<b>Bimodal, 50/50.</b> This is the case an IQR rule gets wrong: the middle 50 % spans both humps so IQR looks \"wide\", while an 80/20 version would look \"tight\" and hide a fifth of the list. Top-band share reads 50 % → below the cap → GRAPH, and the graph shows exactly the two sets." },
+
+    { id:"rock", seg:"Rock", page:"editorial", seed:71, n:60, liked:false, spread:false,
+      title:"Rock Classics", owner:"Spotify", desc:"Rock legends & epic songs that continue to inspire generations.",
+      cv:"radial-gradient(80% 70% at 30% 20%,#6a6a7a,transparent 60%),radial-gradient(70% 80% at 80% 70%,#1a1a20,transparent 55%),linear-gradient(160deg,#3a3a44,#101014)",
+      artists:[["Queen",5],["Led Zeppelin",5],["AC/DC",4],["The Rolling Stones",4],["Fleetwood Mac",3],["Pink Floyd",3],["The Who",3],["Deep Purple",3],["Eagles",3],["Boston",2],["Journey",3],["Kansas",2],["Foreigner",2],["Heart",2],["Guns N' Roses",3],["Bon Jovi",3],["Dire Straits",2],["Tom Petty",2],["Bruce Springsteen",2],["ZZ Top",2],["Aerosmith",2]],
+      titles:["Bohemian Rhapsody","Whole Lotta Love","Back in Black","Paint It Black","Go Your Own Way","Comfortably Numb","Baba O'Riley","Smoke on the Water","Hotel California","More Than a Feeling","Don't Stop Believin'","Carry On Wayward Son","Juke Box Hero","Barracuda","Sweet Child o' Mine","Livin' on a Prayer","Sultans of Swing","American Girl","Born to Run","La Grange","Dream On","We Will Rock You","Kashmir","Thunderstruck","Gimme Shelter","The Chain","Wish You Were Here","Won't Get Fooled Again","Highway Star","Life in the Fast Lane"],
+      years:{1969:3,1970:4,1971:5,1972:3,1973:4,1975:5,1976:6,1977:6,1978:4,1979:4,1980:4,1981:3,1982:3,1984:2,1986:2,1987:2},
+      tempo:{ coverage:0.55, modes:[{mu:118,sd:14,w:1}] },
+      tags:{"Classic Rock":40,"Hard Rock":12,"Arena Rock":8},
+      note:"<b>Thin tempo.</b> Only 55 % of these rows carry a kind-222 payload — under the 60 % coverage floor the tempo fact is ABSENT, not a half-true graph. Years 1969–1987 spread → GRAPH. Blend: Classic Rock at 67 % is under the cap → bar." },
+
+    { id:"flat", seg:"Flat", page:"owned", seed:81, n:60, liked:false, spread:true,
+      title:"Everything, actually", owner:"You", desc:"",
+      cv:"radial-gradient(70% 60% at 30% 20%,#9ad0ff,transparent 70%),radial-gradient(80% 70% at 80% 80%,#ffd09a,transparent 70%),#7a8a9a",
+      artists:[["Björk",3],["Kendrick Lamar",3],["Miles Davis",3],["Arvo Pärt",2],["Rosalía",3],["Burial",3],["Bad Bunny",3],["Boards of Canada",3],["Amy Winehouse",2],["Aphex Twin",2],["Caetano Veloso",2],["Nils Frahm",2],["Little Simz",2],["Sufjan Stevens",3],["Fela Kuti",2],["Tinariwen",2],["Beach House",2],["Mitski",2],["Four Tet",2],["Oumou Sangaré",2],["Talking Heads",2],["Yo La Tengo",2],["Grouper",2],["Ólafur Arnalds",2],["Ravyn Lenae",2],["Sampha",2]],
+      titles:["Hyperballad","Alright","So What","Spiegel im Spiegel","Malamente","Archangel","Tití Me Preguntó","Roygbiv","Back to Black","Avril 14th","Sozinho","Says","Introvert","Chicago","Water No Get Enemy","Cler Achel","Space Song","Nobody","Two Thousand and Seventeen","Yala","This Must Be the Place","Autumn Sweater","Heavy Water/I'd Rather Be Sleeping","Near Light","Skin Tight","(No One Knows Me) Like the Piano","Jóga","HUMBLE.","Blue in Green","Pienso en tu mirá"],
+      years:{1959:2,1968:1,1977:2,1985:2,1991:2,1994:3,1997:3,2000:2,2003:3,2005:3,2007:2,2009:3,2011:3,2013:3,2015:4,2016:3,2017:4,2018:4,2019:3,2021:3,2022:3,2024:2},
+      tempo:{ coverage:0.85, modes:[{mu:72,sd:8,w:.25},{mu:96,sd:10,w:.3},{mu:120,sd:8,w:.25},{mu:150,sd:14,w:.2}] },
+      tags:{"Jazz":6,"Hip Hop":6,"Ambient":5,"Indie":5,"Electronic":5,"Reggaeton":4,"Flamenco":4,"Classical":4,"Soul":4,"Folk":4,"MPB":3,"Afrobeat":3,"Desert Blues":3,"Dream Pop":2,"Art Pop":2},
+      note:"<b>Flat blend.</b> Fifteen styles, none over 15 % — a bar that is 65 % \"Other\" is as degenerate as one that is 98 % one colour, so it collapses to a plain label (not a lens: there is no one tag to open). Adds spread over months → week card; years → pill (span &gt; 12, but no dominant bin... see the readout: 22 known years in 12 bins, top bin under the cap → it WOULD graph, but the week card owns the slot)." },
+
+    { id:"run", seg:"Run", page:"owned", seed:91, n:45, liked:false, spread:false,
+      title:"Run 170", owner:"You", desc:"Cadence 170. Nothing else.",
+      cv:"radial-gradient(70% 60% at 30% 20%,#ffe36a,transparent 70%),radial-gradient(80% 70% at 80% 80%,#3a3a0a,transparent 70%),#8a7a1a",
+      artists:[["Sub Focus",5],["Wilkinson",5],["Netsky",4],["Dimension",4],["Culture Shock",4],["Metrik",4],["Fox Stevenson",3],["Hybrid Minds",3],["Camo & Krooked",3],["Bou",3],["Andromedik",3],["1991",2],["Kanine",2]],
+      titles:["Rock It","Afterglow","Rio","Offender","Bunker","Freefall","Sweets (Soda Pop)","Meant to Be","Climax","Poison","Nightfall","Odyssey","Superstar","Solar System","Take Me Away","Hold Tight","Want You","Out the Door","Wish You Were Here","Slow","Feel Alive","Pinball","Ready to Fly","Timeless","Heartbeat Loud","Champion Sound","Tidal Wave","Airplane","All I Need","Inside Out"],
+      years:{2022:11,2023:16,2024:15,2025:3},
+      tempo:{ coverage:1, modes:[{mu:172,sd:1.6,w:1}] },
+      tags:{"Drum and Bass":43,"Dance":2},
+      note:"<b>Everything degenerate.</b> 2023 is not quite half... but there are only 4 years and 45 known, so the years pill wins on the category count; 100 % of tempos sit in 140+; 96 % one tag. The rail becomes artists + three pills + the since-line — the zero-scroll payoff." },
+
+    { id:"tiny", seg:"Tiny", page:"owned", seed:101, n:8, liked:false, spread:false,
+      title:"Road trip (wip)", owner:"You", desc:"",
+      cv:"radial-gradient(70% 60% at 30% 20%,#a0e0c0,transparent 70%),radial-gradient(80% 70% at 80% 80%,#2a5a4a,transparent 70%),#3a7a6a",
+      artists:[["Khruangbin",2],["Men I Trust",2],["Mac DeMarco",1],["Tame Impala",1],["Still Woozy",1],["Boy Pablo",1]],
+      titles:["Time (You and I)","Show Me How","Chamber of Reflection","Borderline","Goodie Bag","Everytime","Maria También","Lauren"],
+      years:{2018:2,2019:2,2020:2,2021:1,2015:1},
+      tempo:{ coverage:1, modes:[{mu:100,sd:10,w:1}] },
+      tags:{"Indie":6,"Psych":2},
+      note:"<b>Eight tracks.</b> Everything is under the evidence floor (10 known): no years, no tempo. Blend: Indie has 6 carriers (≥ 3 floor) → it names, and at 75 % it is under the cap, so a bar — the one card the existing rules would also have drawn. Artists always rank." },
+
+    { id:"twelve", seg:"12/10", page:"owned", seed:111, n:12, liked:false, spread:false,
+      title:"New adds", owner:"You", desc:"",
+      cv:"radial-gradient(70% 60% at 30% 20%,#d0a0ff,transparent 70%),radial-gradient(80% 70% at 80% 80%,#2a1a4a,transparent 70%),#5a3a8a",
+      artists:[["Clairo",2],["beabadoobee",2],["Laufey",2],["Lizzy McAlpine",1],["Gracie Abrams",1],["Olivia Dean",1],["Mk.gee",1],["Geese",1],["Wet Leg",1]],
+      titles:["Sexy to Someone","Beaches","From the Start","ceilings","I Love You, I'm Sorry","Dive","Alesis","Cowboy Nudes","Chaise Longue","Juna","Coffee","Bewitched"],
+      years:{2024:4,2023:3,2022:2,2021:1,"?":2},
+      tempo:{ coverage:0.75, modes:[{mu:110,sd:12,w:1}] },
+      tags:{"Indie":7,"Pop":3,"?":2},
+      note:"<b>12 tracks, 10 dated.</b> Years clear the 10-known floor but not the 20-known graph floor → LABEL only (\"mostly 2024 · 4 of 10\"). Tempo has 9 known → ABSENT. Below 20 the shape of twelve bars is noise; the pill still states the one thing the data supports." },
+  ];
+
+  // ── Build the track list for a scenario ─────────────────────────────────────────────────────────────────────────
+  function build(s){
+    const r = rng(s.seed);
+    const n = s.n;
+    const years = expand(s.years, n, r).map(v => v === null ? 0 : +v);
+    const tags = expand(s.tags, n, r);
+    const pool = []; s.artists.forEach(([name,c]) => { for (let i = 0; i < c; i++) pool.push(name); });
+    r.shuffle(pool);
+    const tracks = [];
+    for (let i = 0; i < n; i++){
+      let bpm = null, key = null;
+      if (s.tempo && r() < s.tempo.coverage){
+        let u = r(), acc = 0, m = s.tempo.modes[s.tempo.modes.length-1];
+        for (const mode of s.tempo.modes){ acc += mode.w; if (u <= acc){ m = mode; break; } }
+        bpm = Math.max(40, Math.round(m.mu + m.sd * r.gauss()));
+        key = camelot(1 + Math.floor(r()*12), r() < .6 ? "B" : "A");
+      }
+      const t = s.titles[i % s.titles.length] + (i >= s.titles.length ? (i >= 2*s.titles.length ? " (Live)" : " – Remix") : "");
+      tracks.push({
+        i, title: t, artist: pool[i % pool.length], year: years[i], bpm, key, tag: tags[i],
+        addedDays: s.spread ? Math.floor(Math.pow(r(), 1.6) * 420) : 30,
+        dur: 150 + Math.floor(r()*130),
+      });
+    }
+    return tracks;
+  }
+
+  // ── Rules ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  // LikedFactsRules.YearHistogram: span ≤ 12 → consecutive years centred; span > 12 → 12 equal bins.
+  function yearBuckets(tracks, bars = 12){
+    const dated = tracks.filter(t => t.year > 0);
+    if (!dated.length) return [];
+    let minY = Infinity, maxY = -Infinity;
+    dated.forEach(t => { minY = Math.min(minY, t.year); maxY = Math.max(maxY, t.year); });
+    const span = maxY - minY + 1, b = [];
+    if (span <= bars){
+      const start = Math.max(1, minY - Math.floor((bars - span)/2));
+      for (let i = 0; i < bars; i++) b.push({lo:start+i, hi:start+i, count:0});
+    } else {
+      for (let i = 0; i < bars; i++) b.push({lo: minY + Math.floor(i*span/bars), hi: minY + Math.floor((i+1)*span/bars) - 1, count:0});
+    }
+    dated.forEach(t => { const k = b.findIndex(x => t.year >= x.lo && t.year <= x.hi); if (k >= 0) b[k].count++; });
+    return b;
+  }
+  const BANDS = [
+    {id:1, lo:0,   hi:90,  name:"Slow",      range:"under 90 bpm"},
+    {id:2, lo:90,  hi:120, name:"Medium",    range:"90 – 119 bpm"},
+    {id:3, lo:120, hi:140, name:"Fast",      range:"120 – 139 bpm"},
+    {id:4, lo:140, hi:1e9, name:"Very fast", range:"140 bpm and up"},
+  ];
+  const bandOf = bpm => BANDS.find(b => bpm >= b.lo && bpm < b.hi);
+
+  function entropy(counts){
+    const tot = counts.reduce((a,c)=>a+c, 0), k = counts.filter(c => c > 0).length;
+    if (k <= 1 || tot === 0) return 0;
+    let h = 0; counts.forEach(c => { if (c > 0){ const p = c/tot; h -= p*Math.log(p); } });
+    return h / Math.log(k);
+  }
+  // The ONE resolver. Same for every distribution fact.
+  function shape(known, total, cats, top, cap){
+    if (known < T.minKnown) return {state:"absent", why:`known ${known} &lt; ${T.minKnown}`};
+    if (known/total < T.minCoverage) return {state:"absent", why:`coverage ${pct(known/total)} &lt; ${pct(T.minCoverage)}`};
+    if (known < T.minGraph) return {state:"label", why:`known ${known} &lt; ${T.minGraph} — twelve bars off that many values is noise`};
+    if (cats < T.minCats) return {state:"label", why:`only ${cats} non-empty categor${cats===1?"y":"ies"} &lt; ${T.minCats}`};
+    if (top >= cap) return {state:"label", why:`top share ${pct(top)} ≥ cap ${pct(cap)}`};
+    return {state:"graph", why:`top share ${pct(top)} &lt; cap ${pct(cap)}, ${cats} categories, ${known} known`};
+  }
+  const pct = x => Math.round(x*100) + " %";
+
+  function analyse(s, tracks){
+    const n = tracks.length;
+    // years
+    const yb = yearBuckets(tracks);
+    const yKnown = tracks.filter(t => t.year > 0).length;
+    const yCounts = yb.map(b => b.count);
+    let yTopIdx = 0; yCounts.forEach((c,i) => { if (c > yCounts[yTopIdx] || (c === yCounts[yTopIdx] && yb[i].hi >= yb[yTopIdx].hi)) yTopIdx = i; });
+    const yTop = yKnown ? yCounts[yTopIdx]/yKnown : 0;
+    const years = { buckets: yb, known: yKnown, total: n, cats: yCounts.filter(c=>c>0).length, top: yTop, topIdx: yTopIdx, H: entropy(yCounts),
+                    ...shape(yKnown, n, yCounts.filter(c=>c>0).length, yTop, T.yearCap) };
+    // tempo
+    const withBpm = tracks.filter(t => t.bpm);
+    const bCounts = BANDS.map(b => withBpm.filter(t => bandOf(t.bpm) === b).length);
+    let bTopIdx = 0; bCounts.forEach((c,i) => { if (c > bCounts[bTopIdx]) bTopIdx = i; });
+    const bTop = withBpm.length ? bCounts[bTopIdx]/withBpm.length : 0;
+    const sorted = withBpm.map(t => t.bpm).sort((a,b)=>a-b);
+    const median = sorted.length ? (sorted.length % 2 ? sorted[(sorted.length-1)/2] : Math.round((sorted[sorted.length/2-1]+sorted[sorted.length/2])/2)) : 0;
+    const tempo = { bands: bCounts, known: withBpm.length, total: n, cats: bCounts.filter(c=>c>0).length, top: bTop, topIdx: bTopIdx, H: entropy(bCounts),
+                    median, min: sorted[0]||0, max: sorted[sorted.length-1]||0,
+                    ...shape(withBpm.length, n, bCounts.filter(c=>c>0).length, bTop, T.tempoCap) };
+    // blend (primary tag; evidence floor on NAMING, not on the tail — LikedFactsRules.Partition)
+    const counts = new Map();
+    tracks.forEach(t => { if (t.tag) counts.set(t.tag, (counts.get(t.tag)||0)+1); });
+    const ranked = [...counts.entries()].sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
+    const tagged = ranked.reduce((a,[,c])=>a+c, 0);
+    const above = ranked.filter(([,c]) => c >= T.blendFloor).length;
+    const bTopShare = tagged ? ranked[0][1]/tagged : 0;
+    let blend;
+    if (above === 0) blend = {state:"absent", why:`no descriptor has ≥ ${T.blendFloor} carriers (or descriptors not fetched)`};
+    else if (bTopShare >= T.blendCap) blend = {state:"label", why:`top tag ${pct(bTopShare)} ≥ cap ${pct(T.blendCap)}`, lens:true};
+    else if (bTopShare < T.blendFlat) blend = {state:"label", why:`top tag ${pct(bTopShare)} &lt; ${pct(T.blendFlat)} — no style leads`, flat:true};
+    else blend = {state:"graph", why:`top tag ${pct(bTopShare)} between ${pct(T.blendFlat)} and ${pct(T.blendCap)}`};
+    Object.assign(blend, { ranked, tagged, above, known: tagged, total: n, cats: ranked.length, top: bTopShare, H: entropy(ranked.map(([,c])=>c)) });
+    // weeks
+    const weeks = Array.from({length:12}, () => 0);
+    if (s.spread || s.liked) tracks.forEach(t => { const k = Math.floor(t.addedDays/7); if (k < 12) weeks[11-k]++; });
+    return { years, tempo, blend, weeks, timeSlot: (s.liked || s.spread) ? "week" : (years.state === "graph" ? "years" : "none") };
+  }
+
+  // ── State ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  let scn = S[0], tracks = build(scn), A = analyse(scn, tracks);
+  let rend = "ridge", keys = false;
+  let lens = { week:null, year:null, band:null, tag:null, artist:null };
+  const lensActive = () => Object.values(lens).some(v => v !== null);
+
+  // ── Render: hero ────────────────────────────────────────────────────────────────────────────────────────────────
+  function renderHero(){
+    document.documentElement.dataset.page = scn.page;
+    $("#tabLabel").textContent = scn.title;
+    $("#heroTitle").textContent = scn.title;
+    const mins = Math.round(tracks.reduce((a,t)=>a+t.dur,0)/60);
+    $("#heroMeta").textContent = `${tracks.length} songs · ${Math.floor(mins/60)} hr ${mins%60} min`;
+    $("#heroDesc").innerHTML = scn.desc;
+    $("#owner").style.display = scn.liked ? "none" : "";
+    $("#ownerName").textContent = scn.owner;
+    const cv = $("#cover");
+    cv.style.setProperty("--cv", scn.cv);
+    cv.className = "cover" + (scn.liked ? " liked" : "");
+    cv.innerHTML = scn.liked
+      ? '<svg class="heart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>'
+      : (scn.owner === "Spotify" ? '<div class="spot"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.6 14.4a.8.8 0 0 1-1.1.28c-3-1.84-6.78-2.26-11.22-1.24a.8.8 0 1 1-.36-1.56c4.86-1.12 9.06-.64 12.4 1.4a.8.8 0 0 1 .28 1.12z"/></svg></div>' : '') + `<div class="banner">${esc(scn.title)}</div>`;
+    $("#npTitle").textContent = tracks[0].title; $("#npArtist").textContent = tracks[0].artist;
+    $("#note").innerHTML = scn.note;
+  }
+
+  // ── Render: facts ───────────────────────────────────────────────────────────────────────────────────────────────
+  const GLYPH = {
+    cal: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>',
+    met: '<svg viewBox="0 0 24 24"><path d="M9 4h6l3 16H6z"/><path d="M12 15L17 6"/><circle cx="12" cy="15" r="1.2"/></svg>',
+    tag: '<svg viewBox="0 0 24 24"><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg>',
+  };
+  const railW = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue("--rail"));
+
+  function renderFacts(){
+    const F = $("#facts");
+    const parts = [];
+    // (a) time slot
+    if (A.timeSlot === "week") parts.push(weekCard());
+    else if (A.timeSlot === "years") parts.push(yearCard());
+    // (b) tempo — its own slot
+    if (A.tempo.state === "graph") parts.push(tempoCard());
+    // (c) artists — every credit ranks
+    parts.push(artistsCard());
+    // (d) blend
+    if (A.blend.state === "graph") parts.push(blendCard());
+    // (e) rediscover (Liked only)
+    if (scn.liked) parts.push(`<div class="fact"><div class="h">Rediscover</div><div class="redisc"><div class="t"><b>14 songs</b> you liked this week last year</div><button class="btn-mini">Play them</button></div></div>`);
+    // (f) pills — the collapsed facts, still lenses
+    const pills = [];
+    if (A.years.state === "label"){
+      const b = A.years.buckets[A.years.topIdx];
+      const txt = b.lo === b.hi ? `mostly <b>${b.lo}</b>` : `mostly <b>${b.lo} – ${b.hi}</b>`;
+      const lit = lens.year && lens.year[0] === b.lo && lens.year[1] === b.hi;
+      pills.push(`<button class="pill lens" data-year="${b.lo},${b.hi}" aria-pressed="${!!lit}" title="${b.lo===b.hi?b.lo:b.lo+' – '+b.hi} · ${b.count} of ${A.years.known} dated tracks — click to filter">${GLYPH.cal}<span>${txt}</span><em>${b.count} of ${A.years.known}</em></button>`);
+    }
+    if (A.tempo.state === "label"){
+      const band = BANDS[A.tempo.topIdx], c = A.tempo.bands[A.tempo.topIdx];
+      const lit = lens.band === band.id;
+      pills.push(`<button class="pill lens" data-band="${band.id}" aria-pressed="${lit}" title="median ${A.tempo.median} bpm · ${A.tempo.known} of ${A.tempo.total} tracks have a tempo — click to filter to ${band.range}">${GLYPH.met}<span>mostly <b>${band.range}</b></span><em>${c} of ${A.tempo.known}</em></button>`);
+    }
+    if (A.blend.state === "label"){
+      if (A.blend.flat) pills.push(`<span class="pill plain" title="no descriptor leads">${GLYPH.tag}<span><b>${A.blend.cats} styles</b>, none over ${pct(T.blendFlat)}</span></span>`);
+      else { const [tag,c] = A.blend.ranked[0]; pills.push(`<button class="pill lens" data-tag="${esc(tag)}" aria-pressed="${lens.tag===tag}" title="${esc(tag)} · ${c} of ${A.blend.tagged} tagged — click to filter">${GLYPH.tag}<span><b>${esc(tag)}</b> ${pct(c/A.blend.tagged)}</span></button>`); }
+    }
+    if (pills.length) parts.push(`<div class="pills">${pills.join("")}</div>`);
+    // (g) since-line — drops any clause a pill already states
+    parts.push(sinceLine());
+    F.innerHTML = parts.join("");
+    if (A.tempo.state === "graph") drawTempo();
+  }
+
+  function head(t, r){ return `<div class="h"><span>${t}</span>${r ? `<span class="r">${r}</span>` : ""}</div>`; }
+
+  function weekCard(){
+    const w = A.weeks, peak = Math.max(1, ...w), thisWeek = w[11];
+    const bars = w.map((c,i) => `<button data-week="${i}" class="${i===11?'peak':''}" aria-pressed="${lens.week===i}" title="week ${i+1} · ${c} songs ${scn.liked?'liked':'added'}"><i style="height:${Math.max(8, Math.round(100*c/peak))}%"></i></button>`).join("");
+    return `<div class="fact">${head("This week","last 12 weeks")}<div class="lately"><div class="big">+${thisWeek}<small>songs ${scn.liked?"liked":"added"}</small></div><div class="spark">${bars}</div></div></div>`;
+  }
+
+  function yearCard(){
+    const Y = A.years, b = Y.buckets, peak = Math.max(1, ...b.map(x=>x.count));
+    const lo = b.find(x=>x.count>0), hi = [...b].reverse().find(x=>x.count>0);
+    const bars = b.map((x,i) => {
+      const lit = lens.year && lens.year[0]===x.lo && lens.year[1]===x.hi;
+      return `<button data-year="${x.lo},${x.hi}" class="${i===Y.topIdx?'peak':''}" aria-pressed="${!!lit}" title="${x.lo===x.hi?x.lo:x.lo+' – '+x.hi} · ${x.count} tracks"><i style="height:${Math.max(8, Math.round(100*x.count/peak))}%"></i></button>`;
+    }).join("");
+    const labels = b.map(x => `<span>${x.lo===x.hi ? String(x.lo).slice(2) : String(x.lo).slice(2)}</span>`).join("");
+    const peakB = b[Y.topIdx];
+    return `<div class="fact">${head("The years", `${lo.lo} – ${hi.hi}`)}<div class="lately"><div class="big">${peakB.lo===peakB.hi?peakB.lo:peakB.lo+"s"}<small>most tracks</small></div><div class="spark">${bars}</div></div><div class="yrs">${labels}</div></div>`;
+  }
+
+  function tempoCard(){
+    const Tm = A.tempo;
+    const trailing = Tm.known < Tm.total ? `${Tm.known} of ${Tm.total}` : `${Tm.min} – ${Tm.max} bpm`;
+    return `<div class="fact" id="factTempo">${head("Tempo", trailing)}<div class="lately"><div class="big">${Tm.median}<small>bpm · median</small></div><div><svg class="tempo" id="tempoSvg" aria-label="Tempo distribution"></svg><div class="axis" id="tempoAxis"></div></div></div></div>`;
+  }
+
+  // The plot: 60–200 bpm on x, 38px stage. Ridge = gaussian KDE (bw 5); bars = 10-bpm histogram in SparkColumn style.
+  function drawTempo(){
+    const svg = $("#tempoSvg"); if (!svg) return;
+    const W = Math.max(60, svg.getBoundingClientRect().width || 140), H = 38, LO = 60, HI = 200;
+    const x = bpm => (Math.min(HI, Math.max(LO, bpm)) - LO) / (HI - LO) * W;
+    const withBpm = tracks.filter(t => t.bpm);
+    let out = `<defs><linearGradient id="ridgeFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".38"/><stop offset="1" stop-color="var(--accent)" stop-opacity=".06"/></linearGradient></defs>`;
+    // band hit regions (hover wash / lens) — underneath everything, pointer target
+    BANDS.forEach(b => {
+      const x0 = x(Math.max(LO,b.lo)), x1 = x(Math.min(HI,b.hi));
+      const c = A.tempo.bands[b.id-1];
+      out += `<rect class="band" data-band="${b.id}" aria-pressed="${lens.band===b.id}" x="${x0}" y="0" width="${x1-x0}" height="${H}" rx="3"><title>${b.range} · ${b.name} · ${c} tracks</title></rect>`;
+    });
+    [90,120,140].forEach(v => out += `<line class="hair" x1="${x(v)}" x2="${x(v)}" y1="2" y2="${H}"/>`);
+    const rugH = withBpm.length <= 80 ? 0 : 4;
+    out += `<g class="plot grow">`;
+    if (rend === "ridge"){
+      const bw = 5, N = 71, ys = [];
+      for (let i = 0; i < N; i++){ const v = LO + (HI-LO)*i/(N-1); let d = 0; withBpm.forEach(t => { const z = (Math.min(HI,Math.max(LO,t.bpm)) - v)/bw; d += Math.exp(-.5*z*z); }); ys.push(d); }
+      const peak = Math.max(...ys, 1e-6), top = 3 + (rugH ? 2 : 6);
+      const pts = ys.map((d,i) => [ (W*i/(N-1)).toFixed(1), (H - rugH - (H - rugH - top) * d/peak).toFixed(1) ]);
+      const line = pts.map((p,i) => (i ? "L" : "M") + p[0] + "," + p[1]).join(" ");
+      out += `<path class="area" d="${line} L${W},${H-rugH} L0,${H-rugH} Z"/><path class="line" d="${line}"/>`;
+      // rug: dots (≤ 80 tracks, stacked per integer bpm) or ticks
+      const stack = new Map();
+      withBpm.forEach(t => {
+        const bx = Math.round(x(t.bpm)), k = Math.round(t.bpm);
+        const s = stack.get(k) || 0; stack.set(k, s+1);
+        const col = keys && t.key ? ` style="fill:${keyColor(t.key.hue)}"` : "";
+        if (rugH) out += `<rect class="rug${keys?' key':''}" x="${bx-.75}" y="${H-rugH}" width="1.5" height="${rugH}" rx=".5"${col}/>`;
+        else out += `<circle class="rug${keys?' key':''}" cx="${bx}" cy="${H-2-s*3.4}" r="1.6"${col}><title>${t.title} · ${t.bpm} bpm${t.key?' · '+t.key.code+' · '+t.key.name:''}</title></circle>`;
+      });
+      out += `<line class="med" x1="${x(A.tempo.median)}" x2="${x(A.tempo.median)}" y1="0" y2="${H}"/>`;
+    } else {
+      const bins = Array.from({length:14}, () => 0);
+      withBpm.forEach(t => bins[Math.min(13, Math.max(0, Math.floor((t.bpm-LO)/10)))]++);
+      const peak = Math.max(1, ...bins), bwpx = W/14, gap = 3;
+      let peakI = 0; bins.forEach((c,i) => { if (c > bins[peakI]) peakI = i; });
+      bins.forEach((c,i) => { const h = Math.max(3, H*c/peak); out += `<rect class="bar ${i===peakI?'peak':''}" x="${(i*bwpx+gap/2).toFixed(1)}" y="${(H-h).toFixed(1)}" width="${(bwpx-gap).toFixed(1)}" height="${h.toFixed(1)}" rx="2"/>`; });
+    }
+    out += `</g>`;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H);
+    svg.innerHTML = out;
+    $("#tempoAxis").innerHTML = [80,100,120,140,160,180].map(v => `<span style="left:${x(v)}px">${v}</span>`).join("");
+  }
+
+  const hue = name => { let h = 0; for (const ch of name) h = (h*31 + ch.charCodeAt(0)) % 360; return h; };
+  const initials = name => name.split(/\s+/).map(p=>p[0]).join("").slice(0,2).toUpperCase();
+  function artistsCard(){
+    const m = new Map(); tracks.forEach(t => m.set(t.artist, (m.get(t.artist)||0)+1));
+    const ranked = [...m.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
+    const faceN = Math.min(ranked.length, Math.floor((railW()-26-28)/16));
+    const faces = ranked.slice(0, faceN).map(([n]) => `<div class="face" data-artist="${esc(n)}" aria-pressed="${lens.artist===n}" style="background:hsl(${hue(n)} 45% 42%)" title="${esc(n)}">${initials(n)}</div>`).join("")
+      + (ranked.length > faceN ? `<div class="face more">+${ranked.length-faceN}</div>` : "");
+    const rows = ranked.slice(0,5).map(([n,c]) => `<button data-artist="${esc(n)}" aria-pressed="${lens.artist===n}"><span>${esc(n)}</span><em>· ${c}</em></button>`).join("")
+      + (ranked.length > 5 ? `<button class="more"><svg class="i" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>${ranked.length-5} more</button>` : "");
+    return `<div class="fact">${head(scn.liked ? "Most liked" : "Top artists", "")}<div class="faces">${faces}</div><div class="ranked">${rows}</div></div>`;
+  }
+
+  function blendCard(){
+    const B = A.blend, alphas = [1,.8,.6,.45,.3];
+    const named = B.ranked.filter(([,c]) => c >= T.blendFloor).slice(0,5);
+    const namedSum = named.reduce((a,[,c])=>a+c,0), other = B.tagged - namedSum;
+    const seg = named.map(([n,c],i) => `<button data-tag="${esc(n)}" aria-pressed="${lens.tag===n}" style="width:${(100*c/B.tagged).toFixed(2)}%;--a:${alphas[i]}" title="${esc(n)} · ${c} songs · ${pct(c/B.tagged)}"></button>`).join("")
+      + (other > 0 ? `<button class="other" style="width:${(100*other/B.tagged).toFixed(2)}%" title="${B.ranked.length-named.length} more · ${other} songs"></button>` : "");
+    const leg = named.map(([n,c],i) => `<button data-tag="${esc(n)}" aria-pressed="${lens.tag===n}"><i style="--a:${alphas[i]}"></i>${esc(n)}<em>${pct(c/B.tagged)}</em></button>`).join("")
+      + (other > 0 ? `<button><svg class="i" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>${B.ranked.length-named.length} more<em>${pct(other/B.tagged)}</em></button>` : "");
+    return `<div class="fact">${head("Your blend", `${B.tagged} songs`)}<div class="blend"><div class="bbar">${seg}</div><div class="legend">${leg}</div></div></div>`;
+  }
+
+  function sinceLine(){
+    const c = [];
+    const dated = tracks.filter(t => t.year > 0);
+    const oldest = dated.length ? dated.reduce((a,t) => t.year < a.year ? t : a) : null;
+    const decade = () => { const m = new Map(); dated.forEach(t => { const d = Math.floor(t.year/10)*10; m.set(d,(m.get(d)||0)+1); }); return dated.length >= 10 ? [...m.entries()].sort((a,b)=>b[1]-a[1]||b[0]-a[0])[0][0] : null; };
+    const yearsPill = A.years.state === "label";
+    if (scn.liked){
+      c.push("Liking since <b>March 2019</b>");
+      if (!yearsPill && decade()) c.push(`mostly the <b>${decade()}s</b>`);
+      if (oldest) c.push(`oldest like <b>${esc(oldest.title)}</b>`);
+    } else if (scn.spread){
+      c.push("Collecting since <b>June 2024</b>");
+      if (!yearsPill && decade()) c.push(`mostly the <b>${decade()}s</b>`);
+      if (oldest) c.push(`oldest add <b>${esc(oldest.title)}</b>`);
+    } else {
+      if (!yearsPill && decade()) c.push(`mostly the <b>${decade()}s</b>`);
+      if (oldest) c.push(`oldest track <b>${esc(oldest.title)} (${oldest.year})</b>`);
+    }
+    return c.length ? `<div class="since">${c.join(" · ")}</div>` : "";
+  }
+
+  // ── Render: track list + lens header ────────────────────────────────────────────────────────────────────────────
+  function renderRows(){
+    $("#rows").innerHTML = tracks.map((t,i) => {
+      const bp = t.bpm ? `<span class="bp">${t.key?`<i style="--c:${keyColor(t.key.hue)}"></i>`:""}${t.bpm}<span class="k">· ${t.key?t.key.code:""}</span></span>` : "<span></span>";
+      return `<div class="row${i===0?' now':''}" data-i="${i}"><span class="n">${i===0?'▶':i+1}</span><span class="th" style="--g:linear-gradient(135deg,hsl(${hue(t.artist)} 40% 45%),hsl(${(hue(t.artist)+40)%360} 40% 30%))"></span><span class="ti">${esc(t.title)}</span><span class="ar">${esc(t.artist)}</span><span class="yr">${t.year||""}</span>${bp}<span class="du">${Math.floor(t.dur/60)}:${String(t.dur%60).padStart(2,"0")}</span></div>`;
+    }).join("");
+  }
+  function matches(t){
+    if (lens.week !== null && Math.floor(t.addedDays/7) !== 11-lens.week) return false;
+    if (lens.year && (t.year < lens.year[0] || t.year > lens.year[1])) return false;
+    if (lens.band !== null && (!t.bpm || bandOf(t.bpm).id !== lens.band)) return false;
+    if (lens.tag !== null && t.tag !== lens.tag) return false;
+    if (lens.artist !== null && t.artist !== lens.artist) return false;
+    return true;
+  }
+  function applyLens(){
+    let vis = 0;
+    [...$("#rows").children].forEach((r,i) => { const ok = matches(tracks[i]); r.classList.toggle("off", !ok); if (ok) vis++; });
+    const bar = $("#lensbar"), pills = [];
+    if (lens.week !== null) pills.push(["week", `${scn.liked?"Liked":"Added"} week ${lens.week+1}`]);
+    if (lens.year) pills.push(["year", lens.year[0]===lens.year[1] ? String(lens.year[0]) : `${lens.year[0]} – ${lens.year[1]}`]);
+    if (lens.band !== null) pills.push(["band", BANDS[lens.band-1].range]);
+    if (lens.tag !== null) pills.push(["tag", lens.tag]);
+    if (lens.artist !== null) pills.push(["artist", lens.artist]);
+    bar.classList.toggle("on", pills.length > 0);
+    bar.innerHTML = pills.map(([k,l]) => `<div class="lpill"><span>${esc(l)}</span><button class="x" data-clear="${k}" aria-label="Clear this filter">×</button></div>`).join("") + (pills.length ? `<span class="cnt">${vis} songs</span>` : "");
+    renderFacts();  // pressed states live in the markup
+  }
+
+  // ── Render: rules readout ───────────────────────────────────────────────────────────────────────────────────────
+  function renderKnobs(){
+    $("#knobs").innerHTML = KNOBS.map(([k,l,lo,hi,st,fmt]) => `<label><span>${l}</span><span class="v" id="v-${k}">${fmt(T[k])}</span><input type="range" data-k="${k}" min="${lo}" max="${hi}" step="${st}" value="${T[k]}"></label>`).join("");
+  }
+  function renderReadout(){
+    const row = (name, F, catsLabel, extra="") => `<div class="fr"><div class="t">${name}<span class="st ${F.state}">${F.state}</span></div>
+      <div class="m"><span>known / total</span><b>${F.known} / ${F.total} (${pct(F.known/F.total)})</b><span>${catsLabel}</span><b>${F.cats}</b><span>top share</span><b>${pct(F.top)}</b><span>entropy (rejected)</span><b>${F.H.toFixed(2)}</b>${extra}</div>
+      <div class="why"><b>→ ${F.state}</b> because ${F.why}</div></div>`;
+    const y = A.years, t = A.tempo, b = A.blend;
+    const slot = A.timeSlot === "week" ? `<div class="why" style="border:0;padding:0">Time slot: <b>week card</b> (adds spread) — years fall to a pill, never to absent.</div>` : "";
+    $("#readout").innerHTML =
+      row("The years", y, "non-empty buckets") + slot +
+      row("Tempo", t, "non-empty bands", t.known ? `<span>median · range</span><b>${t.median} · ${t.min}–${t.max}</b><span>bands</span><b>${t.bands.join(" / ")}</b>` : "") +
+      row("Your blend", Object.assign({}, b, {total: tracks.length}), "distinct primary tags", `<span>above floor (≥${T.blendFloor})</span><b>${b.above}</b>`) +
+      `<div class="sub" style="margin-top:6px">Entropy is printed only to show why it lost: it rewards uniform spread inconsistently with bin count and cannot be explained inside a pill. Top share over the lens categories can — "41 of 50".<br><br>Real-app concern, not built here: a live list sitting on a cap would flip pill↔graph on every add; the port wants hysteresis (e.g. enter GRAPH under cap − 5 pt, leave it over cap + 5 pt).</div>`;
+  }
+
+  // ── Wiring ──────────────────────────────────────────────────────────────────────────────────────────────────────
+  function all(){ renderHero(); renderRows(); renderReadout(); applyLens(); }
+  function setScenario(id){
+    scn = S.find(s => s.id === id); tracks = build(scn); A = analyse(scn, tracks);
+    lens = { week:null, year:null, band:null, tag:null, artist:null };
+    [...$("#segScn").children].forEach(b => b.setAttribute("aria-pressed", String(b.dataset.id===id)));
+    all();
+  }
+  $("#segScn").innerHTML = S.map((s,i) => `<button data-id="${s.id}" aria-pressed="${i===0}">${s.seg}</button>`).join("");
+  $("#segScn").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setScenario(b.dataset.id); });
+  $("#segRend").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; rend = b.dataset.rend; [...$("#segRend").children].forEach(x => x.setAttribute("aria-pressed", String(x===b))); renderFacts(); });
+  $("#tgKeys").addEventListener("click", e => { keys = !keys; e.currentTarget.setAttribute("aria-pressed", String(keys)); renderFacts(); });
+  $("#tgRail").addEventListener("click", e => { const wide = e.currentTarget.getAttribute("aria-pressed") !== "true"; document.documentElement.style.setProperty("--rail", wide ? "280px" : "240px"); e.currentTarget.setAttribute("aria-pressed", String(wide)); renderFacts(); });
+  renderKnobs();
+  $("#knobs").addEventListener("input", e => { const k = e.target.dataset.k; if (!k) return; T[k] = +e.target.value; $("#v-"+k).textContent = KNOBS.find(x=>x[0]===k)[5](T[k]); A = analyse(scn, tracks); renderReadout(); applyLens(); });
+
+  // lenses: one delegated handler over the rail + list header
+  document.addEventListener("click", e => {
+    const el = e.target.closest("[data-year],[data-band],[data-tag],[data-artist],[data-week],[data-clear]");
+    if (!el) return;
+    if (el.dataset.clear){ const k = el.dataset.clear; lens[k] = null; return applyLens(); }
+    if (el.dataset.year){ const [lo,hi] = el.dataset.year.split(",").map(Number); lens.year = (lens.year && lens.year[0]===lo && lens.year[1]===hi) ? null : [lo,hi]; }
+    else if (el.dataset.band){ const b = +el.dataset.band; lens.band = lens.band === b ? null : b; }
+    else if (el.dataset.tag !== undefined){ lens.tag = lens.tag === el.dataset.tag ? null : el.dataset.tag; }
+    else if (el.dataset.artist !== undefined){ lens.artist = lens.artist === el.dataset.artist ? null : el.dataset.artist; }
+    else if (el.dataset.week !== undefined){ const w = +el.dataset.week; lens.week = lens.week === w ? null : w; }
+    applyLens();
+  });
+
+  const root = document.documentElement;
+  function isDark(){ const t = root.dataset.theme; return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; }
+  $("#tgTheme").addEventListener("click", e => {
+    const toLight = isDark();
+    root.dataset.theme = toLight ? "light" : "dark";
+    e.currentTarget.textContent = toLight ? "dark" : "light";
+    e.currentTarget.setAttribute("aria-pressed", String(toLight));
+  });
+  $("#tgTheme").textContent = isDark() ? "light" : "dark";
+  window.addEventListener("resize", () => drawTempo());
+  all();
+})();
+</script>
+</body>
+</html>

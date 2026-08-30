@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wavee search — v5 window</title>
+<style>
+  :root{
+    --solid-base:#202020;
+    --layer-default:rgba(58,58,58,0.30);
+    --card-default:rgba(255,255,255,0.0512);
+    --card-secondary:rgba(255,255,255,0.0326);
+    --card-stroke:rgba(0,0,0,0.10);
+    --ctrl-default:rgba(255,255,255,0.0605);
+    --ctrl-secondary:rgba(255,255,255,0.0837);
+    --ctrl-tertiary:rgba(255,255,255,0.0326);
+    --subtle-hover:rgba(255,255,255,0.0605);
+    --stroke-ctrl:rgba(255,255,255,0.0698);
+    --stroke-ctrl-2:rgba(255,255,255,0.093);
+    --divider:rgba(255,255,255,0.0837);
+    --text:#FFFFFF;
+    --text-2:rgba(255,255,255,0.786);
+    --text-3:rgba(255,255,255,0.5442);
+    --text-4:rgba(255,255,255,0.3628);
+    --accent:#60CDFF;
+    --accent-text:#99EBFF;
+    --on-accent:#000000;
+    --r-ctrl:4px; --r-card:8px; --r-layer:8px; --r-flyout:8px;
+    --font:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+    --font-d:"Segoe UI Variable Display","Segoe UI Light","Segoe UI",sans-serif;
+    --shadow-flyout:0 8px 16px rgba(0,0,0,0.28),0 0 1px rgba(0,0,0,0.5);
+    --shadow-dialog:0 32px 64px rgba(0,0,0,0.37),0 0 2px rgba(0,0,0,0.5);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:var(--font);font-size:14px;color:var(--text);
+    background-image:
+      radial-gradient(900px 700px at 12% 8%, #2b3a5e 0%, transparent 60%),
+      radial-gradient(1000px 800px at 88% 82%, #4a2a46 0%, transparent 62%),
+      linear-gradient(160deg,#161821,#0c0c10);
+    display:grid;place-items:center;overflow:hidden;
+  }
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;}
+  input{font:inherit;color:inherit;}
+
+  .lab{
+    position:fixed;left:24px;right:24px;top:10px;z-index:2;
+    text-align:center;font-size:12px;color:var(--text-3);pointer-events:none;
+  }
+  .lab strong{color:var(--text-2);font-weight:600;}
+  .lab code{font-family:"Cascadia Code",Consolas,monospace;font-size:11px;color:var(--accent-text);}
+
+  /* ── v2 window: Mica tinted by the desktop, chrome transparent ── */
+  .win{
+    width:min(1320px,96vw);height:min(880px,94vh);
+    display:grid;grid-template-rows:48px 1fr;grid-template-columns:48px 1fr;
+    grid-template-areas:"title title" "rail content";
+    border-radius:8px;overflow:hidden;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow:var(--shadow-dialog);
+    background:
+      linear-gradient(rgba(32,32,32,0.86),rgba(32,32,32,0.86)),
+      radial-gradient(700px 500px at 10% 0%, #3d5a8f 0%, transparent 62%),
+      radial-gradient(760px 560px at 92% 96%, #6b3a63 0%, transparent 64%),
+      var(--solid-base);
+    background-blend-mode:normal,soft-light,soft-light,normal;
+  }
+
+  .titlebar{grid-area:title;display:flex;align-items:center;gap:8px;padding-left:8px;-webkit-app-region:drag;}
+  .tb-btn{width:32px;height:32px;border-radius:var(--r-ctrl);color:var(--text-2);
+    display:grid;place-items:center;}
+  .tb-btn:hover{background:var(--subtle-hover);color:var(--text);}
+  .tb-btn:disabled{color:var(--text-4);}
+  .tb-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;}
+  .caption{margin-left:auto;display:flex;}
+  .caption button{width:46px;height:48px;color:var(--text-2);font-size:10px;}
+  .caption button:hover{background:var(--subtle-hover);}
+  .caption button.close:hover{background:#c42b1c;color:#fff;}
+
+  .asb{position:relative;width:min(420px,42vw);-webkit-app-region:no-drag;}
+  .asb .field{
+    display:flex;align-items:center;height:32px;padding:0 4px 0 10px;gap:8px;
+    background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);
+    border-bottom-color:rgba(255,255,255,0.14);border-radius:var(--r-ctrl);
+  }
+  .asb.focus .field{background:rgba(0,0,0,0.28);border-color:var(--stroke-ctrl-2);border-bottom:2px solid var(--accent);}
+  .asb .glyph{color:var(--text-3);display:grid;place-items:center;position:relative;z-index:1;}
+  .asb .glyph svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;}
+  .asb .type{
+    position:relative;flex:1;min-width:0;height:32px;
+  }
+  .asb .ghost{
+    position:absolute;inset:0;line-height:32px;color:var(--text-4);pointer-events:none;
+    font:400 14px/32px var(--font);white-space:nowrap;overflow:hidden;
+  }
+  .asb input{
+    position:relative;z-index:1;width:100%;height:32px;border:0;background:transparent;outline:0;
+    color:var(--text);font:400 14px/20px var(--font);padding:0;
+  }
+  .asb input::placeholder{color:var(--text-3);}
+  .asb .x{width:24px;height:24px;border-radius:var(--r-ctrl);color:var(--text-2);font-size:11px;display:none;}
+  .asb.has .x{display:grid;place-items:center;}
+  .asb .x:hover{background:var(--subtle-hover);}
+  .kbdhint{display:flex;gap:3px;padding-right:4px;}
+  .kbdhint b{font:600 10px/1 var(--font);color:var(--text-3);background:rgba(255,255,255,0.06);
+    border:1px solid var(--stroke-ctrl);border-radius:3px;padding:3px 4px;}
+
+  .flyout{
+    position:absolute;left:0;right:0;top:38px;z-index:60;display:none;padding:4px;
+    max-height:min(520px,70vh);overflow:auto;
+    min-width:360px;
+    border-radius:var(--r-flyout);border:1px solid rgba(255,255,255,0.09);
+    background:rgba(44,44,44,0.86);backdrop-filter:blur(60px) saturate(1.25);
+    box-shadow:var(--shadow-flyout);
+  }
+  .flyout.open{display:block;animation:fly .12s cubic-bezier(0,0,0,1);}
+  @keyframes fly{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .fly-label{padding:7px 10px 4px;font:600 11px/1 var(--font);color:var(--text-3);
+    text-transform:uppercase;letter-spacing:0.06em;}
+  .fly-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-ctrl);cursor:pointer;position:relative;width:100%;text-align:left;}
+  .fly-item.sel{background:var(--subtle-hover);}
+  .fly-item.sel::before{content:"";position:absolute;left:4px;width:3px;height:16px;border-radius:2px;background:var(--accent);}
+  .fly-item .t{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .fly-item .t b{font-weight:600;}
+  .fly-item .t .rest{color:var(--text-3);font-weight:400;}
+  .fly-item .copy{min-width:0;flex:1;}
+  .fly-item .t2{font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .fly-item .m{margin-left:auto;font-size:11px;color:var(--text-3);flex:0 0 auto;text-transform:lowercase;}
+  .fly-item .cover{width:28px;height:28px;border-radius:3px;flex:0 0 auto;}
+  .fly-item .cover.round{border-radius:50%;}
+  .fly-item .cover.sq{border-radius:6px;}
+  .fly-item svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;color:var(--text-3);flex:0 0 auto;}
+  .teach{position:absolute;left:50%;bottom:44px;transform:translate(-50%,8px);opacity:0;transition:.15s;
+    background:#2c2c2c;border:1px solid rgba(255,255,255,0.09);border-radius:var(--r-flyout);padding:8px 14px;
+    font-size:12px;box-shadow:var(--shadow-flyout);z-index:70;pointer-events:none;}
+  .teach.on{opacity:1;transform:translate(-50%,0);}
+
+  .rail{grid-area:rail;display:flex;flex-direction:column;align-items:center;gap:2px;padding-top:2px;}
+  .rail button{width:40px;height:36px;border-radius:var(--r-ctrl);color:var(--text-2);
+    display:grid;place-items:center;position:relative;}
+  .rail button:hover{background:var(--subtle-hover);}
+  .rail button.on{background:var(--subtle-hover);}
+  .rail button.on::before{content:"";position:absolute;left:2px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent);}
+  .rail svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;}
+  .rail .sp{flex:1;}
+
+  /* v2 content layer — rounded well over Mica */
+  .content{
+    grid-area:content;min-width:0;min-height:0;position:relative;
+    background:var(--layer-default);
+    border-top:1px solid rgba(255,255,255,0.06);border-left:1px solid rgba(255,255,255,0.06);
+    border-top-left-radius:var(--r-layer);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+
+  .scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:18px 28px 32px;position:relative;}
+  .scroll::-webkit-scrollbar{width:12px;}
+  .scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.18);border-radius:6px;border:4px solid transparent;background-clip:content-box;}
+
+  .query-echo{
+    font-family:var(--font-d);font-weight:300;font-size:36px;letter-spacing:-.5px;
+    line-height:1.05;margin:0 0 14px;text-transform:lowercase;
+  }
+  .query-echo .muted{color:var(--text-3);}
+
+  .facets{display:flex;gap:2px;flex-wrap:nowrap;overflow-x:auto;margin:0 0 16px;border-bottom:1px solid var(--divider);}
+  .facets::-webkit-scrollbar{height:0;}
+  .facet{flex:none;padding:8px 12px 10px;color:var(--text-2);font-size:13px;position:relative;}
+  .facet em{font-style:normal;font-size:11px;color:var(--text-3);font-variant-numeric:tabular-nums;margin-left:5px;}
+  .facet[aria-current="true"]{color:var(--text);font-weight:600;}
+  .facet[aria-current="true"]::after{
+    content:"";position:absolute;left:12px;right:12px;bottom:0;height:2px;background:var(--accent);border-radius:2px 2px 0 0;
+  }
+
+  .card{background:var(--card-default);border:1px solid rgba(255,255,255,0.06);border-radius:var(--r-card);}
+
+  .hero{
+    display:grid;grid-template-columns:minmax(0,1fr) 300px;min-height:228px;overflow:hidden;position:relative;margin-bottom:16px;
+  }
+  .hero-wash{
+    position:absolute;inset:0;
+    background:radial-gradient(120% 80% at 88% 40%, #102040 0%, transparent 58%);
+    opacity:.55;pointer-events:none;
+  }
+  .hero-copy{position:relative;padding:22px 8px 22px 22px;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;min-width:0;}
+  .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);font-weight:600;}
+  .hero h2{font-family:var(--font-d);font-weight:300;font-size:34px;letter-spacing:-.4px;margin:0;line-height:1.05;}
+  .hero .meta{color:var(--text-2);font-size:13px;}
+  .hero .why{display:flex;gap:6px;flex-wrap:wrap;}
+  .chip{font-size:11px;color:var(--text-2);border:1px solid var(--stroke-ctrl);border-radius:999px;padding:2px 8px;}
+  .actions{display:flex;gap:8px;margin-top:6px;}
+  .btn{height:32px;padding:0 14px;border-radius:var(--r-ctrl);background:var(--accent);color:#003545;font-weight:600;font-size:13px;}
+  .btn.ghost{background:var(--ctrl-default);color:var(--text);border:1px solid var(--stroke-ctrl);font-weight:500;}
+  .kbd{font-size:10px;opacity:.7;margin-left:6px;font-weight:500;}
+  .hero-art{
+    position:relative;width:340px;height:260px;margin:-16px -40px -16px 0;
+    background:radial-gradient(70% 60% at 30% 20%, #3a6ea8, transparent 60%), linear-gradient(160deg,#102040,#0a1228 60%,#1a3a5c);
+    transform:rotate(-2.5deg);
+  }
+  .hero-art img{width:100%;height:100%;object-fit:cover;opacity:.92;}
+
+  .sec{display:flex;align-items:center;gap:8px;margin:18px 4px 10px;}
+  .sec .tick{width:3px;height:14px;background:var(--accent);border-radius:2px;}
+  .sec h3{margin:0;font-size:15px;font-weight:600;}
+  .sec .sub{margin-left:auto;font-size:12px;color:var(--text-3);}
+
+  .matches{padding:6px 4px;}
+  .row{
+    display:grid;grid-template-columns:44px minmax(0,1fr) auto 28px;align-items:center;gap:10px;
+    height:44px;padding:0 10px;border-radius:var(--r-ctrl);width:100%;text-align:left;
+  }
+  .row.lg{height:56px;}
+  .row:hover,.row:focus{background:var(--subtle-hover);outline:none;}
+  .row[aria-selected="true"]{background:rgba(96,205,255,.12);}
+  .cover{width:36px;height:36px;border-radius:3px;flex:none;}
+  .row.lg .cover{width:44px;height:44px;}
+  .cover.round{border-radius:50%;}
+  .cover.sq{border-radius:6px;}
+  .t1{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .t2{font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  mark{background:none;color:var(--accent-text);font-weight:650;padding:0;}
+  .dur{font-size:12px;color:var(--text-3);font-variant-numeric:tabular-nums;}
+  .kind-g{width:16px;height:16px;color:var(--text-3);stroke:currentColor;fill:none;stroke-width:1.7;}
+  .row[aria-selected="true"] .kind-g{color:var(--accent);}
+
+  .film{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:12px;}
+  .tile{text-align:left;}
+  .tile .art{aspect-ratio:1;border-radius:6px;margin-bottom:8px;}
+  .tile .t1{font-size:13px;}
+  .tile .t2{font-size:12px;}
+
+  .genres{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:12px;}
+  .g{
+    height:72px;border-radius:6px;padding:10px 12px;display:flex;align-items:flex-end;
+    font-weight:650;font-size:14px;text-align:left;color:#fff;position:relative;overflow:hidden;
+  }
+  .g::after{content:"";position:absolute;right:-12px;bottom:-18px;width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.12);}
+
+  .related{display:flex;flex-wrap:wrap;gap:8px 18px;padding:4px 4px 8px;}
+  .related a{
+    color:var(--text);text-decoration:none;font-family:var(--font-d);font-weight:300;font-size:22px;
+    letter-spacing:-.3px;text-transform:lowercase;opacity:.78;
+  }
+  .related a:hover{opacity:1;color:var(--accent-text);}
+
+  .status{
+    height:26px;display:flex;align-items:center;gap:14px;padding:0 24px;border-top:1px solid var(--divider);
+    font-size:11px;color:var(--text-3);background:rgba(0,0,0,0.12);
+  }
+  .status b{font:600 10px/1 var(--font);color:var(--text-2);background:rgba(255,255,255,0.06);
+    border:1px solid var(--stroke-ctrl);border-radius:3px;padding:3px 4px;}
+  .status .op{margin-left:auto;font-family:Consolas,monospace;font-size:10.5px;color:var(--text-4);}
+
+  @media (max-width:900px){
+    .hero{grid-template-columns:1fr 180px;}
+    .film,.genres{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .query-echo{font-size:28px;}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="lab"><strong>v5 — typeahead is <code>searchSuggestions</code>.</strong>
+  Same 30-hit list powers the field ghost and the acrylic flyout. Enter commits <code>searchTopResultsList</code>.
+  Try <code>s</code> → <code>sleep</code>, <code>lo</code> (ghost <code>fi sleep</code>), <code>loffi</code> (no ghost), <code>am</code>, <code>kriss kross</code>.</div>
+
+<div class="win" role="application" aria-label="Wavee search prototype">
+  <div class="titlebar">
+    <button class="tb-btn" title="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button class="tb-btn" disabled title="Forward"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+    <div class="asb has" id="asb">
+      <div class="field">
+        <span class="glyph"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg></span>
+        <div class="type">
+          <div class="ghost" id="ghost"></div>
+          <input id="q" value="sleep" autocomplete="off" spellcheck="false" aria-label="Search" />
+        </div>
+        <button class="x" id="clear" title="Clear">&#10005;</button>
+        <span class="kbdhint"><b>Ctrl</b><b>K</b></span>
+      </div>
+      <div class="flyout" id="fly" role="listbox"></div>
+    </div>
+    <div class="caption">
+      <button title="Minimize">&#9472;</button>
+      <button title="Maximize">&#9633;</button>
+      <button class="close" title="Close">&#10005;</button>
+    </div>
+  </div>
+
+  <nav class="rail" aria-label="App">
+    <button title="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <button title="Home"><svg viewBox="0 0 24 24"><path d="M4 11.5l8-6.5 8 6.5V19a1 1 0 01-1 1h-4.5v-5.5h-5V20H5a1 1 0 01-1-1z"/></svg></button>
+    <button class="on" title="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg></button>
+    <button title="Library"><svg viewBox="0 0 24 24"><path d="M5 4v16M10 4v16M15 5l4.5 15"/></svg></button>
+    <button title="Liked"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.5-7-9a4 4 0 017-2.6A4 4 0 0119 11c0 4.5-7 9-7 9z"/></svg></button>
+    <div class="sp"></div>
+    <button title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/></svg></button>
+  </nav>
+
+  <section class="content">
+    <div class="scroll" id="page"></div>
+    <div class="status">
+      <span><b>↑</b><b>↓</b> flyout</span>
+      <span><b>Tab</b> ghost</span>
+      <span><b>Enter</b> commit / play</span>
+      <span><b>/</b> focus</span>
+      <span class="op" id="opline">searchSuggestions · sleep</span>
+    </div>
+    <div class="teach" id="teach"></div>
+  </section>
+</div>
+
+<script>
+/* searchSuggestions captures — first 4 are SearchAutoCompleteEntity, rest are entity previews.
+   Ghost = first AC whose text starts with the typed prefix. Flyout = all 4 AC + entity hits.
+   The results PAGE is a different op (searchTopResultsList), painted only on commit. */
+const SUGGEST = {
+  s: {
+    q: ["sleep","sleep music","summer","shooting star"],
+    items: [
+      {k:"artist",t:"Shakira",m:"Artist",c:"#c45c2a"},
+      {k:"track",t:"Sunflower",m:"Song · Post Malone, Swae Lee",c:"#c9a227"},
+      {k:"track",t:"Sign of the Times",m:"Song · Harry Styles",c:"#3a4a6a"},
+      {k:"track",t:"Self Aware",m:"Song · Temper City",c:"#5a3a4a"},
+      {k:"track",t:"Shut Up and Dance",m:"Song · WALK THE MOON",c:"#2a6a8a"},
+      {k:"playlist",t:"Summer 2016 vibes",m:"Playlist",c:"#1e5a8a"},
+      {k:"podcast",t:"Smosh Reads Reddit Stories",m:"Podcast",c:"#8a3a2a"},
+      {k:"artist",t:"Shawn Mendes",m:"Artist",c:"#4a6a8a"},
+    ],
+  },
+  sl: {
+    q: ["sleep","sleep music","sleep music for deep sleeping","slaap"],
+    items: [
+      {k:"track",t:"Slightly Tipsy",m:"Song · Sandeul",c:"#8a4a6a"},
+      {k:"playlist",t:"Fall Asleep Fast 💤",m:"Playlist · Calmly",c:"#1e3d5c"},
+      {k:"playlist",t:"Sleep",m:"Playlist · Spotify",c:"#2c3e66"},
+      {k:"playlist",t:"SLAM! 40 2026",m:"Playlist",c:"#3a2a6a"},
+      {k:"track",t:"Slipping Through My Fingers",m:"Song · ABBA",c:"#6a4a2a"},
+      {k:"episode",t:"1 Hour Relaxing Music for Stress Relief",m:"Episode",c:"#3a4a5a"},
+      {k:"audiobook",t:"Sleep Music for Babies",m:"Audiobook",c:"#1f3a44"},
+      {k:"track",t:"SLOW DANCING IN THE DARK",m:"Song · Joji",c:"#2a2a32"},
+    ],
+  },
+  sle: {
+    q: ["sleep music","sleep","sleep music for deep sleeping","sleep meditation"],
+    items: [
+      {k:"playlist",t:"Fall Asleep Fast 💤",m:"Playlist · Calmly",c:"#1e3d5c"},
+      {k:"track",t:"Sleeping With The Lights On",m:"Song · Daniel Seavey",c:"#7a3a2c"},
+      {k:"playlist",t:"Sleep",m:"Playlist · Spotify",c:"#2c3e66"},
+      {k:"playlist",t:"Sleep Music for Deep Sleeping",m:"Playlist",c:"#24405e"},
+      {k:"playlist",t:"Goodnight Mix",m:"Playlist · Spotify",c:"#6a3d1e"},
+      {k:"genre",t:"Sleep",m:"Genre",c:"#1a237e"},
+      {k:"episode",t:"1 Hour Relaxing Music for Stress Relief",m:"Episode",c:"#3a4a5a"},
+    ],
+  },
+  slee: {
+    q: ["sleep music","sleep","sleep music for deep sleeping","sleep meditation"],
+    items: [
+      {k:"playlist",t:"Fall Asleep Fast 💤",m:"Playlist · Calmly",c:"#1e3d5c"},
+      {k:"track",t:"Sleeping With The Lights On",m:"Song · Daniel Seavey",c:"#7a3a2c"},
+      {k:"playlist",t:"Sleep",m:"Playlist · Spotify",c:"#2c3e66"},
+      {k:"playlist",t:"Goodnight Mix",m:"Playlist · Spotify",c:"#6a3d1e"},
+      {k:"playlist",t:"Sleep Music for Deep Sleeping",m:"Playlist",c:"#24405e"},
+      {k:"genre",t:"Sleep",m:"Genre",c:"#1a237e"},
+    ],
+  },
+  sleep: {
+    q: ["sleep music","sleep","sleep music for deep sleeping","sleep meditation"],
+    items: [
+      {k:"playlist",t:"Sleep",m:"Playlist · Spotify",c:"#2c3e66"},
+      {k:"playlist",t:"Fall Asleep Fast 💤",m:"Playlist · Calmly",c:"#1e3d5c"},
+      {k:"playlist",t:"Goodnight Mix",m:"Playlist · Spotify",c:"#6a3d1e"},
+      {k:"track",t:"Sleeping With The Lights On",m:"Song · Daniel Seavey",c:"#7a3a2c"},
+      {k:"playlist",t:"Sleep Music for Deep Sleeping",m:"Playlist",c:"#24405e"},
+      {k:"playlist",t:"Songs that WILL put you to SLEEP... (100% GUARANTEE!!) 😴",m:"Playlist",c:"#5a4b7a"},
+      {k:"playlist",t:"Jazz for Sleep",m:"Playlist · Spotify",c:"#3d2f22"},
+      {k:"genre",t:"Sleep",m:"Genre",c:"#1a237e"},
+    ],
+  },
+  l: {
+    q: ["love attack","linkin park","lauv","lady gaga"],
+    items: [
+      {k:"track",t:"I loved you too much to just laugh it off",m:"Song",c:"#6a3a4a"},
+      {k:"track",t:"Love U Like That",m:"Song · Korean Version",c:"#8a4a6a"},
+      {k:"track",t:"Lose My Mind (feat. Doja Cat)",m:"Song · From F1 The Movie",c:"#2a3a6a"},
+      {k:"artist",t:"League of Legends",m:"Artist",c:"#1a3a5c"},
+      {k:"artist",t:"LE SSERAFIM",m:"Artist",c:"#c45c6a"},
+      {k:"artist",t:"LAUV",m:"Artist",c:"#4a6a8a"},
+      {k:"track",t:"Love Theory",m:"Song",c:"#5a3a6a"},
+    ],
+  },
+  lo: {
+    q: ["lofi sleep","lofi beats","lo-fi chill","love attack"],
+    items: [
+      {k:"genre",t:"lofi beats",m:"Genre",c:"#5c3550"},
+      {k:"playlist",t:"Lofi Girl - beats to relax/study to",m:"Playlist",c:"#2a4a5a"},
+      {k:"playlist",t:"lofi chill",m:"Playlist · Spotify",c:"#3a5a6a"},
+      {k:"playlist",t:"lofi sleep",m:"Playlist · Spotify",c:"#1e3d5c"},
+      {k:"playlist",t:"Lofi Study 2026",m:"Playlist",c:"#4a3a2a"},
+      {k:"artist",t:"Lofi Girl",m:"Artist",c:"#c45c2a"},
+    ],
+  },
+  lof: {
+    q: ["lofi beats","lo-fi chill","lofi sleep","lofilulla"],
+    items: [
+      {k:"genre",t:"lofi beats",m:"Genre",c:"#5c3550"},
+      {k:"playlist",t:"Lofi Girl - beats to relax/study to",m:"Playlist",c:"#2a4a5a"},
+      {k:"playlist",t:"lofi chill",m:"Playlist · Spotify",c:"#3a5a6a"},
+      {k:"playlist",t:"lofi sleep",m:"Playlist · Spotify",c:"#1e3d5c"},
+      {k:"playlist",t:"Lofi Study 2026",m:"Playlist",c:"#4a3a2a"},
+      {k:"episode",t:"Nhạc Lofi 8x9x",m:"Episode",c:"#6a4a3a"},
+      {k:"audiobook",t:"Relaxing Rainy Nights with Lofi Sounds",m:"Audiobook",c:"#1f3a44"},
+      {k:"track",t:"Lof",m:"Song",c:"#3a3a4a"},
+    ],
+  },
+  loff: {
+    q: ["koffie","lofilulla","koffiehuis","loffler"],
+    items: [
+      {k:"playlist",t:"'t Koffiehuis",m:"Playlist · Spotify",c:"#6a3d1e"},
+      {k:"playlist",t:"Lofi Girl - beats to relax/study to",m:"Playlist",c:"#2a4a5a"},
+      {k:"artist",t:"Christian Löffler",m:"Artist",c:"#3a4a5a"},
+      {k:"playlist",t:"KOFFIETIJD",m:"Playlist",c:"#4a2a18"},
+      {k:"podcast",t:"De Koffiecorner",m:"Podcast",c:"#5a3a20"},
+    ],
+  },
+  loffi: {
+    q: ["lofi beats","lo-fi chill","koffie","koffiehuis"],
+    items: [
+      {k:"playlist",t:"'t Koffiehuis",m:"Playlist · Spotify",c:"#6a3d1e"},
+      {k:"playlist",t:"Lofi Girl - beats to relax/study to",m:"Playlist",c:"#2a4a5a"},
+      {k:"playlist",t:"Lofi Study 2026",m:"Playlist",c:"#4a3a2a"},
+      {k:"playlist",t:"Loffi Beats",m:"Playlist",c:"#3a2a18"},
+      {k:"podcast",t:"De Koffiecorner",m:"Podcast",c:"#5a3a20"},
+    ],
+  },
+  "loffi ": {
+    q: ["lo-fi chill","lofi beats","lofi sleep","lofi house party"],
+    items: [
+      {k:"playlist",t:"Lofi Study 2026",m:"Playlist",c:"#4a3a2a"},
+      {k:"playlist",t:"lofi sleep",m:"Playlist · Spotify",c:"#1e3d5c"},
+      {k:"playlist",t:"lofi chill",m:"Playlist · Spotify",c:"#3a5a6a"},
+      {k:"playlist",t:"Lofi Girl - beats to relax/study to",m:"Playlist",c:"#2a4a5a"},
+      {k:"artist",t:"Lofi Girl",m:"Artist",c:"#c45c2a"},
+    ],
+  },
+  "loffi b": {
+    q: ["lofi beats","lo-fi beats","lo‑fi beats","lofi bts"],
+    items: [
+      {k:"playlist",t:"Lo-Fi Beats",m:"Playlist",c:"#2a4a5a"},
+      {k:"playlist",t:"Lofi Girl - beats to relax/study to",m:"Playlist",c:"#2a4a5a"},
+      {k:"playlist",t:"chill lofi study beats",m:"Playlist · Spotify",c:"#3a5a4a"},
+      {k:"playlist",t:"Loffi Beats",m:"Playlist",c:"#3a2a18"},
+      {k:"genre",t:"lofi beats",m:"Genre",c:"#5c3550"},
+    ],
+  },
+  "loffi bs": {
+    q: ["lofi beats","lofi sleep","lofi summer vibes","lofi summer beats"],
+    items: [
+      {k:"playlist",t:"Lofi Girl - beats to relax/study to",m:"Playlist",c:"#2a4a5a"},
+      {k:"playlist",t:"lofi beats",m:"Playlist · Spotify",c:"#5c3550"},
+      {k:"playlist",t:"Calm Lofi Beats to Relax",m:"Playlist",c:"#1e3d5c"},
+      {k:"audiobook",t:"Relaxing Rainy Nights with Lofi Sounds",m:"Audiobook",c:"#1f3a44"},
+      {k:"genre",t:"lofi beats",m:"Genre",c:"#5c3550"},
+    ],
+  },
+  a: {
+    q: ["arash","alex warren","akmu","arcane"],
+    items: [
+      {k:"track",t:"Anyone of Us (Stupid Mistake)",m:"Song · Gareth Gates",c:"#4a6a8a"},
+      {k:"track",t:"Angel Baby",m:"Song · Troye Sivan",c:"#8a6a9a"},
+      {k:"artist",t:"Arash",m:"Artist",c:"#c45c2a"},
+      {k:"artist",t:"AKMU",m:"Artist",c:"#3a5a7a"},
+      {k:"artist",t:"aespa",m:"Artist",c:"#6a4a8a"},
+      {k:"track",t:"Africa",m:"Song · TOTO",c:"#2a6a4a"},
+    ],
+  },
+  am: {
+    q: ["am","american","american girls","amy winehouse"],
+    items: [
+      {k:"track",t:"American Girls",m:"Song · Harry Styles",c:"#3a4a6a"},
+      {k:"playlist",t:"Iced Americano",m:"Playlist",c:"#6a3d1e"},
+      {k:"artist",t:"Amy Winehouse",m:"Artist",c:"#2a2a28"},
+      {k:"album",t:"Back to Black",m:"Album · Amy Winehouse",c:"#1a1a18"},
+      {k:"podcast",t:"The Daily",m:"Podcast",c:"#4a4a3a"},
+    ],
+  },
+  k: {
+    q: ["katseye","keenan te","kpop","k3"],
+    items: [
+      {k:"track",t:"Kryfa",m:"Song · Melisses",c:"#4a3a6a"},
+      {k:"playlist",t:"Millennium K-Pop",m:"Playlist · Spotify",c:"#8a2a4a"},
+      {k:"track",t:"Vluchtstrook",m:"Song · Kris Kross Amsterdam",c:"#3a5a7a"},
+      {k:"artist",t:"KATSEYE",m:"Artist",c:"#c45c8a"},
+      {k:"album",t:"KPop Demon Hunters",m:"Album · Soundtrack",c:"#6a2a8a"},
+    ],
+  },
+  kris: {
+    q: ["kris kross amsterdam","kris kross","kris kross amsterdam vluchtstrook","kris kristofferson"],
+    items: [
+      {k:"track",t:"Vluchtstrook",m:"Song · Kris Kross Amsterdam, Antoon, Sigourney K",c:"#3a5a7a"},
+      {k:"artist",t:"Kris Kross Amsterdam",m:"Artist",c:"#2a4a6a"},
+      {k:"track",t:"Jump",m:"Song · Kris Kross",c:"#6a3a2a"},
+      {k:"artist",t:"Kris Kristofferson",m:"Artist",c:"#5a4a3a"},
+    ],
+  },
+  "kriss kross": {
+    q: ["kris kross amsterdam","kris kross jump","kriss kross","kris kross"],
+    items: [
+      {k:"track",t:"Vluchtstrook",m:"Song · Kris Kross Amsterdam, Antoon, Sigourney K",c:"#3a5a7a"},
+      {k:"track",t:"Jump",m:"Song · Kris Kross",c:"#6a3a2a"},
+      {k:"track",t:"Stay (Never Leave)",m:"Song · Kris Kross Amsterdam, SERA, Conor Maynard",c:"#4a3a5a"},
+      {k:"artist",t:"Kris Kross Amsterdam",m:"Artist",c:"#2a4a6a"},
+      {k:"track",t:"Hij Is Van Mij",m:"Song · Kris Kross Amsterdam, Maan, Tabitha",c:"#8a4a2a"},
+    ],
+  },
+};
+SUGGEST.kr = SUGGEST.kris;
+SUGGEST.kriss = SUGGEST.kris;
+SUGGEST["kriss "] = SUGGEST["kriss kross"];
+SUGGEST["kriss kr"] = SUGGEST["kriss kross"];
+SUGGEST["kriss kros"] = SUGGEST["kriss kross"];
+const ROWS = [
+  {k:"playlist",t:"Fall Asleep Fast 💤",m:"Playlist · Calmly",d:"",match:"title",c:"#1e3d5c"},
+  {k:"playlist",t:"Goodnight Mix",m:"Playlist · matched description",d:"",match:"description",c:"#6a3d1e"},
+  {k:"track",t:"Sleeping With The Lights On",m:"Daniel Seavey",d:"3:33",c:"#7a3a2c"},
+  {k:"playlist",t:"Sleep Music for Deep Sleeping",m:"Playlist",d:"",c:"#24405e"},
+  {k:"playlist",t:"Songs that WILL put you to SLEEP",m:"Playlist",d:"",c:"#5a4b7a"},
+  {k:"playlist",t:"Jazz for Sleep",m:"Playlist · Spotify",d:"",c:"#3d2f22"},
+  {k:"genre",t:"Sleep",m:"Genre",d:"",c:"#1a237e"},
+  {k:"track",t:"Weightless",m:"Marconi Union",d:"8:08",c:"#2c3e66"},
+  {k:"artist",t:"Sleep Token",m:"Artist",d:"",c:"#3a2c4a"},
+  {k:"episode",t:"1 Hour Relaxing Music for Stress Relief",m:"Episode",d:"1:00:12",match:"title",c:"#3a4a5a"},
+  {k:"podcast",t:"Sleep With Me",m:"Podcast",d:"",c:"#4a3a2c"},
+  {k:"audiobook",t:"Sleep Music for Babies",m:"Audiobook",d:"",c:"#1f3a44"},
+];
+const RECENTS = [
+  {k:"track",t:"Brabant",m:"Guus Meeuwis",d:"3:22",c:"#4a3a2a"},
+  {k:"playlist",t:"Dalkom Cafe",m:"Playlist",d:"",c:"#c76a2a"},
+  {k:"track",t:"Broken Angel",m:"Arash, Helena",d:"3:18",c:"#5a3a5a"},
+  {k:"artist",t:"Kris Kross Amsterdam",m:"Artist",d:"",c:"#3a5a7a"},
+];
+const PLAYLISTS = [
+  {t:"Fall Asleep Fast",c:"#1a3a68"},
+  {t:"Goodnight Mix",c:"#243018"},
+  {t:"Jazz for Sleep",c:"#3a2a18"},
+  {t:"Sleep Music for Deep Sleeping",c:"#182838"},
+];
+const GENRES = [
+  ["Sleep","#1b3a6e"],["Rain sounds","#245a7a"],["Noise for sleep","#2a2a32"],["White Noise","#c8c8c8"],
+  ["Lullabies","#6b4a8a"],["Sleep","#143050"],["Sleep & Meditation","#204060"],["Baby sleep","#8a6a3a"],
+];
+const glyphs = {
+  track:'<svg class="kind-g" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="16" r="2"/></svg>',
+  playlist:'<svg class="kind-g" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  artist:'<svg class="kind-g" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-3 4-5 7-5s5.5 2 7 5"/></svg>',
+  genre:'<svg class="kind-g" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>',
+  episode:'<svg class="kind-g" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="18" rx="4"/></svg>',
+  podcast:'<svg class="kind-g" viewBox="0 0 24 24"><path d="M12 16v4M8 20h8"/><circle cx="12" cy="10" r="3"/></svg>',
+  audiobook:'<svg class="kind-g" viewBox="0 0 24 24"><path d="M4 19a2 2 0 0 1 2-2h12v3H6a2 2 0 0 1-2-2z"/><path d="M6 17V5h14v12"/></svg>',
+};
+const $ = s => document.querySelector(s);
+const qEl = $("#q"), ghostEl = $("#ghost"), asb = $("#asb"), fly = $("#fly"), page = $("#page");
+let sel = 0, flySel = -1, flyRows = [], committed = "sleep";
+
+function payload(typed){
+  const t = typed.toLowerCase();
+  if(!t) return {q:[], items:[], key:""};
+  const keys = Object.keys(SUGGEST).sort((a,b)=>b.length-a.length);
+  const key = keys.find(k => t === k || t.startsWith(k));
+  return key ? Object.assign({key}, SUGGEST[key]) : {q:[], items:[], key:""};
+}
+function ghostFor(v){
+  if(!v) return "";
+  const m = payload(v).q.find(c => c.toLowerCase().startsWith(v.toLowerCase()) && c.toLowerCase() !== v.toLowerCase());
+  return m ? v + m.slice(v.length) : "";
+}
+function coverClass(k){ return k==="artist" ? "cover round" : (k==="genre"||k==="playlist" ? "cover sq" : "cover"); }
+function coverShape(k){ return k==="artist"||k==="user" ? "round" : (k==="playlist"||k==="genre" ? "sq" : ""); }
+function hilite(t,q){
+  if(!q) return t;
+  const i = t.toLowerCase().indexOf(q.toLowerCase());
+  if(i<0) return t;
+  return t.slice(0,i)+"<mark>"+t.slice(i,i+q.length)+"</mark>"+t.slice(i+q.length);
+}
+function rowsHtml(items,q){
+  return items.map((r,i)=>`
+    <button class="row ${r.k==="playlist"||r.k==="audiobook"?"lg":""}" data-i="${i}">
+      <span class="${coverClass(r.k)}" style="background:linear-gradient(155deg,${r.c},${r.c}88)"></span>
+      <span><div class="t1">${hilite(r.t,q)}</div><div class="t2">${r.m}${r.match?" · "+r.match:""}</div></span>
+      <span class="dur">${r.d||""}</span>${glyphs[r.k]||""}
+    </button>`).join("");
+}
+
+function paintPage(){
+  const v = committed;
+  if(!v){
+    $("#opline").textContent = "recentSearches · limit 50";
+    page.innerHTML = `
+      <p class="query-echo muted">search</p>
+      <div class="sec"><span class="tick"></span><h3>Recent</h3><span class="sub">recentSearches · entities</span></div>
+      <div class="card matches">${rowsHtml(RECENTS,"")}</div>
+      <div class="sec"><span class="tick"></span><h3>Browse</h3></div>
+      <div class="genres" style="padding:0">${GENRES.slice(0,4).map(([n,c])=>`<button class="g" style="background:${c};color:${n==="White Noise"?"#111":"#fff"}">${n}</button>`).join("")}</div>`;
+    return;
+  }
+  const rel = payload(v).q;
+  page.innerHTML = `
+    <p class="query-echo">${v}</p>
+    <div class="facets" role="tablist">
+      <button class="facet" aria-current="true">All</button>
+      <button class="facet">Playlists<em>75</em></button>
+      <button class="facet">Songs<em>67</em></button>
+      <button class="facet">Episodes<em>55</em></button>
+      <button class="facet">Genres<em>8</em></button>
+      <button class="facet">Podcasts<em>61</em></button>
+      <button class="facet">Albums<em>91</em></button>
+      <button class="facet">Artists<em>81</em></button>
+    </div>
+    <article class="card hero">
+      <div class="hero-wash"></div>
+      <div class="hero-copy">
+        <div class="eyebrow">Top result · playlist</div>
+        <h2>Sleep</h2>
+        <div class="meta">Gentle ambient piano to help you fall asleep. · Spotify · 4 hr 12 min</div>
+        <div class="why"><span class="chip">matched title</span><span class="chip">editorial</span></div>
+        <div class="actions">
+          <button class="btn">Play <span class="kbd">Enter</span></button>
+          <button class="btn ghost">Open page <span class="kbd">Ctrl+Enter</span></button>
+          <button class="btn ghost">Save</button>
+        </div>
+      </div>
+      <div class="hero-art"><img alt="" src="https://i.scdn.co/image/ab67706f00000002cd17d41419faa97069e06c16"></div>
+    </article>
+    <div class="sec"><span class="tick"></span><h3>Best matches</h3><span class="sub">server ranking · topResultsV2</span></div>
+    <div class="card matches" id="list">${rowsHtml(ROWS,v)}</div>
+    <div class="sec"><span class="tick"></span><h3>Playlists</h3><span class="sub">chipOrder first · 75</span></div>
+    <div class="card film">${PLAYLISTS.map(p=>`<button class="tile"><div class="art" style="background:linear-gradient(135deg,${p.c},#0a1018)"></div><div class="t1">${p.t}</div><div class="t2">Playlist</div></button>`).join("")}</div>
+    <div class="sec"><span class="tick"></span><h3>Genres</h3><span class="sub">searchGenres · 8</span></div>
+    <div class="card"><div class="genres">${GENRES.map(([n,c])=>`<button class="g" style="background:${c};color:${n==="White Noise"?"#111":"#fff"}">${n}</button>`).join("")}</div></div>
+    <div class="sec"><span class="tick"></span><h3>Related searches</h3><span class="sub">SearchAutoCompleteEntity · from searchSuggestions</span></div>
+    <div class="related">${rel.map(c=>`<a href="#" data-q="${c}">${c}</a>`).join("")}</div>`;
+  select(sel);
+  page.querySelectorAll(".facet").forEach(b=>b.onclick=()=>{
+    page.querySelectorAll(".facet").forEach(x=>x.removeAttribute("aria-current"));
+    b.setAttribute("aria-current","true");
+  });
+  page.querySelectorAll("[data-q]").forEach(a=>a.onclick=e=>{e.preventDefault();commitQuery(a.dataset.q);});
+}
+function suggestOpLine(){
+  const v = qEl.value;
+  const p = payload(v);
+  if(!v.trim()){ $("#opline").textContent = "searchSuggestions idle"; return; }
+  $("#opline").textContent = `searchSuggestions · "${p.key||v}" · ${p.q.length} AC + ${p.items.length} ents · ghost ${ghostFor(v)?"yes":"none"}`;
+}
+function matchSpan(completion, typed){
+  const t = typed.toLowerCase(), c = completion;
+  if(c.toLowerCase().startsWith(t)) return `<b>${esc(typed)}</b><span class="rest">${esc(c.slice(typed.length))}</span>`;
+  return esc(c);
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[ch])); }
+function select(i){
+  const nodes = [...page.querySelectorAll("#list .row")];
+  if(!nodes.length) return;
+  sel = (i+nodes.length)%nodes.length;
+  nodes.forEach((n,k)=>n.setAttribute("aria-selected", k===sel?"true":"false"));
+}
+function suggest(){
+  const v = qEl.value;
+  const p = payload(v);
+  suggestOpLine();
+  if(!v.trim() || (!p.q.length && !p.items.length)){ fly.classList.remove("open"); flyRows = []; return; }
+  const comps = p.q.slice(0,4);
+  const ents = p.items.slice(0,8);
+  flyRows = comps.map(c=>({t:"q",v:c})).concat(ents.map(e=>({t:"e",v:e})));
+  fly.innerHTML =
+    `<div class="fly-label">Suggestions · SearchAutoCompleteEntity</div>`+
+    comps.map((c,i)=>`<button class="fly-item" data-p="${i}"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+      <span class="t">${matchSpan(c,v.trim())}</span><span class="m">search</span></button>`).join("")+
+    `<div class="fly-label">Top results · itemsV2 after AC</div>`+
+    ents.map((e,i)=>`<button class="fly-item" data-p="${comps.length+i}">
+      <span class="cover ${coverShape(e.k)}" style="background:linear-gradient(155deg,${e.c},${e.c}88)"></span>
+      <span class="copy"><div class="t">${esc(e.t)}</div><div class="t2">${esc(e.m)}</div></span>
+      <span class="m">${esc(e.k)}</span></button>`).join("");
+  fly.classList.add("open");
+  fly.querySelectorAll(".fly-item").forEach(it=>{
+    it.onmouseenter=()=>{flySel=+it.dataset.p;flyPaint();};
+    it.onmousedown=e=>{e.preventDefault();flySel=+it.dataset.p;commitFly();};
+  });
+  flyPaint();
+}
+function flyPaint(){
+  fly.querySelectorAll(".fly-item").forEach(i=>i.classList.toggle("sel", +i.dataset.p===flySel));
+  ghostEl.textContent = flySel<0 ? ghostFor(qEl.value) : "";
+}
+function commitFly(){
+  const r = flyRows[flySel];
+  fly.classList.remove("open");
+  if(!r) return;
+  if(r.t==="q") commitQuery(r.v);
+  else invokeEntity(r.v);
+}
+function invokeEntity(e){
+  if(e.k==="track"||e.k==="episode"||e.k==="podcast"||e.k==="audiobook") teach("Playing · "+e.t);
+  else teach("Open · "+e.k+" · "+e.t);
+}
+function commitQuery(v){
+  qEl.value = v;
+  committed = v.trim();
+  asb.classList.toggle("has", !!v);
+  flySel = -1; sel = 0;
+  ghostEl.textContent = "";
+  fly.classList.remove("open");
+  paintPage();
+  $("#opline").textContent = committed
+    ? "searchTopResultsList · "+committed+" · 50 ranked"
+    : "recentSearches · limit 50";
+}
+function acceptGhost(){
+  const g = ghostFor(qEl.value);
+  if(g){ qEl.value = g; asb.classList.add("has"); ghostEl.textContent = ""; suggest(); }
+}
+let tt;
+function teach(m){ const t=$("#teach"); t.textContent=m; t.classList.add("on"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("on"),1400); }
+
+qEl.addEventListener("input", ()=>{
+  asb.classList.toggle("has", !!qEl.value);
+  flySel = -1;
+  ghostEl.textContent = ghostFor(qEl.value);
+  suggest();
+});
+qEl.addEventListener("focus", ()=>{ asb.classList.add("focus"); suggest(); ghostEl.textContent = ghostFor(qEl.value); });
+qEl.addEventListener("blur", ()=>{
+  asb.classList.remove("focus");
+  setTimeout(()=>{ fly.classList.remove("open"); }, 120);
+});
+$("#clear").onclick = ()=>{ qEl.value=""; committed=""; asb.classList.remove("has"); ghostEl.textContent=""; fly.classList.remove("open"); paintPage(); qEl.focus(); };
+
+addEventListener("keydown", e=>{
+  const open = fly.classList.contains("open");
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="k"){ e.preventDefault(); qEl.focus(); qEl.select(); return; }
+  if(e.key==="/" && document.activeElement!==qEl){ e.preventDefault(); qEl.focus(); return; }
+  if(e.key==="Tab" && document.activeElement===qEl && ghostFor(qEl.value) && flySel<0){
+    e.preventDefault(); acceptGhost(); return;
+  }
+  if(e.key==="ArrowRight" && document.activeElement===qEl && qEl.selectionStart===qEl.value.length){
+    if(ghostFor(qEl.value)){ e.preventDefault(); acceptGhost(); return; }
+  }
+  if(e.key==="Escape"){ open ? fly.classList.remove("open") : commitQuery(""); return; }
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){
+    e.preventDefault(); const d = e.key==="ArrowDown"?1:-1;
+    if(open || document.activeElement===qEl){
+      if(!open) suggest();
+      flySel = Math.max(-1, Math.min(flyRows.length-1, flySel+d)); flyPaint(); return;
+    }
+    select(sel+d); return;
+  }
+  if(e.key==="Enter"){
+    if(open && flySel>=0){ commitFly(); return; }
+    if(ghostFor(qEl.value) && flySel<0){ acceptGhost(); commitQuery(qEl.value); return; }
+    commitQuery(qEl.value); return;
+  }
+});
+
+paintPage();
+suggestOpLine();
+ghostEl.textContent = ghostFor(qEl.value);
+qEl.focus();
+</script>
+</body>
+</html>

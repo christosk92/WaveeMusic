@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option csharp_namespace = "Wavee.Protocol.Playlist";
+
+// The base64-encoded `group_metadata` format_attribute carried on a recents-page GROUP HEADER item
+// (GET /playlist/v2/list/recents/page). It names the context a run of consecutive plays collapses into:
+// how many children the card stands for and their uris (so an empty-uri "single context" header renders
+// its child list with no extra network read), plus a Kind label/count. Field numbers are capture-derived.
+message RecentsGroupMetadata {
+    int32 child_count = 1;
+    repeated string child_uri = 2;
+    message Kind {
+        string name = 1;
+        int32 count = 2;
+    }
+    Kind kind = 4;
+}

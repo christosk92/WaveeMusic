@@ -1,0 +1,77 @@
+// The payload Spotify returns for a track's TRACK_DESCRIPTOR (extension kind 6) extension — the per-track
+// "tags" plane that makes the Liked Songs content-filter chips filterable.
+//
+// Provenance: fields 1-3 and the message/package names are authoritative (they match the definition extracted
+// from Spotify 1.1.73.517 and the wire's Any type_url, below). Fields 4-5 and enum values >= 8 are
+// reverse-engineered from a live 2026 extended-metadata response captured in `content-filters.saz` (session
+// 417) — field NUMBERS and wire types are verified against the wire; those two field NAMES are best-effort.
+//
+// Wire evidence (session 417, spotify:track:4mlQPWeSMkwJQcYTr9razZ, HTTP 200, content-encoding: zstd):
+//
+//   EntityExtensionData.extension_data = google.protobuf.Any {
+//     type_url = "type.googleapis.com/spotify.descriptorextension.ExtensionDescriptorData"
+//     value    = ExtensionDescriptorData { descriptors = [ {
+//                  text         = "k-pop"                                     // f1, length-delimited
+//                  weight       = 0.9749                                      // f2, fixed32 float
+//                  types        = [1, 7, 9, 10, 11]                           // f3, PACKED varints
+//                  concept_uri  = "spotify:concept:0JOcC1ypWJCg2qQqoEpYL9"    // f4, length-delimited  (NEW)
+//                  display_name = "K-Pop"                                     // f5, length-delimited  (NEW)
+//                } ] }
+//
+// The same response carried header status_code=200, cache_ttl_in_seconds=86400 (24h) and
+// offline_ttl_in_seconds=2592000 (30d) — those TTLs are the wire's own, not a client-side invention.
+//
+// Why proto3 while the sibling extended-metadata protos are proto2: `types` is PACKED on the wire, and the
+// live capture carries enum values (9, 10, 11) outside the known set. proto3 enums are OPEN, so unrecognized
+// values round-trip intact; a proto2 CLOSED enum would silently route them to unknown fields and drop them.
+// This file imports nothing, so the syntax difference is local to it.
+//
+// NOTE: the older extracted definition stops at field 3. Parsing with it is safe but LOSSY — it discards
+// concept_uri and display_name. `text` is the lowercase token the chip query matches
+// (`tags contains k-pop`); `display_name` is the presentation form ("K-Pop"); they are NOT the same string.
+
+syntax = "proto3";
+
+package spotify.descriptorextension;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.DescriptorExtension";
+
+message ExtensionDescriptor {
+    // Lowercase match token. This — not display_name — is what a content-filter
+    // `tags contains <token>` query compares against (case-insensitively).
+    string text = 1;
+
+    // Confidence/relevance of this descriptor for the track, 0..1 (0.9749 observed).
+    float weight = 2;
+
+    // Facet(s) this descriptor belongs to. PACKED on the wire. Open enum: values outside
+    // ExtensionDescriptorType are preserved as-is rather than dropped.
+    repeated ExtensionDescriptorType types = 3;
+
+    // Canonical concept entity for the descriptor, e.g. "spotify:concept:0JOcC1ypWJCg2qQqoEpYL9".
+    // Field number wire-verified; name best-effort.
+    string concept_uri = 4;
+
+    // Localized/presentation form of `text`, e.g. "K-Pop" for text "k-pop". Matches the `title`
+    // returned by content-filter/v1/liked-songs. Field number wire-verified; name best-effort.
+    string display_name = 5;
+}
+
+message ExtensionDescriptorData {
+    repeated ExtensionDescriptor descriptors = 1;
+}
+
+enum ExtensionDescriptorType {
+    UNKNOWN = 0;
+    GENRE = 1;
+    MOOD = 2;
+    ACTIVITY = 3;
+    INSTRUMENT = 4;
+    TIME = 5;
+    ERA = 6;
+    AESTHETIC = 7;
+    // Values 8+ are unnamed. The live capture emitted 9, 10 and 11 alongside GENRE(1) and
+    // AESTHETIC(7) for a single "k-pop" descriptor; their semantics are not established.
+    // Do not guess names here — treat unknown values as opaque and ignore them for filtering.
+}

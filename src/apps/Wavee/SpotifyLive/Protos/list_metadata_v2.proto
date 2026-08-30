@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option csharp_namespace = "Wavee.Protocol.ExtendedMetadata";
+
+// Lean LIST_METADATA_V2 (extension kind 205). Unknown fields are intentionally omitted.
+message ListMetadataV2 {
+    string name = 3;
+    string description = 4;
+    string source = 7;
+    Images images = 21;
+    string format_string = 23;
+    Attributes attributes = 24;
+
+    message Images {
+        repeated ImageVariant variant = 1;
+    }
+    message ImageVariant {
+        string format = 1;
+        string url = 2;
+    }
+    message Attributes {
+        repeated Attribute attribute = 1;
+    }
+    message Attribute {
+        string key = 1;
+        string value = 2;
+    }
+}

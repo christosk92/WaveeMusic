@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "Wavee (live)": {
+      "commandName": "Project",
+      "commandLineArgs": "--real-backend"
+    },
+    "Wavee (demo)": {
+      "commandName": "Project"
+    },
+    "Wavee (screenshot)": {
+      "commandName": "Project",
+      "commandLineArgs": "--screenshot bin/wavee-shot.png"
+    }
+  }
+}

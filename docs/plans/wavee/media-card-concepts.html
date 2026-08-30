@@ -1,0 +1,1367 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Wavee — Media card concepts</title>
+  <style>
+    :root {
+      --canvas: #f5f6f8;
+      --canvas-elevated: rgba(255, 255, 255, .78);
+      --surface: rgba(255, 255, 255, .88);
+      --surface-solid: #fff;
+      --surface-muted: #eceef2;
+      --text: #17191d;
+      --muted: #666b75;
+      --faint: #8b9099;
+      --stroke: rgba(26, 29, 35, .09);
+      --stroke-strong: rgba(26, 29, 35, .15);
+      --accent: #5c50f1;
+      --accent-2: #b848eb;
+      --accent-soft: rgba(92, 80, 241, .12);
+      --shadow-sm: 0 1px 2px rgba(13, 17, 28, .06), 0 8px 24px rgba(13, 17, 28, .05);
+      --shadow-lg: 0 18px 48px rgba(13, 17, 28, .15), 0 3px 10px rgba(13, 17, 28, .08);
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 24px;
+      --ease: cubic-bezier(.2, .8, .2, 1);
+    }
+
+    [data-theme="dark"] {
+      --canvas: #0d0e11;
+      --canvas-elevated: rgba(20, 21, 26, .82);
+      --surface: rgba(28, 29, 35, .84);
+      --surface-solid: #1c1d22;
+      --surface-muted: #24262c;
+      --text: #f5f5f7;
+      --muted: #aaaeb7;
+      --faint: #7b7f89;
+      --stroke: rgba(255, 255, 255, .08);
+      --stroke-strong: rgba(255, 255, 255, .14);
+      --accent: #8b80ff;
+      --accent-2: #de6cff;
+      --accent-soft: rgba(139, 128, 255, .16);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .2), 0 8px 28px rgba(0, 0, 0, .16);
+      --shadow-lg: 0 24px 60px rgba(0, 0, 0, .4), 0 4px 12px rgba(0, 0, 0, .2);
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--canvas);
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 8% 5%, rgba(91, 79, 241, .09), transparent 25rem),
+        radial-gradient(circle at 96% 25%, rgba(184, 72, 235, .07), transparent 30rem),
+        var(--canvas);
+      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color .25s ease, color .25s ease;
+    }
+
+    button, a { font: inherit; }
+    button { color: inherit; }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .topbar {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      min-height: 64px;
+      padding: 10px clamp(20px, 4vw, 64px);
+      border-bottom: 1px solid var(--stroke);
+      background: var(--canvas-elevated);
+      backdrop-filter: blur(22px) saturate(1.4);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 760;
+      letter-spacing: -.02em;
+      white-space: nowrap;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      color: white;
+      border-radius: 9px;
+      background: linear-gradient(145deg, var(--accent), var(--accent-2));
+      box-shadow: 0 6px 18px rgba(92, 80, 241, .25);
+    }
+
+    .brand small {
+      margin-left: 3px;
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .concept-nav {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      margin: 0 auto;
+      padding: 4px;
+      border: 1px solid var(--stroke);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--surface-solid) 62%, transparent);
+    }
+
+    .concept-nav a {
+      padding: 7px 13px;
+      color: var(--muted);
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 630;
+      text-decoration: none;
+      transition: color .18s ease, background .18s ease;
+    }
+
+    .concept-nav a:hover {
+      color: var(--text);
+      background: var(--surface-muted);
+    }
+
+    .icon-button {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      flex: 0 0 auto;
+      padding: 0;
+      place-items: center;
+      cursor: pointer;
+      border: 1px solid var(--stroke);
+      border-radius: 50%;
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, .03);
+      transition: transform .18s var(--ease), background .18s ease;
+    }
+
+    .icon-button:hover { transform: translateY(-1px); background: var(--surface-solid); }
+    .icon-button:active { transform: scale(.95); }
+
+    main {
+      width: min(1480px, 100%);
+      margin: 0 auto;
+      padding: 0 clamp(20px, 4vw, 64px) 96px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr);
+      gap: 48px;
+      align-items: end;
+      padding: clamp(64px, 8vw, 112px) 0 70px;
+    }
+
+    .kicker, .eyebrow {
+      margin: 0;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .hero h1 {
+      max-width: 900px;
+      margin: 14px 0 0;
+      font-size: clamp(44px, 6vw, 84px);
+      font-weight: 720;
+      letter-spacing: -.065em;
+      line-height: .98;
+    }
+
+    .hero-copy {
+      padding-bottom: 7px;
+    }
+
+    .hero-copy p {
+      max-width: 520px;
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(16px, 1.5vw, 19px);
+      line-height: 1.55;
+    }
+
+    .principles {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 22px;
+    }
+
+    .principle {
+      padding: 7px 11px;
+      border: 1px solid var(--stroke);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 620;
+    }
+
+    .concept-section {
+      position: relative;
+      padding: 72px 0 84px;
+      border-top: 1px solid var(--stroke);
+      scroll-margin-top: 74px;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 430px);
+      gap: 48px;
+      align-items: end;
+      margin-bottom: 30px;
+    }
+
+    .section-index {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 740;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .section-index::before {
+      width: 24px;
+      height: 2px;
+      content: "";
+      border-radius: 2px;
+      background: currentColor;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: clamp(34px, 4vw, 54px);
+      font-weight: 690;
+      letter-spacing: -.045em;
+      line-height: 1.04;
+    }
+
+    .section-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .canvas {
+      position: relative;
+      overflow: hidden;
+      padding: clamp(18px, 3vw, 38px);
+      border: 1px solid var(--stroke);
+      border-radius: clamp(20px, 2.2vw, 30px);
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--surface-solid) 78%, transparent), color-mix(in srgb, var(--surface-muted) 52%, transparent));
+      box-shadow: var(--shadow-sm);
+    }
+
+    .canvas-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .canvas-label h3 {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 680;
+      letter-spacing: -.025em;
+    }
+
+    .canvas-label span {
+      color: var(--faint);
+      font-size: 12px;
+      font-weight: 620;
+    }
+
+    .rail-controls { display: flex; gap: 6px; }
+    .rail-controls .icon-button { width: 32px; height: 32px; }
+    .rail-controls .icon-button:first-child { color: var(--faint); opacity: .55; }
+
+    /* Concept 01 — quiet shelf */
+    .quiet-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: clamp(12px, 1.5vw, 22px);
+    }
+
+    .quiet-card {
+      position: relative;
+      min-width: 0;
+      padding: 8px 8px 14px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-md);
+      background: transparent;
+      cursor: pointer;
+      transition:
+        transform .32s var(--ease), background .24s ease,
+        border-color .24s ease, box-shadow .32s var(--ease);
+    }
+
+    .quiet-card:hover, .quiet-card:focus-within {
+      z-index: 2;
+      transform: translateY(-5px);
+      border-color: var(--stroke);
+      background: var(--surface);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .artwork {
+      position: relative;
+      overflow: hidden;
+      aspect-ratio: 1;
+      border-radius: 12px;
+      background: var(--surface-muted);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+      isolation: isolate;
+    }
+
+    .artwork::after {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      content: "";
+      pointer-events: none;
+      background: linear-gradient(to bottom, transparent 58%, rgba(0, 0, 0, .24));
+      opacity: 0;
+      transition: opacity .22s ease;
+    }
+
+    .quiet-card:hover .artwork::after,
+    .quiet-card:focus-within .artwork::after { opacity: 1; }
+
+    .artwork img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      transition: transform .55s var(--ease), filter .3s ease;
+    }
+
+    .quiet-card:hover .artwork img { transform: scale(1.035); }
+
+    .cover-type {
+      position: absolute;
+      z-index: 2;
+      top: 12px;
+      left: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      color: rgba(255,255,255,.95);
+      border: 1px solid rgba(255,255,255,.17);
+      border-radius: 999px;
+      background: rgba(17, 17, 22, .38);
+      backdrop-filter: blur(12px);
+      font-size: 10px;
+      font-weight: 740;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .cover-type i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #abffb3;
+      box-shadow: 0 0 0 3px rgba(171, 255, 179, .13);
+    }
+
+    .cover-title {
+      position: absolute;
+      z-index: 2;
+      right: 16px;
+      bottom: 16px;
+      left: 16px;
+      max-width: 80%;
+      color: white;
+      font-size: clamp(20px, 2.1vw, 30px);
+      font-weight: 750;
+      letter-spacing: -.045em;
+      line-height: .95;
+      text-wrap: balance;
+      text-shadow: 0 2px 18px rgba(0,0,0,.24);
+    }
+
+    .artwork.tint-a img { filter: saturate(1.2) hue-rotate(8deg); }
+    .artwork.tint-b img { filter: saturate(1.3) hue-rotate(58deg); }
+    .artwork.tint-c img { filter: saturate(1.25) hue-rotate(146deg); }
+    .artwork.tint-d img { filter: saturate(1.4) hue-rotate(225deg); }
+
+    .play-button {
+      position: absolute;
+      z-index: 4;
+      right: 12px;
+      bottom: 12px;
+      display: grid;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      place-items: center;
+      color: #17191d;
+      cursor: pointer;
+      border: 0;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, .28);
+      opacity: 0;
+      transform: translateY(8px) scale(.92);
+      transition: opacity .22s ease, transform .3s var(--ease), background .18s ease;
+    }
+
+    .play-button:hover { background: #f0edff; transform: translateY(0) scale(1.06) !important; }
+    .play-button .icon { width: 17px; height: 17px; fill: currentColor; stroke-width: 0; }
+    .quiet-card:hover .play-button, .quiet-card:focus-within .play-button,
+    .play-button[aria-pressed="true"] { opacity: 1; transform: none; }
+
+    .card-copy { padding: 13px 3px 0; }
+    .card-copy h4 {
+      overflow: hidden;
+      margin: 0;
+      font-size: 16px;
+      font-weight: 690;
+      letter-spacing: -.018em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .card-copy p {
+      display: -webkit-box;
+      overflow: hidden;
+      min-height: 40px;
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .reason {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 11px;
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 620;
+    }
+
+    .reason .icon { width: 12px; height: 12px; color: var(--accent); }
+
+    /* Concept 02 — editorial stories */
+    .stories-canvas {
+      padding-bottom: clamp(18px, 3vw, 38px);
+      background:
+        radial-gradient(circle at 18% 16%, rgba(135, 100, 255, .25), transparent 28rem),
+        radial-gradient(circle at 88% 80%, rgba(255, 115, 140, .16), transparent 24rem),
+        #15131d;
+      color: #fff;
+      border-color: rgba(255, 255, 255, .08);
+    }
+
+    .stories-canvas .canvas-label span { color: rgba(255,255,255,.55); }
+
+    .story-grid {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr 1fr;
+      gap: clamp(12px, 1.7vw, 24px);
+    }
+
+    .story-card {
+      --spot-x: 50%;
+      --spot-y: 35%;
+      position: relative;
+      overflow: hidden;
+      min-height: 480px;
+      border: 1px solid rgba(255, 255, 255, .11);
+      border-radius: var(--radius-lg);
+      background: #29232f;
+      box-shadow: 0 20px 42px rgba(0, 0, 0, .22);
+      isolation: isolate;
+      transform: translateZ(0);
+    }
+
+    .story-card:first-child { min-height: 548px; }
+
+    .story-card > img {
+      position: absolute;
+      inset: 0;
+      z-index: -3;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: saturate(1.3) contrast(1.05);
+      transition: transform .75s var(--ease), filter .4s ease;
+    }
+
+    .story-card::before {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      content: "";
+      background:
+        radial-gradient(circle at var(--spot-x) var(--spot-y), rgba(255,255,255,.22), transparent 25%),
+        linear-gradient(to bottom, rgba(9, 8, 15, .02) 20%, rgba(9, 8, 15, .88) 92%);
+      opacity: .92;
+    }
+
+    .story-card::after {
+      position: absolute;
+      inset: -40%;
+      z-index: -1;
+      content: "";
+      pointer-events: none;
+      background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.10) 48%, transparent 61%);
+      transform: translateX(-45%) rotate(8deg);
+      transition: transform .8s var(--ease);
+    }
+
+    .story-card:hover > img { transform: scale(1.055); filter: saturate(1.45) contrast(1.04); }
+    .story-card:hover::after { transform: translateX(36%) rotate(8deg); }
+
+    .story-top {
+      position: absolute;
+      top: 17px;
+      right: 17px;
+      left: 17px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .story-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 10px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px;
+      background: rgba(10, 9, 16, .28);
+      backdrop-filter: blur(14px);
+      color: rgba(255,255,255,.84);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .story-top .icon-button {
+      color: white;
+      border-color: rgba(255,255,255,.12);
+      background: rgba(10, 9, 16, .30);
+      backdrop-filter: blur(14px);
+    }
+
+    .story-copy {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      padding: 88px clamp(20px, 2.5vw, 30px) clamp(22px, 2.8vw, 32px);
+      background: linear-gradient(to bottom, transparent, rgba(9, 8, 15, .52) 36%, rgba(9, 8, 15, .86));
+    }
+
+    .story-copy .eyebrow { color: rgba(255, 255, 255, .64); }
+
+    .story-copy h4 {
+      max-width: 470px;
+      margin: 8px 0 7px;
+      color: white;
+      font-size: clamp(26px, 2.6vw, 42px);
+      font-weight: 680;
+      letter-spacing: -.048em;
+      line-height: 1;
+      text-wrap: balance;
+    }
+
+    .story-card:not(:first-child) .story-copy h4 { font-size: clamp(24px, 2.2vw, 34px); }
+
+    .story-copy > p {
+      display: -webkit-box;
+      overflow: hidden;
+      max-width: 440px;
+      margin: 0;
+      color: rgba(255, 255, 255, .68);
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .story-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .primary-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 0 16px;
+      color: #16151a;
+      cursor: pointer;
+      border: 0;
+      border-radius: 999px;
+      background: white;
+      font-size: 13px;
+      font-weight: 710;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, .18);
+      transition: transform .2s var(--ease), background .18s ease;
+    }
+
+    .primary-button:hover { transform: scale(1.035); background: #f0edff; }
+    .primary-button .icon { width: 14px; height: 14px; fill: currentColor; stroke: 0; }
+
+    .ghost-button {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      place-items: center;
+      color: white;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 50%;
+      background: rgba(255,255,255,.08);
+      backdrop-filter: blur(10px);
+      transition: background .18s ease, transform .18s ease;
+    }
+
+    .ghost-button:hover { background: rgba(255,255,255,.16); transform: scale(1.05); }
+
+    /* Concept 03 — context cards */
+    .context-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .context-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 128px minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      min-width: 0;
+      padding: 12px 14px 12px 12px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgba(0,0,0,.03);
+      transition: transform .28s var(--ease), box-shadow .28s var(--ease), border-color .2s ease;
+    }
+
+    .context-card:hover {
+      z-index: 2;
+      transform: translateY(-3px);
+      border-color: var(--stroke-strong);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .context-art {
+      position: relative;
+      overflow: hidden;
+      width: 128px;
+      aspect-ratio: 1;
+      border-radius: 11px;
+      background: var(--surface-muted);
+    }
+
+    .context-art img { width: 100%; height: 100%; display: block; object-fit: cover; }
+
+    .context-art::after {
+      position: absolute;
+      inset: 0;
+      content: "";
+      background: linear-gradient(145deg, rgba(255,255,255,.12), rgba(0,0,0,.14));
+    }
+
+    .context-art span {
+      position: absolute;
+      z-index: 1;
+      right: 10px;
+      bottom: 9px;
+      left: 10px;
+      color: white;
+      font-size: 17px;
+      font-weight: 750;
+      letter-spacing: -.04em;
+      line-height: .98;
+      text-shadow: 0 2px 10px rgba(0,0,0,.28);
+    }
+
+    .context-copy { min-width: 0; }
+
+    .micro-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 7px;
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 760;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .micro-label::before {
+      width: 6px;
+      height: 6px;
+      content: "";
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+
+    .context-copy h4 {
+      overflow: hidden;
+      margin: 0;
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: -.025em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .context-copy > p {
+      overflow: hidden;
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .signal-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .avatars { display: flex; padding-left: 3px; }
+    .avatar {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      margin-left: -4px;
+      place-items: center;
+      color: white;
+      border: 2px solid var(--surface-solid);
+      border-radius: 50%;
+      background: linear-gradient(145deg, #ff937b, #8a57f7);
+      font-size: 8px;
+      font-weight: 780;
+    }
+
+    .avatar:nth-child(2) { background: linear-gradient(145deg, #6ed3ce, #3971d9); }
+    .avatar:nth-child(3) { background: linear-gradient(145deg, #f2bd53, #d95672); }
+
+    .signal-row > span {
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 620;
+    }
+
+    .context-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .context-actions .play-button {
+      position: static;
+      color: white;
+      background: var(--accent);
+      opacity: 1;
+      transform: none;
+      box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 28%, transparent);
+    }
+
+    .context-actions .play-button:hover { color: #17191d; }
+    .context-actions .icon-button { width: 34px; height: 34px; border: 0; background: transparent; color: var(--muted); }
+    .context-actions .icon-button:hover { background: var(--surface-muted); }
+
+    .context-card.hero-context {
+      grid-column: 1 / -1;
+      grid-template-columns: 168px minmax(0, 1fr) auto;
+      padding: 14px;
+      background:
+        radial-gradient(circle at 12% 20%, rgba(139, 128, 255, .13), transparent 24rem),
+        var(--surface);
+    }
+
+    .hero-context .context-art { width: 168px; }
+    .hero-context .context-art span { font-size: 22px; }
+    .hero-context .context-copy h4 { font-size: clamp(22px, 2.2vw, 31px); }
+    .hero-context .context-copy > p { white-space: normal; line-height: 1.45; }
+
+    .waveform {
+      display: flex;
+      width: min(220px, 32vw);
+      height: 26px;
+      align-items: center;
+      gap: 3px;
+      margin-top: 14px;
+      opacity: .78;
+    }
+
+    .waveform i {
+      width: 3px;
+      height: var(--h);
+      border-radius: 5px;
+      background: linear-gradient(to top, var(--accent), var(--accent-2));
+      animation: wave 1.1s ease-in-out infinite alternate;
+      animation-delay: calc(var(--i) * -70ms);
+      animation-play-state: paused;
+    }
+
+    .hero-context:has(.play-button[aria-pressed="true"]) .waveform i { animation-play-state: running; }
+
+    @keyframes wave {
+      from { transform: scaleY(.58); opacity: .5; }
+      to { transform: scaleY(1); opacity: 1; }
+    }
+
+    .rationale {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      margin-top: 18px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      background: var(--stroke);
+    }
+
+    .rationale article {
+      min-height: 126px;
+      padding: 20px;
+      background: var(--surface);
+    }
+
+    .rationale strong {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .rationale p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .page-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      padding-top: 34px;
+      color: var(--faint);
+      border-top: 1px solid var(--stroke);
+      font-size: 12px;
+    }
+
+    :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 46%, transparent); outline-offset: 3px; }
+
+    @media (max-width: 1080px) {
+      .quiet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .quiet-card:last-child { display: none; }
+      .story-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .story-card:first-child { grid-column: 1 / -1; min-height: 500px; }
+      .context-grid { grid-template-columns: 1fr; }
+      .context-card.hero-context { grid-column: auto; }
+    }
+
+    @media (max-width: 760px) {
+      .topbar { gap: 12px; }
+      .brand small, .concept-nav { display: none; }
+      .topbar .icon-button { margin-left: auto; }
+      .hero, .section-head { grid-template-columns: 1fr; gap: 20px; }
+      .hero { padding: 56px 0; }
+      .hero h1 { font-size: clamp(40px, 13vw, 64px); }
+      .quiet-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .quiet-card:nth-child(3) { display: none; }
+      .story-grid { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
+      .story-card, .story-card:first-child { flex: 0 0 min(82vw, 370px); min-height: 500px; scroll-snap-align: start; }
+      .context-card, .context-card.hero-context {
+        grid-template-columns: 92px minmax(0, 1fr) auto;
+        gap: 12px;
+      }
+      .context-art, .hero-context .context-art { width: 92px; }
+      .context-art span { display: none; }
+      .context-copy > p, .signal-row, .hero-context .context-copy > p, .waveform { display: none; }
+      .context-actions .icon-button { display: none; }
+      .rationale { grid-template-columns: 1fr; }
+      .rationale article { min-height: 0; }
+      .page-footer { flex-direction: column; }
+    }
+
+    @media (max-width: 460px) {
+      main { padding-inline: 14px; }
+      .topbar { padding-inline: 14px; }
+      .canvas { padding: 12px; border-radius: 18px; }
+      .canvas-label { padding: 4px 2px 0; }
+      .canvas-label span { display: none; }
+      .quiet-card { padding: 5px 5px 12px; }
+      .cover-type { display: none; }
+      .cover-title { right: 10px; bottom: 10px; left: 10px; font-size: 18px; }
+      .card-copy p { min-height: 0; -webkit-line-clamp: 1; }
+      .reason { display: none; }
+      .context-card, .context-card.hero-context { grid-template-columns: 72px minmax(0, 1fr) auto; padding: 9px; }
+      .context-art, .hero-context .context-art { width: 72px; }
+      .context-actions .play-button { width: 38px; height: 38px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+
+    /* Product-review pass: deliberately quieter than a presentation mock-up. */
+    body { background: var(--canvas); }
+    main { width: min(1400px, 100%); }
+
+    .hero {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 36px;
+      padding: 58px 0 52px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(34px, 4vw, 48px);
+      font-weight: 690;
+      letter-spacing: -.045em;
+      line-height: 1.05;
+    }
+
+    .hero-copy { max-width: 540px; padding: 0 0 2px; }
+    .hero-copy p { font-size: 15px; line-height: 1.55; }
+
+    .source-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 13px;
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .source-note::before {
+      width: 6px;
+      height: 6px;
+      content: "";
+      border-radius: 50%;
+      background: #2fb468;
+    }
+
+    .concept-section { padding: 52px 0 64px; }
+    .section-head { margin-bottom: 22px; }
+
+    .section-index {
+      margin-bottom: 8px;
+      color: var(--faint);
+      font-size: 11px;
+      letter-spacing: .08em;
+    }
+
+    .section-index::before { display: none; }
+    .section-head h2 { font-size: clamp(28px, 3vw, 36px); letter-spacing: -.035em; }
+    .section-note { font-size: 13px; line-height: 1.55; }
+    .canvas { box-shadow: none; }
+    .canvas-label { margin-bottom: 16px; }
+    .canvas-label h3 { font-size: 20px; }
+
+    .quiet-card { padding-bottom: 12px; }
+    .card-copy p { min-height: 38px; }
+
+    .story-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .story-card, .story-card:first-child { min-height: 430px; }
+    .story-card::after { display: none; }
+    .story-copy h4,
+    .story-card:not(:first-child) .story-copy h4 { font-size: clamp(25px, 2.2vw, 32px); }
+
+    .facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      margin-top: 14px;
+      padding: 0 3px;
+      color: var(--faint);
+      font-size: 11px;
+    }
+
+    .facts strong { color: var(--muted); font-weight: 680; }
+
+    @media (max-width: 1080px) {
+      .story-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .story-card:first-child { grid-column: auto; min-height: 430px; }
+      .story-card:last-child { display: none; }
+    }
+
+    @media (max-width: 760px) {
+      .hero { display: block; padding: 42px 0; }
+      .hero-copy { margin-top: 14px; }
+      .story-grid { display: flex; }
+      .story-card:last-child { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute">
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M4 14.5c1.7-5 3.3-5 5 0s3.3 5 5 0 3.3-5 6 0"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.4A8.5 8.5 0 0 1 9.6 3.5a8.5 8.5 0 1 0 10.9 10.9Z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5h3v14H8zM14 5h3v14h-3z"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.7-7.5 1.1-1.1a5.5 5.5 0 0 0 0-7.8Z"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 1.3 4.1a5 5 0 0 0 3.2 3.2l4.1 1.3-4.1 1.3a5 5 0 0 0-3.2 3.2L12 20.2l-1.3-4.1a5 5 0 0 0-3.2-3.2l-4.1-1.3 4.1-1.3a5 5 0 0 0 3.2-3.2L12 3Z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="Wavee card lab home">
+      <span class="brand-mark"><svg class="icon"><use href="#i-wave"/></svg></span>
+      Wavee <small>media cards</small>
+    </a>
+    <nav class="concept-nav" aria-label="Concepts">
+      <a href="#quiet">Regular</a>
+      <a href="#stories">Featured</a>
+      <a href="#context">Compact</a>
+    </nav>
+    <button class="icon-button" id="themeToggle" type="button" aria-label="Switch to dark theme">
+      <svg class="icon"><use href="#i-moon"/></svg>
+    </button>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <h1>Home media card options</h1>
+      <div class="hero-copy">
+        <p>The same Spotify Home data in three card treatments: a regular shelf, a featured shelf and a compact shelf.</p>
+        <span class="source-note">Using the captured Home payload from 12 July</span>
+      </div>
+    </section>
+
+    <section class="concept-section" id="quiet">
+      <div class="section-head">
+        <div>
+          <span class="section-index">Option A · regular</span>
+          <h2>Default shelf card</h2>
+        </div>
+        <p class="section-note">Closest to the current implementation. The resting card has no panel; hover adds the surface and play action.</p>
+      </div>
+
+      <div class="canvas">
+        <div class="canvas-label">
+          <h3>Your top mixes</h3>
+          <div class="rail-controls" aria-label="Shelf navigation">
+            <button class="icon-button" type="button" aria-label="Previous"><svg class="icon"><use href="#i-left"/></svg></button>
+            <button class="icon-button" type="button" aria-label="Next"><svg class="icon"><use href="#i-right"/></svg></button>
+          </div>
+        </div>
+
+        <div class="quiet-grid">
+          <article class="quiet-card">
+            <div class="artwork">
+              <img src="https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/artistmix/7hr9W3IjXcm3UlLY7guLk5/nl" alt="Henry Moodie Mix cover">
+              <button class="play-button" type="button" aria-label="Play Henry Moodie Mix" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg></button>
+            </div>
+            <div class="card-copy">
+              <h4>Henry Moodie Mix</h4>
+              <p>vaultboy, Etham and Sasha Alex Sloan</p>
+            </div>
+          </article>
+
+          <article class="quiet-card">
+            <div class="artwork">
+              <img src="https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/topic/chill/4EKSBwzbRW2YnMP5JXnXYr/en" alt="Chill Mix cover">
+              <button class="play-button" type="button" aria-label="Play Chill Mix" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg></button>
+            </div>
+            <div class="card-copy">
+              <h4>Chill Mix</h4>
+              <p>sunkis, Henry Moodie, vaultboy and more</p>
+            </div>
+          </article>
+
+          <article class="quiet-card">
+            <div class="artwork">
+              <img src="https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/topic/pop/4Gso3d4CscCijv0lmajZWs/en-GB" alt="Pop Mix cover">
+              <button class="play-button" type="button" aria-label="Play Pop Mix" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg></button>
+            </div>
+            <div class="card-copy">
+              <h4>Pop Mix</h4>
+              <p>Don Toliver, vaultboy, Adam Lambert and more</p>
+            </div>
+          </article>
+
+          <article class="quiet-card">
+            <div class="artwork">
+              <img src="https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/topic/twenty_tens/3GXxRsiCLmZvM5oSeHbNdO/en" alt="2010s Mix cover">
+              <button class="play-button" type="button" aria-label="Play 2010s Mix" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg></button>
+            </div>
+            <div class="card-copy">
+              <h4>2010s Mix</h4>
+              <p>Lim Jae Hyun, Adam Lambert, BOL4 and more</p>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="facts"><span><strong>Use:</strong> default Home shelves</span><span><strong>Width:</strong> 220–280 px</span><span><strong>Copy:</strong> title + two lines</span></div>
+    </section>
+
+    <section class="concept-section" id="stories">
+      <div class="section-head">
+        <div>
+          <span class="section-index">Option B · featured</span>
+          <h2>Featured card</h2>
+        </div>
+        <p class="section-note">A larger treatment for one occasional shelf. It uses the same item data, with the text on the artwork.</p>
+      </div>
+
+      <div class="canvas stories-canvas">
+        <div class="canvas-label">
+          <h3>Jump back in</h3>
+          <span>FROM YOUR HOME FEED</span>
+        </div>
+
+        <div class="story-grid">
+          <article class="story-card">
+            <img src="https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/3WGpXCj9YhhfX11TToZcXP/en" alt="Troye Sivan Radio cover">
+            <div class="story-top">
+              <span class="story-tag">Playlist</span>
+              <button class="icon-button" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"/></svg></button>
+            </div>
+            <div class="story-copy">
+              <h4>Troye Sivan Radio</h4>
+              <p>With Hailee Steinfeld, The 1975, Conan Gray and more</p>
+              <div class="story-actions">
+                <button class="primary-button play-toggle" type="button" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg>Play</button>
+                <button class="ghost-button" type="button" aria-label="Save Troye Sivan Radio"><svg class="icon"><use href="#i-heart"/></svg></button>
+              </div>
+            </div>
+          </article>
+
+          <article class="story-card">
+            <img src="https://seed-mix-image.spotifycdn.com/v6/img/desc/Eurodance/en/default" alt="Eurodance Mix cover">
+            <div class="story-top">
+              <span class="story-tag">Playlist</span>
+              <button class="icon-button" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"/></svg></button>
+            </div>
+            <div class="story-copy">
+              <h4>Eurodance Mix</h4>
+              <p>Eurodance, europop, disco, techno, bubblegum pop and electronic</p>
+              <div class="story-actions">
+                <button class="primary-button play-toggle" type="button" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg>Play</button>
+                <button class="ghost-button" type="button" aria-label="Save Eurodance Mix"><svg class="icon"><use href="#i-heart"/></svg></button>
+              </div>
+            </div>
+          </article>
+
+          <article class="story-card">
+            <img src="https://i.scdn.co/image/ab67616d0000b273407bd04707c463bbb3410737" alt="Night Visions album cover">
+            <div class="story-top">
+              <span class="story-tag">Album</span>
+              <button class="icon-button" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"/></svg></button>
+            </div>
+            <div class="story-copy">
+              <h4>Night Visions</h4>
+              <p>Imagine Dragons</p>
+              <div class="story-actions">
+                <button class="primary-button play-toggle" type="button" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg>Play</button>
+                <button class="ghost-button" type="button" aria-label="Save Night Visions"><svg class="icon"><use href="#i-heart"/></svg></button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="facts"><span><strong>Use:</strong> one featured shelf</span><span><strong>Ratio:</strong> 4:5</span><span><strong>Copy:</strong> Home payload only</span></div>
+    </section>
+
+    <section class="concept-section" id="context">
+      <div class="section-head">
+        <div>
+          <span class="section-index">Option C · compact</span>
+          <h2>Compact media row</h2>
+        </div>
+        <p class="section-note">A shorter card for sections with familiar artwork and predictable names. It shows more items before the next shelf.</p>
+      </div>
+
+      <div class="canvas">
+        <div class="canvas-label">
+          <h3>Made For Christos</h3>
+          <span>FROM YOUR HOME FEED</span>
+        </div>
+
+        <div class="context-grid">
+          <article class="context-card">
+            <div class="context-art">
+              <img src="https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/daily/1/ab6761610000e5ebd4037f03c5f92e7e6ea89b9e/en" alt="Daily Mix 1 cover">
+            </div>
+            <div class="context-copy">
+              <h4>Daily Mix 1</h4>
+              <p>LE SSERAFIM, Red Velvet, IU and more</p>
+            </div>
+            <div class="context-actions">
+              <button class="play-button" type="button" aria-label="Play Daily Mix 1" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg></button>
+              <button class="icon-button" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"/></svg></button>
+            </div>
+          </article>
+
+          <article class="context-card">
+            <div class="context-art">
+              <img src="https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/daily/2/ab6761610000e5eb474f4a0aa10dd7732bc679df/en" alt="Daily Mix 2 cover">
+            </div>
+            <div class="context-copy">
+              <h4>Daily Mix 2</h4>
+              <p>LEE MU JIN, 10CM, Jung Seung Hwan and more</p>
+            </div>
+            <div class="context-actions">
+              <button class="play-button" type="button" aria-label="Play Daily Mix 2" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg></button>
+              <button class="icon-button" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"/></svg></button>
+            </div>
+          </article>
+
+          <article class="context-card">
+            <div class="context-art">
+              <img src="https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/daily/3/ab6761610000e5eb58b4b9419486550f6fda0535/en" alt="Daily Mix 3 cover">
+            </div>
+            <div class="context-copy">
+              <h4>Daily Mix 3</h4>
+              <p>Maroon 5, LAUV, Shawn Mendes and more</p>
+            </div>
+            <div class="context-actions">
+              <button class="play-button" type="button" aria-label="Play Daily Mix 3" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg></button>
+              <button class="icon-button" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"/></svg></button>
+            </div>
+          </article>
+
+          <article class="context-card">
+            <div class="context-art">
+              <img src="https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/daily/4/ab6761610000e5eb5a1c7aa77551b62c9cce74c9/en" alt="Daily Mix 4 cover">
+            </div>
+            <div class="context-copy">
+              <h4>Daily Mix 4</h4>
+              <p>Fly By Midnight, vaultboy, elijah woods and more</p>
+            </div>
+            <div class="context-actions">
+              <button class="play-button" type="button" aria-label="Play Daily Mix 4" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg></button>
+              <button class="icon-button" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"/></svg></button>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="facts"><span><strong>Use:</strong> mixes and radio</span><span><strong>Layout:</strong> two columns</span><span><strong>Artwork:</strong> 128 px</span></div>
+    </section>
+
+    <footer class="page-footer">
+      <span>Wavee media card options · standalone HTML</span>
+      <span>Content and artwork URLs from homeee.txt</span>
+    </footer>
+  </main>
+
+  <script>
+    const root = document.documentElement;
+    const themeToggle = document.querySelector('#themeToggle');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = prefersDark ? 'dark' : 'light';
+
+    function renderThemeButton() {
+      const dark = root.dataset.theme === 'dark';
+      themeToggle.setAttribute('aria-label', `Switch to ${dark ? 'light' : 'dark'} theme`);
+      themeToggle.querySelector('use').setAttribute('href', dark ? '#i-sun' : '#i-moon');
+    }
+
+    themeToggle.addEventListener('click', () => {
+      root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      renderThemeButton();
+    });
+    renderThemeButton();
+
+    document.querySelectorAll('.play-button, .play-toggle').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const wasPlaying = button.getAttribute('aria-pressed') === 'true';
+        document.querySelectorAll('.play-button, .play-toggle').forEach((other) => {
+          other.setAttribute('aria-pressed', 'false');
+          other.querySelector('use')?.setAttribute('href', '#i-play');
+        });
+        if (!wasPlaying) {
+          button.setAttribute('aria-pressed', 'true');
+          button.querySelector('use')?.setAttribute('href', '#i-pause');
+        }
+      });
+    });
+
+    document.querySelectorAll('.story-card').forEach((card) => {
+      card.addEventListener('pointermove', (event) => {
+        const rect = card.getBoundingClientRect();
+        card.style.setProperty('--spot-x', `${((event.clientX - rect.left) / rect.width) * 100}%`);
+        card.style.setProperty('--spot-y', `${((event.clientY - rect.top) / rect.height) * 100}%`);
+      });
+      card.addEventListener('pointerleave', () => {
+        card.style.setProperty('--spot-x', '50%');
+        card.style.setProperty('--spot-y', '35%');
+      });
+    });
+  </script>
+</body>
+</html>

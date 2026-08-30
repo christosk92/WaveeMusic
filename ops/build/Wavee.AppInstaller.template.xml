@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wavee's update feed. ops/release/wavee-release.ps1 substitutes __VERSION__ / __ARCH__ / __PUBLISHER__ /
+     __IDENTITY__ / __APPINSTALLER_URI__ / __MSIX_URI__ and uploads the result to the ROLLING GitHub release
+     'wavee-stable' (one asset per arch: Wavee.arm64.appinstaller, Wavee.x64.appinstaller). That rolling release is
+     the feed - never releases/latest, which is repo-global and belongs to the FluentGpu gallery.
+
+     Publisher MUST match the signed package's manifest Publisher exactly, and Name MUST match its Identity Name
+     (normally cproducts.Wavee) or Windows refuses the update outright.
+
+     What the UpdateSettings below actually do, for a PACKAGED WIN32 FULL-TRUST (desktop) app - verified, and not what
+     the element names suggest:
+       * ShowPrompt="false": the on-launch check runs silently in the background. Microsoft documents the prompt as
+         UWP-only, but on Windows 11 (App Installer 1.27, Aug 2026) a desktop app with ShowPrompt="true" DID get a
+         blank "App Installer" window on every launch - observed on the dev box. UpdateBlocksActivation="false" keeps
+         the app starting immediately while the check runs; the update lands on the next launch.
+       * OnLaunch HoursBetweenUpdateChecks="0" means the OS checks this feed on every launch, and applies whatever it
+         finds SILENTLY on the NEXT launch. A user who never quits Wavee never gets the OS path; that is exactly why
+         the app also drives the update itself (App/AppInstallerUpdateService + Packaging/PackageUpdater).
+       * AutomaticBackgroundTask lets the OS poll in the background (~8 h cadence) so a long-running install still
+         notices a new release.
+       * ForceUpdateFromAnyVersion="true" allows a DOWNGRADE as well as an upgrade. That is deliberate: repointing this
+         feed at an older package is the ONLY lever that reaches already-installed clients, so it is how a bad release
+         is rolled back. The guard against an accidental downgrade is the release script's feed-monotonic gate, not
+         this flag.
+
+     The in-app checker reads the SAME feed and the SAME root Version attribute (the AppInstaller/@Version below, not
+     MainPackage/@Version), so the toast and the OS always agree on what "available" means. -->
+<AppInstaller
+  xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+  Version="__VERSION__"
+  Uri="__APPINSTALLER_URI__">
+
+  <MainPackage
+    Name="__IDENTITY__"
+    Publisher="__PUBLISHER__"
+    Version="__VERSION__"
+    ProcessorArchitecture="__ARCH__"
+    Uri="__MSIX_URI__" />
+
+  <UpdateSettings>
+    <OnLaunch HoursBetweenUpdateChecks="0" ShowPrompt="false" UpdateBlocksActivation="false" />
+    <AutomaticBackgroundTask />
+    <ForceUpdateFromAnyVersion>true</ForceUpdateFromAnyVersion>
+  </UpdateSettings>
+</AppInstaller>

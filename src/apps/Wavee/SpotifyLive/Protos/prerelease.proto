@@ -1,0 +1,52 @@
+// The payload Spotify returns for extension kind 138 PRERELEASE — the identity of an announced-but-unreleased record:
+// its prerelease uri, the moment it drops, and the album it will become.
+//
+// Provenance: message/package from the wire's Any type_url:
+//   type.googleapis.com/spotify.prerelease.extension.Prerelease
+// Field NUMBERS and wire types are verified against live 2026 responses (the ~422 B payload in artist_more sid 67;
+// docs/plans/wavee/spotify-wire-research/E2E-DIFF.md §5.3, research/02-XM-CENSUS.md kind 138,
+// research/03-XM-PAYLOADS.md §17). FIELD NAMES are best-effort — Spotify does not ship this schema.
+//
+// Observed (vaultboy, the single distinct 200 in the corpus — 2 of 5 queried entities answered, 3 x 404):
+//
+//   prerelease_uri        "spotify:prerelease:0iqKCCqFwlqzSnJgV22Nmh"
+//   release_at.seconds    1788472800
+//   release.album_uri     "spotify:album:0qi1ztU4S08zA1FsP1DUaY"
+//   release.type          "ALBUM"
+//   release.name          "ARE YOU EVER COMING BACK?"
+//   release.artist        { uri = spotify:artist:…, name = "vaultboy" }
+//   release.images        (SMALL,128,128) (DEFAULT,600,600) (LARGE,1280,1280)
+//
+// THE STRUCTURAL POINT, and the only reason the two uri schemes are navigable at all: the same payload is served under
+// BOTH a `spotify:album:` and a `spotify:prerelease:` entity_uri (E2E-DIFF.md §5.4.1). Their ids DIFFER, so neither uri
+// can be computed from the other — this kind is the whole mapping, and one round trip with either key answers both
+// directions (which is what SpotifyPreReleaseService's three-key cache exploits).
+//
+// NOTE: image `size` is a STRING here ("SMALL"|"DEFAULT"|"LARGE"), unlike the integer enums of kinds 179 and 98 —
+// three different image-size encodings across three kinds. Do not share a size decoder between them.
+
+syntax = "proto3";
+
+package spotify.prerelease.extension;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.PreRelease";
+
+message Prerelease {
+    // Nested rather than top-level: these are shapes of THIS payload, and the names (Timestamp / Image / ArtistRef)
+    // would otherwise read as general-purpose types and collide with google.protobuf's and Wavee.Core's at call sites.
+    message Timestamp { int64 seconds = 1; }
+    message ArtistRef { string uri = 1; string name = 2; }
+    message Image     { string url = 1; string size = 2; uint32 width = 3; uint32 height = 4; }
+    message Release {
+        string album_uri = 1;
+        string type      = 2;                       // "ALBUM"
+        string name      = 3;
+        ArtistRef artist = 4;
+        repeated Image images = 5;                  // (SMALL,128) (DEFAULT,600) (LARGE,1280)
+    }
+
+    string    prerelease_uri = 1;                   // the entity a COLLECTION WRITE (a pre-save) addresses
+    Timestamp release_at     = 2;                   // unix seconds; absent on an announced-but-undated release
+    Release   release        = 3;                   // the entity the app NAVIGATES to, plus its display fields
+}

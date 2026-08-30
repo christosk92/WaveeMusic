@@ -1,0 +1,1836 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-palette="neutral" data-material="mica" data-sidebar="curated" data-density="cozy" data-hero="full">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wavee — Onboarding (Mica)</title>
+<style>
+  /* ───────────────────────────────────────────────────────────────────────────
+     TOKENS — unchanged Mica shell vocabulary from the previous pass.
+     ─────────────────────────────────────────────────────────────────────────── */
+  :root{
+    --solid-base:#202020;
+    --layer-default:rgba(58,58,58,0.30);
+    --card-default:rgba(255,255,255,0.0512);
+    --card-secondary:rgba(255,255,255,0.0837);
+    --ctrl-default:rgba(255,255,255,0.0605);
+    --subtle-hover:rgba(255,255,255,0.0605);
+    --stroke-ctrl:rgba(255,255,255,0.0698);
+    --divider:rgba(255,255,255,0.0837);
+    --text:#FFFFFF;
+    --text-2:rgba(255,255,255,0.786);
+    --text-3:rgba(255,255,255,0.5442);
+    --text-4:rgba(255,255,255,0.3628);
+    --accent:#60CDFF;
+    --accent-text:#99EBFF;
+    --on-accent:#003545;
+    --spotify:#1DB954;
+    --good:#6CCB5F;
+    --warn:#FCE100;
+    --bad:#FF99A4;
+    --r-ctrl:4px; --r-card:8px; --r-layer:8px;
+    --font:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+    --font-d:"Segoe UI Variable Display","Segoe UI Light","Segoe UI",sans-serif;
+    --mono:"Cascadia Code",Consolas,ui-monospace,monospace;
+    --shadow-dialog:0 32px 64px rgba(0,0,0,0.37),0 0 2px rgba(0,0,0,0.5);
+    --mica-tint:rgba(32,32,32,0.86);
+    --mica-a:#3d5a8f; --mica-b:#6b3a63;
+    --ease:cubic-bezier(.2,.8,.2,1);
+    --ease-out:cubic-bezier(0,0,0,1);
+    --elev-card:0 2px 4px rgba(0,0,0,.14), 0 0 2px rgba(0,0,0,.12);
+    --inner-hi:inset 0 1px 0 rgba(255,255,255,.10);
+    --plate:#2c2c2c;
+    --scrim:rgba(0,0,0,.42);
+    --row-h:40px;
+  }
+  html[data-theme="light"]{
+    --solid-base:#f3f3f3;
+    --layer-default:rgba(255,255,255,0.45);
+    --card-default:#ffffff;
+    --card-secondary:#f7f7f7;
+    --ctrl-default:rgba(255,255,255,0.70);
+    --subtle-hover:rgba(0,0,0,0.0405);
+    --stroke-ctrl:rgba(0,0,0,0.0578);
+    --divider:rgba(0,0,0,0.0803);
+    --text:#1a1a1a;
+    --text-2:rgba(0,0,0,0.786);
+    --text-3:rgba(0,0,0,0.5442);
+    --text-4:rgba(0,0,0,0.3628);
+    --accent:#005FB8;
+    --accent-text:#003D92;
+    --on-accent:#ffffff;
+    --good:#0F7B0F;
+    --bad:#C42B1C;
+    --mica-tint:rgba(243,243,243,0.78);
+    --mica-a:#8aa4c8; --mica-b:#c9a090;
+    --elev-card:0 2px 4px rgba(0,0,0,.06), 0 0 2px rgba(0,0,0,.06);
+    --inner-hi:inset 0 1px 0 rgba(255,255,255,.72);
+    --plate:#ffffff;
+    --scrim:rgba(0,0,0,.18);
+  }
+  html[data-palette="warm"]{ --mica-a:#8a6238; --mica-b:#7a3a42; }
+  html[data-palette="slate"]{ --mica-a:#3d5a8f; --mica-b:#3a4a6b; }
+  html[data-palette="neutral"]{ --mica-a:#5a6270; --mica-b:#4a4450; }
+  html[data-palette="accent"]{ --mica-a:#1a6a88; --mica-b:#2a4a72; }
+  html[data-theme="light"][data-palette="warm"]{ --mica-a:#e0b888; --mica-b:#d8a090; }
+  html[data-theme="light"][data-palette="slate"]{ --mica-a:#8aa4c8; --mica-b:#a0b0c8; }
+  html[data-theme="light"][data-palette="neutral"]{ --mica-a:#c4c4c8; --mica-b:#d0c8c0; }
+  html[data-theme="light"][data-palette="accent"]{ --mica-a:#7ab8d0; --mica-b:#90b0d8; }
+  html[data-material="mica-alt"]{ --mica-tint:rgba(24,24,24,0.92); }
+  html[data-theme="light"][data-material="mica-alt"]{ --mica-tint:rgba(232,232,232,0.88); }
+  html[data-density="compact"]{ --row-h:32px; }
+  html[data-density="cozy"]{ --row-h:40px; }
+  html[data-density="roomy"]{ --row-h:52px; }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:var(--font);font-size:14px;color:var(--text);
+    background-image:
+      radial-gradient(900px 700px at 12% 8%, #2b3a5e 0%, transparent 60%),
+      radial-gradient(1000px 800px at 88% 82%, #4a2a46 0%, transparent 62%),
+      linear-gradient(160deg,#161821,#0c0c10);
+    display:grid;grid-template-rows:auto 1fr;place-items:center;overflow:hidden;
+    padding:8px 12px 16px;
+  }
+  html[data-theme="light"] body{
+    background-image:
+      radial-gradient(900px 700px at 12% 8%, #c5d4e8 0%, transparent 60%),
+      radial-gradient(1000px 800px at 88% 82%, #e8d0c4 0%, transparent 62%),
+      linear-gradient(160deg,#e8eaee,#d8dce4);
+  }
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;}
+  button:focus-visible, [tabindex="0"]:focus-visible, summary:focus-visible{
+    outline:2px solid var(--accent); outline-offset:2px;
+  }
+
+  /* ── lab strip ─────────────────────────────────────────────────────────── */
+  .lab{
+    position:relative;z-index:8;width:min(1320px,96vw);
+    display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px 8px;
+    font-size:12px;color:rgba(255,255,255,.55);padding:4px 0 10px;
+  }
+  html[data-theme="light"] .lab{color:rgba(0,0,0,.5);}
+  .lab strong{color:var(--text-2);font-weight:600;}
+  .lab code{font-family:var(--mono);font-size:11px;color:var(--accent-text);}
+  .lab-chip{
+    pointer-events:auto;padding:3px 9px;border-radius:999px;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
+    color:var(--text-3);font-size:11.5px;
+  }
+  html[data-theme="light"] .lab-chip{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.08);}
+  .lab-chip.on{color:var(--on-accent);background:var(--accent);border-color:transparent;font-weight:600;}
+  .lab-hint{pointer-events:none;max-width:900px;text-align:center;line-height:1.45;}
+  .lab-sep{width:1px;height:16px;background:rgba(255,255,255,.14);}
+
+  /* ── window shell (kept verbatim in spirit: mica tint + noise + rail) ──── */
+  .win{
+    width:min(1320px,96vw);height:min(860px,calc(100vh - 88px));
+    display:grid;grid-template-rows:48px 1fr 84px;grid-template-columns:48px 280px 1fr;
+    grid-template-areas:"title title title" "rail sidebar content" "player player player";
+    border-radius:8px;overflow:hidden;position:relative;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow:var(--shadow-dialog);
+    background:
+      linear-gradient(var(--mica-tint),var(--mica-tint)),
+      radial-gradient(700px 500px at 10% 0%, var(--mica-a) 0%, transparent 62%),
+      radial-gradient(760px 560px at 92% 96%, var(--mica-b) 0%, transparent 64%),
+      var(--solid-base);
+    background-blend-mode:normal,soft-light,soft-light,normal;
+    transition:background .45s var(--ease);
+  }
+  html[data-theme="light"] .win{border-color:rgba(0,0,0,0.08);}
+  .win::after{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+    opacity:.045;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .win.bare{
+    grid-template-columns:1fr;grid-template-rows:48px 1fr;
+    grid-template-areas:"title" "stage";
+  }
+  .win.bare .rail,.win.bare .sidebar,.win.bare .content,.win.bare .player{display:none;}
+  .titlebar,.rail,.sidebar,.content,.player,.stage,.scrim,.dialog{position:relative;z-index:2;}
+
+  .titlebar{grid-area:title;display:flex;align-items:center;gap:8px;padding-left:8px;}
+  .tb-name{font-size:12px;color:var(--text-2);font-weight:600;padding-left:4px;}
+  .tb-name span{font-weight:400;opacity:.7;margin-left:6px;}
+  .caption{margin-left:auto;display:flex;}
+  .caption button{width:46px;height:48px;color:var(--text-2);font-size:10px;}
+  .caption button:hover{background:var(--subtle-hover);}
+  .caption button.close:hover{background:#c42b1c;color:#fff;}
+
+  .rail{grid-area:rail;display:flex;flex-direction:column;align-items:center;gap:2px;padding-top:2px;}
+  .rail button{width:40px;height:36px;border-radius:var(--r-ctrl);color:var(--text-2);display:grid;place-items:center;position:relative;}
+  .rail button:hover,.rail button.on{background:var(--subtle-hover);}
+  .rail button.on::before{content:"";position:absolute;left:2px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent);}
+  .rail svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
+  .rail .sp{flex:1;}
+
+  .sidebar{
+    grid-area:sidebar;margin:4px 0 8px 0;border-radius:var(--r-layer);
+    background:var(--layer-default);border:1px solid rgba(255,255,255,.04);
+    padding:10px 8px;display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden;
+    transition:opacity .4s var(--ease);
+  }
+  html[data-theme="light"] .sidebar{border-color:rgba(0,0,0,.05);}
+  .sb-search{height:28px;border-radius:var(--r-ctrl);background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);display:flex;align-items:center;gap:8px;padding:0 8px;color:var(--text-4);font-size:12px;}
+  .sb-row{height:34px;border-radius:var(--r-ctrl);display:flex;align-items:center;gap:8px;padding:0 8px;color:var(--text-2);font-size:12.5px;}
+  .sb-row:hover{background:var(--subtle-hover);}
+  .sb-row.on{background:var(--subtle-hover);color:var(--text);}
+  .sb-dot{width:22px;height:22px;border-radius:4px;flex:none;background:linear-gradient(135deg,#4a6, #268);}
+  .sb-dot.a{background:linear-gradient(135deg,#c96,#842);}
+  .sb-dot.b{background:linear-gradient(135deg,#69c,#246);}
+  .sb-dot.c{background:linear-gradient(135deg,#db8,#864);}
+  .sb-hair{height:1px;background:var(--divider);margin:4px 4px;}
+  .sb-chips{display:flex;gap:4px;padding:2px 2px 6px;}
+  .sb-chip{height:22px;padding:0 8px;border-radius:999px;background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);font-size:11px;color:var(--text-3);display:grid;place-items:center;}
+  .sb-chip.on{background:var(--accent);color:var(--on-accent);border-color:transparent;}
+  .sb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:2px;}
+  .sb-tile{height:54px;border-radius:6px;background:var(--card-default);display:flex;align-items:center;gap:6px;padding:6px;overflow:hidden;}
+  .sb-tile .sb-dot{width:40px;height:40px;}
+  .sb-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+  .sb-muted{color:var(--text-4);font-size:11px;}
+  html[data-sidebar="classic"] .v3-only,
+  html[data-sidebar="classic"] .curated-only{display:none;}
+  html[data-sidebar="v3"] .classic-only,
+  html[data-sidebar="v3"] .curated-only{display:none;}
+  html[data-sidebar="curated"] .classic-only,
+  html[data-sidebar="curated"] .v3-only{display:none;}
+
+  .content{grid-area:content;min-width:0;padding:8px 18px 0 12px;display:flex;flex-direction:column;gap:14px;overflow:hidden;}
+  .hero{height:168px;border-radius:var(--r-card);background:
+    linear-gradient(120deg,rgba(96,205,255,.18),transparent 55%),
+    var(--card-default);border:1px solid rgba(255,255,255,.05);padding:22px 24px;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;position:relative;overflow:hidden;}
+  .hero h2{margin:0;font:600 28px/1.1 var(--font-d);}
+  .hero p{margin:0;color:var(--text-3);font-size:13px;}
+  /* "Limit page color to the hero" — the wash below the hero disappears */
+  .page-wash{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,color-mix(in srgb, var(--accent) 12%, transparent),transparent 70%);
+    opacity:1;transition:opacity .35s var(--ease);}
+  html[data-hero="hero-only"] .page-wash{opacity:0;}
+  .strips{display:flex;gap:10px;}
+  .card{width:132px;display:flex;flex-direction:column;gap:8px;}
+  .cover{height:132px;border-radius:6px;background:linear-gradient(145deg,#3a5a78,#1a2838);box-shadow:var(--elev-card);}
+  .cover.c2{background:linear-gradient(145deg,#7a4a38,#301810);}
+  .cover.c3{background:linear-gradient(145deg,#3a6a4a,#102018);}
+  .cover.c4{background:linear-gradient(145deg,#5a3a6a,#201028);}
+  .card b{font-size:12.5px;font-weight:600;}
+  .card span{font-size:11.5px;color:var(--text-4);}
+  /* the density preview surface */
+  .tracks{display:flex;flex-direction:column;}
+  .trow{height:var(--row-h);display:grid;grid-template-columns:24px 1fr 90px;align-items:center;gap:12px;
+    padding:0 10px;border-radius:var(--r-ctrl);font-size:13px;color:var(--text-2);
+    transition:height .28s var(--ease);}
+  .trow:nth-child(odd){background:var(--card-default);}
+  .trow i{color:var(--text-4);font-style:normal;font-size:12px;}
+  .trow span{color:var(--text-4);font-size:12px;text-align:right;}
+
+  .player{grid-area:player;display:grid;grid-template-columns:240px 1fr 240px;align-items:center;padding:0 16px;gap:16px;background:rgba(0,0,0,.18);border-top:1px solid var(--divider);}
+  html[data-theme="light"] .player{background:rgba(255,255,255,.35);}
+  .now{display:flex;align-items:center;gap:10px;}
+  .now .art{width:52px;height:52px;border-radius:4px;background:linear-gradient(145deg,#4a6,#268);}
+  .now b{display:block;font-size:13px;}
+  .now span{font-size:12px;color:var(--text-3);}
+  .transport{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .t-btns{display:flex;gap:12px;align-items:center;color:var(--text-2);}
+  .t-btns .play{width:34px;height:34px;border-radius:17px;background:var(--text);color:var(--solid-base);display:grid;place-items:center;}
+  .scrub{width:min(420px,100%);height:4px;border-radius:2px;background:rgba(255,255,255,.18);position:relative;}
+  .scrub i{position:absolute;left:0;top:0;bottom:0;width:34%;background:var(--text);border-radius:2px;}
+  .stage{grid-area:stage;display:grid;place-items:center;}
+
+  /* ── the one setup dialog ──────────────────────────────────────────────── */
+  .scrim{
+    position:absolute;inset:48px 0 0 0;z-index:6;
+    background:var(--scrim);backdrop-filter:blur(2px);
+    display:grid;place-items:center;padding:24px;
+    transition:opacity .35s var(--ease);
+  }
+  .win.bare .scrim{inset:48px 0 0 0;background:transparent;backdrop-filter:none;}
+  .win.done .scrim{pointer-events:none;opacity:0;}
+
+  .dialog{
+    width:min(896px,100%);height:min(576px,100%);
+    display:grid;grid-template-rows:1fr 80px;
+    border-radius:8px;overflow:hidden;position:relative;
+    background:var(--plate);border:1px solid rgba(255,255,255,.08);
+    box-shadow:var(--shadow-dialog);
+    transition:transform .4s var(--ease), opacity .35s var(--ease);
+  }
+  html[data-theme="light"] .dialog{border-color:rgba(0,0,0,.08);}
+  .win.done .dialog{transform:translateY(10px) scale(.98);opacity:0;}
+
+  .back{
+    position:absolute;top:12px;left:12px;z-index:3;
+    width:30px;height:30px;border-radius:var(--r-ctrl);
+    display:grid;place-items:center;color:var(--text-2);
+    background:color-mix(in srgb, var(--plate) 72%, transparent);
+    backdrop-filter:blur(6px);
+  }
+  .back:hover{background:var(--subtle-hover);color:var(--text);}
+  .back[hidden]{display:none;}
+  .back svg{width:12px;height:12px;}
+
+  .pages{position:relative;overflow:hidden;min-height:0;}
+  .page{
+    position:absolute;inset:0;padding:26px 26px 10px;
+    display:grid;grid-template-columns:192px 1fr;gap:24px;
+    opacity:0;transform:translateX(28px);pointer-events:none;
+    transition:opacity .32s var(--ease), transform .32s var(--ease);
+  }
+  .page.on{opacity:1;transform:none;pointer-events:auto;position:relative;height:100%;}
+  .page.leave-left{opacity:0;transform:translateX(-28px);}
+  .page.wide{grid-template-columns:1fr;}
+  /* Rise's SetupPageContent: pinned header row + a scrolling content row */
+  .col{display:grid;grid-template-rows:auto 1fr;min-height:0;min-width:0;}
+  .col.solo{grid-template-rows:1fr;}
+  .eyebrow{
+    font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--text-4);margin:0 0 6px;
+  }
+  .page h1{margin:0 0 6px;font:600 28px/1.15 var(--font-d);letter-spacing:-.02em;}
+  .scroller{overflow-y:auto;overflow-x:hidden;min-height:0;padding:2px 12px 12px 0;margin-right:-12px;
+    scrollbar-width:thin;scrollbar-color:var(--text-4) transparent;}
+  .lead{margin:0 0 18px;color:var(--text-2);line-height:1.45;max-width:56ch;}
+  .fine{font-size:11.5px;line-height:1.5;color:var(--text-4);max-width:60ch;}
+  .grouphead{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--text-3);margin:18px 0 8px;}
+  .grouphead:first-child{margin-top:0;}
+
+  /* ── the OOBE animation stage (Rise's 192px AnimatedVisualPlayer column) ─ */
+  .illus{
+    border-radius:12px;background:
+      radial-gradient(140px 100px at 32% 18%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 72%),
+      var(--card-secondary);
+    display:grid;place-items:center;align-self:stretch;min-height:0;position:relative;overflow:hidden;
+    box-shadow:var(--inner-hi);
+  }
+  .illus .cap{
+    position:absolute;bottom:8px;left:0;right:0;text-align:center;
+    font:600 9.5px/1 var(--mono);letter-spacing:.06em;color:var(--text-4);text-transform:uppercase;
+  }
+  .oobe{width:160px;height:160px;display:block;overflow:visible;}
+  .oobe *{
+    fill:none;stroke:var(--accent);stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round;
+    vector-effect:non-scaling-stroke;
+  }
+  .oobe .fillA{fill:var(--accent);stroke:none;}
+  .oobe .soft,.oobe .soft *{stroke:var(--text-4);}
+  .oobe .softf{fill:var(--text-4);stroke:none;}
+  /* every hero runs the same 3.5 s / 210-frame loop Rise's Lotties use */
+  .oobe g,.oobe > *{animation-duration:3.5s;animation-iteration-count:infinite;animation-timing-function:var(--ease);}
+
+  /* A · welcome — the Wavee mark breathing (rings + a 5-bar meter) */
+  @keyframes ob-ring{0%{transform:scale(.72);opacity:0}12%{opacity:.55}70%,100%{transform:scale(1.9);opacity:0}}
+  @keyframes ob-core{0%,100%{transform:scale(1)}42%{transform:scale(1.06)}}
+  @keyframes ob-bar{0%,100%{transform:scaleY(.35)}30%{transform:scaleY(1)}60%{transform:scaleY(.55)}80%{transform:scaleY(.9)}}
+  .ob-welcome .rg{transform-origin:96px 96px;animation-name:ob-ring;}
+  .ob-welcome .rg2{animation-delay:1.1s}
+  .ob-welcome .rg3{animation-delay:2.2s}
+  .ob-welcome .core{transform-origin:96px 96px;animation-name:ob-core;}
+  .ob-welcome .bars rect{transform-box:fill-box;transform-origin:center;animation:ob-bar 1.1s var(--ease) infinite;}
+  .ob-welcome .bars rect:nth-child(1){animation-delay:0s}
+  .ob-welcome .bars rect:nth-child(2){animation-delay:.14s}
+  .ob-welcome .bars rect:nth-child(3){animation-delay:.28s}
+  .ob-welcome .bars rect:nth-child(4){animation-delay:.42s}
+  .ob-welcome .bars rect:nth-child(5){animation-delay:.56s}
+
+  /* B · terms — EulaLottie: a page, lines writing on, a seal stamping */
+  @keyframes ob-draw{0%{stroke-dashoffset:var(--len)}18%,100%{stroke-dashoffset:0}}
+  @keyframes ob-line{0%,8%{stroke-dashoffset:60;opacity:0}22%{opacity:1}30%,88%{stroke-dashoffset:0;opacity:1}98%,100%{opacity:0;stroke-dashoffset:60}}
+  @keyframes ob-seal{0%,52%{transform:scale(.4) rotate(-24deg);opacity:0}66%{transform:scale(1.08) rotate(0);opacity:1}74%,92%{transform:scale(1) rotate(0);opacity:1}100%{transform:scale(1) rotate(0);opacity:0}}
+  @keyframes ob-tick{0%,66%{stroke-dashoffset:30}80%,100%{stroke-dashoffset:0}}
+  .ob-eula .pg{--len:420;stroke-dasharray:420;animation-name:ob-draw;}
+  .ob-eula .ln{stroke-dasharray:60;stroke-width:2;animation:ob-line 3.5s var(--ease) infinite;}
+  .ob-eula .ln:nth-of-type(1){animation-delay:.10s}
+  .ob-eula .ln:nth-of-type(2){animation-delay:.22s}
+  .ob-eula .ln:nth-of-type(3){animation-delay:.34s}
+  .ob-eula .ln:nth-of-type(4){animation-delay:.46s}
+  .ob-eula .seal{transform-origin:132px 132px;animation-name:ob-seal;}
+  .ob-eula .seal .tk{stroke-dasharray:30;animation:ob-tick 3.5s var(--ease) infinite;}
+
+  /* C · sign-in — ConnectLottie: this PC ↔ your phone, a code crossing over */
+  @keyframes ob-pip{0%,6%{offset-distance:0%;opacity:0}14%{opacity:1}58%{offset-distance:100%;opacity:1}66%,100%{offset-distance:100%;opacity:0}}
+  @keyframes ob-arc{0%{stroke-dashoffset:90}20%,64%{stroke-dashoffset:0}84%,100%{stroke-dashoffset:-90}}
+  @keyframes ob-qrb{0%,100%{opacity:.25}50%{opacity:1}}
+  @keyframes ob-badge{0%,62%{transform:scale(0);opacity:0}74%{transform:scale(1.12);opacity:1}82%,94%{transform:scale(1);opacity:1}100%{opacity:0;transform:scale(1)}}
+  .ob-connect .arc{stroke-dasharray:90;stroke-width:2;animation-name:ob-arc;}
+  .ob-connect .pip{offset-path:path("M104 74C118 54 132 52 142 60");animation:ob-pip 3.5s var(--ease) infinite;}
+  .ob-connect .qr rect{animation:ob-qrb 1.4s steps(2,end) infinite;}
+  .ob-connect .qr rect:nth-child(2n){animation-delay:.35s}
+  .ob-connect .qr rect:nth-child(3n){animation-delay:.7s}
+  .ob-connect .badge{transform-origin:150px 122px;animation-name:ob-badge;}
+  .ob-connect .badge .tk{stroke-dasharray:26;animation:ob-tick 3.5s var(--ease) infinite;}
+
+  /* D · local playback — PatchLottie: a package falls into a verified shield */
+  @keyframes ob-pkg{0%,4%{transform:translateY(-26px);opacity:0}16%{opacity:1}42%{transform:translateY(30px);opacity:1}52%,100%{transform:translateY(30px);opacity:0}}
+  @keyframes ob-shield{0%{stroke-dashoffset:330}24%,100%{stroke-dashoffset:0}}
+  @keyframes ob-byte{0%{transform:translateY(0);opacity:0}20%{opacity:.9}100%{transform:translateY(-34px);opacity:0}}
+  @keyframes ob-verify{0%,52%{stroke-dashoffset:50;opacity:0}62%{opacity:1}72%,92%{stroke-dashoffset:0;opacity:1}100%{opacity:0;stroke-dashoffset:50}}
+  .ob-patch .shield{stroke-dasharray:330;animation-name:ob-shield;}
+  .ob-patch .pkg{animation-name:ob-pkg;}
+  .ob-patch .bytes circle{animation:ob-byte 1.15s linear infinite;}
+  .ob-patch .bytes circle:nth-child(2){animation-delay:.38s}
+  .ob-patch .bytes circle:nth-child(3){animation-delay:.76s}
+  .ob-patch .vt{stroke-dasharray:50;animation-name:ob-verify;}
+
+  /* E · appearance — SettingsLottie: a theme wipe + the palette cycling */
+  @keyframes ob-wipe{0%,8%{transform:translateX(-140px)}46%,58%{transform:translateX(0)}96%,100%{transform:translateX(140px)}}
+  @keyframes ob-swatch-on{0%,72%{transform:scale(1);opacity:.35}12%,26%{transform:scale(1.5);opacity:1}}
+  @keyframes ob-slide{0%,100%{transform:translateX(0)}50%{transform:translateX(22px)}}
+  .ob-settings .wipe{animation:ob-wipe 3.5s var(--ease) infinite;}
+  .ob-settings .sw{transform-box:fill-box;transform-origin:center;animation:ob-swatch-on 3.5s var(--ease) infinite;}
+  .ob-settings .sw:nth-child(2){animation-delay:.3s}
+  .ob-settings .sw:nth-child(3){animation-delay:.6s}
+  .ob-settings .sw:nth-child(4){animation-delay:.9s}
+  .ob-settings .knob{animation:ob-slide 3.5s var(--ease) infinite;}
+  .ob-settings .knob2{animation-delay:.5s}
+
+  /* F · sidebar — three layouts cross-fading in the same rail */
+  @keyframes ob-set{0%,4%{opacity:0;transform:translateY(6px)}10%,28%{opacity:1;transform:none}34%,100%{opacity:0;transform:translateY(-6px)}}
+  .ob-sidebar .setA{animation:ob-set 3.5s var(--ease) infinite;animation-delay:0s}
+  .ob-sidebar .setB{animation:ob-set 3.5s var(--ease) infinite;animation-delay:1.166s}
+  .ob-sidebar .setC{animation:ob-set 3.5s var(--ease) infinite;animation-delay:2.333s}
+
+  /* G · sound — a speaker pushing arcs, with a small meter */
+  @keyframes ob-arcp{0%{opacity:0;transform:translateX(-4px)}30%{opacity:1;transform:none}70%,100%{opacity:0;transform:translateX(4px)}}
+  .ob-sound .ac{transform-box:fill-box;animation:ob-arcp 1.6s var(--ease) infinite;}
+  .ob-sound .ac2{animation-delay:.2s}
+  .ob-sound .ac3{animation-delay:.4s}
+  .ob-sound .eqm rect{transform-box:fill-box;transform-origin:bottom;animation:ob-bar 1s var(--ease) infinite;}
+  .ob-sound .eqm rect:nth-child(2){animation-delay:.18s}
+  .ob-sound .eqm rect:nth-child(3){animation-delay:.36s}
+
+  /* H · notifications — PrivacyLottie idiom: a bell, rings, a toast arriving */
+  @keyframes ob-swing{0%,64%,100%{transform:rotate(0)}70%{transform:rotate(9deg)}76%{transform:rotate(-7deg)}82%{transform:rotate(4deg)}88%{transform:rotate(-2deg)}}
+  @keyframes ob-toast{0%,20%{transform:translateX(26px);opacity:0}34%,74%{transform:none;opacity:1}88%,100%{transform:translateX(26px);opacity:0}}
+  @keyframes ob-wave{0%{transform:scale(.8);opacity:0}30%{opacity:.7}100%{transform:scale(1.35);opacity:0}}
+  .ob-bell .bell{transform-origin:96px 56px;animation-name:ob-swing;}
+  .ob-bell .toast{animation-name:ob-toast;}
+  .ob-bell .wv{transform-origin:96px 96px;animation:ob-wave 1.8s var(--ease) infinite;}
+  .ob-bell .wv2{animation-delay:.6s}
+
+  /* I · done — the check, then a burst */
+  @keyframes ob-done-ring{0%{stroke-dashoffset:270}30%,100%{stroke-dashoffset:0}}
+  @keyframes ob-done-tick{0%,26%{stroke-dashoffset:60}48%,100%{stroke-dashoffset:0}}
+  @keyframes ob-spark{0%,44%{transform:scale(.6);opacity:0}58%{opacity:.9}100%{transform:scale(1.35);opacity:0}}
+  .ob-done .ring{stroke-dasharray:270;animation-name:ob-done-ring;}
+  .ob-done .tk{stroke-dasharray:60;animation-name:ob-done-tick;}
+  .ob-done .spark{transform-origin:96px 96px;animation:ob-spark 3.5s var(--ease) infinite;}
+
+  html[data-motion="off"] .oobe *,html[data-motion="off"] .oobe{animation:none !important;}
+  html[data-motion="off"] .oobe *{stroke-dashoffset:0 !important;}
+
+  /* ── footer (Rise's ControlGrid: progress | primary | secondary) ────────── */
+  .footer{
+    display:grid;grid-template-columns:210px 1fr 1fr;gap:6px;align-items:center;
+    padding:16px 24px;background:color-mix(in srgb, var(--plate) 88%, black);
+    border-top:1px solid var(--divider);
+  }
+  .footer.solo{grid-template-columns:210px 1fr;}
+  .footer.solo #priBtn{grid-column:2;}
+  html[data-theme="light"] .footer{background:#f6f6f6;}
+  .prog-label{font-size:12px;font-weight:600;color:var(--text-3);margin-bottom:6px;}
+  .bar{width:162px;height:4px;border-radius:2px;background:rgba(255,255,255,.14);overflow:hidden;}
+  html[data-theme="light"] .bar{background:rgba(0,0,0,.12);}
+  .bar i{display:block;height:100%;width:0;background:var(--accent);border-radius:2px;transition:width .35s var(--ease);}
+  @keyframes indet{0%{margin-left:-34%}100%{margin-left:100%}}
+  .btn{
+    height:32px;padding:0 16px;border-radius:var(--r-ctrl);
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    font-size:14px;font-weight:600;
+  }
+  .btn.std{background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);color:var(--text);}
+  .btn.std:hover{background:var(--subtle-hover);}
+  .btn.accent{background:var(--accent);color:var(--on-accent);}
+  .btn.accent:hover{filter:brightness(1.06);}
+  .btn.spotify{background:var(--spotify);color:#053;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.stretch{width:100%;}
+  .btn.sm{height:28px;padding:0 12px;font-size:13px;}
+
+  /* ── Zune-flavoured bookends (welcome + done) ──────────────────────────── */
+  .zune{display:flex;flex-direction:column;justify-content:center;padding:4px 8px 8px;}
+  .zune .kicker{
+    font:600 11px/1 var(--font);letter-spacing:.28em;text-transform:uppercase;color:var(--accent-text);
+    margin-bottom:14px;
+  }
+  .zune .big{
+    margin:0;font:200 62px/0.94 var(--font-d);letter-spacing:-.035em;
+    max-width:16ch;
+  }
+  .zune .big b{font-weight:600;}
+  .zune .sub{margin:16px 0 0;color:var(--text-2);line-height:1.5;max-width:46ch;}
+  .zune .meta{margin-top:22px;display:flex;gap:22px;flex-wrap:wrap;}
+  .zune .meta div{font-size:12px;color:var(--text-4);}
+  .zune .meta b{display:block;font:600 15px/1.2 var(--font);color:var(--text-2);margin-bottom:2px;}
+
+  /* ── sign-in, all in place — no second dialog, no second scrim ─────────── */
+  .login{display:grid;grid-template-columns:1fr 40px 196px;align-items:start;gap:0;}
+  .lpane{padding:2px 22px 8px 2px;display:flex;flex-direction:column;gap:14px;min-width:0;position:relative;}
+  .spot{display:flex;align-items:center;gap:8px;color:var(--spotify);font-weight:700;font-size:22px;}
+  .or{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text-3);align-self:stretch;padding:6px 0;transition:opacity .3s var(--ease);}
+  .or .line{width:1px;flex:1;background:var(--divider);}
+  .or span{font-size:11px;font-weight:600;letter-spacing:.08em;padding:3px 8px;border-radius:11px;background:var(--card-secondary);}
+  .rpane{padding:2px 2px 8px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;
+    transition:opacity .35s var(--ease), filter .35s var(--ease);}
+  .qr{
+    width:138px;height:138px;padding:6px;border-radius:8px;background:#fff;
+    display:grid;grid-template-columns:repeat(21,1fr);grid-template-rows:repeat(21,1fr);gap:1px;flex:none;
+  }
+  .qr b{background:#111;border-radius:.5px;}
+  .code{font:700 21px/1 var(--mono);letter-spacing:.12em;}
+  .waiting{display:flex;align-items:center;gap:8px;color:var(--text-3);font-size:12.5px;}
+  .dots::after{content:"";animation:dots 1.4s steps(4,end) infinite;}
+  @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+  .link{color:var(--accent-text);font-weight:600;background:none;padding:0;}
+  .expire{font-size:11.5px;color:var(--text-4);}
+
+  /* the two states of the left pane cross-fade in place */
+  .swap{position:relative;display:grid;}
+  .swap > *{grid-area:1/1;transition:opacity .28s var(--ease), transform .28s var(--ease);}
+  .swap > [data-off]{opacity:0;transform:translateY(6px);pointer-events:none;visibility:hidden;}
+  .login.busy .rpane,.login.busy .or{opacity:.22;filter:saturate(.2);pointer-events:none;}
+  .login.done .rpane,.login.done .or{opacity:0;pointer-events:none;}
+
+  /* the progress checklist — the thing that used to be a separate overlay */
+  .steps{display:flex;flex-direction:column;gap:2px;}
+  .srow{
+    display:flex;align-items:center;gap:10px;color:var(--text-4);font-size:13.5px;
+    min-height:32px;transition:color .25s var(--ease);
+  }
+  .srow.now{color:var(--text);}
+  .srow.ok{color:var(--text-2);}
+  .srow .ck{
+    width:18px;height:18px;border-radius:9px;flex:none;display:grid;place-items:center;
+    border:1.5px solid currentColor;font-size:10px;color:var(--text-4);
+    transition:background .25s var(--ease), border-color .25s var(--ease), color .25s var(--ease);
+  }
+  .srow .ck b{opacity:0;font-size:11px;line-height:1;transition:opacity .2s var(--ease);}
+  .srow.ok .ck{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+  .srow.ok .ck b{opacity:1;}
+  .srow.now .ck{border-color:var(--accent);border-right-color:transparent;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .idcard{
+    display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-card);
+    background:var(--card-default);border:1px solid var(--stroke-ctrl);
+  }
+  .idcard .av{width:44px;height:44px;border-radius:22px;flex:none;background:linear-gradient(135deg,#4a6,#268);
+    display:grid;place-items:center;font:600 17px/1 var(--font);color:#0b1a12;}
+  .idcard b{display:block;font-size:14.5px;}
+  .badge-prem{
+    display:inline-flex;align-items:center;gap:5px;margin-top:3px;height:19px;padding:0 8px;border-radius:999px;
+    background:color-mix(in srgb, var(--spotify) 24%, transparent);color:var(--spotify);
+    font-size:11px;font-weight:600;
+  }
+
+  /* ── the local-playback (audio SDK) phase machine, also in place ───────── */
+  .phase{position:relative;display:grid;}
+  .phase > section{grid-area:1/1;transition:opacity .28s var(--ease), transform .28s var(--ease);}
+  .phase > section[data-off]{opacity:0;transform:translateY(6px);pointer-events:none;visibility:hidden;}
+  .dl{display:flex;flex-direction:column;gap:10px;max-width:52ch;}
+  .dl .who{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:13px;}
+  .dl .who b{font-weight:600;}
+  .dl .who span{color:var(--text-3);font-variant-numeric:tabular-nums;font-size:12.5px;}
+  .track{height:5px;border-radius:3px;background:rgba(255,255,255,.14);overflow:hidden;}
+  html[data-theme="light"] .track{background:rgba(0,0,0,.12);}
+  .track i{display:block;height:100%;width:0;border-radius:3px;background:var(--accent);transition:width .2s linear;}
+  .track.indet i{width:30%;animation:indet 1.4s var(--ease) infinite;}
+  .verlist{display:flex;flex-direction:column;gap:6px;}
+  .ver{
+    display:grid;grid-template-columns:20px 1fr auto;gap:10px;align-items:center;text-align:left;
+    padding:10px 12px;border-radius:var(--r-card);background:var(--card-default);
+    border:1px solid transparent;font-size:13px;
+  }
+  .ver:hover{background:var(--card-secondary);}
+  .ver.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 8%, var(--card-default));}
+  .ver .rad{width:16px;height:16px;border-radius:8px;border:1.5px solid var(--text-4);display:grid;place-items:center;}
+  .ver.on .rad{border-color:var(--accent);}
+  .ver.on .rad::after{content:"";width:8px;height:8px;border-radius:4px;background:var(--accent);}
+  .ver b{font-weight:600;}
+  .ver small{display:block;color:var(--text-4);font-size:11.5px;margin-top:1px;}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;margin-top:4px;}
+  .kv dt{color:var(--text-3);}
+  .kv dd{margin:0;font-family:var(--mono);font-size:12px;}
+  .banner{
+    display:flex;gap:10px;align-items:flex-start;padding:11px 13px;border-radius:var(--r-card);
+    background:color-mix(in srgb, var(--warn) 12%, var(--card-default));
+    border:1px solid color-mix(in srgb, var(--warn) 30%, transparent);font-size:12.5px;line-height:1.45;
+  }
+  .banner.bad{background:color-mix(in srgb, var(--bad) 14%, var(--card-default));border-color:color-mix(in srgb, var(--bad) 34%, transparent);}
+  .banner.ok{background:color-mix(in srgb, var(--good) 14%, var(--card-default));border-color:color-mix(in srgb, var(--good) 30%, transparent);}
+  .banner .ico{flex:none;width:18px;height:18px;border-radius:9px;display:grid;place-items:center;font-size:11px;font-weight:700;
+    background:var(--warn);color:#2b2400;}
+  .banner.bad .ico{background:var(--bad);color:#3a0006;}
+  .banner.info{background:var(--card-default);border-color:var(--stroke-ctrl);color:var(--text-3);}
+  .banner.info .ico{background:var(--text-4);color:var(--plate);}
+  .banner.ok .ico{background:var(--good);color:#05230a;}
+
+  /* ── setting rows / cards ──────────────────────────────────────────────── */
+  .settings{display:flex;flex-direction:column;gap:4px;}
+  .scard{
+    display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;
+    padding:12px 14px;border-radius:var(--r-card);background:var(--card-default);
+    border:1px solid rgba(255,255,255,.04);
+  }
+  html[data-theme="light"] .scard{border-color:rgba(0,0,0,.05);}
+  .scard.stack{grid-template-columns:1fr;}
+  .scard b{display:block;font-size:13.5px;font-weight:600;}
+  .scard span{display:block;font-size:12px;color:var(--text-3);margin-top:2px;line-height:1.4;}
+  .scard code{font-family:var(--mono);font-size:11.5px;color:var(--accent-text);}
+  .combo{
+    height:32px;padding:0 10px;border-radius:var(--r-ctrl);
+    background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);color:var(--text);min-width:172px;font-size:13px;
+  }
+  .toggle{
+    width:40px;height:20px;border-radius:10px;background:rgba(255,255,255,.18);position:relative;transition:background .2s;flex:none;
+  }
+  html[data-theme="light"] .toggle{background:rgba(0,0,0,.22);}
+  .toggle::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:8px;background:#fff;transition:transform .2s var(--ease);}
+  .toggle.on{background:var(--accent);}
+  .toggle.on::after{transform:translateX(20px);}
+  .seg3{display:inline-flex;border-radius:var(--r-ctrl);overflow:hidden;border:1px solid var(--stroke-ctrl);background:var(--ctrl-default);}
+  .seg3 button{height:30px;padding:0 11px;font-size:12.5px;font-weight:600;color:var(--text-3);}
+  .seg3 button + button{border-left:1px solid var(--stroke-ctrl);}
+  .seg3 button.on{background:var(--accent);color:var(--on-accent);}
+  .seg3 button[disabled]{opacity:.4;cursor:default;}
+  .scard .closed-badge,.closed-badge{
+    display:inline-block;margin-top:5px;height:18px;line-height:18px;padding:0 7px;border-radius:999px;
+    background:var(--card-secondary);color:var(--text-3);font-size:10.5px;font-weight:600;
+  }
+  .choice-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .seg{
+    height:36px;padding:0 14px;border-radius:var(--r-ctrl);
+    background:var(--ctrl-default);border:1px solid var(--stroke-ctrl);
+    color:var(--text-2);font-weight:600;font-size:13px;
+  }
+  .seg.on{background:var(--accent);color:var(--on-accent);border-color:transparent;}
+  .swatches{display:flex;gap:10px;margin:2px 0 14px;}
+  .swatch{width:70px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text-3);font-size:11.5px;}
+  .swatch i{width:42px;height:42px;border-radius:21px;border:2px solid transparent;display:block;box-shadow:var(--elev-card);}
+  .swatch.on{color:var(--text);font-weight:600;}
+  .swatch.on i{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);}
+  .swatch.warm i{background:conic-gradient(from 200deg,#e8b06a,#c4784a,#e8b06a);}
+  .swatch.slate i{background:conic-gradient(from 200deg,#6a88b8,#3a5a88,#6a88b8);}
+  .swatch.neutral i{background:conic-gradient(from 200deg,#c8c8c8,#6a6a6a,#c8c8c8);}
+  .swatch.accent i{background:conic-gradient(from 200deg,#60cdff,#1a6a88,#60cdff);}
+
+  /* progressive disclosure — every step keeps one line of depth behind this */
+  details.disc{
+    border-radius:var(--r-card);background:var(--card-default);border:1px solid rgba(255,255,255,.04);
+    margin-top:10px;overflow:hidden;
+  }
+  html[data-theme="light"] details.disc{border-color:rgba(0,0,0,.05);}
+  details.disc > summary{
+    cursor:pointer;list-style:none;padding:11px 14px;display:flex;align-items:center;gap:9px;
+    font-size:13px;font-weight:600;color:var(--text-2);
+  }
+  details.disc > summary::-webkit-details-marker{display:none;}
+  details.disc > summary::before{
+    content:"";width:7px;height:7px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+    transform:rotate(-45deg);transition:transform .2s var(--ease);margin-left:2px;
+  }
+  details.disc[open] > summary::before{transform:rotate(45deg);}
+  details.disc > summary span{font-weight:400;color:var(--text-4);font-size:12px;margin-left:auto;}
+  details.disc > .body{padding:0 14px 14px;display:flex;flex-direction:column;gap:4px;}
+  details.disc > .body > .scard{background:var(--card-secondary);}
+
+  /* sidebar pickers */
+  .pickers{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-self:start;}
+  .pcard{
+    border-radius:var(--r-card);padding:8px 8px 10px;
+    background:var(--card-default);border:1px solid transparent;text-align:left;
+    display:flex;flex-direction:column;gap:8px;min-width:0;
+  }
+  .pcard:hover{background:var(--card-secondary);}
+  .pcard.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 8%, var(--card-default));}
+  .mini{
+    height:104px;border-radius:6px;padding:8px 8px 0;display:flex;flex-direction:column;gap:5px;
+    background:color-mix(in srgb, var(--accent) 6%, transparent);overflow:hidden;
+  }
+  .mini .r{height:10px;border-radius:2px;background:rgba(255,255,255,.22);display:flex;align-items:center;gap:4px;padding:0 4px;}
+  html[data-theme="light"] .mini .r{background:rgba(0,0,0,.12);}
+  .mini .sq{width:8px;height:8px;border-radius:2px;background:var(--accent);opacity:.7;flex:none;}
+  .mini .bar{width:auto;height:4px;flex:1;background:rgba(255,255,255,.28);}
+  .mini .hair{height:1px;background:rgba(255,255,255,.16);margin:1px 0;}
+  .mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+  .mini-tile{height:28px;border-radius:3px;background:rgba(255,255,255,.12);}
+  .pcard .ttl{display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;}
+  .tag{height:16px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:9.5px;font-weight:600;display:grid;place-items:center;}
+  .pcard .sub{font-size:11.5px;color:var(--text-3);line-height:1.35;}
+
+  /* ready page summary */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
+  .sum{
+    height:28px;padding:0 10px;border-radius:999px;background:var(--card-secondary);
+    display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-2);
+  }
+  .sum i{width:9px;height:9px;border-radius:5px;background:var(--accent);flex:none;}
+  .sum.off i{background:var(--text-4);}
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{transition:none !important;animation:none !important;}
+    .oobe *{stroke-dashoffset:0 !important;}
+  }
+  @media (max-width: 900px){
+    .page:not(.wide){grid-template-columns:1fr;}
+    .illus{display:none;}
+    .pickers{grid-template-columns:1fr;}
+    .login{grid-template-columns:1fr;}
+    .or{flex-direction:row;height:auto;}
+    .or .line{height:1px;width:auto;flex:1;}
+    .lpane,.rpane{padding:0;}
+    .zune .big{font-size:44px;}
+    .footer{grid-template-columns:1fr 1fr;}
+    .footer > div:first-child{grid-column:1 / -1;}
+    .footer.solo{grid-template-columns:1fr;}
+    .footer.solo #priBtn{grid-column:auto;}
+  }
+</style>
+</head>
+<body>
+  <div class="lab">
+    <span class="lab-hint"><strong>Onboarding · one dialog, nine pages, no nested modals</strong> — Rise's setup chrome (192 px animated hero + pinned title + scrolling body + progress/dual-footer) around Wavee's real flow: terms, Spotify sign-in <em>with the checklist inline</em>, the local-playback runtime download, appearance, sidebar, sound &amp; storage, notifications &amp; links. Every hero is a hand-authored analogue of the Windows-11-OOBE Lottie that Rise ships for that page, on the same 3.5 s / 210-frame loop. Zune-weight display type on the two bookends, Fluent rows in the mechanical middle.</span>
+    <button class="lab-chip on" data-jump="0">0 Welcome</button>
+    <button class="lab-chip" data-jump="1">1 Terms</button>
+    <button class="lab-chip" data-jump="2">2 Sign in</button>
+    <button class="lab-chip" data-jump="3">3 Playback</button>
+    <button class="lab-chip" data-jump="4">4 Appearance</button>
+    <button class="lab-chip" data-jump="5">5 Sidebar</button>
+    <button class="lab-chip" data-jump="6">6 Sound</button>
+    <button class="lab-chip" data-jump="7">7 Notifications</button>
+    <button class="lab-chip" data-jump="8">8 Done</button>
+    <span class="lab-sep"></span>
+    <button class="lab-chip" id="labMotion">Motion: on</button>
+    <button class="lab-chip" id="labReplay">Replay hero</button>
+    <button class="lab-chip" id="labFail">Simulate failure</button>
+    <button class="lab-chip" id="labReset">Reset</button>
+  </div>
+
+  <div class="win bare" id="win">
+    <div class="titlebar">
+      <div class="tb-name">Wavee <span id="tbSub">Welcome</span></div>
+      <div class="caption">
+        <button aria-hidden="true">─</button>
+        <button aria-hidden="true">□</button>
+        <button class="close" aria-hidden="true">✕</button>
+      </div>
+    </div>
+
+    <div class="rail" aria-hidden="true">
+      <button class="on"><svg viewBox="0 0 16 16"><path d="M2 7.5 8 2l6 5.5V14H9.5V9H6.5v5H2z"/></svg></button>
+      <button><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></button>
+      <button><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 7h12"/></svg></button>
+      <div class="sp"></div>
+      <button><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 2.5v1.2M8 12.3v1.2M2.5 8h1.2M12.3 8h1.2M4.1 4.1l.85.85M11.05 11.05l.85.85M4.1 11.9l.85-.85M11.05 4.95l.85-.85"/></svg></button>
+    </div>
+
+    <aside class="sidebar" id="sidebarPreview">
+      <div class="sb-search">Search</div>
+      <div class="classic-only">
+        <div class="sb-row on"><span class="sb-dot"></span><span>Home</span></div>
+        <div class="sb-row"><span class="sb-dot b"></span><span>Search</span></div>
+        <div class="sb-row"><span class="sb-dot a"></span><span>Your Library</span></div>
+        <div class="sb-hair"></div>
+        <div class="sb-row"><span class="sb-dot c"></span><span class="sb-name">Liked Songs</span></div>
+        <div class="sb-row"><span class="sb-dot a"></span><span class="sb-name">Discover Weekly</span></div>
+        <div class="sb-row"><span class="sb-dot b"></span><span class="sb-name">Release Radar</span></div>
+      </div>
+      <div class="v3-only">
+        <div class="sb-chips"><span class="sb-chip on">All</span><span class="sb-chip">Playlists</span><span class="sb-chip">Albums</span></div>
+        <div class="sb-row on"><span class="sb-dot c"></span><span class="sb-name">Liked Songs</span></div>
+        <div class="sb-row"><span class="sb-dot a"></span><span class="sb-name">Discover Weekly</span></div>
+        <div class="sb-row"><span class="sb-dot b"></span><span class="sb-name">This is Radiohead</span></div>
+        <div class="sb-row"><span class="sb-dot"></span><span class="sb-name">Local Files</span></div>
+      </div>
+      <div class="curated-only">
+        <div class="sb-row on"><span class="sb-dot"></span><span>Home</span></div>
+        <div class="sb-row"><span class="sb-dot b"></span><span>What's New</span></div>
+        <div class="sb-hair"></div>
+        <div class="sb-grid">
+          <div class="sb-tile"><span class="sb-dot a"></span><span class="sb-name">Liked Songs</span></div>
+          <div class="sb-tile"><span class="sb-dot c"></span><span class="sb-name">Daylist</span></div>
+        </div>
+        <div class="sb-muted" style="padding:4px 8px;">Playlists</div>
+        <div class="sb-row"><span class="sb-dot b"></span><span class="sb-name">Road trip</span></div>
+      </div>
+    </aside>
+
+    <main class="content" aria-hidden="true">
+      <div class="hero">
+        <div class="page-wash"></div>
+        <p>Good evening</p>
+        <h2>Made for Christos</h2>
+      </div>
+      <div class="strips">
+        <div class="card"><div class="cover"></div><b>Discover Weekly</b><span>Playlist · Spotify</span></div>
+        <div class="card"><div class="cover c2"></div><b>Daylist</b><span>Playlist · Spotify</span></div>
+        <div class="card"><div class="cover c3"></div><b>Release Radar</b><span>Playlist · Spotify</span></div>
+        <div class="card"><div class="cover c4"></div><b>On Repeat</b><span>Playlist · Spotify</span></div>
+      </div>
+      <div class="tracks">
+        <div class="trow"><i>1</i><span style="text-align:left;color:var(--text-2)">Weird Fishes / Arpeggi</span><span>5:18</span></div>
+        <div class="trow"><i>2</i><span style="text-align:left;color:var(--text-2)">Nude</span><span>4:15</span></div>
+        <div class="trow"><i>3</i><span style="text-align:left;color:var(--text-2)">Reckoner</span><span>4:50</span></div>
+        <div class="trow"><i>4</i><span style="text-align:left;color:var(--text-2)">All I Need</span><span>3:48</span></div>
+      </div>
+    </main>
+
+    <div class="player" aria-hidden="true">
+      <div class="now"><div class="art"></div><div><b>Weird Fishes / Arpeggi</b><span>Radiohead</span></div></div>
+      <div class="transport">
+        <div class="t-btns"><span>⏮</span><span class="play">▶</span><span>⏭</span></div>
+        <div class="scrub"><i></i></div>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="scrim" id="scrim">
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="pageTitle">
+        <button class="back" id="backBtn" hidden aria-label="Back">
+          <svg viewBox="0 0 12 12"><path fill="none" stroke="currentColor" stroke-width="1.6" d="M8 2 3.5 6 8 10"/></svg>
+        </button>
+        <div class="pages" id="pages">
+
+          <!-- ── 0 · WELCOME (Zune bookend) ──────────────────────────────── -->
+          <section class="page on" data-step="0">
+            <div class="illus" aria-hidden="true">
+              <svg class="oobe ob-welcome" viewBox="0 0 192 192">
+                <circle class="rg rg1" cx="96" cy="96" r="34"/>
+                <circle class="rg rg2" cx="96" cy="96" r="34"/>
+                <circle class="rg rg3" cx="96" cy="96" r="34"/>
+                <circle class="core" cx="96" cy="96" r="30"/>
+                <g class="bars">
+                  <rect class="fillA" x="82" y="88" width="4" height="16" rx="2"/>
+                  <rect class="fillA" x="89" y="84" width="4" height="24" rx="2"/>
+                  <rect class="fillA" x="96" y="80" width="4" height="32" rx="2"/>
+                  <rect class="fillA" x="103" y="84" width="4" height="24" rx="2"/>
+                  <rect class="fillA" x="110" y="88" width="4" height="16" rx="2"/>
+                </g>
+              </svg>
+              <div class="cap">wave · 3.5 s loop</div>
+            </div>
+            <div class="col solo">
+              <div class="zune">
+                <div class="kicker">Wavee for Windows</div>
+                <h1 class="big" id="pageTitle">Let's get you <b>listening</b>.</h1>
+                <p class="sub">Seven short steps, one window. We'll sign you in to Spotify, set up local playback, then let you shape the shell — and you can change every single thing later in Settings.</p>
+                <div class="meta">
+                  <div><b>~2 min</b>Typical setup</div>
+                  <div><b>Premium</b>Required to stream</div>
+                  <div><b>One download</b>Local playback runtime</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 1 · TERMS (EulaLottie) ──────────────────────────────────── -->
+          <section class="page" data-step="1" hidden>
+            <div class="illus" aria-hidden="true">
+              <svg class="oobe ob-eula" viewBox="0 0 192 192">
+                <rect class="pg" x="50" y="30" width="88" height="112" rx="8"/>
+                <path class="ln" d="M66 56h56"/>
+                <path class="ln" d="M66 70h44"/>
+                <path class="ln" d="M66 84h52"/>
+                <path class="ln" d="M66 98h34"/>
+                <g class="seal">
+                  <circle cx="132" cy="132" r="21"/>
+                  <path class="tk" d="M123 132.5l6.5 6.5L142 126"/>
+                </g>
+              </svg>
+              <div class="cap">EulaLottie · analogue</div>
+            </div>
+            <div class="col">
+              <p class="eyebrow">Before we start</p>
+              <h1>Terms &amp; what Wavee is</h1>
+              <div class="scroller">
+                <p class="lead">Wavee is an independent desktop client for your own Spotify account. It is not made by, endorsed by, or affiliated with Spotify AB.</p>
+                <div class="grouphead">What Wavee needs from you</div>
+                <div class="settings">
+                  <div class="scard stack"><div><b>Your Spotify Premium account</b><span>Wavee streams full-quality, on-demand audio, which Spotify only allows on Premium accounts. Free accounts can browse, but playback is blocked.</span></div></div>
+                  <div class="scard stack"><div><b>A one-time local playback component</b><span>Downloaded from Spotify's own CDN, verified by fingerprint and signature, and stored per-machine. Nothing else is installed and nothing is bundled with Wavee.</span></div></div>
+                  <div class="scard stack"><div><b>Local data on this PC</b><span>Login, library, metadata cache, settings and logs live under <code>%LOCALAPPDATA%\Wavee</code>. Factory reset erases all of it.</span></div></div>
+                </div>
+                <div class="grouphead">Trademarks</div>
+                <p class="fine">Spotify® and the Spotify logo are registered trademarks of Spotify AB. All trademarks, logos and brand names are the property of their respective owners; their use here is nominative only. Wavee itself ships under its own licence — the full text is in Settings → About → Licences.</p>
+                <details class="disc">
+                  <summary>Read the full agreement <span>4 sections</span></summary>
+                  <div class="body">
+                    <div class="scard stack"><div><b>1 · Base software &amp; copyright</b><span>Wavee's own source is licensed to you under the terms shipped in the About tab. You may not redistribute a build that removes the attribution above.</span></div></div>
+                    <div class="scard stack"><div><b>2 · Your account &amp; your library</b><span>Signing in lets Wavee read and modify your Spotify library — saves, follows, playlist edits, playback state — on your behalf, using Spotify's own APIs.</span></div></div>
+                    <div class="scard stack"><div><b>3 · Streaming &amp; online services</b><span>Using Spotify through Wavee means Spotify's own terms of service still apply to your account and your listening.</span></div></div>
+                    <div class="scard stack"><div><b>4 · Local files &amp; caches</b><span>Encrypted audio bodies and licence keys are cached locally to avoid re-downloading. You control the budget and the location, and can clear both at any time.</span></div></div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 2 · SIGN IN (ConnectLottie) — checklist runs IN PLACE ───── -->
+          <section class="page" data-step="2" hidden>
+            <div class="illus" aria-hidden="true">
+              <svg class="oobe ob-connect" viewBox="0 0 192 192">
+                <rect class="mon" x="22" y="58" width="78" height="56" rx="7"/>
+                <path class="soft" d="M48 114v10h26v-10M42 128h38"/>
+                <rect class="phone" x="120" y="48" width="46" height="78" rx="9"/>
+                <path class="soft" d="M136 54h14"/>
+                <g class="qr">
+                  <rect class="fillA" x="129" y="68" width="9" height="9" rx="1.5"/>
+                  <rect class="fillA" x="143" y="68" width="9" height="9" rx="1.5"/>
+                  <rect class="fillA" x="129" y="82" width="9" height="9" rx="1.5"/>
+                  <rect class="fillA" x="143" y="82" width="9" height="9" rx="1.5"/>
+                  <rect class="fillA" x="136" y="96" width="9" height="9" rx="1.5"/>
+                  <rect class="fillA" x="150" y="96" width="9" height="9" rx="1.5"/>
+                </g>
+                <path class="arc" d="M104 74C118 54 132 52 142 60"/>
+                <circle class="pip fillA" cx="0" cy="0" r="3.6"/>
+                <g class="badge">
+                  <circle cx="150" cy="122" r="15"/>
+                  <path class="tk" d="M143.5 122.5l5 5 9.5-10.5"/>
+                </g>
+              </svg>
+              <div class="cap">ConnectLottie · analogue</div>
+            </div>
+            <div class="col">
+              <p class="eyebrow">Step 2 · Your account</p>
+              <h1>Sign in to Spotify</h1>
+              <div class="scroller">
+            <div class="login" id="login">
+              <div class="lpane">
+                <div class="swap" id="loginSwap">
+                  <div data-pane="idle">
+                    <p class="lead" style="margin:0 0 14px;">Sign in with your Spotify® account on the Spotify website. Wavee never sees your password — it only receives a token you can revoke at any time.</p>
+                    <button class="btn spotify stretch" id="loginBrowser" style="min-height:44px;"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M6.5 9.4c3.6-1.05 7.6-.72 10.6 1.06M7.4 12.5c3-.85 6.3-.6 8.8.9M8.2 15.4c2.4-.66 5-.46 7 .72" fill="none" stroke="#0b2612" stroke-width="1.6" stroke-linecap="round"/></svg>Log in with Spotify <span aria-hidden="true">↗</span></button>
+                    <p class="fine" style="margin:14px 0 0;">Disclaimer: Spotify® and the Spotify logo are registered trademarks of Spotify AB. Wavee is an independent client and is not affiliated with Spotify.</p>
+                  </div>
+                  <div data-pane="busy" data-off>
+                    <p class="lead" style="margin:0 0 14px;" id="signingLead">Signing you in…</p>
+                    <div class="steps" id="steps">
+                      <div class="srow" data-k="0"><span class="ck"><b>✓</b></span> Connecting to Spotify</div>
+                      <div class="srow" data-k="1"><span class="ck"><b>✓</b></span> Preparing your library</div>
+                      <div class="srow" data-k="2"><span class="ck"><b>✓</b></span> Starting audio</div>
+                      <div class="srow" data-k="3"><span class="ck"><b>✓</b></span> Almost there</div>
+                    </div>
+                    <p class="fine" style="margin:14px 0 0;">This happens on the same page on purpose — the step list is the page's own state, not a second dialog on top of it.</p>
+                  </div>
+                  <div data-pane="done" data-off>
+                    <div class="idcard">
+                      <div class="av" aria-hidden="true">C</div>
+                      <div>
+                        <b>Christos</b>
+                        <div style="font-size:12px;color:var(--text-3);">christos@isoplanner.app</div>
+                        <span class="badge-prem">● Spotify Premium</span>
+                      </div>
+                    </div>
+                    <p class="lead" style="margin:14px 0 0;">You're signed in. Wavee is now reading your library in the background — the rest of setup doesn't wait for it.</p>
+                  </div>
+                  <div data-pane="fail" data-off>
+                    <div class="banner bad"><span class="ico">!</span><div><b>Couldn't sign in</b><br>We couldn't reach Spotify. Check your connection and try again.</div></div>
+                    <p class="fine" style="margin:14px 0 0;">The failure lands on this page too — same surface, same footer, one command row.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="or" aria-hidden="true"><div class="line"></div><span>OR</span><div class="line"></div></div>
+              <div class="rpane">
+                <div class="qr" id="qr" aria-hidden="true"></div>
+                <b style="font-size:13.5px;">Scan QR code to log in</b>
+                <div style="color:var(--text-3);font-size:12.5px;">Go to <button class="link">spotify.com/pair</button> and enter this code:</div>
+                <div class="code">BQXT-7K2M</div>
+                <div class="expire">Expires in 4:38</div>
+                <div class="waiting"><span class="dots">Waiting for you to authorize</span></div>
+              </div>
+            </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 3 · LOCAL PLAYBACK / the audio SDK (PatchLottie) ────────── -->
+          <section class="page" data-step="3" hidden>
+            <div class="illus" aria-hidden="true">
+              <svg class="oobe ob-patch" viewBox="0 0 192 192">
+                <path class="shield" d="M96 62l40 16v32c0 26-24 40-40 46-16-6-40-20-40-46V78z"/>
+                <g class="bytes">
+                  <circle class="fillA" cx="78" cy="126" r="2.6"/>
+                  <circle class="fillA" cx="96" cy="132" r="2.6"/>
+                  <circle class="fillA" cx="114" cy="126" r="2.6"/>
+                </g>
+                <g class="pkg">
+                  <rect x="78" y="18" width="36" height="30" rx="5"/>
+                  <path d="M78 29h36M96 18v30"/>
+                </g>
+                <path class="vt" d="M83 108l11 11 19-22"/>
+              </svg>
+              <div class="cap">PatchLottie · analogue</div>
+            </div>
+            <div class="col">
+              <p class="eyebrow">Step 3 · Local playback</p>
+              <h1 id="rtTitle">Local playback setup</h1>
+              <div class="scroller">
+                <div class="phase" id="rtPhase">
+
+                  <section data-p="offer">
+                    <p class="lead">Play tracks directly on this device. Wavee downloads a small one-time playback component — nothing else is installed.</p>
+                    <div class="settings">
+                      <div class="scard"><div><b>Download &amp; set up</b><span>Fetches the supported build for your device from Spotify's CDN, checks the fingerprint and the publisher signature, then keeps it per-machine.</span></div><span class="closed-badge">Recommended</span></div>
+                      <div class="scard"><div><b>Stay remote-only for now</b><span>Wavee still browses, searches and controls other Spotify devices. Some tracks simply won't play on this PC until the runtime is set up.</span></div></div>
+                    </div>
+                    <details class="disc">
+                      <summary>Advanced options <span>local sources</span></summary>
+                      <div class="body">
+                        <p class="fine" style="margin:2px 0 8px;">Supply a <code>Spotify.dll</code> yourself — Wavee recognizes supported builds by fingerprint and configures the rest automatically.</p>
+                        <div class="scard"><div><b>Choose a Spotify.dll…</b><span>Pick a folder or file — a supported build is recognized automatically.</span></div><button class="btn std sm">Select folder</button></div>
+                        <div class="scard"><div><b>Use installed Spotify</b><span>Reuse the Spotify app already installed on this PC.</span></div><button class="btn std sm">Use installed</button></div>
+                        <div class="scard"><div><b>Choose a version to install</b><span>By default Wavee picks the recommended build for your architecture.</span></div><button class="btn std sm" id="rtPickVersion">Choose…</button></div>
+                      </div>
+                    </details>
+                  </section>
+
+                  <section data-p="catalog" data-off>
+                    <p class="lead">Checking what's available for your device…</p>
+                    <div class="dl">
+                      <div class="who"><b>Reaching the runtime catalog</b><span>arm64</span></div>
+                      <div class="track indet"><i></i></div>
+                    </div>
+                  </section>
+
+                  <section data-p="versions" data-off>
+                    <p class="lead">Choose a version to install. Wavee only lists builds it knows how to drive on your architecture.</p>
+                    <div class="verlist" id="verList">
+                      <button class="ver on" data-v="0"><span class="rad"></span><div><b>Spotify 1.2.93.667</b><small>Arm64 · 18.4 MB · fingerprint known</small></div><span class="closed-badge">Recommended</span></button>
+                      <button class="ver" data-v="1"><span class="rad"></span><div><b>Spotify 1.2.91.824</b><small>Arm64 · 18.1 MB · fingerprint known</small></div></button>
+                      <button class="ver" data-v="2"><span class="rad"></span><div><b>Spotify 1.2.88.526</b><small>Arm64 · 17.9 MB · fingerprint known</small></div></button>
+                    </div>
+                    <p class="fine" style="margin-top:10px;">Builds for other architectures exist but are hidden — loading one would fail on this device.</p>
+                  </section>
+
+                  <section data-p="downloading" data-off>
+                    <p class="lead">Downloading…</p>
+                    <div class="dl">
+                      <div class="who"><b id="dlLabel">Spotify 1.2.93.667 · Arm64</b><span id="dlBytes">0.0 / 18.4 MB</span></div>
+                      <div class="track"><i id="dlBar"></i></div>
+                      <p class="fine" style="margin:2px 0 0;">You can't leave this step while a download is in flight — the dialog blocks dismissal, exactly as the real one does.</p>
+                    </div>
+                  </section>
+
+                  <section data-p="verifying" data-off>
+                    <p class="lead">Verifying download…</p>
+                    <div class="dl">
+                      <div class="who"><b>Checking integrity and signature</b><span>18.4 MB</span></div>
+                      <div class="track indet"><i></i></div>
+                      <dl class="kv">
+                        <dt>Version</dt><dd>1.2.93.667</dd>
+                        <dt>Architecture</dt><dd>arm64</dd>
+                        <dt>SHA-256</dt><dd>9f31…c4a7 ✓</dd>
+                      </dl>
+                    </div>
+                  </section>
+
+                  <section data-p="untrusted" data-off>
+                    <div class="banner"><span class="ico">!</span><div><b>This file isn't Spotify-signed</b><br>It matches the expected fingerprint, but the publisher signature couldn't be verified. Only continue if you trust the source.</div></div>
+                    <dl class="kv">
+                      <dt>Version</dt><dd>1.2.93.667</dd>
+                      <dt>Architecture</dt><dd>arm64</dd>
+                      <dt>Signature</dt><dd>unverified</dd>
+                      <dt>Location</dt><dd>%LOCALAPPDATA%\Wavee\playplay\runtimes\…</dd>
+                    </dl>
+                  </section>
+
+                  <section data-p="ready" data-off>
+                    <div class="banner ok"><span class="ico">✓</span><div><b>Local playback is ready</b><br>Audio keys are derived locally on this PC.</div></div>
+                    <dl class="kv">
+                      <dt>Version</dt><dd>1.2.93.667</dd>
+                      <dt>Architecture</dt><dd>arm64</dd>
+                      <dt>Signature</dt><dd>Spotify AB ✓</dd>
+                      <dt>Location</dt><dd>%LOCALAPPDATA%\Wavee\playplay\runtimes\129300667\arm64</dd>
+                    </dl>
+                    <details class="disc">
+                      <summary>Storage &amp; keys <span>optional</span></summary>
+                      <div class="body">
+                        <div class="scard"><div><b>Cache encrypted audio</b><span>Skip re-downloading track bodies you already streamed.</span></div><button class="toggle on" data-t="cacheAudio" role="switch" aria-checked="true"></button></div>
+                        <div class="scard"><div><b>Cache licence keys</b><span>Reuse obfuscated keys across sessions (self-heals if stale).</span></div><button class="toggle on" data-t="cacheKeys" role="switch" aria-checked="true"></button></div>
+                      </div>
+                    </details>
+                  </section>
+
+                  <section data-p="failed" data-off>
+                    <div class="banner bad"><span class="ico">!</span><div><b id="rtFailTitle">Couldn't download playback support</b><br><span id="rtFailBody">The catalog was unreachable. You can still install from a local source, or retry.</span></div></div>
+                    <p class="fine" style="margin-top:12px;">Everything stays on this page — the retry, the advanced path and the diagnostics link all live in the one command row below.</p>
+                    <details class="disc">
+                      <summary>Advanced options <span>local sources</span></summary>
+                      <div class="body">
+                        <div class="scard"><div><b>Choose a Spotify.dll…</b><span>Pick a folder or file — a supported build is recognized automatically.</span></div><button class="btn std sm">Select folder</button></div>
+                        <div class="scard"><div><b>Use installed Spotify</b><span>Reuse the Spotify app already installed on this PC.</span></div><button class="btn std sm">Use installed</button></div>
+                        <div class="scard"><div><b>Playback runtime diagnostics</b><span>Every path Wavee searched, and why each one was rejected.</span></div><button class="btn std sm">View diagnostics</button></div>
+                      </div>
+                    </details>
+                  </section>
+
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 4 · APPEARANCE (SettingsLottie) ─────────────────────────── -->
+          <section class="page" data-step="4" hidden>
+            <div class="illus" aria-hidden="true">
+              <svg class="oobe ob-settings" viewBox="0 0 192 192">
+                <defs><clipPath id="cpWin"><rect x="30" y="42" width="132" height="104" rx="10"/></clipPath></defs>
+                <g clip-path="url(#cpWin)">
+                  <rect class="wipe fillA" x="30" y="42" width="132" height="104" opacity=".22"/>
+                </g>
+                <rect class="frame" x="30" y="42" width="132" height="104" rx="10"/>
+                <path class="soft" d="M30 62h132"/>
+                <g class="dots" transform="translate(0,4)">
+                  <circle class="sw fillA" cx="56" cy="90" r="6"/>
+                  <circle class="sw fillA" cx="80" cy="90" r="6"/>
+                  <circle class="sw fillA" cx="104" cy="90" r="6"/>
+                  <circle class="sw fillA" cx="128" cy="90" r="6"/>
+                </g>
+                <path class="soft" d="M52 118h88M52 132h88"/>
+                <circle class="knob fillA" cx="70" cy="118" r="5"/>
+                <circle class="knob knob2 fillA" cx="98" cy="132" r="5"/>
+              </svg>
+              <div class="cap">SettingsLottie · analogue</div>
+            </div>
+            <div class="col">
+              <p class="eyebrow">Step 4 · Appearance</p>
+              <h1>Make it yours</h1>
+              <div class="scroller">
+                <p class="lead">Theme, palette and window material apply live — the Mica behind this dialog is already listening.</p>
+                <div class="grouphead">Theme <span style="font-weight:400;color:var(--text-4)">· System follows the Windows setting live</span></div>
+                <div class="choice-row" id="themeRow">
+                  <button class="seg" data-theme="system">System</button>
+                  <button class="seg" data-theme="light">Light</button>
+                  <button class="seg on" data-theme="dark">Dark</button>
+                </div>
+                <div class="grouphead">Palette <span style="font-weight:400;color:var(--text-4)">· Tints the shell surfaces and accent</span></div>
+                <div class="swatches" id="paletteRow">
+                  <button class="swatch warm" data-palette="warm"><i></i>Warm</button>
+                  <button class="swatch slate" data-palette="slate"><i></i>Slate</button>
+                  <button class="swatch neutral on" data-palette="neutral"><i></i>Neutral</button>
+                  <button class="swatch accent" data-palette="accent"><i></i>Accent</button>
+                </div>
+                <div class="grouphead">Window material <span style="font-weight:400;color:var(--text-4)">· Mica Alt tints more strongly from your wallpaper</span></div>
+                <div class="choice-row" id="materialRow">
+                  <button class="seg on" data-material="mica">Mica</button>
+                  <button class="seg" data-material="mica-alt">Mica Alt</button>
+                </div>
+                <div class="grouphead">Row density <span style="font-weight:400;color:var(--text-4)">· Height of rows in track lists</span></div>
+                <div class="choice-row" id="densityRow">
+                  <button class="seg" data-density="compact">Compact</button>
+                  <button class="seg on" data-density="cozy">Cozy</button>
+                  <button class="seg" data-density="roomy">Roomy</button>
+                </div>
+                <details class="disc">
+                  <summary>Visual effects <span id="fxSummary">All on</span></summary>
+                  <div class="body">
+                    <div class="scard"><div><b>Limit page color to the hero</b><span>Fade the artwork tone out below the hero instead of tinting the whole page.</span></div><button class="toggle" data-t="heroOnly" role="switch" aria-checked="false"></button></div>
+                    <div class="scard"><div><b>Disable marquee text</b><span>Keep overflowing titles truncated instead of scrolling them.</span></div><button class="toggle" data-t="noMarquee" role="switch" aria-checked="false"></button></div>
+                    <div class="scard"><div><b>Disable color washes</b><span>Keep the neutral shell and page surfaces instead of tinting them from artwork.</span></div><button class="toggle" data-t="noWash" role="switch" aria-checked="false"></button></div>
+                    <div class="scard"><div><b>Animated lyrics backdrop</b><span>Let the blurred cover art drift slowly behind fullscreen lyrics instead of holding still.</span></div><button class="toggle on" data-t="lyricsBackdrop" role="switch" aria-checked="true"></button></div>
+                    <div class="scard"><div><b>Track page layout</b><span>Use the side rail automatically, or the artwork Hero at every size.</span></div>
+                      <select class="combo" data-s="pageLayout"><option selected>Automatic</option><option>Always Hero</option><option>Always side rail</option></select></div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 5 · SIDEBAR ─────────────────────────────────────────────── -->
+          <section class="page" data-step="5" hidden>
+            <div class="illus" aria-hidden="true">
+              <svg class="oobe ob-sidebar" viewBox="0 0 192 192">
+                <rect class="frame" x="26" y="44" width="140" height="104" rx="10"/>
+                <path class="soft" d="M78 44v104"/>
+                <g class="setA">
+                  <path d="M36 62h32M36 76h32M36 90h24"/>
+                  <path class="soft" d="M36 104h32M36 118h26M36 132h32"/>
+                </g>
+                <g class="setB">
+                  <rect x="35" y="57" width="14" height="9" rx="4.5"/>
+                  <rect x="52" y="57" width="17" height="9" rx="4.5"/>
+                  <path d="M36 80h32M36 94h24M36 108h32M36 122h20"/>
+                </g>
+                <g class="setC">
+                  <path d="M36 62h26"/>
+                  <rect x="35" y="74" width="15" height="15" rx="3"/>
+                  <rect x="54" y="74" width="15" height="15" rx="3"/>
+                  <path d="M36 102h32M36 116h22M36 130h30"/>
+                </g>
+                <g class="soft"><path d="M92 62h58M92 76h44"/><rect x="92" y="90" width="26" height="26" rx="3"/><rect x="124" y="90" width="26" height="26" rx="3"/><path d="M92 130h58"/></g>
+              </svg>
+              <div class="cap">sidebar morph · new</div>
+            </div>
+            <div class="col">
+              <p class="eyebrow">Step 5 · Navigation</p>
+              <h1>Choose your sidebar</h1>
+              <div class="scroller">
+                <p class="lead">Pick the left-hand navigation. The pane behind this dialog changes as you click, and you can switch again any time in Settings → Sidebar.</p>
+                <div class="pickers" id="sidebarRow">
+                  <button class="pcard" data-sidebar="classic">
+                    <div class="mini">
+                      <div class="r"><span class="sq"></span><span class="bar"></span></div>
+                      <div class="r"><span class="sq"></span><span class="bar" style="width:70%"></span></div>
+                      <div class="r"><span class="sq"></span><span class="bar" style="width:55%"></span></div>
+                      <div class="hair"></div>
+                      <div class="r"><span class="sq"></span><span class="bar"></span></div>
+                      <div class="r"><span class="sq"></span><span class="bar" style="width:80%"></span></div>
+                    </div>
+                    <div class="ttl">Spotify Classic <span class="tag" hidden>Active</span></div>
+                    <div class="sub">The classic Spotify you love(d) before the LibraryV3 re-design.</div>
+                  </button>
+                  <button class="pcard" data-sidebar="v3">
+                    <div class="mini">
+                      <div class="r" style="height:14px;gap:3px;"><span class="bar" style="flex:none;width:28px;height:10px;border-radius:8px;"></span><span class="bar" style="flex:none;width:40px;height:10px;border-radius:8px;"></span></div>
+                      <div class="r"><span class="sq"></span><span class="bar"></span></div>
+                      <div class="r"><span class="sq"></span><span class="bar" style="width:75%"></span></div>
+                      <div class="r"><span class="sq"></span><span class="bar" style="width:60%"></span></div>
+                      <div class="r"><span class="sq"></span><span class="bar"></span></div>
+                    </div>
+                    <div class="ttl">LibraryV3 <span class="tag" hidden>Active</span></div>
+                    <div class="sub">The latest Spotify library sidebar — filters, sort, one unified list.</div>
+                  </button>
+                  <button class="pcard on" data-sidebar="curated">
+                    <div class="mini">
+                      <div class="r"><span class="sq"></span><span class="bar" style="width:50%"></span></div>
+                      <div class="hair"></div>
+                      <div class="mini-grid"><div class="mini-tile"></div><div class="mini-tile"></div></div>
+                      <div class="r"><span class="sq"></span><span class="bar"></span></div>
+                      <div class="r"><span class="sq"></span><span class="bar" style="width:70%"></span></div>
+                    </div>
+                    <div class="ttl">Custom <span class="tag">Active</span></div>
+                    <div class="sub">Build your own sidebar from the sections you want. Default for new installs.</div>
+                  </button>
+                </div>
+                <details class="disc" id="tplDisc" open>
+                  <summary>Starting point for Custom <span id="tplName">Wavee Curated</span></summary>
+                  <div class="body">
+                    <div class="scard" data-tpl="curated"><div><b>Wavee Curated</b><span>Pinned, Jump back in, library shortcuts and folder-aware playlists.</span></div><button class="btn accent sm">Selected</button></div>
+                    <div class="scard" data-tpl="classic"><div><b>Classic-inspired</b><span>The familiar Wavee sidebar, now editable.</span></div><button class="btn std sm">Use this</button></div>
+                    <p class="fine" style="margin:6px 0 0;">Either way you get the full customizer afterwards — add, reorder and configure sections from the sidebar's layout menu.</p>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 6 · SOUND & STORAGE ─────────────────────────────────────── -->
+          <section class="page" data-step="6" hidden>
+            <div class="illus" aria-hidden="true">
+              <svg class="oobe ob-sound" viewBox="0 0 192 192">
+                <path class="spk" d="M72 80H56v32h16l26 22V58z"/>
+                <path class="ac ac1" d="M112 78a26 26 0 0 1 0 36"/>
+                <path class="ac ac2" d="M124 66a42 42 0 0 1 0 60"/>
+                <path class="ac ac3" d="M136 54a58 58 0 0 1 0 84"/>
+                <g class="eqm">
+                  <rect class="fillA" x="52" y="130" width="4" height="14" rx="2"/>
+                  <rect class="fillA" x="60" y="126" width="4" height="18" rx="2"/>
+                  <rect class="fillA" x="68" y="132" width="4" height="12" rx="2"/>
+                </g>
+              </svg>
+              <div class="cap">sound · new</div>
+            </div>
+            <div class="col">
+              <p class="eyebrow">Step 6 · Playback</p>
+              <h1>How Wavee plays</h1>
+              <div class="scroller">
+                <p class="lead">Streaming quality, transitions, and how much of it Wavee keeps on disk. Skip and we'll keep every default.</p>
+                <div class="grouphead">Sound</div>
+                <div class="settings">
+                  <div class="scard"><div><b>Audio quality</b><span id="qSub">320 kbps — about 0.14 GB/hour</span></div>
+                    <select class="combo" id="quality">
+                      <option value="normal">Normal</option>
+                      <option value="high">High</option>
+                      <option value="veryhigh" selected>Very High</option>
+                      <option value="lossless" disabled>Lossless (not yet)</option>
+                    </select></div>
+                  <div class="scard"><div><b>On metered connections</b><span>Cap streaming quality when Windows reports a metered network.</span></div>
+                    <select class="combo" data-s="metered"><option>Normal</option><option selected>High</option><option>Don't cap</option></select></div>
+                  <div class="scard"><div><b>Crossfade</b><span>Natural transition at the end of a prepared track.</span></div><button class="toggle" data-t="crossfade" role="switch" aria-checked="false"></button></div>
+                </div>
+                <details class="disc">
+                  <summary>Equalizer <span>10-band, ±12 dB</span></summary>
+                  <div class="body">
+                    <div class="scard"><div><b>Equalizer</b><span>Off by default. A 10-band graphic EQ with presets lives in Settings → Sound.</span></div><button class="toggle" data-t="eq" role="switch" aria-checked="false"></button></div>
+                    <div class="scard"><div><b>Crossfade duration</b><span>Only used when crossfade is on.</span></div>
+                      <select class="combo" data-s="xfade"><option>2 s</option><option selected>5 s</option><option>8 s</option><option>12 s</option></select></div>
+                  </div>
+                </details>
+                <div class="grouphead">Storage &amp; cache</div>
+                <div class="settings">
+                  <div class="scard"><div><b>Audio body budget</b><span id="budSub">Auto (10%) — keeps at least 8 GB free on the cache drive.</span></div>
+                    <select class="combo" id="budget"><option value="fixed">Fixed size</option><option value="share" selected>Drive share</option><option value="unlimited">Unlimited</option></select></div>
+                  <div class="scard"><div><b>Cache location</b><span><code>%LOCALAPPDATA%\Wavee\Cache</code> — sparse, SHA-256-verified 64 KB CDN chunks.</span></div><button class="btn std sm">Choose location</button></div>
+                  <div class="scard"><div><b>Metadata cache size</b><span>Your library, playlists and recent pages are always kept; anything past this is trimmed automatically.</span></div>
+                    <select class="combo" data-s="meta"><option>256 MB</option><option selected>512 MB</option><option>1 GB</option><option>2 GB</option></select></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 7 · NOTIFICATIONS & LINKS (PrivacyLottie) ───────────────── -->
+          <section class="page" data-step="7" hidden>
+            <div class="illus" aria-hidden="true">
+              <svg class="oobe ob-bell" viewBox="0 0 192 192">
+                <circle class="wv wv1 soft" cx="96" cy="96" r="52"/>
+                <circle class="wv wv2 soft" cx="96" cy="96" r="52"/>
+                <g class="bell">
+                  <path d="M96 48a22 22 0 0 1 22 22v20l9 13H65l9-13V70a22 22 0 0 1 22-22z"/>
+                  <path d="M86 110a10 10 0 0 0 20 0"/>
+                </g>
+                <g class="toast">
+                  <rect x="98" y="122" width="62" height="30" rx="7"/>
+                  <path d="M108 132h34M108 142h22"/>
+                </g>
+              </svg>
+              <div class="cap">PrivacyLottie · analogue</div>
+            </div>
+            <div class="col">
+              <p class="eyebrow">Step 7 · Reach</p>
+              <h1>What Wavee tells you</h1>
+              <div class="scroller">
+                <p class="lead">Each row travels as far as you let it: nothing, the bell in Wavee, or a Windows banner as well. Off means nothing leaves the app.</p>
+                <div class="settings">
+                  <div class="scard"><div><b>Windows notifications</b><span>Let Wavee raise banners in the Action Center. Off, nothing leaves the app — the bell in the top bar still keeps everything.</span></div><button class="toggle" data-t="winNotify" role="switch" aria-checked="false"></button></div>
+                </div>
+                <div class="banner info" id="winOffHint" style="margin-top:8px;"><span class="ico">i</span><div>Windows notifications are off, so nothing here becomes a banner yet. Your choices are remembered for when you turn them on.</div></div>
+                <div class="grouphead">What you're told about</div>
+                <div class="settings" id="topics">
+                  <div class="scard"><div><b>New albums and singles</b><span>A release from an artist you follow.</span></div>
+                    <div class="seg3" data-topic="albums"><button data-l="off">Off</button><button data-l="app" class="on">In Wavee</button><button data-l="win">Windows</button></div></div>
+                  <div class="scard"><div><b>Pre-saved albums, on release day</b><span>Windows delivers this at release time, so it lands even with Wavee closed.<span class="closed-badge">Arrives even when Wavee is closed</span></span></div>
+                    <div class="seg3" data-topic="drops"><button data-l="off">Off</button><button data-l="app">In Wavee</button><button data-l="win" class="on">Windows</button></div></div>
+                  <div class="scard"><div><b>Concerts and live shows</b><span>Shows announced near you, and reminders as the date approaches.</span></div>
+                    <div class="seg3" data-topic="concerts"><button data-l="off">Off</button><button data-l="app" class="on">In Wavee</button><button data-l="win">Windows</button></div></div>
+                </div>
+                <details class="disc">
+                  <summary>More topics &amp; quiet hours <span>5 more</span></summary>
+                  <div class="body">
+                    <div class="scard"><div><b>Quiet hours</b><span>No banners during these hours. Anything scheduled waits until they end instead of being lost.</span></div>
+                      <select class="combo" data-s="quiet"><option selected>Off</option><option>23:00 – 08:00</option><option>00:00 – 07:00</option></select></div>
+                    <div class="scard"><div><b>New podcast episodes</b><span>Separate from albums on purpose — shows publish far more often.</span></div>
+                      <div class="seg3" data-topic="episodes"><button data-l="off" class="on">Off</button><button data-l="app">In Wavee</button><button data-l="win">Windows</button></div></div>
+                    <div class="scard"><div><b>Your daylist refreshed</b><span>When the daylist rolls into its next window.</span></div>
+                      <div class="seg3" data-topic="daylist"><button data-l="off">Off</button><button data-l="app" class="on">In Wavee</button><button data-l="win">Windows</button></div></div>
+                    <div class="scard"><div><b>Wavee updates</b><span>A new version is available or has been installed.</span></div>
+                      <div class="seg3" data-topic="updates"><button data-l="off">Off</button><button data-l="app" class="on">In Wavee</button><button data-l="win">Windows</button></div></div>
+                    <div class="scard"><div><b>Your own library activity</b><span>Saves, follows and playlist edits — the list Undo reads. In Wavee only: it is a record of what you just did.</span></div>
+                      <div class="seg3" data-topic="activity"><button data-l="off">Off</button><button data-l="app" class="on">In Wavee</button><button data-l="win" disabled>Windows</button></div></div>
+                  </div>
+                </details>
+                <div class="grouphead">Links &amp; language</div>
+                <div class="settings">
+                  <div class="scard"><div><b>Open <code>spotify:</code> links in Wavee</b><span>Off by default. Turning this on makes Wavee the handler for spotify: links; turning it off gives it back.</span></div><button class="toggle" data-t="protocol" role="switch" aria-checked="false"></button></div>
+                  <div class="scard"><div><b>App language</b><span>Changes are applied the next time Wavee starts.</span></div>
+                    <select class="combo" id="lang"><option selected>System default</option><option>English (United States)</option><option>Nederlands</option><option>한국어</option></select></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 8 · DONE (Zune bookend + the applying phase, in place) ──── -->
+          <section class="page" data-step="8" hidden>
+            <div class="illus" aria-hidden="true">
+              <svg class="oobe ob-done" viewBox="0 0 192 192">
+                <g class="spark soft"><path d="M96 34v-12M96 158v12M34 96H22M158 96h12M52 52l-8-8M140 140l8 8M52 140l-8 8M140 52l8-8"/></g>
+                <circle class="ring" cx="96" cy="96" r="43"/>
+                <path class="tk" d="M77 98l14.5 14.5L118 82"/>
+              </svg>
+              <div class="cap">done · 3.5 s loop</div>
+            </div>
+            <div class="col solo">
+              <div class="swap" id="doneSwap" style="height:100%;">
+                <div data-pane="summary" style="display:flex;flex-direction:column;min-height:0;">
+                  <div class="zune" style="flex:0 0 auto;padding-bottom:0;">
+                    <div class="kicker">Setup complete</div>
+                    <h1 class="big" style="font-size:48px;max-width:18ch;">You're <b>in</b>, Christos.</h1>
+                    <p class="sub" style="margin-top:12px;">Your part is finished. Wavee just needs to finish reading your library and apply what you chose — that runs on its own, and you can start listening while it does.</p>
+                  </div>
+                  <div class="scroller" style="margin-top:14px;flex:1 1 auto;min-height:0;">
+                    <div class="chips" id="summary"></div>
+                    <p class="fine" style="margin-top:14px;">Everything here can be changed later in Settings. If you picked Custom, the sidebar's layout menu opens the full customizer.</p>
+                  </div>
+                </div>
+                <div data-pane="applying" data-off>
+                  <div class="zune" style="padding-bottom:0;">
+                    <div class="kicker">Almost there</div>
+                    <h1 class="big" style="font-size:44px;max-width:18ch;">Setting <b>up</b>.</h1>
+                  </div>
+                  <div class="steps" id="applySteps" style="margin-top:18px;">
+                    <div class="srow" data-k="0"><span class="ck"><b>✓</b></span> Applying your settings</div>
+                    <div class="srow" data-k="1"><span class="ck"><b>✓</b></span> Building your sidebar</div>
+                    <div class="srow" data-k="2"><span class="ck"><b>✓</b></span> Syncing your library</div>
+                    <div class="srow" data-k="3"><span class="ck"><b>✓</b></span> Warming local playback</div>
+                  </div>
+                  <p class="fine" style="margin-top:16px;">Depending on how large your library is this can take a few minutes. It keeps going in the background — nothing here blocks the window opening.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+        <div class="footer solo" id="footer">
+          <div>
+            <div class="prog-label" id="progLabel">Pre-setup</div>
+            <div class="bar" id="progWrap"><i id="progBar"></i></div>
+          </div>
+          <button class="btn std stretch" id="secBtn">Not now</button>
+          <button class="btn accent stretch" id="priBtn">Start setup</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+
+  const MAX = 7; // seven real steps: terms, sign-in, playback, appearance, sidebar, sound, notifications
+
+  // Footer chrome per page. `pri`/`sec` are overridden by the sign-in and
+  // runtime phase machines, which own their own command row.
+  const STEPS = [
+    { sub:"Welcome",       label:"Pre-setup",      pri:"Start setup",       sec:"Not now" },
+    { sub:"Terms",         label:"Step 1 of 7",    pri:"Accept",            sec:"Decline" },
+    { sub:"Sign in",       label:"Step 2 of 7",    pri:"Log in",            sec:"Close" },
+    { sub:"Local playback",label:"Step 3 of 7",    pri:"Download & set up", sec:"Not now" },
+    { sub:"Appearance",    label:"Step 4 of 7",    pri:"Continue",          sec:"Decide for me" },
+    { sub:"Sidebar",       label:"Step 5 of 7",    pri:"Use this layout",   sec:"Decide for me" },
+    { sub:"Playback",      label:"Step 6 of 7",    pri:"Continue",          sec:"Decide for me" },
+    { sub:"Notifications", label:"Step 7 of 7",    pri:"Continue",          sec:"Decide for me" },
+    { sub:"Ready",         label:"Setup complete", pri:"Continue",          sec:"Not now" },
+  ];
+
+  const QUALITY = {
+    normal:   { name:"Normal",    sub:"96 kbps — about 0.04 GB/hour" },
+    high:     { name:"High",      sub:"160 kbps — about 0.07 GB/hour" },
+    veryhigh: { name:"Very High", sub:"320 kbps — about 0.14 GB/hour" },
+    lossless: { name:"Lossless",  sub:"Up to 24-bit/44.1 kHz — FLAC" },
+  };
+  const BUDGET = {
+    fixed:     "8 GB fixed — oldest chunks are evicted first.",
+    share:     "Auto (10%) — keeps at least 8 GB free on the cache drive.",
+    unlimited: "No cache-size ceiling; emergency free space is always preserved.",
+  };
+  const SIDEBAR_NAME = { classic:"Spotify Classic", v3:"LibraryV3", curated:"Custom" };
+
+  const state = {
+    step:0, dir:1, done:false, failMode:false,
+    signIn:"idle",          // idle · busy · done · fail
+    runtime:"offer",        // offer · catalog · versions · downloading · verifying · untrusted · ready · failed
+    runtimeVersion:0, runtimeSet:false,
+    theme:"dark", palette:"neutral", material:"mica", density:"cozy",
+    sidebar:"curated", template:"curated",
+    quality:"veryhigh", budget:"share",
+    toggles:{ heroOnly:false, noMarquee:false, noWash:false, lyricsBackdrop:true,
+              crossfade:false, eq:false, cacheAudio:true, cacheKeys:true,
+              winNotify:false, protocol:false },
+    motion:true,
+  };
+
+  const $  = (s,r=document) => r.querySelector(s);
+  const $$ = (s,r=document) => [...r.querySelectorAll(s)];
+  const html = document.documentElement;
+  const win  = $("#win");
+  let timers = [];
+  const after = (ms,fn) => { const t = setTimeout(fn,ms); timers.push(t); return t; };
+  const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+
+  /* ── the fake pairing QR ─────────────────────────────────────────────── */
+  (function paintQr(){
+    const qr = $("#qr"); if (!qr) return;
+    const n = 21, seed = 0xB97A;
+    const finderish = (r,c) =>
+      (r<7 && c<7) || (r<7 && c>13) || (r>13 && c<7);
+    const inFinder = (r,c) => {
+      const rr = r>13 ? r-14 : r, cc = c>13 ? c-14 : c;
+      const edge = rr===0||rr===6||cc===0||cc===6;
+      const core = rr>1 && rr<5 && cc>1 && cc<5;
+      return edge || core;
+    };
+    for (let r=0;r<n;r++) for (let c=0;c<n;c++){
+      const on = finderish(r,c) ? inFinder(r,c) : ((r*13 + c*7 + seed) % 5) > 2;
+      qr.append(document.createElement(on ? "b" : "i"));
+    }
+  })();
+
+  /* ── live chrome ─────────────────────────────────────────────────────── */
+  function applyChrome(){
+    html.dataset.theme    = state.theme === "system" ? "dark" : state.theme;
+    html.dataset.palette  = state.toggles.noWash ? "neutral" : state.palette;
+    html.dataset.material = state.material;
+    html.dataset.sidebar  = state.sidebar;
+    html.dataset.density  = state.density;
+    html.dataset.hero     = state.toggles.heroOnly ? "hero-only" : "full";
+    html.dataset.motion   = state.motion ? "on" : "off";
+  }
+
+  const wakeShell = on => win.classList.toggle("bare", !on);
+
+  /* ── cross-fading panes (the "in place" primitive) ───────────────────── */
+  function showPane(container, name, attr){
+    $$(`[${attr}]`, container).forEach(el => {
+      const on = el.getAttribute(attr) === name;
+      if (on) { el.removeAttribute("data-off"); }
+      else    { el.setAttribute("data-off",""); }
+    });
+  }
+  const setLoginPane   = n => showPane($("#loginSwap"), n, "data-pane");
+  const setRuntimePane = n => showPane($("#rtPhase"),  n, "data-p");
+  const setDonePane    = n => showPane($("#doneSwap"), n, "data-pane");
+
+  /* ── footer ──────────────────────────────────────────────────────────── */
+  function footer(pri, sec, priClass, priDisabled){
+    const p = $("#priBtn"), s = $("#secBtn");
+    p.textContent = pri || "";
+    p.className = "btn stretch " + (priClass || "accent");
+    p.disabled = !!priDisabled;
+    p.hidden = !pri;
+    s.textContent = sec || "";
+    s.hidden = !sec;
+    $("#footer").classList.toggle("solo", !sec);
+  }
+
+  function progress(){
+    const n = state.step;
+    $("#progBar").style.width = n === 0 ? "0%" : n >= 8 ? "100%" : ((n / MAX) * 100) + "%";
+    $("#progLabel").textContent = STEPS[n].label;
+  }
+
+  /* ── the sign-in page's own footer + body ────────────────────────────── */
+  function renderSignIn(){
+    setLoginPane(state.signIn === "busy" ? "busy" :
+                 state.signIn === "done" ? "done" :
+                 state.signIn === "fail" ? "fail" : "idle");
+    const login = $("#login");
+    login.classList.toggle("busy", state.signIn === "busy");
+    login.classList.toggle("done", state.signIn === "done" || state.signIn === "fail");
+    if (state.step !== 2) return;
+    if (state.signIn === "idle")  footer("Log in", "Close", "spotify");
+    if (state.signIn === "busy")  footer("Signing you in…", "Cancel", "spotify", true);
+    if (state.signIn === "done")  footer("Continue", "", "accent");
+    if (state.signIn === "fail")  footer("Try again", "Close", "spotify");
+  }
+
+  function startSignIn(){
+    if (state.signIn === "busy") return;
+    state.signIn = "busy";
+    renderSignIn(); progress();
+    const rows = $$("#steps .srow");
+    rows.forEach(r => r.classList.remove("ok","now"));
+    let i = 0;
+    const tick = () => {
+      if (state.failMode && i === 2) {
+        rows[i].classList.remove("now");
+        state.signIn = "fail"; renderSignIn(); progress();
+        return;
+      }
+      if (i > 0) { rows[i-1].classList.remove("now"); rows[i-1].classList.add("ok"); }
+      if (i < rows.length) { rows[i].classList.add("now"); i++; after(620, tick); }
+      else {
+        state.signIn = "done";
+        renderSignIn(); progress();
+        wakeShell(true);
+        after(900, () => { if (state.step === 2 && state.signIn === "done") setStep(3, 1); });
+      }
+    };
+    after(320, tick);
+  }
+
+  /* ── the local-playback (audio SDK) phase machine ────────────────────── */
+  const RT_TITLE = {
+    offer:"Local playback setup", catalog:"Local playback setup", versions:"Choose a version",
+    downloading:"Local playback setup", verifying:"Local playback setup",
+    untrusted:"This DLL isn't Spotify-signed", ready:"Local playback is ready",
+    failed:"Local playback setup",
+  };
+  function renderRuntime(){
+    setRuntimePane(state.runtime);
+    $("#rtTitle").textContent = RT_TITLE[state.runtime];
+    if (state.step !== 3) return;
+    switch (state.runtime){
+      case "offer":       footer("Download & set up","Not now"); break;
+      case "catalog":     footer("Checking…","Cancel","accent",true); break;
+      case "versions":    footer("Install","Back"); break;
+      case "downloading": footer("Downloading…","Cancel","accent",true); break;
+      case "verifying":   footer("Verifying…","",  "accent",true); break;
+      case "untrusted":   footer("Load anyway","Back","accent"); break;
+      case "ready":       footer("Continue","",    "accent"); break;
+      case "failed":      footer("Try again","Not now"); break;
+    }
+  }
+  function setRuntime(p){ state.runtime = p; renderRuntime(); progress(); }
+
+  function startRuntime(){
+    setRuntime("catalog");
+    after(1100, () => {
+      if (state.failMode) {
+        $("#rtFailTitle").textContent = "Couldn't reach the catalog";
+        $("#rtFailBody").textContent  = "You can still install from a local source, or retry. Wavee stays remote-only until then.";
+        return setRuntime("failed");
+      }
+      startDownload();
+    });
+  }
+
+  function startDownload(){
+    setRuntime("downloading");
+    const totals = [18.4, 18.1, 17.9];
+    const total = totals[state.runtimeVersion] || 18.4;
+    const label = ["Spotify 1.2.93.667","Spotify 1.2.91.824","Spotify 1.2.88.526"][state.runtimeVersion] || "Spotify 1.2.93.667";
+    $("#dlLabel").textContent = label + " · Arm64";
+    let got = 0;
+    const step = () => {
+      got = Math.min(total, got + total/26);
+      const pct = (got/total)*100;
+      $("#dlBar").style.width = pct.toFixed(1) + "%";
+      $("#dlBytes").textContent = got.toFixed(1) + " / " + total.toFixed(1) + " MB";
+      if (got < total) after(90, step);
+      else after(320, () => {
+        setRuntime("verifying");
+        after(1200, () => { state.runtimeSet = true; setRuntime("ready"); });
+      });
+    };
+    after(150, step);
+  }
+
+  /* ── the finish page's applying phase ────────────────────────────────── */
+  function startApplying(){
+    setDonePane("applying");
+    footer("Open Wavee","","accent",true);
+    const rows = $$("#applySteps .srow");
+    rows.forEach(r => r.classList.remove("ok","now"));
+    let i = 0;
+    const tick = () => {
+      if (i > 0) { rows[i-1].classList.remove("now"); rows[i-1].classList.add("ok"); }
+      if (i < rows.length) { rows[i].classList.add("now"); i++; after(560, tick); }
+      else { footer("Open Wavee","","accent"); }
+    };
+    after(260, tick);
+  }
+
+  /* ── summary chips ───────────────────────────────────────────────────── */
+  function renderSummary(){
+    const cap = s => s[0].toUpperCase()+s.slice(1);
+    const items = [
+      [true, state.theme === "system" ? "System theme" : cap(state.theme)+" theme"],
+      [true, cap(state.palette)+" palette"],
+      [true, state.material === "mica" ? "Mica" : "Mica Alt"],
+      [true, cap(state.density)+" rows"],
+      [true, SIDEBAR_NAME[state.sidebar] + " sidebar"],
+      [state.runtimeSet, state.runtimeSet ? "Local playback ready" : "Remote-only playback"],
+      [true, QUALITY[state.quality].name + " quality"],
+      [state.toggles.crossfade, state.toggles.crossfade ? "Crossfade on" : "No crossfade"],
+      [state.toggles.winNotify, state.toggles.winNotify ? "Windows banners on" : "In-app notifications only"],
+      [state.toggles.protocol, state.toggles.protocol ? "Handles spotify: links" : "spotify: links untouched"],
+    ];
+    $("#summary").innerHTML = items
+      .map(([on,t]) => `<span class="sum${on ? "" : " off"}"><i></i>${t}</span>`).join("");
+  }
+
+  /* ── step machine ────────────────────────────────────────────────────── */
+  function setStep(n, dir){
+    clearTimers();
+    state.dir = dir ?? (n > state.step ? 1 : -1);
+    const prev = state.step;
+    state.step = n;
+
+    const pages = $$(".page");
+    pages.forEach(p => {
+      const id = +p.dataset.step, on = id === n;
+      if (on) p.hidden = false;
+      p.classList.toggle("on", on);
+      p.classList.toggle("leave-left", !on && id === prev && state.dir === 1);
+    });
+    requestAnimationFrame(() => pages.forEach(p => {
+      if (+p.dataset.step !== n) p.hidden = true;
+    }));
+    $$(".scroller").forEach(s => s.scrollTop = 0);
+
+    $("#tbSub").textContent = STEPS[n].sub;
+    $("#backBtn").hidden = n < 2 || n === 8;
+    $$(".lab-chip[data-jump]").forEach(b => b.classList.toggle("on", +b.dataset.jump === n));
+
+    // pages that own their own footer
+    if (n === 2)      renderSignIn();
+    else if (n === 3) renderRuntime();
+    else if (n === 8) { setDonePane("summary"); renderSummary(); footer(STEPS[n].pri, STEPS[n].sec); }
+    else              footer(STEPS[n].pri, STEPS[n].sec);
+
+    // the shell behind the scrim wakes once there's an account to show
+    wakeShell(!state.done && n >= 3 && (state.signIn === "done" || n >= 4));
+    progress();
+    applyChrome();
+  }
+
+  /* ── "Decide for me" ─────────────────────────────────────────────────── */
+  function decide(n){
+    if (n === 4){
+      state.theme="dark"; state.palette="neutral"; state.material="mica"; state.density="cozy";
+      state.toggles.heroOnly=false; state.toggles.noMarquee=false; state.toggles.noWash=false;
+    }
+    if (n === 5){ state.sidebar="curated"; state.template="curated"; }
+    if (n === 6){ state.quality="veryhigh"; state.budget="share"; state.toggles.crossfade=false; }
+    if (n === 7){ state.toggles.winNotify=false; state.toggles.protocol=false; }
+    syncAll();
+  }
+
+  function syncAll(){
+    $$("#themeRow .seg").forEach(b => b.classList.toggle("on", b.dataset.theme === state.theme));
+    $$("#paletteRow .swatch").forEach(b => b.classList.toggle("on", b.dataset.palette === state.palette));
+    $$("#materialRow .seg").forEach(b => b.classList.toggle("on", b.dataset.material === state.material));
+    $$("#densityRow .seg").forEach(b => b.classList.toggle("on", b.dataset.density === state.density));
+    $$("#sidebarRow .pcard").forEach(b => {
+      const on = b.dataset.sidebar === state.sidebar;
+      b.classList.toggle("on", on);
+      const tag = b.querySelector(".tag"); if (tag) tag.hidden = !on;
+    });
+    $("#tplDisc").hidden = state.sidebar !== "curated";
+    $("#tplName").textContent = state.template === "curated" ? "Wavee Curated" : "Classic-inspired";
+    $$("[data-tpl]").forEach(row => {
+      const on = row.dataset.tpl === state.template;
+      const b = row.querySelector("button");
+      b.className = "btn sm " + (on ? "accent" : "std");
+      b.textContent = on ? "Selected" : "Use this";
+    });
+    $$("[data-t]").forEach(el => {
+      const on = !!state.toggles[el.dataset.t];
+      el.classList.toggle("on", on);
+      el.setAttribute("aria-checked", String(on));
+    });
+    $("#quality").value = state.quality;
+    $("#qSub").textContent = QUALITY[state.quality].sub;
+    $("#budget").value = state.budget;
+    $("#budSub").textContent = BUDGET[state.budget];
+    const fxOff = ["heroOnly","noMarquee","noWash"].filter(k => state.toggles[k]).length
+                + (state.toggles.lyricsBackdrop ? 0 : 1);
+    $("#fxSummary").textContent = fxOff ? fxOff + " changed" : "All on";
+    $("#winOffHint").hidden = state.toggles.winNotify;
+    $("#labMotion").textContent = "Motion: " + (state.motion ? "on" : "off");
+    $("#labMotion").classList.toggle("on", !state.motion);
+    $("#labFail").classList.toggle("on", state.failMode);
+    applyChrome();
+  }
+
+  function finish(open){
+    state.done = true;
+    win.classList.add("done");
+    wakeShell(open);
+    $("#tbSub").textContent = open ? "Home" : "Welcome";
+  }
+
+  /* ── command row ─────────────────────────────────────────────────────── */
+  $("#priBtn").addEventListener("click", () => {
+    const n = state.step;
+    if (n === 2){
+      if (state.signIn === "idle" || state.signIn === "fail") return startSignIn();
+      if (state.signIn === "done") return setStep(3, 1);
+      return;
+    }
+    if (n === 3){
+      if (state.runtime === "offer")     return startRuntime();
+      if (state.runtime === "versions")  return startDownload();
+      if (state.runtime === "untrusted"){ state.runtimeSet = true; return setRuntime("ready"); }
+      if (state.runtime === "ready")     return setStep(4, 1);
+      if (state.runtime === "failed")    return startRuntime();
+      return;
+    }
+    if (n === 8){
+      const applying = $("#doneSwap [data-pane='applying']");
+      if (applying.hasAttribute("data-off")) return startApplying();
+      return finish(true);
+    }
+    setStep(n + 1, 1);
+  });
+
+  $("#secBtn").addEventListener("click", () => {
+    const n = state.step;
+    if (n === 0) return;                                  // "Not now" — prototype no-op
+    if (n === 1) return;                                  // "Decline" — prototype no-op
+    if (n === 2){
+      if (state.signIn === "busy"){ clearTimers(); state.signIn = "idle"; renderSignIn(); progress(); }
+      return;
+    }
+    if (n === 3){
+      if (state.runtime === "catalog" || state.runtime === "downloading"){
+        clearTimers(); return setRuntime("offer");
+      }
+      if (state.runtime === "versions" || state.runtime === "untrusted") return setRuntime("offer");
+      return setStep(4, 1);                               // "Not now" — stay remote-only
+    }
+    if (n === 8) return finish(true);
+    decide(n);
+    setStep(n + 1, 1);
+  });
+
+  $("#backBtn").addEventListener("click", () => {
+    if (state.step >= 2) setStep(state.step - 1, -1);
+  });
+  $("#loginBrowser").addEventListener("click", startSignIn);
+  $("#rtPickVersion").addEventListener("click", e => { e.preventDefault(); setRuntime("versions"); });
+  $("#verList").addEventListener("click", e => {
+    const b = e.target.closest("[data-v]"); if (!b) return;
+    state.runtimeVersion = +b.dataset.v;
+    $$("#verList .ver").forEach(v => v.classList.toggle("on", v === b));
+  });
+
+  /* ── choices ─────────────────────────────────────────────────────────── */
+  const pick = (sel, key, attr) => $(sel).addEventListener("click", e => {
+    const b = e.target.closest("["+attr+"]"); if (!b) return;
+    state[key] = b.getAttribute(attr); syncAll();
+  });
+  pick("#themeRow","theme","data-theme");
+  pick("#paletteRow","palette","data-palette");
+  pick("#materialRow","material","data-material");
+  pick("#densityRow","density","data-density");
+  pick("#sidebarRow","sidebar","data-sidebar");
+
+  document.addEventListener("click", e => {
+    const t = e.target.closest("[data-t]");
+    if (t){ state.toggles[t.dataset.t] = !state.toggles[t.dataset.t]; syncAll(); return; }
+    const tpl = e.target.closest("[data-tpl] button");
+    if (tpl){ state.template = tpl.closest("[data-tpl]").dataset.tpl; syncAll(); return; }
+    const lvl = e.target.closest(".seg3 button:not([disabled])");
+    if (lvl){ $$("button", lvl.parentElement).forEach(b => b.classList.toggle("on", b === lvl)); return; }
+  });
+  $("#quality").addEventListener("change", e => { state.quality = e.target.value; syncAll(); });
+  $("#budget").addEventListener("change", e => { state.budget = e.target.value; syncAll(); });
+
+  /* ── lab strip ───────────────────────────────────────────────────────── */
+  $$(".lab-chip[data-jump]").forEach(b => b.addEventListener("click", () => jump(+b.dataset.jump)));
+  $("#labMotion").addEventListener("click", () => { state.motion = !state.motion; syncAll(); });
+  $("#labFail").addEventListener("click", () => { state.failMode = !state.failMode; syncAll(); });
+  $("#labReplay").addEventListener("click", () => {
+    const page = $(".page.on"); const svg = page && page.querySelector(".oobe");
+    if (!svg) return;
+    const clone = svg.cloneNode(true);
+    svg.replaceWith(clone);
+  });
+  $("#labReset").addEventListener("click", () => location.reload());
+
+  document.addEventListener("keydown", e => {
+    if (e.target.matches("select,input,textarea,summary")) return;
+    if (e.key >= "0" && e.key <= "8") jump(+e.key);
+    if (e.key === "r" || e.key === "R") location.reload();
+    if (e.key === "m" || e.key === "M"){ state.motion = !state.motion; syncAll(); }
+    if (e.key === "Enter" && !$("#priBtn").disabled) $("#priBtn").click();
+    if (e.key === "Backspace" && state.step >= 2 && state.step !== 8){ e.preventDefault(); $("#backBtn").click(); }
+  });
+
+  // #3 deep-links straight to a page (handy for reviewing one screen in isolation)
+  function jump(n){
+    if (!(n >= 0 && n <= 8)) return false;
+    state.done = false; win.classList.remove("done");
+    if (n > 2){ state.signIn = "done"; renderSignIn(); }
+    if (n > 3){ state.runtime = "ready"; state.runtimeSet = true; renderRuntime(); }
+    setStep(n);
+    return true;
+  }
+  window.addEventListener("hashchange", () => jump(parseInt(location.hash.slice(1), 10)));
+
+  syncAll();
+  if (!jump(parseInt(location.hash.slice(1), 10))) setStep(0);
+})();
+</script>
+</body>
+</html>

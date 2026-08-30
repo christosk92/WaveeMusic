@@ -1,0 +1,77 @@
+// The payload Spotify returns for extension kind 179 VISUAL_IDENTITY_TRAIT — an entity's images AND the colour set
+// extracted from them, in ONE payload. That pairing is the point: the colour is available the instant the row exists,
+// before a single image byte has arrived, which is what lets a track list paint tinted art placeholders instead of
+// blank grey squares.
+//
+// Provenance: the message/package name comes from the wire's Any type_url:
+//   type.googleapis.com/spotify.contentagnostic.v2.VisualIdentityTrait
+// Field NUMBERS and wire types are verified against live 2026 responses (browe.saz, omg.saz, all.saz; 128k+ payloads
+// in the captured corpus). FIELD NAMES are best-effort — Spotify does not ship this schema.
+//
+// Observed values (browe.saz), which is how the role ordering below was inferred:
+//
+//   spotify:track:0spnMEFDuWTQRTsI941Q5n   flat #ACB8F5   scheme1 bg #101040  tinted #3C4478  text #FFFFFF
+//   spotify:track:2AzAamWZi47Fv7nds8h7AM   flat #FFA19C   scheme1 bg #E02838  tinted #B30016  text #FFFFFF
+//   spotify:track:1Z6ATl1884bjW8hl2cSFWR   flat #BBBBBB   scheme1 bg #535353  tinted #333333  text #FFFFFF
+//
+// The last row is a genuinely greyscale cover — the field is correct, not defaulted. `flat` is a LIGHT desaturated
+// accent; the scheme backgrounds are the DOMINANT cover colour. For an art placeholder we want the dominant colour
+// (scheme1.background), blended toward the theme surface at the UI boundary.
+//
+// The three schemes are progressively darker variants (base / darker / darkest), NOT light-vs-dark: on every captured
+// entity all three carry a dark background with white text. Treat them as elevation levels.
+
+syntax = "proto3";
+
+package spotify.contentagnostic.v2;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.ContentAgnostic";
+
+// 8-bit-per-channel colour. Alpha was 255 on every observed sample.
+message Rgba {
+    uint32 r = 1;
+    uint32 g = 2;
+    uint32 b = 3;
+    uint32 a = 4;
+}
+
+// One colour scheme: the role set Spotify's own `getDynamicColorsByUris` returns as JSON
+// (backgroundBase / backgroundTintedBase / textBase / textSubdued / textBrightAccent). Kind 179 is the protobuf
+// equivalent of that operation, already riding the row bundle — prefer it over the extra GraphQL round trip.
+message ColorScheme {
+    Rgba background_base = 1;
+    Rgba background_tinted_base = 2;
+    Rgba text_base = 3;
+    Rgba text_subdued = 4;
+    Rgba text_bright_accent = 5;
+}
+
+message ColorSet {
+    ColorScheme base = 1;        // the dominant treatment — what an art placeholder should use
+    ColorScheme darker = 2;
+    ColorScheme darkest = 3;     // highest contrast
+    Rgba flat = 4;               // a single light desaturated accent, NOT a background
+}
+
+// size: 1 = small (48px), 2 = medium (300px), 3 = large (640px) — matches the ab67616d000048/1e02/b273 id prefixes.
+message ImageRef {
+    string url = 1;
+}
+message ImageEntry {
+    ImageRef image = 1;
+    uint32 size = 2;
+}
+
+message VisualIdentity {
+    repeated ImageEntry images = 1;
+    ColorSet colors = 2;
+}
+
+message VisualIdentityTrait {
+    VisualIdentity visual_identity = 1;
+    // Field 4 carries a canvas/canvaz URL plus a second image+colour group (artist-level identity). Declared as bytes
+    // rather than guessed at: nothing in Wavee consumes it yet, and an inaccurate message here would silently drop
+    // fields. Decode it properly when a feature needs it.
+    bytes extended = 4;
+}
