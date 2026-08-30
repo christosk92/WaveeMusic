@@ -110,7 +110,7 @@ touches the working tree: instead of dating `CHANGELOG.md` in place it dates a *
 points the release tool at that, so `git status` stays clean and `<WaveeBuild>` is not bumped. It ends by printing the
 exact `git push` / `gh release` commands a real run would issue next.
 
-Drop `-SkipTests` when you want the full gate (Debug + Release build, `Wavee.Tests`, VerticalSlice) inside the
+Drop `-SkipTests` when you want the full gate (Debug + Release build of `Wavee.slnx`, `Wavee.Tests`, Pester) inside the
 rehearsal; that is what a real run does by default.
 
 Review `artifacts\release\<semver>-dryrun\`:
@@ -171,8 +171,8 @@ exists · the PlayPlay junction is present · Windows SDK tools · x64 cross too
 `gh auth` · *(soft)* whether a `wavee-beta` feed exists and will be repointed too · **feed monotonic** (the new quad
 must be strictly greater than each feed's current root `Version`, on every architecture, and the semver must not go
 backwards — the gate itself is always hard, but an *unreachable* feed is downgraded to a warning under `-DryRun` /
-`-NoUpload`, where nothing can be published) · gates (`dotnet build` Debug **and** Release, `Wavee.Tests`, and
-VerticalSlice must print `ALL CHECKS PASSED`).
+`-NoUpload`, where nothing can be published) · gates (`dotnet build Wavee.slnx` Debug **and** Release, `Wavee.Tests`, and
+the release tooling's Pester suite — the engine's VerticalSlice is the engine repo's gate).
 
 Useful switches: `-SkipTests` (skip that last gate) · `-PublicOnly` (build without PlayPlay) · `-SkipArch x64` /
 `-X64Msix <path>` · `-NoUpload` (real bump and tag, stop before pushing) · `-NoSign` (only with `-DryRun` / `-NoUpload`)

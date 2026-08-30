@@ -97,21 +97,30 @@ function Get-WaveeFeedDocument {
 
     Set-WaveeTls12
     $url = "https://github.com/$Repo/releases/download/$FeedRelease/$AssetPrefix.$Arch.appinstaller"
-    try {
-        # -DisableKeepAlive: Windows PowerShell 5.1 reuses the ServicePoint connection across calls, and an error
-        # response it did not dispose (the 404 below) leaves that connection half-closed - the NEXT feed GET (the
-        # other arch) then dies with "The connection was closed unexpectedly". One connection per call, closed.
-        $r = Invoke-WebRequest -UseBasicParsing -Uri $url -MaximumRedirection 5 -DisableKeepAlive
-    }
-    catch {
-        $resp = $null
-        if ($_.Exception.PSObject.Properties['Response']) { $resp = $_.Exception.Response }
-        if ($resp) {
-            $status = [int]$resp.StatusCode
-            try { $resp.Close() } catch { }
-            if ($status -eq 404) { return $null }
+    # -DisableKeepAlive: Windows PowerShell 5.1 reuses the ServicePoint connection across calls, and an error
+    # response it did not dispose (the 404 below) leaves that connection half-closed - the NEXT feed GET (the
+    # other arch) then dies with "The connection was closed unexpectedly". One connection per call, closed.
+    # ONE retry on a response-less failure: the very first GET of a process regularly dies with "Unable to
+    # connect" / "connection closed unexpectedly" (cold DNS/TLS) and the immediate second attempt gets the real
+    # answer. A failure WITH a response (the 404 of a feed that does not exist yet) is an answer, not a retry.
+    $r = $null
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+        try {
+            $r = Invoke-WebRequest -UseBasicParsing -Uri $url -MaximumRedirection 5 -DisableKeepAlive
+            break
         }
-        throw
+        catch {
+            $resp = $null
+            if ($_.Exception.PSObject.Properties['Response']) { $resp = $_.Exception.Response }
+            if ($resp) {
+                $status = [int]$resp.StatusCode
+                try { $resp.Close() } catch { }
+                if ($status -eq 404) { return $null }
+                throw
+            }
+            if ($attempt -ge 2) { throw }
+            Start-Sleep -Seconds 2
+        }
     }
     $txt = "$($r.Content)".TrimStart([char]0xFEFF)
     [xml]$x = $txt

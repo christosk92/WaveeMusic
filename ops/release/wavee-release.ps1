@@ -547,12 +547,15 @@ if (-not (Test-PhaseDone 'preflight')) {
     }
     Add-Check 'gates' 'hard' {
         if ($SkipTests) { return 'SKIP: -SkipTests' }
-        Invoke-Native 'dotnet' @('build', (Join-Path $root 'src\FluentGpu.slnx'), '-c', 'Debug', '--nologo', '-v', 'q') | Out-Null
-        Invoke-Native 'dotnet' @('build', (Join-Path $root 'src\FluentGpu.slnx'), '-c', 'Release', '--nologo', '-v', 'q') | Out-Null
-        Invoke-Native 'dotnet' @('test', (Join-Path $root 'src\apps\Wavee.Tests\Wavee.Tests.csproj'), '--nologo', '-v', 'q') | Out-Null
-        $vs = Invoke-Native 'dotnet' @('run', '--project', (Join-Path $root 'src\FluentGpu.VerticalSlice'), '-c', 'Release')
-        if (($vs.Output -join "`n") -notmatch 'ALL CHECKS PASSED') { throw 'VerticalSlice did not print ALL CHECKS PASSED' }
-        'build Debug+Release, Wavee.Tests, VerticalSlice'
+        # The app repo's gates: Wavee.slnx in BOTH configurations (the engine's diag-gate arms differ per
+        # configuration, and TreatWarningsAsErrors makes a Release-only warning a Release-only break), the app
+        # tests, and the release tooling's own Pester suite. The engine's VerticalSlice is the engine repo's gate.
+        Invoke-Native 'dotnet' @('build', (Join-Path $root 'Wavee.slnx'), '-c', 'Debug', '--nologo', '-v', 'q') | Out-Null
+        Invoke-Native 'dotnet' @('build', (Join-Path $root 'Wavee.slnx'), '-c', 'Release', '--nologo', '-v', 'q') | Out-Null
+        Invoke-Native 'dotnet' @('test', (Join-Path $root 'src\apps\Wavee.Tests\Wavee.Tests.csproj'), '--no-build', '--nologo', '-v', 'q') | Out-Null
+        $pester = Invoke-Pester -Path (Join-Path $root 'ops\release\tests') -PassThru -Quiet
+        if ($pester.FailedCount -gt 0) { throw ('Pester: ' + $pester.FailedCount + ' failed') }
+        'build Debug+Release, Wavee.Tests, Pester ' + $pester.PassedCount + '/0'
     }
 
     Assert-Checks
