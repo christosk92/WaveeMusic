@@ -74,6 +74,12 @@ function Step($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 $props = Get-WaveeVersionProps (Join-Path $root 'src\apps\Wavee\Wavee.Version.props')
 if (-not $Semver) { $Semver = $props.Version }
 if (-not $Codename) { $Codename = $props.Codename }
+# Store packages must be M.m.p.0 with M >= 1 (the Store owns the 4th part): fold the monotonic WaveeBuild into the
+# 3rd part and lift the major - the same mapping as Wavee.Core StoreVersion.Quad (0.2.1 build 2 -> 1.2.102.0).
+if ($Channel -eq 'store' -and -not $Quad) {
+  $sc = ($Semver -replace '-.*$','').Split('.')
+  $Quad = '{0}.{1}.{2}.0' -f ([int]$sc[0] + 1), $sc[1], ([int]$sc[2] * 100 + [int]$props.Build)
+}
 if (-not $Quad) { $Quad = ($Semver -replace '-.*$','') + '.' + $props.Build }
 if ($Quad -notmatch '^\d+\.\d+\.\d+\.\d+$') { throw "Quad must be 4 numeric parts (e.g. 0.2.0.7); got '$Quad'." }
 foreach ($part in $Quad.Split('.')) { if ([int]$part -gt 65535) { throw "Quad part > 65535 (Windows rejects it): $Quad" } }
@@ -107,6 +113,17 @@ if (-not $UpdateBaseUrl.EndsWith('/')) { $UpdateBaseUrl = $UpdateBaseUrl + '/' }
 $infoVersion = "$Semver+build.$($Quad.Split('.')[3])"
 if ($Commit) { $infoVersion = "$infoVersion.sha.$Commit" }
 
+if ($Channel -eq 'store') {
+  # The Store re-signs the package, so the manifest Publisher is Partner Center's identity (View product identity),
+  # never our Trusted Signing subject; an uploaded package may be unsigned. The quad rule is the Store's.
+  if ($TrustedSigning) { throw '-Channel store packages are signed by the Store: drop -TrustedSigning.' }
+  $NoSign = $true
+  if (-not $PSBoundParameters.ContainsKey('Publisher')) { $Publisher = 'CN=88D90E00-BEC4-41D6-8623-9F49F1AE2E9E' }
+  $qp = $Quad.Split('.')
+  if ([int]$qp[0] -lt 1 -or [int]$qp[3] -ne 0) { throw "Store quad must be M.m.p.0 with M >= 1; got '$Quad'." }
+  $infoVersion = "$Semver+store.$Quad"
+  if ($Commit) { $infoVersion = "$infoVersion.sha.$Commit" }
+}
 if ($TrustedSigning -and -not $PSBoundParameters.ContainsKey('Publisher')) {
   $Publisher = 'CN=cproducts, O=cproducts, L=Utrecht, S=Utrecht, C=NL'
 }
@@ -356,6 +373,12 @@ $mf = [IO.File]::ReadAllText($manifestTemplate, [Text.Encoding]::UTF8).
         Replace('__IDENTITY__', $IdentityName).
         Replace('__DISPLAY__', $DisplayName).
         Replace('__PROTOCOL__', $Protocol)
+if ($Channel -eq 'store') {
+  # packageManagement exists for the feed's in-app 'Update now' (PackageManager.AddPackageByAppInstallerFileAsync). It
+  # is a RESTRICTED capability the Store would have to approve per submission, and the Store owns updates there.
+  $mf = $mf -replace '\s*<rescap:Capability Name="packageManagement" />', ''
+  if ($mf -match 'packageManagement') { throw 'store manifest still declares packageManagement' }
+}
 # Checked BEFORE the write, like New-WaveeAppInstaller: a manifest carrying a live __TOKEN__ packs into an MSIX
 # Windows will happily install under the wrong identity.
 $leftover = [regex]::Matches($mf, '__[A-Z0-9_]+__')

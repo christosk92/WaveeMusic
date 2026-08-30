@@ -355,7 +355,11 @@ public sealed class Services
         // packed against a loopback feed must not silently fall back to reading its documents off GitHub.
         ReleaseNotes = new ReleaseNotesStore(githubHttp, SettingsShared.AppDataRoot, AppVersion.Info.FeedRelease, Log,
             releasesRoot: AppVersion.Info.UpdateBaseUrl);
-        AppUpdate = new AppInstallerUpdateService(settings, githubHttp, AppVersion.Info, updateArch,
+        // A Store-installed build never polls the feed: the Store owns downloads, staging and the restart, so the
+        // updater is the one that opens the product page and stays Idle (no toast, no install-on-quit).
+        AppUpdate = AppVersion.Info.IsStore
+            ? new StoreUpdateService(AppVersion.Info.StoreId, static url => ShellOpen.OpenUrl(url))
+            : new AppInstallerUpdateService(settings, githubHttp, AppVersion.Info, updateArch,
             FluentGpu.WindowsApi.Packaging.PackageIdentity.IsPackaged
                 // RestartArgument: Windows relaunches us after the deployment terminates us, and without an explicit
                 // command line it reuses the original one — so the process that comes back cannot tell it came back.

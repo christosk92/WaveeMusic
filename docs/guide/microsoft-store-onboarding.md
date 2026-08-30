@@ -32,8 +32,9 @@ Apps & Games workspace appears (allow ~30 min).
 Partner Center → Apps & games → New product → MSIX → reserve **"Wavee"** (name reservations are unique
 Store-wide; have "Wavee Music" ready as a fallback). Then Product management → **View app identity details**:
 
-- `Package/Identity/Name` — e.g. `cproducts.Wavee` (the Store assigns it; it may equal ours).
-- `Package/Identity/Publisher` — `CN=<GUID>`. **Not** our signing subject.
+- `Package/Identity/Name` — `cproducts.Wavee` (reserved 2026-08-30; equals the sideload name).
+- `Package/Identity/Publisher` — `CN=88D90E00-BEC4-41D6-8623-9F49F1AE2E9E`. **Not** our signing subject.
+- Package Family Name `cproducts.Wavee_thwr6bfjtcshw`, Store ID **`9NJPVWTQPT9H`** (baked into the build as `WaveeStoreId`).
 - `Package/Properties/PublisherDisplayName` — `cproducts`.
 
 The Store re-signs every MSIX with Microsoft's certificate, so the Store package carries the Store publisher. Two
@@ -46,18 +47,17 @@ consequences:
 2. **Version rule.** Store packages must be `M.m.p.0` with the fourth field 0 (the Store owns it) and the first
    field ≥ 1. Ours is `0.2.1.<WaveeBuild>`. The Store submission needs its own quad — decide once: either move
    Wavee to `1.x` for the Store, or map `0.m.p.b` → `1.m.(p*100+b).0`. The feed quad and `AppUpdateVersion` are
-   untouched by this; it is a pack-time parameter.
+   untouched by this; it is a pack-time parameter. Implemented: `StoreVersion.Quad` = `(M+1).m.(p*100+build).0`,
+   and `pack-wavee-msix.ps1 -Channel store` computes it when `-Quad` is omitted.
 
 ## 3. The package
 
 `pack-wavee-msix.ps1` already takes `-IdentityName`, `-Publisher`, `-NoSign`. A Store pack per architecture:
 
 ```powershell
-# from the release commit, PlayPlay junction present, one call per arch
-powershell -File ops\build\pack-wavee-msix.ps1 -Arch x64   -Quad 1.2.1.0 -Semver 0.2.1 -Channel store `
-  -IdentityName <Identity/Name from Partner Center> -Publisher "CN=<GUID from Partner Center>" -NoSign
-powershell -File ops\build\pack-wavee-msix.ps1 -Arch arm64 -Quad 1.2.1.0 -Semver 0.2.1 -Channel store `
-  -IdentityName <...> -Publisher "CN=<GUID>" -NoSign
+# -Channel store implies -NoSign, the Store publisher and the Store quad (1.2.102.0 for 0.2.1 build 2)
+powershell -File ops\build\pack-wavee-msix.ps1 -Arch x64   -Semver 0.2.1 -Channel store -Codename Breaker -Commit <sha7>
+powershell -File ops\build\pack-wavee-msix.ps1 -Arch arm64 -Semver 0.2.1 -Channel store -Codename Breaker -Commit <sha7>
 ```
 
 Upload both `.msix` files in one submission (same version, different `ProcessorArchitecture` — allowed), or wrap

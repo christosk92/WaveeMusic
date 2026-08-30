@@ -30,8 +30,13 @@ public sealed record WaveeVersionInfo(
     string Commit,
     string BuildDate,
     string FeedRelease = "wavee-stable",
-    string UpdateBaseUrl = WaveeVersionInfo.DefaultUpdateBaseUrl)
+    string UpdateBaseUrl = WaveeVersionInfo.DefaultUpdateBaseUrl,
+    string StoreId = "")
 {
+    /// <summary>A Store-installed build (<c>-Channel store</c>): the Store owns updates, so the .appinstaller feed is
+    /// never polled and "Update now" opens the product page (<see cref="StoreId"/>) instead.</summary>
+    public bool IsStore => Channel == "store";
+
     /// <summary>The shipping feed root: GitHub's release-asset download prefix for this repo. The
     /// <c>&lt;release&gt;/&lt;asset&gt;</c> tail is appended by whoever needs it (the updater's .appinstaller, the
     /// release-notes store's document + index).</summary>
@@ -95,6 +100,6 @@ public sealed record WaveeVersionInfo(
         if (feed.Length == 0) feed = "wavee-stable";
         string baseUrl = NormalizeUpdateBaseUrl(Get("UpdateBaseUrl"));
         return new(semver, core, beta, Get("PackageVersion"), Get("Codename"), channel, Get("Commit"), Get("BuildDate"),
-                   feed, baseUrl);
+                   feed, baseUrl, Get("StoreId"));
     }
 }

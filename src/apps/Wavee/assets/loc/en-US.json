@@ -2368,6 +2368,12 @@
       "title": "Download on metered connections",
       "hint": "Off: waits for an unmetered network."
     },
+    "store": {
+      "$comment": "The Store-installed build (-Channel store): the Store owns updates, this card just opens the listing.",
+      "title": "Updates",
+      "hint": "This copy of Wavee was installed from the Microsoft Store — updates arrive through the Store.",
+      "open": "Open Store page"
+    },
     "autoShow": {
       "title": "Show “What's new” after an update",
       "hint": "A short summary the first time the new version opens."

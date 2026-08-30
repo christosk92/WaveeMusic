@@ -409,17 +409,24 @@ sealed class AboutUpdatePanel : Component
             Children =
             [
                 Hero(me, s, upd, nav, showSummary),
-                StatusCard(s, upd),
-                ChannelCard(),
-                InstallOnQuitCard(svc, installOnQuit),
-                SettingsCard.Create(new SettingsCard.Options
-                {
-                    Header = Loc.Get(Strings.Update.Metered.Title),
-                    Description = Loc.Get(Strings.Update.Metered.Hint),
-                    HeaderIcon = Icons.RadioTower,
-                    Content = ToggleSwitch.Create(metered, v => svc?.Settings.Set(WaveeSettings.UpdateOnMetered, v),
-                        style: SettingsCard.CompactToggleStyle()),
-                }),
+                // A Store install has no feed, no channel choice, no install-on-quit and no metered gate: the Store
+                // owns all four. One card says where updates come from and opens the listing.
+                ..(me.IsStore
+                    ? new Element[] { StoreCard(upd) }
+                    : new Element[]
+                    {
+                        StatusCard(s, upd),
+                        ChannelCard(),
+                        InstallOnQuitCard(svc, installOnQuit),
+                        SettingsCard.Create(new SettingsCard.Options
+                        {
+                            Header = Loc.Get(Strings.Update.Metered.Title),
+                            Description = Loc.Get(Strings.Update.Metered.Hint),
+                            HeaderIcon = Icons.RadioTower,
+                            Content = ToggleSwitch.Create(metered, v => svc?.Settings.Set(WaveeSettings.UpdateOnMetered, v),
+                                style: SettingsCard.CompactToggleStyle()),
+                        }),
+                    }),
                 SettingsCard.Create(new SettingsCard.Options
                 {
                     Header = Loc.Get(Strings.Update.AutoShow.Title),
@@ -550,6 +557,16 @@ sealed class AboutUpdatePanel : Component
     }
 
     // ── cards ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The Store build's one update card: the Store applies updates, so the button opens the listing.</summary>
+    static Element StoreCard(IAppUpdateService upd) => SettingsCard.Create(new SettingsCard.Options
+    {
+        Header = Loc.Get(Strings.Update.Store.Title),
+        HeaderIcon = Icons.Refresh,
+        Description = Loc.Get(Strings.Update.Store.Hint),
+        Content = Button.Create(Loc.Get(Strings.Update.Store.Open),
+            () => _ = upd.ApplyAsync(CancellationToken.None), ButtonAppearance.Standard, ControlSize.Small),
+    });
 
     static Element StatusCard(AppUpdateSnapshot s, IAppUpdateService upd)
     {

@@ -34,6 +34,9 @@
          loopback HTTP feed (ops/release/tests/local-update-e2e.ps1) without a single runtime branch or env var.
          Must end in "/" — WaveeVersionInfo.NormalizeUpdateBaseUrl repairs it if it does not. -->
     <WaveeUpdateBaseUrl Condition="'$(WaveeUpdateBaseUrl)' == ''">https://github.com/christosk92/WaveeMusic/releases/download/</WaveeUpdateBaseUrl>
+    <!-- The Partner Center Store ID of the Wavee listing (Product management > View product identity). A -Channel store
+         package routes "Update now" to ms-windows-store://pdp/?productid=<this>; the feed channels ignore it. -->
+    <WaveeStoreId Condition="'$(WaveeStoreId)' == ''">9NJPVWTQPT9H</WaveeStoreId>
     <!-- A local `dotnet run` is "0.2.0-dev"; the pack script stamps "<semver>+build.<N>.sha.<sha7>". -->
     <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(WaveeVersion)-dev</InformationalVersion>
   </PropertyGroup>
@@ -45,6 +48,7 @@
     <AssemblyMetadata Include="BuildDate"      Value="$(WaveeBuildDate)" />
     <AssemblyMetadata Include="FeedRelease"    Value="$(WaveeFeedRelease)" />
     <AssemblyMetadata Include="UpdateBaseUrl"  Value="$(WaveeUpdateBaseUrl)" />
+    <AssemblyMetadata Include="StoreId"        Value="$(WaveeStoreId)" />
   </ItemGroup>
 
   <!-- Memory posture (2026-07 heap audit): the engine's PixelBufferPool bounds decoded-pixel retention; these bound
