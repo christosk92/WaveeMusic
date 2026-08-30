@@ -613,7 +613,9 @@ function Invoke-Bump {
 
     $expected = @('src/apps/Wavee/Wavee.Version.props')
     if ($changelogChanged) { $expected += 'CHANGELOG.md' }
-    $actual = @((Invoke-Git @('diff', '--name-only')).Lines | Sort-Object)
+    # .Lines carries stderr too, and git's CRLF advice ("warning: in the working copy of '...'") is stderr - it
+    # once made this check report the warning text as a touched file. Only path lines count.
+    $actual = @((Invoke-Git @('diff', '--name-only')).Lines | Where-Object { $_ -and $_ -notmatch '^(warning|hint|fatal):' } | Sort-Object)
     $want = @($expected | Sort-Object)
     if (($actual -join '|') -ne ($want -join '|')) {
         Invoke-Git @('checkout', '--', 'CHANGELOG.md', 'src/apps/Wavee/Wavee.Version.props') -AllowFailure | Out-Null
