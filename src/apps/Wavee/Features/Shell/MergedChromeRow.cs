@@ -26,6 +26,10 @@ sealed class MergedChromeRow
     readonly Signal<bool> _searchFocused, _searchFlyoutOpen;
     readonly Func<Element> _tabStrip;
     readonly Func<int> _tabsEpoch;
+    // The omnibar's suggestion state, owned HERE rather than by the omnibar component: the field-mode field and the
+    // icon-mode flyout are two mounts of FluentRichOmnibar, and a search-mode switch must not restart the rows, the
+    // pending request or the keyboard cursor from nothing.
+    readonly OmnibarSuggestStore _suggest = new();
 
     internal PlaybackBridge? Bridge;
     internal ShellUi? Ui;
@@ -85,7 +89,7 @@ sealed class MergedChromeRow
         var l = _layout.Value;
         return l.SearchMode == MergedSearchMode.Field
             ? Embed.Comp(() => new MergedSearchField(
-                _searchText, _go, _searchFocusRequest, _searchFocused, _layout, avail))
+                _searchText, _go, _suggest, _searchFocusRequest, _searchFocused, _layout, avail))
             : new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
     }
 
@@ -95,7 +99,7 @@ sealed class MergedChromeRow
         var kids = new List<Element>(2) { ThemeToggle() };
         if (l.SearchMode == MergedSearchMode.Icon)
             kids.Add(Embed.Comp(() => new MergedSearchFlyoutButton(
-                _searchText, _go, _searchFocusRequest, _searchFlyoutOpen)));
+                _searchText, _go, _suggest, _searchFocusRequest, _searchFlyoutOpen)));
         return new BoxEl
         {
             Direction = 0,
@@ -177,14 +181,18 @@ sealed class MergedSearchField : Component
 {
     readonly Signal<string> _text;
     readonly Action<string, string?> _go;
+    readonly OmnibarSuggestStore _suggest;
     readonly IReadSignal<int> _focusRequest;
     readonly Signal<bool> _focused;
     readonly IReadSignal<MergedChromeLayout> _layout;
     readonly IReadSignal<float> _avail;
 
-    public MergedSearchField(Signal<string> text, Action<string, string?> go, IReadSignal<int> focusRequest,
-        Signal<bool> focused, IReadSignal<MergedChromeLayout> layout, IReadSignal<float> avail)
-    { _text = text; _go = go; _focusRequest = focusRequest; _focused = focused; _layout = layout; _avail = avail; }
+    public MergedSearchField(Signal<string> text, Action<string, string?> go, OmnibarSuggestStore suggest,
+        IReadSignal<int> focusRequest, Signal<bool> focused, IReadSignal<MergedChromeLayout> layout, IReadSignal<float> avail)
+    {
+        _text = text; _go = go; _suggest = suggest; _focusRequest = focusRequest; _focused = focused;
+        _layout = layout; _avail = avail;
+    }
 
     public override Element Render()
     {
@@ -221,7 +229,7 @@ sealed class MergedSearchField : Component
             Key = "chrome-search-field",
             Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
             Width = width,
-            Children = [Embed.Comp(() => new FluentRichOmnibar(_text, _go, parts, maxWidth: width))],
+            Children = [Embed.Comp(() => new FluentRichOmnibar(_text, _go, _suggest, parts, maxWidth: width))],
         };
     }
 }
@@ -230,12 +238,13 @@ sealed class MergedSearchFlyoutButton : Component
 {
     readonly Signal<string> _text;
     readonly Action<string, string?> _go;
+    readonly OmnibarSuggestStore _suggest;
     readonly IReadSignal<int> _focusRequest;
     readonly Signal<bool> _openState;
 
-    public MergedSearchFlyoutButton(Signal<string> text, Action<string, string?> go,
+    public MergedSearchFlyoutButton(Signal<string> text, Action<string, string?> go, OmnibarSuggestStore suggest,
         IReadSignal<int> focusRequest, Signal<bool> openState)
-    { _text = text; _go = go; _focusRequest = focusRequest; _openState = openState; }
+    { _text = text; _go = go; _suggest = suggest; _focusRequest = focusRequest; _openState = openState; }
 
     public override Element Render()
     {
@@ -265,7 +274,7 @@ sealed class MergedSearchFlyoutButton : Component
                     Children =
                     [
                         Embed.Comp(() => new FluentRichOmnibar(
-                            _text, GoAndClose, maxWidth: flyoutWidth,
+                            _text, GoAndClose, _suggest, maxWidth: flyoutWidth,
                             suggestionPresentation: AutoSuggestBoxSuggestionPresentation.Inline,
                             allowNarrowSuggestions: true)),
                     ],

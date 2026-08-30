@@ -8,7 +8,7 @@ trademarks of Spotify AB.
 This build incorporates the third-party components listed below. Each remains under its own license;
 the summary here names the license, not its full text -- follow the URL for the authoritative terms.
 
-Generated 2026-08-26 by ops/build/generate-third-party-notices.ps1.
+Generated 2026-08-30 by ops/build/generate-third-party-notices.ps1.
 
 -------------------------------------------------------------------------------
 
@@ -48,10 +48,15 @@ NVorbis  vendored (src/apps/vendor/NVorbis)
   url:     https://github.com/NVorbis/NVorbis
   note:    Pure-managed Ogg Vorbis decoder. Copyright (c) Andrew Ward and contributors. Vendored as source so it can be NativeAOT-published with the app.
 
-Segoe Fluent Icons / Segoe MDL2 Assets  Windows system font
-  license: Microsoft font license (system component)
+Segoe Fluent Icons  1.54 (bundled: assets/fonts/SegoeFluentIcons.ttf)
+  license: Microsoft font license -- Segoe Fluent Icons is provided by Microsoft for use in Windows applications
   url:     https://learn.microsoft.com/windows/apps/design/style/segoe-fluent-icons-font
-  note:    Icon glyphs are drawn from the Segoe Fluent Icons face shipped with Windows. Wavee does not redistribute the font -- it references the OS-installed face and falls back to Segoe MDL2 Assets on older builds.
+  note:    Microsoft's Segoe Fluent Icons symbol face, Copyright (c) Microsoft Corporation, redistributed inside this Windows application per its licence so the icon set renders identically on Windows 10 and 11 (Windows 10 does not ship the font). The file is unmodified; the embedding flag is Editable (fsType 8). See src/apps/Wavee/assets/fonts/FONTS.md.
+
+Segoe MDL2 Assets  Windows system font
+  license: Microsoft font license (system component)
+  url:     https://learn.microsoft.com/windows/apps/design/style/segoe-ui-symbol-font
+  note:    One sidebar glyph is drawn from the OS-installed Segoe MDL2 Assets face (present on Windows 10 and 11). Not redistributed.
 
 SQLite  bundled by SQLitePCLRaw.bundle_e_sqlite3
   license: Public domain

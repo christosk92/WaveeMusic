@@ -23,9 +23,6 @@ namespace Wavee;
 // chrome piece re-renders itself from the signals it reads. Mounted by WaveeApp inside Services + PlaybackBridge.
 sealed class WaveeShell : Component
 {
-    // One open browser-style tab: stable identity + route key, strip label/glyph, and route Arg (playlist display name).
-    private sealed record OpenTab(int Id, string Key, string Label, string Glyph, string? Arg, bool Pinned = false);
-
     readonly Signal<Route> _route = new(new Route("home"));
     readonly Signal<NavTransitionKind> _navMotion = new(NavTransitionKind.Forward);
     readonly Signal<bool> _canBack = new(false);
@@ -73,8 +70,12 @@ sealed class WaveeShell : Component
     readonly Signal<bool> _fileDropOver = new(false);
     DropTargetSpec? _fileDrop;
 
-    int _nextTabId = 1;
-    readonly List<OpenTab> _open = new() { new OpenTab(0, "home", Loc.Get(Strings.Nav.Home), Icons.Home, null) };
+    // The tab list + which tab is active (TabWorkspace, pure). `_selectedTab` is the strip's SelectedIndex cell — a
+    // PROJECTION of _tabs.ActiveIndex re-asserted after every op (Apply), never the place a decision is read from: the
+    // engine strip writes that cell before it raises OnSelectionChanged, so reading it back to ask "did the tab change"
+    // always answered no. `_savedPins` is the PinnedRevision last written to settings (SyncPins).
+    readonly TabWorkspace _tabs = new();
+    int _savedPins;
     readonly Signal<int> _tabsVersion = new(0);
     readonly Signal<int> _selectedTab = new(0);
 
@@ -90,7 +91,6 @@ sealed class WaveeShell : Component
     readonly Signal<float> _tabNaturalExtent = new(ShellResponsiveLayout.ChromeTabMinW);
     MergedChromeRow? _chrome;
     TabStrip? _strip;
-    int _lastSelectedPinnedTabId = -1;
 
     readonly Signal<string> _searchText = new("");
     // Sidebar state. Collapsed and (once pinned by a drag) width are seeded by SidebarPreferences' own constructor, from
@@ -332,31 +332,12 @@ sealed class WaveeShell : Component
     void RestorePinnedWorkspace()
     {
         var snapshot = WorkspaceTabsPersistence.Decode(_settings.Get(WaveeSettings.WorkspacePinnedTabs));
-        _open.Clear();
-        for (int i = 0; i < snapshot.Tabs.Length; i++)
-        {
-            var saved = snapshot.Tabs[i];
-            var (title, glyph) = ShellNav.Dest(saved.Route, saved.Arg);
-            _open.Add(new OpenTab(_nextTabId++, saved.Route, title, glyph, saved.Arg, Pinned: true));
-        }
-
-        if (_open.Count == 0)
-        {
-            var (title, glyph) = ShellNav.Dest("home");
-            _open.Add(new OpenTab(_nextTabId++, "home", title, glyph, null));
-            _selectedTab.Value = 0;
-            _route.Value = new Route("home");
-            SeedTabExtent();
-            return;
-        }
-
-        int selected = Math.Clamp(snapshot.LastSelected, 0, _open.Count - 1);
-        _selectedTab.Value = selected;
-        _lastSelectedPinnedTabId = _open[selected].Id;
-        var tab = _open[selected];
-        _route.Value = NavRouteNormalizer.Apply(tab.Key, tab.Arg);
-        SyncOmnibarToRoute(_route.Peek());
+        var active = _tabs.RestorePinned(snapshot, NavRouteNormalizer.Apply);
+        _selectedTab.Value = _tabs.ActiveIndex;
+        _route.Value = active;
+        SyncOmnibarToRoute(active);
         SeedTabExtent();
+        _savedPins = _tabs.PinnedRevision;   // what was just decoded IS the saved state
     }
 
     /// <summary>Cold-start nav restore: AFTER settings + pinned tabs. Fail-soft — a bad snapshot never breaks boot.
@@ -390,15 +371,12 @@ sealed class WaveeShell : Component
             _canBack.Value = _history.Count > 0;
             _canForward.Value = _forwardHistory.Count > 0;
             SyncOmnibarToRoute(_route.Peek());
-            int idx = IndexOfTabId(tabId);
-            if (idx >= 0) _selectedTab.Value = idx;
-            // Update the selected tab's route in place without SavePinnedWorkspace — restore must not rewrite pins.
-            int i = _selectedTab.Peek();
-            if ((uint)i < (uint)_open.Count)
-            {
-                var (title, glyph) = ShellNav.Dest(activeRoute.Name, activeRoute.Arg);
-                _open[i] = _open[i] with { Key = activeRoute.Name, Label = title, Glyph = glyph, Arg = activeRoute.Arg };
-            }
+            // Re-select the session's tab when it survived (a pin) and put the restored route on the active tab in
+            // place — without SavePinnedWorkspace: restore must not rewrite pins.
+            _tabs.TrySelect(tabId);
+            _tabs.SetActiveRoute(activeRoute);
+            _selectedTab.Value = _tabs.ActiveIndex;
+            _savedPins = _tabs.PinnedRevision;
             SeedTabExtent();
         }
         catch
@@ -413,17 +391,17 @@ sealed class WaveeShell : Component
 
     void SavePinnedWorkspace()
     {
-        var pins = new List<PersistedWorkspaceTab>();
-        int selected = -1;
-        for (int i = 0; i < _open.Count; i++)
-        {
-            var tab = _open[i];
-            if (!tab.Pinned) continue;
-            if (tab.Id == _lastSelectedPinnedTabId) selected = pins.Count;
-            pins.Add(new PersistedWorkspaceTab(tab.Key, tab.Arg));
-        }
-        if (pins.Count > 0 && selected < 0) selected = 0;
-        _settings.Set(WaveeSettings.WorkspacePinnedTabs, WorkspaceTabsPersistence.Encode(pins, selected));
+        var snapshot = _tabs.PinnedSnapshot();
+        _settings.Set(WaveeSettings.WorkspacePinnedTabs,
+            WorkspaceTabsPersistence.Encode(snapshot.Tabs, snapshot.LastSelected));
+        _savedPins = _tabs.PinnedRevision;
+    }
+
+    /// <summary>Persist the pins exactly when the workspace says they changed — one settings write per real change,
+    /// none for a switch between session-only tabs.</summary>
+    void SyncPins()
+    {
+        if (_tabs.PinnedRevision != _savedPins) SavePinnedWorkspace();
     }
 
     /// <summary>Publish the content region's absolute rect as the engine's drop-spotlight scrim scope. Idempotent and
@@ -1457,6 +1435,11 @@ sealed class WaveeShell : Component
             MaxTabWidth = ShellResponsiveLayout.ChromeTabMaxW,
             ItemsSource = BuildTabItems,
             ItemsVersion = TabStripItemsVersion,
+            // CONTRACT: the strip treats SelectedIndex as its own state cell and WRITES it before it raises
+            // OnSelectionChanged (the engine's controlled-prop idiom — TabView/ItemsViewPresets rely on it). So the
+            // cell is never evidence of whether a click changed tabs: ActivateTab asks TabWorkspace (its ActiveId),
+            // and Apply re-asserts the cell from the model afterwards. Reading `_selectedTab.Peek() == i` as an
+            // early-out here is exactly the bug that left the content on the previous tab's page.
             SelectedIndex = _selectedTab,
             OnSelectionChanged = ActivateTab,
             OnTabCloseRequested = CloseTab,
@@ -1492,9 +1475,10 @@ sealed class WaveeShell : Component
 
     void SeedTabExtent()
     {
+        var tabs = _tabs.Tabs;
         int pinned = 0;
-        for (int i = 0; i < _open.Count; i++) if (_open[i].Pinned) pinned++;
-        float estimate = MergedChromeLayout.EstimatedTabExtent(_open.Count, pinned);
+        for (int i = 0; i < tabs.Count; i++) if (tabs[i].Pinned) pinned++;
+        float estimate = MergedChromeLayout.EstimatedTabExtent(tabs.Count, pinned);
         if (estimate > _tabNaturalExtent.Peek()) _tabNaturalExtent.Value = estimate;
     }
 
@@ -1506,26 +1490,22 @@ sealed class WaveeShell : Component
         _tabsVersion.Value = _tabsVersion.Peek() + 1;
     }
 
-    int IndexOfTabId(int id)
-    {
-        for (int i = 0; i < _open.Count; i++) if (_open[i].Id == id) return i;
-        return -1;
-    }
-
     IReadOnlyList<TabViewItem> BuildTabItems()
     {
-        var items = new TabViewItem[_open.Count];
+        var tabs = _tabs.Tabs;
+        var items = new TabViewItem[tabs.Count];
         for (int i = 0; i < items.Length; i++)
         {
-            var tab = _open[i];
+            var tab = tabs[i];
+            var (label, glyph) = ShellNav.Dest(tab.Route);
             var destination = DestinationOf(tab);
             int id = tab.Id;
             items[i] = new TabViewItem
             {
                 Key = "tab#" + id,
-                Header = tab.Label,
-                Icon = tab.Glyph,
-                IsClosable = !tab.Pinned && _open.Count > 1,
+                Header = label,
+                Icon = glyph,
+                IsClosable = !tab.Pinned && tabs.Count > 1,
                 IsPinned = tab.Pinned,
                 ContextMenu = () => TabMenu(id),
                 // A tab is CLICK-PRIMARY: switching tabs is the constant intent, dragging one out the rare one. At the
@@ -1589,19 +1569,20 @@ sealed class WaveeShell : Component
         return SidebarDestination.FromRoute(route.Name, route.Arg, title);
     }
 
-    static SidebarDestination? DestinationOf(OpenTab tab)
+    static SidebarDestination? DestinationOf(WorkspaceTab tab)
     {
-        string title = string.Equals(tab.Key, "search", StringComparison.Ordinal)
+        var route = tab.Route;
+        string title = string.Equals(route.Name, "search", StringComparison.Ordinal)
             ? ShellNav.Dest("search").Title
-            : tab.Label;
-        return SidebarDestination.FromRoute(tab.Key, tab.Arg, title);
+            : ShellNav.Dest(route).Title;
+        return SidebarDestination.FromRoute(route.Name, route.Arg, title);
     }
 
     ContextMenuModel? TabMenu(int tabId)
     {
-        int index = IndexOfTabId(tabId);
-        if ((uint)index >= (uint)_open.Count) return null;
-        var tab = _open[index];
+        int index = _tabs.IndexOf(tabId);
+        if (index < 0) return null;
+        var tab = _tabs.Tabs[index];
         var rows = new List<MenuFlyoutItem>(9)
         {
             new MenuFlyoutItem(
@@ -1610,7 +1591,7 @@ sealed class WaveeShell : Component
                 true, () => SetTabPinned(tabId, !tab.Pinned)),
             MenuFlyoutItem.Separator,
             new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseTab), Icons.Cancel,
-                _open.Count > 1, () => CloseTabById(tabId)),
+                _tabs.Count > 1, () => CloseTabById(tabId)),
             new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseOtherTabs), default,
                 HasOtherUnpinned(tabId), () => CloseOtherTabs(tabId)),
             new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseTabsRight), default,
@@ -1624,40 +1605,41 @@ sealed class WaveeShell : Component
             rows.Add(MenuFlyoutItem.Separator);
             rows.Add(pagePin);
         }
-        return new ContextMenuModel(rows, new ContextMenuHeader(null, tab.Label));
+        return new ContextMenuModel(rows, new ContextMenuHeader(null, ShellNav.Dest(tab.Route).Title));
     }
 
     bool HasAnyUnpinned()
     {
-        for (int i = 0; i < _open.Count; i++) if (!_open[i].Pinned) return true;
+        var tabs = _tabs.Tabs;
+        for (int i = 0; i < tabs.Count; i++) if (!tabs[i].Pinned) return true;
         return false;
     }
 
     bool HasOtherUnpinned(int tabId)
     {
-        for (int i = 0; i < _open.Count; i++) if (_open[i].Id != tabId && !_open[i].Pinned) return true;
+        var tabs = _tabs.Tabs;
+        for (int i = 0; i < tabs.Count; i++) if (tabs[i].Id != tabId && !tabs[i].Pinned) return true;
         return false;
     }
 
     bool HasUnpinnedToRight(int index)
     {
-        for (int i = index + 1; i < _open.Count; i++) if (!_open[i].Pinned) return true;
+        var tabs = _tabs.Tabs;
+        for (int i = index + 1; i < tabs.Count; i++) if (!tabs[i].Pinned) return true;
         return false;
     }
 
+    /// <summary>The active tab's stable id, SUBSCRIBING (ContentHost keys its keep-alive slot on it): the workspace
+    /// is plain state, so the two signals every tab op bumps stand in as its change notification.</summary>
     int ActiveTabId()
     {
         _ = _tabsVersion.Value;
-        int i = _selectedTab.Value;
-        return (uint)i < (uint)_open.Count ? _open[i].Id : -1;
+        _ = _selectedTab.Value;
+        return _tabs.ActiveId;
     }
 
-    /// <summary>Peek the selected tab's stable id without subscribing (event-handler / persist path).</summary>
-    int PeekActiveTabId()
-    {
-        int i = _selectedTab.Peek();
-        return (uint)i < (uint)_open.Count ? _open[i].Id : -1;
-    }
+    /// <summary>The active tab's stable id without subscribing (event-handler / persist path).</summary>
+    int PeekActiveTabId() => _tabs.ActiveId;
 
     /// <summary>Zero-alloc persist: passes the live stacks; the store copies into reused buffers and debounces 2 s.</summary>
     void CaptureNav()
@@ -1830,128 +1812,76 @@ sealed class WaveeShell : Component
         else Go(key, arg, NavTransitionKind.Forward, origin);
     }
 
+    /// <summary>Every navigation lands on the ACTIVE tab (browser semantics: the tab follows the page).</summary>
     void SyncActiveTab(Route r)
     {
-        int i = _selectedTab.Peek();
-        if ((uint)i >= (uint)_open.Count) return;
-        var (title, glyph) = ShellNav.Dest(r);
-        _open[i] = _open[i] with { Key = r.Name, Label = title, Glyph = glyph, Arg = r.Arg };
+        _tabs.SetActiveRoute(r);
         TabsChanged();
-        if (_open[i].Pinned) SavePinnedWorkspace();
+        SyncPins();
     }
 
-    /// <summary>Select tab <paramref name="i"/> AND follow its route — the pair every tab activation needs (writing the
-    /// selection signal alone moves the highlight without navigating, which is what makes a spring-load useless).</summary>
-    void ActivateTab(int i)
+    /// <summary>Tab SWITCH: show the tab's page as it was. Deliberately not a <see cref="Go"/> — no back-stack push
+    /// (the tab is not a new place; Back must still leave the page, not undo the switch), no origin write (the
+    /// arrival's crumb stands — a Go would erase "Home › Browse › X" back to the IA answer), no HistoryStore /
+    /// recent-surface record (nothing was newly opened). Neutral motion: a switch is neither forward nor back.</summary>
+    void Restore(Route r)
     {
-        if ((uint)i >= (uint)_open.Count || _selectedTab.Peek() == i) return;
-        _selectedTab.Value = i;
-        var t = _open[i];
-        if (t.Pinned)
+        CloseNarrowDrawer();
+        _navMotion.Value = NavTransitionKind.Neutral;
+        _route.Value = r;
+        SyncOmnibarToRoute(r);
+        CaptureNav();
+    }
+
+    /// <summary>The one place a workspace op meets the shell: re-assert the strip's selection cell from the model
+    /// (the strip may have pre-written it, the model may have moved the tab), persist pins if they changed, then
+    /// follow the intent — <see cref="Restore"/> for a switch, <see cref="Go"/> for a fresh tab's first route.</summary>
+    void Apply(TabNavResult result)
+    {
+        if (_selectedTab.Peek() != result.ActiveIndex) _selectedTab.Value = result.ActiveIndex;
+        TabsChanged();
+        SyncPins();
+        switch (result.Intent)
         {
-            _lastSelectedPinnedTabId = t.Id;
-            SavePinnedWorkspace();
+            case TabNavIntent.Restore when result.Route is { } r:
+                Restore(r);
+                break;
+            case TabNavIntent.Push when result.Route is { } r:
+                Go(r.Name, r.Arg, NavTransitionKind.Neutral);
+                break;
         }
-        Go(t.Key, t.Arg, NavTransitionKind.Neutral);
     }
 
-    void ActivateTabById(int id)
-    {
-        int index = IndexOfTabId(id);
-        if (index >= 0) ActivateTab(index);
-    }
+    /// <summary>Select tab <paramref name="i"/> AND show its page — the pair every tab activation needs (writing the
+    /// selection signal alone moves the highlight without swapping content, which is what makes a spring-load
+    /// useless). No selection guard here: see the contract on the strip's SelectedIndex.</summary>
+    void ActivateTab(int i) => Apply(_tabs.Activate(i));
 
-    void OpenNewTab(string key)
-    {
-        var (title, glyph) = ShellNav.Dest(key, null);
-        _open.Add(new OpenTab(_nextTabId++, key, title, glyph, null));
-        _selectedTab.Value = _open.Count - 1;
-        TabsChanged();
-        Go(key, null, NavTransitionKind.Neutral);
-    }
+    void ActivateTabById(int id) => Apply(_tabs.ActivateById(id));
 
-    void CloseTab(int i)
-    {
-        if (_open.Count <= 1 || (uint)i >= (uint)_open.Count) return;
-        bool pinsChanged = _open[i].Pinned;
-        _open.RemoveAt(i);
-        int sel = _selectedTab.Peek();
-        if (i < sel) sel--;
-        else if (i == sel) sel = Math.Min(i, _open.Count - 1);
-        sel = Math.Clamp(sel, 0, _open.Count - 1);
-        _selectedTab.Value = sel;
-        if (_open[sel].Pinned) _lastSelectedPinnedTabId = _open[sel].Id;
-        else if (IndexOfTabId(_lastSelectedPinnedTabId) < 0) _lastSelectedPinnedTabId = FirstPinnedId();
-        TabsChanged();
-        if (pinsChanged) SavePinnedWorkspace();
-        var t = _open[sel];
-        Go(t.Key, t.Arg, NavTransitionKind.Neutral);
-    }
+    void OpenNewTab(string key) => Apply(_tabs.Open(new Route(key)));
 
-    void CloseTabById(int id)
-    {
-        int index = IndexOfTabId(id);
-        if (index >= 0) CloseTab(index);
-    }
+    /// <summary>Closing the active tab restores its neighbour; closing a background tab changes nothing on screen.</summary>
+    void CloseTab(int i) => Apply(_tabs.Close(i));
 
-    void SetTabPinned(int id, bool pinned)
-    {
-        int index = IndexOfTabId(id);
-        if (index < 0 || _open[index].Pinned == pinned) return;
-        int selectedId = ActiveTabId();
-        var tab = _open[index] with { Pinned = pinned };
-        _open.RemoveAt(index);
-        int boundary = 0;
-        while (boundary < _open.Count && _open[boundary].Pinned) boundary++;
-        _open.Insert(boundary, tab);
-        int selected = IndexOfTabId(selectedId);
-        _selectedTab.Value = Math.Max(0, selected);
-        if (pinned && selectedId == id) _lastSelectedPinnedTabId = id;
-        else if (!pinned && _lastSelectedPinnedTabId == id) _lastSelectedPinnedTabId = FirstPinnedId();
-        TabsChanged();
-        SavePinnedWorkspace();
-    }
+    void CloseTabById(int id) => Apply(_tabs.Close(_tabs.IndexOf(id)));
 
-    int FirstPinnedId()
-    {
-        for (int i = 0; i < _open.Count; i++) if (_open[i].Pinned) return _open[i].Id;
-        return -1;
-    }
+    void SetTabPinned(int id, bool pinned) => Apply(_tabs.SetPinned(id, pinned));
 
     void CloseOtherTabs(int keepId)
-        => CloseTabSet(tab => tab.Id != keepId && !tab.Pinned);
+        => Apply(_tabs.CloseWhere(tab => tab.Id != keepId && !tab.Pinned));
 
     void CloseTabsToRight(int tabId)
     {
-        int index = IndexOfTabId(tabId);
+        int index = _tabs.IndexOf(tabId);
         if (index < 0) return;
+        var tabs = _tabs.Tabs;
         var rightIds = new HashSet<int>();
-        for (int i = index + 1; i < _open.Count; i++) if (!_open[i].Pinned) rightIds.Add(_open[i].Id);
-        CloseTabSet(tab => rightIds.Contains(tab.Id));
+        for (int i = index + 1; i < tabs.Count; i++) if (!tabs[i].Pinned) rightIds.Add(tabs[i].Id);
+        Apply(_tabs.CloseWhere(tab => rightIds.Contains(tab.Id)));
     }
 
-    void CloseAllUnpinnedTabs() => CloseTabSet(static tab => !tab.Pinned);
-
-    void CloseTabSet(Func<OpenTab, bool> remove)
-    {
-        int selectedId = ActiveTabId();
-        int oldSelected = _selectedTab.Peek();
-        for (int i = _open.Count - 1; i >= 0; i--) if (remove(_open[i])) _open.RemoveAt(i);
-        if (_open.Count == 0)
-        {
-            var (title, glyph) = ShellNav.Dest("home");
-            _open.Add(new OpenTab(_nextTabId++, "home", title, glyph, null));
-        }
-        int selected = IndexOfTabId(selectedId);
-        if (selected < 0) selected = Math.Clamp(oldSelected, 0, _open.Count - 1);
-        _selectedTab.Value = selected;
-        if (_open[selected].Pinned) _lastSelectedPinnedTabId = _open[selected].Id;
-        else if (IndexOfTabId(_lastSelectedPinnedTabId) < 0) _lastSelectedPinnedTabId = FirstPinnedId();
-        TabsChanged();
-        SavePinnedWorkspace();
-        var active = _open[selected];
-        Go(active.Key, active.Arg, NavTransitionKind.Neutral);
-    }
+    void CloseAllUnpinnedTabs() => Apply(_tabs.CloseWhere(static tab => !tab.Pinned));
 
     /// <summary>Template overrides for the merged chrome row. The bar lays its pane toggle out at x=4 (root padding 2 +
     /// the button's own margin 2) and it is 40 wide, so its centre lands at 24 — while the 56-DIP compact rail centres

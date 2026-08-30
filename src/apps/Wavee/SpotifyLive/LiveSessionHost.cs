@@ -601,15 +601,17 @@ public sealed class LiveSessionHost : IAsyncDisposable
                 () => svc.Recents.SetInner(new RecentsFetcher(live.Pipeline, () => live.BaseUrl)),
                 () => svc.Recents.Reset());
 
-            // The single library-sync writer loop (RC1): the collection fetcher (revision get/set → the SQLite cold tier,
-            // mark-and-sweep shielded by the mutation outbox), the loop itself, and the dealer router that decode-and-enqueues
+            // The single library-sync writer loop (RC1): the collection fetcher (WIRE-set-keyed sync tokens get/set → the
+            // SQLite cold tier; snapshots verified by the ledger, mark-and-sweep shielded by the mutation outbox + the recency
+            // window, drift reconciled off a shadow walk), the loop itself, and the dealer router that decode-and-enqueues
             // into it. The DealerRouter no longer writes the store — the in-place apply / mark-dirty / refetch policy is the loop's.
             var cold = svc.RealCold!;
             var collections = new Wavee.Backend.Collections.CollectionFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username, store,
                 s => cold.GetCollectionRevision(s),
                 (s, r) => cold.SetCollectionRevision(s, r, DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
                 hydrateCollectionMembers,   // the ladder's own ref-closure post-step closes blank AlbumRefs / thin tracks (design §2.3)
-                (s, u) => svc.RealMutations!.HasPending(s, u));
+                (s, u) => svc.RealMutations!.HasPending(s, u),
+                syncLog);                   // collection.snapshot.* / collection.reconcile.* / collection.token.reset land in the sync log
             var signalClient = new Wavee.Backend.Playlists.PlaylistSignalsClient(
                 live.Pipeline, () => live.BaseUrl, () => live.Session.Locale);
             var sync = new Wavee.Backend.Sync.LibrarySync(store, fetcher, collections, svc.RealMutations!, svc.RealResyncQueue!, mutTransport,
@@ -846,7 +848,6 @@ public sealed class LiveSessionHost : IAsyncDisposable
             // it on reactivation — see HomePage's refresh loop.
             var onlineCatalog = new Wavee.SpotifyLive.Hydration.SpotifyOnlineCatalog(
                 pathfinder, pathfinderResource, store, hydration,
-                () => svc.HomeFacet.Peek(),
                 () => HomeModuleCopy.Titles,
                 fetcher.FetchPlaylistHeaderAsync,
                 fetcher.FetchPlaylistRevisionAsync,
@@ -1251,7 +1252,7 @@ public sealed class LiveSessionHost : IAsyncDisposable
             var ar = await svc.Library.GetArtistAsync(arUri, ct: ct).ConfigureAwait(false);
             log.Info($"  on-open artist '{ar?.Name}' → {ar?.TopTracks?.Count ?? 0} top tracks, {ar?.TopAlbums?.Count ?? 0} releases, {ar?.MonthlyListeners ?? 0} listeners (Pathfinder)");
         }
-        var home = await svc.Library.GetHomeAsync(ct).ConfigureAwait(false);
+        var home = await svc.Library.GetHomeAsync(null, ct).ConfigureAwait(false);   // the smoke read is the unfiltered feed
         log.Info($"  home → {home.Groups.Count} groups (editorial Pathfinder + library)");
         var sr = await svc.Library.SearchAsync("paul kim", ct).ConfigureAwait(false);
         log.Info($"  search 'paul kim' → {sr.Tracks.Count} tracks, {sr.Albums.Count} albums, {sr.Artists.Count} artists, {sr.Playlists.Count} playlists");

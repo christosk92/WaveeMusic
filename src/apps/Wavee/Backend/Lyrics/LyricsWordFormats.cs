@@ -42,8 +42,8 @@ public static partial class LyricsWordFormats
         return (lineStart, string.Concat(syl.Select(s => s.Text)).Trim(), syl);
     }
 
-    // NetEase YRC word: (startMs,durationMs,0)word — ABSOLUTE times. (Metadata JSON lines start with '{' and are skipped
-    // by BuildDoc, which only keeps lines beginning with '['.)
+    // NetEase YRC word: (startMs,durationMs,0)word — ABSOLUTE times. (The credit rows are JSON objects between the timed
+    // rows — LyricsCreditRules.IsStructuralMetadata — and BuildDoc never turns them into lines.)
     [GeneratedRegex(@"\((\d+),(\d+),-?\d+\)([^(]*)", RegexOptions.Compiled)]
     private static partial Regex YrcWordRx();
 
@@ -168,7 +168,9 @@ public static partial class LyricsWordFormats
         foreach (var raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
         {
             var line = raw.Trim();
-            if (line.Length == 0 || line[0] != '[') continue;
+            // Tier 1 of the credit rules: what the format itself marks as metadata ([ti:]/[language:] tags, YRC's JSON
+            // credit objects, the QRC XML wrapper) never becomes a line.
+            if (line.Length == 0 || LyricsCreditRules.IsStructuralMetadata(line) || line[0] != '[') continue;
             var parsed = parseLine(line);
             if (parsed is not { } p) continue;
             long end = p.Syl.Count > 0 ? p.Syl[^1].EndMs : p.Start;

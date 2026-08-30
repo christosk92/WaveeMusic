@@ -51,6 +51,7 @@ sealed class ArtistSchedulePage : Component
         _anchor = UseRef<NodeHandle>(default);
         var reload = UseSignal(0);
         var pageScroll = UseSignal(0f);
+        var underBand = UseSignal(false);   // the body's ClipBelow edge: feather only while the cut is live
         _reloadSignal = reload;
         int gen = reload.Value;
         var now = DateTimeOffset.Now;
@@ -88,11 +89,25 @@ sealed class ArtistSchedulePage : Component
                 Loc.Get(Strings.Concerts.Schedule.NoUpcomingSubtitle)),
             group: "artist-schedule:" + _artistUri);
 
+        // The offset model (ContextBand / BrowseMastheadMetrics.ClipInset): the masthead paints nothing, so the
+        // body cuts itself at the band's lower edge as it scrolls under it; the reserve is a spacer above the clipped
+        // node so the cut engages only once the board reaches the band.
         var content = new BoxEl
         {
             Direction = 1,
-            Padding = new Edges4(32f, BrowseLayout.MastheadReserve + 40f, 32f, PlayerDock.Reserve + 40f),
-            Children = [ region ],
+            Children =
+            [
+                new BoxEl { Height = BrowseLayout.MastheadReserve + 40f, HitTestVisible = false },
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f,
+                    Padding = new Edges4(32f, 0f, 32f, PlayerDock.Reserve + 40f),
+                    EdgeFade = underBand.Value
+                        ? new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand)
+                        : null,
+                    Children = [ region ],
+                }.ClipBelow(BrowseMastheadMetrics.ClipInset, v => underBand.Value = v),
+            ],
         };
         var scroll = ScrollView(content) with
         {

@@ -73,7 +73,7 @@ public class DiscographyRoutingTests
         public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<HomeContribution> GetHomeAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default) => throw new NotSupportedException();
     }
 

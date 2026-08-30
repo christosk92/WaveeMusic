@@ -116,7 +116,7 @@ public sealed class UserPlaylistSource : ICatalogSource
         return Task.FromResult<Playlist?>(new Playlist("up", uri, e.Name, "Created on this device", "You", null,
             e.Tracks.Count, e.Tracks.ToArray(),
             Owner: new Owner("you", "You", null),
-            Capabilities: new PlaylistCapabilities(true, true, true, false, true), Source: "user"));
+            Capabilities: new PlaylistCapabilities(true, true, true, false, true, Known: true), Source: "user"));
     }
 
     public Task<IReadOnlyList<PlaylistSummary>> GetPlaylistsAsync(CancellationToken ct = default)
@@ -140,6 +140,6 @@ public sealed class UserPlaylistSource : ICatalogSource
     public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Artist>>(System.Array.Empty<Artist>());
     public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Track>>(System.Array.Empty<Track>());
     public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default) => Task.FromResult(SearchResults.Empty);
-    public Task<HomeContribution> GetHomeAsync(CancellationToken ct = default) => Task.FromResult(new HomeContribution(System.Array.Empty<HomeGroup>(), 60));
+    public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default) => Task.FromResult(new HomeContribution(System.Array.Empty<HomeGroup>(), 60));
     public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default) => Task.FromResult(new LibraryStats(0, 0, 0, 0));
 }

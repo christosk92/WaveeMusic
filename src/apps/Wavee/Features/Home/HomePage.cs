@@ -35,10 +35,45 @@ static class HomeSkeleton
 // Async skeletons are derived from FakeData.HomeSeed through Skel.Region.
 sealed class HomePage : Component
 {
+    /// <summary>The card ▶ path, awaited. The controller's PlayAsync swallows "context resolved to 0 tracks" (it logs
+    /// at Info and returns), so the only thing that ties a dead press to that line is one of our own naming the card:
+    /// <c>card.play uri=… kind=… outcome=…</c> lands right beside the controller's resolve line. A thrown failure is
+    /// the one outcome the user can act on, so it also reaches them as a toast — posted back to the UI thread, since
+    /// the continuation may land on the player's own thread.</summary>
+    static async Task PlayCardAsync(Services svc, Action<Action> post, string uri, HomeCardKind kind)
+    {
+        string outcome;
+        Exception? failure = null;
+        try
+        {
+            // Item vs context is HomeCardPlayRouting's one rule (shared with the section grid): a track or episode
+            // plays itself, everything else is a CONTEXT the player starts from the top of.
+            if (Wavee.Features.Home.HomeCardPlayRouting.PlaysAsItem(kind))
+                await svc.Player.PlayTrackAsync(uri).ConfigureAwait(false);
+            else
+                await svc.Player.PlayAsync(uri, 0).ConfigureAwait(false);
+            outcome = "completed";
+        }
+        catch (OperationCanceledException) { outcome = "canceled"; }
+        catch (Exception ex) { outcome = "failed"; failure = ex; }
+
+        WaveeLog.Instance.Event(failure is null ? WaveeLogLevel.Info : WaveeLogLevel.Warning, "ui", "card.play",
+            "home card play " + outcome, ex: failure,
+            fields: new[]
+            {
+                WaveeLogField.Of("uri", uri),
+                WaveeLogField.Of("kind", kind.ToString()),
+                WaveeLogField.Of("outcome", outcome),
+            });
+        if (failure is not null)
+            post(() => Toast.Show(Loc.Get(Strings.Home.PlayFailed), new ToastOptions { Severity = InfoBarSeverity.Error }));
+    }
+
     public override Element Render()
     {
         var svc    = UseContext(Services.Slot);
         var go     = UseContext(HistoryStore.NavCtx);
+        var goOrigin = UseContext(HistoryStore.GoWithOrigin);
         var homePrefs = UseContext(HomePreferences.Slot);
         int layoutVersion = homePrefs?.LayoutVersion.Value ?? 0;
         _homePrefs = homePrefs;
@@ -53,7 +88,6 @@ sealed class HomePage : Component
         if (svc is null) return new BoxEl { Grow = 1f };
 
         var home = UseLoadable(Loadable<HomeFeed>.Pending(FakeData.HomeSeed));   // seed renders the loading shape; later refreshes swap Ready->Ready in place
-        _facetFeed = home;   // so a facet selection republishes into THIS loadable rather than remounting the page
 
         // Charts is chrome, not a home-document module — it rides its OWN resource. Five browseSection reads
         // (ChartSections.All), one Fold tile each: Featured null throws (fail-loud); later shelves that come back
@@ -86,7 +120,7 @@ sealed class HomePage : Component
         {
             int epoch = feedEpoch.Value;
             var cts = new CancellationTokenSource();
-            StartHomeRefreshLoop(svc, home, post, epoch, (e, feed) => ApplyFeed(home, e, feed), cts.Token);
+            StartHomeRefreshLoop(svc, home, post, epoch, (e, feed) => ApplyFeed(svc, home, e, feed), cts.Token);
             Reactive.OnCleanup(() => { cts.Cancel(); cts.Dispose(); });
         });
 
@@ -139,7 +173,7 @@ sealed class HomePage : Component
                 int at = feedEpoch.Peek();
                 if (at != _appliedFeedEpoch)
                     _ = RefreshHomeOnce(svc, post, failIfInitial: false, at,
-                        (e, feed) => ApplyFeed(home, e, feed), home, default);
+                        (e, feed) => ApplyFeed(svc, home, e, feed), home, default);
                 else if (svc.HomeFeedRevalidate is { } revalidate)
                     _ = revalidate(default);
             },
@@ -147,21 +181,33 @@ sealed class HomePage : Component
         // …and on UNMOUNT too, because onDeactivated fires only on PARK: a nav that evicts Home without parking it would
         // otherwise leave a wash owned by a gone page. Owner-gated, so it can never clobber the next page's material.
         UseEffect(() => (Action?)ClearWash, DepKey.Empty);
+        // The in-flight facet read is page state for the same reason: an unmount must not leave a request racing to
+        // publish into a loadable whose page is gone, nor a live CancellationTokenSource behind it.
+        UseEffect(() => (Action?)(() =>
+        {
+            _facetCts?.Cancel();
+            _facetCts?.Dispose();
+            _facetCts = null;
+        }), DepKey.Empty);
 
         string? name = bridge?.User.Value?.DisplayName;     // subscribe → greeting refreshes on login
 
-        void Play(string uri) => _ = svc.Player.PlayAsync(uri, 0);
+        // Home is a PLACE the Browse-family pages it opens are reached from, so every drill out of it hands over this
+        // origin (HistoryStore.GoWithOrigin, the BrowsePage precedent): the masthead then reads Home › Browse › X
+        // instead of claiming a Browse visit that never happened (DrillTrail.Compose). NavCtx would write a NULL
+        // origin — and NavOriginStore treats null as a delete, so a Home visit used to erase an earlier Browse origin.
+        var homeOrigin = new NavOrigin(Loc.Get(Strings.Nav.Home), "home", null);
+        void GoFromHome(string key, string? arg) => goOrigin(key, arg, homeOrigin);
+
         // The card-open decision lives in HomeCardNav (shared with HomeSectionPage — the two drifted apart once already,
         // over the Liked branch).
         void NavCard(HomeCard c) => HomeCardNav.Open(c, preview, go, uri => _ = svc.Player.PlayTrackAsync(uri));
 
-        void PlayCard(HomeCard c)
-        {
-            // Track and Episode are single items — they play themselves. Everything else is a CONTEXT (playlist, album,
-            // show, audiobook) the player starts from the top of.
-            if (c.Kind is HomeCardKind.Track or HomeCardKind.Episode) _ = svc.Player.PlayTrackAsync(c.Uri);
-            else Play(c.Uri);
-        }
+        // Awaited, not fire-and-forget (finding #8): a card ▶ whose context resolved to nothing used to vanish without
+        // a trace — the controller logs the empty resolve at Info, and nothing tied it to the press. PlayCardAsync
+        // writes one `card.play` line per press naming the card and how the request ended, and a thrown failure
+        // reaches the user as a toast instead of dying in a discarded Task.
+        void PlayCard(HomeCard c) => _ = PlayCardAsync(svc, post, c.Uri, c.Kind);
 
         // Every home card is a drag SOURCE for the entity it stands for — drop it on a sidebar playlist to add its
         // tracks, on a folder to file it, on the pin band to pin it. The payload factory is gesture-COLD (it runs once,
@@ -230,11 +276,12 @@ sealed class HomePage : Component
                 : HomeSectionRoutes.LocalPrefix + HomeModuleLayout.SectionSetKey([section]);
             string route = HomeSectionRoutes.Page(identity);
             sectionPreview?.Set(route, section);
-            go(route, section.Title);
+            GoFromHome(route, section.Title);
         }
 
         void OpenBrowseSection(HomeSection s) =>
-            HomeCardNav.OpenBrowseSection(s, preview, sectionPreview, go, uri => _ = svc.Player.PlayTrackAsync(uri));
+            HomeCardNav.OpenBrowseSection(s, preview, sectionPreview, go, uri => _ = svc.Player.PlayTrackAsync(uri),
+                origin: homeOrigin, goOrigin: goOrigin);
 
         void OpenLanding(HomeLandingModule module)
         {
@@ -269,7 +316,7 @@ sealed class HomePage : Component
             title: Loc.Get(Strings.Concerts.HomeTitle),
             subtitle: Loc.Get(Strings.Concerts.HomeSubtitle),
             actionLabel: Loc.Get(Strings.Concerts.Explore),
-            onClick: () => go(Wavee.Features.Concerts.ConcertRoutes.Hub, Loc.Get(Strings.Concerts.Title)))
+            onClick: () => GoFromHome(Wavee.Features.Concerts.ConcertRoutes.Hub, Loc.Get(Strings.Concerts.Title)))
             with { Key = "home-concerts-editorial" };
 
         // The Browse destination, in the SAME editorial voice as the concert card directly above it — two calm
@@ -280,7 +327,7 @@ sealed class HomePage : Component
             title: Loc.Get(Strings.Browse.HomeTitle),
             subtitle: Loc.Get(Strings.Browse.HomeSubtitle),
             actionLabel: Loc.Get(Strings.Browse.ExploreAll),
-            onClick: () => go(BrowseRoutes.Home, null))
+            onClick: () => GoFromHome(BrowseRoutes.Home, null))
             with { Key = "home-browse-editorial" };
 
         // Both destinations ride the final virtual row together, so the tail mounts once.
@@ -332,6 +379,13 @@ sealed class HomePage : Component
             // user reorder is the order RowAt / KeyAt / Estimate all switch on.
             var rows = homeLayout.Rows;
 
+            // A facet is a different DOCUMENT, not a filtered view of one, so it is part of every identity on this page.
+            // The feed itself says which facet produced it (HomeFeed.Facet), so the tag needs no page state. Row keys
+            // carrying it force a REMOUNT across a facet swap (no positional patch of "Podcasts" onto "Music"), and the
+            // matching ScrollKey drops the previous facet's offset instead of landing 3000px down a document that no
+            // longer exists. "" (unfiltered) keeps the historic bare "home" tag.
+            string facetTag = feed.Facet.Length == 0 ? "home" : "home:" + feed.Facet;
+
             string KeyAt(int index)
             {
                 var row = rows[index];
@@ -339,8 +393,8 @@ sealed class HomePage : Component
                 // Key on the group's identity so a recycled shell rebinds rather than positionally patching one module's
                 // tree onto another's.
                 return g is null
-                    ? "home-row:" + row
-                    : "home-row:" + row + ":" + HomeModuleLayout.SourceGroupKey(g);
+                    ? facetTag + ":row:" + row
+                    : facetTag + ":row:" + row + ":" + HomeModuleLayout.SourceGroupKey(g);
             }
 
             Element RowAt(int index)
@@ -361,7 +415,7 @@ sealed class HomePage : Component
                 Grow = 1f,
                 Shrink = 1f,
                 MinHeight = 0f,
-                ScrollKey = "home",
+                ScrollKey = facetTag,
                 OnVisibleRange = (first, end) =>
                 {
                     for (int i = first; i < end && i < rows.Length; i++)
@@ -412,7 +466,7 @@ sealed class HomePage : Component
             switch (row)
             {
                 case HomeRow.Chips:
-                    return GreetingBlock(name, feed, svc, post, landing, go);
+                    return GreetingBlock(name, feed, home, svc, post, landing, go);
                 case HomeRow.Hero:
                     return landing.Get(HomeGroupKind.Hero) is { Group: { } h }
                         ? HomeModules.SourceModule(h,
@@ -436,7 +490,7 @@ sealed class HomePage : Component
                     // carries a null Uri, and the destination's availability has nothing to do with this shelf's payload.
                     // The strip still pages in place — pager is reserved for horizontal shelves.
                     return FeedGroup(landing, row) is { } recents
-                        ? HomeModules.Recents(recents, NavOf, KindLabel, ChromeOf, () => go("recents", null))
+                        ? HomeModules.Recents(recents, NavOf, PlayOf, KindLabel, ChromeOf, () => go("recents", null))
                         : new BoxEl();
                 case HomeRow.MixBand:
                     return FeedGroup(landing, row) is { } mixes
@@ -479,7 +533,7 @@ sealed class HomePage : Component
                     return Skel.Region(
                         charts.Loadable,
                         content: list => HomeModules.FoldDeck(list, Loc.Get(Strings.Home.Charts), OpenBrowseSection,
-                            openHeader: () => go(Wavee.Features.Browse.BrowseRoutes.Page(Wavee.Features.Browse.ChartPages.Charts), Loc.Get(Strings.Home.Charts))),
+                            openHeader: () => GoFromHome(Wavee.Features.Browse.BrowseRoutes.Page(Wavee.Features.Browse.ChartPages.Charts), Loc.Get(Strings.Home.Charts))),
                         isEmpty: list => list.Count == 0,
                         onEmpty: () => EmptyState.Compact(Loc.Get(Strings.Home.ChartsEmpty)),
                         onFailed: () => ErrorState.Build(charts.Loadable.Error, onRetry: charts.Refresh),
@@ -556,8 +610,8 @@ sealed class HomePage : Component
             Direction = 1,
             Gap = Spacing.XL,
             Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, PlayerDock.Reserve + Spacing.XXL),
-            Children = [ GreetingBlock(name, null, svc, post, null, go), state, tail ],
-        }) with { Grow = 1f, ScrollKey = "home" };
+            Children = [ GreetingBlock(name, null, home, svc, post, null, go), state, tail ],
+        }) with { Grow = 1f, ScrollKey = "home" };   // empty/failed states are facet-agnostic - one offset for all of them
 
         // Swap one viewport for another. There is deliberately no outer ScrollView around VirtualHome: doing that would
         // measure the virtual list at its complete content extent and silently realize every group again.
@@ -574,17 +628,22 @@ sealed class HomePage : Component
             content: VirtualHome);
     }
 
-    // The feed epoch this page's rendered feed was read at. Instance state, like _facetFeed: two mounted HomePages
+    // The feed epoch this page's rendered feed was read at. Instance state, like _facetCts: two mounted HomePages
     // (tabs) each track what THEY have consumed. -1 until the first read lands, so a fresh mount never skips one.
     int _appliedFeedEpoch = -1;
 
     /// <summary>Publish a read's feed, MONOTONICALLY IN THE EPOCH rather than in arrival order. A read superseded
     /// mid-flight must not land on top of a newer one — but the read that PRODUCED a bump (the cache publishes the
     /// epoch from inside the very read that observed the rollover) is itself the freshest answer, so gating on the
-    /// loop's cancellation instead would throw away exactly the feed the bump exists to deliver.</summary>
-    void ApplyFeed(Loadable<HomeFeed> home, int epoch, HomeFeed feed)
+    /// loop's cancellation instead would throw away exactly the feed the bump exists to deliver.
+    /// <para>The second gate is the FACET. The 60 s poll reads whatever facet was current when it left; a chip tapped
+    /// while it was in flight makes that answer a different document, and painting it would repaint Home as "All"
+    /// under a lit "Music" tab. A dropped answer leaves the epoch UNADVANCED — nothing was applied, so a later
+    /// reactivation must still be free to re-read it.</para></summary>
+    void ApplyFeed(Services svc, Loadable<HomeFeed> home, int epoch, HomeFeed feed)
     {
         if (epoch < _appliedFeedEpoch) return;
+        if (!FacetMatches(svc, feed)) return;
         _appliedFeedEpoch = epoch;
         home.SetReady(feed);
     }
@@ -610,7 +669,9 @@ sealed class HomePage : Component
     {
         try
         {
-            var feed = await svc.Library.GetHomeAsync(ct).ConfigureAwait(false);
+            // The facet is a request parameter, and the poll refreshes whatever the user is LOOKING at: re-reading
+            // unfiltered here would have every 60 s tick quietly replace the faceted feed with "All".
+            var feed = await svc.Library.GetHomeAsync(svc.HomeFacet.Peek(), ct).ConfigureAwait(false);
             post(() => apply(epoch, feed));
         }
         catch (OperationCanceledException) { /* superseded / unmounted — never a page failure */ }
@@ -626,13 +687,14 @@ sealed class HomePage : Component
 
 
     // Greeting + the home facet chip row. The chips come from the SAME home response the shelves do, so they cost no
-    // extra request; selecting one writes Services.HomeFacet and asks for a refresh, which re-issues home with the
-    // `facet` variable populated (it was always in the request, hardcoded to "").
+    // extra request; selecting one writes Services.HomeFacet (the UI selection) and hands (previous, next) back here,
+    // which re-reads home with the facet as an explicit REQUEST parameter. The answer publishes into the loadable this
+    // page is bound to — passed in rather than stashed in a field — and only if the row still says that facet.
     // The greeting appears here ONLY as a fallback. Normally it is the hero band's eyebrow ("Good morning, Christos ·
     // your daylist") — the prototype has no standalone greeting block, because a page that opens with two stacked text
     // blocks before any content wastes its best row. With no hero on the page there is nowhere else for it to go, so it
     // comes back rather than being lost.
-    Element GreetingBlock(string? name, HomeFeed? feed, Services? svc, Action<Action> post,
+    Element GreetingBlock(string? name, HomeFeed? feed, Loadable<HomeFeed> home, Services? svc, Action<Action> post,
         HomeLanding? landing, Action<string, string?>? go)
     {
         // A hidden Hero must not steal the greeting — HasHero reads the PROJECTED landing, not the raw feed.
@@ -642,7 +704,7 @@ sealed class HomePage : Component
         Element? chipRow = null;
         if (feed?.Chips is { Count: > 0 } chips && svc is not null)
             chipRow = Ctx.Provide(HomeFacetChips.Props,
-                new HomeFacetChips.Model(chips, () => RefreshForFacet(svc, post)),
+                new HomeFacetChips.Model(chips, (prev, next) => RefreshForFacet(svc, home, post, prev, next)),
                 Embed.Comp(() => new HomeFacetChips()));
 
         Element? customize = go is null ? null : HomeCustomizeAffordance.Button(go);
@@ -689,19 +751,50 @@ sealed class HomePage : Component
     /// by name at all.</summary>
     static bool LooksLikeHandle(string name) => name.Length >= 20 && !name.Contains(' ');
 
-    // A facet change is a new home REQUEST, not a client-side filter: Spotify returns a different set of shelves per
-    // facet. PathfinderResource keys its cache on the request body, so each facet is its own entry rather than a stale
-    // hit on the unfiltered feed.
-    void RefreshForFacet(Services svc, Action<Action> post)
-        => _ = Task.Run(async () =>
+    // A facet change is a new home REQUEST, not a client-side filter: Spotify returns a different document per facet
+    // (Music drops the personal quick matrix, Podcasts is shows), so the facet travels as a request PARAMETER and the
+    // answer carries the facet it was read for. PathfinderResource keys its cache on the request body, so each facet is
+    // its own entry rather than a stale hit on the unfiltered feed.
+    //
+    // Exactly ONE facet read is in flight: a second tap cancels the first, so a slow "Podcasts" can never land on top
+    // of the "Music" the user has since chosen. The answer publishes only if the chip row still says this facet, and a
+    // failure is LOUD — the row is put back where it was and the user is told, because a tab left underlined over the
+    // previous facet's feed (what the old swallow-everything version did) is a page lying about what it is showing.
+    void RefreshForFacet(Services svc, Loadable<HomeFeed> home, Action<Action> post, string? previous, string? facet)
+    {
+        _facetCts?.Cancel();
+        _facetCts?.Dispose();
+        var cts = _facetCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
         {
             try
             {
-                var feed = await svc.Library.GetHomeAsync(default).ConfigureAwait(false);
-                post(() => _facetFeed?.SetReady(feed));
+                var feed = await svc.Library.GetHomeAsync(facet, cts.Token).ConfigureAwait(false);
+                post(() => { if (FacetMatches(svc, feed)) home.SetReady(feed); });
             }
-            catch { /* the previous feed stays on screen; the chip row reflects the attempted selection */ }
-        });
+            catch (OperationCanceledException) { /* a newer tap superseded this read — ITS answer is the one that lands */ }
+            catch (Exception ex)
+            {
+                WaveeLog.Instance.Warn("ui", "home.facet.failed",
+                    "home facet '" + (facet ?? "") + "' failed; keeping the previous feed: " + ex.Message);
+                post(() =>
+                {
+                    // The user moved on while this was failing — whatever they picked owns the row now, and reverting
+                    // would yank the strip out from under them.
+                    if (!string.Equals(svc.HomeFacet.Peek(), facet, StringComparison.Ordinal)) return;
+                    svc.HomeFacet.Value = previous;
+                    Toast.Show(Loc.Get(Strings.Home.FacetFailed), new ToastOptions { Severity = InfoBarSeverity.Error });
+                });
+            }
+        }, cts.Token);
+    }
+
+    /// <summary>Does this answer still belong on screen? A feed knows the facet it was READ for
+    /// (<c>HomeFeed.Facet</c>), so a superseded facet read and a stale poll answer are both measured against the ONE
+    /// thing that decides what the page is showing — the chip row's selection. A null selection is the unfiltered
+    /// feed, which the model spells "".</summary>
+    static bool FacetMatches(Services svc, HomeFeed feed)
+        => string.Equals(svc.HomeFacet.Peek() ?? "", feed.Facet, StringComparison.Ordinal);
 
     // The shell-material ownership token (see ShellMaterialState): identity for race-free last-writer-wins across a
     // navigation. Per instance, never static — two mounted HomePages must not clear each other's wash.
@@ -718,10 +811,10 @@ sealed class HomePage : Component
         if (url is { Length: > 0 }) _ = SpotifyLive.CoverColorPlane.Current.Watch(url).Value;
     }
 
-    // The live home Loadable, captured on render so the facet refresh publishes into the SAME instance this page is
-    // bound to — a facet change patches the feed in place rather than remounting the page. Instance state, not static:
-    // two mounted HomePages (tabs) must not fight over one field.
-    Loadable<HomeFeed>? _facetFeed;
+    // The in-flight facet read. Cancelled by the next chip tap and by unmount, so two racing reads can never publish
+    // in arrival order and leave the loser's feed on screen. Instance state, not static: two mounted HomePages (tabs)
+    // must not cancel each other's reads.
+    CancellationTokenSource? _facetCts;
 
     // ── the landing projection, memoized on the feed ───────────────────────────────────────────────────────────────
     // Project() walks every group and every card of the feed (per-kind aggregation, a URI dedupe set per module, the
@@ -731,7 +824,7 @@ sealed class HomePage : Component
     //
     // The feed is an immutable snapshot published by the refresh loop, so a REFERENCE hit is a content hit. Titles are
     // compared by value because Loc is live (HomeModuleCopy deliberately re-resolves per read): a language change must
-    // re-title the modules, and it is the only other input Project reads. Instance state, like _facetFeed.
+    // re-title the modules, and it is the only other input Project reads. Instance state, like _facetCts.
     HomeFeed? _landingFeed;
     HomeModuleTitles? _landingTitles;
     HomeLanding? _landing;

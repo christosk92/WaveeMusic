@@ -10,6 +10,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Features.Browse;
 using Wavee.Features.Concerts;
 using static FluentGpu.Dsl.Ui;
 
@@ -101,7 +102,9 @@ sealed class ConcertFilterBar : Component
             // Stroke OR shadow, never both statically (the pinned bar is a docked surface, not a floating card).
             BorderWidth = 1f, BorderColor = Tok.StrokeSurfaceDefault,
             Children = [ caption, scroller ],
-        }.Sticky();
+            // Docks UNDER the shell masthead, not at the viewport top: the crumb band is an unpainted overlay on that
+            // first 84 DIP, and a bar pinned at 0 sat on top of the crumb for as long as it stayed pinned.
+        }.Sticky(BrowseMastheadMetrics.Reserve);
     }
 
     // ── where ────────────────────────────────────────────────────────────────────────────────────────────────────────

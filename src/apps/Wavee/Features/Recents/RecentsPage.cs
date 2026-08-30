@@ -82,7 +82,10 @@ sealed class RecentsPage : Component
     readonly Signal<int> _shapeEpoch = new(0);
     /// <summary>The selected content-type TOKEN (wire spelling), null = "All". Never a label — the label is derived.</summary>
     readonly Signal<string?> _chip = new(null);
-    /// <summary>Exactly one disclosure is open. The wire item id is the identity; entity URIs repeat.</summary>
+    /// <summary>Exactly one disclosure is open — an accordion, on purpose (the DetailTracks.ExpandableRowSlot rule): a
+    /// second open drawer in a measured virtual list is a second reflow fighting the first for the same scroll anchor,
+    /// and the reader only ever asked "what did I play from THIS one". The wire item id is the identity; entity URIs
+    /// repeat.</summary>
     readonly Signal<string> _expandedRow = new("");
     /// <summary>The open disclosure's index in <see cref="Shape.Rows"/>. Kept beside the wire id because the measured
     /// virtual layout is indexed by the FLAT projection: when an open row is recycled offscreen, no live node remains
@@ -1248,7 +1251,7 @@ sealed class RecentsPage : Component
         int rowIndex = item.OriginalRowIndex;
         if ((uint)rowIndex >= (uint)s.Rows.Length) return;
         var row = s.Rows[rowIndex];
-        if (CanExpand(row)) ToggleExpanded(row, rowIndex);
+        if (RecentsView.CanExpand(row)) ToggleExpanded(row, rowIndex);
         else Open(row);
     }
 
@@ -1588,14 +1591,44 @@ sealed class RecentsPage : Component
         return RecentsView.OwnerSubtitle(NullIfEmpty(p.OwnerName), rawOwnerId, resolvedName);
     }
 
+    // TWO specs on TWO nodes — the DetailTracks.ExpandableRowSlot split (its comment is the full account). The ONE spec
+    // this used to be (Size | Opacity | Position on the clipping ROW) stalled for the whole 333 ms and then snapped:
+    // under SizeMode.Reflow the engine pins the node's height to the tween each tick, a cross-stretching row hands that
+    // pinned height straight back to its children, so the host's natural-target pass read the sliver as the drawer's
+    // real extent and retargeted the tween at ~18 DIP; SettleRestore then wrote `auto` back and the drawer jumped.
+    //
+    //   OUTER (DrawerReveal, the clip box) — SIZE ONLY, and a COLUMN, so its child is main-axis sized and the natural
+    //   target the host measures is the drawer's true height. Enter/Exit stay Active with no Dy/Opacity: Active &&
+    //   Reflow is the PendingEnterReflow opt-in, not a request for a translate. SuppressDescendantTransitions keeps the
+    //   rows that hydrate late from starting a second wave of geometry motion inside a surface already projecting.
+    //
+    //   INNER (DrawerPresence) — the fade + drop-in, INSIDE the clip so the content slides under a stationary window
+    //   instead of dragging the window with it. No Size channel: the outer owns height.
     static readonly LayoutTransition DrawerReveal = new(
-        TransitionChannels.Size | TransitionChannels.Opacity | TransitionChannels.Position,
+        TransitionChannels.Size,
+        MotionTok.DisclosureExpand.ToDynamics(),
+        Enter: new EnterExit(Active: true),
+        Exit: new EnterExit(Active: true),
+        ExitDynamics: MotionTok.DisclosureCollapse.ToDynamics(),
+        Size: SizeMode.Reflow,
+        Anchor: SizeAnchor.Leading,
+        SuppressDescendantTransitions: true);
+
+    static readonly LayoutTransition DrawerPresence = new(
+        TransitionChannels.Opacity | TransitionChannels.Position,
         MotionTok.DisclosureExpand.ToDynamics(),
         Enter: new EnterExit(Dy: -Spacing.S, Opacity: 0f, Active: true),
         Exit: new EnterExit(Dy: -Spacing.XS, Opacity: 0f, Active: true),
-        ExitDynamics: MotionTok.DisclosureCollapse.ToDynamics(),
-        Size: SizeMode.Reflow,
-        Anchor: SizeAnchor.Leading);
+        ExitDynamics: MotionTok.DisclosureCollapse.ToDynamics());
+
+    /// <summary>One drawer row's entrance, delayed per rendered position by <see cref="WaveeEntrance.DelayMs"/> — the
+    /// app's ONE stagger rung, capped at <see cref="WaveeEntrance.StaggerCap"/> and 0 under reduced motion. It replaces
+    /// the parent-side <c>Element.Stagger</c>, which is index × ms with NO ceiling: a "played 40" drawer authored that
+    /// way was still arriving 1.6 s after it opened. Opacity-only, so the row takes no layout FLIP from it.</summary>
+    static readonly LayoutTransition ChildReveal = new(
+        TransitionChannels.Opacity,
+        MotionTok.DisclosureExpand.ToDynamics(),
+        Enter: new EnterExit(Dy: -Spacing.XS, Opacity: 0f, Active: true));
 
     Element RowContent(RecentsRow row, RowFacts facts, int displayIndex, bool expanded,
                        PlaybackBridge? bridge = null, LibraryBridge? lib = null,
@@ -1637,7 +1670,8 @@ sealed class RecentsPage : Component
                 Children = [TrackRowContent(row, facts, displayIndex, uri, bridge, lib, acts, overlay) with { Key = "row" }],
             };
 
-        bool canExpand = CanExpand(row);
+        bool canExpand = RecentsView.CanExpand(row);
+        if (!canExpand) NoteMissingMembers(row);
         var menu = CardMenu(artUri, facts.Title ?? "", facts.Cover, sub.Length > 0 ? sub : owner, kind == RecentsEntityKind.Artist, acts, overlay);
         Element chevron = canExpand
             ? TrackRow.ExpandChevron(expanded, () => ToggleExpanded(row, displayIndex)) with { Transition = MotionTok.DisclosureChevron }
@@ -1707,11 +1741,23 @@ sealed class RecentsPage : Component
         ],
     };
 
-    static bool CanExpand(RecentsRow row)
+    /// <summary>Once per session: a group row that says "Played N" but has nothing the drawer could list, so it renders
+    /// without a chevron. Diagnostics only — every capture so far carries a header's members on the wire, and this is
+    /// what tells us if one ever folds them. No network fallback is designed in: there is no server endpoint for
+    /// "which tracks did I play from context X".</summary>
+    static bool s_noMembersLogged;
+
+    static void NoteMissingMembers(RecentsRow row)
     {
-        if (row.ChildCount <= 0 || row.ChildUris is not { Count: > 0 } children) return false;
-        for (int i = 0; i < children.Count; i++) if (children[i].Length > 0) return true;
-        return false;
+        if (s_noMembersLogged || !RecentsView.MissingMembers(row)) return;
+        s_noMembersLogged = true;
+        WaveeLog.Instance.Event(WaveeLogLevel.Info, "ui", "recents.drawer.no-members",
+            "Group row has a play count but no members to list; rendered without a chevron",
+            fields:
+            [
+                WaveeLogField.Of("itemId", row.ItemId),
+                WaveeLogField.Of("childCount", row.ChildCount),
+            ]);
     }
 
     void ToggleExpanded(RecentsRow row, int originalRowIndex)
@@ -1771,21 +1817,27 @@ sealed class RecentsPage : Component
 
     Element Drawer(RecentsRow row)
     {
-        var children = row.ChildUris!;
-        var rendered = new List<Element>(children.Count);
-        for (int i = 0; i < children.Count; i++)
+        var entries = RecentsView.DrawerEntries(row);
+        var rendered = new List<Element>(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
         {
-            string uri = children[i];
-            if (uri.Length == 0) continue;
+            var member = entries[i];
+            if (member.Uri.Length == 0) continue;
+            // The number cell shows the RENDERED position, captured per iteration. Embed.Comp's factory runs at mount —
+            // after this loop — so a captured loop variable read entries.Count in every child ("3", "3" for two rows),
+            // and the wire index would skip over the empty uris continued above anyway. Keys stay on the wire index:
+            // that is the stable identity across a re-render, the ordinal is not.
+            int slot = rendered.Count;
+            string uri = member.Uri;
+            long playedAt = member.PlayedAtMs;
             rendered.Add(new BoxEl
             {
                 Key = "child-wrap:" + row.ItemId + ":" + i,
                 Direction = 1,
-                Enter = new EnterExit(Dy: -Spacing.XS, Opacity: 0f, Active: true),
-                Transition = MotionTok.DisclosureExpand,
+                Animate = ChildReveal with { DelayMs = WaveeEntrance.DelayMs(slot) },
                 Children =
                 [
-                    Embed.Comp(() => new HydratedChildRow(this, uri, i)) with
+                    Embed.Comp(() => new HydratedChildRow(this, uri, slot, playedAt)) with
                     { Key = "child:" + row.ItemId + ":" + i },
                 ],
             });
@@ -1796,14 +1848,11 @@ sealed class RecentsPage : Component
         // WaveeAccent's AccentDecor role, "section spines"; the plan's adopted recommendation is literally "spine
         // may take accent") — unlike the chevron beside it (stays Tok.TextSecondary) or DayHeader's plain divider
         // rule above it (stays Tok.StrokeDividerDefault, genuine chrome). Prop-bound so it glides with everything
-        // else on a section crossing.
-        return new BoxEl
+        // else on a section crossing. It lives in a ROW one level under the presence node, never on the reflow node
+        // itself: the reflow box must be a column whose child is main-axis sized (see DrawerReveal).
+        Element body = new BoxEl
         {
-            Key = "drawer:" + row.ItemId,
-            Direction = 0, MinWidth = 0f, Shrink = 0f, ClipToBounds = true,
-            AlignItems = FlexAlign.Stretch,
-            Margin = new Edges4(Spacing.XXL + Spacing.S, Spacing.XXS, 0f, Spacing.S),
-            Animate = DrawerReveal,
+            Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             Children =
             [
                 new BoxEl
@@ -1815,8 +1864,27 @@ sealed class RecentsPage : Component
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 0f,
                     Padding = new Edges4(Spacing.L + Spacing.S, 0f, Spacing.S, 0f),
-                    Stagger = WaveeMotion.StaggerMs,
                     Children = rendered.ToArray(),
+                },
+            ],
+        };
+        return new BoxEl
+        {
+            Key = "drawer:" + row.ItemId,
+            Direction = 1, MinWidth = 0f, Shrink = 0f, ClipToBounds = true,
+            Margin = new Edges4(Spacing.XXL + Spacing.S, Spacing.XXS, 0f, Spacing.S),
+            Animate = DrawerReveal,
+            Children =
+            [
+                // The presence layer, INSIDE the clip (see DrawerReveal/DrawerPresence). Stable key so it is one node
+                // for the drawer's whole life: it enters and exits with the drawer and never re-mounts when a child
+                // row hydrates underneath it.
+                new BoxEl
+                {
+                    Key = "drawer-presence:" + row.ItemId,
+                    Direction = 1, MinWidth = 0f,
+                    Animate = DrawerPresence,
+                    Children = [body],
                 },
             ],
         };
@@ -1827,9 +1895,10 @@ sealed class RecentsPage : Component
         readonly RecentsPage _page;
         readonly string _initialUri;
         readonly int _index;
-        public HydratedChildRow(RecentsPage page, string initialUri, int index)
+        readonly long _playedAtMs;
+        public HydratedChildRow(RecentsPage page, string initialUri, int index, long playedAtMs)
         {
-            _page = page; _initialUri = initialUri; _index = index;
+            _page = page; _initialUri = initialUri; _index = index; _playedAtMs = playedAtMs;
         }
 
         public override Element Render()
@@ -1846,7 +1915,7 @@ sealed class RecentsPage : Component
                 if (resolved.Title is { Length: > 0 }) facts.SetReady(resolved);
                 else facts.SetPending(default);
             }, DepKey.From(epoch));
-            return Skel.Region(facts, resolved => _page.ChildRowContent(_initialUri, resolved, _index, bridge, lib, acts, overlay),
+            return Skel.Region(facts, resolved => _page.ChildRowContent(_initialUri, resolved, _index, _playedAtMs, bridge, lib, acts, overlay),
                 reveal: SkelReveal.FadeOnly, smoothResize: false);
         }
     }
@@ -1854,43 +1923,63 @@ sealed class RecentsPage : Component
     static readonly ColumnSet ChildCols = new(Album: false, By: false, Date: false, Video: false, Plays: false,
         Heart: true, Thumb: true, Actions: true);
     static readonly ColumnSet ChildColsNoArt = ChildCols with { Thumb = false };
+    /// <summary>The drawer row's trailing lane is [played-at · "…"] — the parent card's own trailing order minus the
+    /// chevron — so it rides in the grid's actions track, widened by a FIXED caption lane: every drawer row's "…" lines
+    /// up whether or not the wire gave that member an instant (a folded-members fallback entry has none).</summary>
+    const float ChildWhenCol = 60f;
+    const float ChildActionsCol = 40f + Spacing.M + ChildWhenCol;
     static readonly TrackSize[] ChildTracks =
-        [TrackSize.Px(30f), TrackSize.Px(TrackRow.HeartCol), TrackSize.Px(TrackRow.ThumbSize), TrackSize.Star(1f), TrackSize.Px(52f), TrackSize.Px(40f)];
+        [TrackSize.Px(30f), TrackSize.Px(TrackRow.HeartCol), TrackSize.Px(TrackRow.ThumbSize), TrackSize.Star(1f), TrackSize.Px(52f), TrackSize.Px(ChildActionsCol)];
     static readonly TrackSize[] ChildTracksNoArt =
-        [TrackSize.Px(30f), TrackSize.Px(TrackRow.HeartCol), TrackSize.Star(1f), TrackSize.Px(52f), TrackSize.Px(40f)];
+        [TrackSize.Px(30f), TrackSize.Px(TrackRow.HeartCol), TrackSize.Star(1f), TrackSize.Px(52f), TrackSize.Px(ChildActionsCol)];
 
-    Element ChildRowContent(string uri, RowFacts facts, int index,
+    Element ChildRowContent(string uri, RowFacts facts, int index, long playedAtMs,
                             PlaybackBridge? bridge, LibraryBridge? lib, ActionServices? acts, IOverlayService? overlay)
     {
         bool showArtwork = !AppearancePrefs.TrackArtworkHidden(_svc?.Settings);
         return BindTrackRow(ResolveTrack(uri, facts), index,
             showArtwork ? ChildCols : ChildColsNoArt,
             showArtwork ? ChildTracks : ChildTracksNoArt,
-            ChildRowHeight, showTrackArtist: true, bridge, lib, acts, overlay);
+            ChildRowHeight, showTrackArtist: true, bridge, lib, acts, overlay,
+            actionsCell: ChildActions(playedAtMs));
+    }
+
+    /// <summary>When this member was played, in the card's own vocabulary (<see cref="RecentsView.PlayedAt(long, DateTimeOffset, CultureInfo)"/>:
+    /// today → the time, which is the one fact a drawer adds over "Played N"), beside the row's "…". An unknown instant
+    /// renders nothing — the lane keeps its width so the buttons stay aligned.</summary>
+    Element ChildActions(long playedAtMs)
+    {
+        string when = RecentsView.PlayedAt(playedAtMs, _now, _culture);
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Spacing.M, MinWidth = 0f,
+            Children = when.Length == 0
+                ? [TrackRow.MoreButton(true)]
+                : [Caption(when) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }, TrackRow.MoreButton(true)],
+        };
     }
 
     Element SavedArtwork(RecentsRow row, Element context)
     {
-        var children = row.ChildUris;
+        // The same members-first source the pump's cap-2 CollectChildUris hydrates, so the two covers it asked for are
+        // the two it paints.
+        var children = RecentsView.DrawerEntries(row);
         var layers = new List<Element>(3);
-        if (children is not null)
+        int shown = 0;
+        for (int i = 0; i < children.Count && shown < 2; i++)
         {
-            int shown = 0;
-            for (int i = 0; i < children.Count && shown < 2; i++)
+            string uri = children[i].Uri;
+            if (uri.Length == 0) continue;
+            var facts = FactsFor(uri);
+            float x = shown == 0 ? Spacing.M : Spacing.L;
+            layers.Add(new BoxEl
             {
-                string uri = children[i];
-                if (uri.Length == 0) continue;
-                var facts = FactsFor(uri);
-                float x = shown == 0 ? Spacing.M : Spacing.L;
-                layers.Add(new BoxEl
-                {
-                    Width = WaveeSize.Thumb40, Height = WaveeSize.Thumb40,
-                    Transform = Affine2D.Translation(x, 0f),
-                    Children = [Surfaces.Artwork(facts.Cover, uri.GetHashCode() & 0x7fffffff,
-                        WaveeSize.Thumb40, WaveeSize.Thumb40, Radii.Control)],
-                });
-                shown++;
-            }
+                Width = WaveeSize.Thumb40, Height = WaveeSize.Thumb40,
+                Transform = Affine2D.Translation(x, 0f),
+                Children = [Surfaces.Artwork(facts.Cover, uri.GetHashCode() & 0x7fffffff,
+                    WaveeSize.Thumb40, WaveeSize.Thumb40, Radii.Control)],
+            });
+            shown++;
         }
         layers.Add(new BoxEl
         {
@@ -1936,7 +2025,8 @@ sealed class RecentsPage : Component
     }
 
     BoxEl BindTrackRow(Track track, int displayIndex, ColumnSet cols, TrackSize[] sizes, float rowH, bool showTrackArtist,
-                         PlaybackBridge? bridge, LibraryBridge? lib, ActionServices? acts, IOverlayService? overlay)
+                         PlaybackBridge? bridge, LibraryBridge? lib, ActionServices? acts, IOverlayService? overlay,
+                         Element? actionsCell = null)
     {
         var st = TrackRow.StateOf(bridge, lib, track);
         Element title = WaveeType.TrackTitle(track.Title) with
@@ -1947,7 +2037,7 @@ sealed class RecentsPage : Component
         Element grid = TrackRow.Grid(track, displayIndex, st, cols, sizes, rowH, title, showTrackArtist, _go,
             onPlay: () => TrackRow.Invoke(bridge, track, () => Play(track.Uri)),
             onLike: track.Uri.Length > 0 ? () => lib?.ToggleSaved(track.Uri, track.Title) : null,
-            actionsCell: TrackRow.MoreButton(true));
+            actionsCell: actionsCell ?? TrackRow.MoreButton(true));
         BoxEl row = new BoxEl
         {
             Direction = 1, MinWidth = 0f,

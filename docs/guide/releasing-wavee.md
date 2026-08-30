@@ -124,6 +124,8 @@ Review `artifacts\release\<semver>-dryrun\`:
 - [ ] `whatsnew-index.json` — newest-first, this release prepended to whatever the feed already had
 - [ ] `RELEASE_BODY.md` — reads like a release, not like a diff
 - [ ] the media files, flat, by basename; `THIRD-PARTY-NOTICES.txt`; `MANIFEST.txt` (sha256 over every asset)
+- [ ] `Wavee-<quad>-win-arm64-symbols.zip` and `Wavee-<quad>-win-x64-symbols.zip` — each holding `Wavee.pdb`,
+      `Wavee.map.xml` and `SYMBOLS.txt` (§5b); the unzipped copies sit under `symbols\<quad>\win-<arch>\`
 - [ ] `git status` clean
 
 Then **install the arm64 package** (`Add-AppxPackage artifacts\release\<semver>-dryrun\Wavee_<quad>_arm64.msix`) and
@@ -153,11 +155,11 @@ That is the whole command. The run is a ledger of phases; each one records itsel
 | 1a | `bump` | `<WaveeBuild> + 1`; `CHANGELOG.md` `unreleased` → today (UTC); asserts the diff touched **only** those two files |
 | 2 | `notes` | `Wavee.ReleaseTool validate` → `<staging>\notes\` (`whatsnew.json`, `whatsnew-index.json`, `RELEASE_BODY.md`, `store-listing.txt`, `media/`). Reads the feed's published `whatsnew-index.json` first — a 404 means "first release", and **any other failure stops the run**: phase 10 clobbers that file, so a one-entry index would erase the published history. Exit 2 also when a referenced issue/PR could not be read from GitHub (`--allow-unresolved` ships the authored title/state anyway). On failure it restores both files and un-marks the bump |
 | 1b | `tag` | commits those two files (`release: Wavee <semver> <codename> (build <quad>)`) and creates the annotated tag — **locally** |
-| 3 | `packArm64` | `pack-wavee-msix.ps1 -Arch arm64 … -NoSign`, then asserts the package's identity name / version / arch / publisher |
-| 4 | `packX64` | the same for x64 (or `-X64Msix <path>` to adopt a prebuilt package) |
+| 3 | `packArm64` | `pack-wavee-msix.ps1 -Arch arm64 … -NoSign`, then asserts the package's identity name / version / arch / publisher — and that `Wavee-<quad>-win-arm64-symbols.zip` (the PDB of exactly that exe, §5b) landed next to it |
+| 4 | `packX64` | the same for x64 (or `-X64Msix <path>` to adopt a prebuilt package; its symbols zip is adopted from next to it when present, with a warning otherwise) |
 | 5 | `sign` | **one** Azure Trusted Signing `signtool` call over every `.msix`, then verifies each |
 | 6 | `appinstaller` | one `.appinstaller` per architecture from the template; re-parses each to prove the substitution |
-| 7 | `stage` | flattens the assets into the staging folder and writes `MANIFEST.txt` |
+| 7 | `stage` | flattens the assets into the staging folder and writes `MANIFEST.txt`; the symbols zips are version-release assets like the packages (never feed assets) |
 | 8 | `push` | pushes the branch, then the tag — refuses unless `origin/<branch> == HEAD~1` |
 | 9 | `release` | `gh release`: draft → upload → publish — always `--latest=false` (`releases/latest` belongs to the gallery's feed) |
 | 10 | `feed` | repoints `wavee-stable` (and `wavee-beta` if it exists) — **always last**: this is the moment installed clients see the release |
@@ -195,8 +197,9 @@ Get-WaveeFeedVersion christosk92/WaveeMusic wavee-stable x64
 gh release view wavee-vX.Y.Z --repo christosk92/WaveeMusic --json assets -q '.assets[].name'
 ```
 
-Expect on the **version** release: `Wavee_<quad>_arm64.msix`, `Wavee_<quad>_x64.msix`, `whatsnew.json`, every media
-file, `THIRD-PARTY-NOTICES.txt`, `MANIFEST.txt`. On **`wavee-stable`**: `Wavee.arm64.appinstaller`,
+Expect on the **version** release: `Wavee_<quad>_arm64.msix`, `Wavee_<quad>_x64.msix`,
+`Wavee-<quad>-win-arm64-symbols.zip`, `Wavee-<quad>-win-x64-symbols.zip`, `whatsnew.json`, every media file,
+`THIRD-PARTY-NOTICES.txt`, `MANIFEST.txt`. On **`wavee-stable`**: `Wavee.arm64.appinstaller`,
 `Wavee.x64.appinstaller`, `whatsnew-index.json` — and nothing else.
 
 Then, on a **clean VM** (a machine that has never had Wavee installed) — the only x64 observation we get:
@@ -209,6 +212,62 @@ Then, on a **clean VM** (a machine that has never had Wavee installed) — the o
 
 **Once per minor**, also verify the update path end to end (§9): install the previous release, publish the next one,
 and watch a real client move. An update that never arrives is indistinguishable from no release at all.
+
+---
+
+## 5b. Symbolicating a crash report
+
+A shipped build is NativeAOT with `StackTraceSupport=false` (`src/apps/Wavee/Wavee.Publish.props`), so a crash report
+(`%LOCALAPPDATA%\Wavee\logs\crash-report-<stamp>.txt`, or the package's `LocalCache` equivalent) prints every frame as
+an offset from the module base and nothing else:
+
+```
+   at Wavee!<BaseAddress>+0x7b1fc6
+```
+
+That is why **every package ships with its symbols**. `pack-wavee-msix.ps1` always publishes with
+`/p:NativeDebugSymbols=true /p:DebugType=portable /p:IlcGenerateMapFile=true` (ILC `-g` + `link.exe /DEBUG`; the
+managed portable PDB is what gives the native PDB its line numbers), moves the results out of the layout **before** the
+package is staged, and zips them next to the `.msix`:
+
+| File | Where it comes from | What it is for |
+|---|---|---|
+| `Wavee.pdb` | `publish\Wavee.pdb` (the ILC targets copy it there from `bin\Release\net10.0\<rid>\native\`) | the **only** thing that resolves an RVA; matches exactly one `Wavee.exe` |
+| `Wavee.map.xml` | `obj\Release\net10.0\<rid>\native\Wavee.map.xml` (ILC `--map`, never in the publish folder) | names, sizes and content hashes of every emitted node — **no addresses**; use it to see which methods changed between two builds |
+| `SYMBOLS.txt` | written by the pack script | the build stamp + the sha256/size of the exe the PDB belongs to |
+
+Local: `<staging>\symbols\<quad>\win-<arch>\` (a ready-made WinDbg `.sympath`) and
+`<staging>\Wavee-<quad>-win-<arch>-symbols.zip`. Published: the zip is a **version-release** asset beside the `.msix`
+(phase 7 stages it, phase 9 uploads it, phase 11 verifies its size). The layout copy still purges `*.pdb`, so a
+package can never carry one.
+
+The report header names the zip to take — `commit=`, `quad=`, `arch=` — and the `module=<path> base=0x… size=0x…`
+line plus the `Frames (RVA)` section (one offset per line, innermost first, inner-exception frames included) are what
+you feed to the debugger:
+
+```powershell
+# 1. the matching symbols + package (an .msix is a zip; Wavee.exe is at its root)
+gh release download wavee-vX.Y.Z --repo christosk92/WaveeMusic -D sym `
+    -p "Wavee-<quad>-win-<arch>-symbols.zip" -p "Wavee_<quad>_<arch>.msix"
+Expand-Archive sym\Wavee-<quad>-win-<arch>-symbols.zip sym
+Copy-Item sym\Wavee_<quad>_<arch>.msix sym\pkg.zip; Expand-Archive sym\pkg.zip sym\pkg
+(Get-FileHash sym\pkg\Wavee.exe).Hash.ToLower()          # must equal the sha256 in sym\SYMBOLS.txt
+
+# 2. resolve each RVA line of the report (cdb/WinDbg from the Windows SDK "Debugging Tools"; -lines for file:line)
+cdb -lines -z sym\pkg\Wavee.exe -y sym -c "ln Wavee+0x7b1fc6; ln Wavee+0x1b616c; q"
+#    -> Wavee!Wavee_Features_Detail_DetailPage__MapPlaylist+0x3e  (the nearest symbol at or below the offset)
+#    for the source line:  cdb -lines -z sym\pkg\Wavee.exe -y sym -c "u Wavee+0x7b1fc6 L1; q"
+```
+
+Things to know:
+
+- `ln Wavee+0x<rva>` needs the module name, not the base; the report's `base=` only matters when you hold an
+  **absolute** address (a WER dump, a `!analyze` line): `rva = address - base`.
+- `IlcFoldIdenticalMethodBodies=true` folds byte-identical bodies, so a frame can name a *sibling* method with the
+  same code; the callers around it disambiguate. The ILC targets pass `/OPT:REF /OPT:ICF` with or without `/DEBUG`,
+  so a symbols build has the same code layout as a symbol-less one — which is also why a **release that shipped
+  without a zip** (0.2.0.1) can be resolved by rebuilding its tag with the same SDK and the same three properties.
+- A JIT (`-NoAot`) package has only the managed PDB; its frames already carry names.
 
 ---
 

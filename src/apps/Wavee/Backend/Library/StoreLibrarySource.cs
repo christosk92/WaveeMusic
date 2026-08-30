@@ -26,6 +26,7 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
     readonly IStore _store;
     readonly SwitchableEntityHydrator _hydration;
     readonly IOnlineCatalog _online;
+    readonly WaveeLogger _log;
 
     /// <summary>Liked Songs' canonical collection uri — the entity the Liked surface's rung is measured on.</summary>
     const string LikedCollectionUri = "spotify:collection:tracks";
@@ -63,11 +64,14 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
     /// so this class no longer holds a service, a dependency map from user to playlists, or a subscription whose
     /// callback <c>store.Bump</c>ed those playlists — a READ source writing to the store to fake a change notification
     /// for data the store did not hold. A profile that lands late now repaints through <c>IStore.Changes</c>.</remarks>
-    public StoreLibrarySource(IStore store, SwitchableEntityHydrator hydration, IOnlineCatalog online)
+    /// <param name="log">Diagnostics only (default = the no-op logger): the Liked Songs join reports its member/hydrated
+    /// split so a count that disagrees with the server can be told apart from a hydration gap.</param>
+    public StoreLibrarySource(IStore store, SwitchableEntityHydrator hydration, IOnlineCatalog online, WaveeLogger log = default)
     {
         _store = store;
         _hydration = hydration ?? throw new ArgumentNullException(nameof(hydration));
         _online = online ?? throw new ArgumentNullException(nameof(online));
+        _log = log;
         _sub = _store.Changes.Subscribe(new ChangeObserver(this));
     }
 
@@ -336,24 +340,22 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
     }
 
     // Liked Songs is an ADD-ORDERED collection (newest first — the Spotify default) with the add date a first-class,
-    // sortable column: join the timestamped set and stamp AddedAt onto the read-model copy (same shape JoinMembership
-    // gives playlist rows), so the detail surface derives the Date-added column + default sort from the data itself.
+    // sortable column: join the timestamped set (LikedMembershipJoin — an OUTER join: every member is a row, an
+    // unhydrated one a titleless Placeholder), so the detail surface derives the Date-added column + default sort from
+    // the data itself and its header count IS the membership count — the same number the sidebar, home and stats read
+    // from SavedUris("liked"). A hydration gap therefore shows as shimmer rows, never as a smaller library.
     public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
     {
-        var items = SortedByAddedDesc(_store.SavedItems("liked"));
-        var list = new List<Track>(items.Count);
-        for (int i = 0; i < items.Count; i++)
-        {
-            var t = _store.GetTrack(items[i].Uri);
-            if (t is null) continue;   // offline-first inner join: a not-yet-hydrated member has no row until it lands
-            list.Add(items[i].AddedAtMs > 0 ? t with { AddedAt = DateTimeOffset.FromUnixTimeMilliseconds(items[i].AddedAtMs) } : t);
-        }
+        var rows = LikedMembershipJoin.Join(SortedByAddedDesc(_store.SavedItems("liked")), _store.GetTrack);
+        _log.Event(WaveeLogLevel.Debug, "library.liked.rows", "Liked Songs rows joined",
+            fields: [WaveeLogField.Of("members", rows.MemberCount), WaveeLogField.Of("hydrated", rows.HydratedCount)]);
         // Liked is a COLLECTION: its rung is about its members, so one background ask replaces the two fire-and-forget
         // hooks this used to fan out (paged member hydrate + video/adornment detect). CollectionHydration pages the
-        // saved set at 300 and asks for the LikedSongs trait bundle itself — see design §2.3.
+        // saved set at 300 and asks for the LikedSongs trait bundle itself — see design §2.3. It is also what turns a
+        // placeholder row into a real one: the store change it lands re-runs this read.
         if (level != HydrationLevel.None)
             _ = _hydration.EnsureAsync(LikedCollectionUri, HydrationLevel.Open, BackgroundCollectionAsk, ct);
-        return Task.FromResult<IReadOnlyList<Track>>(list);
+        return Task.FromResult(rows.Tracks);
     }
 
     public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default)
@@ -438,9 +440,9 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
         return built;
     }
 
-    // Both suggest shapes are best-effort chrome on a keystroke: a failure degrades to "no suggestions" rather than
-    // surfacing an error under the omnibar, and offline the seam answers empty. Cancellation still propagates — a
-    // superseded keystroke is not a failure.
+    // The plain suggest shape is best-effort chrome on a keystroke: a failure degrades to "no suggestions" rather than
+    // surfacing an error, and offline the seam answers empty. Cancellation still propagates — a superseded keystroke
+    // is not a failure.
     public async Task<IReadOnlyList<string>> SuggestAsync(string query, CancellationToken ct = default)
     {
         var q = query.Trim();
@@ -450,13 +452,14 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
         catch { return Array.Empty<string>(); }
     }
 
+    // The rich shape is the omnibar's dropdown, and there a swallowed transport failure is indistinguishable from a
+    // genuine "no results" — the box flashed "No results found" on a keystroke whose fetch had actually failed. So this
+    // one PROPAGATES: the omnibar owns the distinction ("Couldn't load" vs empty) and cancellation keeps its meaning.
     public async Task<SearchSuggestions> SuggestRichAsync(string query, CancellationToken ct = default)
     {
         var q = query.Trim();
         if (q.Length == 0) return SearchSuggestions.Empty;
-        try { return await _online.SuggestRichAsync(q, ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) { throw; }
-        catch { return SearchSuggestions.Empty; }
+        return await _online.SuggestRichAsync(q, ct).ConfigureAwait(false);
     }
 
     // A home built from the synced library without appending a second library tail: pinned jump-back-in quick picks
@@ -467,21 +470,22 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
     // synced library is still resident, so the three shelves it can always build — "Your playlists" / "Your albums" /
     // "Your artists" — are re-emitted as the FALLBACK. They are never appended when live modules landed: that second
     // library tail is exactly what the section-owned Home replaced.
-    public async Task<HomeContribution> GetHomeAsync(CancellationToken ct = default)
+    //
+    // …and every word of that is the UNFILTERED feed's story. A facet ("music-chip", "podcasts-chip", …) asks the
+    // server for a DIFFERENT document, so both local contributions are off — see the two notes inside.
+    public async Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default)
     {
+        bool faceted = facet is { Length: > 0 };
         var playlists = await GetPlaylistsAsync(ct).ConfigureAwait(false);
         int likedCount = _store.SavedUris("liked").Count;
 
         var groups = new List<HomeGroup>();
 
-        var quick = new List<HomeCard>();
-        if (likedCount > 0)
-            quick.Add(new HomeCard("spotify:collection:tracks", Loc.Get(Strings.Detail.LikedSongs),
-                Strings.Detail.SongCount(likedCount), null, HomeCardKind.Liked));
-        for (int i = 0; i < playlists.Count && quick.Count < 9; i++)
-            quick.Add(new HomeCard(playlists[i].Uri, playlists[i].Name, null, playlists[i].Cover, HomeCardKind.Playlist, playlists[i].MosaicTiles));
+        // The personal quick matrix is the stable first module of the UNFILTERED home only. A facet is a different
+        // document (Music drops recents/shows/books; Podcasts is shows) and Spotify does not re-inject the user's
+        // playlists into it — neither do we. Re-prepending it was why Music looked like All at the fold.
+        var quick = faceted ? null : QuickPicks(playlists, likedCount);
 
-        // The personal quick matrix is the stable first Home module. Pathfinder editorial/personalized groups follow.
         IReadOnlyList<HomeChip>? chips = null;
         string greeting = "";
         IReadOnlyList<HomeSection>? liveSections = null;
@@ -489,15 +493,21 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
         // A null answer is "no live Home" (logged out / no online catalog): the chip row is NOT pinned or carried in
         // that case — an offline feed has no facets to filter — which is exactly what the absent hook used to mean.
         LiveHomeResult? live = null;
-        try { live = await _online.GetHomeAsync(ct).ConfigureAwait(false); }
+        try { live = await _online.GetHomeAsync(facet, ct).ConfigureAwait(false); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
+            // A FACETED read has no local fallback: the library shelves are the unfiltered feed's degraded shape, and
+            // serving them under "Podcasts" is a lie. Fail loud; the page keeps the previous feed and says so.
+            if (faceted) throw;
             // Editorial Home is best-effort, but never SILENT: swallowed, this is indistinguishable from an account
             // the server has no modules for, and the only visible symptom is a Home that quietly lost its shelves.
             WaveeLog.Instance.Warn("library", "home.live.failed",
                 "live home fetch failed; falling back to the library shelves: " + ex.Message);
         }
+        // …and "offline" is the same lie by a quieter route: there is no such thing as a locally-computed "Podcasts".
+        if (faceted && live is null)
+            throw new InvalidOperationException("no live home for facet '" + facet + "' (offline)");
         if (live is { } feed)
         {
             liveGroups.AddRange(feed.Groups);
@@ -511,16 +521,29 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
             liveSections = feed.Sections;
         }
 
-        if (quick.Count > 0)
+        if (quick is { Count: > 0 })
             groups.Add(new HomeGroup(HomeGroupKind.QuickGrid, Loc.Get(Strings.Home.JumpBackIn), quick));
         groups.AddRange(liveGroups);
 
         // The degraded-session fallback (see the note on this method). Albums/artists are joined lazily — a healthy live
-        // session never pays for two library reads it will not use.
-        if (liveGroups.Count == 0)
+        // session never pays for two library reads it will not use. Never under a facet: an empty faceted document is
+        // the server's own answer, and answering it with the user's playlists is the same lie as the failure branch.
+        if (!faceted && liveGroups.Count == 0)
             await AddLibraryShelvesAsync(groups, playlists, ct).ConfigureAwait(false);
 
         return new HomeContribution(groups, Priority: 100, Chips: chips, Greeting: greeting, Sections: liveSections);
+    }
+
+    // "Jump back in": Liked Songs first (when there are any), then the head of the rootlist, capped at nine tiles.
+    static List<HomeCard> QuickPicks(IReadOnlyList<PlaylistSummary> playlists, int likedCount)
+    {
+        var quick = new List<HomeCard>();
+        if (likedCount > 0)
+            quick.Add(new HomeCard("spotify:collection:tracks", Loc.Get(Strings.Detail.LikedSongs),
+                Strings.Detail.SongCount(likedCount), null, HomeCardKind.Liked));
+        for (int i = 0; i < playlists.Count && quick.Count < 9; i++)
+            quick.Add(new HomeCard(playlists[i].Uri, playlists[i].Name, null, playlists[i].Cover, HomeCardKind.Playlist, playlists[i].MosaicTiles));
+        return quick;
     }
 
     // The offline/failed-session library tail. Kinded Shelf — the deliberate "conventional shelf" fallback of

@@ -26,6 +26,25 @@ public class AggregateCatalogSearchTests
         Assert.Equal("spotify:genre:sleep", genre.Uri);
     }
 
+    // The facet is a REQUEST parameter, not ambient state, so the aggregate has exactly two jobs with it: hand it to
+    // every source it fans out to, and stamp it on the merged feed so the page can tell a late answer for a facet the
+    // user has already left from the one it is waiting for. null ("no facet") and "" are the same unfiltered feed.
+    [Fact]
+    public async Task GetHomeAsync_ForwardsTheFacetToEverySource_AndStampsItOnTheFeed()
+    {
+        var online = new SearchMetaSource(SearchResults.Empty);
+        var cat = new AggregateCatalog(new SourceRegistry(new ISource[] { new FakeSource(), online }));
+
+        var feed = await cat.GetHomeAsync("music-chip");
+
+        Assert.Equal("music-chip", online.LastFacet);
+        Assert.Equal("music-chip", feed.Facet);
+
+        var unfiltered = await cat.GetHomeAsync(null);
+        Assert.Null(online.LastFacet);
+        Assert.Equal("", unfiltered.Facet);
+    }
+
     /// <summary>Catalog stub that answers search with a canned payload and otherwise behaves like
     /// <see cref="FakeSource"/> so the aggregate can concat-merge the four core collections.</summary>
     sealed class SearchMetaSource : ICatalogSource
@@ -34,6 +53,9 @@ public class AggregateCatalogSearchTests
         readonly SearchResults _payload;
 
         public SearchMetaSource(SearchResults payload) => _payload = payload;
+
+        /// <summary>The facet of the last home read this source was asked for — null until it is asked.</summary>
+        public string? LastFacet { get; private set; }
 
         public string Id => "search-meta";
         public bool Owns(string uri) => false;
@@ -59,8 +81,11 @@ public class AggregateCatalogSearchTests
             => _inner.GetLikedSongsAsync(level, ct);
         public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default)
             => Task.FromResult(_payload);
-        public Task<HomeContribution> GetHomeAsync(CancellationToken ct = default)
-            => _inner.GetHomeAsync(ct);
+        public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default)
+        {
+            LastFacet = facet;
+            return _inner.GetHomeAsync(facet, ct);
+        }
         public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default)
             => _inner.GetStatsAsync(ct);
     }

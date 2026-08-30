@@ -475,7 +475,10 @@ public sealed class PlaylistFetcher
             CanEditMetadata: cap?.CanEditMetadata ?? false,
             IsCollaborative: attr.HasCollaborative && attr.Collaborative,
             IsOwner: effectiveOwner,
-            CanAdministratePermissions: canAdmin || isOwner);
+            CanAdministratePermissions: canAdmin || isOwner,
+            // A reply without the block says nothing about rights; the all-false defaults above are placeholders, not
+            // a revocation, and the page's notice rule reads this flag before it reads CanView.
+            Known: cap is not null);
     }
 
     // The playlist cover: the server's pre-sized URLs first (largest), else the raw picture file id → the image CDN.

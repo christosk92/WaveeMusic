@@ -132,8 +132,11 @@ public sealed record HomeChip(string Id, string Label, IReadOnlyList<HomeChip> S
 /// <summary>What a live (server) home fetch returns to a catalog source: the editorial groups plus the facet chip row
 /// plus the server's own greeting. Chips are null when the server sent none — the source then contributes groups only.
 /// <paramref name="Greeting"/> is empty for a source that has no greeting to offer.</summary>
+/// <param name="Facet">The <c>homeChips[].id</c> this result was READ for; "" = the unfiltered feed. The facet is a
+/// REQUEST parameter, so the answer carries the question back and a stale in-flight read can be told apart from the
+/// one the current chip selection asked for.</param>
 public sealed record LiveHomeResult(IReadOnlyList<HomeGroup> Groups, IReadOnlyList<HomeChip>? Chips,
-    string Greeting = "", IReadOnlyList<HomeSection>? Sections = null)
+    string Greeting = "", IReadOnlyList<HomeSection>? Sections = null, string Facet = "")
 {
     public static readonly LiveHomeResult Empty = new(System.Array.Empty<HomeGroup>(), null);
 }
@@ -148,8 +151,10 @@ public sealed record HomeContribution(IReadOnlyList<HomeGroup> Groups, int Prior
 
 /// <summary>The finished, merged Home model: greeting, typed presentation groups, facet chips, and the ordered section
 /// ledger used by drill-in pages. <paramref name="Chips"/> is empty for sources without facets.</summary>
+/// <param name="Facet">The <c>homeChips[].id</c> this feed was READ for; "" = the unfiltered feed. A rendered feed can
+/// be asked which facet produced it, so a stale poll answer can never land under a newer chip.</param>
 public sealed record HomeFeed(string Greeting, IReadOnlyList<HomeGroup> Groups,
-    IReadOnlyList<HomeChip>? Chips = null, IReadOnlyList<HomeSection>? Sections = null)
+    IReadOnlyList<HomeChip>? Chips = null, IReadOnlyList<HomeSection>? Sections = null, string Facet = "")
 {
     public static readonly HomeFeed Empty = new("", System.Array.Empty<HomeGroup>());
 }

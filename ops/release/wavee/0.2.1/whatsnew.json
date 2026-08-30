@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.2.1",
+  "packageVersion": "",
+  "name": "Breaker",
+  "tagline": "A bugfix round for Breaker: tabs, search, queue, Liked Songs sync and a dozen rough edges.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "liked-songs-sync",
+      "title": "Liked Songs stays in sync",
+      "body": "A truncated snapshot could quietly drop your newest likes and never get them back. Snapshots are now verified before anything is removed, the collection is reconciled against Spotify at start and on reconnect, and existing installs repair themselves on first launch.",
+      "kind": "fixed",
+      "issues": []
+    },
+    {
+      "id": "tabs-and-crumbs",
+      "title": "Tabs show their page",
+      "body": "Clicking a tab now switches the content with it, and a page opened from Home says so in its breadcrumb.",
+      "kind": "fixed",
+      "issues": []
+    },
+    {
+      "id": "queue-reorder",
+      "title": "Reorder anything upcoming",
+      "body": "Next in queue, Next up and Autoplay rows can all be dragged within their section, and a queue drag can no longer end up adding the track to a playlist.",
+      "kind": "fixed",
+      "issues": []
+    },
+    {
+      "id": "icons-everywhere",
+      "title": "Icons on every Windows",
+      "body": "The icon font ships inside Wavee, so the Tune and What's new icons no longer render as boxes on Windows 10.",
+      "kind": "fixed",
+      "issues": []
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "contributors": [],
+  "generatedAt": "",
+  "media": []
+}

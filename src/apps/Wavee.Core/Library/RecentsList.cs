@@ -50,10 +50,17 @@ public sealed record RecentsItem(
     bool HasChildrenGroupId,
     RecentsGroupInfo? Group);
 
+/// <summary>One collapsed member behind a group header — the <c>group_id_&lt;N&gt;</c> (N&gt;0) wire item that followed
+/// it, kept in wire order. It is what the header's expand drawer lists: the member's own item_id (stable, unlike its
+/// uri), its uri, and when it was played.</summary>
+public readonly record struct RecentsMember(string ItemId, string Uri, long PlayedAtMs);
+
 /// <summary>One grouped, display-ready recents row. Title/Subtitle/Image start null — they are hydrated later by the UI
 /// stream (viewport-driven extended-metadata), never invented here. For a <see cref="RecentsRowKind.Group"/> row,
 /// <paramref name="ContextUri"/> is what opening the card navigates to (the header uri, or null for a multi/empty-uri
-/// header rendered from <paramref name="ChildUris"/>), and <paramref name="ChildCount"/> is the "played N" count.</summary>
+/// header rendered from <paramref name="ChildUris"/>), <paramref name="ChildCount"/> is the "played N" count, and
+/// <paramref name="Members"/> are the plays it collapsed (the drawer's entries; <paramref name="ChildUris"/> is the
+/// header's own, server-truncated uri list — the fallback when the wire folds the members away).</summary>
 public sealed record RecentsRow(
     RecentsRowKind Kind,
     string ItemId,
@@ -67,7 +74,8 @@ public sealed record RecentsRow(
     RecentsEntityKind EntityKind,
     RecentsReason Reason = RecentsReason.Unknown,
     string? ContentType = null,
-    IReadOnlyList<string>? ChildUris = null);
+    IReadOnlyList<string>? ChildUris = null,
+    IReadOnlyList<RecentsMember>? Members = null);
 
 /// <summary>A grouped recents page: the opaque revision (lowercase hex of the playlist4 revision bytes, round-trippable
 /// via <see cref="System.Convert.FromHexString(string)"/> for the next diff) plus the collapsed rows in wire order.</summary>
@@ -126,25 +134,41 @@ public static class RecentsList
     /// <summary>Collapse flat recents items (mapper output) into display rows, preserving wire order: an item that heads
     /// a group (<c>group_id_0</c> / <c>children_group_id</c>) becomes ONE <see cref="RecentsRowKind.Group"/> row carrying
     /// its <c>group_metadata</c> child count/uris; the members that follow it (<c>group_id_&lt;N&gt;</c>, N&gt;0) are
-    /// absorbed into that card; every ungrouped item becomes a <see cref="RecentsRowKind.Single"/> row. Every row is keyed
-    /// on the heading/entry item_id.</summary>
+    /// absorbed into that card as its <see cref="RecentsRow.Members"/> — kept, not dropped, because they are the only
+    /// complete account of WHICH plays the card stands for (the header's own child_uri list is server-truncated); every
+    /// ungrouped item becomes a <see cref="RecentsRowKind.Single"/> row. Every row is keyed on the heading/entry item_id.</summary>
     public static IReadOnlyList<RecentsRow> Group(IReadOnlyList<RecentsItem> items)
     {
         var rows = new List<RecentsRow>(items.Count);
-        for (int i = 0; i < items.Count; i++)
+        int i = 0;
+        while (i < items.Count)
         {
             var item = items[i];
-            bool isHeader = item.HasChildrenGroupId || item.GroupId == 0;
-            if (isHeader)
+            if (IsHeader(item))
             {
-                rows.Add(HeaderRow(item));
+                int end = i + 1;
+                while (end < items.Count && IsMember(items[end])) end++;
+                var members = end == i + 1 ? System.Array.Empty<RecentsMember>() : new RecentsMember[end - i - 1];
+                for (int m = 0; m < members.Length; m++)
+                {
+                    var member = items[i + 1 + m];
+                    members[m] = new RecentsMember(member.ItemId, member.Uri, member.PlayedAtMs);
+                }
+                rows.Add(HeaderRow(item, members));
+                i = end;
                 continue;
             }
-            if (item.GroupId is int n && n > 0) continue;   // collapsed member — absorbed into the preceding header card
-            rows.Add(SingleRow(item));
+            // A member with no header in front of it has no card to hang off — the wire never sends one, and inventing
+            // a row for it would double-count the play against the header that should have carried it.
+            if (!IsMember(item)) rows.Add(SingleRow(item));
+            i++;
         }
         return rows;
     }
+
+    static bool IsHeader(RecentsItem item) => item.HasChildrenGroupId || item.GroupId == 0;
+
+    static bool IsMember(RecentsItem item) => !IsHeader(item) && item.GroupId is int n && n > 0;
 
     /// <summary>Build a full snapshot (revision + grouped rows) from the mapper output.</summary>
     public static RecentsSnapshot Snapshot(string? revision, IReadOnlyList<RecentsItem> items)
@@ -189,7 +213,7 @@ public static class RecentsList
             _ => RecentsEntityKind.Unknown,
         };
 
-    static RecentsRow HeaderRow(RecentsItem item)
+    static RecentsRow HeaderRow(RecentsItem item, IReadOnlyList<RecentsMember> members)
     {
         var childUris = item.Group?.ChildUris;
         string? contextUri = item.Uri.Length > 0 ? item.Uri : null;
@@ -200,12 +224,13 @@ public static class RecentsList
         return new RecentsRow(RecentsRowKind.Group, item.ItemId, item.Uri, contextUri,
             Title: null, Subtitle: null, Image: null,
             ChildCount: childCount, PlayedAtMs: item.PlayedAtMs, EntityKind: kind,
-            Reason: item.Reason, ContentType: item.ContentType, ChildUris: childUris);
+            Reason: item.Reason, ContentType: item.ContentType, ChildUris: childUris, Members: members);
     }
 
     static RecentsRow SingleRow(RecentsItem item)
         => new(RecentsRowKind.Single, item.ItemId, item.Uri, ContextUri: null,
             Title: null, Subtitle: null, Image: null,
             ChildCount: 0, PlayedAtMs: item.PlayedAtMs, EntityKind: EntityKindOf(item.Uri),
-            Reason: item.Reason, ContentType: item.ContentType);
+            Reason: item.Reason, ContentType: item.ContentType,
+            Members: System.Array.Empty<RecentsMember>());   // a single collapses nothing — empty, never null, so no reader null-checks
 }

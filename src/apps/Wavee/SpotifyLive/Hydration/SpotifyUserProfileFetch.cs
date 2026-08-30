@@ -65,7 +65,7 @@ public sealed class SpotifyUserProfileFetch : IUserProfileFetch
 
         if (_reader is { } reader)
         {
-            IReadOnlyDictionary<string, ProfileFields> fields;
+            IReadOnlyDictionary<string, UserProfilePayload> fields;
             try
             {
                 fields = await reader.ReadManyAsync(asked, Xm.ExtensionKind.UserProfile, ParsePayload,
@@ -74,7 +74,7 @@ public sealed class SpotifyUserProfileFetch : IUserProfileFetch
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _log.Info("USER_PROFILE extended-metadata fetch: " + ex.Message);
-                fields = new Dictionary<string, ProfileFields>();
+                fields = new Dictionary<string, UserProfilePayload>();
             }
             foreach (var (uri, parsed) in fields)
             {
@@ -109,7 +109,9 @@ public sealed class SpotifyUserProfileFetch : IUserProfileFetch
             // any other non-200 is a transport verdict we are not entitled to cache as an absence.
             if (resp.Status != 200) return (userUri, resp.Status == 404, null);
             using var doc = await JsonDocument.ParseAsync(resp.Body, default, ct).ConfigureAwait(false);
-            return (userUri, true, ReadFields(doc.RootElement) is { } parsed ? ToOwner(parsed, userUri) : null);
+            return (userUri, true, UserProfilePayloadDecoder.FromJson(doc.RootElement) is { IsRenderable: true } parsed
+                ? ToOwner(parsed, userUri)
+                : null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -119,50 +121,24 @@ public sealed class SpotifyUserProfileFetch : IUserProfileFetch
         finally { gate.Release(); }
     }
 
-    /// <summary>What kind 15's JSON body actually carries. This — not <see cref="Owner"/> — is what the reader caches,
-    /// because it is URI-INDEPENDENT: the canonical id is derived from the key the caller asked with, and a parsed
-    /// answer that baked one caller's spelling in would be wrong for the next.</summary>
-    sealed record ProfileFields(string? Uri, string? Name, string? Avatar);
-
-    /// <summary>The reader's parse hook. Null means "nothing renderable here", which the reader caches and memoizes
-    /// exactly like the 404 it is indistinguishable from on screen. A malformed body throws out of here on purpose —
-    /// the reader logs undecodable and treats it as the same null, in one place.</summary>
-    static ProfileFields? ParsePayload(ByteString payload)
-    {
-        if (payload.IsEmpty) return null;
-        using var doc = JsonDocument.Parse(payload.ToByteArray());
-        return ReadFields(doc.RootElement);
-    }
-
-    static ProfileFields? ReadFields(JsonElement root)
-    {
-        string? name = StringValue(root, "name") ?? StringValue(root, "display_name");
-        string? avatar = StringValue(root, "image_url") ?? FirstImage(root);
-        if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(avatar)) return null;
-        return new ProfileFields(StringValue(root, "uri"), name, avatar);
-    }
+    /// <summary>The reader's parse hook. Kind 15's body is a protobuf (not the JSON the REST arm returns — see
+    /// <see cref="UserProfilePayloadDecoder"/>), and <see cref="UserProfilePayload"/> — not <see cref="Owner"/> — is what
+    /// the reader caches because it is URI-INDEPENDENT: the canonical id is derived from the key the caller asked with,
+    /// and a parsed answer that baked one caller's spelling in would be wrong for the next. Null means "nothing
+    /// renderable here", which the reader caches and memoizes exactly like the 404 it is indistinguishable from on
+    /// screen. An undecodable body throws out of here on purpose: the reader logs it with the head bytes, caches the
+    /// null for itself only and leaves the uri UNANSWERED, so the REST arm below still gets its turn.</summary>
+    static UserProfilePayload? ParsePayload(ByteString payload)
+        => UserProfilePayloadDecoder.Decode(payload.Span) is { IsRenderable: true } parsed ? parsed : null;
 
     /// <summary>The store row. The id is the one we ASKED with, always: it is the spelling the playlist header and the
     /// membership row carry, so it is the spelling every later <c>GetOwner</c> uses. A payload uri that disagreed would
     /// file the answer under a key nobody looks up, and the page would re-ask forever.</summary>
-    static Owner ToOwner(ProfileFields fields, string canonicalUri)
+    static Owner ToOwner(UserProfilePayload fields, string canonicalUri)
     {
         string id = UserProfileIds.BareId(canonicalUri);
         return new Owner(id,
             string.IsNullOrWhiteSpace(fields.Name) ? id : fields.Name.Trim(),
-            string.IsNullOrWhiteSpace(fields.Avatar) ? null : new Image(fields.Avatar));
-    }
-
-    static string? StringValue(JsonElement root, string name)
-        => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } s
-            ? s
-            : null;
-
-    static string? FirstImage(JsonElement root)
-    {
-        if (!root.TryGetProperty("images", out var images) || images.ValueKind != JsonValueKind.Array) return null;
-        foreach (var image in images.EnumerateArray())
-            if (StringValue(image, "url") is { Length: > 0 } url) return url;
-        return null;
+            string.IsNullOrWhiteSpace(fields.ImageUrl) ? null : new Image(fields.ImageUrl));
     }
 }

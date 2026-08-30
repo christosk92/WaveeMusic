@@ -14,11 +14,13 @@
       1a bump          WaveeBuild + 1, CHANGELOG "unreleased" -> today (UTC)
       2  notes         Wavee.ReleaseTool validate -> <staging>\notes (whatsnew.json, index, RELEASE_BODY.md, media)
       1b tag           commit the two hand-edited files, annotated tag (local only)
-      3  packArm64     pack-wavee-msix.ps1 -Arch arm64 -NoSign
-      4  packX64       pack-wavee-msix.ps1 -Arch x64 -NoSign   (or -X64Msix <path> to adopt a prebuilt package)
+      3  packArm64     pack-wavee-msix.ps1 -Arch arm64 -NoSign   (+ Wavee-<quad>-win-arm64-symbols.zip: the PDB of that exe)
+      4  packX64       pack-wavee-msix.ps1 -Arch x64 -NoSign     (or -X64Msix <path> to adopt a prebuilt package; its
+                       symbols zip is adopted from next to it when present)
       5  sign          ONE Azure Trusted Signing signtool call over every .msix, then verify each
       6  appinstaller  one .appinstaller per architecture, pointing at this release's msix and at the rolling feed
-      7  stage         flatten assets into <staging>, write MANIFEST.txt (sha256sum format)
+      7  stage         flatten assets into <staging>, write MANIFEST.txt (sha256sum format); the symbols zips are
+                       version-release assets like the packages (never feed assets)
       8  push          push the branch then the tag (origin/<branch> must equal HEAD~1)
       9  release       gh release: draft -> upload -> publish
       10 feed          repoint the rolling feed release(s) - ALWAYS LAST, it is what clients poll
@@ -250,6 +252,9 @@ $stage = Join-Path $stageRoot ($semver + $stageSuffix)
 $script:StatePath = Join-Path $stage 'release-state.json'
 
 function Get-MsixName { param([string]$Quad, [string]$A) "Wavee_${Quad}_$A.msix" }
+# The symbols zip pack-wavee-msix.ps1 writes next to each package (Wavee.pdb + Wavee.map.xml + SYMBOLS.txt for
+# exactly that Wavee.exe). Uploaded as a release asset: a crash report from that package resolves against nothing else.
+function Get-SymbolsZipName { param([string]$Quad, [string]$A) "Wavee-$Quad-win-$A-symbols.zip" }
 function Get-AppInstallerName { param([string]$A) "$AssetPrefix.$A.appinstaller" }
 function Get-FeedUri { param([string]$A) "https://github.com/$Repo/releases/download/$FeedRelease/$(Get-AppInstallerName $A)" }
 function Get-MsixUri { param([string]$Quad, [string]$A) "https://github.com/$Repo/releases/download/$tag/$(Get-MsixName $Quad $A)" }
@@ -759,10 +764,21 @@ function Invoke-Pack {
     param([Parameter(Mandatory = $true)][string]$A)
 
     $msix = Join-Path $stage (Get-MsixName $quad $A)
+    $symbols = Join-Path $stage (Get-SymbolsZipName $quad $A)
 
     if ($A -eq 'x64' -and $X64Msix) {
         Step "Adopt the prebuilt x64 package"
         Copy-Item $X64Msix $msix -Force
+        # A prebuilt package's symbols live next to it under the same name; without them a crash in that package is
+        # unresolvable, which is worth a loud warning but not a refusal (the package itself may be the only one there is).
+        $prebuiltSymbols = Join-Path (Split-Path -Parent $X64Msix) (Get-SymbolsZipName $quad $A)
+        if (Test-Path $prebuiltSymbols) {
+            Copy-Item $prebuiltSymbols $symbols -Force
+            Good "$(Split-Path -Leaf $symbols) adopted from next to the prebuilt package"
+        }
+        else {
+            Warn "no $(Get-SymbolsZipName $quad $A) next to $X64Msix - a crash report from the x64 package cannot be symbolicated"
+        }
     }
     else {
         Step "Pack $A"
@@ -783,6 +799,9 @@ function Invoke-Pack {
             '-Configuration', $Configuration)
         if ($PublicOnly) { $packArgs += '-PublicOnly' }
         Invoke-Native 'powershell' $packArgs | Out-Null
+        # Not optional for a package built here: shipping without the PDB of the exact linked exe is what left the
+        # 0.2.0.1 NullReferenceException as a list of offsets nobody could resolve.
+        if (-not (Test-Path $symbols)) { throw "pack did not produce $symbols (pack-wavee-msix.ps1 writes it next to the .msix)" }
     }
 
     if (-not (Test-Path $msix)) { throw "pack did not produce $msix" }
@@ -794,6 +813,7 @@ function Invoke-Pack {
         throw "publisher mismatch in $(Split-Path -Leaf $msix): '$($id.Publisher)' != '$Publisher' (signing would fail with 0x8007000B)"
     }
     Good "$(Split-Path -Leaf $msix)  $([math]::Round((Get-Item $msix).Length / 1MB, 2)) MB"
+    if (Test-Path $symbols) { Good "$(Split-Path -Leaf $symbols)  $([math]::Round((Get-Item $symbols).Length / 1MB, 2)) MB" }
 }
 
 foreach ($a in $arches) {
@@ -951,6 +971,10 @@ function Invoke-Stage {
 
     $release = @()
     foreach ($a in $arches) { $release += (Get-MsixName $quad $a) }
+    # One symbols zip per package, uploaded beside it (absent only for an adopted -X64Msix that came without one).
+    foreach ($a in $arches) {
+        if (Test-Path (Join-Path $stage (Get-SymbolsZipName $quad $a))) { $release += (Get-SymbolsZipName $quad $a) }
+    }
     $release += 'THIRD-PARTY-NOTICES.txt'
     if (Test-Path (Join-Path $stage 'whatsnew.json')) { $release += 'whatsnew.json' }
     $release += $media

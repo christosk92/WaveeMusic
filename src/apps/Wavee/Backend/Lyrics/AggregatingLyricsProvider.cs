@@ -68,6 +68,27 @@ public sealed class AggregatingLyricsProvider : IUpgradingLyricsProvider, ILyric
     static bool IsGold(LyricsCandidate? c)
         => c is { Sync: LyricsSyncKind.Syllable, Basis: MatchBasis.Identity or MatchBasis.Isrc };
 
+    // Tier 2 of LyricsCreditRules, which can only run once the reference is in hand: a search-matched candidate's
+    // leading/trailing lines that align to nothing the reference sings are padding — the credits the grammar tier could
+    // not name, in whatever language. The reference itself and the identity/ISRC-matched candidates are left alone: they
+    // ARE the exact recording, and a fuzzy alignment is not allowed to cut a trusted document. `collected` is updated
+    // too, so the inspection report shows the document the reranker actually judged.
+    void TrimEdgesAgainstReference(List<LyricsCandidate> candidates, Dictionary<string, Probed> collected, LyricsDocument? reference)
+    {
+        if (reference is null) return;
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            var c = candidates[i];
+            if (c.ProviderId == _referenceSourceId || c.Basis is MatchBasis.Identity or MatchBasis.Isrc) continue;
+            var trimmed = LyricsCreditRules.TrimUnalignedEdges(c.Document, reference, out int leading, out int trailing);
+            if (ReferenceEquals(trimmed, c.Document)) continue;
+            candidates[i] = c with { Document = trimmed };
+            if (collected.TryGetValue(c.ProviderId, out var pr)) collected[c.ProviderId] = pr with { Cand = candidates[i] };
+            LyricsProbe.Note(c.ProviderId,
+                $"dropped {leading + trailing} edge line(s) that align to nothing in the reference ({leading} leading, {trailing} trailing)");
+        }
+    }
+
     public async Task<LyricsDocument?> GetLyricsAsync(string trackId, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(trackId)) return null;
@@ -226,6 +247,7 @@ public sealed class AggregatingLyricsProvider : IUpgradingLyricsProvider, ILyric
 
         var candidates = collected.Values.Where(p => p.Cand is not null).Select(p => p.Cand!).ToList();
         var reference = candidates.FirstOrDefault(c => c.ProviderId == _referenceSourceId)?.Document;
+        TrimEdgesAgainstReference(candidates, collected, reference);
         RankedLyrics ranked = candidates.Count > 0
             ? LyricsReranker.Rank(candidates, reference)
             : new RankedLyrics(null, null, Array.Empty<LyricsDecision>());
@@ -390,6 +412,7 @@ public sealed class AggregatingLyricsProvider : IUpgradingLyricsProvider, ILyric
 
             var candidates = collected.Values.Where(p => p.Cand is not null).Select(p => p.Cand!).ToList();
             var reference = candidates.FirstOrDefault(c => c.ProviderId == _referenceSourceId)?.Document;
+            TrimEdgesAgainstReference(candidates, collected, reference);
             RankedLyrics ranked = candidates.Count > 0
                 ? LyricsReranker.Rank(candidates, reference)
                 : new RankedLyrics(null, null, Array.Empty<LyricsDecision>());
@@ -648,13 +671,15 @@ public sealed class AggregatingLyricsProvider : IUpgradingLyricsProvider, ILyric
             // THE cleaning chokepoint. Every provider passes through here with the track's own metadata in scope, and
             // the Spotify document used as the reranker's REFERENCE is itself a candidate — so both sides of every
             // comparison are cleaned by one rule, and `coverage` finally counts lyrics rather than padding.
-            var cleaned = LyricsClean.Apply(c.Document, req.Title, req.ArtistsJoined);
+            var cleaned = LyricsClean.Apply(c.Document, req.Title, req.ArtistsJoined, out int credits);
             int removed = c.Document.Lines.Count - cleaned.Lines.Count;
             if (cleaned.Lines.Count == 0)
                 return new Probed(null, LyricsOutcome.Miss, Ms(), With("every line was provider metadata or instrumental filler"));
             if (removed > 0)
             {
-                LyricsProbe.Note(source.Id, $"dropped {removed} non-lyric line(s) (blank/♪/credits/title header)");
+                LyricsProbe.Note(source.Id, credits > 0
+                    ? $"dropped {removed} non-lyric line(s) ({credits} credit header(s), {removed - credits} blank/♪/boilerplate/title header)"
+                    : $"dropped {removed} non-lyric line(s) (blank/♪/boilerplate/title header)");
                 c = c with { Document = cleaned };
             }
             return new Probed(c, LyricsOutcome.Hit, Ms(), With($"{c.Sync}, {c.LineCount} lines, basis={c.Basis}"));

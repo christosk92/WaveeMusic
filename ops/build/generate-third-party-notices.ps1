@@ -28,12 +28,21 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$OutFile,
-  [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+  [string]$Root = '',
+  # The FluentGpu engine is a SIBLING checkout since the repo split (Directory.Build.props $(EngineRoot)), not a
+  # subtree: the engine csproj globs below resolve against this root, never against $Root.
+  [string]$EngineRoot = ''
 )
 $ErrorActionPreference = 'Stop'
 
+# $PSScriptRoot is empty inside a param() default under `powershell -File` on 5.1, so the defaults resolve here.
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $Root) { $Root = Join-Path $scriptDir '..\..' }
 $Root = (Resolve-Path $Root).Path
-$extraFile = Join-Path $PSScriptRoot 'notices-extra.json'
+if (-not $EngineRoot) { $EngineRoot = Join-Path $Root '..\fluent-gpu' }
+if (-not (Test-Path $EngineRoot)) { throw "Engine checkout not found at $EngineRoot (clone christosk92/fluent-gpu beside this repo, or pass -EngineRoot)." }
+$EngineRoot = (Resolve-Path $EngineRoot).Path
+$extraFile = Join-Path $scriptDir 'notices-extra.json'
 $nugetRoot = Join-Path $env:USERPROFILE '.nuget\packages'
 
 # The projects whose PackageReferences end up in a shipped Wavee build. Wavee.Core is deliberately dependency-free and
@@ -43,16 +52,26 @@ $projectGlobs = @(
   'src\apps\Wavee\Wavee.csproj',
   'src\apps\Wavee.Core\Wavee.Core.csproj',
   'src\apps\Wavee.Sdk\Wavee.Sdk.csproj',
-  'src\apps\modules\*\*.csproj',
+  'src\apps\modules\*\*.csproj'
+)
+# Engine projects that carry redistributed packages (TerraFX.Interop.Windows lives here). Relative to $EngineRoot.
+$engineProjectGlobs = @(
   'src\FluentGpu.Windows\FluentGpu.Windows.csproj',
   'src\FluentGpu.WindowsApi\FluentGpu.WindowsApi.csproj'
 )
 
 function Get-ProjectFiles {
   $files = New-Object System.Collections.Generic.List[string]
-  foreach ($g in $projectGlobs) {
-    $full = Join-Path $Root $g
-    foreach ($f in (Get-ChildItem -Path $full -File -ErrorAction SilentlyContinue)) {
+  $pairs = @()
+  foreach ($g in $projectGlobs) { $pairs += ,@($Root, $g) }
+  foreach ($g in $engineProjectGlobs) { $pairs += ,@($EngineRoot, $g) }
+  foreach ($pair in $pairs) {
+    $full = Join-Path $pair[0] $pair[1]
+    $found = @(Get-ChildItem -Path $full -File -ErrorAction SilentlyContinue)
+    # A glob that matches nothing is a silent hole in the notices (the post-split engine paths were exactly that), so a
+    # literal project path that is missing fails the run instead of dropping its packages.
+    if ($found.Count -eq 0 -and $pair[1].IndexOf('*') -lt 0) { throw "Notices project not found: $full" }
+    foreach ($f in $found) {
       if (-not $files.Contains($f.FullName)) { $files.Add($f.FullName) }
     }
   }

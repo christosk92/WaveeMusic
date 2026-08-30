@@ -93,7 +93,7 @@ public sealed class RoutingSource : ICatalogSource
     public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default) => throw new NotSupportedException();
     public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
     public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default) => throw new NotSupportedException();
-    public Task<HomeContribution> GetHomeAsync(CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default) => throw new NotSupportedException();
     public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default) => throw new NotSupportedException();
 }
 
@@ -417,7 +417,7 @@ public class AggregateFallbackTests
         public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default) => _inner.GetArtistsAsync(ct);
         public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => _inner.GetLikedSongsAsync(level, ct);
         public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default) => _inner.SearchAsync(query, ct);
-        public Task<HomeContribution> GetHomeAsync(CancellationToken ct = default) => _inner.GetHomeAsync(ct);
+        public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default) => _inner.GetHomeAsync(facet, ct);
         public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default) => _inner.GetStatsAsync(ct);
     }
 }

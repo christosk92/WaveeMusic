@@ -125,6 +125,10 @@ $outRoot = $OutputDir
 if (-not [IO.Path]::IsPathRooted($outRoot)) { $outRoot = Join-Path $root $OutputDir }
 $outMsix = Join-Path $outRoot "$stamp.msix"
 $cerPath = Join-Path $outRoot "$stamp.cer"
+# The symbols that make a crash report from THIS package resolvable: the native PDB (+ the ILC map) for exactly the
+# Wavee.exe inside the .msix. Folder for a local WinDbg .sympath, zip as the release asset next to the package.
+$symDir = Join-Path $outRoot "symbols\$Quad\$rid"
+$symZip = Join-Path $outRoot "Wavee-$Quad-$rid-symbols.zip"
 
 $baseNote = ''
 if ($UpdateBaseUrl -ne $defaultUpdateBaseUrl) { $baseNote = ", base $UpdateBaseUrl" }
@@ -158,12 +162,117 @@ $pubArgs = @($csproj, '-c', $Configuration, '-r', $rid, '-o', $pubDir, '--nologo
              "/p:WaveeBuildDate=$BuildDate",
              "/p:WaveeCodename=$Codename",
              "/p:WaveeFeedRelease=$FeedRelease",
-             "/p:WaveeUpdateBaseUrl=$UpdateBaseUrl")
+             "/p:WaveeUpdateBaseUrl=$UpdateBaseUrl",
+             # ALWAYS with symbols. A shipped build has StackTraceSupport=false, so a crash report carries nothing but
+             # Wavee!<BaseAddress>+0x... offsets; without the PDB of the exact linked exe nothing can ever resolve them
+             # (0.2.0.1 shipped that way and its NullReferenceException stayed a list of numbers). NativeDebugSymbols
+             # adds ILC -g + link.exe /DEBUG - the ILC targets still pass /OPT:REF /OPT:ICF, so code layout is the
+             # same as a symbol-less link and only a debug directory is added to the PE. The PDB and the map never
+             # enter the package: they are moved out below, before the recursive layout copy.
+             '/p:NativeDebugSymbols=true', '/p:DebugType=portable', '/p:IlcGenerateMapFile=true')
 if ($PublicOnly) { $pubArgs += '-p:WaveeSkipPrivateSources=true' }
 if (-not $useAot) { $pubArgs += @('-p:PublishAot=false', '--self-contained', 'true') }
 & dotnet publish @pubArgs
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)." }
 if (-not (Test-Path (Join-Path $pubDir 'Wavee.exe'))) { throw "Wavee.exe missing from $pubDir" }
+
+# ---------------------------------------------------------------------------------------------------------------
+# 1b. symbols -> $symDir + $symZip (BEFORE the recursive layout copy, so nothing of this can ship in the package)
+#
+#   Wavee.pdb      the native PDB link.exe /DEBUG wrote for THIS Wavee.exe. The ILC targets' _CopyAotSymbols target
+#                  copies it from bin\<cfg>\net10.0\<rid>\native\ into the publish folder (deleting the managed IL
+#                  PDB of the same name first); the bin\...\native\ copy is the fallback.
+#   Wavee.map.xml  the ILC --map output. Written to obj\<cfg>\net10.0\<rid>\native\ (NativeIntermediateOutputPath),
+#                  never to the publish folder. Names + lengths + content hashes of every emitted node; it carries
+#                  NO addresses - the PDB is what resolves an RVA, the map is what says which methods changed.
+#   SYMBOLS.txt    the build stamp + the sha256 of the exe the PDB belongs to, so a zip can be matched to a crash
+#                  report's commit= / quad= lines without opening anything else.
+# ---------------------------------------------------------------------------------------------------------------
+Step "Collecting symbols -> $symDir"
+Remove-Item $symDir -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $symZip -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $symDir | Out-Null
+$objNative = Join-Path $root "src\apps\Wavee\obj\$Configuration\net10.0\$rid\native"
+$binNative = Join-Path $root "src\apps\Wavee\bin\$Configuration\net10.0\$rid\native"
+
+function Find-WaveeBuildArtifact {
+  <# The expected locations first; otherwise the newest file of that name anywhere under obj\ and bin\ whose path
+     names this RID (a target-path override in a future SDK must not silently drop the symbols). $null if none. #>
+  param([string]$Name, [string[]]$Expected)
+  foreach ($p in $Expected) { if ($p -and (Test-Path $p)) { return (Get-Item $p) } }
+  $hits = @()
+  foreach ($treeRoot in @((Join-Path $root 'src\apps\Wavee\obj'), (Join-Path $root 'src\apps\Wavee\bin'))) {
+    if (-not (Test-Path $treeRoot)) { continue }
+    $hits += @(Get-ChildItem $treeRoot -Recurse -File -Filter $Name -ErrorAction SilentlyContinue |
+               Where-Object { $_.FullName -like "*\$rid\*" })
+  }
+  if ($hits.Count -eq 0) { return $null }
+  $hits | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+}
+
+$pdb = Find-WaveeBuildArtifact 'Wavee.pdb' @((Join-Path $pubDir 'Wavee.pdb'), (Join-Path $binNative 'Wavee.pdb'))
+if ($null -eq $pdb) {
+  if ($useAot) { throw "Wavee.pdb was not produced (looked in $pubDir, $binNative and under obj\bin for $rid); a package without symbols is what made the 0.2.0.1 crash unresolvable - not shipping one" }
+  Write-Warning "no Wavee.pdb for the JIT layout; the symbols zip will carry the stamp only"
+}
+else {
+  # MOVE out of the publish folder (the layout copy below is recursive); a copy from bin\ leaves the build tree alone.
+  if ($pdb.DirectoryName -eq (Get-Item $pubDir).FullName) { Move-Item $pdb.FullName (Join-Path $symDir 'Wavee.pdb') -Force }
+  else { Copy-Item $pdb.FullName (Join-Path $symDir 'Wavee.pdb') -Force }
+  Write-Host "    Wavee.pdb      <- $($pdb.FullName)  ($([Math]::Round($pdb.Length / 1MB, 1)) MB)"
+}
+# Any *.pdb still in the publish folder is a managed one that came along for the ride (a module, a JIT layout);
+# the layout purge below would drop it anyway - keep it with the symbols instead, it costs nothing.
+Get-ChildItem $pubDir -Recurse -Include *.pdb -ErrorAction SilentlyContinue | ForEach-Object {
+  $rel = $_.FullName.Substring((Get-Item $pubDir).FullName.Length).TrimStart('\')
+  $dst = Join-Path $symDir $rel
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dst) | Out-Null
+  Move-Item $_.FullName $dst -Force
+}
+
+$map = $null
+if ($useAot) {
+  $map = Find-WaveeBuildArtifact 'Wavee.map.xml' @((Join-Path $objNative 'Wavee.map.xml'), (Join-Path $pubDir 'Wavee.map.xml'))
+  if ($null -eq $map) { $map = Find-WaveeBuildArtifact 'Wavee.map' @((Join-Path $objNative 'Wavee.map'), (Join-Path $pubDir 'Wavee.map')) }
+  if ($null -eq $map) { Write-Warning "IlcGenerateMapFile=true but no Wavee.map.xml was found under $objNative (or anywhere under obj\bin for $rid); the zip ships without the map" }
+  else {
+    if ($map.DirectoryName -eq (Get-Item $pubDir).FullName) { Move-Item $map.FullName (Join-Path $symDir $map.Name) -Force }
+    else { Copy-Item $map.FullName (Join-Path $symDir $map.Name) -Force }
+    Write-Host "    $($map.Name)  <- $($map.FullName)  ($([Math]::Round($map.Length / 1MB, 1)) MB)"
+  }
+}
+
+$exeItem = Get-Item (Join-Path $pubDir 'Wavee.exe')
+$exeHash = (Get-FileHash $exeItem.FullName -Algorithm SHA256).Hash.ToLower()
+$stampLines = @(
+  "Wavee symbols",
+  "=============",
+  "quad=$Quad",
+  "semver=$Semver",
+  "informationalVersion=$infoVersion",
+  "channel=$Channel",
+  "commit=$Commit",
+  "buildDate=$BuildDate",
+  "rid=$rid",
+  "arch=$Arch",
+  "configuration=$Configuration",
+  "aot=$useAot",
+  "package=$stamp.msix",
+  "exe=Wavee.exe size=$($exeItem.Length) sha256=$exeHash",
+  "",
+  "Resolve a crash report's 'Frames (RVA)' lines against Wavee.pdb (docs/guide/releasing-wavee.md, 'Symbolicating a crash report'):",
+  "  extract Wavee.exe from the .msix (it is a zip), put Wavee.pdb next to it, then",
+  "  cdb -z Wavee.exe -y <this folder> -c `"ln Wavee+0x<rva>; q`"",
+  "The PDB matches ONLY the Wavee.exe with the sha256 above; a report's commit= and quad= lines say which zip to take."
+)
+$utf8NoBomStamp = New-Object System.Text.UTF8Encoding $false
+[IO.File]::WriteAllText((Join-Path $symDir 'SYMBOLS.txt'), (($stampLines -join "`r`n") + "`r`n"), $utf8NoBomStamp)
+
+# ZipFile, not Compress-Archive: the 5.1 cmdlet re-encodes entry names and has a 2 GB ceiling; the map is ~100 MB of
+# XML and the folder must round-trip byte-for-byte.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[IO.Compression.ZipFile]::CreateFromDirectory($symDir, $symZip, [IO.Compression.CompressionLevel]::Optimal, $false)
+Write-Host "    $symZip  ($([Math]::Round((Get-Item $symZip).Length / 1MB, 1)) MB)" -ForegroundColor Green
 
 # Bundled playback modules into $pubDir\modules\<id>\ BEFORE the layout copy below, which is recursive - so the
 # child-process modules ship inside the package (a packaged full-trust Win32 app may launch exes from its own
@@ -324,6 +433,7 @@ $size = [Math]::Round((Get-Item $outMsix).Length / 1MB, 1)
 Step "Done"
 Write-Host "    $outMsix  (${size} MB, $Arch, $Quad$(if ($useAot) { ', AOT' } else { ', JIT' })$(if ($NoSign) { ', UNSIGNED' }))" -ForegroundColor Green
 Write-Host "    identity $($id.Name)  informational $infoVersion  channel $Channel  feed $FeedRelease"
+Write-Host "    symbols: $symZip  (folder $symDir; keep it - a crash report from this package resolves against nothing else)"
 if ($UpdateBaseUrl -ne $defaultUpdateBaseUrl) { Write-Host "    base $UpdateBaseUrl" -ForegroundColor Yellow }
 if (Test-Path $cerPath) {
   Write-Host "    cert: $cerPath"

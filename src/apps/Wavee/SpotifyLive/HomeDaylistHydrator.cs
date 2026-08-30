@@ -48,7 +48,10 @@ internal sealed class HomeDaylistHydrator
     readonly Func<string, HomePlaylistHeader?> _readHeader;
     readonly Func<string, CancellationToken, Task> _fetchHeader;
     readonly Func<string, CancellationToken, Task<byte[]?>> _probeRevision;
-    readonly Func<CancellationToken, Task<LiveHomeResult>> _refreshHome;
+    /// <summary>(facet, ct) → a fresh, UNCACHED Home body. The facet is passed rather than captured: the requery
+    /// invalidates a transport cache key, and the key is the request body — repairing a "Podcasts" read by refetching
+    /// the unfiltered feed would invalidate the wrong entry and overlay the wrong document.</summary>
+    readonly Func<string?, CancellationToken, Task<LiveHomeResult>> _refreshHome;
     readonly Func<long> _nowMs;
 
     // uri → the playlist4 revision the composed Home body currently REFLECTS. The key space is the set of
@@ -65,7 +68,7 @@ internal sealed class HomeDaylistHydrator
         Func<string, HomePlaylistHeader?> readHeader,
         Func<string, CancellationToken, Task> fetchHeader,
         Func<string, CancellationToken, Task<byte[]?>> probeRevision,
-        Func<CancellationToken, Task<LiveHomeResult>> refreshHome,
+        Func<string?, CancellationToken, Task<LiveHomeResult>> refreshHome,
         Func<long>? nowMs = null)
     {
         ArgumentNullException.ThrowIfNull(readHeader);
@@ -197,7 +200,7 @@ internal sealed class HomeDaylistHydrator
             claimed = newlyClaimed;
             try
             {
-                var refreshed = await _refreshHome(ct).ConfigureAwait(false);
+                var refreshed = await _refreshHome(source.Facet, ct).ConfigureAwait(false);
                 if (HasContent(refreshed)) basis = refreshed;
             }
             catch (OperationCanceledException)

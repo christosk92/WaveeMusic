@@ -133,8 +133,12 @@ static class WaveeSettings
     // values and retain their breakpoint widths; the saved width returns when the page is wide again.
     // The stored value is only ever CLAMPED at the seed (DetailShell) to the live grip bounds — a width persisted by an
     // older build with a different floor must never seed the layout raw.
+    // One pair per DetailRailPolicy.RailScope: Liked and podcast shows are their own scopes (not the album fallback they
+    // used to fall through to), so widening the Liked rail can never move every album page's rail with it.
     public static readonly SettingKey<float> DetailAlbumRailWidth = new("detail.rail.album.width", WaveeSize.RailAlbum);
     public static readonly SettingKey<float> DetailPlaylistRailWidth = new("detail.rail.playlist.width", WaveeSize.RailPlaylist);
+    public static readonly SettingKey<float> DetailLikedRailWidth = new("detail.rail.liked.width", WaveeSize.RailPlaylist);
+    public static readonly SettingKey<float> DetailShowRailWidth = new("detail.rail.show.width", WaveeSize.RailAlbum);
     // Shell right rail (lyrics / queue / now-playing). Seeded + clamped at WaveeShell; committed on splitter release.
     public static readonly SettingKey<float> ShellRailWidth = new("shell.rail.width", ShellResponsiveLayout.RailDefaultW);
     // Docked-video cap height in the right rail (Lyrics/Queue/Friends/Video). 0 = 16:9 of the live rail width (the
@@ -146,6 +150,8 @@ static class WaveeSettings
     // wide layout — exactly the rule the widths above already follow. Written by the same drag-end commit as the width.
     public static readonly SettingKey<bool> DetailAlbumRailCollapsed = new("detail.rail.album.collapsed", false);
     public static readonly SettingKey<bool> DetailPlaylistRailCollapsed = new("detail.rail.playlist.collapsed", false);
+    public static readonly SettingKey<bool> DetailLikedRailCollapsed = new("detail.rail.liked.collapsed", false);
+    public static readonly SettingKey<bool> DetailShowRailCollapsed = new("detail.rail.show.collapsed", false);
     // ── Teaching tips (WaveeTips) — ONE key for EVERY tip, ever ───────────────────────────────────────────────────────
     // The set of ACKNOWLEDGED teaching-tip ids, newline-joined (the SavedLibrary precedent — AppDataStore round-trips
     // scalars only). A tip id lands in here the first time the user acknowledges that tip (its ✕, or invoking the thing it

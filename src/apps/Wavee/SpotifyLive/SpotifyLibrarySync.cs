@@ -52,7 +52,7 @@ public static class SpotifyLibrarySync
         var playlistFetcher = new PlaylistFetcher(live.Pipeline, () => live.BaseUrl, store, Hydrate, () => live.Username);
         var collectionFetcher = new CollectionFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username, store,
             s => cold.GetCollectionRevision(s), (s, r) => cold.SetCollectionRevision(s, r, DateTimeOffset.UtcNow.ToUnixTimeSeconds()), Hydrate,
-            (s, u) => mutEngine.HasPending(s, u));
+            (s, u) => mutEngine.HasPending(s, u), log);
 
         // The dealer transport doubles as the mutation transport here (the CLI drains any restart-reloaded outbox intents
         // over the live socket during InitialHydrate — same as the app's go-live drain).
@@ -61,8 +61,9 @@ public static class SpotifyLibrarySync
         using var transport = new LiveDealerTransport(dealerHosts, live.TokenProvider, live.Pipeline, () => live.BaseUrl, log,
             forceRefreshToken: live.ForceTokenProvider);
 
-        // 1) InitialHydrate through the real orchestrator: drain → rootlist + "playlists" fold → every set (token-gated
-        //    delta, else full paging + mark-and-sweep), per-set failures isolated — exactly the app's go-live pass.
+        // 1) InitialHydrate through the real orchestrator: drain → rootlist + "playlists" fold → every WIRE set (token-gated
+        //    delta, else a ledger-verified page walk + shielded mark-and-sweep), per-set failures isolated — exactly the
+        //    app's go-live pass. The per-logical-set counts below are the read the UI makes.
         await using var sync = new LibrarySync(store, playlistFetcher, collectionFetcher, mutEngine, resyncQueue, transport,
             () => sessionHost.Current, () => live.Username, log, ct);
         using var router = new DealerRouter(transport, sync);

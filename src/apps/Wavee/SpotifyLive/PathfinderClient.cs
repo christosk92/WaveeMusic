@@ -32,6 +32,14 @@ public sealed class PathfinderClient
 
     public enum Platform { Desktop, WebPlayer }
 
+    // Two contracts over ONE request path (FetchAsync decides what a failure is; both log it once):
+    //   • QueryAsync / QueryBodyBytesAsync — the OPTIONAL read: null when the call produced no body, for the callers
+    //     whose null branch is a legitimate "skip" (a cover palette, a preview peek, a cached resource's revalidate).
+    //   • QueryOrThrowAsync — the REQUIRED read: a PathfinderRequestException carrying the operation and the HTTP status
+    //     (or the transport exception), for reads whose failure must stay distinguishable from an empty answer — a
+    //     2xx document with nothing in it is an ANSWER and comes back as a document.
+    // Cancellation is neither: it propagates untouched on both.
+
     public async Task<JsonDocument?> QueryAsync(string operationName, string sha256Hash,
         Action<Utf8JsonWriter>? writeVariables, Platform platform = Platform.Desktop, CancellationToken ct = default)
     {
@@ -40,8 +48,22 @@ public sealed class PathfinderClient
         return bytes is null ? null : JsonDocument.Parse(bytes);
     }
 
+    /// <summary>The required read: throws <see cref="PathfinderRequestException"/> instead of answering null.</summary>
+    public async Task<JsonDocument> QueryOrThrowAsync(string operationName, string sha256Hash,
+        Action<Utf8JsonWriter>? writeVariables, Platform platform = Platform.Desktop, CancellationToken ct = default)
+    {
+        var body = BuildBody(operationName, sha256Hash, writeVariables);
+        return JsonDocument.Parse(await FetchAsync(operationName, body, platform, ct).ConfigureAwait(false));
+    }
+
     public async Task<byte[]?> QueryBodyBytesAsync(string operationName, byte[] body,
         Platform platform = Platform.Desktop, CancellationToken ct = default)
+    {
+        try { return await FetchAsync(operationName, body, platform, ct).ConfigureAwait(false); }
+        catch (PathfinderRequestException) { return null; }
+    }
+
+    async Task<byte[]> FetchAsync(string operationName, byte[] body, Platform platform, CancellationToken ct)
     {
         try
         {
@@ -54,17 +76,19 @@ public sealed class PathfinderClient
             };
 
             using var resp = await _http.SendAsync(new HttpReq("POST", Endpoint, headers, body), ct).ConfigureAwait(false);
-            if (resp.Status is < 200 or >= 300)
-            {
-                _log.Info($"pathfinder {operationName} -> HTTP {resp.Status}{(resp.Status == 400 ? " (stale persisted-query hash - needs recapture)" : "")}");
-                return null;
-            }
+            if (resp.Status is < 200 or >= 300) throw new PathfinderRequestException(operationName, resp.Status);
             using var ms = new MemoryStream();
             await resp.Body.CopyToAsync(ms, ct).ConfigureAwait(false);
             return ms.ToArray();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { _log.Info("pathfinder " + operationName + " error: " + ex.Message); return null; }
+        catch (PathfinderRequestException ex) { _log.Info(ex.Message); throw; }
+        catch (Exception ex)
+        {
+            var failure = new PathfinderRequestException(operationName, ex);
+            _log.Info(failure.Message);
+            throw failure;
+        }
     }
 
     public static byte[] BuildBody(string operationName, string sha256Hash, Action<Utf8JsonWriter>? writeVariables)
@@ -90,6 +114,24 @@ public sealed class PathfinderClient
         }
         return ms.ToArray();
     }
+}
+
+/// <summary>A Pathfinder call that produced no response body: a non-2xx status (<see cref="HttpStatus"/> set) or a
+/// transport-level exception (<see cref="Exception.InnerException"/> set). NOT an empty answer — a 2xx document with
+/// nothing in it is a document. Never raised for cancellation.</summary>
+public sealed class PathfinderRequestException : Exception
+{
+    public string Operation { get; }
+    /// <summary>The HTTP status when the server answered; null when the request never completed.</summary>
+    public int? HttpStatus { get; }
+
+    public PathfinderRequestException(string operation, int httpStatus)
+        : base($"pathfinder {operation} -> HTTP {httpStatus}{(httpStatus == 400 ? " (stale persisted-query hash - needs recapture)" : "")}")
+    { Operation = operation; HttpStatus = httpStatus; }
+
+    public PathfinderRequestException(string operation, Exception inner)
+        : base($"pathfinder {operation} error: {inner.Message}", inner)
+    { Operation = operation; }
 }
 
 public static class PathfinderOps

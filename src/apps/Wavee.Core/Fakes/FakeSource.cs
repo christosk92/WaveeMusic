@@ -48,7 +48,7 @@ public sealed class FakeSource : ICatalogSource
         => Task.FromResult<IReadOnlyList<Track>>(System.Array.Empty<Track>());
     public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default)
         => Task.FromResult(new SearchResults(System.Array.Empty<Track>(), System.Array.Empty<Album>(), System.Array.Empty<Artist>(), System.Array.Empty<Playlist>()));
-    public Task<HomeContribution> GetHomeAsync(CancellationToken ct = default)
+    public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default)
         => Task.FromResult(new HomeContribution(System.Array.Empty<HomeGroup>(), Priority: 100));
 
     // The export carries no saved albums/artists → the synthetic catalog provides those collections (the sidebar pages).

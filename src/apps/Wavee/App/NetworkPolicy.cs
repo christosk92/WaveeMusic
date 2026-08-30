@@ -10,6 +10,9 @@ namespace Wavee;
 /// <summary>
 /// Cached connection-cost policy: caps streaming quality on metered networks and defers prefetch.
 /// Fail-soft to <see cref="NetworkCost.Unknown"/> (unmetered-conservative — a probe failure never throttles playback).
+/// The cost arrives three ways — an immediate read at <see cref="Install"/>, a push from NLM's <c>CostChanged</c>
+/// (<see cref="NetworkStatus.SubscribeCost"/>, so a "Set as metered connection" flip lands at once), and a 60 s poll
+/// that stays as the fallback for a host whose cost connection point is missing.
 /// </summary>
 static class NetworkPolicy
 {
@@ -22,17 +25,20 @@ static class NetworkPolicy
     static Action<Action>? _post;
     static NetworkCost _cost = NetworkCost.Unknown;
     static IDisposable? _connectivity;
+    static IDisposable? _costEvents;
     static Timer? _timer;
     static int _refreshing;
     static bool _installed;
 
-    /// <summary>Last <see cref="NetworkStatus.ReadCostAsync"/> snapshot. UI-thread writes after the MTA read completes.</summary>
-    public static NetworkCost Cost => _cost;
+    /// <summary>Reactive cost snapshot (kind + limit/roaming bits) for UI that wants more than a metered bool — the
+    /// settings status line distinguishes "unrestricted" from "the probe failed". UI-thread writes only.</summary>
+    public static Signal<NetworkCost> Cost { get; } = new(NetworkCost.Unknown);
 
-    /// <summary>Quiet metered snapshot for UI (a status line, never a nag). Subscribe via <see cref="Metered"/>.</summary>
+    /// <summary>Quiet metered snapshot for non-UI readers (the update scheduler, resolve preferences). Subscribe via
+    /// <see cref="Metered"/> or <see cref="Cost"/> from UI.</summary>
     public static bool IsMetered => _cost.IsMetered;
 
-    /// <summary>Reactive metered flag — Settings reads <c>.Value</c> for the quiet helper; cost refreshes hop here.</summary>
+    /// <summary>Reactive metered flag — the bool projection of <see cref="Cost"/>; cost refreshes hop here.</summary>
     public static Signal<bool> Metered { get; } = new(false);
 
     /// <summary>The persisted metered cap (0..2). Seeded at <see cref="Install"/>; the Settings combo writes it.</summary>
@@ -43,7 +49,8 @@ static class NetworkPolicy
     /// <summary>True when prefetch/warm downloads should wait (metered). Unknown cost does not defer.</summary>
     public static bool ShouldDeferPrefetch => _cost.IsMetered;
 
-    /// <summary>Idempotent. Kicks an immediate cost read and a slow refresh timer. Not per-frame.</summary>
+    /// <summary>Idempotent. Kicks an immediate cost read, subscribes the NLM cost push, and arms the slow poll fallback.
+    /// Not per-frame.</summary>
     public static void Install(IAppSettings settings, Action<Action> post)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -75,6 +82,14 @@ static class NetworkPolicy
             _connectivity = NetworkStatus.Subscribe(static _ => Refresh());
         }
         catch { _connectivity = null; }
+
+        // The push carries the new cost itself (same mapping as the poll), so it is published directly rather than
+        // triggering another round-trip. Inert on a host without the cost connection point — the poll still covers it.
+        try
+        {
+            _costEvents = NetworkStatus.SubscribeCost(static cost => Publish(cost));
+        }
+        catch { _costEvents = null; }
     }
 
     /// <summary>
@@ -111,6 +126,8 @@ static class NetworkPolicy
 
     public static void Shutdown()
     {
+        try { _costEvents?.Dispose(); } catch { }
+        _costEvents = null;
         try { _connectivity?.Dispose(); } catch { }
         _connectivity = null;
         try { _timer?.Dispose(); } catch { }
@@ -136,24 +153,37 @@ static class NetworkPolicy
             NetworkCost cost = NetworkCost.Unknown;
             try { cost = await NetworkStatus.ReadCostAsync().ConfigureAwait(false); }
             catch { cost = NetworkCost.Unknown; }
-
-            void Apply()
-            {
-                _cost = cost;
-                if (Metered.Peek() != cost.IsMetered)
-                    Metered.Value = cost.IsMetered;
-            }
-
-            if (_post is { } post)
-            {
-                try { post(Apply); }
-                catch { Apply(); }
-            }
-            else Apply();
+            Publish(cost);
         }
         finally
         {
             Interlocked.Exchange(ref _refreshing, 0);
         }
+    }
+
+    /// <summary>Hop a cost snapshot (polled or pushed, any thread) to the UI thread and apply it. Only a changed snapshot
+    /// writes the signals or logs, so the 60 s poll republishing the same cost is silent.</summary>
+    static void Publish(NetworkCost cost)
+    {
+        void Apply()
+        {
+            if (_cost == cost) return;
+            _cost = cost;
+            WaveeLog.Instance.Info("network", "network.cost.changed", "",
+                WaveeLogField.Of("kind", cost.Kind.ToString()),
+                WaveeLogField.Of("metered", cost.IsMetered),
+                WaveeLogField.Of("overLimit", cost.OverDataLimit),
+                WaveeLogField.Of("roaming", cost.Roaming));
+            Cost.Value = cost;
+            if (Metered.Peek() != cost.IsMetered)
+                Metered.Value = cost.IsMetered;
+        }
+
+        if (_post is { } post)
+        {
+            try { post(Apply); }
+            catch { Apply(); }
+        }
+        else Apply();
     }
 }

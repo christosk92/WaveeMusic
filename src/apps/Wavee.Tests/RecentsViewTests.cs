@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using FluentGpu.Localization;
 using Wavee.Core;
 using Xunit;
@@ -577,6 +578,65 @@ public class RecentsViewTests
         var into = new List<string>();
         Assert.Equal(2, RecentsView.CollectChildUris(row, static _ => true, into));
         Assert.Equal(["spotify:track:1", "spotify:track:2"], into);
+    }
+
+    // ── the expand drawer: members first, the header's own list as the fallback, nothing invented ───────────────────
+    static RecentsMember M(string id, string uri, long at) => new(id, uri, at);
+
+    [Fact]
+    public void CollectChildUris_AsksForTheMembers_WhenTheWireCarriesThem_NotTheTruncatedChildUris()
+    {
+        // The header's child_uri list is the server-truncated one (3 of 11); the members are the full run.
+        var row = Group("a", "spotify:playlist:p", childCount: 4, children: ["spotify:track:1"]) with
+        {
+            Members = [M("m1", "spotify:track:4", 4), M("m2", "", 3), M("m3", "spotify:track:4", 2), M("m4", "spotify:track:3", 1)],
+        };
+        var into = new List<string>();
+        Assert.Equal(2, RecentsView.CollectChildUris(row, static _ => true, into));
+        Assert.Equal(["spotify:track:4", "spotify:track:3"], into);   // wire order, empties and repeats collapsed
+
+        into.Clear();
+        Assert.Equal(1, RecentsView.CollectChildUris(row, static _ => true, into, cap: 1));
+        Assert.Equal(["spotify:track:4"], into);
+    }
+
+    [Fact]
+    public void CanExpand_NeedsAPlayCount_AndSomethingToList_FromEitherSource()
+    {
+        Assert.True(RecentsView.CanExpand(Group("a", "spotify:playlist:p", childCount: 3) with
+            { Members = [M("m1", "spotify:track:1", 1)] }));
+        Assert.True(RecentsView.CanExpand(Group("b", "spotify:playlist:p", childCount: 3, children: ["spotify:track:1"])));
+        // "Played 3" with nothing listable: the artist / "Henry Moodie Mix" rows — no chevron, still the count.
+        Assert.False(RecentsView.CanExpand(Group("c", "spotify:artist:x", childCount: 3)));
+        Assert.False(RecentsView.CanExpand(Group("d", "spotify:artist:x", childCount: 3, children: [""]) with
+            { Members = [M("m1", "", 1)] }));
+        // A count of zero never expands, however many uris the header names.
+        Assert.False(RecentsView.CanExpand(Group("e", "spotify:playlist:p", childCount: 0, children: ["spotify:track:1"]) with
+            { Members = [M("m1", "spotify:track:1", 1)] }));
+    }
+
+    [Fact]
+    public void MissingMembers_IsTheCountWithoutAList_TheCaseThePageLogsOnce()
+    {
+        Assert.True(RecentsView.MissingMembers(Group("a", "spotify:artist:x", childCount: 3)));
+        Assert.False(RecentsView.MissingMembers(Group("b", "spotify:playlist:p", childCount: 3, children: ["spotify:track:1"])));
+        Assert.False(RecentsView.MissingMembers(Group("c", "spotify:playlist:p", childCount: 0)));   // nothing to list, nothing claimed
+    }
+
+    [Fact]
+    public void DrawerEntries_ListsTheMembersAsSent_ElseTheChildUrisWithNoInstant()
+    {
+        RecentsMember[] members = [M("m1", "spotify:track:2", 20), M("m2", "", 0), M("m3", "spotify:track:1", 10)];
+        var withMembers = Group("a", "spotify:playlist:p", childCount: 3, children: ["spotify:track:9"]) with { Members = members };
+        Assert.Same(members, RecentsView.DrawerEntries(withMembers));       // handed back in place — empties and all
+
+        var folded = Group("b", "spotify:playlist:p", childCount: 2, children: ["spotify:track:1", "spotify:track:2"]);
+        var entries = RecentsView.DrawerEntries(folded);
+        Assert.Equal(["spotify:track:1", "spotify:track:2"], entries.Select(e => e.Uri));
+        Assert.All(entries, e => Assert.Equal(0L, e.PlayedAtMs));            // no instant → PlayedAt renders ""
+        Assert.All(entries, e => Assert.Equal("", e.ItemId));
+
+        Assert.Empty(RecentsView.DrawerEntries(Group("c", "spotify:artist:x", childCount: 3)));
     }
 
     [Fact]

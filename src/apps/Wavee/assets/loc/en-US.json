@@ -33,8 +33,8 @@
     "addTracks": "{count, plural, one {Add # song} other {Add # songs}}",
     "addToQueue": "Add to queue",
     "playNext": "Play next",
-    "cantReorderNextUp": "Can’t reorder what’s playing next",
-    "cantReorderAutoplay": "Can’t reorder Autoplay"
+    "cantMoveAcrossSections": "Can’t move across sections",
+    "reorderHint": "Drag to reorder"
   },
   "detail": {
     "play": "Play",
@@ -500,6 +500,8 @@
     "fallbackTitle": "Concert"
   },
   "home": {
+    "playFailed": "Couldn't play that. Try again.",
+    "facetFailed": "Couldn't load that view. Showing the previous one.",
     "goodMorning": "Good morning",
     "goodAfternoon": "Good afternoon",
     "goodEvening": "Good evening",
@@ -589,6 +591,7 @@
     "albums": "Albums",
     "playlists": "Playlists",
     "noResults": "No results found",
+    "suggestFailed": "Couldn't load suggestions",
     "noResultsSub": "Nothing matched \"{query}\". Try a different spelling or keyword.",
     "all": "All",
     "typeSong": "Song",
@@ -852,8 +855,15 @@
       "audioQuality": "Audio quality",
       "audioSub": "Streaming quality for local playback - applies from the next track",
       "meteredQuality": "On metered connections",
-      "meteredQualitySub": "Cap streaming quality when Windows reports a metered network",
-      "meteredHint": "This connection is metered — the cap above is in effect",
+      "meteredStatus": {
+        "$comment": "The live status line under the metered cap combo: what Windows reports RIGHT NOW (CostChanged push + 60 s poll), never a static description.",
+        "metered": "Metered network detected · cap in effect",
+        "meteredWithinCap": "Metered network detected · your quality is already within the cap",
+        "notMetered": "Not metered",
+        "unknown": "Couldn't read network cost (treated as unmetered)",
+        "overLimit": "Over data limit",
+        "roaming": "Roaming"
+      },
       "videoQuality": "Video quality",
       "videoQualitySub": "Auto adapts to bandwidth and the player size; a resolution pins every video to that quality",
       "videoQualityAuto": "Auto (recommended)",

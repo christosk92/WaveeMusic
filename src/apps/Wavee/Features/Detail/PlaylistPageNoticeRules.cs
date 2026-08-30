@@ -29,12 +29,15 @@ static class PlaylistPageNoticeRules
     /// <param name="prev">The notice the page is currently showing (a terminal notice is STICKY — see below).</param>
     /// <param name="freshIsNull">The reload produced no playlist at all (evicted / 404 / gone).</param>
     /// <param name="headerDeleted">The store header carries <c>DeletedByOwner</c> (the tombstone push landed).</param>
+    /// <param name="capabilitiesKnown">The header has actually carried a capabilities block (<c>Capabilities.Known</c>).
+    /// A thin rootlist-seeded header has not: its all-false rights are placeholders, and "unknown" must never be read
+    /// as "revoked" — the notice keeps whatever it was saying until a real block arrives.</param>
     /// <param name="canView">The playlist's <c>Capabilities.CanView</c>.</param>
     /// <param name="isOwner">The playlist's <c>Capabilities.IsOwner</c> — an owner is never "revoked" from their own list.</param>
     /// <param name="isCreatePending">An optimistic create for this uri is still in flight: the server does not have the
     /// playlist yet, so "it is not there" is the EXPECTED state and must not be reported as a deletion.</param>
-    public static DetailNotice Next(DetailNotice prev, bool freshIsNull, bool headerDeleted, bool canView, bool isOwner,
-                                   bool isCreatePending)
+    public static DetailNotice Next(DetailNotice prev, bool freshIsNull, bool headerDeleted, bool capabilitiesKnown,
+                                   bool canView, bool isOwner, bool isCreatePending)
     {
         // A create that failed is terminal and self-explanatory: the follow-up reload will also find nothing, and
         // re-deciding would relabel "couldn't be created" as "was deleted", which is a different (and wrong) story.
@@ -46,6 +49,10 @@ static class PlaylistPageNoticeRules
 
         if (headerDeleted || freshIsNull) return DetailNotice.Deleted;
 
+        // No capabilities block yet (a thin header): the rights below are placeholders, so this reload can neither
+        // accuse nor acquit — hold the current verdict. A prior deletion still clears, because the header IS back.
+        if (!capabilitiesKnown) return prev == DetailNotice.Deleted ? DetailNotice.None : prev;
+
         // Someone else's playlist we may no longer read. An OWNER always retains view rights on their own list, so a
         // false CanView there is a capability we failed to seed rather than a revocation — never accuse on it.
         if (!canView && !isOwner) return DetailNotice.AccessRevoked;
@@ -56,6 +63,6 @@ static class PlaylistPageNoticeRules
 
     /// <summary>The notice for a page opened COLD (a deep link / a fresh navigation): there is no previous state and no
     /// create in flight, so the header alone decides.</summary>
-    public static DetailNotice Cold(bool headerDeleted, bool canView, bool isOwner)
-        => Next(DetailNotice.None, freshIsNull: false, headerDeleted, canView, isOwner, isCreatePending: false);
+    public static DetailNotice Cold(bool headerDeleted, bool capabilitiesKnown, bool canView, bool isOwner)
+        => Next(DetailNotice.None, freshIsNull: false, headerDeleted, capabilitiesKnown, canView, isOwner, isCreatePending: false);
 }

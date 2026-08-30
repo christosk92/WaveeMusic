@@ -683,7 +683,7 @@ public static class Menus
         var caps = new PlaylistCapabilities(
             CanView: true, CanEditItems: canEdit, CanEditMetadata: isOwner,
             IsCollaborative: canEdit && !isOwner, IsOwner: isOwner,
-            CanAdministratePermissions: isOwner);
+            CanAdministratePermissions: isOwner, Known: true);
         var host = new PlaylistHost(uri, caps, Array.Empty<PlaylistRowRef>());
         return new ActionContext(ActionTarget.ForPlaylist(uri, name, host), s);
     }

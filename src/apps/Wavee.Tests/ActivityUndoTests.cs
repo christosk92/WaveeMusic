@@ -264,7 +264,7 @@ public class ActivityUndoTests
         public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<PlaylistSummary>> GetPlaylistsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<HomeFeed> GetHomeAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<HomeFeed> GetHomeAsync(string? facet, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<Show>> GetShowsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<Show?> GetShowAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<int> LoadMoreEpisodesAsync(string showUri, int from, CancellationToken ct = default) => throw new NotSupportedException();

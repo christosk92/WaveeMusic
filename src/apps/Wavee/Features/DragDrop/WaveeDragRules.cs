@@ -174,6 +174,21 @@ static class TabDropRules
     }
 }
 
+/// <summary>A QUEUE row's drag is a REORDER, never a deposit. The one decision every playlist destination reads
+/// through <c>WaveeResourceDragPayload.CanCopyTracks</c>, so no target has to know the queue exists.
+/// <para>The finding this answers: the queue's "Next in queue" row travelled as an ordinary track payload (it carries
+/// its <c>Track</c> — the chip needs it for the title and the art), so every playlist surface accepted it as a copy and
+/// a drag that was aimed at the queue's own rows ended as "Added to {playlist}". The payload now says where it came
+/// from, and a payload from the queue offers its tracks to nobody: the playlist page body, the track list, the tab
+/// strip, the sidebar rows and the player bar all gate on the same predicate, and all of them go dark for it. Inside
+/// the queue the gesture is the list's OWN (<c>ReorderPayload</c> from its <c>Reorderable</c>), which the list accepts
+/// without asking this question — so refusing everywhere else costs the reorder nothing.</para></summary>
+static class QueueDragRules
+{
+    /// <summary>May this payload's tracks be deposited on a playlist / inserted into a queue by a drop?</summary>
+    public static bool Depositable(bool hasTracks, bool fromQueue) => hasTracks && !fromQueue;
+}
+
 /// <summary>D16 — the COLLAPSED RAIL's transparency rule. A 56-DIP strip of covers is a corridor as much as a set of
 /// destinations, and the question a tile has to answer while a drag crosses it is which of the two "no"s it owes.
 /// <para>Engine-free like its siblings above, so <c>WaveeDragRulesTests</c> drives the real decision rather than a copy

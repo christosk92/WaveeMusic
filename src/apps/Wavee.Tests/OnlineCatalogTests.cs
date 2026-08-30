@@ -64,6 +64,8 @@ public class OnlineCatalogTests
         Assert.Empty((await src.SearchAsync("blue", SearchFacet.Albums, 0, 30)).Tracks);
     }
 
+    // Offline is a DECLINE, not a failure: there is no catalog to ask, so the answer is empty and the omnibar says
+    // "No results found". A catalog that exists and cannot answer is the other case (LiveCatalog_SuggestRichFailure_*).
     [Fact]
     public async Task OfflineCatalog_Suggestions_AreEmpty_InBothShapes()
     {
@@ -76,7 +78,7 @@ public class OnlineCatalogTests
     [Fact]
     public async Task OfflineCatalog_Home_IsNull_MeaningNoLiveFeed()
     {
-        Assert.Null(await OfflineOnlineCatalog.Instance.GetHomeAsync(CancellationToken.None));
+        Assert.Null(await OfflineOnlineCatalog.Instance.GetHomeAsync(null, CancellationToken.None));
         Assert.Null(await OfflineOnlineCatalog.Instance.SearchAsync("q", SearchFacet.All, 0, 30, CancellationToken.None));
     }
 
@@ -113,15 +115,77 @@ public class OnlineCatalogTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => src.SearchAsync("blue"));
     }
 
-    // Suggestions are keystroke chrome: a failure degrades to "no suggestions" rather than an error under the omnibar.
+    // The omnibar's rich suggestions are LOUD like search: a failure propagates so the popup can say "Couldn't load
+    // suggestions" with a retry, instead of the "No results found" that a silent Empty used to produce for every
+    // transport hiccup (OmnibarSuggestQuery.Fail is the consumer).
     [Fact]
-    public async Task LiveCatalog_SuggestFailure_DegradesToEmpty()
+    public async Task LiveCatalog_SuggestRichFailure_Propagates()
+    {
+        var online = new FakeCatalog { Suggest = _ => throw new InvalidOperationException("down") };
+        using var src = Source(new InMemoryStore(), online);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => src.SuggestRichAsync("bl"));
+    }
+
+    // The plain-completion shape has no popup to speak through (LiveSessionHost's startup probe is its one caller):
+    // it still degrades to "no suggestions".
+    [Fact]
+    public async Task LiveCatalog_PlainSuggestFailure_DegradesToEmpty()
     {
         var online = new FakeCatalog { Suggest = _ => throw new InvalidOperationException("down") };
         using var src = Source(new InMemoryStore(), online);
 
         Assert.Empty(await src.SuggestAsync("bl"));
-        Assert.Empty((await src.SuggestRichAsync("bl")).Queries);
+    }
+
+    // …and on the wire, PathfinderClient is where "no body" becomes a typed failure. The optional read (QueryAsync)
+    // keeps answering null for the callers whose null branch is a legitimate skip; the required read the catalog's
+    // search + suggest paths use throws a PathfinderRequestException that names the operation and the status — so a
+    // 2xx document with nothing in it (an ANSWER) can never be confused with a 503 (a FAILURE).
+    [Fact]
+    public async Task PathfinderClient_NonSuccessStatus_IsATypedFailure_NotAnEmptyAnswer()
+    {
+        var pf = new PathfinderClient(new StatusExchange(503));
+
+        var ex = await Assert.ThrowsAsync<PathfinderRequestException>(
+            () => pf.QueryOrThrowAsync(PathfinderOps.SearchSuggestions, PathfinderOps.SearchSuggestionsHash, null));
+
+        Assert.Equal(PathfinderOps.SearchSuggestions, ex.Operation);
+        Assert.Equal(503, ex.HttpStatus);
+        Assert.Null(await pf.QueryAsync(PathfinderOps.SearchSuggestions, PathfinderOps.SearchSuggestionsHash, null));
+    }
+
+    [Fact]
+    public async Task PathfinderClient_TransportException_IsATypedFailure_WithTheCause()
+    {
+        var pf = new PathfinderClient(new StatusExchange(new System.Net.Http.HttpRequestException("socket reset")));
+
+        var ex = await Assert.ThrowsAsync<PathfinderRequestException>(
+            () => pf.QueryOrThrowAsync(PathfinderOps.SearchSuggestions, PathfinderOps.SearchSuggestionsHash, null));
+
+        Assert.Null(ex.HttpStatus);
+        Assert.IsType<System.Net.Http.HttpRequestException>(ex.InnerException);
+    }
+
+    [Fact]
+    public async Task PathfinderClient_EmptyDocument_IsAnAnswer()
+    {
+        var pf = new PathfinderClient(new StatusExchange(200, "{\"data\":{}}"));
+
+        using var doc = await pf.QueryOrThrowAsync(PathfinderOps.SearchSuggestions, PathfinderOps.SearchSuggestionsHash, null);
+
+        Assert.True(doc.RootElement.TryGetProperty("data", out _));
+    }
+
+    [Fact]
+    public async Task PathfinderClient_Cancellation_IsNeitherAnAnswerNorAFailure()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var pf = new PathfinderClient(new StatusExchange(200, "{}"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => pf.QueryOrThrowAsync(PathfinderOps.SearchSuggestions, PathfinderOps.SearchSuggestionsHash, null, ct: cts.Token));
     }
 
     // …but a SUPERSEDED keystroke is not a failure: cancellation still propagates, so the caller can tell "you typed
@@ -171,7 +235,7 @@ public class OnlineCatalogTests
     public async Task GetHome_Offline_ContributesTheThreeLibraryShelves()
     {
         using var src = Source(LibraryStore(), OfflineOnlineCatalog.Instance);
-        var home = await src.GetHomeAsync();
+        var home = await src.GetHomeAsync(null);
 
         Assert.Contains(home.Groups, g => g.Kind == HomeGroupKind.QuickGrid);
         var shelves = Shelves(home);
@@ -197,7 +261,7 @@ public class OnlineCatalogTests
     {
         using var src = Source(LibraryStore(), new FakeCatalog { Home = () => throw new InvalidOperationException("pathfinder is down") });
 
-        Assert.Equal(3, Shelves(await src.GetHomeAsync()).Length);
+        Assert.Equal(3, Shelves(await src.GetHomeAsync(null)).Length);
     }
 
     [Fact]
@@ -207,10 +271,63 @@ public class OnlineCatalogTests
             new[] { new HomeCard("spotify:playlist:mix", "Daily Mix 1", null, null, HomeCardKind.Playlist) });
         using var src = Source(LibraryStore(), new FakeCatalog { Home = () => new LiveHomeResult(new[] { live }, null) });
 
-        var home = await src.GetHomeAsync();
+        var home = await src.GetHomeAsync(null);
 
         Assert.Empty(Shelves(home));
         Assert.Contains(home.Groups, g => g.Kind == HomeGroupKind.MixBand);
+    }
+
+    // ── Home: a FACET is a different document ───────────────────────────────────────────────────────────────────────
+    // The facet arrives as a request PARAMETER, so the source knows a read is faceted and can act on it. It acts on it
+    // twice: the personal quick matrix is the unfiltered feed's first module and is not re-injected under a chip (that
+    // is why "Music" used to look like "All" at the fold), and a faceted read that cannot be answered LIVE fails loud
+    // instead of degrading to the library shelves — shelves under "Podcasts" are a lie, not a fallback.
+    [Fact]
+    public async Task GetHome_Faceted_DoesNotPrependJumpBackIn()
+    {
+        var live = new HomeGroup(HomeGroupKind.MixBand, "Made for you",
+            new[] { new HomeCard("spotify:playlist:mix", "Daily Mix 1", null, null, HomeCardKind.Playlist) });
+        var online = new FakeCatalog { Home = () => new LiveHomeResult(new[] { live }, null, Facet: "music-chip") };
+        using var src = Source(LibraryStore(), online);
+
+        var home = await src.GetHomeAsync("music-chip");
+
+        Assert.Equal("music-chip", online.LastFacet);       // the source was TOLD, not left to guess
+        Assert.DoesNotContain(home.Groups, g => g.Kind == HomeGroupKind.QuickGrid);
+        Assert.Empty(Shelves(home));
+        Assert.Contains(home.Groups, g => g.Kind == HomeGroupKind.MixBand);
+    }
+
+    [Fact]
+    public async Task GetHome_Unfaceted_StillPrependsJumpBackIn()
+    {
+        var live = new HomeGroup(HomeGroupKind.MixBand, "Made for you",
+            new[] { new HomeCard("spotify:playlist:mix", "Daily Mix 1", null, null, HomeCardKind.Playlist) });
+        var online = new FakeCatalog { Home = () => new LiveHomeResult(new[] { live }, null) };
+        using var src = Source(LibraryStore(), online);
+
+        var home = await src.GetHomeAsync(null);
+
+        Assert.Null(online.LastFacet);
+        Assert.Equal(HomeGroupKind.QuickGrid, home.Groups[0].Kind);
+    }
+
+    [Fact]
+    public async Task GetHome_FacetedLiveFailure_Throws()
+    {
+        using var src = Source(LibraryStore(),
+            new FakeCatalog { Home = () => throw new InvalidOperationException("pathfinder is down") });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => src.GetHomeAsync("music-chip"));
+    }
+
+    // …and "offline" is the same absence by a quieter route: there is no locally computable "Podcasts" either.
+    [Fact]
+    public async Task GetHome_FacetedOffline_Throws()
+    {
+        using var src = Source(LibraryStore(), OfflineOnlineCatalog.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => src.GetHomeAsync("podcasts-chip"));
     }
 
     // The chip pin. A FACETED home response does not always repeat homeChips, so the last non-empty set is remembered —
@@ -225,9 +342,9 @@ public class OnlineCatalogTests
         online.Home = () => new LiveHomeResult(new[] { group }, chips);
         using var src = Source(LibraryStore(), online);
 
-        Assert.Same(chips, (await src.GetHomeAsync()).Chips);
+        Assert.Same(chips, (await src.GetHomeAsync(null)).Chips);
         online.Home = () => new LiveHomeResult(new[] { group }, null);      // the faceted follow-up carries none
-        Assert.Same(chips, (await src.GetHomeAsync()).Chips);
+        Assert.Same(chips, (await src.GetHomeAsync(null)).Chips);
     }
 
     // …and "no live Home" is NOT a chip-less live response: an offline feed has no facets to filter, so the pinned row
@@ -241,9 +358,9 @@ public class OnlineCatalogTests
         var seam = new SwitchableOnlineCatalog(new FakeCatalog { Home = () => new LiveHomeResult(new[] { group }, chips) });
         using var src = Source(LibraryStore(), seam);
 
-        Assert.Same(chips, (await src.GetHomeAsync()).Chips);
+        Assert.Same(chips, (await src.GetHomeAsync(null)).Chips);
         seam.Reset();                                        // logout
-        var offline = await src.GetHomeAsync();
+        var offline = await src.GetHomeAsync(null);
         Assert.Null(offline.Chips);
         Assert.Equal(3, Shelves(offline).Length);            // …and the degraded shelves are back
     }
@@ -317,13 +434,12 @@ public class OnlineCatalogTests
         public JsonElement Vars(int i) => Body(i).GetProperty("variables");
     }
 
-    static SpotifyOnlineCatalog Catalog(Wire wire, IStore store, IEntityHydrator hydrator, Func<string?>? facet = null)
+    static SpotifyOnlineCatalog Catalog(Wire wire, IStore store, IEntityHydrator hydrator)
     {
         var client = new PathfinderClient(wire.Exchange);
         var resource = new PathfinderResource(client, static () =>
             new SessionContext("me", "US", "premium", "en", Tier.Premium, false));
         return new SpotifyOnlineCatalog(client, resource, store, hydrator,
-            facet ?? (static () => null),
             static () => new HomeModuleTitles("Jump back in", "Recents", "Made for you", "Top mixes", "Radio",
                 "Up next", "Audiobooks", "Editor's picks", "Because you listened", "Podcasts"),
             static (_, _) => Task.CompletedTask,
@@ -431,11 +547,10 @@ public class OnlineCatalogTests
         var resource = new PathfinderResource(client, static () =>
             new SessionContext("me", "US", "premium", "en", Tier.Premium, false));
         using var catalog = new SpotifyOnlineCatalog(client, resource, store, new RecordingHydrator(store),
-            static () => null,
             static () => new HomeModuleTitles("", "", "", "", "", "", "", "", "", ""),
             static (_, _) => Task.CompletedTask, static (_, _) => Task.FromResult<byte[]?>(null));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<PathfinderRequestException>(
             () => catalog.SearchAsync("q", SearchFacet.Tracks, 0, 30));
     }
 
@@ -464,36 +579,56 @@ public class OnlineCatalogTests
 
     const string HomeResponse = """{ "data": { "home": { "greeting": { "transformedLabel": "Good evening" } } } }""";
 
-    // Home rides the DESKTOP integration with the real local zone, and the facet is read at FETCH time — the chip row
-    // writes it between reads, and PathfinderResource keys its TTL cache on the request body, so a facet switch must be
-    // a distinct cache entry rather than a stale hit.
+    // Home rides the DESKTOP integration with the real local zone, and the facet is a REQUEST PARAMETER: the caller
+    // names the document it wants, the variable goes on the wire, and the ANSWER carries the facet back so a late reply
+    // can be matched against the current chip selection. PathfinderResource keys its TTL cache on the request body, so
+    // a facet switch is a distinct cache entry rather than a stale hit.
     [Fact]
-    public async Task SpotifyHome_ReadsTheFacetAtFetchTime()
+    public async Task SpotifyHome_FacetIsARequestParameter()
     {
         var store = new InMemoryStore();
-        string? facet = null;
         var wire = new Wire(HomeResponse);
-        using var catalog = Catalog(wire, store, new RecordingHydrator(store), () => facet);
+        using var catalog = Catalog(wire, store, new RecordingHydrator(store));
 
-        var first = await catalog.GetHomeAsync();
+        var first = await catalog.GetHomeAsync(null);
         Assert.NotNull(first);
         Assert.Equal("Good evening", first!.Greeting);
+        Assert.Equal("", first.Facet);                     // null asked for the unfiltered feed; the answer says so
         Assert.Equal(PathfinderOps.Home, wire.Op(0));
         var vars = wire.Vars(0);
         Assert.Equal("INTEGRATION_DESKTOP", vars.GetProperty("homeEndUserIntegration").GetString());
         Assert.Equal("", vars.GetProperty("facet").GetString());
         Assert.Equal(SpotifyTimeZone.LocalIana, vars.GetProperty("timeZone").GetString());
 
-        await catalog.GetHomeAsync();
+        await catalog.GetHomeAsync(null);
         Assert.Equal(1, wire.Calls);                       // same body ⇒ the resource's TTL cache answers
 
-        facet = "podcasts-following-chip";
-        await catalog.GetHomeAsync();
+        var faceted = await catalog.GetHomeAsync("podcasts-following-chip");
         Assert.Equal(2, wire.Calls);                       // a facet switch is a DIFFERENT key, not a stale hit
         Assert.Equal("podcasts-following-chip", wire.Vars(1).GetProperty("facet").GetString());
+        Assert.Equal("podcasts-following-chip", faceted!.Facet);
     }
 
     // ── fakes ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    // One scripted answer for every request: a status (+ body), or a transport exception.
+    sealed class StatusExchange : IHttpExchange
+    {
+        readonly int _status;
+        readonly string _body;
+        readonly Exception? _throw;
+
+        public StatusExchange(int status, string body = "") { _status = status; _body = body; }
+        public StatusExchange(Exception ex) { _throw = ex; _body = ""; }
+
+        public Task<HttpResp> SendAsync(HttpReq req, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (_throw is not null) throw _throw;
+            return Task.FromResult(new HttpResp(_status,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), Encoding.UTF8.GetBytes(_body)));
+        }
+    }
 
     sealed class FakeCatalog : IOnlineCatalog
     {
@@ -503,6 +638,8 @@ public class OnlineCatalogTests
         public int SearchCalls { get; private set; }
         public int SuggestCalls { get; private set; }
         public int HomeCalls { get; private set; }
+        /// <summary>The facet of the last Home read — null until asked, and null again for an unfiltered read.</summary>
+        public string? LastFacet { get; private set; }
 
         public Task<SearchResults?> SearchAsync(string query, SearchFacet facet, int offset, int limit, CancellationToken ct = default)
         {
@@ -519,9 +656,10 @@ public class OnlineCatalogTests
             return Task.FromResult(Suggest is null ? SearchSuggestions.Empty : Suggest(query));
         }
 
-        public Task<LiveHomeResult?> GetHomeAsync(CancellationToken ct = default)
+        public Task<LiveHomeResult?> GetHomeAsync(string? facet, CancellationToken ct = default)
         {
             HomeCalls++;
+            LastFacet = facet;
             return Task.FromResult(Home is null ? null : Home());
         }
     }

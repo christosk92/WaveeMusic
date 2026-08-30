@@ -40,6 +40,10 @@ sealed class ConcertHubPage : Component
     // The live page-scroll offset (LazyScroll.Slot) + the accumulated All Events list the virtualized grid reads
     // through its delegates — the grid realizes only the rows in the scroll window no matter how many pages append.
     readonly Signal<float> _pageScroll = new(0f);
+    // ClipBelow engage/release edges for the two nodes that scroll under the shell masthead (the header card and
+    // the feed body) — the feather on each is mounted only while its cut is live, so nothing is softened at rest.
+    readonly Signal<bool> _headerUnderBand = new(false);
+    readonly Signal<bool> _bodyUnderBand = new(false);
     readonly Signal<IReadOnlyList<Concert>> _allEvents = new(Array.Empty<Concert>());
     readonly Signal<int> _locEpoch = new(0);   // bumped after a saved location → re-resolve place + requery
     readonly Loadable<ConcertFeedPage?> _feed = Loadable<ConcertFeedPage?>.Pending(FeedSeed());
@@ -103,9 +107,18 @@ sealed class ConcertHubPage : Component
                 onAction: place is null ? () => _location.TogglePicker(() => _anchor.Value) : null),
             group: "concert-hub");
 
+        // The offset model (ContextBand / BrowseMastheadMetrics.ClipInset): the masthead over this page paints
+        // nothing, so everything that scrolls under it is cut at its lower edge — TWO nodes, because the sticky
+        // filter bar sits between them and pins on that very line (ConcertFilterBar's Sticky(Reserve)): the header
+        // card above it, and the feed below it. One clip around all three would feather the pinned bar's own top.
         var kids = new List<Element>(3)
         {
-            Header(),
+            ((BoxEl)Header() with
+            {
+                EdgeFade = _headerUnderBand.Value
+                    ? new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand)
+                    : null,
+            }).ClipBelow(BrowseMastheadMetrics.ClipInset, v => _headerUnderBand.Value = v),
             Embed.Comp(() => new ConcertFilterBar
             {
                 Place = _place,
@@ -120,15 +133,32 @@ sealed class ConcertHubPage : Component
                 OnOpenLocationPicker = () => _location.TogglePicker(() => _anchor.Value),
                 OnUseMyLocation = () => _location.TogglePicker(() => _anchor.Value),
             }) with { Key = "concert-filter-bar" },
-            region,
+            new BoxEl
+            {
+                Direction = 1, MinWidth = 0f,
+                EdgeFade = _bodyUnderBand.Value
+                    ? new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand)
+                    : null,
+                Children = [ region ],
+            }.ClipBelow(BrowseMastheadMetrics.ClipInset, v => _bodyUnderBand.Value = v),
         };
 
         var content = new BoxEl
         {
-            Direction = 1, Gap = Spacing.L,
-            // The standard desktop page frame: PageWide (36) gutters, the 24 top every other page takes.
-            Padding = new Edges4(Spacing.PageWide, BrowseLayout.MastheadReserve + Spacing.XXL, Spacing.PageWide, PlayerDock.Reserve + Spacing.PageWide),
-            Children = kids.ToArray(),
+            Direction = 1,
+            Children =
+            [
+                // The masthead reserve + the 24 top every other page takes, as a SPACER rather than padding: the
+                // clipped nodes below start where the content does, so their cuts engage only once it scrolls.
+                new BoxEl { Height = BrowseLayout.MastheadReserve + Spacing.XXL, HitTestVisible = false },
+                new BoxEl
+                {
+                    Direction = 1, Gap = Spacing.L,
+                    // The standard desktop page frame: PageWide (36) gutters.
+                    Padding = BrowseMastheadMetrics.FamilyUnderBandPad(PlayerDock.Reserve + Spacing.PageWide),
+                    Children = kids.ToArray(),
+                },
+            ],
         };
         var scroll = ScrollView(content) with
         {

@@ -105,6 +105,10 @@
     <Compile Include="..\Wavee\Components\MembershipDiff.cs" />
     <!-- detail layout breakpoint hysteresis (Wavee.Core + BCL only) — DetailLayoutBreakpointTests -->
     <Compile Include="..\Wavee\Features\Detail\DetailLayoutBreakpoints.cs" />
+    <!-- which detail surfaces get a resizable rail, at which mode, with which default/clamp (BCL + WaveeSize) — DetailRailPolicyTests -->
+    <Compile Include="..\Wavee\Features\Detail\DetailRailPolicy.cs" />
+    <!-- the track list's Loading | Empty | NoMatch | Rows decision (BCL only) — PlaylistListStateTests -->
+    <Compile Include="..\Wavee\Features\Detail\PlaylistListState.cs" />
     <!-- home artist-row Mixview width tier + hysteresis (BCL only) — HomeArtistRowLayoutTests -->
     <Compile Include="..\Wavee\Features\Home\HomeArtistRowLayout.cs" />
     <!-- pure Classic/Modern track-table column + sort grammar — TrackRowStyleRulesTests -->
@@ -142,6 +146,13 @@
     <Compile Include="..\Wavee\Features\Shell\MergedChromeLayout.cs" />
     <!-- pinned workspace tabs are the only cross-session subset; source-generated JSON keeps the codec AOT-safe -->
     <Compile Include="..\Wavee\Features\Shell\WorkspaceTabsPersistence.cs" />
+    <!-- The shell's tab model (System + the Route shim + the codec above): which tab is active is ITS decision, never
+         the strip's pre-written selection cell, and a tab switch is a Restore, not a Push - TabWorkspaceTests. -->
+    <Compile Include="..\Wavee\Features\Shell\TabWorkspace.cs" />
+    <Compile Include="..\Wavee\App\MeteredStatusLine.cs" />
+    <Compile Include="..\Wavee\Features\Search\OmnibarSuggestQuery.cs" />
+    <Compile Include="..\Wavee\Components\NowPlayingMatch.cs" />
+    <Compile Include="..\Wavee\Features\Home\HomeCardPlayRouting.cs" />
     <!-- the shell wash clip solver (System + FluentGpu.Foundation.Point2 only) — ShellWashGeometryTests -->
     <Compile Include="..\Wavee\Features\Shell\ShellWashGeometry.cs" />
     <Compile Include="..\Wavee\Features\Shell\ShellNav.cs" />
@@ -163,6 +174,10 @@
     <!-- Home's landing projection is engine-free: tests pin one authored module per kind while the source ledger stays
          lossless for the Zune-style section directory. -->
     <Compile Include="..\Wavee\Features\Home\HomeLandingProjection.cs" />
+    <!-- The home facet strip's ORDER — All first, a selected parent's sub-chips spilled right after IT, a selected sub
+         fused into its parent under the tab's key — is pure (System + Wavee.Core.HomeChip only), so HomeFacetStripTests
+         drives the real sequencing without a page, a service or a signal. -->
+    <Compile Include="..\Wavee\Features\Home\HomeFacetStrip.cs" />
     <!-- Home layout document + store (System.Text.Json + Wavee.Core.Home only) — HomeLayoutTests. -->
     <Compile Include="..\Wavee\Features\Home\Persistence\HomeLayoutDoc.cs" />
     <Compile Include="..\Wavee\Features\Home\Persistence\HomeLayoutStore.cs" />
@@ -390,6 +405,9 @@
     <!-- the queue panel's OPTIMISTIC reorder as pure data (Wavee.Core + BCL only) — QueueOrderTests pin it against the
          authoritative remove+insert session op the panel used to mirror with a swap -->
     <Compile Include="..\Wavee\Features\Player\QueueOrder.cs" />
+    <!-- the queue panel's whole-list reorder as pure data: the flattened slots (headers / rows / show-more) and the
+         flat→section-local move decision (Wavee.Core + BCL only) — QueueMovePlanTests -->
+    <Compile Include="..\Wavee\Features\Player\QueueMovePlan.cs" />
     <!-- artist hero height response (Wavee.Core + BCL only) — ArtistHeroLayoutTests -->
     <Compile Include="..\Wavee\Features\Detail\ArtistHeroLayout.cs" />
     <Compile Include="..\Wavee\Features\Detail\AlbumDrawerRows.cs" />

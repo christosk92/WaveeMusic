@@ -1121,7 +1121,7 @@ public static class SpotifyExportMapper
         bool canEdit = BoolAt(data, false, "currentUserCapabilities", "canEditItems");
         bool canView = BoolAt(data, true, "currentUserCapabilities", "canView");
         bool isOwner = string.Equals(ownerName, CurrentUser, StringComparison.OrdinalIgnoreCase);
-        var caps = new PlaylistCapabilities(canView, canEdit, CanEditMetadata: isOwner, IsCollaborative: false, IsOwner: isOwner);
+        var caps = new PlaylistCapabilities(canView, canEdit, CanEditMetadata: isOwner, IsCollaborative: false, IsOwner: isOwner, Known: true);
 
         // No cover accent is read here on purpose: Playlist carries no colour field, and CoverColorPlane — keyed by
         // IMAGE, not entity — is the app's single resolver for art colour, so a per-entity copy would be a second

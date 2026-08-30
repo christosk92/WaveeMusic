@@ -328,12 +328,14 @@ sealed partial class SettingsPage
             });
     }
 
-    static string MeteredQualitySub()
+    // The card's description IS the detector's verdict — every state says something (a silent card once hid a detector
+    // that only spoke when metered). Reactive: the cost, cap and quality signals are read inside render, so an NLM
+    // CostChanged push or either combo re-renders the line. "Cap in effect" is only claimed when the cap is actually
+    // lower than the chosen quality.
+    string MeteredQualitySub()
     {
-        string sub = Loc.Get(Strings.Settings.Playback.MeteredQualitySub);
-        return NetworkPolicy.Metered.Value
-            ? sub + " · " + Loc.Get(Strings.Settings.Playback.MeteredHint)
-            : sub;
+        bool capInEffect = NetworkPolicy.MeteredQualityCap.Value < _quality.Value;
+        return MeteredStatusLine.For(NetworkPolicy.Cost.Value, capInEffect).Render(Loc.Get);
     }
 
     Element MeteredQualityCombo(Services? svc)

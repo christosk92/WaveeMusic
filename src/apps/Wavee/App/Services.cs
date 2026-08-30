@@ -655,7 +655,7 @@ public sealed class Services
         // source, which holds this one reference forever — go-live SetInner()s the Spotify catalog into it, GoOffline
         // resets it. It replaces the four Live* hooks the source used to expose.
         var onlineCatalog = new SwitchableOnlineCatalog(OfflineOnlineCatalog.Instance);
-        var storeLibrary = new Wavee.Backend.Library.StoreLibrarySource(store, spotifyHydration, onlineCatalog);
+        var storeLibrary = new Wavee.Backend.Library.StoreLibrarySource(store, spotifyHydration, onlineCatalog, log: new WaveeLogger(WaveeLog.Instance, "library"));
         var userPlaylists = new UserPlaylistSource();
         userPlaylists.ExposeInCatalog = false;
         var playlistMutations = new Wavee.Backend.Playlists.PlaylistMutationSource(

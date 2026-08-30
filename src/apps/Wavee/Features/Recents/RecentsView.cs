@@ -348,16 +348,60 @@ static class RecentsView
         return added;
     }
 
-    /// <summary>Append the decoded, usable child URIs of one expandable row. Empty entries and duplicates collapse;
-    /// <paramref name="pending"/> lets the page share the same misses-only rule as viewport hydration.</summary>
+    // ── the expand drawer ─────────────────────────────────────────────────────────────────────────────────────────────
+    /// <summary>Whether a group row gets a chevron: it stands for at least one play AND the app knows WHICH entries to
+    /// list — the absorbed wire members first, the header's own (server-truncated) <c>child_uri</c> list as the
+    /// fallback. A row with the count but neither source cannot expand: there is no server endpoint for "which tracks
+    /// did I play from context X", so a drawer for it could only be invented. The row still says "Played N tracks".</summary>
+    public static bool CanExpand(RecentsRow row)
+        => row.ChildCount > 0 && (HasUri(row.Members) || HasUri(row.ChildUris));
+
+    /// <summary>A group row with a play count but nothing the drawer could list — what the page reports once per session
+    /// (<c>recents.drawer.no-members</c>), so the diagnostics show whether the wire ever folds a header's members.</summary>
+    public static bool MissingMembers(RecentsRow row) => row.ChildCount > 0 && !CanExpand(row);
+
+    static bool HasUri(IReadOnlyList<RecentsMember>? members)
+    {
+        if (members is null) return false;
+        for (int i = 0; i < members.Count; i++) if (members[i].Uri.Length > 0) return true;
+        return false;
+    }
+
+    static bool HasUri(IReadOnlyList<string>? uris)
+    {
+        if (uris is null) return false;
+        for (int i = 0; i < uris.Count; i++) if (uris[i].Length > 0) return true;
+        return false;
+    }
+
+    /// <summary>What the drawer lists, in wire order: the absorbed members (each with its own played instant), else the
+    /// header's <c>child_uri</c> list projected as members with no instant (<see cref="PlayedAt(long, DateTimeOffset, CultureInfo)"/>
+    /// renders 0 as nothing, never as an epoch date). The list is handed back as sent — an empty uri stays in place,
+    /// so a caller's wire-position keys and its rendered ordinals can differ on purpose.</summary>
+    public static IReadOnlyList<RecentsMember> DrawerEntries(RecentsRow row)
+    {
+        if (row.Members is { Count: > 0 } members) return members;
+        if (row.ChildUris is not { Count: > 0 } kids) return Array.Empty<RecentsMember>();
+        var fallback = new RecentsMember[kids.Count];
+        for (int i = 0; i < kids.Count; i++) fallback[i] = new RecentsMember("", kids[i], 0L);
+        return fallback;
+    }
+
+    /// <summary>Append the usable uris of one expandable row — the same members-first source <see cref="DrawerEntries"/>
+    /// lists, read in place so the viewport pump (which calls this per realized saved row) never materialises the
+    /// fallback. Empty entries and duplicates collapse; <paramref name="pending"/> lets the page share the same
+    /// misses-only rule as viewport hydration.</summary>
     public static int CollectChildUris(RecentsRow row, Func<string, bool> pending, List<string> into,
                                        int cap = BatchCap)
     {
-        if (cap <= 0 || row.ChildUris is not { Count: > 0 } children) return 0;
+        if (cap <= 0) return 0;
+        var members = row.Members is { Count: > 0 } m ? m : null;
+        var kids = members is null ? row.ChildUris : null;
+        int count = members?.Count ?? kids?.Count ?? 0;
         int added = 0;
-        for (int i = 0; i < children.Count && added < cap; i++)
+        for (int i = 0; i < count && added < cap; i++)
         {
-            string uri = children[i];
+            string uri = members is not null ? members[i].Uri : kids![i];
             if (uri.Length == 0 || !pending(uri)) continue;
             bool duplicate = false;
             for (int j = 0; j < into.Count; j++)

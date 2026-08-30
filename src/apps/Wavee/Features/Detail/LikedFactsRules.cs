@@ -305,7 +305,15 @@ public static class LikedFactsRules
     /// <param name="MoreTags">Distinct primary descriptors in the remainder that <see cref="Named"/> does NOT name.
     /// Zero when <c>detail</c> is unbounded — an unbounded tail ENUMERATES the remainder, below-evidence-floor
     /// descriptors included (see <see cref="BlendOther"/>).</param>
-    public readonly record struct BlendTail(int Count, float Fraction, IReadOnlyList<TagShare> Named, int MoreTags);
+    public readonly record struct BlendTail(int Count, float Fraction, IReadOnlyList<TagShare> Named, int MoreTags)
+    {
+        // `default(BlendTail)` is a LEGITIMATE answer ("nothing pooled", see BlendOther) and a default struct carries a
+        // null list — which is exactly what took 0.2.0.1 down: LikedBlendCard read `tail.Named.Count` on a library whose
+        // tags had not hydrated yet (every track untagged ⇒ aboveFloor == 0 ⇒ default). The list is never null from
+        // here on; equality still runs over the backing field, so `default` stays equal to `default`.
+        readonly IReadOnlyList<TagShare>? _named = Named;
+        public IReadOnlyList<TagShare> Named => _named ?? Array.Empty<TagShare>();
+    }
 
     /// <summary>Open up the "Other" segment. <paramref name="shown"/> is how many slices the bar itself names (its own
     /// <c>take</c>) and <paramref name="detail"/> how many of the tail to name back — so the answer is a strict

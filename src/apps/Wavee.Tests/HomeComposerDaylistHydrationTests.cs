@@ -18,12 +18,13 @@ public class HomeComposerDaylistHydrationTests
     [Fact]
     public async Task DuplicateOccurrences_FetchOneHeader_RefreshHomeOnce_AndKeepAccounting()
     {
-        var source = Feed(Shallow(), duplicateGroup: true);
+        var source = Feed(Shallow(), duplicateGroup: true, facet: "music-chip");
         var headers = new Dictionary<string, HomePlaylistHeader>(StringComparer.Ordinal);
         int fetches = 0, refreshes = 0, probes = 0;
+        string? requeryFacet = null;
 
         var exactCard = Exact();
-        var refreshed = Feed(exactCard, duplicateGroup: true);
+        var refreshed = Feed(exactCard, duplicateGroup: true, facet: "music-chip");
         var hydrator = new HomeDaylistHydrator(
             uri => headers.TryGetValue(uri, out var h) ? h : null,
             (uri, _) =>
@@ -33,9 +34,10 @@ public class HomeComposerDaylistHydrationTests
                 return Task.CompletedTask;
             },
             (_, _) => { probes++; return Task.FromResult<byte[]?>(Rev(1)); },
-            _ =>
+            (facet, _) =>
             {
                 refreshes++;
+                requeryFacet = facet;
                 return Task.FromResult(refreshed);
             });
 
@@ -44,6 +46,10 @@ public class HomeComposerDaylistHydrationTests
         Assert.Equal(1, probes);                   // one HEAD read for the URI, not one per occurrence
         Assert.Equal(1, fetches);                  // the URI occurs in two groups + the section ledger
         Assert.Equal(1, refreshes);                // one invalidation/requery, never one per occurrence
+        // …and it repairs the read it came from. The requery INVALIDATES a transport cache key and the key is the
+        // request body, so refetching the unfiltered feed to repair a "music-chip" read would evict the wrong entry
+        // and overlay the wrong document.
+        Assert.Equal("music-chip", requeryFacet);
         Assert.Equal(source.Groups.Sum(g => g.Cards.Count), result.Groups.Sum(g => g.Cards.Count));
         Assert.Equal(source.Sections!.Sum(s => s.Cards.Count), result.Sections!.Sum(s => s.Cards.Count));
         Assert.All(result.Groups.SelectMany(g => g.Cards), c =>
@@ -66,7 +72,7 @@ public class HomeComposerDaylistHydrationTests
             _ => Header(),
             (_, _) => { fetches++; return Task.CompletedTask; },
             (_, _) => Task.FromResult<byte[]?>(Rev(1)),
-            _ =>
+            (_, _) =>
             {
                 refreshes++;
                 return Task.FromException<LiveHomeResult>(new InvalidOperationException("home unavailable"));
@@ -103,7 +109,7 @@ public class HomeComposerDaylistHydrationTests
             _ => Header(),
             (_, _) => { fetches++; return Task.CompletedTask; },
             (_, _) => { probes++; return Task.FromResult<byte[]?>(Rev(1)); },
-            _ => { refreshes++; return Task.FromResult(Feed(Exact())); },
+            (_, _) => { refreshes++; return Task.FromResult(Feed(Exact())); },
             nowMs: Clock());
 
         for (int read = 1; read <= 3; read++)
@@ -135,7 +141,7 @@ public class HomeComposerDaylistHydrationTests
             _ => Header() with { Title = title },
             (_, _) => Task.CompletedTask,
             (_, _) => Task.FromResult<byte[]?>(revision),
-            _ => { refreshes++; return Task.FromResult(LiveHomeResult.Empty); },   // empty body ⇒ the raw source stays the basis
+            (_, _) => { refreshes++; return Task.FromResult(LiveHomeResult.Empty); },   // empty body ⇒ the raw source stays the basis
             nowMs: Clock());
 
         var sunday = await hydrator.ResolveAsync(Feed(Shallow()), TestContext.Current.CancellationToken);
@@ -170,7 +176,7 @@ public class HomeComposerDaylistHydrationTests
             _ => Header(),
             (_, _) => { fetches++; return Task.CompletedTask; },
             (_, _) => Task.FromResult<byte[]?>(revision),
-            _ => { refreshes++; return Task.FromResult(Feed(Exact())); },
+            (_, _) => { refreshes++; return Task.FromResult(Feed(Exact())); },
             nowMs: Clock());
 
         await hydrator.ResolveAsync(Feed(Shallow()), TestContext.Current.CancellationToken);
@@ -195,7 +201,7 @@ public class HomeComposerDaylistHydrationTests
             _ => Header(),
             (_, _) => Task.CompletedTask,
             (_, _) => { probes++; return Task.FromResult<byte[]?>(revision); },
-            _ => { refreshes++; return Task.FromResult(Feed(Exact())); },
+            (_, _) => { refreshes++; return Task.FromResult(Feed(Exact())); },
             nowMs: Clock());
 
         // Nothing hydrated yet ⇒ nothing to compare and NOT a network call.
@@ -226,7 +232,7 @@ public class HomeComposerDaylistHydrationTests
             _ => Header(),
             (_, _) => Task.CompletedTask,
             (_, _) => { probes++; return Task.FromResult<byte[]?>(Rev(1)); },
-            _ => Task.FromResult(Feed(Exact())),
+            (_, _) => Task.FromResult(Feed(Exact())),
             nowMs: () => now);
 
         await hydrator.ResolveAsync(Feed(Shallow()), TestContext.Current.CancellationToken);
@@ -253,7 +259,7 @@ public class HomeComposerDaylistHydrationTests
             (_, _) => probeWorks
                 ? Task.FromResult<byte[]?>(Rev(1))
                 : Task.FromException<byte[]?>(new InvalidOperationException("spclient unreachable")),
-            _ => { refreshes++; return Task.FromResult(Feed(Exact())); },
+            (_, _) => { refreshes++; return Task.FromResult(Feed(Exact())); },
             nowMs: Clock());
 
         await hydrator.ResolveAsync(Feed(Shallow()), TestContext.Current.CancellationToken);
@@ -280,7 +286,7 @@ public class HomeComposerDaylistHydrationTests
             _ => new HomePlaylistHeader("daylist", null, "Spotify", null, 50),
             (_, _) => { fetches++; return Task.CompletedTask; },
             (_, _) => Task.FromResult<byte[]?>(Rev(1)),
-            _ => { refreshes++; return Task.FromResult(source); });
+            (_, _) => { refreshes++; return Task.FromResult(source); });
 
         var result = await hydrator.ResolveAsync(source, TestContext.Current.CancellationToken);
 
@@ -298,7 +304,7 @@ public class HomeComposerDaylistHydrationTests
             _ => null,
             (_, _) => Task.FromException(new InvalidOperationException("header unavailable")),
             (_, _) => Task.FromResult<byte[]?>(Rev(1)),
-            _ => { refreshes++; return Task.FromResult(source); });
+            (_, _) => { refreshes++; return Task.FromResult(source); });
 
         var fallback = await failing.ResolveAsync(source, TestContext.Current.CancellationToken);
         Assert.Same(source, fallback);
@@ -310,7 +316,7 @@ public class HomeComposerDaylistHydrationTests
             _ => null,
             (_, ct) => Task.FromCanceled(ct),
             (_, ct) => Task.FromCanceled<byte[]?>(ct),
-            _ => Task.FromResult(source));
+            (_, _) => Task.FromResult(source));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled.ResolveAsync(source, cts.Token));
     }
 
@@ -337,7 +343,7 @@ public class HomeComposerDaylistHydrationTests
     static HomePlaylistHeader Header() => new(
         "teen pop mid 2010s friday afternoon", "Exact description", "Spotify", null, 50);
 
-    static LiveHomeResult Feed(HomeCard card, bool duplicateGroup = false)
+    static LiveHomeResult Feed(HomeCard card, bool duplicateGroup = false, string facet = "")
     {
         HomeGroup[] groups = duplicateGroup
             ? [new(HomeGroupKind.Hero, null, [card]), new(HomeGroupKind.QuickGrid, "Jump back in", [card])]
@@ -346,6 +352,6 @@ public class HomeComposerDaylistHydrationTests
         [
             new("spotify:section:daylist", "Your daylist", null, [card], 1, 1),
         ];
-        return new LiveHomeResult(groups, null, "Good afternoon", sections);
+        return new LiveHomeResult(groups, null, "Good afternoon", sections, facet);
     }
 }

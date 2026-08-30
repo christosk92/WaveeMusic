@@ -154,7 +154,9 @@ static class Program
         };
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            WaveeLog.Instance.Error("crash", "Unobserved task exception", e.Exception);
+            // Describe() adds the build stamp, module base and per-frame RVAs, so an offset-only NativeAOT trace from a
+            // background task is symbolicatable the same way a terminating crash is.
+            WaveeLog.Instance.Error("crash", "Unobserved task exception\n" + CrashReport.Describe(e.Exception), e.Exception);
             WaveeLog.Instance.Flush();
             e.SetObserved();
         };
@@ -270,7 +272,8 @@ static class Program
             Environment.Exit(code);
         }
 
-        // LIVE collection round-trip: login -> POST /collection/v2/{paging|delta} -> set membership -> hydrate -> print.
+        // LIVE collection round-trip: login -> POST /collection/v2/{paging|delta} for the set's WIRE set (CollectionSets.WireSet:
+        // liked+albums both walk "collection") -> set membership -> hydrate -> print the logical set.
         // Usage: --spotify-collection [liked|albums|artists|shows|episodes] (defaults to liked).
         int colIdx = Array.IndexOf(args, "--spotify-collection");
         if (colIdx >= 0)
@@ -336,6 +339,15 @@ static class Program
         int themeMode = settings.Get(WaveeSettings.ThemeMode);
         var themeKind = themeMode switch { 1 => ThemeKind.Light, 2 => ThemeKind.Dark, _ => FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark };
         Tok.Use(WaveeTheme.ResolvePalette(settings.Get(WaveeSettings.PaletteId)), themeKind);
+
+        // The icon face is the BUNDLED Segoe Fluent Icons file (assets/fonts/SegoeFluentIcons.ttf), not the system family
+        // of the same name: the system one ships with Windows 11 only, and on Windows 10 every glyph added in Fluent Icons
+        // (RefineSparkle, the "Tune" toolbar mark, RowSize, ...) drew as tofu. Set BEFORE FluentAppHarness.Run: the
+        // AppHost ctor interns Theme.IconFont once for the overlay scrollbar arrows, and every control reads it at render.
+        // A missing file is logged (not fatal): the engine's face loader falls back to the body font, so the app still
+        // runs, with visibly wrong icons that this line explains.
+        Theme.IconFont = WaveeFonts.Icons;
+        WaveeLog.Instance.Info("app", "icon font: " + WaveeFonts.IconsPath + " exists=" + File.Exists(WaveeFonts.IconsPath));
 
         // ── Localization: load the bundled culture tables (assets/loc/*.json, copied next to the exe) before the first
         // frame, so every Loc.Get(Strings.*) resolves. en-US is the base + terminal fallback; more cultures drop in later.

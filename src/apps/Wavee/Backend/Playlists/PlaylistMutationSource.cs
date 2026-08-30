@@ -65,7 +65,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
                 // We are the owner of a brand-new list: every edit affordance is live, and a fresh playlist is public
                 // until the permission GET says otherwise (which is also what desktop assumes).
                 Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: true, CanEditMetadata: true,
-                                                       IsCollaborative: false, IsOwner: true, CanAdministratePermissions: true),
+                                                       IsCollaborative: false, IsOwner: true, CanAdministratePermissions: true, Known: true),
                 IsPublic: true));
             store.SetMembership(uri, System.Array.Empty<PlaylistMember>(), null);
             int at = RootlistOps.PlacementIndex(store.Rootlist(), placement);

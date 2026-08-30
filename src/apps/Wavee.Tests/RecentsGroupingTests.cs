@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Wavee.Core;
 using Xunit;
 
@@ -47,6 +48,65 @@ public class RecentsGroupingTests
         Assert.Equal(RecentsRowKind.Single, rows[1].Kind);
         Assert.Equal("s1", rows[1].ItemId);
         Assert.Equal(RecentsEntityKind.Album, rows[1].EntityKind);
+    }
+
+    // ── the absorbed members are KEPT on the header, in wire order: they are what the expand drawer lists ────────────
+    [Fact]
+    public void Header_KeepsMemberUris_InWireOrder()
+    {
+        var rows = RecentsList.Group(
+        [
+            Header("h1", "spotify:playlist:p", 100, childrenGroupId: 4,
+                group: new RecentsGroupInfo(3, ["spotify:track:a"])),   // the header's own list is truncated…
+            Member("m1", "spotify:track:c", 99, groupId: 4),
+            Member("m2", "spotify:track:b", 98, groupId: 4),
+            Member("m3", "spotify:track:a", 97, groupId: 4),
+            Header("h2", "spotify:album:z", 90, childrenGroupId: 5, group: new RecentsGroupInfo(1, [])),
+            Member("m4", "spotify:track:d", 89, groupId: 5),
+            Single("s1", "spotify:track:e", 80),
+        ]);
+
+        Assert.Equal(3, rows.Count);
+        var first = rows[0];
+        Assert.Equal(["m1", "m2", "m3"], first.Members!.Select(m => m.ItemId));   // …the members are the full run, as sent
+        Assert.Equal(["spotify:track:c", "spotify:track:b", "spotify:track:a"], first.Members.Select(m => m.Uri));
+        Assert.Equal([99L, 98L, 97L], first.Members.Select(m => m.PlayedAtMs));  // each with its own played instant
+        Assert.Equal(3, first.ChildCount);                                        // the count is still the wire's
+        Assert.Equal(["m4"], rows[1].Members!.Select(m => m.ItemId));             // a run ends at the next header
+        Assert.Empty(rows[2].Members!);                                           // a single collapses nothing
+    }
+
+    // ── a header the wire sends WITHOUT its members still expands from its own child_uri list (RecentsView's fallback) ─
+    [Fact]
+    public void Header_MembersFallBackToChildUris_WhenWireFoldsThem()
+    {
+        var rows = RecentsList.Group(
+        [
+            Header("h1", "spotify:playlist:p", 100, childrenGroupId: 4,
+                group: new RecentsGroupInfo(2, ["spotify:track:a", "spotify:track:b"])),
+            Single("s1", "spotify:album:z", 96),
+        ]);
+
+        Assert.Equal(2, rows.Count);
+        Assert.Empty(rows[0].Members!);                                           // nothing followed the header
+        Assert.Equal(["spotify:track:a", "spotify:track:b"], rows[0].ChildUris!); // …so the header's own list stands
+        Assert.Equal(RecentsRowKind.Single, rows[1].Kind);                        // and the single after it is untouched
+    }
+
+    // ── a member with no header in front of it has no card to hang off: dropped, never promoted to a single ──────────
+    [Fact]
+    public void OrphanMember_IsDropped_NotPromotedToASingle()
+    {
+        var rows = RecentsList.Group(
+        [
+            Member("m0", "spotify:track:x", 101, groupId: 9),
+            Header("h1", "spotify:playlist:p", 100, childrenGroupId: 4, group: new RecentsGroupInfo(1, [])),
+            Member("m1", "spotify:track:a", 99, groupId: 4),
+        ]);
+
+        var row = Assert.Single(rows);
+        Assert.Equal("h1", row.ItemId);
+        Assert.Equal(["m1"], row.Members!.Select(m => m.ItemId));
     }
 
     // ── the real capture's trap: child_count = 11 with only 3 child_uris. The COUNT wins ────────────────────────────

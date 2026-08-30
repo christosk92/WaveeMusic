@@ -537,6 +537,10 @@ public class LikedFactsRulesTests
 
         Assert.Equal(default(LikedFactsRules.BlendTail), LikedFactsRules.BlendOther(tracks, 5, 3));
         Assert.Equal(default(LikedFactsRules.BlendTail), LikedFactsRules.BlendOther(Array.Empty<Track>(), 5, 3));
+        // The 0.2.0.1 crash: the card dereferenced `Named` on the default answer. A default tail is EMPTY, never null.
+        Assert.Empty(default(LikedFactsRules.BlendTail).Named);
+        Assert.Empty(LikedFactsRules.BlendOther(tracks, 5, 3).Named);
+        Assert.Empty(LikedFactsRules.BlendOther(Array.Empty<Track>(), 5, 3).Named);
         Assert.Equal(default(LikedFactsRules.BlendTail), LikedFactsRules.BlendOther(null!, 5, 3));
         Assert.Equal(default(LikedFactsRules.BlendTail), LikedFactsRules.BlendOther(Repeat(20, i => T(Now, "t" + i)), 5, 3));
         Assert.Equal(default(LikedFactsRules.BlendTail), LikedFactsRules.BlendOther(tracks, -1, 3));

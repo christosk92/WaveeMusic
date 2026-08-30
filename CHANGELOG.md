@@ -8,6 +8,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.1] - unreleased
+
+### Fixed
+
+- **Tabs** — clicking a tab in the tab strip now shows that tab's page. Activating a tab is a restore, not a new
+  navigation: it no longer pushes onto Back history or rewrites the destination's breadcrumb origin, and closing a
+  background tab no longer navigates.
+- **Breadcrumbs** — a section opened from Home (Weekly Song Charts, Concerts, ...) now reads
+  `Home › Browse › ...` instead of claiming you came from Browse.
+- **Browse, Concerts, artist schedules** — page content no longer scrolls up through the breadcrumb band; the
+  Concerts filter card docks below the crumb instead of over it.
+- **Search box** — typing a letter no longer flashes "No results found" before the suggestions arrive. Suggestions
+  survive a re-mount of the search field, a superseded request can no longer leave the box stuck loading, and a
+  transport failure now says "Couldn't load suggestions" with a retry instead of pretending there were no results.
+- **Queue** — every upcoming row (Next in queue, Next up, Autoplay) can be drag-reordered within its own section; a
+  queue row dragged around the queue can no longer land as "Added to <playlist>".
+- **Recents** — expanding a row reveals every track played from that context (the full list, numbered 1..n, with the
+  time it was played) with a smooth reveal instead of a stalled sliver that snaps open.
+- **Liked Songs** — the left rail is resizable and remembers its width (podcast shows too).
+- **Home cards** — the hover play button on the Recents rail was wired to nothing; it now plays. A card's play button
+  no longer pauses/resumes an unrelated context just because the playing track shares an artist, and it stays under
+  the pointer while you press it.
+- **Liked Songs sync** — the local collection could silently lose its newest likes after a truncated snapshot and
+  then never recover. Snapshots are now verified before anything is swept or the sync token advances, the app
+  reconciles the collection against the server at start, on reconnect and periodically, fresh likes are shielded from
+  a sweep, and the header, sidebar and stats all report the same membership count. Existing installs repair
+  themselves on first launch.
+- **Settings › Playback** — the "On metered connections" card shows whether Windows currently reports a metered
+  network, updating the moment the network cost changes.
+- **Crash on the Liked Songs page** — opening Liked Songs before its tag data had hydrated (every track untagged)
+  crashed the app in the blend card; the empty "Other" tail is now a real empty list.
+- **Crash reports** now carry the build commit, module base and frame offsets, and every release keeps its symbol
+  map, so a NativeAOT crash can be resolved to a method.
+- **Playlist owner names/avatars** — a user-profile payload that is not plain JSON is decoded instead of being
+  memoised as "no profile" for the session.
+- **Icons** — the icon font ships inside the app, so glyphs no longer depend on the Windows version (the "Tune"
+  and "What's new" icons rendered as boxes on Windows 10).
+- **Opening a playlist** — a cold open no longer flashes "You no longer have access to this playlist", "0 songs" or
+  "Nothing here yet" while the header and tracks are still loading; it shows the skeleton until they land.
+- **Hero layout** — the cover art no longer renders detached at the bottom-left of the page.
+- **Lyrics** — credit and metadata rows that some providers ship inside the lyric body (lyricist / composer /
+  arranger headers, boilerplate, stray tags) no longer reach the screen or the ranking. The cleaner first honours what
+  the provider marks structurally, then trims leading/trailing lines that align to nothing in the reference document
+  (language-agnostic), and only then falls back to a "key: value" grammar — never a bare word list.
+
 ## [0.2.0] - 2026-08-30
 
 ### Added

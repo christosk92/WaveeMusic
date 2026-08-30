@@ -43,6 +43,32 @@ public class StoreLibrarySourceTests
         Assert.Equal("Tt1", Assert.Single(await src.GetLikedSongsAsync()).Title);
     }
 
+    // Liked is an OUTER join (LikedMembershipJoin): an unhydrated member is a titleless placeholder row, so the page's
+    // count is the membership count — the same number the sidebar/home/stats read from SavedUris("liked") — rather than
+    // a smaller "whatever happened to be hydrated" figure. Unlike GetAlbums, which still skips.
+    [Fact]
+    public async Task GetLikedSongs_ReturnsPlaceholders_CountEqualsSavedUris()
+    {
+        var store = new InMemoryStore();
+        store.UpsertTrack(Trk("t1"));
+        store.SetSaved("liked", "spotify:track:t1", true, SyncState.Confirmed, 3_000);
+        store.SetSaved("liked", "spotify:track:cold", true, SyncState.Confirmed, 2_000);   // no track row yet
+        store.SetSaved("liked", "spotify:track:colder", true, SyncState.Confirmed);        // no row, no timestamp
+        var src = new StoreLibrarySource(store, Offline(store), OfflineOnlineCatalog.Instance);
+
+        var liked = await src.GetLikedSongsAsync();
+        var stats = await src.GetStatsAsync();
+
+        Assert.Equal(store.SavedUris("liked").Count, liked.Count);
+        Assert.Equal(stats.LikedSongs, liked.Count);
+        Assert.Equal(new[] { "spotify:track:t1", "spotify:track:cold", "spotify:track:colder" }, liked.Select(t => t.Uri).ToArray());
+        Assert.False(LikedMembershipJoin.IsPlaceholder(liked[0]));
+        Assert.True(LikedMembershipJoin.IsPlaceholder(liked[1]));
+        Assert.Equal(System.DateTimeOffset.FromUnixTimeMilliseconds(2_000), liked[1].AddedAt);   // membership facts still ride the placeholder
+        Assert.True(LikedMembershipJoin.IsPlaceholder(liked[2]));
+        Assert.Null(liked[2].AddedAt);
+    }
+
     // Replaces GetLikedSongs_FiresTheVideoDetectHook_WithTheJoinedUris + _EmptyCollection_DoesNotFireTheDetectHook.
     // Liked is a COLLECTION, so the ask is addressed by its uri, not derived from whatever the join happened to
     // resolve: one background Open on spotify:collection:tracks replaces the two fire-and-forget hooks (paged member

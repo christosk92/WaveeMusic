@@ -30,8 +30,9 @@ namespace Wavee;
 // different geometry — so a resize did not adjust the hero, it swapped it for a different design. All three are gone.
 //
 // WHAT IS LEFT IS A REFLOW, not a variant: below DetailVerticalLayout.RowFlowEnterW the artwork stacks above the
-// identity column; at or above it the two sit side by side, bottom-aligned. Same elements, same order, same ink, same
-// tokens. The ONLY thing width still decides is size (artwork edge, title rung, description cap, padding).
+// identity column; at or above it the two sit side by side, TOP-aligned — the cover beside the title. Same elements,
+// same order, same ink, same tokens. The ONLY thing width still decides is size (artwork edge, title rung, description
+// cap, padding).
 //
 // INK. The page now sits on ONE opaque art-derived plane (WaveePalette.PageTone via CoverPaletteLeaves.PageTonePlane)
 // whose lightness is CLAMPED per theme by construction — so the standard Tok ink tokens are correct on it in both
@@ -246,13 +247,17 @@ static class DetailVerticalHero
             Children = infoKids.ToArray(),
         };
 
-        // Stacked ↔ row is the SAME two children in the same order — only the axis and the cross alignment change, so
-        // the reflow animates as one gesture instead of tearing the subtree down.
+        // Stacked ↔ row is the SAME two children in the same order — only the axis changes, so the reflow animates as
+        // one gesture instead of tearing the subtree down. Cross alignment is Start in BOTH arms: the row arm used to
+        // bottom-align the pair (cover edge on the action row's baseline), which reads well only while the identity
+        // column is about as tall as the art — and it is not: it carries the description and the facts card panel, so
+        // on a wide hero page the 240-DIP cover sank hundreds of DIP below the title to the band's bottom-left corner
+        // and read as a detached, misplaced square. The cover belongs beside the title.
         Element hero = new BoxEl
         {
             Direction = rowFlow ? (byte)0 : (byte)1,
             Gap = heroGap,
-            AlignItems = rowFlow ? FlexAlign.End : FlexAlign.Start,
+            AlignItems = FlexAlign.Start,
             Animate = HeroReflowMotion,
             Children = [artworkBox, identity],
         };

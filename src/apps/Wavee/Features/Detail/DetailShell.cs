@@ -111,28 +111,43 @@ sealed class DetailShell : Component
     readonly Signal<bool> _playsColumn = new(false);             // Plays column opt-in on playlist/Liked (app-wide, persisted)
     readonly Signal<bool> _multiSelect = new(false);             // ephemeral multi-select mode (clears on navigation)
     readonly IAppSettings? _settings;
-    readonly Signal<float> _albumRailW;
-    readonly Signal<float> _playlistRailW;
-    // Rail DRAG-TO-COLLAPSE state (WP-η). Per kind, like the widths, because the two surfaces are independent
-    // preferences. `_railFade` is shared: it is a transient in-gesture cue (the resist-zone content fade), never
-    // persisted, and only one rail is ever on screen. Seeded 1f = fully opaque.
-    readonly Signal<bool> _albumRailCollapsed;
-    readonly Signal<bool> _playlistRailCollapsed;
+    // The mode-0 resizable rail's persisted state, ONE record per DetailRailPolicy.RailScope: the live width + the
+    // DRAG-TO-COLLAPSE flag (WP-η) and the two setting keys the drag-end commit writes them to. Per scope, because the
+    // four surfaces are independent preferences — the old "playlist, else album" pair made Liked and a podcast show
+    // silently share the album's width and collapse flag (and, before that, get no grip at all). `_railFade` is shared:
+    // it is a transient in-gesture cue (the resist-zone content fade), never persisted, and only one rail is ever on
+    // screen. Seeded 1f = fully opaque.
+    readonly RailPrefs _albumRail, _playlistRail, _likedRail, _showRail;
     readonly Signal<float> _railFade = new(1f);
     ActionServices? _actsRef;             // resolved per render; read by the hero cover's drag payload inside RowChildren
+
+    readonly record struct RailPrefs(RailScope Scope, Signal<float> Width, Signal<bool> Collapsed,
+                                     SettingKey<float> WidthKey, SettingKey<bool> CollapsedKey);
 
     public DetailShell(Signal<Route> route, Loadable<DetailModel> model, IAppSettings? settings = null)
     {
         _route = route; _model = model; _settings = settings;
-        // CLAMP the loaded widths to the live grip bounds (the sidebar's seed rule, WaveeShell): the floor moved 220→180
-        // with the collapse detent, and a value written by another build — or a hand-edited store — must never seed raw.
-        _albumRailW = new(Math.Clamp(settings?.Get(WaveeSettings.DetailAlbumRailWidth)
-            ?? WaveeSettings.DetailAlbumRailWidth.Default, RailMinW, RailMaxW));
-        _playlistRailW = new(Math.Clamp(settings?.Get(WaveeSettings.DetailPlaylistRailWidth)
-            ?? WaveeSettings.DetailPlaylistRailWidth.Default, RailMinW, RailMaxW));
-        _albumRailCollapsed = new(settings?.Get(WaveeSettings.DetailAlbumRailCollapsed) ?? false);
-        _playlistRailCollapsed = new(settings?.Get(WaveeSettings.DetailPlaylistRailCollapsed) ?? false);
+        _albumRail = SeedRail(settings, RailScope.Album, WaveeSettings.DetailAlbumRailWidth, WaveeSettings.DetailAlbumRailCollapsed);
+        _playlistRail = SeedRail(settings, RailScope.Playlist, WaveeSettings.DetailPlaylistRailWidth, WaveeSettings.DetailPlaylistRailCollapsed);
+        _likedRail = SeedRail(settings, RailScope.Liked, WaveeSettings.DetailLikedRailWidth, WaveeSettings.DetailLikedRailCollapsed);
+        _showRail = SeedRail(settings, RailScope.Show, WaveeSettings.DetailShowRailWidth, WaveeSettings.DetailShowRailCollapsed);
     }
+
+    // CLAMP the loaded width to the live grip bounds (the sidebar's seed rule, WaveeShell): the floor moved 220→180 with
+    // the collapse detent, and a value written by another build — or a hand-edited store — must never seed raw.
+    static RailPrefs SeedRail(IAppSettings? settings, RailScope scope, SettingKey<float> widthKey, SettingKey<bool> collapsedKey)
+        => new(scope,
+            new(DetailRailPolicy.ClampStored(settings?.Get(widthKey) ?? widthKey.Default, scope)),
+            new(settings?.Get(collapsedKey) ?? false),
+            widthKey, collapsedKey);
+
+    RailPrefs RailFor(RailScope scope) => scope switch
+    {
+        RailScope.Playlist => _playlistRail,
+        RailScope.Liked => _likedRail,
+        RailScope.Show => _showRail,
+        _ => _albumRail,
+    };
 
     // Per-context persisted-sort keys (each album/playlist remembers its own sort). Keyed by the context uri so two
     // different lists never share a sort; falls back to the kind when a context has no uri. The column default is a −1
@@ -155,14 +170,11 @@ sealed class DetailShell : Component
     static float RailW(int mode, DetailConfig cfg) => mode switch { 0 => cfg.RailWidth, 1 => 224f, _ => 188f };
 
     // ── the mode-0 resizable rail: drag bounds + the collapse detent (WP-η) ──
-    // The floor is 180 rather than the old 220 because the rail's own content genuinely survives it: the cover floors at
-    // CoverEdge (156 here), the hero title auto-fits down to MinSize 18, the CTA cluster Wraps (the 3-FAB group is 136
-    // wide, so it fits under the Play pill), and the fact bento's tiles are Basis=0/MinWidth=0 wrap-grow.
-    const float RailMinW = 180f, RailMaxW = 480f;
-    // SnapThreshold == RailMinW: at/above the floor the rail tracks the cursor 1:1; below it the grip RESISTS and the
-    // rail's content fades, and only pushing ForcePush further (raw ≈ 136) collapses into the compact identity strip
-    // (WP-κ — never to oblivion). Re-opening needs a pull past ReExpand (220) — comfortably above the 136 collapse
-    // point, so the rail cannot flicker shut/open at the seam. Feel constants live on SplitterOptions (kit defaults).
+    // The drag floor/ceiling per scope live on DetailRailPolicy (pure, tested). SnapThreshold == that floor: at/above
+    // it the rail tracks the cursor 1:1; below it the grip RESISTS and the rail's content fades, and only pushing
+    // ForcePush further (raw ≈ 136) collapses into the compact identity strip (WP-κ — never to oblivion). Re-opening
+    // needs a pull past ReExpand (220) — comfortably above the 136 collapse point, so the rail cannot flicker shut/open
+    // at the seam. Feel constants live on SplitterOptions (kit defaults).
     const float RailForcePush = 44f, RailReExpand = 220f;
     // Compact strip width while collapsed (sidebar analog): wide enough for a readable cover + 2-line title, narrow
     // enough that the track list keeps most of the card. Cover = strip − 2× Spacing.S.
@@ -560,14 +572,15 @@ sealed class DetailShell : Component
         // scales CONTINUOUSLY with the window height, and the description's line cap drops on a short window. Keyed on the
         // WINDOW height (known at mount + identical across navigation), NOT a post-layout measurement — so the title never
         // jumps/flickers on a nav and resizes smoothly. The rail's scrollbar stays the last resort.
-        bool resizableRail = mode == 0 && (kind == DetailKind.Album || kind == DetailKind.Playlist);
-        Signal<float> railWidthSignal = kind == DetailKind.Playlist ? _playlistRailW : _albumRailW;
-        Signal<bool> railCollapsedSignal = kind == DetailKind.Playlist ? _playlistRailCollapsed : _albumRailCollapsed;
+        // The config decides (RailResizable / RailScope) and the pure policy gates the mode — no kind test here, so
+        // Liked and a podcast show get the same grip and their OWN persisted pair.
+        var rail = RailFor(_cfg.RailScope);
+        bool resizableRail = DetailRailPolicy.ResizableFor(_cfg.RailResizable, mode);
         // Read the collapse preference UNCONDITIONALLY (a stable subscription) but honour it only where the grip that can
         // undo it exists — mode 0. The responsive mid/narrow modes keep composing their breakpoint rail (224/188), exactly
         // as they already ignore the persisted widths, and the collapsed preference returns when the page is wide again.
-        bool railCollapsed = railCollapsedSignal.Value && resizableRail;
-        float railW = mode == 0 && resizableRail ? railWidthSignal.Value : RailW(mode, _cfg);
+        bool railCollapsed = rail.Collapsed.Value && resizableRail;
+        float railW = resizableRail ? rail.Width.Value : RailW(mode, _cfg);
         float winH = viewportSig.Value.Height;   // subscribe (only here) → re-fit smoothly on resize (stable per page → no nav jump)
         // TWO RUNGS OF THE RAMP, not a fluid interpolation. The old Clamp(24 + (winH-620)*0.05, 24, 38) produced a
         // different off-ramp size at every window height (24.05, 31.4, 37.2 …), so the page hero was never the same
@@ -593,7 +606,7 @@ sealed class DetailShell : Component
             // actions used to reach no destination at all — the dead zone this closes.
             DropTarget = PageDropTarget(m, acts, kind),
             Children = RowChildren(m, handlers, railW, titleSize, titleLineHeight, descLines, right,
-                resizableRail, railCollapsed, railWidthSignal, railCollapsedSignal, kind, settings),
+                resizableRail, railCollapsed, rail, settings),
         };
         var twoColumnPage = new BoxEl
         {
@@ -690,22 +703,20 @@ sealed class DetailShell : Component
     // never vanishes (WP-κ). `right` keeps its Key so the track list reconciles in place across the collapse rather than
     // remounting (a remount would reset the scroll offset and the hero morph on every collapse).
     Element[] RowChildren(DetailModel m, DetailHandlers handlers, float railW, float titleSize, float titleLineHeight,
-        int descLines, Element right, bool resizableRail, bool railCollapsed,
-        Signal<float> railWidthSignal, Signal<bool> railCollapsedSignal, DetailKind kind, IAppSettings? settings)
+        int descLines, Element right, bool resizableRail, bool railCollapsed, RailPrefs rail, IAppSettings? settings)
     {
         if (railCollapsed)
         {
             void ExpandRail()
             {
-                railCollapsedSignal.Value = false;
+                rail.Collapsed.Value = false;
                 _railFade.Value = 1f;
-                bool pl = kind == DetailKind.Playlist;
-                settings?.Set(pl ? WaveeSettings.DetailPlaylistRailCollapsed : WaveeSettings.DetailAlbumRailCollapsed, false);
+                settings?.Set(rail.CollapsedKey, false);
             }
             return
             [
                 DetailRail.BuildCompact(m, RailCompactW, ExpandRail),
-                DetailRailGrip(railWidthSignal, railCollapsedSignal, kind, settings, collapsedNow: true),
+                DetailRailGrip(rail, settings, collapsedNow: true),
                 right,
             ];
         }
@@ -729,33 +740,31 @@ sealed class DetailShell : Component
             Children = [DetailRail.Build(m, _cfg, handlers, railW, titleSize, titleLineHeight, descLines, _model, _actsRef)],
         };
         return resizableRail
-            ? [railFaded, DetailRailGrip(railWidthSignal, railCollapsedSignal, kind, settings, collapsedNow: false), right]
+            ? [railFaded, DetailRailGrip(rail, settings, collapsedNow: false), right]
             : [railFaded, right];
     }
 
     // Same Splitter as the library columns, with the collapse detent ARMED (WP-η): width writes are direct during
-    // drag and committed to settings only on release.
-    Element DetailRailGrip(Signal<float> width, Signal<bool> collapsed, DetailKind kind, IAppSettings? settings,
-        bool collapsedNow) => new BoxEl
+    // drag and committed to settings only on release — to THIS scope's own pair.
+    Element DetailRailGrip(RailPrefs rail, IAppSettings? settings, bool collapsedNow) => new BoxEl
     {
         Key = "detail-rail-grip-strip",
         Width = collapsedNow ? GripStripCollapsedW : Splitter.StripW,
         Shrink = 0f, Direction = 1, AlignItems = FlexAlign.Stretch,
         Children =
         [
-            Splitter.Create(width, () =>
+            Splitter.Create(rail.Width, () =>
                 {
-                    bool pl = kind == DetailKind.Playlist;
-                    settings?.Set(pl ? WaveeSettings.DetailPlaylistRailWidth : WaveeSettings.DetailAlbumRailWidth, width.Peek());
-                    settings?.Set(pl ? WaveeSettings.DetailPlaylistRailCollapsed : WaveeSettings.DetailAlbumRailCollapsed, collapsed.Peek());
+                    settings?.Set(rail.WidthKey, rail.Width.Peek());
+                    settings?.Set(rail.CollapsedKey, rail.Collapsed.Peek());
                 },
                 new()
                 {
-                    Min = RailMinW, Max = RailMaxW,
+                    Min = DetailRailPolicy.MinWidthFor(rail.Scope), Max = DetailRailPolicy.MaxWidth,
                     ForcePush = RailForcePush, ReExpand = RailReExpand,
                 },
-                collapsed: collapsed, fade: _railFade)
-                with { Key = "detail-rail-grip:" + kind },
+                collapsed: rail.Collapsed, fade: _railFade)
+                with { Key = "detail-rail-grip:" + rail.Scope },
         ],
     };
 

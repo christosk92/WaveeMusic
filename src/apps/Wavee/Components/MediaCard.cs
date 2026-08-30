@@ -32,7 +32,7 @@ public static class MediaCard
     // ctor-captured uri/onPlay would therefore keep pointing at the slot's FIRST row even after its title/art had been
     // rebound (the visible-row/played-row split on Recents). Re-pushed props preserve the component instance while
     // keeping hover, playback identity, geometry and callbacks coherent with the row currently occupying the slot.
-    internal static Element LazyOverlay(Signal<bool> hovered, string uri, Action onPlay, float fab, bool cover, float inner,
+    internal static Element LazyOverlay(Signal<bool> hovered, string uri, Action? onPlay, float fab, bool cover, float inner,
                                Action? onNavigate = null, bool centered = false)
         => Embed.Comp(new LazyNowPlayingOverlay.Props(
                           hovered, uri, onPlay, fab, cover, inner, onNavigate, centered),
@@ -195,9 +195,10 @@ public static class MediaCard
     // because only the call site knows which entity the card stands for — a card factory sees a uri and a title, never
     // "this is an album". It attaches to the card ITSELF, never to a padding/gutter wrapper: the wrapper is the shelf's
     // spacing, and lifting it would drag a rectangle of empty margin. Null = the card is not draggable (the default,
-    // so every unconverted call site is byte-identical).
+    // so every unconverted call site is byte-identical). A null onPlay renders NO play FAB: a shelf whose cards have no
+    // play route must not show a button that does nothing (the Home Recents rail once passed a no-op here).
     public static Element Shelf(Image? cover, string title, string subtitle, string uri,
-                                Action onClick, Action onPlay, float cardW, bool circular = false, string? morphKey = null,
+                                Action onClick, Action? onPlay, float cardW, bool circular = false, string? morphKey = null,
                                 Action<string>? onNavUri = null, MenuAttach? menu = null, DragSource? drag = null)
         // Component owns a mount-stable hovered signal so LazyNowPlayingOverlay props stay reference-equal across
         // parent re-renders (a fresh Signal per static-factory call was defeating the overlay's equality gate).
@@ -1101,7 +1102,7 @@ sealed class ShelfCard : Component
 {
     internal sealed record Props(
         Image? Cover, string Title, string Subtitle, string Uri,
-        Action OnClick, Action OnPlay, float CardW, bool Circular, string? MorphKey,
+        Action OnClick, Action? OnPlay, float CardW, bool Circular, string? MorphKey,
         Action<string>? OnNavUri, MenuAttach? Menu, DragSource? Drag);
 
     readonly Signal<bool> _hovered = new(false);
@@ -1274,82 +1275,166 @@ sealed class CardLibraryAction : Component
     }
 }
 
-// Cheap cold-card sentinel. The full play/equalizer subtree is mounted only for the card under the pointer or the
-// playback-matching card; Home Ready therefore pays one tiny component/effect per card instead of every FAB, tooltip,
-// equalizer, and icon tree in the first flush.
+// The per-card overlay layer. Every card mounts this; it carries the play FAB EAGERLY — one hover-faded box + glyph per
+// card, revealed by the ENGINE off the card's own hover, the MoreCorner shape — and mounts the full NowPlayingOverlay
+// (equalizer, playback subscriptions, tooltip) only for a card that RELATES to what is playing. Home Ready therefore
+// pays one tiny component/memo per card, never every equalizer and icon tree in the first flush.
+//
+// The FAB used to be mount-gated on the app-level `hovered` signal, and that signal is fed by OnPointerMoveWithin /
+// OnPointerExit ONLY (the engine has no pointer-enter hook): a card paged under a STATIONARY pointer never armed it, and
+// a press whose exit edge fired before release unmounted the very node being clicked — which is why the always-mounted
+// "…" corner kept working while ▶ did not. A FAB that is always there has neither failure mode and costs no subscription.
 sealed class LazyNowPlayingOverlay : Component
 {
     /// <summary>All row-varying data is live. A virtual slot is mount-stable while every one of these values may change
-    /// when that slot is rebound to another item.</summary>
+    /// when that slot is rebound to another item. A null <see cref="OnPlay"/> renders no FAB at all (the equalizer
+    /// still reveals) — a shelf whose cards cannot be played must not show a button that does nothing.</summary>
     internal sealed record Props(
-        IReadSignal<bool> Hovered, string Uri, Action OnPlay, float Fab, bool Cover, float Inner,
+        IReadSignal<bool> Hovered, string Uri, Action? OnPlay, float Fab, bool Cover, float Inner,
         Action? OnNavigate, bool Centered);
 
     public override Element Render()
     {
         var props = UseProps<Props>();
         var bridge = UseContext(PlaybackBridge.Slot);
-        // "Is my card the playing one?" is DERIVED, never written. It used to be a UseSignal that a UseSignalEffect wrote
-        // and Render read back — a render↔effect cycle with an ordering hazard: when a KeepAlive unpark scheduled this
-        // component's render ahead of the playback effect in the same flush, Render read a STALE `active`, the effect then
-        // wrote it, and Render ran a second time (the doubled overlay mount count on card-heavy pages). A Memo removes the
-        // cycle: Render pulls the value, so it cannot observe it stale, and the Memo's equality cut-off means an upstream
-        // write that leaves the answer unchanged resolves to CLEAN without re-rendering behind it.
+        // "Does my card relate to the playing one?" is DERIVED, never written. It used to be a UseSignal that a
+        // UseSignalEffect wrote and Render read back — a render↔effect cycle with an ordering hazard: when a KeepAlive
+        // unpark scheduled this component's render ahead of the playback effect in the same flush, Render read a STALE
+        // value, the effect then wrote it, and Render ran a second time (the doubled overlay mount count on card-heavy
+        // pages). A Memo removes the cycle: Render pulls the value, so it cannot observe it stale, and the Memo's equality
+        // cut-off means an upstream write that leaves the answer unchanged resolves to CLEAN without re-rendering.
         //
-        // Cold-path decoupling is PRESERVED verbatim. Read the COARSE HasActiveContext bool FIRST and bail before touching
-        // the hot Identity signal: while nothing is playing no card can match (Matches is false with an empty
-        // context+track), so an idle overlay must NOT join Identity's ~70-way fanout nor run Matches. A Memo re-tracks its
-        // sources on EVERY recompute (RunComputation re-links), exactly like the effect did, so this early return leaves
-        // the memo subscribed to HasActiveContext ALONE while idle — Identity is only linked on the runs whose branch
-        // actually reads it, i.e. once a context goes active.
-        var active = UseComputed(() =>
+        // Cold-path decoupling: read the COARSE HasActiveContext bool FIRST and bail before touching the hot Identity
+        // signal. While nothing is playing no card can relate (RelatesToPlaying is false against an empty context+track),
+        // so an idle overlay must NOT join Identity's ~70-way fanout. A Memo re-tracks its sources on EVERY recompute
+        // (RunComputation re-links), so this early return leaves the memo subscribed to HasActiveContext ALONE while idle —
+        // Identity is only linked on the runs whose branch actually reads it, i.e. once a context goes active.
+        var relates = UseComputed(() =>
         {
             var live = UseProps<Props>();
             if (bridge is not { } b || !b.HasActiveContext.Value) return false;
             var identity = b.Identity.Value;
-            return NowPlayingOverlay.Matches(live.Uri, identity.ContextUri, identity.Track);
+            return NowPlayingMatch.RelatesToPlaying(live.Uri, identity.ContextUri, identity.Track);
         });
-
-        // Hover, read through the props channel and gated on the VALUE. UseProps is non-positional (it just reads the
-        // injected props signal), so calling it INSIDE the memo subscribes the MEMO to the re-push rather than this
-        // render: a parent rebuild that hands over a fresh-but-same-state hover signal recomputes the memo, finds the
-        // same bool, and resolves CLEAN — no re-render, so the cold-card laziness this component exists for is intact.
-        // A Memo also re-links its sources on every recompute, so the read always lands on the CURRENT signal.
-        var hovered = UseComputed(() => UseProps<Props>().Hovered.Value);
-        // Stable signal identity for the EQ pause prop (hooks before any early return).
+        // The FAB's glyph: Pause only while THIS card OWNS playback (the strict relation) and it is playing. An artist
+        // card of the playing track relates but never owns, so its glyph stays ▶ and its click starts the artist. The
+        // IsPlaying read sits behind the ownership test, so a non-owning card never subscribes to it.
+        var playingHere = UseComputed(() =>
+        {
+            var live = UseProps<Props>();
+            if (bridge is not { } b || !b.HasActiveContext.Value) return false;
+            var identity = b.Identity.Value;
+            return NowPlayingMatch.OwnsPlayback(live.Uri, identity.ContextUri, identity.Track) && b.IsPlaying.Value;
+        });
+        // Stable signal identity for the EQ pause prop.
         var hoverSig = props.Hovered;
 
-        if (!hovered.Value && !active.Value)
-        {
-            if (props.Cover)
-                return props.Centered
-                    ? new BoxEl { Width = props.Inner, Height = props.Inner, HitTestVisible = false }
-                    : new BoxEl { Grow = 1f, HitTestVisible = false };
-            return new BoxEl { Width = props.Fab, Height = props.Fab, Shrink = 0f, HitTestVisible = false };
-        }
+        // ONE shape on both legs — [equalizer slot, FAB] — so the reconciler keeps the FAB's node while the equalizer
+        // mounts or unmounts beside it: a press in flight never loses its target to a playback edge.
+        Element eq = relates.Value
+            ? NowPlayingOverlay.Create(props.Uri, props.OnPlay, props.Fab, props.Cover, props.Inner, props.OnNavigate,
+                                       props.Centered, hovered: hoverSig, showFab: false)
+            : new BoxEl();
+        Element fab = props.OnPlay is { } onPlay
+            ? NowPlayingOverlay.FabReveal(() => NowPlayingOverlay.Toggle(bridge, props.Uri, onPlay), playingHere.Value,
+                                          props.Fab, props.Cover, props.Inner, props.OnNavigate, props.Centered)
+            : new BoxEl();
 
-        return NowPlayingOverlay.Create(
-            props.Uri, props.OnPlay, props.Fab, props.Cover, props.Inner, props.OnNavigate, props.Centered, hovered: hoverSig);
+        if (props.Cover && props.Centered)
+            return new BoxEl { Width = props.Inner, Height = props.Inner, ZStack = true, Children = [eq, fab] };
+        if (props.Cover)
+            // FILL the cover (Grow + ZStack) rather than sizing to a captured width: the card re-fits wider after mount and
+            // a captured width would leave the FAB floating mid-cover.
+            return new BoxEl { Grow = 1f, ZStack = true, Children = [eq, fab] };
+        return new BoxEl
+        {
+            Width = props.Fab, Height = props.Fab, Shrink = 0f, ZStack = true,
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Children = [eq, fab],
+        };
     }
 }
 
 // The reactive now-playing / play affordance on a content card (mirrors WaveeMusic's ContentCard state model):
-//   • the play/pause FAB is REVEALED ON HOVER (and shows PAUSE when this card's context is the one playing);
-//   • when this card's context IS playing, the now-playing EQUALIZER shows (bottom-left on a cover; in the trailing
-//     slot, hidden on hover so the FAB takes over). "Am I the playing context?" = my uri == the playing context uri,
-//     or the current track's album/artist uri (so album/artist cards light up too). Clicking the FAB toggles
-//     pause/resume when it's the active context, else plays this context.
+//   • the play/pause FAB is REVEALED ON HOVER (and shows PAUSE when this card OWNS the playback — it is the playing
+//     context or the playing item);
+//   • when this card RELATES to what is playing (the context, the item, or the item's album/artist — so album/artist
+//     cards light up too), the now-playing EQUALIZER shows (bottom-left on a cover; in the trailing slot, hidden on
+//     hover so the FAB takes over).
+// The two relations are deliberately different predicates (NowPlayingMatch): the loose one may only ever REVEAL;
+// clicking the FAB toggles pause/resume only when this card OWNS playback, else it plays this card.
+// Hosts that mount the FAB eagerly beside this component (LazyNowPlayingOverlay) pass showFab: false.
 sealed class NowPlayingOverlay : Component
 {
     internal sealed record Props(
-        string Uri, Action OnPlay, float Fab, bool Cover, float Inner, Action? OnNavigate,
-        bool Centered, bool Persistent, bool Light, IReadSignal<bool>? Hovered);
+        string Uri, Action? OnPlay, float Fab, bool Cover, float Inner, Action? OnNavigate,
+        bool Centered, bool Persistent, bool Light, IReadSignal<bool>? Hovered, bool ShowFab);
 
     internal static Element Create(
-        string uri, Action onPlay, float fab, bool cover, float inner, Action? onNavigate = null,
-        bool centered = false, bool persistent = false, bool light = false, IReadSignal<bool>? hovered = null)
-        => Embed.Comp(new Props(uri, onPlay, fab, cover, inner, onNavigate, centered, persistent, light, hovered),
+        string uri, Action? onPlay, float fab, bool cover, float inner, Action? onNavigate = null,
+        bool centered = false, bool persistent = false, bool light = false, IReadSignal<bool>? hovered = null,
+        bool showFab = true)
+        => Embed.Comp(new Props(uri, onPlay, fab, cover, inner, onNavigate, centered, persistent, light, hovered, showFab),
             static () => new NowPlayingOverlay());
+
+    /// <summary>The FAB's click. Pause/resume ONLY when this card owns the playback (the strict relation); everything
+    /// else — including an artist or album card of the playing track — plays the card. Peeks, never subscribes: a click
+    /// is an event, not a render.</summary>
+    internal static void Toggle(PlaybackBridge? b, string uri, Action? onPlay)
+    {
+        if (b is null) { onPlay?.Invoke(); return; }
+        var identity = b.Identity.Peek();
+        if (NowPlayingMatch.OwnsPlayback(uri, identity.ContextUri, identity.Track))
+        {
+            bool p = b.IsPlaying.Peek();
+            b.IsPlaying.Value = !p;                              // optimistic, then the player reconciles
+            if (p) _ = b.Player.PauseAsync(); else _ = b.Player.ResumeAsync();
+        }
+        else onPlay?.Invoke();
+    }
+
+    /// <summary>The hover-revealed play/pause FAB in each of the overlay's three layouts. The wrapper is non-interactive,
+    /// so its HoverOpacity resolves off the CARD's hover (the FAB inside keeps its own click) — engine-serviced, no
+    /// signal, which is what lets a host keep it mounted at all times: hover REVEALS the button, never mounts it. A gentle
+    /// ~180ms decelerate fade (not the snappy default) so the button eases in rather than popping.</summary>
+    internal static Element FabReveal(Action toggle, bool playingHere, float fab, bool cover, float inner,
+                                      Action? onNavigate, bool centered)
+    {
+        string glyph = playingHere ? Icons.Pause : Icons.Play;
+        if (cover && centered)
+            // Small ROW art (search "All" rows): the play FAB centered over a hover scrim — Spotify's row affordance. A
+            // single-child centering flex box: it carries the hover scrim fill as well as the centering, so it stays a
+            // flex box rather than folding into the enclosing ZStack.
+            return new BoxEl
+            {
+                Width = inner, Height = inner, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Opacity = 0f, HoverOpacity = 1f, HoverDurationMs = WaveeMotion.Fast, HoverEasing = Easing.FluentDecelerate,
+                Fill = WaveeOnMedia.CoverScrim,
+                Children = [ MediaCard.PlayFab(toggle, glyph, fab) ],
+            };
+        Element[] fabs = onNavigate is null
+            ? [ MediaCard.PlayFab(toggle, glyph, fab) ]
+            : [
+                MediaCard.CoverActionFab(onNavigate, Icons.OpenInNewWindow, "Go to album", MathF.Max(34f, fab - 8f)),
+                MediaCard.PlayFab(toggle, glyph, fab)
+              ];
+        if (cover)
+            // Bottom-right of the cover. Grow=1 fills the LIVE cover box so the corner tracks a card that re-fits wider.
+            return new BoxEl
+            {
+                Grow = 1f, Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.End, Gap = Spacing.S,
+                Padding = new Edges4(0f, 0f, MediaCard.FabInset, MediaCard.FabInset),
+                Opacity = 0f, HoverOpacity = 1f, HoverDurationMs = WaveeMotion.Fast, HoverEasing = Easing.FluentDecelerate,
+                Children = fabs,
+            };
+        // Inline trailing slot (QuickPick).
+        return new BoxEl
+        {
+            Opacity = 0f, HoverOpacity = 1f, HoverDurationMs = WaveeMotion.Fast, HoverEasing = Easing.FluentDecelerate,
+            Direction = 1, AlignItems = FlexAlign.End, Gap = Spacing.S,
+            Children = fabs,
+        };
+    }
 
     public override Element Render()
     {
@@ -1363,38 +1448,29 @@ sealed class NowPlayingOverlay : Component
         // Re-render only when THIS card's own visual state changes — not on every track skip / play-pause of OTHER
         // contexts. Reading CurrentContext/CurrentTrack/IsPlaying directly here would re-render EVERY visible card's
         // overlay on any playback change (N small element-tree allocations per event). Instead, a UseSignalEffect bridges
-        // those hot playback signals into a COARSE retained (active, playingHere) signal whose setter suppresses on
-        // equality (Signal.cs) — so an unrelated change re-runs only this cheap effect (Matches, zero-alloc) and, when
-        // the pair is unchanged (the common case for a non-playing card), schedules NO re-render. `playing` is only ever
-        // read when active, where it equals playingHere, so this coarse pair fully captures the overlay's visual state.
-        var vis = UseSignal((active: false, playingHere: false));
+        // those hot playback signals into a COARSE retained (active, playing, playingHere) signal whose setter suppresses
+        // on equality (Signal.cs) — so an unrelated change re-runs only this cheap effect (zero-alloc) and, when the
+        // triple is unchanged (the common case for a non-playing card), schedules NO re-render.
+        var vis = UseSignal((active: false, playing: false, playingHere: false));
         UseSignalEffect(() =>
         {
             var live = UseProps<Props>();
             // Read the COARSE HasActiveContext bool FIRST and bail before touching the hot Identity signal — the same
-            // cold-path decoupling LazyNowPlayingOverlay's memo above documents. While nothing is playing no overlay
-            // can match (Matches is false against an empty context+track), so an idle overlay must not join Identity's
-            // fanout. The effect re-links its sources on every run, so Identity re-attaches when the bool flips true.
-            if (b is not { } bridge || !bridge.HasActiveContext.Value) { vis.Value = (false, false); return; }
+            // cold-path decoupling LazyNowPlayingOverlay's memo documents. While nothing is playing no overlay can relate,
+            // so an idle overlay must not join Identity's fanout. The effect re-links its sources on every run, so
+            // Identity re-attaches when the bool flips true.
+            if (b is not { } bridge || !bridge.HasActiveContext.Value) { vis.Value = (false, false, false); return; }
             var identity = bridge.Identity.Value;
-            bool a = Matches(live.Uri, identity.ContextUri, identity.Track);
-            vis.Value = (a, a && bridge.IsPlaying.Value);   // short-circuit: a non-active card never subscribes to IsPlaying
+            // `active` / `playing` (the equalizer and its motion) follow the LOOSE relation — an album card of the
+            // playing track shows a MOVING equalizer. `playingHere` (the Pause glyph) follows the STRICT one: that same
+            // album card keeps ▶, because its click starts the album rather than pausing the track.
+            bool a = NowPlayingMatch.RelatesToPlaying(live.Uri, identity.ContextUri, identity.Track);
+            bool p = a && bridge.IsPlaying.Value;   // short-circuit: an unrelated card never subscribes to IsPlaying
+            vis.Value = (a, p, p && NowPlayingMatch.OwnsPlayback(live.Uri, identity.ContextUri, identity.Track));
         });
-        var (active, playingHere) = vis.Value;
-        bool playing = playingHere;   // the equalizer animates iff this card's context is the one actively playing
+        var (active, playing, playingHere) = vis.Value;
 
-        void Toggle()
-        {
-            if (b is null) { props.OnPlay(); return; }
-            var identity = b.Identity.Peek();
-            if (Matches(props.Uri, identity.ContextUri, identity.Track))
-            {
-                bool p = b.IsPlaying.Peek();
-                b.IsPlaying.Value = !p;                              // optimistic, then the player reconciles
-                if (p) _ = b.Player.PauseAsync(); else _ = b.Player.ResumeAsync();
-            }
-            else props.OnPlay();
-        }
+        void ToggleHere() => Toggle(b, props.Uri, props.OnPlay);
 
         if (props.Persistent)
         {
@@ -1409,26 +1485,16 @@ sealed class NowPlayingOverlay : Component
                 Width = props.Fab, Height = props.Fab, Shrink = 0f,
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Corners = Radii.Circle(props.Fab), Fill = fill, HoverFill = hover, PressedFill = pressed,
-                Shadow = Elevation.Card, Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = Toggle,
+                Shadow = Elevation.Card, Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = ToggleHere,
                 BlocksDragArm = true,
                 Children = [Icon(playingHere ? Icons.Pause : Icons.Play, props.Fab * 0.38f, ink)],
             }, Loc.Get(playingHere ? Strings.Home.Pause : Strings.Home.Play));
         }
 
-        // FAB revealed on card hover: the wrapper is non-interactive, so its HoverOpacity resolves off the CARD's
-        // hover (the FAB inside keeps its own click). Pause glyph when this context is the one playing. A gentle
-        // ~180ms decelerate fade (not the snappy default) so the button eases in rather than popping.
-        Element reveal = new BoxEl
-        {
-            Opacity = 0f, HoverOpacity = 1f, HoverDurationMs = WaveeMotion.Fast, HoverEasing = Easing.FluentDecelerate,
-            Direction = 1, AlignItems = FlexAlign.End, Gap = Spacing.S,
-            Children = props.OnNavigate is null
-                ? [ MediaCard.PlayFab(Toggle, playingHere ? Icons.Pause : Icons.Play, props.Fab) ]
-                : [
-                    MediaCard.CoverActionFab(props.OnNavigate, Icons.OpenInNewWindow, "Go to album", MathF.Max(34f, props.Fab - 8f)),
-                    MediaCard.PlayFab(Toggle, playingHere ? Icons.Pause : Icons.Play, props.Fab)
-                  ],
-        };
+        // The FAB — unless the host mounts it eagerly beside this component (an empty box keeps the ZStack shape).
+        Element fab = props.ShowFab
+            ? FabReveal(ToggleHere, playingHere, props.Fab, props.Cover, props.Inner, props.OnNavigate, props.Centered)
+            : new BoxEl();
         Element EqPill(bool pauseOnHover) => new BoxEl
         {
             Padding = Edges4.All(Spacing.XS), Corners = Radii.ControlAll, Fill = WaveeOnMedia.ScrimRest,
@@ -1440,18 +1506,8 @@ sealed class NowPlayingOverlay : Component
         };
 
         if (props.Cover && props.Centered)
-        {
-            // Small ROW art (search "All" rows): the equalizer CENTERED at rest (hidden on hover), the play FAB centered
-            // over a hover scrim — Spotify's row affordance. SAME component, a row-fit layout (vs the card's bottom corners).
-            // A single-child centering flex box: it carries the hover scrim fill as well as the centering, so it stays a
-            // flex box rather than folding into the enclosing ZStack.
-            Element rowFab = new BoxEl
-            {
-                Width = props.Inner, Height = props.Inner, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Opacity = 0f, HoverOpacity = 1f, HoverDurationMs = WaveeMotion.Fast, HoverEasing = Easing.FluentDecelerate,
-                Fill = WaveeOnMedia.CoverScrim,
-                Children = [ MediaCard.PlayFab(Toggle, playingHere ? Icons.Pause : Icons.Play, props.Fab) ],
-            };
+            // Small ROW art (search "All" rows): the equalizer CENTERED at rest (hidden on hover) under the centered FAB.
+            // SAME component, a row-fit layout (vs the card's bottom corners).
             return new BoxEl
             {
                 Width = props.Inner, Height = props.Inner, ZStack = true,
@@ -1460,10 +1516,9 @@ sealed class NowPlayingOverlay : Component
                     active
                         ? new BoxEl { Width = props.Inner, Height = props.Inner, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f, Children = [ EqPill(pauseOnHover: true) ] }
                         : new BoxEl(),
-                    rowFab,
+                    fab,
                 ],
             };
-        }
 
         if (props.Cover)
             // FILL the cover rather than sizing to a captured `_inner`: this overlay rides in an Embed.Comp whose
@@ -1475,18 +1530,13 @@ sealed class NowPlayingOverlay : Component
                 Grow = 1f, ZStack = true,
                 Children =
                 [
-                    new BoxEl   // equalizer — bottom-left, only when this card is the active context
+                    new BoxEl   // equalizer — bottom-left, only when this card relates to the playing context
                     {
                         Grow = 1f, Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.Start,
                         Padding = new Edges4(MediaCard.FabInset, 0f, 0f, MediaCard.FabInset),
                         Children = [ active ? EqPill(pauseOnHover: false) : new BoxEl() ],
                     },
-                    new BoxEl   // FAB — bottom-right, revealed on hover
-                    {
-                        Grow = 1f, Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.End,
-                        Padding = new Edges4(0f, 0f, MediaCard.FabInset, MediaCard.FabInset),
-                        Children = [ reveal ],
-                    },
+                    fab,    // bottom-right, revealed on hover
                 ],
             };
 
@@ -1506,20 +1556,8 @@ sealed class NowPlayingOverlay : Component
                         ],
                     }
                     : new BoxEl(),
-                reveal,
+                fab,
             ],
         };
-    }
-
-    internal static bool Matches(string uri, string? contextUri, Track? track)
-    {
-        if (string.IsNullOrEmpty(uri)) return false;
-        if (!string.IsNullOrEmpty(contextUri) && string.Equals(uri, contextUri, StringComparison.OrdinalIgnoreCase)) return true;
-        if (track is null) return false;
-        if (string.Equals(uri, track.Uri, StringComparison.OrdinalIgnoreCase)) return true;   // a TRACK row lights up when ITS track is the one playing
-        if (string.Equals(uri, track.Album.Uri, StringComparison.OrdinalIgnoreCase)) return true;
-        foreach (var a in track.Artists)
-            if (string.Equals(uri, a.Uri, StringComparison.OrdinalIgnoreCase)) return true;
-        return false;
     }
 }

@@ -181,14 +181,16 @@ public static class LyricsReranker
     }
 
     // ── text agreement: fuzzy line-sequence LCS ──────────────────────────────────────────────────────────────────────
+    // Internal, not private: LyricsCreditRules.TrimUnalignedEdges asks "does this line align to the reference?" and must
+    // use the SAME notion of alignment the score is computed with.
 
-    static string[] Tokens(string text)
+    internal static string[] Tokens(string text)
     {
         var n = Normalize(text);
         return n.Length == 0 ? Array.Empty<string>() : n.Split(' ', StringSplitOptions.RemoveEmptyEntries);
     }
 
-    static bool LineMatch(string[] a, string[] b)
+    internal static bool LineMatch(string[] a, string[] b)
     {
         if (a.Length == 0 && b.Length == 0) return true;
         if (a.Length == 0 || b.Length == 0) return false;
@@ -201,7 +203,7 @@ public static class LyricsReranker
 
     /// <summary>LCS over the two line sequences with fuzzy line equality; returns the LCS length and the matched index
     /// pairs (candIndex, refIndex) in order — the pairs drive the timing-offset estimate.</summary>
-    static (int Lcs, List<(int C, int R)> Pairs) LcsAlign(List<string[]> cand, List<string[]> reff)
+    internal static (int Lcs, List<(int C, int R)> Pairs) LcsAlign(List<string[]> cand, List<string[]> reff)
     {
         int n = cand.Count, m = reff.Count;
         var dp = new int[n + 1, m + 1];

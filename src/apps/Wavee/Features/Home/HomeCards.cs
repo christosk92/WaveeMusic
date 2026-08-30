@@ -1106,7 +1106,7 @@ static class HomeNowPlaying
             {
                 if (p is null || bridge is not { } b || !b.HasActiveContext.Value) { vis.Value = (false, false); return; }
                 var id = b.Identity.Value;
-                bool here = NowPlayingOverlay.Matches(p.Uri, id.ContextUri, id.Track);
+                bool here = NowPlayingMatch.RelatesToPlaying(p.Uri, id.ContextUri, id.Track);
                 vis.Value = (here, here && b.IsPlaying.Value);
             });
 

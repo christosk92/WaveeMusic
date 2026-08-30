@@ -98,7 +98,11 @@ public class ReconnectResyncTests
         rig.Sync.Enqueue(new SyncCommand(SyncKind.ReconnectResync));
         await rig.Sync.WaitForIdleAsync();
 
-        // order: the write drains FIRST, then the rootlist, then the 5 set fetches, then the open playlist's /diff.
+        // The resync enqueues a reconcile pass behind itself (a shadow walk per wire set); let it drain too so the
+        // sequence below is complete and the rate-limit check further down is not racing it.
+        await rig.Sync.WaitForIdleAsync();
+
+        // order: the write drains FIRST, then the rootlist, then the 4 wire-set walks, then the open playlist's /diff.
         List<string> seq;
         lock (rig.Seq) seq = new List<string>(rig.Seq);
         int write = seq.FindIndex(s => s.StartsWith("write:"));
@@ -107,7 +111,7 @@ public class ReconnectResyncTests
         int diff = seq.IndexOf("diff");
         Assert.True(write >= 0 && root > write && firstCol > root && diff > firstCol,
             "expected write < rootlist < deltas < diff, got: " + string.Join(",", seq));
-        Assert.Equal(5, seq.FindAll(s => s == "collection").Count);
+        Assert.Equal(8, seq.FindAll(s => s == "collection").Count);   // 4 walks + the reconcile pass's 4 shadow walks
         Assert.Equal(0, rig.Mut.Pending);                    // the like reconciled
         Assert.Equal(1, rig.Sync.ReconnectResyncs);
         Assert.Equal(1, rig.Sync.DiffUpToDate);

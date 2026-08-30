@@ -5,6 +5,7 @@ using FluentGpu.Controls;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using Wavee.Core;
+using Wavee.Features.Detail;
 
 namespace Wavee;
 
@@ -101,6 +102,13 @@ public sealed record DetailModel(
     /// routed through (<c>PlaylistInlineEdit.Editable</c>).</summary>
     public DetailNotice Notice { get; init; }
 
+    /// <summary>Has a membership snapshot been adopted for this context (the store holds a baseline for the uri)?
+    /// FALSE only for a playlist mapped from a thin header — rootlist-seeded, or a decorate reply without rows — whose
+    /// empty <see cref="Tracks"/> is "not loaded yet", not "empty". The list renders shimmer rows and the rail a
+    /// shimmer meta line instead of "0 songs · 1 min" / "Nothing here yet" (<see cref="Features.Detail.PlaylistListState"/>).
+    /// Default TRUE: every other surface (album / Liked / show) carries its rows with the model.</summary>
+    public bool MembershipLoaded { get; init; } = true;
+
     // ── Upcoming release (album path) ────────────────────────────────────────────────────────────────────────────────
     // Init-only, deliberately NOT positional: every `with` expression and DetailModel.Empty above would have to be
     // rewritten for a new positional parameter, and these three are set by exactly one mapper (MapAlbum).
@@ -158,7 +166,13 @@ public readonly record struct DetailConfig(
     // for them. Deliberately NOT the same knob as ShowPlays: ShowPlays is "this profile always has a Plays lane", and
     // it is also what makes the top-track star and DetailTrailing.SeedTrack album-only — an opt-in column must not drag
     // those album semantics onto a playlist.
-    bool PlaysColumnOptIn = false)
+    bool PlaysColumnOptIn = false,
+    // Which persisted rail width/collapsed pair this surface reads and writes (DetailRailPolicy) — Liked is its own
+    // scope so it never shares the album's 280 and collapse flag by fallthrough — and whether the wide two-column arm
+    // offers the rail grip at all. Every two-column literal below is resizable; the decision is data so a config can
+    // opt out without a kind test in the shell.
+    RailScope RailScope = RailScope.Album,
+    bool RailResizable = true)
 {
     // Column track sets. Two shared instances → the header and rows are reference-equal (the alignment invariant).
     // playlist/liked: [ #, TITLE(+thumb+artist), ALBUM, ♥, DUR ]   album/single: [ #, TITLE(+artist), ♥, DUR ]
@@ -173,13 +187,14 @@ public readonly record struct DetailConfig(
         TwoColumn: true, RailWidth: WaveeSize.RailPlaylist, Badges: BadgeStyle.OwnerRow,
         ShowArtThumb: true, ShowAlbumColumn: true, Columns: ListColumns, CapTitle: true,
         Selection: ItemsSelectionMode.Extended, HasTrailing: false, Heart: HeartMode.Follow, ShowTrackArtist: true,
-        Recommendations: true, ShowTempo: true, ShowVersions: true, PlaysColumnOptIn: true);
+        Recommendations: true, ShowTempo: true, ShowVersions: true, PlaysColumnOptIn: true,
+        RailScope: RailScope.Playlist);
 
     public static DetailConfig Album => new(
         TwoColumn: true, RailWidth: WaveeSize.RailAlbum, Badges: BadgeStyle.TypeYear,
         ShowArtThumb: false, ShowAlbumColumn: false, Columns: AlbumColumns, CapTitle: false,
         Selection: ItemsSelectionMode.Extended, HasTrailing: true, Heart: HeartMode.Save, ShowPlays: true,
-        ShowVersions: true);
+        ShowVersions: true, RailScope: RailScope.Album);
 
     // A single == the album surface (trailing sections included) but with no multi-select (1–2 tracks).
     public static DetailConfig Single => Album with { Selection = ItemsSelectionMode.None };
@@ -191,7 +206,8 @@ public readonly record struct DetailConfig(
         TwoColumn: true, RailWidth: WaveeSize.RailPlaylist, Badges: BadgeStyle.None,
         ShowArtThumb: true, ShowAlbumColumn: true, Columns: ListColumns, CapTitle: true,
         Selection: ItemsSelectionMode.Extended, HasTrailing: false, Heart: HeartMode.None, ShowTrackArtist: true,
-        ShowTempo: true, ShowVersions: true, PlaysColumnOptIn: true);
+        ShowTempo: true, ShowVersions: true, PlaysColumnOptIn: true,
+        RailScope: RailScope.Liked);
 
     // A podcast show: the album-style two-column rail (cover · PODCAST pill · title · publisher/episode-count meta ·
     // Play + Follow), with the right column rendering EPISODES (EpisodeList) instead of a track table.
@@ -199,7 +215,7 @@ public readonly record struct DetailConfig(
         TwoColumn: true, RailWidth: WaveeSize.RailAlbum, Badges: BadgeStyle.TypeYear,
         ShowArtThumb: false, ShowAlbumColumn: false, Columns: AlbumColumns, CapTitle: false,
         Selection: ItemsSelectionMode.None, HasTrailing: false, Heart: HeartMode.Follow,
-        Content: DetailContent.Episodes);
+        Content: DetailContent.Episodes, RailScope: RailScope.Show);
 }
 
 // PreReleaseDerivation lives in its own engine-free file (PreReleaseDerivation.cs) so Wavee.Tests can source-include it.

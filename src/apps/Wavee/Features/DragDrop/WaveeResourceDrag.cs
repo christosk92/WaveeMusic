@@ -24,7 +24,11 @@ static class WaveeDragKinds
 /// every other playlist target is a copy. The resolver is cold and runs only after a compatible drop.
 /// <para><see cref="ArtUrl"/> is the drag CHIP's artwork and nothing else — a source fills it only where the cover is
 /// already in hand (a sidebar row's entry). A track snapshot needs no help: the chip reads the first track's own image.
-/// </para></summary>
+/// </para>
+/// <para><see cref="SourceQueueItemId"/> marks a row lifted out of the QUEUE panel (<see cref="ForQueueRow"/>): the
+/// session-stable id of that row, or <see cref="QueueItemId.None"/> for a degenerate snapshot row that has none yet.
+/// Null for every other source. It is the payload's self-identification as a REORDER gesture — see
+/// <see cref="FromQueue"/> and <see cref="QueueDragRules"/>.</para></summary>
 sealed record WaveeResourceDragPayload(
     WaveeResourceKind Kind,
     string Id,
@@ -36,8 +40,13 @@ sealed record WaveeResourceDragPayload(
     Func<CancellationToken, Task<IReadOnlyList<Track>>>? TrackResolver = null,
     bool RootlistItem = false,
     string? ArtUrl = null,
-    IReadOnlyList<RootlistItemRef>? RootlistItems = null)
+    IReadOnlyList<RootlistItemRef>? RootlistItems = null,
+    QueueItemId? SourceQueueItemId = null)
 {
+    /// <summary>This drag lifted a row out of the queue panel. The gesture is a reorder of that list; no playlist, tab,
+    /// sidebar row or player-bar surface may read it as a track to deposit (<see cref="CanCopyTracks"/> is false).</summary>
+    public bool FromQueue => SourceQueueItemId is not null;
+
     /// <summary>How many ROOTLIST items this drag is carrying: the whole normalised selection for a multi-select
     /// (<see cref="FromEntries"/>), 1 for an ordinary single rootlist drag, 0 for a payload that is not a rootlist item
     /// at all. The chip's count badge and the "Moved {n} items to {name}" toast both read this — it is the ONE count.</summary>
@@ -50,7 +59,12 @@ sealed record WaveeResourceDragPayload(
     /// boundary <see cref="TryPin"/> uses rather than duplicating its kind list, so the two can never drift apart.</summary>
     public bool CanPin => TryPin(out _);
 
-    public bool CanCopyTracks => Tracks is { Count: > 0 } || TrackResolver is not null;
+    /// <summary>This payload OFFERS its tracks to a destination (a playlist deposit, a queue insert). Not merely "has
+    /// tracks": a queue row travels with its <see cref="Track"/> (the chip reads it) and offers it to nobody — the rule
+    /// is <see cref="QueueDragRules.Depositable"/>, and every destination reads THIS property, so the queue refusal
+    /// reaches them all without a single target knowing the queue exists.</summary>
+    public bool CanCopyTracks
+        => QueueDragRules.Depositable(Tracks is { Count: > 0 } || TrackResolver is not null, FromQueue);
 
     public Task<IReadOnlyList<Track>> ResolveTracksAsync(CancellationToken ct = default)
         => Tracks is { } tracks ? Task.FromResult(tracks)
@@ -145,6 +159,13 @@ sealed record WaveeResourceDragPayload(
     public static WaveeResourceDragPayload ForTrack(Track track)
         => new(PlayableKind(track.Uri), track.Id is { Length: > 0 } id ? id : track.Uri, track.Uri, track.Title,
                new[] { track });
+
+    /// <summary>ONE row of the queue panel in hand. Byte-for-byte <see cref="ForTrack"/> (the chip still shows the song)
+    /// plus the queue marker that makes it a REORDER gesture: <see cref="CanCopyTracks"/> is false, so the playlist
+    /// surfaces that used to accept it as a copy — and turned a reorder into "Added to {playlist}" — go dark, and the
+    /// chip's resting verb says what the drag is for (<see cref="WaveeResourceDrag.Chip"/>).</summary>
+    public static WaveeResourceDragPayload ForQueueRow(QueueEntry entry)
+        => ForTrack(entry.Track) with { SourceQueueItemId = entry.ItemId };
 
     /// <summary>The drag kind of one PLAYABLE row. An episode rides the same <c>Track</c> read-model as a song
     /// (<c>EpisodeAsTrack</c>, design §1.5) but it is not one, and the chip's glyph and the drop captions read the KIND
@@ -314,10 +335,15 @@ static class WaveeResourceDrag
             // A ROOTLIST payload gets its OWN verb (D14): "Drag onto a playlist to add" is the wrong sentence for a
             // gesture that is organising the sidebar — the user is not adding anything, and a folder drag (which can add
             // nothing at all) used to travel with no caption whatsoever.
-            RestingCaption: payload.RootlistItem
-                    && payload.Kind is WaveeResourceKind.Playlist or WaveeResourceKind.Folder
-                ? Loc.Get(Strings.Drag.OrganizeHint)
-                : payload.CanCopyTracks ? Loc.Get(Strings.Drag.DragOntoPlaylist) : null);
+            //
+            // A QUEUE row gets its own verb for the same reason in the other direction: it used to travel wearing
+            // "Drag onto a playlist to add" — the exact promise the drop then kept, which is how a reorder attempt
+            // ended as a playlist add. It is a reorder, and that is all the chip may claim it is.
+            RestingCaption: payload.FromQueue
+                ? Loc.Get(Strings.Drag.ReorderHint)
+                : payload.RootlistItem && payload.Kind is WaveeResourceKind.Playlist or WaveeResourceKind.Folder
+                    ? Loc.Get(Strings.Drag.OrganizeHint)
+                    : payload.CanCopyTracks ? Loc.Get(Strings.Drag.DragOntoPlaylist) : null);
     }
 
     /// <summary>The one preview mounted at the shell root (<c>DragPreviewLayer.Of</c>).</summary>
@@ -369,6 +395,9 @@ static class WaveeDetailDrag
 
 static class WaveeResourceDrop
 {
+    /// <summary>May a drop of <paramref name="payload"/> deposit tracks here? False for a payload with nothing to
+    /// resolve AND for a live QUEUE drag (<see cref="WaveeResourceDragPayload.FromQueue"/> — a reorder, never a copy;
+    /// the rule is inside <c>CanCopyTracks</c> so the targets that read that property directly agree with this one).</summary>
     public static bool CanDepositTracks(object? payload)
         => WaveeResourceDrag.Unwrap(payload) is { CanCopyTracks: true };
 

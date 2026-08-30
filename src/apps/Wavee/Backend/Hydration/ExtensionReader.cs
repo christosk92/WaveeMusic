@@ -18,7 +18,10 @@ namespace Wavee.Backend.Hydration;
 // The four services this replaces each had their own dictionary, their own in-flight guard (or none) and their own
 // idea of what a 404 meant. Three rules, once:
 //   • the parsed answer is cached INCLUDING null — "this track has no credits" is an answer, and re-parsing 40 KB of
-//     protobuf to rediscover it on every drawer open was the measurable half of the waste;
+//     protobuf to rediscover it on every drawer open was the measurable half of the waste. A payload we FAIL to parse
+//     is cached as null here too (same bytes, same failure — no point re-logging it per open) but is never a wire
+//     "no": only an empty/404 body reaches the shared negative memo, so a kind we mis-decode leaves the row pass and
+//     the callers' REST fallbacks free to answer;
 //   • concurrent opens share ONE load. The TCS slot is published BEFORE the load starts and removed in a finally with
 //     the value-matching TryRemove overload, so a load that completes synchronously cannot strand its own slot (the
 //     bug shape that wedges a key for the session);
@@ -126,21 +129,23 @@ public sealed class ExtensionReader : IExtensionReader
             // CancellationToken.None on purpose (see the header): the shared load outlives any one caller's navigation.
             var payload = await _cache.GetPayloadAsync(key.Uri, key.Kind, CancellationToken.None, surface.ClientFeatureId())
                                       .ConfigureAwait(false);
+            bool undecodable = false;
             if (payload is { IsEmpty: false })
             {
                 try { answer = parse(payload); }
                 catch (Exception ex)
                 {
-                    // Undecodable is a NULL ANSWER, not a failure: the bytes are what they are, and re-fetching them
-                    // will hand us the same bytes again.
-                    _log.Event(WaveeLogLevel.Warning, "extensions.parse.fail", "extension parse failed", ex: ex,
-                        fields: [WaveeLogField.Of("kind", key.Kind.ToString()), WaveeLogField.Of("uri", key.Uri)]);
+                    // Undecodable is OUR failure, not the wire's: the bytes are what they are (re-fetching hands back
+                    // the same ones), so the null is held in this reader's LRU — but it must not seal the entity as
+                    // absent for everyone else. The head bytes are logged so the log can name the encoding we missed.
+                    LogParseFail(key.Kind, key.Uri, payload, ex);
                     answer = null;
+                    undecodable = true;
                 }
             }
-            // 404 / empty / undecodable — cache the null AND memoize it, so neither this reader nor the row pipeline
-            // asks again this session.
-            if (answer is null) _negatives.Add(key.Uri, key.Kind);
+            // 404 / empty / nothing renderable — cache the null AND memoize it, so neither this reader nor the row
+            // pipeline asks again this session. An undecodable body caches the null and stays OFF the shared memo.
+            if (answer is null && !undecodable) _negatives.Add(key.Uri, key.Kind);
             _answers.Set(key, answer);
         }
         catch (Exception ex)
@@ -202,16 +207,19 @@ public sealed class ExtensionReader : IExtensionReader
                 // unmemoized so the next pass asks again.
                 if (!values.TryGetValue((uri, kind), out var cachedExt)) continue;
                 object? answer = null;
+                bool undecodable = false;
                 if (!cachedExt.Missing && cachedExt.Payload is { IsEmpty: false } payload)
                 {
                     try { answer = parse(payload); }
                     catch (Exception ex)
                     {
-                        _log.Event(WaveeLogLevel.Warning, "extensions.parse.fail", "extension parse failed", ex: ex,
-                            fields: [WaveeLogField.Of("kind", kind.ToString()), WaveeLogField.Of("uri", uri)]);
+                        // Same rule as the single read: logged with the head, cached null here, NOT a negative — the
+                        // uri stays absent from the result so a caller's per-entity fallback still gets it.
+                        LogParseFail(kind, uri, payload, ex);
+                        undecodable = true;
                     }
                 }
-                if (answer is null) _negatives.Add(uri, kind);
+                if (answer is null && !undecodable) _negatives.Add(uri, kind);
                 _answers.Set((uri, kind), answer);
                 if (answer is T typed) result[uri] = typed;
             }
@@ -240,6 +248,14 @@ public sealed class ExtensionReader : IExtensionReader
             return NoRaw;
         }
     }
+
+    /// <summary>The parse-failure line carries the byte count and the first 8 bytes as hex: with no response headers
+    /// on the extension path, the head is the only evidence of what encoding the server actually used.</summary>
+    void LogParseFail(Xm.ExtensionKind kind, string uri, ByteString payload, Exception ex)
+        => _log.Event(WaveeLogLevel.Warning, "extensions.parse.fail", "extension parse failed", ex: ex,
+            fields: [WaveeLogField.Of("kind", kind.ToString()), WaveeLogField.Of("uri", uri),
+                     WaveeLogField.Of("bytes", payload.Length),
+                     WaveeLogField.Of("head", Convert.ToHexString(payload.Span[..Math.Min(8, payload.Length)]))]);
 
     static List<(string Uri, Xm.ExtensionKind Kind)> GroupByUri(IReadOnlyList<(string Uri, Xm.ExtensionKind Kind)> reqs)
     {

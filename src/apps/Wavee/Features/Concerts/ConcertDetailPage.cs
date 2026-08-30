@@ -41,6 +41,7 @@ sealed class ConcertDetailPage : Component
         if (svc is null) return new BoxEl { Grow = 1f };
 
         var reload = UseSignal(0);
+        var underBand = UseSignal(false);   // the body's ClipBelow edge: feather only while the cut is live
         int gen = reload.Value;   // subscribe → Retry re-fires the load
 
         // The seed is a representative shape (facts + two offers + lineup rows) so Skel.Region derives its shimmer from
@@ -65,11 +66,25 @@ sealed class ConcertDetailPage : Component
                 Loc.Get(Strings.Concerts.Detail.NotAvailableSubtitle)),
             group: "concert-detail:" + _concertUri);
 
+        // The offset model (ContextBand / BrowseMastheadMetrics.ClipInset): the masthead paints nothing, so the
+        // body cuts itself at the band's lower edge as it scrolls under it; the reserve is a spacer above the clipped
+        // node so the cut engages only once the hero reaches the band.
         var content = new BoxEl
         {
             Direction = 1,
-            Padding = new Edges4(32f, BrowseLayout.MastheadReserve + 40f, 32f, PlayerDock.Reserve + 40f),
-            Children = [ region ],
+            Children =
+            [
+                new BoxEl { Height = BrowseLayout.MastheadReserve + 40f, HitTestVisible = false },
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f,
+                    Padding = new Edges4(32f, 0f, 32f, PlayerDock.Reserve + 40f),
+                    EdgeFade = underBand.Value
+                        ? new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand)
+                        : null,
+                    Children = [ region ],
+                }.ClipBelow(BrowseMastheadMetrics.ClipInset, v => underBand.Value = v),
+            ],
         };
         return ScrollView(content) with { Grow = 1f, MinHeight = 0f, ScrollKey = "concert-detail:" + _concertUri };
     }

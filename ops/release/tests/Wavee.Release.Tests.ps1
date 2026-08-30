@@ -643,4 +643,39 @@ Describe 'ConvertFrom-GhJson' {
 
 # ===================================================================================================================
 
+Describe 'the release scripts themselves' {
+    # Both scripts run under Windows PowerShell 5.1, which decodes a BOM-less file as ANSI: a single non-ASCII
+    # character inside a quoted string is a parse error that kills the whole release. Parse them the way the host
+    # does, and refuse any byte above 0x7F anywhere in them (comments too - a copy/paste out of one must stay safe).
+    $scripts = @(
+        (Join-Path $repoRoot 'ops\build\pack-wavee-msix.ps1'),
+        (Join-Path $repoRoot 'ops\release\wavee-release.ps1')
+    )
+
+    foreach ($s in $scripts) {
+        $leaf = Split-Path -Leaf $s
+
+        It "$leaf parses without errors" {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($s, [ref]$tokens, [ref]$errors) | Out-Null
+            @($errors).Count | Should Be 0
+        }
+
+        It "$leaf is ASCII only" {
+            $bytes = Get-FileBytes $s
+            @($bytes | Where-Object { $_ -gt 127 }).Count | Should Be 0
+        }
+    }
+
+    It 'names the symbols zip so it can never be mistaken for a package by the repoint regex' {
+        # Invoke-Repoint picks the package to point the feed at by this pattern; the zip beside it must not match.
+        $zip = 'Wavee-0.2.0.7-win-x64-symbols.zip'
+        ($zip -match '^Wavee_(?<q>\d+\.\d+\.\d+\.\d+)_(?<a>arm64|x64)\.msix$') | Should Be $false
+        ('Wavee_0.2.0.7_x64.msix' -match '^Wavee_(?<q>\d+\.\d+\.\d+\.\d+)_(?<a>arm64|x64)\.msix$') | Should Be $true
+    }
+}
+
+# ===================================================================================================================
+
 Remove-Item $script:TmpRoot -Recurse -Force -ErrorAction SilentlyContinue

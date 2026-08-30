@@ -30,9 +30,10 @@ public interface IOnlineCatalog
     /// <summary>As-you-type completions PLUS the typed entity hits. Empty offline.</summary>
     Task<SearchSuggestions> SuggestRichAsync(string query, CancellationToken ct = default);
 
-    /// <summary>The editorial/personalized Home feed. <c>null</c> means "no live Home" — the caller then contributes its
-    /// degraded library shelves and, critically, does NOT pin/carry a facet chip row it has no live feed to filter.</summary>
-    Task<LiveHomeResult?> GetHomeAsync(CancellationToken ct = default);
+    /// <summary>The editorial/personalized Home feed for <paramref name="facet"/> (a <c>homeChips[].id</c>, or null/""
+    /// for the unfiltered feed). <c>null</c> means "no live Home" — the caller then contributes its degraded library
+    /// shelves and, critically, does NOT pin/carry a facet chip row it has no live feed to filter.</summary>
+    Task<LiveHomeResult?> GetHomeAsync(string? facet, CancellationToken ct = default);
 }
 
 /// <summary>The logged-out / test answer, and the inner every <see cref="SwitchableOnlineCatalog"/> starts and ends on.
@@ -51,7 +52,7 @@ public sealed class OfflineOnlineCatalog : IOnlineCatalog
     public Task<SearchResults?> SearchAsync(string query, SearchFacet facet, int offset, int limit, CancellationToken ct = default) => NoSearch;
     public Task<IReadOnlyList<string>> SuggestAsync(string query, CancellationToken ct = default) => NoQueries;
     public Task<SearchSuggestions> SuggestRichAsync(string query, CancellationToken ct = default) => NoSuggestions;
-    public Task<LiveHomeResult?> GetHomeAsync(CancellationToken ct = default) => NoHome;
+    public Task<LiveHomeResult?> GetHomeAsync(string? facet, CancellationToken ct = default) => NoHome;
 }
 
 /// <summary>The go-live/offline seam: one stable reference the catalog source holds forever, whose INNER flips between
@@ -84,6 +85,6 @@ public sealed class SwitchableOnlineCatalog : IOnlineCatalog
     public Task<SearchSuggestions> SuggestRichAsync(string query, CancellationToken ct = default)
         => _inner.SuggestRichAsync(query, ct);
 
-    public Task<LiveHomeResult?> GetHomeAsync(CancellationToken ct = default)
-        => _inner.GetHomeAsync(ct);
+    public Task<LiveHomeResult?> GetHomeAsync(string? facet, CancellationToken ct = default)
+        => _inner.GetHomeAsync(facet, ct);
 }

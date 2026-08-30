@@ -27,7 +27,7 @@ public sealed class LocalSource : ICatalogSource
         return Ok(new Playlist("local-all", uri, "Local Files", "Music imported from this computer.", "On this device",
             null, tracks.Count, tracks,
             Owner: new Owner("local", "On this device", null),
-            Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: true, CanEditMetadata: true, IsCollaborative: false, IsOwner: true),
+            Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: true, CanEditMetadata: true, IsCollaborative: false, IsOwner: true, Known: true),
             Source: "local"));
     }
 
@@ -78,7 +78,7 @@ public sealed class LocalSource : ICatalogSource
         return Task.FromResult(new SearchResults(tracks, System.Array.Empty<Album>(), System.Array.Empty<Artist>(), System.Array.Empty<Playlist>()));
     }
 
-    public Task<HomeContribution> GetHomeAsync(CancellationToken ct = default)
+    public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default)
         => Task.FromResult(new HomeContribution(System.Array.Empty<HomeGroup>(), Priority: 50));
     public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default)
         => Task.FromResult(new LibraryStats(0, 0, 0, 0));

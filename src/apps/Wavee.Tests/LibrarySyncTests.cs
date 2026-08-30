@@ -138,6 +138,13 @@ public class LibrarySyncTests
             slc.Contents = c;
             return Ok(slc.ToByteArray());
         }
+        if (req.Url.Contains("/collection/v2/delta"))
+        {
+            // A wire set that already holds a token asks for a delta: answer "nothing changed" (an honoured, empty
+            // delta), so a second pass over a converged set is one cheap round-trip rather than a re-walk.
+            var set = Col.DeltaRequest.Parser.ParseFrom(req.Body).Set;
+            return Ok(new Col.DeltaResponse { DeltaUpdatePossible = true, SyncToken = "tok-" + set }.ToByteArray());
+        }
         if (req.Url.Contains("/collection/v2/paging"))
         {
             var set = Col.PageRequest.Parser.ParseFrom(req.Body).Set;
@@ -307,19 +314,37 @@ public class LibrarySyncTests
         Assert.True(h.Store.IsSaved("artists", "spotify:artist:ar1"));
         Assert.True(h.Store.IsSaved("shows", "spotify:show:s1"));
         Assert.True(h.Store.IsSaved("episodes", "spotify:episode:e1"));
-        // tokens advanced (per set)
-        Assert.Equal("tok-collection", h.Revs["liked"]);
-        Assert.Equal("tok-collection", h.Revs["albums"]);
-        Assert.Equal("tok-artist", h.Revs["artists"]);
-        Assert.Equal("tok-show", h.Revs["shows"]);
-        Assert.Equal("tok-listenlater", h.Revs["episodes"]);
+        // tokens advanced — keyed by WIRE set (one walk of "collection" covers liked + albums), never by logical set
+        Assert.Equal("tok-collection", h.Revs["collection"]);
+        Assert.Equal("tok-artist", h.Revs["artist"]);
+        Assert.Equal("tok-show", h.Revs["show"]);
+        Assert.Equal("tok-listenlater", h.Revs["listenlater"]);
+        Assert.False(h.Revs.ContainsKey("liked"));
         // the "playlists" saved-set fold
         Assert.True(h.Store.IsSaved("playlists", "spotify:playlist:p1"));
         Assert.True(h.Store.IsSaved("playlists", "spotify:playlist:p2"));
-        // one Bulk-coalesced signal per burst — no per-uri change leaked (rootlist+fold = 1, then 5 sets = 5).
+        // one Bulk-coalesced signal per burst — no per-uri change leaked (rootlist+fold = 1, then 4 wire sets = 4).
         List<StoreChange> snap; lock (col.All) snap = new List<StoreChange>(col.All);
         Assert.All(snap, c => Assert.True(c.IsBulk));
-        Assert.Equal(6, snap.Count);
+        Assert.Equal(5, snap.Count);
+    }
+
+    [Fact]
+    public async Task InitialHydrate_WalksFourWireSets_NotFiveLogicalSets()
+    {
+        // liked + albums ride the same "collection" snapshot: walking it twice was how each logical set's sweep could
+        // run over a truncated copy of the other's. One walk per wire set, one token per wire set.
+        await using var h = new SyncHarness(HydrateResponder);
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.InitialHydrate, Done: done));
+        await done.Task;
+
+        Assert.Equal(4, h.CollectionPosts);
+        Assert.Equal(4, h.Sync.SetFetches);
+        Assert.Equal(new[] { "collection", "artist", "show", "listenlater" }, h.Revs.Keys.OrderBy(k => Array.IndexOf(CollectionSets.WireSets, k)).ToArray());
+        Assert.True(h.Store.IsSaved("liked", "spotify:track:t1"));
+        Assert.True(h.Store.IsSaved("albums", "spotify:album:a1"));
+        Assert.Equal(0, h.Sync.ReconcilePasses);   // boot arms the periodic pass; it does not run one
     }
 
     [Fact]
@@ -329,7 +354,7 @@ public class LibrarySyncTests
 
         // Two pushes for the same WIRE set inside the settle window: the second must fold into the first (dropped), NOT re-arm.
         // Done rides the first push and completes when the single settled fetch finishes — a deterministic barrier, not a sleep.
-        // The "collection" wire set carries BOTH liked and albums, so the settled fetch fans out to two logical delta-fetches.
+        // The "collection" wire set carries BOTH liked and albums; the settled fetch walks it ONCE and fans the items out.
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "collection", Done: done));
         h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "collection"));   // within the window → folded
@@ -337,8 +362,8 @@ public class LibrarySyncTests
 
         await done.Task;
 
-        Assert.Equal(2, h.Sync.SetFetches);              // one settled push → both logical sets (liked + albums) fetched once
-        Assert.Equal(2, h.CollectionPosts);              // two HTTP hits — the second push did not re-arm the settle
+        Assert.Equal(1, h.Sync.SetFetches);              // one settled push → ONE walk of the wire set (liked + albums both land)
+        Assert.Equal(1, h.CollectionPosts);              // one HTTP hit — the second push did not re-arm the settle
         Assert.False(h.Sync.IsSetSyncing("collection")); // cleared once the fetch completed
         Assert.True(h.Store.IsSaved("liked", "spotify:track:t1"));
         Assert.True(h.Store.IsSaved("albums", "spotify:album:a1"));
@@ -470,12 +495,12 @@ public class LibrarySyncTests
             s => revs.TryGetValue(s, out var r) ? r : null, (s, r) => revs[s] = r, (u, c) => Task.CompletedTask,
             (s, u) => u == "spotify:album:pending");
 
-        await fetcher.FetchSetAsync("albums", TestContext.Current.CancellationToken);
+        await fetcher.FetchWireSetAsync("collection", TestContext.Current.CancellationToken);
 
         Assert.True(store.IsSaved("albums", "spotify:album:a"));            // snapshot member
         Assert.False(store.IsSaved("albums", "spotify:album:gone"));        // swept
         Assert.True(store.IsSaved("albums", "spotify:album:pending"));      // shielded survives
-        Assert.Equal("t2", revs["albums"]);
+        Assert.Equal("t2", revs["collection"]);                            // the WIRE set's token
     }
 
     [Fact]
@@ -491,11 +516,11 @@ public class LibrarySyncTests
         var fetcher = new CollectionFetcher(http, () => "https://x", () => "bob", store,
             s => revs.TryGetValue(s, out var r) ? r : null, (s, r) => revs[s] = r, (u, c) => Task.CompletedTask);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fetcher.FetchSetAsync("albums", TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fetcher.FetchWireSetAsync("collection", TestContext.Current.CancellationToken));
 
         Assert.True(store.IsSaved("albums", "spotify:album:a"));            // partial page applied
         Assert.True(store.IsSaved("albums", "spotify:album:gone"));         // NOT swept (partial loop)
-        Assert.False(revs.ContainsKey("albums"));                          // token NOT advanced → next attempt re-pages fully
+        Assert.False(revs.ContainsKey("collection"));                      // token NOT advanced → next attempt re-pages fully
     }
 
     [Fact]
@@ -649,12 +674,12 @@ public class LibrarySyncTests
     {
         await using var h = new SyncHarness(HydrateResponder);
 
-        // "collection" (no payload) → delta fetch fans out to BOTH liked and albums (two routes hit).
+        // "collection" (no payload) → ONE walk of the wire set lands BOTH liked and albums.
         var done1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "collection", Done: done1));
         await done1.Task;
-        Assert.Equal(2, h.Sync.SetFetches);
-        Assert.Equal(2, h.CollectionPosts);
+        Assert.Equal(1, h.Sync.SetFetches);
+        Assert.Equal(1, h.CollectionPosts);
         Assert.True(h.Store.IsSaved("liked", "spotify:track:t1"));
         Assert.True(h.Store.IsSaved("albums", "spotify:album:a1"));
 
@@ -662,8 +687,71 @@ public class LibrarySyncTests
         var done2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "ylpin", Done: done2));
         await done2.Task;
-        Assert.Equal(2, h.Sync.SetFetches);      // unchanged — no fetch for the unknown set
-        Assert.Equal(2, h.CollectionPosts);
+        Assert.Equal(1, h.Sync.SetFetches);      // unchanged — no fetch for the unknown set
+        Assert.Equal(1, h.CollectionPosts);
+    }
+
+    [Fact]
+    public async Task CollectionPush_FallbackFetch_WalksWireSetOnce()
+    {
+        // A parseable PubSubUpdate with ZERO items is the "unknown change shape" case: it falls back to the fetch, and
+        // that fetch is one walk of the wire set (the token, when present, is the wire set's too).
+        await using var h = new SyncHarness(HydrateResponder);
+        var upd = new Col.PubSubUpdate { Set = "collection" };   // no items
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "collection", Payload: upd.ToByteArray(), Done: done));
+        await done.Task;
+
+        Assert.Equal(0, h.Sync.PushDirectApplied);
+        Assert.Equal(1, h.Sync.SetFetches);
+        Assert.Equal(1, h.CollectionPosts);
+        Assert.Equal("tok-collection", h.Revs["collection"]);
+        Assert.True(h.Store.IsSaved("liked", "spotify:track:t1"));
+        Assert.True(h.Store.IsSaved("albums", "spotify:album:a1"));
+    }
+
+    // ── the collection reconcile pass (drift proof) ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ReconnectResync_RunsReconcilePass()
+    {
+        // The pass is QUEUED behind the reconnect handler (not inlined), so an idle barrier enqueued before the handler
+        // ran completes before the reconcile; a second barrier is what waits for it.
+        await using var h = new SyncHarness(HydrateResponder);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.ReconnectResync));
+        await h.Sync.WaitForIdleAsync();
+        await h.Sync.WaitForIdleAsync();
+        Assert.Equal(1, h.Sync.ReconcilePasses);
+        Assert.Equal(8, h.CollectionPosts);          // (3) one walk per wire set + one shadow walk per wire set
+        Assert.Equal(0, h.Sync.ReconcileDrifts);     // the reconnect walk just converged them — no drift
+        Assert.Equal("tok-collection", h.Revs["collection"]);
+
+        // Inside the minimum gap a second pass is dropped, not re-run.
+        h.Sync.ResyncWindow = TimeSpan.Zero;
+        h.Sync.Enqueue(new SyncCommand(SyncKind.ReconnectResync));
+        await h.Sync.WaitForIdleAsync();
+        await h.Sync.WaitForIdleAsync();
+        Assert.Equal(1, h.Sync.ReconcilePasses);
+        Assert.Equal(1, h.Sync.ReconcilesSkipped);
+        Assert.Equal(12, h.CollectionPosts);         // the reconnect's own 4 (now delta) probes ran; the reconcile did not
+    }
+
+    [Fact]
+    public async Task PeriodicReconcile_Reenqueues_AfterInterval()
+    {
+        await using var h = new SyncHarness(HydrateResponder);
+        h.Sync.ReconcileInterval = TimeSpan.FromMilliseconds(20);
+        h.Sync.ReconcileMinGap = TimeSpan.Zero;
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.InitialHydrate, Done: done));
+        await done.Task;   // arms the first periodic pass
+
+        // Each pass re-arms the next: at least two passes prove the chain, not just the boot timer.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (Volatile.Read(ref h.Sync.ReconcilePasses) < 2 && DateTime.UtcNow < deadline)
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        Assert.True(h.Sync.ReconcilePasses >= 2, "expected the periodic reconcile to re-enqueue itself");
+        Assert.Equal(0, h.Sync.ReconcileDrifts);
     }
 
     [Fact]

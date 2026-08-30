@@ -420,10 +420,12 @@ public static class TrackAvailability
 public sealed record Owner(string Id, string Name, Image? Avatar);
 
 /// <summary>What the current user may do to a playlist (mirrors Spotify's currentUserCapabilities). The UI gates its
-/// edit affordances on these — an editorial / not-owned playlist renders read-only. <c>default</c> = no rights.</summary>
+/// edit affordances on these — an editorial / not-owned playlist renders read-only. <c>default</c> = no rights AND
+/// <see cref="Known"/> false: a header that has not carried a capabilities block yet (a rootlist-seeded thin row) is
+/// "unknown", which the page must never read as "revoked" — only a writer that saw the real block sets Known.</summary>
 public readonly record struct PlaylistCapabilities(
     bool CanView, bool CanEditItems, bool CanEditMetadata, bool IsCollaborative, bool IsOwner,
-    bool CanAdministratePermissions = false);
+    bool CanAdministratePermissions = false, bool Known = false);
 
 /// <summary>Stable playlist row identity for duplicate-safe remove/move commands.</summary>
 public readonly record struct PlaylistRowRef(int Index, string Uri, string ItemId);

@@ -185,8 +185,9 @@
     <Protobuf Include="SpotifyLive\Protos\**\*.proto" GrpcServices="None" ProtoRoot="SpotifyLive\Protos" />
   </ItemGroup>
 
-  <!-- Bundled fake-catalog cover art + the loc JSON: copied next to the exe (FakeData.Cover resolves
-       AppContext.BaseDirectory/assets/covers/coverNN.jpg; Localization.LoadFolder reads assets/loc/*.json). -->
+  <!-- Bundled fake-catalog cover art + the loc JSON + the font files: copied next to the exe (FakeData.Cover resolves
+       AppContext.BaseDirectory/assets/covers/coverNN.jpg; Localization.LoadFolder reads assets/loc/*.json;
+       Design/Glyphs.cs loads assets/fonts/SegoeFluentIcons.ttf + wavee-icons.otf by path - see assets/fonts/FONTS.md). -->
   <ItemGroup>
     <Content Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

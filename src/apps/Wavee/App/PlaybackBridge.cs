@@ -123,7 +123,7 @@ public sealed class PlaybackBridge
     /// observing <see cref="CurrentTrack"/> and <see cref="CurrentContext"/> when only now-playing matching is needed.</summary>
     public Signal<PlaybackIdentity> Identity { get; } = new(default);
     /// <summary>Coarse "is anything playing?" gate for the very-high-fanout now-playing matchers. True iff there is an
-    /// active context OR a current track — i.e. iff any card COULD match (see <c>NowPlayingOverlay.Matches</c>, which
+    /// active context OR a current track — i.e. iff any card COULD match (see <c>NowPlayingMatch.RelatesToPlaying</c>, which
     /// returns false when both are empty). While idle (the common case at page-load, when ~70 card overlays mount at
     /// once) a cold overlay subscribes to THIS one bool instead of the hot <see cref="Identity"/>, so it neither runs
     /// <c>Matches</c> nor joins Identity's fanout until playback actually starts. Equality-gated by the signal setter, so
@@ -1211,7 +1211,7 @@ public sealed class PlaybackBridge
         // second line of defence, not the gate. Null-safe: an unattached log records nothing.
         if (trackBoundary && s.CurrentTrack is { } played)
             _playLog?.Append(played.Uri, s.ContextUri, contextTitle: JumpListBridge.FromTrack(played, s.ContextUri));
-        // Coarse gate for the now-playing card overlays: true iff any card COULD match (mirrors NowPlayingOverlay.Matches,
+        // Coarse gate for the now-playing card overlays: true iff any card COULD match (mirrors NowPlayingMatch.RelatesToPlaying,
         // which is false when both context and track are empty). Equality-gated by the setter, so an idle→idle push is free.
         HasActiveContext.Value = !string.IsNullOrEmpty(s.ContextUri) || s.CurrentTrack is not null;
         IsPlaying.Value = s.IsPlaying;

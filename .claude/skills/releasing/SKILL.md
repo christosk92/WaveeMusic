@@ -30,7 +30,7 @@ powershell -File ops\release\wavee-release.ps1
 | Package identity | `cproducts.Wavee` (publisher `CN=cproducts, O=cproducts, L=Utrecht, S=Utrecht, C=NL` — must equal the cert subject) |
 | Version | `Wavee.Version.props`; MSIX quad = `M.m.p.<WaveeBuild>` (the script bumps `WaveeBuild`) |
 | Notes | `CHANGELOG.md` + `ops/release/wavee/<semver>/whatsnew.json`, validated/rendered by `Wavee.ReleaseTool` |
-| Version-release assets | `Wavee_<quad>_arm64.msix`, `Wavee_<quad>_x64.msix`, `whatsnew.json`, media, `THIRD-PARTY-NOTICES.txt`, `MANIFEST.txt` |
+| Version-release assets | `Wavee_<quad>_arm64.msix`, `Wavee_<quad>_x64.msix`, `Wavee-<quad>-win-<arch>-symbols.zip` (one per arch: `Wavee.pdb` + `Wavee.map.xml` + `SYMBOLS.txt`), `whatsnew.json`, media, `THIRD-PARTY-NOTICES.txt`, `MANIFEST.txt` |
 | Update feed | rolling release **`wavee-stable`** → `Wavee.arm64.appinstaller`, `Wavee.x64.appinstaller`, `whatsnew-index.json` (`--clobber`, repointed last); every install has this URL baked in |
 
 Verify:
@@ -44,6 +44,25 @@ Get-WaveeFeedVersion christosk92/WaveeMusic wavee-stable arm64   # the feed head
 **Full runbook — prerequisites, the `-DryRun` review, the phase table, failure/recovery, rollback, the local E2E
 harness (`ops/release/tests/local-update-e2e.ps1 -Scenario inapp|os`, elevated) and the scratch-feed rehearsal:
 `docs/guide/releasing-wavee.md`.**
+
+## Symbolicating a crash report
+
+Shipped builds have `StackTraceSupport=false`: a crash report's frames are `at Wavee!<BaseAddress>+0x7b1fc6` and
+nothing else. `pack-wavee-msix.ps1` therefore ALWAYS publishes with `NativeDebugSymbols=true DebugType=portable
+IlcGenerateMapFile=true`, moves `Wavee.pdb` (from `publish\`) + `Wavee.map.xml` (from `obj\Release\net10.0\<rid>\native\`)
+into `<staging>\symbols\<quad>\win-<arch>\` **before** the layout copy, zips them as `Wavee-<quad>-win-<arch>-symbols.zip`,
+and the release script uploads that zip beside the `.msix`. The PDB matches exactly one exe (`SYMBOLS.txt` carries its
+sha256); the map has names/sizes/hashes but **no addresses**.
+
+```powershell
+# the report header says which zip: commit= / quad= / arch=; "Frames (RVA)" lists the offsets one per line
+gh release download wavee-vX.Y.Z --repo christosk92/WaveeMusic -D sym -p "Wavee-<quad>-win-<arch>-symbols.zip" -p "Wavee_<quad>_<arch>.msix"
+Expand-Archive sym\Wavee-<quad>-win-<arch>-symbols.zip sym; Copy-Item sym\Wavee_<quad>_<arch>.msix sym\pkg.zip; Expand-Archive sym\pkg.zip sym\pkg
+cdb -lines -z sym\pkg\Wavee.exe -y sym -c "ln Wavee+0x7b1fc6; q"     # -> Wavee!<mangled method>+0x..; u Wavee+0x<rva> L1 for file:line
+```
+
+Full walkthrough and the caveats (`IlcFoldIdenticalMethodBodies`, absolute addresses, releases that shipped without a
+zip): `docs/guide/releasing-wavee.md` §5b.
 
 ## Gotchas (every one of these actually happened)
 - **The active Azure subscription is usually REDLAB** → Trusted Signing fails (`SignerSign() failed` / "Service request failed"). `az account set --subscription "Azure subscription 1"`.

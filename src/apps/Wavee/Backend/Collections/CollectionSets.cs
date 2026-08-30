@@ -9,6 +9,16 @@ namespace Wavee.Backend.Collections;
 // and the push direct-apply all delegate here.
 public static class CollectionSets
 {
+    /// <summary>Every wire set the inbound sync walks — the unit of a page walk, a sync token and a reconcile pass. One
+    /// entry per server set, so "collection" is walked ONCE for liked + albums (they were two walks before, each sweeping
+    /// the other's half of the same mixed snapshot).</summary>
+    public static readonly string[] WireSets = { "collection", "artist", "show", "listenlater" };
+
+    /// <summary>The <c>collection_rev</c> key a wire set's sync token is stored under. Tokens are keyed by WIRE set, not
+    /// logical set: one walk of "collection" yields one token that covers both liked and albums, and a delta from it
+    /// fans out to both. (Pre-v10 rows were keyed by logical set and are cleared by the v10 migration.)</summary>
+    public static string RevisionKey(string wireSet) => wireSet;
+
     // logical UI set_id → the wire collection set name (the only place the mapping lives). Confirmed against the reference
     // (Wavee SpotifyLibraryService): the real wire sets are "collection" (tracks AND albums, mixed), "artist", "show", and
     // "listenlater" (saved episodes) — all singular; there is no "albums"/"artists"/"shows"/"episodes" set. Sending those
@@ -41,8 +51,8 @@ public static class CollectionSets
     };
 
     // The inverse of WireSet: the logical sets that ride a given WIRE set. A dealer push / write reply names the WIRE set,
-    // so a push-triggered refetch must fan back out to every logical set the wire set carries ("collection" → BOTH liked
-    // and albums — each has its own sync token, both deltas are cheap). Unknown wire sets (ylpin, artistban, …) → empty.
+    // so a push-triggered refetch walks that wire set once and fans the items back out to every logical set it carries
+    // ("collection" → BOTH liked and albums, split by URI prefix). Unknown wire sets (ylpin, artistban, …) → empty.
     public static IReadOnlyList<string> LogicalSetsForWireSet(string wireSet) => wireSet switch
     {
         "collection" => LikedAndAlbums,

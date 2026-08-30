@@ -140,7 +140,7 @@ public sealed class SpotifyExportSource : ICatalogSource
         return Task.FromResult(new SearchResults(fd.Tracks, fd.Albums, artists, matches.Count > 0 ? matches : fd.Playlists));
     }
 
-    public Task<HomeContribution> GetHomeAsync(CancellationToken ct = default) => Task.FromResult(_x.Home);
+    public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default) => Task.FromResult(_x.Home);
 
     public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default)
         => Task.FromResult(new LibraryStats(0, 0, _x.LikedCount, 0));

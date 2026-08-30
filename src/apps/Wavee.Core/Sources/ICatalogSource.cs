@@ -72,7 +72,9 @@ public interface ICatalogSource : ISource
         => Task.FromResult<IReadOnlyList<string>>(System.Array.Empty<string>());
     async Task<SearchSuggestions> SuggestRichAsync(string query, CancellationToken ct = default)
         => new(await SuggestAsync(query, ct).ConfigureAwait(false), System.Array.Empty<SearchSuggestionItem>());
-    Task<HomeContribution> GetHomeAsync(CancellationToken ct = default);
+    /// <summary>This source's contribution to Home for <paramref name="facet"/> — a <c>homeChips[].id</c>, or null/""
+    /// for the unfiltered feed. Sources with no facet notion ignore it.</summary>
+    Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default);
     Task<LibraryStats> GetStatsAsync(CancellationToken ct = default);
 
     /// <summary>This source's FOLDER-CAPABLE playlist tree. Default: a leaves-only projection of

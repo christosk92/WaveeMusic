@@ -24,11 +24,20 @@ namespace Wavee.Backend.Sync;
 // ReconnectResync (§6.2): the ordered convergence pass on a drop→Online transition — drain first (local intent wins),
 // then rootlist, then token-gated per-set deltas, then /diff for the open + dirty RESIDENT playlists only (anti-herd
 // preserved: cold-dirty playlists stay lazy). Rate-limited to one pass per 30s so a flapping network can't storm.
+// ReconcileCollections: the drift proof the delta model cannot give itself — a shadow walk of every WIRE set compared
+// against the local sets (CollectionFetcher.ReconcileWireSetAsync), repaged only on verified drift. Runs after a
+// reconnect pass and every ReconcileInterval; never twice inside ReconcileMinGap.
+//
+// Collection sets are walked, tokened and reconciled per WIRE set (CollectionSets.WireSets — four, not the five logical
+// sets): "collection" is ONE walk for liked + albums, so the two halves of the same mixed snapshot can no longer sweep
+// each other, and its token is stored once under the wire key.
 
 public enum SyncKind : byte
 {
     InitialHydrate, RootlistPush, PlaylistPush, CollectionPush, OpenPlaylist, PlaylistRevalidate, DrainWrites, ReconnectResync,
     ApplyPlaylistSignal, HydratePlaylist, PermissionPush, SeedPermission,
+    /// <summary>The collection drift check over every wire set. <c>Uri</c> carries the trigger ("reconnect"/"periodic").</summary>
+    ReconcileCollections,
 }
 
 /// <summary>A queued command for the sync loop. A readonly record struct through the unbounded channel (no boxing).
@@ -47,7 +56,6 @@ public readonly record struct SyncCommand(
 
 public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
 {
-    static readonly string[] Sets = { "liked", "albums", "artists", "shows", "episodes" };   // same list as SpotifyLibrarySync
     const int SettleMs = 250;                                                                 // dealer-burst settle (§2.2)
     static readonly TimeSpan OpenRevalidateWindow = TimeSpan.FromMinutes(5);                  // on-open SWR window (§2.2)
     static readonly TimeSpan SetRetryDelay = TimeSpan.FromSeconds(30);                        // per-set hydrate retry (§8.2)
@@ -84,14 +92,26 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
     int _consecutiveDrainFailures;
     bool _drainReenqueueScheduled;
     DateTime _lastResyncAt = DateTime.MinValue;                                       // §6.2 rate limit (one pass per window)
+    DateTime _lastReconcileAt = DateTime.MinValue;                                    // ReconcileMinGap clock
+    bool _reconcileScheduled;                                                         // one periodic timer chain, never two
 
     /// <summary>The §6.2 resync rate-limit window (default 30s). Public only so tests can collapse it; production never sets it.</summary>
     public TimeSpan ResyncWindow = TimeSpan.FromSeconds(30);
+    /// <summary>Minimum gap between two collection reconcile passes (default 5 min): a reconnect burst right after a
+    /// periodic pass must not walk every wire set again. Public only so tests can collapse it.</summary>
+    public TimeSpan ReconcileMinGap = TimeSpan.FromMinutes(5);
+    /// <summary>The periodic reconcile cadence (default 6h) — armed after InitialHydrate and re-armed after every pass.
+    /// A shadow walk is one uri-only page per 300 members per wire set, so this is cheap even for a 10k library.
+    /// Public only so tests can collapse it.</summary>
+    public TimeSpan ReconcileInterval = TimeSpan.FromHours(6);
 
     // Counters (§11) — test + probe visibility. Interlocked-bumped.
     public int PushApplied, PushMarkedDirty, PushDirectApplied, EchoDropped, RootlistApplied, SetFetches;
     public int DiffApplied, DiffUpToDate, DiffFellBack;   // §2.6 revalidation outcomes (Applied / 304-or-up-to-date / full-fetch fallback)
     public int ReconnectResyncs, ReconnectResyncsRateLimited;                         // §6.2
+    /// <summary>Collection reconcile passes run / wire sets found drifted (repaged or skipped-unverified) / passes
+    /// dropped by <see cref="ReconcileMinGap"/>.</summary>
+    public int ReconcilePasses, ReconcileDrifts, ReconcilesSkipped;
     /// <summary>I6 — rootlist heads dropped because the stored revision already IS that head (our own write's echo).</summary>
     public int RootlistEchoDropped;
     /// <summary>I1 — a persisted rootlist revision that was not 24 bytes and had to be cleared at start.</summary>
@@ -308,6 +328,7 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         SyncKind.HydratePlaylist => HydratePlaylistAsync(cmd.Uri, cmd.Attempt),
         SyncKind.PermissionPush => PermissionPushAsync(cmd.Permission),
         SyncKind.SeedPermission => SeedPermissionAsync(cmd.Uri),
+        SyncKind.ReconcileCollections => ReconcileCollectionsAsync(cmd.Uri.Length > 0 ? cmd.Uri : "periodic"),
         _ => Task.CompletedTask,
     };
 
@@ -335,21 +356,30 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         catch (OperationCanceledException) when (_ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { _log.Info("sync: rootlist hydrate failed: " + ex.Message); }
 
-        // (3) the 5 sets sequentially, per-set failures isolated (log + record); retry the failed ones once after 30s.
-        var counts = new List<string>(Sets.Length);
+        // (3) the 4 WIRE sets sequentially, per-set failures isolated (log + record); retry the failed ones once after 30s.
+        //     Each walk is token-gated (delta) or a verified snapshot; the per-logical-set counts are what the user sees.
+        var counts = new List<string>(CollectionSets.WireSets.Length + 1);
         var failed = new List<string>();
-        foreach (var set in Sets)
+        foreach (var wireSet in CollectionSets.WireSets)
         {
             _ct.ThrowIfCancellationRequested();
-            try { await FetchSetAsync(set).ConfigureAwait(false); counts.Add(set + "=" + _store.SavedUris(set).Count); }
+            try
+            {
+                var outcome = await FetchWireSetAsync(wireSet).ConfigureAwait(false);
+                foreach (var set in CollectionSets.LogicalSetsForWireSet(wireSet))
+                    counts.Add(set + "=" + _store.SavedUris(set).Count + (outcome == CollectionFetchOutcome.Delta ? "" : " (" + outcome + ")"));
+            }
             catch (OperationCanceledException) when (_ct.IsCancellationRequested) { throw; }
-            catch (Exception ex) { failed.Add(set); _log.Info("sync: set '" + set + "' hydrate failed: " + ex.Message); }
+            catch (Exception ex) { failed.Add(wireSet); _log.Info("sync: wire set '" + wireSet + "' hydrate failed: " + ex.Message); }
         }
         if (failed.Count > 0) ScheduleSetRetry(failed);
 
-        // (4) summary.
+        // (4) summary, then arm the periodic drift check. Boot itself does not reconcile: a null-token wire set was just
+        //     walked under the ledger, and a delta'd one is proven by the first periodic/reconnect pass instead of doubling
+        //     every launch's collection traffic.
         _log.Info($"sync: initial hydrate — {rootCount} rootlist playlists; " + string.Join(", ", counts)
             + (failed.Count > 0 ? " (failed: " + string.Join(",", failed) + ", retry in 30s)" : ""));
+        ScheduleReconcile(ReconcileInterval);
     }
 
     // The rootlist push gate tree (I1/I6). Ordered, total, and never able to store a non-24-byte head:
@@ -722,8 +752,8 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
     // CollectionPush handler. `wireSet` is the WIRE set as it comes off the dealer topic ("collection"/"artist"/…). A
     // parseable PubSubUpdate is handled with zero round-trip: an echo (cuid in the ring) is dropped, else the items are
     // folded straight into the store through the pending shield (§2.2 E). Only an unparseable/empty/zero-item payload falls
-    // back to the delta fetch — translating the wire set to its logical set(s) and delta-fetching each (§2.2). A direct-apply
-    // command bypassed the settle so it was never in _pendingSets; a fetch command was, and its finally clears it.
+    // back to the delta fetch — ONE walk of the wire set, fanned out to its logical set(s) inside the fetcher (§2.2). A
+    // direct-apply command bypassed the settle so it was never in _pendingSets; a fetch command was, and its finally clears it.
     async Task CollectionPushAsync(string wireSet, byte[]? payload)
     {
         // Only the SETTLE follow-up owns the _pendingSets mark (a direct-apply command bypassed the settle and never added
@@ -741,9 +771,8 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
                 // parsed but zero items → unknown change shape → fall through to the delta fetch.
             }
 
-            var logical = CollectionSets.LogicalSetsForWireSet(wireSet);
-            if (logical.Count == 0) { LogUnknownWireSetOnce(wireSet); return; }
-            foreach (var set in logical) await FetchSetAsync(set).ConfigureAwait(false);
+            if (CollectionSets.LogicalSetsForWireSet(wireSet).Count == 0) { LogUnknownWireSetOnce(wireSet); return; }
+            await FetchWireSetAsync(wireSet).ConfigureAwait(false);
         }
         finally { if (fromSettle) lock (_gate) _pendingSets.Remove(wireSet); }
     }
@@ -968,12 +997,12 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         catch (OperationCanceledException) when (_ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { _log.Info("sync: reconnect rootlist failed: " + ex.Message); }
 
-        foreach (var set in Sets)                                                          // (3) token-gated deltas
+        foreach (var wireSet in CollectionSets.WireSets)                                   // (3) token-gated deltas
         {
             _ct.ThrowIfCancellationRequested();
-            try { await FetchSetAsync(set).ConfigureAwait(false); }
+            try { await FetchWireSetAsync(wireSet).ConfigureAwait(false); }
             catch (OperationCanceledException) when (_ct.IsCancellationRequested) { throw; }
-            catch (Exception ex) { _log.Info("sync: reconnect set '" + set + "' failed: " + ex.Message); }
+            catch (Exception ex) { _log.Info("sync: reconnect wire set '" + wireSet + "' failed: " + ex.Message); }
         }
 
         List<string> targets;                                                              // (4) open + dirty RESIDENT
@@ -994,13 +1023,54 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
 
         Interlocked.Increment(ref ReconnectResyncs);
         _log.Info("sync: reconnect resync complete (" + targets.Count + " playlist revalidations)");
+        // (5) the drift proof, queued behind this pass rather than inlined: pushes that died with the socket are exactly
+        //     the changes a capped delta can miss, and the min-gap guard keeps a flapping network from walking twice.
+        Enqueue(new SyncCommand(SyncKind.ReconcileCollections, "reconnect"));
+    }
+
+    // The collection drift check. Every wire set is shadow-walked and compared against the local sets; a verified drift
+    // repages off that same walk. Per-set failures are isolated (the next pass tries again). Whatever happened, the
+    // periodic chain is re-armed here — a chain that died on one exception would silently end all future verification.
+    async Task ReconcileCollectionsAsync(string trigger)
+    {
+        bool skip;
+        lock (_gate)
+        {
+            var now = DateTime.UtcNow;
+            skip = now - _lastReconcileAt < ReconcileMinGap;
+            if (!skip) _lastReconcileAt = now;
+        }
+        if (skip)
+        {
+            Interlocked.Increment(ref ReconcilesSkipped);
+            _log.Event(WaveeLogLevel.Debug, "collection.reconcile.skip", "Collection reconcile skipped (inside the minimum gap)",
+                fields: [WaveeLogField.Of("trigger", trigger)]);
+            ScheduleReconcile(ReconcileInterval);
+            return;
+        }
+
+        int drifts = 0;
+        foreach (var wireSet in CollectionSets.WireSets)
+        {
+            _ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (await _collections.ReconcileWireSetAsync(wireSet, trigger, _ct).ConfigureAwait(false) != CollectionReconcileOutcome.NoDrift) drifts++;
+            }
+            catch (OperationCanceledException) when (_ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { _log.Info("sync: reconcile of wire set '" + wireSet + "' failed: " + ex.Message); }
+        }
+        Interlocked.Add(ref ReconcileDrifts, drifts);
+        Interlocked.Increment(ref ReconcilePasses);
+        ScheduleReconcile(ReconcileInterval);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
-    async Task FetchSetAsync(string set)
+    async Task<CollectionFetchOutcome> FetchWireSetAsync(string wireSet)
     {
-        await _collections.FetchSetAsync(set, _ct).ConfigureAwait(false);
+        var outcome = await _collections.FetchWireSetAsync(wireSet, _ct).ConfigureAwait(false);
         Interlocked.Increment(ref SetFetches);
+        return outcome;
     }
 
     void FoldRootlistIntoSavedSet()   // §2.8 — must run inside the caller's BeginBulk
@@ -1022,17 +1092,28 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         }
     }
 
-    void ScheduleSetRetry(List<string> logicalSets)
+    void ScheduleSetRetry(List<string> wireSets)
     {
-        // Retry keys on the WIRE set (CollectionPush's contract): map the failed logical sets back to their wire sets (deduped
-        // — liked+albums collapse to "collection"), so a re-push re-fetches every logical set the wire set carries. Idempotent
-        // + token-gated ⇒ re-fetching a superset of the failed set is cheap.
-        var wireSets = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var s in logicalSets) wireSets.Add(CollectionSets.WireSet(s));
+        // Retry keys on the WIRE set (CollectionPush's contract) — the same unit the hydrate walked, so a re-push
+        // re-fetches every logical set the wire set carries. Idempotent + token-gated ⇒ a retry is cheap.
         _ = Task.Run(async () =>
         {
             try { await Task.Delay(SetRetryDelay, _ct).ConfigureAwait(false); } catch { return; }
             foreach (var w in wireSets) Enqueue(new SyncCommand(SyncKind.CollectionPush, w));   // one-shot retry (settle + fetch)
+        });
+    }
+
+    // The periodic reconcile timer — same shape as ScheduleDrainReenqueue: at most one armed at a time, so a reconnect
+    // pass re-arming while the boot timer is pending does not fork a second chain. The flag clears when the timer
+    // fires; the pass it enqueues re-arms the next one.
+    void ScheduleReconcile(TimeSpan delay)
+    {
+        lock (_gate) { if (_reconcileScheduled) return; _reconcileScheduled = true; }
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(delay, _ct).ConfigureAwait(false); } catch { lock (_gate) _reconcileScheduled = false; return; }
+            lock (_gate) _reconcileScheduled = false;
+            Enqueue(new SyncCommand(SyncKind.ReconcileCollections, "periodic"));
         });
     }
 

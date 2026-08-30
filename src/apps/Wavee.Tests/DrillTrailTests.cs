@@ -4,12 +4,13 @@ using Xunit;
 
 namespace Wavee.Tests
 {
-    // Pins the product rule for DrillTrail.Of: the breadcrumb is a PURE FUNCTION of (routeName, routeArg, liveTitle) —
-    // never of navigation history (no "how did I get here" state leaks in), roots never grow a trail, and a trail
-    // whose current-page label would be blank renders as nothing rather than a lone chevron. Also pins the one
-    // decision that makes the class worth having: a Home-minted section (HomeSectionRoutes) trails back to Home,
-    // but a BROWSE section/category (BrowseSectionRoutes / BrowseRoutes) trails back to Browse — even though Home
-    // can be the shortcut that opened it, Home was never its ancestor in the IA.
+    // Pins the product rule for DrillTrail.Of: the breadcrumb is a PURE FUNCTION of (routeName, routeArg, liveTitle,
+    // origin) — the only "how did I get here" state is the ONE NavOrigin the opener handed over at Go time, roots
+    // never grow a trail, and a trail whose current-page label would be blank renders as nothing rather than a lone
+    // chevron. Also pins the decision that makes the class worth having: a Home-minted section (HomeSectionRoutes)
+    // trails back to Home, while a BROWSE section/category (BrowseSectionRoutes / BrowseRoutes) lives under Browse in
+    // the IA — so without an origin it trails to Browse, and opened FROM Home it trails Home › Browse › X: the origin
+    // is prepended to the IA trail, never substituted for it (the user never visited Browse, but the page lives there).
     public class DrillTrailTests
     {
         [Theory]
@@ -53,11 +54,10 @@ namespace Wavee.Tests
             Assert.Null(crumbs[1].RouteName);
         }
 
-        // The real scenario this class exists for: a Home Charts Fold is rendered through a browse-section: route
-        // (BrowseSectionRoutes), not a home-section: one — even though the tile that opened it lived on the Home
-        // page. Its trail must say Browse, not Home: Home was a shortcut into Browse's IA, never an ancestor of it.
+        // A Home Charts Fold is rendered through a browse-section: route (BrowseSectionRoutes), not a home-section:
+        // one. With no origin the IA is all there is, and in the IA the section lives under Browse.
         [Fact]
-        public void HomeChartsFold_DrillingIntoABrowseSection_TrailsBackToBrowseNotHome()
+        public void BrowseSection_WithoutOrigin_TrailsBackToBrowse()
         {
             var route = BrowseSectionRoutes.Page("spotify:section:charts");
             var crumbs = DrillTrail.Of(route, null, "Top 50 - Global");
@@ -68,6 +68,65 @@ namespace Wavee.Tests
             Assert.Equal("Top 50 - Global", crumbs[1].Label);
             Assert.Null(crumbs[1].RouteName);
             Assert.DoesNotContain(crumbs, c => c.Label == Loc.Get(Strings.Nav.Home));
+        }
+
+        // Finding #2 (2026-08-30): the same tile opened FROM Home. The user never visited Browse, so a bare
+        // "Browse › Weekly Song Charts" claimed a place they had not been; but the page DOES live under Browse. Both
+        // are true, so the origin is PREPENDED: Home › Browse › Weekly Song Charts, every parent clickable.
+        [Fact]
+        public void BrowseSection_FromHome_TrailsHomeBrowseSection()
+        {
+            var route = BrowseSectionRoutes.Page("spotify:section:charts");
+            var origin = new NavOrigin(Loc.Get(Strings.Nav.Home), "home", null);
+            var crumbs = DrillTrail.Of(route, null, "Weekly Song Charts", origin);
+
+            Assert.Equal(3, crumbs.Count);
+            Assert.Equal(Loc.Get(Strings.Nav.Home), crumbs[0].Label);
+            Assert.Equal("home", crumbs[0].RouteName);
+            Assert.Null(crumbs[0].RouteArg);
+            Assert.Equal(Loc.Get(Strings.Browse.HomeTitle), crumbs[1].Label);
+            Assert.Equal(BrowseRoutes.Home, crumbs[1].RouteName);
+            Assert.Equal("Weekly Song Charts", crumbs[2].Label);
+            Assert.Null(crumbs[2].RouteName);
+        }
+
+        // Home's "Charts" shelf header opens the Browse CATEGORY page (browse:, not browse-section:) — same rule.
+        [Fact]
+        public void BrowseCategory_FromHome_TrailsHomeBrowseCategory()
+        {
+            var origin = new NavOrigin(Loc.Get(Strings.Nav.Home), "home", null);
+            var crumbs = DrillTrail.Of(BrowseRoutes.Page("spotify:page:charts"), null, "Charts", origin);
+
+            Assert.Equal(3, crumbs.Count);
+            Assert.Equal("home", crumbs[0].RouteName);
+            Assert.Equal(BrowseRoutes.Home, crumbs[1].RouteName);
+            Assert.Equal("Charts", crumbs[2].Label);
+            Assert.Null(crumbs[2].RouteName);
+        }
+
+        // Browse-home opening one of its own sections hands over a Browse origin (BrowseDirectory) — the origin IS
+        // the IA root, so it must not be repeated ("Browse › Browse › X").
+        [Fact]
+        public void BrowseSection_FromBrowseHome_DoesNotRepeatTheRoot()
+        {
+            var origin = new NavOrigin(Loc.Get(Strings.Browse.HomeTitle), BrowseRoutes.Home, null);
+            var crumbs = DrillTrail.Of(BrowseSectionRoutes.Page("spotify:section:charts"), null, "Top 50", origin);
+
+            Assert.Equal(2, crumbs.Count);
+            Assert.Equal(BrowseRoutes.Home, crumbs[0].RouteName);
+            Assert.Equal("Top 50", crumbs[1].Label);
+        }
+
+        // Home opening a Home-minted section passes its origin too; the IA root already IS Home.
+        [Fact]
+        public void HomeSection_FromHome_DoesNotRepeatTheRoot()
+        {
+            var origin = new NavOrigin(Loc.Get(Strings.Nav.Home), "home", null);
+            var crumbs = DrillTrail.Of(HomeSectionRoutes.Page("spotify:section:1"), null, "Made For You", origin);
+
+            Assert.Equal(2, crumbs.Count);
+            Assert.Equal("home", crumbs[0].RouteName);
+            Assert.Equal("Made For You", crumbs[1].Label);
         }
 
         [Fact]
@@ -179,6 +238,35 @@ namespace Wavee.Tests
             Assert.Equal(BrowseRoutes.Home, crumbs[0].RouteName);
             Assert.Equal(Loc.Get(Strings.Concerts.Title), crumbs[1].Label);
             Assert.Null(crumbs[1].RouteName);
+        }
+
+        // The Concert Hub is Home's closing editorial destination; opened from there it reads Home › Browse › Concerts.
+        [Fact]
+        public void ConcertsHub_FromHome_TrailsHomeBrowseConcerts()
+        {
+            var origin = new NavOrigin(Loc.Get(Strings.Nav.Home), "home", null);
+            var crumbs = DrillTrail.Of(Wavee.Features.Concerts.ConcertRoutes.Hub, null, null, origin);
+
+            Assert.Equal(3, crumbs.Count);
+            Assert.Equal("home", crumbs[0].RouteName);
+            Assert.Equal(Loc.Get(Strings.Browse.HomeTitle), crumbs[1].Label);
+            Assert.Equal(BrowseRoutes.Home, crumbs[1].RouteName);
+            Assert.Equal(Loc.Get(Strings.Concerts.Title), crumbs[2].Label);
+            Assert.Null(crumbs[2].RouteName);
+        }
+
+        // The prepend rule is Browse-family only AND not for a search lookup: a genre page opened from Search keeps
+        // replacing the root (GenreFromSearch_TrailsFromQueryNotBrowse — the query jumped straight there), and a
+        // foreign origin on a Home-minted section replaces too.
+        [Fact]
+        public void ForeignOrigin_OnAHomeSection_ReplacesTheRoot()
+        {
+            var origin = new NavOrigin("pop", "search", "pop");
+            var crumbs = DrillTrail.Of(HomeSectionRoutes.Page("spotify:section:1"), null, "Made For You", origin);
+
+            Assert.Equal(2, crumbs.Count);
+            Assert.Equal("search", crumbs[0].RouteName);
+            Assert.Equal("Made For You", crumbs[1].Label);
         }
     }
 }

@@ -616,47 +616,56 @@ public static class ConcertUi
     /// ENTERS from the chip's direction (right) as the chip EXITS toward the pill (left) — the two legs overlap and read
     /// as the dock. Returns <see cref="BoxEl"/> so the caller can attach the anchor capture.</summary>
     public static BoxEl SegmentedDatePill(string name, string rangeText, Action onClick)
-        => SegmentedPill(name, rangeText, onClick);
+        => SegmentedPill("when-pill", SegmentedPillStyle.Accent, name, rangeText, onClick);
 
     /// <summary>The FUSED two-segment pill: a docked capsule carrying the chosen facet's name, then its value, then a
     /// chevron to reopen. This is the visual survivor of a loose chip that has flown into the pill — the second half
     /// of the Concerts filter grammar, generalised so the home facet row speaks the same language.
     ///
-    /// <paramref name="name"/> is the facet ("Music", "This weekend"); <paramref name="valueText"/> is what it
-    /// resolved to ("Following", a date range).</summary>
-    public static BoxEl SegmentedPill(string name, string valueText, Action onClick) => new BoxEl
+    /// <para>The GRAMMAR is fixed here (outer capsule → raised segment → value → chevron, the shared-key morph, the
+    /// segment's dock entry). Every SURFACE decision — scale, fills, ink, shadow, border — comes from
+    /// <paramref name="s"/>, so the Concerts bar keeps its accent capsule while the Home tab strip renders the same
+    /// fusion at strip register.</para></summary>
+    /// <param name="key">The pill's node key. It MUST equal the loose shape's key at the same call site
+    /// (<see cref="RestDatePill"/>, or the Home tab's label box) — the shared key is the whole morph mechanism.</param>
+    /// <param name="s">The surface register: <see cref="SegmentedPillStyle.Accent"/> or
+    /// <see cref="SegmentedPillStyle.Strip"/>.</param>
+    /// <param name="name">The facet ("Music", "This weekend").</param>
+    /// <param name="valueText">What the facet resolved to ("Following", a date range).</param>
+    /// <param name="onClick">Reopens the picker the pill stands for.</param>
+    public static BoxEl SegmentedPill(string key, SegmentedPillStyle s, string name, string valueText, Action onClick) => new BoxEl
     {
-        Key = "when-pill",
+        Key = key,
         Animate = new LayoutTransition(
             TransitionChannels.Position | TransitionChannels.Size,
             TransitionDynamics.Tween(260f, Easing.SmoothOut),
             Size: SizeMode.Reflow, Axes: SizeAxes.Width),
-        Direction = 0, Height = 32f, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 8f,
-        Padding = new Edges4(3f, 3f, 12f, 3f),
+        Direction = 0, Height = s.Height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = s.Gap,
+        Padding = s.Padding,
         Corners = CornerRadius4.All(Radii.Full),
-        Fill = Tok.AccentDefault, HoverFill = Tok.AccentSecondary, PressedFill = Tok.AccentTertiary,
-
+        Fill = s.Fill, HoverFill = s.HoverFill, PressedFill = s.PressedFill,
+        BorderWidth = s.BorderWidth, BorderColor = s.BorderColor,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
         Children =
         [
-            new BoxEl   // the docked segment — raised card capsule, the chip's visual survivor
+            new BoxEl   // the docked segment — the chip's visual survivor, raised off the capsule
             {
-                Key = "when-seg",
+                Key = key + ":seg",
                 Animate = new LayoutTransition(
                     TransitionChannels.Position | TransitionChannels.Opacity,
                     TransitionDynamics.Tween(300f, Easing.SmoothOut),
                     Enter: new EnterExit(Dx: 56f, Opacity: 0.4f, Active: true)),   // arrives FROM the chip's side
-                Direction = 0, Height = 26f, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 5f,
-                Padding = new Edges4(11f, 0f, 11f, 0f), Corners = CornerRadius4.All(13f),
-                Fill = Tok.FillCardDefault, Shadow = Elevation.Flyout,
+                Direction = 0, Height = s.SegmentHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = s.SegmentGap,
+                Padding = s.SegmentPadding, Corners = CornerRadius4.All(s.SegmentHeight / 2f),
+                Fill = s.SegmentFill, Shadow = s.SegmentShadow,
                 Children =
                 [
-                    Icon(Icons.Check, 12f, Tok.AccentTextPrimary) with { Shrink = 0f },
-                    Body(name) with { Color = Tok.AccentTextPrimary, Weight = 600, MaxLines = 1 },
+                    Icon(Icons.Check, s.CheckSize, s.SegmentInk) with { Shrink = 0f },
+                    new TextEl(name) { Size = s.TextSize, Weight = 600, Color = s.SegmentInk, MaxLines = 1 },
                 ],
             },
-            Body(valueText) with { Color = Tok.TextOnAccentPrimary, Weight = 600, MaxLines = 1 },
-            Icon(Icons.ChevronDown, 10f, Tok.TextOnAccentPrimary) with { Shrink = 0f },
+            new TextEl(valueText) { Size = s.TextSize, Weight = 600, Color = s.ValueInk, MaxLines = 1 },
+            Icon(Icons.ChevronDown, s.ChevronSize, s.ChevronInk) with { Shrink = 0f },
         ],
     };
 
@@ -882,4 +891,45 @@ public sealed class ConcertLocationPickerPanel : Component
             ],
         }.Interactive(Interaction.Subtle);
     }
+}
+
+/// <summary>Everything about a fused <see cref="ConcertUi.SegmentedPill"/> that is SURFACE, not grammar. The grammar
+/// (outer capsule → raised segment → value → chevron, the shared-key morph, the segment dock) is fixed in the factory;
+/// the scale and the tokens are the caller's, so the Concerts filter bar and the Home tab strip speak one language at
+/// two registers.
+///
+/// <para>Every preset is a PROPERTY, never a static field: <c>Tok.*</c> and <c>Elevation.*</c> are live theme reads
+/// (they change with the theme and with the dynamic accent), so a cached instance would freeze last theme's colours
+/// into the pill.</para></summary>
+public sealed record SegmentedPillStyle(
+    float Height, float SegmentHeight, Edges4 Padding, Edges4 SegmentPadding, float Gap, float SegmentGap,
+    float TextSize, float CheckSize, float ChevronSize,
+    ColorF Fill, ColorF HoverFill, ColorF PressedFill,
+    ColorF SegmentFill, ShadowSpec SegmentShadow, ColorF SegmentInk,
+    ColorF ValueInk, ColorF ChevronInk,
+    float BorderWidth = 0f, ColorF BorderColor = default)
+{
+    /// <summary>The Concerts register: a 32-DIP accent capsule carrying an OPAQUE raised segment.
+    /// <para>The segment used to be <c>FillCardDefault</c>, which in dark theme is 5% white — a "card" that is still
+    /// the accent underneath, so accent-text ink on it read as cyan-on-cyan. <c>FillControlSolid</c> is a real,
+    /// opaque surface in both themes (#FFFFFF light / #454545 dark), and <c>AccentTextPrimary</c> is the sanctioned
+    /// accent-on-neutral ink for it.</para></summary>
+    public static SegmentedPillStyle Accent => new(
+        Height: 32f, SegmentHeight: 26f, Padding: new Edges4(3f, 3f, 12f, 3f), SegmentPadding: new Edges4(11f, 0f, 11f, 0f),
+        Gap: 8f, SegmentGap: 5f, TextSize: 14f, CheckSize: 12f, ChevronSize: 10f,
+        Fill: Tok.AccentDefault, HoverFill: Tok.AccentSecondary, PressedFill: Tok.AccentTertiary,
+        SegmentFill: Tok.FillControlSolid, SegmentShadow: Elevation.Flyout, SegmentInk: Tok.AccentTextPrimary,
+        ValueInk: Tok.TextOnAccentPrimary, ChevronInk: Tok.TextOnAccentPrimary);
+
+    /// <summary>The Home tab-strip register: a neutral bordered 28-DIP pill (<see cref="ConcertUi.RestDatePill"/>'s
+    /// surface) whose SEGMENT is the accent — the tab's underline already says "selected", so the outer capsule must
+    /// not shout it a second time. The segment ink is <c>Tok.OnAccent</c>, the contrast-picked ink for whatever the
+    /// live accent currently is.</summary>
+    public static SegmentedPillStyle Strip => new(
+        Height: 28f, SegmentHeight: 22f, Padding: new Edges4(3f, 3f, 10f, 3f), SegmentPadding: new Edges4(9f, 0f, 9f, 0f),
+        Gap: 6f, SegmentGap: 4f, TextSize: 14f, CheckSize: 11f, ChevronSize: 9f,
+        Fill: Tok.FillControlDefault, HoverFill: Tok.FillControlSecondary, PressedFill: Tok.FillControlTertiary,
+        SegmentFill: Tok.AccentDefault, SegmentShadow: Elevation.Card, SegmentInk: Tok.OnAccent,
+        ValueInk: Tok.TextPrimary, ChevronInk: Tok.TextSecondary,
+        BorderWidth: 1f, BorderColor: Tok.StrokeControlDefault);
 }

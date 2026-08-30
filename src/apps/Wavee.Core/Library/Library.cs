@@ -187,8 +187,12 @@ public interface IMusicLibrary
     // page in from here so a big context fills progressively instead of blocking on the whole list.
     IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, CancellationToken ct = default);
 
-    // The condensed, grouped home feed (replaces the four-separate-collection-calls home). Merged across sources.
-    Task<HomeFeed> GetHomeAsync(CancellationToken ct = default);
+    /// <summary>The condensed, grouped home feed (replaces the four-separate-collection-calls home). Merged across
+    /// sources. <paramref name="facet"/> is a <c>homeChips[].id</c> — an opaque server token — or null/"" for the
+    /// unfiltered feed. It is a REQUEST parameter, not ambient state: a faceted read is a different document (the
+    /// server drops the personal modules), so the source has to be told, and the answer stamps
+    /// <see cref="HomeFeed.Facet"/> so a late reply can be matched against the current selection.</summary>
+    Task<HomeFeed> GetHomeAsync(string? facet, CancellationToken ct = default);
 
     // Podcasts (federated to the Podcasts-capable sources): the library grid of shows + a single show's episodes.
     Task<IReadOnlyList<Show>> GetShowsAsync(CancellationToken ct = default);

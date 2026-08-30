@@ -236,12 +236,12 @@ public sealed class AggregateCatalog : IMusicLibrary, ICollectionEvents
         return new LibraryStats(al, ar, lk, pod);
     }
 
-    public async Task<HomeFeed> GetHomeAsync(CancellationToken ct = default)
+    public async Task<HomeFeed> GetHomeAsync(string? facet, CancellationToken ct = default)
     {
         var contribs = new List<HomeContribution>();
         foreach (var s in _reg.CatalogSources)
         {
-            var c = await s.GetHomeAsync(ct).ConfigureAwait(false);
+            var c = await s.GetHomeAsync(facet, ct).ConfigureAwait(false);
             if (c.Groups.Count > 0 || c.Sections is { Count: > 0 }) contribs.Add(c);
         }
         contribs.Sort((a, b) => a.Priority.CompareTo(b.Priority));
@@ -256,7 +256,9 @@ public sealed class AggregateCatalog : IMusicLibrary, ICollectionEvents
         // client-side one synthesised from DateTime.Now, which is what this used to do and got wrong for anyone
         // travelling or running a differently-localized OS.
         var greeting = contribs.FirstOrDefault(c => c.Greeting is { Length: > 0 })?.Greeting ?? "";
-        return new HomeFeed(greeting, groups, chips, sections);
+        // The feed carries the question back. The page compares it against the chip row's current selection before it
+        // renders, so a slow answer for a facet the user has already left is dropped instead of overwriting a newer one.
+        return new HomeFeed(greeting, groups, chips, sections, Facet: facet ?? "");
     }
 
     // ── podcasts: federated to the Podcasts-capable sources (route single-show reads to the owner; merge the grid) ──

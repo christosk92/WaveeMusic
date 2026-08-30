@@ -10,8 +10,9 @@ using Wavee.Core;
 namespace Wavee.Backend.Lyrics;
 
 /// <summary>Format parsers + normalization (docs/lyrics-aggregator-reranker-plan.md §8). Pure (no HTTP, no state) so it is
-/// fully unit-testable: text → <see cref="LyricsDocument"/>, plus credit-line detection and the comparison-text normalizer
-/// the reranker aligns on. Adapted in spirit from Lyricify's parser/info-line helpers, rewritten for Wavee's model.</summary>
+/// fully unit-testable: text → <see cref="LyricsDocument"/>, plus the comparison-text normalizer the reranker aligns on.
+/// Credit/metadata judgement lives in <see cref="LyricsCreditRules"/>. Adapted in spirit from Lyricify's parser
+/// helpers, rewritten for Wavee's model.</summary>
 public static partial class LyricsText
 {
     // ── LRC (incl. enhanced/A2 word timing) ──────────────────────────────────────────────────────────────────────────
@@ -38,13 +39,15 @@ public static partial class LyricsText
 
         foreach (var line in SplitLines(lrc))
         {
-            var meta = MetaRx().Match(line);
-            if (meta.Success && !LineStampRx().IsMatch(line))
+            // Tier 1 of the credit rules: a [ti:]/[ar:]/[al:]/[by:]/[length:]/[offset:] tag is format metadata and never
+            // becomes a line; [offset:] is the one whose value we keep.
+            if (LyricsCreditRules.IsStructuralMetadata(line))
             {
-                if (meta.Groups[1].Value.Equals("offset", StringComparison.OrdinalIgnoreCase)
+                var meta = MetaRx().Match(line);
+                if (meta.Success && meta.Groups[1].Value.Equals("offset", StringComparison.OrdinalIgnoreCase)
                     && long.TryParse(meta.Groups[2].Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var off))
                     offset = off;
-                continue;   // drop [ti:]/[ar:]/[al:]/[by:]/[length:]/[offset:] tags
+                continue;
             }
 
             var stamps = LineStampRx().Matches(line);
@@ -230,14 +233,15 @@ public static partial class LyricsText
     // ── shared shaping ───────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Fill each line's EndMs (last syllable end → else next line start → else a conservative +4s) so the wipe
-    /// has a bound, and drop credit/metadata lines that have NO real word timing (a timed line is never a header).</summary>
+    /// has a bound. Deliberately NOT a judge of what is a lyric: this used to drop credit-looking rows by word list from
+    /// anywhere in the document, which is the mid-song false positive <see cref="LyricsClean"/> exists to make impossible.
+    /// The parsers hand every timed row over; the cleaner decides, positionally.</summary>
     static List<LyricLine> DeriveEnds(List<LyricLine> lines)
     {
         var outLines = new List<LyricLine>(lines.Count);
         for (int i = 0; i < lines.Count; i++)
         {
             var l = lines[i];
-            if (l.Syllables.Count == 0 && IsCreditLine(l.Text)) continue;   // header/credit with no timing → drop
             long sylEnd = l.Syllables.Count > 0 ? l.Syllables[^1].EndMs : 0L;
             long end = l.EndMs ?? (sylEnd > l.StartMs ? sylEnd
                 : i + 1 < lines.Count ? lines[i + 1].StartMs
@@ -262,30 +266,4 @@ public static partial class LyricsText
     /// candidates on this (NOT the display text), so romanization/punctuation/case differences do not look like mismatches.</summary>
     public static string Normalize(string text)
         => CollapseWs(PunctRx().Replace(text ?? "", " ").ToLowerInvariant());
-
-    // Credit / header detection (Lyricify InfoLines, plus Wavee additions). Matches "Lyrics by …", "作词 : …", etc.
-    static readonly string[] CreditMarkers =
-    {
-        "lyrics by", "lyricist", "composed by", "composer", "produced by", "producer", "arranged by", "arranger",
-        "written by", "writer", "mixed by", "mastered by", "vocals by", "performed by", "feat.",
-        "作词", "作曲", "編曲", "编曲", "制作", "監製", "监制", "出品", "录音", "混音", "母带",
-    };
-
-    /// <summary>True for a credit/metadata line (writer/composer/producer credits, bracketed role tags). Only used to drop
-    /// a line that carries NO real word timing — a timed line is treated as a real lyric even if it looks like a credit.</summary>
-    public static bool IsCreditLine(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return false;
-        string t = text.Trim();
-        // pure bracket tag, e.g. "[Chorus]" alone is a section marker, not a lyric — but keep it (some renderers show it).
-        string lower = t.ToLowerInvariant();
-        foreach (var m in CreditMarkers)
-        {
-            int idx = lower.IndexOf(m, StringComparison.Ordinal);
-            if (idx < 0) continue;
-            // require a separator (": " / "：") near it so "written" inside a real lyric line doesn't trip it.
-            if (t.Contains(':') || t.Contains('：') || idx <= 2) return true;
-        }
-        return false;
-    }
 }

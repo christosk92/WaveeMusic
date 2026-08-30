@@ -31,13 +31,17 @@ static class HomeFeedDiagnostics
             : hero.Uri + " | " + hero.Title + " | fmt=" + (hero.Meta?.Format ?? "-")
               + " seeds=" + (hero.Meta?.Seeds?.Count ?? 0);
 
-        string line = shape + " || hero: " + heroLine;
+        // The FACET is part of the shape: two facets can compose the same module list with the same hero (an empty
+        // "Music" and an empty "Podcasts" both do), and without it in the dedupe key a facet swap would log nothing at
+        // all — which is precisely the moment the log has to answer "what did the server send for this tab?".
+        string line = "facet=" + feed.Facet + " || " + shape + " || hero: " + heroLine;
         if (line == _last) return;
         _last = line;
 
         WaveeLog.Instance.Event(WaveeLogLevel.Info, "ui", "home.feed.modules", "Home feed composed",
             fields:
             [
+                WaveeLogField.Of("facet", feed.Facet),
                 WaveeLogField.Of("modules", shape),
                 WaveeLogField.Of("groups", feed.Groups.Count),
                 WaveeLogField.Of("hero", heroLine),

@@ -59,6 +59,7 @@ sealed class TrackList : Component
     readonly Signal<Route> _route;                             // read reactively → cfg re-derived so ONE list serves successive detail routes
     DetailConfig _cfg = DetailConfig.Album;                     // derived from route kind + loaded ReleaseKind at the top of Render
     DetailKind _kind = DetailKind.Album;                        // the ROUTE's kind, kept beside _cfg (which erases it)
+    PlaylistRowsState? _lastListState;                          // the last `playlist.open.state` logged for this context (null = none yet)
     readonly PlaybackBridge? _bridge;
     readonly DetailHandlers _initialH;                         // first-frame fallback before DetailShell publishes live handlers
     DetailHandlers _h;                                         // refreshed from _liveHandlers at the top of every render
@@ -365,6 +366,45 @@ sealed class TrackList : Component
         Padding = new Edges4(Spacing.L, Spacing.XXL, Spacing.L, Spacing.XXL),
         Children = [new TextEl(noTracks ? Loc.Get(Strings.Detail.Empty.NoTracks) : Loc.Get(Strings.Detail.Empty.NoMatch)) { Size = 14f, Color = Tok.TextTertiary }],
     };
+
+    /// <summary>What stands in for the rows when there are none to show (<see cref="PlaylistListState"/>): shimmer rows
+    /// while the membership is still unknown, else the empty / no-match message. The Loading arm is a skeleton boundary
+    /// keyed on the MODEL's flag, not the page loadable (the header is Ready — only the rows are not), deriving the
+    /// same <see cref="RowsShimmer"/> the cold page shows, so the two loading looks are one look.</summary>
+    Element ListPlaceholder(PlaylistRowsState state, ColumnSet set, TrackSize[] tracks, float rowH) => state switch
+    {
+        PlaylistRowsState.Loading => new SkelRegionEl(
+            Pending: () => { var m = _full.Value.Value; return PlaylistListState.IsLoading(m.MembershipLoaded, m.Tracks.Count); },
+            Failed: static () => false,
+            // Ready with rows: this element is replaced by the real list in the same flush that flipped the flag; the
+            // spacer is what stands there for that flush. Ready with none: the membership landed empty.
+            Content: () => _full.Value.Value.Tracks.Count == 0 ? FilterEmpty(noTracks: true) : new BoxEl(),
+            ShimmerSource: () => RowsShimmer(set, tracks, rowH),
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false)
+            with { Key = "rows:loading" },
+        PlaylistRowsState.Empty => FilterEmpty(noTracks: true),
+        _ => FilterEmpty(noTracks: false),
+    };
+
+    /// <summary>The list state THIS render shows, logged once per transition (<c>playlist.open.state</c>) so a page
+    /// stuck on the loading skeleton — a membership that never lands — is visible in the log with its inputs.</summary>
+    PlaylistRowsState ListStateFor(DetailModel model, int visible)
+    {
+        var state = PlaylistListState.For(model.MembershipLoaded, _tracks.Count, visible);
+        if (state != _lastListState && _kind is DetailKind.Playlist or DetailKind.Liked)
+        {
+            _lastListState = state;
+            WaveeLog.Instance.Event(WaveeLogLevel.Info, "playlist", "playlist.open.state", "detail list state",
+                fields:
+                [
+                    WaveeLogField.Of("uri", model.ContextUri ?? ""),
+                    WaveeLogField.Of("state", PlaylistListState.Name(state)),
+                    WaveeLogField.Of("tracks", _tracks.Count),
+                    WaveeLogField.Of("known", model.MembershipLoaded),
+                ]);
+        }
+        return state;
+    }
 
     // (ColumnSet — which optional columns are present at a tier — is the shared TrackRow.ColumnSet, so the header here and
     // every shared cell agree on the build order: # · ♥ · (thumb) · Title · Album · AddedBy · DateAdded · Plays · Tempo · Duration · Video.)
@@ -673,6 +713,7 @@ sealed class TrackList : Component
         if (model.ContextUri != _lastCtxUri)
         {
             _lastCtxUri = model.ContextUri;
+            _lastListState = null;   // a new context logs its first list state again
             _viewKey = (new((SortColumn)(-1), false), "\0", TrackFilterState.Default);
             _viewSavedSet = null;
             _tracksBySet.Clear();   // bound the cache across navigations (correctness comes from the set-keying, not this)
@@ -806,6 +847,7 @@ sealed class TrackList : Component
         Element chrome = Chrome(set, tracks, sort, labeled, tier, checkInset,
             padX: TrackRow.PadXFor(tier), contentFilterBar: contentFilterBar, lensHeader: lensHeader);
         int visible = View().Length;
+        var listState = ListStateFor(model, visible);
         // "Recommended songs": owned/collaborative playlists only, non-embedded, non-vertical, live edits available. When
         // ON, the header (+ rec rows) are appended AFTER the track rows in the SAME bound list — the list TOTAL is a
         // SEPARATE signal (_listCount) so _visibleCount stays the track count the §4.6 choreography seeds are keyed to.
@@ -848,7 +890,9 @@ sealed class TrackList : Component
                 // the filtered slice); an EMPTY owned playlist still renders — the header at index 0 fetches immediately.
                 // While the gate is capable but not yet LIVE the total is just the track count, so an empty list has no
                 // header to render either — fall back to the empty-playlist message exactly like a non-recs page does.
-                if (visible == 0 && (_tracks.Count > 0 || !recsLive)) return FilterEmpty(_tracks.Count == 0);
+                // A membership that has not landed is not an empty playlist: shimmer, never a header over nothing.
+                if (listState == PlaylistRowsState.Loading || (visible == 0 && (_tracks.Count > 0 || !recsLive)))
+                    return ListPlaceholder(listState, set, tracks, rowH);
                 // The bound slots branch on the recycled index (RowOrRecContent): track rows keep the selection skin;
                 // the "Recommended" header + rec rows render their OWN content, so they never join the track multi-select
                 // (exactly like the vertical hero/chrome rows). The out-of-range guards (PlayRow / DisplayTrack / the
@@ -878,8 +922,8 @@ sealed class TrackList : Component
                         Entrance = new EntranceOptions { StaggerColdRealize = staggerCold, ItemFlipFrom = SeedFlip, ItemFadeFrom = SeedFade },
                     });
             }
-            return visible == 0
-            ? FilterEmpty(_tracks.Count == 0)     // empty playlist, or a filter that matched nothing
+            return listState != PlaylistRowsState.Rows
+            ? ListPlaceholder(listState, set, tracks, rowH)   // loading, empty playlist, or a filter that matched nothing
             // Bound rows (signals-first): each slot mounts ONCE and recycles by an index-signal write. Selection flips a
             // bound pill opacity — no list re-render, no remount, no Enter replay (the flash fix); now-playing/sort
             // re-skin each row's content in place via its own subscriptions. The row maps its display position → track
@@ -2700,7 +2744,11 @@ sealed class TrackList : Component
                         Key = "vitem:empty",
                         MinHeight = 160f,
                         Direction = 1,
-                        Children = [FilterEmpty(_o._tracks.Count == 0)],
+                        Children =
+                        [
+                            _o.ListPlaceholder(PlaylistListState.For(_o._model.MembershipLoaded, _o._tracks.Count, visible),
+                                               shape.Set, shape.Tracks, _rowH),
+                        ],
                     };
                     break;
             }
@@ -3682,11 +3730,7 @@ sealed class PlaylistTuneButton : Component
                                 Fill = iconColor with { A = 0.13f },
                                 Children =
                                 [
-                                    Icon(
-                                        OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)
-                                            ? Icons.RefineSparkle : Icons.Edit,
-                                        18f,
-                                        iconColor),
+                                    Icon(Icons.RefineSparkle, 18f, iconColor),
                                 ],
                             },
                             new BoxEl
@@ -3718,10 +3762,7 @@ sealed class PlaylistTuneButton : Component
         ColorF accent = Tok.AccentTextPrimary;
         Element leading = busy
             ? ProgressRing.Indeterminate(16f, true, accent)
-            : Icon(
-                OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) ? Icons.RefineSparkle : Icons.Edit,
-                16f,
-                active ? accent : Tok.TextSecondary);
+            : Icon(Icons.RefineSparkle, 16f, active ? accent : Tok.TextSecondary);
         Element button = new BoxEl
         {
             Direction = 0,
@@ -4287,13 +4328,9 @@ sealed class ListButton : Component
         }
         // Never accent — density is a view preference, not an active filter/sort (matches the reasoning in the design).
         return _labeled
-            ? ToolFx.LabeledButton(
-                OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) ? Icons.RowSize : Icons.List,
-                Label(current), false, Toggle, h => anchor.Value = h,
+            ? ToolFx.LabeledButton(Icons.RowSize, Label(current), false, Toggle, h => anchor.Value = h,
                 Icon(Icons.ChevronDown, 8f, Tok.TextTertiary))
-            : ToolFx.Button(
-                OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) ? Icons.RowSize : Icons.List,
-                false, Toggle, h => anchor.Value = h);
+            : ToolFx.Button(Icons.RowSize, false, Toggle, h => anchor.Value = h);
     }
 }
 

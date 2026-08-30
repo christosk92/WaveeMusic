@@ -309,6 +309,7 @@ sealed class DetailPage : Component
             return (freshIsNull && cur.ContextUri is { Length: > 0 } ? cur : fresh) with { Notice = DetailNotice.CreateFailed };
         var notice = PlaylistPageNoticeRules.Next(
             cur.Notice, freshIsNull, fresh.DeletedByOwner,
+            capabilitiesKnown: freshIsNull || fresh.Capabilities.Known,
             canView: freshIsNull || fresh.Capabilities.CanView,
             isOwner: freshIsNull || fresh.Capabilities.IsOwner,
             // While the create is still riding the outbox the server has genuinely never heard of this playlist, so
@@ -425,8 +426,18 @@ sealed class DetailPage : Component
     internal static async Task<DetailModel?> ReloadPlaylistDetailAsync(Services svc, string uri, CancellationToken ct = default)
     {
         var p = await LoadPlaylistAsync(svc, uri, HydrationLevel.Open, ct).ConfigureAwait(false);
-        return p is null ? null : MapPlaylist(p);
+        return p is null ? null : MapPlaylist(p, membershipLoaded: MembershipLoaded(svc, p));
     }
+
+    /// <summary>Has the store adopted a membership baseline for this playlist? Read from the store's own baseline
+    /// flag, never from the track count: an empty membership and a missing one both compose to zero rows.
+    /// <para>Read AFTER the load (the rows were composed from the store a moment ago), and only for Spotify playlists
+    /// the real store owns — a local / on-device / fake-backend list carries its rows with the record and has no
+    /// store baseline to consult, so asking would pin it in the loading state forever.</para></summary>
+    static bool MembershipLoaded(Services svc, Playlist p)
+        => svc.RealStore is not { } store
+           || EntityUri.KindOf(p.Uri) != EntityKind.Playlist
+           || store.HasMembership(p.Uri);
 
     // A podcast show folds onto the shared detail surface: rail = cover + PODCAST pill + publisher/episode-count meta +
     // description + Play/Follow; the right column renders Episodes (DetailConfig.Show.Content == Episodes → EpisodeList).
@@ -468,7 +479,7 @@ sealed class DetailPage : Component
         catch (TimeoutException) { }              // slow counter → header renders without the segment
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
         if (playlist is null) return DetailModel.Empty;
-        return MapPlaylist(playlist, count);
+        return MapPlaylist(playlist, count, MembershipLoaded(svc, playlist));
     }
 
     /// <summary>The playlist route id as a uri. Ids arrive bare from the route but a full uri also flows through some
@@ -476,7 +487,7 @@ sealed class DetailPage : Component
     static string PlaylistUri(string id)
         => EntityUri.Parse(id).IsSpotify ? id : "spotify:playlist:" + id;   // "is it already a uri?" via the ONE parser
 
-    static DetailModel MapPlaylist(Playlist p, long? saveCount = null)
+    static DetailModel MapPlaylist(Playlist p, long? saveCount = null, bool membershipLoaded = true)
     {
         var tracks = p.Tracks ?? Array.Empty<Track>();
         // Data-drive the optional columns: show Date-added if any track has one, and Added-by only when the playlist is
@@ -501,7 +512,10 @@ sealed class DetailPage : Component
             ? Strings.Detail.SongCount(Math.Max(0, p.TrackCount - episodes)) + " · " + Strings.Podcast.EpisodeCount(episodes)
             : Strings.Detail.SongCount(p.TrackCount);
         string total = DetailFormat.TotalTime(DetailFormat.TotalMs(tracks));
-        string meta = saveCount is > 0 and var n
+        // No membership yet ⇒ no meta line at all: "0 songs · 1 min" is a count we do not have. The rail renders a
+        // shimmer bar in the row's place while MembershipLoaded is false (DetailRail), so the slot is still held.
+        string meta = !membershipLoaded ? ""
+            : saveCount is > 0 and var n
             ? Strings.Detail.MetaLineSaved(songs, Strings.Detail.SaveCount(n), total)
             : Strings.Detail.MetaLine(songs, total);
         LogVideoSweep("playlist", p.Uri, tracks);
@@ -525,7 +539,9 @@ sealed class DetailPage : Component
             // header and (evicted) membership are still the truest thing we can show, and "this playlist was deleted"
             // is a better answer than a generic failure page.
             DeletedByOwner = p.DeletedByOwner,
-            Notice = PlaylistPageNoticeRules.Cold(p.DeletedByOwner, p.Capabilities.CanView, p.Capabilities.IsOwner),
+            // Known gates CanView: a thin header's all-false rights are placeholders, not a revocation.
+            Notice = PlaylistPageNoticeRules.Cold(p.DeletedByOwner, p.Capabilities.Known, p.Capabilities.CanView, p.Capabilities.IsOwner),
+            MembershipLoaded = membershipLoaded,
         };
     }
 

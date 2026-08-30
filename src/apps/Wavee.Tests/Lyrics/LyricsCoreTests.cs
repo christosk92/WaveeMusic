@@ -75,10 +75,20 @@ public class LyricsCoreTests
     [Fact]
     public void Credit_Lines_Detected_And_Normalize_Strips()
     {
-        Assert.True(LyricsText.IsCreditLine("Lyrics by: Some Writer"));
-        Assert.True(LyricsText.IsCreditLine("作词 : 林夕"));
-        Assert.False(LyricsText.IsCreditLine("I've written you a love song"));   // 'written' but no separator → real lyric
+        Assert.True(LyricsCreditRules.LooksLikeCreditLine("Lyrics by: Some Writer", out _, out _));
+        Assert.True(LyricsCreditRules.LooksLikeCreditLine("作词 : 林夕", out _, out _));
+        Assert.False(LyricsCreditRules.LooksLikeCreditLine("I've written you a love song", out _, out _));   // 'written' but no separator → real lyric
         Assert.Equal("hello world", LyricsText.Normalize("Hello, World!"));
+    }
+
+    [Fact]
+    public void ParseLrc_KeepsATimedCreditRow_TheCleanerDecides()
+    {
+        // The parser no longer judges credits by word list (it used to drop them from ANYWHERE in the document); a
+        // timed row is handed over and LyricsClean drops it positionally.
+        var doc = LyricsText.ParseLrc("[00:00.50]作词 : 林夕\n[00:05.00]first real line\n", "t1");
+        Assert.Equal(2, doc.Lines.Count);
+        Assert.Single(LyricsClean.Apply(doc).Lines);
     }
 
     // ── reranker ─────────────────────────────────────────────────────────────────────────────────────────────────────

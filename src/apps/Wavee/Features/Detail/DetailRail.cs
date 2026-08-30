@@ -70,6 +70,29 @@ static class DetailRail
         Key = key, Direction = 1, Layout = Shove, Enter = FadeUp, Children = [child],
     };
 
+    /// <summary>The "N songs · 2 hr 59 min" caption — or, while the playlist's membership is still unknown
+    /// (<see cref="DetailModel.MembershipLoaded"/> false), a shimmer bar of that caption's shape in the same slot. A
+    /// skeleton boundary keyed on the model's own flag rather than the page loadable: the header IS loaded, only the
+    /// count is not, and the bar cross-dissolves into the real line when the snapshot lands.</summary>
+    static Element MetaRow(DetailModel m, Loadable<DetailModel> modelSource, float? width, int maxLines)
+    {
+        TextEl Line(string text)
+        {
+            var t = WaveeType.TrackMeta(text) with { MaxLines = maxLines, Trim = TextTrim.CharacterEllipsis };
+            return width is { } w ? t with { Width = w } : t;
+        }
+        if (m.MembershipLoaded) return Line(m.MetaLine);
+        return new SkelRegionEl(
+            Pending: () => !modelSource.Value.Value.MembershipLoaded,
+            Failed: static () => false,
+            Content: () => Line(modelSource.Value.Value.MetaLine),
+            // The deriver sizes the bar from the authored text, so a plausible caption yields a plausible bar — an
+            // auto-width empty text would stretch to the full rail.
+            ShimmerSource: () => WaveeType.TrackMeta(MetaShimmerText) with { MaxLines = 1 },
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+    }
+    const string MetaShimmerText = "00 songs · 0 hr 00 min";
+
     public static float CoverEdge(float railW) => MathF.Max(80f, railW - SidePadL - SidePadR);
 
     internal static Element HeroArtwork(DetailModel m, float size, float radius = Radii.Card, bool connected = true,
@@ -171,9 +194,10 @@ static class DetailRail
             kids.Add(LateRow("rail:artists", Embed.Comp(new ArtistFacePile.Props(m.Artists, m.AlbumArtists, m.Tracks, cover, h), () => new ArtistFacePile())));
 
         // Meta line — albums surface Songs/Length/Released as the bento facts panel below, so an inline line would just
-        // duplicate it; only non-album surfaces (playlists / liked) show it here.
-        if (cfg.Badges != BadgeStyle.TypeYear && m.MetaLine is { Length: > 0 })
-            kids.Add(LateRow("rail:meta", WaveeType.TrackMeta(m.MetaLine) with { Width = cover, MaxLines = 2, Trim = TextTrim.CharacterEllipsis }));
+        // duplicate it; only non-album surfaces (playlists / liked) show it here. A playlist whose membership has not
+        // landed yet holds the row with a shimmer bar instead of a count it does not have.
+        if (cfg.Badges != BadgeStyle.TypeYear && (m.MetaLine.Length > 0 || !m.MembershipLoaded))
+            kids.Add(LateRow("rail:meta", MetaRow(m, modelSource, width: cover, maxLines: 2)));
 
         // Daylist rollover countdown — the same flip strip the Home hero mounts, at rail scale. The card keeps its own
         // remount-on-rollover key INSIDE this row's stable slot: the two keys answer different questions.
@@ -375,8 +399,8 @@ static class DetailRail
             : WaveeType.PageHero(m.Title) with { Size = 28f, LineHeight = 36f, Weight = 600, Wrap = TextWrap.WrapWholeWords, MaxLines = 3, Trim = TextTrim.CharacterEllipsis }));
         if (cfg.Badges == BadgeStyle.TypeYear && m.Artists.Count > 0)
             info.Add(LateRow("hdr:artists", Embed.Comp(new ArtistFacePile.Props(m.Artists, m.AlbumArtists, m.Tracks, 600f, h), () => new ArtistFacePile())));
-        if (cfg.Badges != BadgeStyle.TypeYear && m.MetaLine is { Length: > 0 })
-            info.Add(LateRow("hdr:meta", WaveeType.TrackMeta(m.MetaLine) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }));
+        if (cfg.Badges != BadgeStyle.TypeYear && (m.MetaLine.Length > 0 || !m.MembershipLoaded))
+            info.Add(LateRow("hdr:meta", MetaRow(m, modelSource, width: null, maxLines: 1)));
 
         var coverRow = new BoxEl
         {

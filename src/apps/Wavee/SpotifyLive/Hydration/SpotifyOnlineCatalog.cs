@@ -16,10 +16,13 @@ namespace Wavee.SpotifyLive.Hydration;
 //
 // ENGINE-FREE by construction (this folder is source-globbed into Wavee.Tests, which has no FluentGpu.Engine reference):
 // every engine-shaped dependency the moved code had is a delegate the live bootstrap supplies —
-//   • the Home facet          → Func<string?>   (was `() => svc.HomeFacet.Peek()`)
 //   • the Home module titles  → Func<HomeModuleTitles> (was `HomeModuleCopy.Titles`, which resolves through Loc)
 //   • the Home epoch bump     → Action          (was `() => postUi(() => svc.HomeFeedEpoch.Value++)`)
 // — exactly the shape the epoch bump already had before the move.
+//
+// The Home FACET is deliberately not on that list: it is a request PARAMETER on GetHomeAsync, not an ambient
+// Func<string?> read at fetch time. The caller that asks knows which document it is asking for, and the answer carries
+// the facet back (LiveHomeResult.Facet) — which is what lets StoreLibrarySource know a FAILED read was faceted.
 sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
 {
     readonly PathfinderClient _pathfinder;
@@ -34,7 +37,6 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
         PathfinderResource pathfinderResource,
         IStore store,
         IEntityHydrator hydrator,
-        Func<string?> homeFacet,
         Func<HomeModuleTitles> homeTitles,
         Func<string, CancellationToken, Task> fetchPlaylistHeader,
         Func<string, CancellationToken, Task<byte[]?>> probePlaylistRevision,
@@ -44,7 +46,7 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
         _pathfinder = pathfinder;
         _hydrator = hydrator;
         _sessionCt = sessionCt;
-        _home = new LiveHomeCache(pathfinderResource, homeFacet, homeTitles, store,
+        _home = new LiveHomeCache(pathfinderResource, homeTitles, store,
             fetchPlaylistHeader, probePlaylistRevision, bumpHomeEpoch);
     }
 
@@ -150,8 +152,7 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
         {
             if (facet == SearchFacet.All)
             {
-                using var topd = await pf.QueryAsync(PathfinderOps.SearchTopResults, PathfinderOps.SearchTopResultsHash, VarsTop, PathfinderClient.Platform.WebPlayer, ct).ConfigureAwait(false);
-                if (topd is null) throw new InvalidOperationException("Spotify top-results search failed.");
+                using var topd = await pf.QueryOrThrowAsync(PathfinderOps.SearchTopResults, PathfinderOps.SearchTopResultsHash, VarsTop, PathfinderClient.Platform.WebPlayer, ct).ConfigureAwait(false);
                 var topHits = Wavee.Core.SpotifyExportMapper.TopHitsFromV2(topd.RootElement);
                 var totals = Wavee.Core.SpotifyExportMapper.SearchFromV2(topd.RootElement);
                 return totals with { TopHits = topHits };
@@ -185,8 +186,7 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
                 _ => Vars,
             };
 
-            using var doc = await pf.QueryAsync(op, hash, vars, PathfinderClient.Platform.WebPlayer, ct).ConfigureAwait(false);
-            if (doc is null) throw new InvalidOperationException($"Spotify {facet} search failed.");
+            using var doc = await pf.QueryOrThrowAsync(op, hash, vars, PathfinderClient.Platform.WebPlayer, ct).ConfigureAwait(false);
             return Wavee.Core.SpotifyExportMapper.SearchFromV2(doc.RootElement);
         }
         catch (OperationCanceledException) when (!callerCt.IsCancellationRequested)
@@ -202,12 +202,15 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
     public async Task<IReadOnlyList<string>> SuggestAsync(string query, CancellationToken ct = default)
         => (await FetchSuggestRichAsync(_pathfinder, query, ct).ConfigureAwait(false)).Queries;
 
+    /// <summary>A request that produced no answer THROWS (<see cref="PathfinderRequestException"/>), exactly like
+    /// <see cref="SearchAsync"/>: an empty answer is <see cref="SearchSuggestions.Empty"/> and only that. Collapsing
+    /// the two is what turned a transport hiccup into "No results found" under the omnibar.</summary>
     public Task<SearchSuggestions> SuggestRichAsync(string query, CancellationToken ct = default)
         => FetchSuggestRichAsync(_pathfinder, query, ct);
 
     static async Task<SearchSuggestions> FetchSuggestRichAsync(PathfinderClient pf, string query, CancellationToken ct)
     {
-        using var doc = await pf.QueryAsync(PathfinderOps.SearchSuggestions, PathfinderOps.SearchSuggestionsHash,
+        using var doc = await pf.QueryOrThrowAsync(PathfinderOps.SearchSuggestions, PathfinderOps.SearchSuggestionsHash,
             w =>
             {
                 w.WriteString("query", query);
@@ -218,14 +221,15 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
                 w.WriteBoolean("includeAlbumPreReleases", false);
                 w.WriteBoolean("includeEpisodeContentRatingsV2", true);
             }, PathfinderClient.Platform.WebPlayer, ct).ConfigureAwait(false);
-        return doc is null ? SearchSuggestions.Empty : Wavee.Core.SpotifyExportMapper.SuggestionsFromV2(doc.RootElement);
+        return Wavee.Core.SpotifyExportMapper.SuggestionsFromV2(doc.RootElement);
     }
 
     // ── home ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The cached editorial home + separately refreshed recents.</summary>
-    public async Task<LiveHomeResult?> GetHomeAsync(CancellationToken ct = default)
-        => await _home.GetAsync(ct).ConfigureAwait(false);
+    /// <summary>The cached editorial home + separately refreshed recents, for <paramref name="facet"/> (a
+    /// <c>homeChips[].id</c>, or null/"" for the unfiltered feed).</summary>
+    public async Task<LiveHomeResult?> GetHomeAsync(string? facet, CancellationToken ct = default)
+        => await _home.GetAsync(facet, ct).ConfigureAwait(false);
 
     /// <summary>The reactivation compare a returning KeepAlive-parked Home page runs — the seam behind
     /// <c>Services.HomeFeedRevalidate</c>.</summary>
@@ -237,7 +241,10 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
 
     // The editorial/personalized home via Pathfinder → the existing composer (data.home.sectionContainer.sections).
     // The desktop query embeds recently-played inline, so the composer builds the recents shelf too — no extra call.
-    // facet: a homeChips[].id ("music-chip", "podcasts-following-chip", …) or null/"" for the unfiltered feed.
+    // facet: a homeChips[].id ("music-chip", "podcasts-following-chip", …) or null/"" for the unfiltered feed. It comes
+    // from the CALLER, travels into the request variables, and is stamped back onto the result: PathfinderResource keys
+    // its TTL cache on the request body, so each facet is its own cache entry rather than a stale hit, and the answer
+    // says which question it answers.
     static async Task<LiveHomeResult> FetchHomeAsync(PathfinderResource pf, string? facet, Func<HomeModuleTitles> titles,
         CancellationToken ct, bool invalidate = false)
     {
@@ -255,7 +262,8 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
             titles());
         // The greeting rides along: it is part of the SAME response (home.greeting), already localized for the account
         // by the server that also picked the time-of-day shelves for `tz` above.
-        return new LiveHomeResult(contribution.Groups, contribution.Chips, contribution.Greeting, contribution.Sections);
+        return new LiveHomeResult(contribution.Groups, contribution.Chips, contribution.Greeting, contribution.Sections,
+            Facet: facet ?? "");
     }
 
     static void WriteHomeVariables(Utf8JsonWriter w, string timeZone, string? facet)
@@ -276,7 +284,6 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
     sealed class LiveHomeCache : IDisposable
     {
         readonly PathfinderResource _pf;
-        readonly Func<string?> _facet;
         readonly Func<HomeModuleTitles> _titles;
         readonly IStore _store;
         // ONE hydrator for the cache's lifetime. It remembers which daylist identities already cost an invalidating Home
@@ -288,17 +295,18 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
         // first identity) does not publish a bump nobody needed.
         long _publishedIdentity = -1;
 
-        public LiveHomeCache(PathfinderResource pf, Func<string?> facet, Func<HomeModuleTitles> titles, IStore store,
+        public LiveHomeCache(PathfinderResource pf, Func<HomeModuleTitles> titles, IStore store,
             Func<string, CancellationToken, Task> fetchHeader,
             Func<string, CancellationToken, Task<byte[]?>> probeRevision, Action? bumpEpoch = null)
         {
             _pf = pf;
-            _facet = facet;
             _titles = titles;
             _store = store;
             _bumpEpoch = bumpEpoch ?? (static () => { });
+            // The requery re-issues the SAME facet the read it repairs used — the hydrator hands it back off
+            // LiveHomeResult.Facet — because it invalidates a cache key, and the key is the request body.
             _hydrator = new HomeDaylistHydrator(ReadHeader, fetchHeader, probeRevision,
-                c => FetchHomeAsync(_pf, _facet(), _titles, c, invalidate: true));
+                (f, c) => FetchHomeAsync(_pf, f, _titles, c, invalidate: true));
             if (bumpEpoch is not null)
                 _storeSub = store.Changes.Subscribe(Observers.From<Wavee.Backend.StoreChange>(OnStoreChanged));
         }
@@ -314,13 +322,12 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
             catch { }
         }
 
-        // The facet is read at FETCH time, not at construction: the chip row writes Services.HomeFacet and asks for a
-        // refresh, and PathfinderResource keys its TTL cache on the request body — so a facet change is a distinct
-        // cache entry rather than a stale hit. The requery closure above re-reads it for the same reason: it must
-        // invalidate the key the read it is repairing actually used, and a chip switch mid-read simply re-enters here.
-        public async Task<LiveHomeResult> GetAsync(CancellationToken ct)
+        // The facet is the CALLER's parameter, threaded straight through to the request variables: the chip row writes
+        // Services.HomeFacet and the page then asks for that facet by name, so two facets in flight at once are two
+        // distinct reads with two distinct cache keys rather than one read racing a mutating closure.
+        public async Task<LiveHomeResult> GetAsync(string? facet, CancellationToken ct)
         {
-            var source = await FetchHomeAsync(_pf, _facet(), _titles, ct).ConfigureAwait(false);
+            var source = await FetchHomeAsync(_pf, facet, _titles, ct).ConfigureAwait(false);
             var resolved = await _hydrator.ResolveAsync(source, ct).ConfigureAwait(false);
             long identity = _hydrator.IdentityVersion;
             long previous = Interlocked.Exchange(ref _publishedIdentity, identity);

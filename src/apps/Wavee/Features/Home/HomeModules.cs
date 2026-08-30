@@ -155,16 +155,21 @@ static class HomeModules
     /// (<c>/playlist/v2/list/recents/page</c> — the whole grouped snapshot), not a <c>home-section:</c> page built from
     /// this group. There is no group to hand a callback, so it is not asked for one, and the affordance is armed
     /// UNCONDITIONALLY: the landing projection's Recents group carries a null Uri, and gating on that would hide a
-    /// destination whose availability the shelf's payload has nothing to do with. Chevron paging stays on the strip.</para></summary>
-    public static Element Recents(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, string> kindLabel,
-                                  Func<HomeCard, HomeCardChrome> chrome, Action? openAll = null)
+    /// destination whose availability the shelf's payload has nothing to do with. Chevron paging stays on the strip.</para>
+    ///
+    /// <para><paramref name="play"/> is the SAME per-card play factory every other shelf takes. This shelf used to pass
+    /// a no-op, so its FAB was rendered, cursor-hand, and did nothing — the "Home play button sometimes does nothing"
+    /// report, on exactly the rail with the round artist cards.</para></summary>
+    public static Element Recents(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
+                                  Func<HomeCard, string> kindLabel, Func<HomeCard, HomeCardChrome> chrome,
+                                  Action? openAll = null)
     {
         var shelf = PagedShelf.Create(g.Cards.Count,
             (i, cardW) =>
             {
                 var c = g.Cards[i];
                 var ch = chrome(c);
-                return MediaCard.Shelf(c.Image, c.Title, kindLabel(c), c.Uri, nav(c), static () => { }, cardW,
+                return MediaCard.Shelf(c.Image, c.Title, kindLabel(c), c.Uri, nav(c), play(c), cardW,
                     circular: c.Kind == HomeCardKind.Artist, menu: ch.Menu, drag: ch.Drag);
             },
             cardHeight: HomeModuleLayout.ShelfCardHeight,
@@ -424,7 +429,7 @@ static class HomeModules
                 string subtitle = charts ? "" : SpotifyExportMapper.ToPlainText(card.Subtitle) ?? "";
                 ChartTitleMatch.TryFind(card.Title, highlightQuery, out int matchStart, out int matchLen);
                 return MediaCard.GridCard(card.Image, card.Title, subtitle,
-                    card.Uri, () => open(card), () => { if (svc is not null) _ = svc.Player.PlayAsync(card.Uri, 0); },
+                    card.Uri, () => open(card), () => PlayGridCard(svc, card),
                     circular: card.Kind == HomeCardKind.Artist, menu: menu, drag: drag,
                     matchStart: matchStart, matchLen: matchLen, titleLines: titleLines) with
                 // The tier (column count) is already in the key; titleLines joins it because it changes the cell's
@@ -439,6 +444,16 @@ static class HomeModules
             };
     }
 
+    /// <summary>A section-grid card's play: the one rule HomePage.PlayCard applies
+    /// (<see cref="Wavee.Features.Home.HomeCardPlayRouting"/>). The grid used to send EVERY kind through
+    /// <c>PlayAsync(uri, 0)</c> as a context — a track uri is not a context, so a Track/Episode card's play went nowhere
+    /// with no failure surface.</summary>
+    static void PlayGridCard(Services? svc, HomeCard card)
+    {
+        if (svc is null) return;
+        if (Wavee.Features.Home.HomeCardPlayRouting.PlaysAsItem(card.Kind)) _ = svc.Player.PlayTrackAsync(card.Uri);
+        else _ = svc.Player.PlayAsync(card.Uri, 0);
+    }
 }
 
 /// <summary>A card's entity-level chrome: whether it can be dragged out of Home, and the context menu it opens. Both are

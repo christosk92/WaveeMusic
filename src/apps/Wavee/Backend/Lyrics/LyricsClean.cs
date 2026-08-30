@@ -7,14 +7,20 @@ namespace Wavee.Backend.Lyrics;
 /// <summary>The ONE owner of "is this row actually a lyric?".
 ///
 /// <para>Every provider ships non-lyric rows inside its lyric document, and they do two kinds of damage. On screen they
-/// render as blank gaps, bare ♪ glyphs and a fake first line carrying the song's own title. In the reranker they inflate
-/// the line COUNT that <c>coverage</c> is computed from (min/max), which punishes a provider for what its rival padded
-/// with: measured on "Caribbean Queen", Spotify sends 62 lines of which 23 are ♪ or blank, so a Kugou KRC matching 34 of
-/// its 35 lines scored coverage 0.565. Cleaned, the same pair scores text 1.000 / coverage 0.872.</para>
+/// render as blank gaps, bare ♪ glyphs, writer credits and a fake first line carrying the song's own title. In the
+/// reranker they inflate the line COUNT that <c>coverage</c> is computed from (min/max), which punishes a provider for
+/// what its rival padded with: measured on "Caribbean Queen", Spotify sends 62 lines of which 23 are ♪ or blank, so a
+/// Kugou KRC matching 34 of its 35 lines scored coverage 0.565. Cleaned, the same pair scores text 1.000 / coverage
+/// 0.872. Issue #16 is the credit flavour: Kugou's "Close to Me" opens with three syllable-timed 词：/曲：/编曲： rows
+/// (text 0.94, coverage 0.74 against Spotify's 31 lines) that were shown as sung lines.</para>
 ///
-/// <para>Three families, one pass. Applied at a single chokepoint (<see cref="AggregatingLyricsProvider"/>'s per-source
-/// fetch), so every provider — INCLUDING the Spotify document used as the comparison reference — is cleaned by the same
-/// rule and both sides of every comparison stay consistent.</para>
+/// <para>Applied at a single chokepoint (<see cref="AggregatingLyricsProvider"/>'s per-source fetch), so every
+/// provider — INCLUDING the Spotify document used as the comparison reference — is cleaned by the same rule and both
+/// sides of every comparison stay consistent. The credit judgement itself is <see cref="LyricsCreditRules"/>, whose
+/// three tiers are trusted in this order: (1) structural — the parsers already refuse the rows the format marks as
+/// metadata, and this pass catches a tag that slipped into a timed row; (2) reference alignment — needs the reference,
+/// so it runs at the rank site (<see cref="LyricsCreditRules.TrimUnalignedEdges"/>), not here; (3) grammar — applied
+/// here, positionally, because at fetch time no reference has arrived yet and the disk-cache path never has one.</para>
 /// </summary>
 public static class LyricsClean
 {
@@ -25,41 +31,70 @@ public static class LyricsClean
     /// a pre-roll; a chorus line that happens to be the song's title is not.</summary>
     const long HeaderGapMs = 3000;
 
-    /// <summary>True for a row that carries no readable text at all — "", "♪", "...", "—". <see cref="LyricsText.Normalize"/>
-    /// already strips every punctuation and symbol codepoint, so an empty normalization IS the test; there is deliberately
-    /// no second hand-written character list to drift from it.</summary>
+    /// <summary>True for a row that carries no readable text at all — "", "♪", "...", "—", "***", "//".
+    /// <see cref="LyricsText.Normalize"/> already strips every punctuation and symbol codepoint, so an empty
+    /// normalization IS the test; there is deliberately no second hand-written character list to drift from it.</summary>
     public static bool IsSymbolOnly(string? text) => LyricsText.Normalize(text ?? "").Length == 0;
 
     /// <summary>Strip the non-lyric rows. <paramref name="title"/>/<paramref name="artists"/> are the track's own
     /// metadata and enable the header rule; omit them (the disk-cache path, which by design never resolves the track)
-    /// and the other two families still apply.</summary>
+    /// and the other families still apply.</summary>
     public static LyricsDocument Apply(LyricsDocument doc, string? title = null, string? artists = null)
+        => Apply(doc, title, artists, out _);
+
+    /// <summary>As <see cref="Apply(LyricsDocument, string?, string?)"/>, also reporting how many of the dropped rows
+    /// were credit headers (for the probe note).</summary>
+    public static LyricsDocument Apply(LyricsDocument doc, string? title, string? artists, out int credits)
     {
+        credits = 0;
         int n = doc.Lines.Count;
         if (n == 0) return doc;
 
         var drop = new bool[n];
 
-        // ── 1. symbol-only / empty, anywhere in the document ─────────────────────────────────────────────────────────
-        for (int i = 0; i < n; i++)
-            if (IsSymbolOnly(doc.Lines[i].Text)) drop[i] = true;
-
-        // ── 2. credits, in the LEADING and TRAILING runs only ────────────────────────────────────────────────────────
-        // Credits sit at the top and bottom of a document; restricting the sweep to those runs makes a mid-song false
-        // positive structurally impossible. That is stricter than Lyricify/BetterLyrics, which filter the whole document
-        // by text match and therefore have to ship the feature switched off by default.
+        // ── 1. rows with no lyric in them, anywhere in the document ─────────────────────────────────────────────────
+        // Symbol-only/empty filler, a format tag that leaked into a timed row ([offset:…]), and the provider's own
+        // boilerplate sentences. An INSTRUMENTAL notice is the provider saying the song has no lyrics at all: the whole
+        // document goes (the caller turns an empty result into a miss) — NetEase pairs that sentence with writer
+        // credits, which would otherwise be displayed as the lyrics of an instrumental.
         for (int i = 0; i < n; i++)
         {
-            if (drop[i]) continue;                                  // already-dropped filler does not end the run
-            if (!LyricsText.IsCreditLine(doc.Lines[i].Text)) break; // first real lyric ⇒ the leading run is over
-            drop[i] = true;
+            string text = doc.Lines[i].Text;
+            if (LyricsCreditRules.IsInstrumentalNotice(text)) return doc with { Lines = Array.Empty<LyricLine>() };
+            if (IsSymbolOnly(text) || LyricsCreditRules.IsStructuralMetadata(text) || LyricsCreditRules.IsProviderBoilerplate(text))
+                drop[i] = true;
+        }
+
+        // ── 2. credits by grammar, positionally (LyricsCreditRules tier 3) ──────────────────────────────────────────
+        // Credits sit at the top and bottom of a document. In the LEADING and TRAILING runs any credit-shaped line goes;
+        // in the MIDDLE only a KNOWN key with a full-width colon does ("作曲：X" is not a lyric in any language, whereas
+        // "Girl: I told you" is). That is stricter than Lyricify/BetterLyrics, which filter the whole document by text
+        // match and therefore have to ship the feature switched off by default.
+        var credit = new bool[n];
+        for (int i = 0; i < n; i++)
+        {
+            if (drop[i]) continue;                                                       // filler does not end the run
+            if (!LyricsCreditRules.LooksLikeCreditLine(doc.Lines[i].Text, out _, out _)) break;   // first real lyric
+            credit[i] = true;
         }
         for (int i = n - 1; i >= 0; i--)
         {
-            if (drop[i]) continue;
-            if (!LyricsText.IsCreditLine(doc.Lines[i].Text)) break;
-            drop[i] = true;
+            if (drop[i] || credit[i]) continue;
+            if (!LyricsCreditRules.LooksLikeCreditLine(doc.Lines[i].Text, out _, out _)) break;
+            credit[i] = true;
         }
+        for (int i = 0; i < n; i++)
+        {
+            if (drop[i] || credit[i]) continue;
+            if (LyricsCreditRules.LooksLikeCreditLine(doc.Lines[i].Text, out bool known, out bool fullWidth) && known && fullWidth)
+                credit[i] = true;
+        }
+        // Credits alone never empty a document: if every surviving line is credit-shaped, the shape is the document's
+        // idiom rather than a header, and the grammar is the thing that is wrong. Keep them all.
+        int survivors = 0;
+        for (int i = 0; i < n; i++) if (!drop[i] && !credit[i]) survivors++;
+        if (survivors > 0)
+            for (int i = 0; i < n; i++) if (credit[i]) { drop[i] = true; credits++; }
 
         // ── 3. the provider's title header (Kugou / QQ / NetEase convention) ─────────────────────────────────────────
         int first = FirstKept(drop);
@@ -72,7 +107,9 @@ public static class LyricsClean
         // ── rebuild, FOLDING each dropped row's timestamp into the line above it ─────────────────────────────────────
         // A ♪ or blank row is where the previous line stops being sung. Dropping it without carrying that over would
         // stretch the preceding line across the whole instrumental — the "previous line is still fully active" failure
-        // LyricsView guards against — and would erase the very gap the interlude dots are detected from.
+        // LyricsView guards against — and would erase the very gap the interlude dots are detected from. A kept line is
+        // carried over untouched (its start, end and syllables); a dropped syllable-timed row takes its syllables with
+        // it, so a leading credit run simply moves the document's first line to the first real lyric.
         var lines = new List<LyricLine>(kept);
         for (int i = 0; i < n; i++)
         {

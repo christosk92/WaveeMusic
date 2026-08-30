@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -129,15 +130,29 @@ sealed class OverflowMenu : Component
     }
 }
 
+/// <summary>The chrome row's ONE suggestion store, shared by the field-mode omnibar and the icon-mode flyout's. The
+/// request lifecycle lives in the engine-free <see cref="OmnibarSuggestQuery"/>; this wrapper republishes its changes
+/// to the render graph and carries the keyboard cursor. Owned by <see cref="MergedChromeRow"/> (constructed once per
+/// shell), so a search-mode switch — which re-mounts <see cref="FluentRichOmnibar"/> — keeps the rows, the pending
+/// generation and the cursor instead of restarting from nothing.</summary>
+sealed class OmnibarSuggestStore
+{
+    public readonly OmnibarSuggestQuery Query = new();
+    /// <summary>Bumped after every <see cref="Query"/> change: a component reads it to subscribe to the lifecycle.</summary>
+    public readonly Signal<int> Version = new(0);
+    /// <summary>The keyboard cursor over the visible rows (-1 = none). Reset by the box on every user edit.</summary>
+    public readonly Signal<int> Highlight = new(-1);
+
+    public OmnibarSuggestStore() => Query.Changed += () => Version.Value = Version.Peek() + 1;
+}
+
 // Wavee's rich search content hosted by the reusable FluentGpu AutoSuggestBox. The field remains a real control (focus,
 // editing, accessibility and popup lifetime); this component supplies only artwork-aware suggestion rows.
 sealed class FluentRichOmnibar : Component
 {
     readonly Signal<string> _text;
     readonly Action<string, string?> _go;
-    readonly Signal<SearchSuggestions> _suggestions = new(SearchSuggestions.Empty);
-    readonly Signal<bool> _loading = new(false);
-    readonly Signal<int> _highlight = new(-1);
+    readonly OmnibarSuggestStore _store;
     // The merged row's centre island passes a parts map so it can capture AutoSuggestBox.PartRoot and put the caret in
     // the field on the click-expand edge. Null = the field owns its own root (every other host).
     readonly TemplateParts? _parts;
@@ -145,12 +160,12 @@ sealed class FluentRichOmnibar : Component
     readonly AutoSuggestBoxSuggestionPresentation _suggestionPresentation;
     readonly bool _allowNarrowSuggestions;
 
-    public FluentRichOmnibar(Signal<string> text, Action<string, string?> go, TemplateParts? parts = null,
-        float maxWidth = 480f,
+    public FluentRichOmnibar(Signal<string> text, Action<string, string?> go, OmnibarSuggestStore store,
+        TemplateParts? parts = null, float maxWidth = 480f,
         AutoSuggestBoxSuggestionPresentation suggestionPresentation = AutoSuggestBoxSuggestionPresentation.Popup,
         bool allowNarrowSuggestions = false)
     {
-        _text = text; _go = go; _parts = parts; _maxWidth = maxWidth;
+        _text = text; _go = go; _store = store; _parts = parts; _maxWidth = maxWidth;
         _suggestionPresentation = suggestionPresentation;
         _allowNarrowSuggestions = allowNarrowSuggestions;
     }
@@ -160,12 +175,66 @@ sealed class FluentRichOmnibar : Component
         var svc = UseContext(Services.Slot);
         var post = UsePost();
         var goOrigin = UseContext(HistoryStore.GoWithOrigin);
-        string text = UseDebouncedValue(() => _text.Value.Trim(), AutoSuggestBox.TextChangedDebounceMs).Value;
-        UseEffect(() => StartFetch(svc, post, text), text);
+        var store = _store;
+        var query = store.Query;
+        var highlight = store.Highlight;
+        // The request in flight for the current generation. A superseding keystroke, a clear and an unmount cancel it;
+        // the store drops whatever a cancelled request would have said, so cancelling is only ever a saving.
+        var inflight = UseRef<CancellationTokenSource?>(null);
+        void CancelInflight() { inflight.Value?.Cancel(); inflight.Value = null; }
+
+        _ = store.Version.Value;   // subscribe: every lifecycle step re-renders the field (ghost) and the popup
+        string typed = _text.Value.Trim();
+
+        // THE KEYSTROKE EDGE, undebounced. The engine box opens its popup synchronously on this same edge; entering
+        // Pending here — not 150 ms later when the fetch starts — is what keeps "No results found" off the screen
+        // between a keystroke and its request. The generation it hands out is what the debounced fetch below answers.
+        UseEffect(() =>
+        {
+            int before = query.Generation;
+            if (query.Begin(typed) != before) CancelInflight();
+        }, typed);
+
+        // The fetch edge: the GENERATION settles (not the text — a retype to the same text inside the window is a new
+        // generation and must be answered), 150 ms of quiet after the last change, exactly the engine's TextChanged
+        // cadence. A retry re-arms the generation and flows through here too; a re-mount finds a Pending generation
+        // whose request died with the old instance and re-issues it; a settled Results/Empty generation is left alone.
+        int settled = UseDebouncedValue(() => { _ = store.Version.Value; return query.Generation; },
+            AutoSuggestBox.TextChangedDebounceMs).Value;
+        UseEffect(() =>
+        {
+            if (settled != query.Generation || !query.IsPending) return;
+            if (svc is null) { query.Complete(settled, SearchSuggestions.Empty); return; }   // no session: nothing to ask
+            Fetch(svc, post, settled, query.Query);
+        }, DepKey.From(settled));
+
+        // Unmount: the request dies with the component; the store keeps Pending so the next mount re-issues it.
+        UseEffect(() => (Action)CancelInflight, DepKey.Empty);
+
+        void Fetch(Services services, Action<Action> postUi, int gen, string q)
+        {
+            CancelInflight();
+            var cts = new CancellationTokenSource();
+            inflight.Value = cts;
+            _ = Run();
+
+            async System.Threading.Tasks.Task Run()
+            {
+                try
+                {
+                    var s = await services.Library.SuggestRichAsync(q, cts.Token).ConfigureAwait(false);
+                    postUi(() => query.Complete(gen, s));
+                }
+                catch (OperationCanceledException) { }   // superseded or torn down: the store has already moved on
+                catch (Exception ex) { postUi(() => query.Fail(gen, ex)); }
+            }
+        }
+
         var completion = UseComputed(() =>
         {
-            if (_highlight.Value >= 0) return "";
-            return SearchSuggestions.GhostFor(_text.Value.Trim(), _suggestions.Value.Queries) ?? "";
+            if (highlight.Value >= 0) return "";
+            _ = store.Version.Value;
+            return SearchSuggestions.GhostFor(_text.Value.Trim(), query.Suggestions.Queries) ?? "";
         });
 
         void Submit(string q)
@@ -182,16 +251,16 @@ sealed class FluentRichOmnibar : Component
 
         bool InvokeSelection(int selection)
         {
-            var suggestions = _suggestions.Peek();
+            var suggestions = query.Suggestions;
             int queryCount = Math.Min(6, suggestions.Queries.Count);
             int itemCount = Math.Min(10, suggestions.Items.Count);
             if (selection < 0 || selection >= queryCount + itemCount) return false;
 
             if (selection < queryCount)
             {
-                string query = suggestions.Queries[selection];
-                _text.Value = query;
-                _go("search", query);
+                string chosen = suggestions.Queries[selection];
+                _text.Value = chosen;
+                _go("search", chosen);
                 return true;
             }
 
@@ -220,23 +289,26 @@ sealed class FluentRichOmnibar : Component
 
         void MoveSelection(int delta)
         {
-            var suggestions = _suggestions.Peek();
+            var suggestions = query.Suggestions;
             int count = Math.Min(6, suggestions.Queries.Count) + Math.Min(10, suggestions.Items.Count);
-            if (count == 0) { _highlight.Value = -1; return; }
-            int current = _highlight.Peek();
-            _highlight.Value = delta > 0
+            if (count == 0) { highlight.Value = -1; return; }
+            int current = highlight.Peek();
+            highlight.Value = delta > 0
                 ? (current + 1 >= count ? -1 : current + 1)
                 : (current < 0 ? count - 1 : current - 1);
         }
 
         var presenter = new AutoSuggestBoxPresenter(
             Build: context => Embed.Comp(() => new OmnibarSuggestionsPopup(
-                _text, _suggestions, _loading, context.Width, _highlight,
-                selection => { if (InvokeSelection(selection)) context.Close(); },
-                close: context.Close, allowNarrow: _allowNarrowSuggestions)),
+                _text, store, context.Width,
+                choose: selection => { if (InvokeSelection(selection)) context.Close(); },
+                close: context.Close,
+                // Re-arms the failed generation; the settled-generation effect above issues the request.
+                retry: () => query.Retry(),
+                allowNarrow: _allowNarrowSuggestions)),
             MoveSelection: MoveSelection,
-            SubmitSelection: () => InvokeSelection(_highlight.Peek()),
-            ResetSelection: () => _highlight.Value = -1);
+            SubmitSelection: () => InvokeSelection(highlight.Peek()),
+            ResetSelection: () => highlight.Value = -1);
 
         // Stock AutoSuggestBox metrics: a 32-DIP field at ControlCornerRadius (cornerRadius 0 resolves to Radii.Control
         // inside the box) with the control-default chrome — no pill, no elevation ring. 480 is the stock search cap.
@@ -246,79 +318,48 @@ sealed class FluentRichOmnibar : Component
             chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: _suggestionPresentation,
             completion: completion);
     }
-
-    void StartFetch(Services? svc, Action<Action> post, string q)
-    {
-        if (q.Length == 0 || svc is null) { _suggestions.Value = SearchSuggestions.Empty; _loading.Value = false; return; }
-        _loading.Value = true;
-        _ = Run();
-
-        async System.Threading.Tasks.Task Run()
-        {
-            try
-            {
-                var s = await svc.Library.SuggestRichAsync(q).ConfigureAwait(false);
-                post(() => { if (_text.Peek().Trim() == q) { _suggestions.Value = s; _loading.Value = false; } });
-            }
-            catch { post(() => { if (_text.Peek().Trim() == q) _loading.Value = false; }); }
-        }
-    }
 }
 
+// The suggestions popup body, rendered BY the store's state. The one sentence it can say, "No results found", is
+// reserved for a confirmed empty answer; a pending generation is a progress row, a failed one is a retry offer, and the
+// rows of the previous answer stay on screen under the progress bar until the new answer replaces them.
 sealed class OmnibarSuggestionsPopup : Component
 {
     readonly Signal<string> _text;
-    readonly IReadSignal<SearchSuggestions> _suggestions;
-    readonly IReadSignal<bool> _loading;
+    readonly OmnibarSuggestStore _store;
     readonly IReadSignal<float> _width;
-    readonly Services? _svc;
-    readonly Action<string, string?>? _go;
+    readonly Action<int> _choose;   // row index over (queries, then items) — the omnibar owns what a choice does
     readonly Action? _close;
-    readonly IReadSignal<int>? _highlight;
-    readonly Action<int>? _choose;
+    readonly Action _retry;
     readonly bool _allowNarrow;
-    Action<string, string?, NavOrigin?>? _goOrigin;
 
-    public OmnibarSuggestionsPopup(Signal<string> text, IReadSignal<SearchSuggestions> suggestions, IReadSignal<bool> loading,
-        IReadSignal<float> width, Services? svc, Action<string, string?> go, Action close)
+    public OmnibarSuggestionsPopup(Signal<string> text, OmnibarSuggestStore store, IReadSignal<float> width,
+        Action<int> choose, Action? close, Action retry, bool allowNarrow)
     {
-        _text = text; _suggestions = suggestions; _loading = loading; _width = width; _svc = svc; _go = go; _close = close;
-    }
-
-    public OmnibarSuggestionsPopup(Signal<string> text, IReadSignal<SearchSuggestions> suggestions, IReadSignal<bool> loading,
-        IReadSignal<float> width, IReadSignal<int> highlight, Action<int> choose, Action? close = null)
-    {
-        _text = text; _suggestions = suggestions; _loading = loading; _width = width;
-        _highlight = highlight; _choose = choose; _close = close;
-    }
-
-    public OmnibarSuggestionsPopup(Signal<string> text, IReadSignal<SearchSuggestions> suggestions, IReadSignal<bool> loading,
-        IReadSignal<float> width, IReadSignal<int> highlight, Action<int> choose, Action? close, bool allowNarrow)
-    {
-        _text = text; _suggestions = suggestions; _loading = loading; _width = width;
-        _highlight = highlight; _choose = choose; _close = close; _allowNarrow = allowNarrow;
+        _text = text; _store = store; _width = width;
+        _choose = choose; _close = close; _retry = retry; _allowNarrow = allowNarrow;
     }
 
     public override Element Render()
     {
         string q = _text.Value.Trim();
-        var s = _suggestions.Value;
-        bool loading = _loading.Value;
-        int highlighted = _highlight?.Value ?? -1;
+        _ = _store.Version.Value;   // subscribe to the lifecycle
+        var suggest = _store.Query;
+        var s = suggest.Suggestions;
+        var state = suggest.State;
+        bool pending = state == SuggestState.Pending;
+        int highlighted = _store.Highlight.Value;
         // FLOOR, not just fallback: the popup width tracks the anchor field, and the merged chrome's icon-mode search
         // can be crushed to ChromeSearchIconW when the centre column has no room — anchoring a 40-DIP dropdown that
         // renders every row as a vertical sliver. A popup is an overlay; it may be wider than its anchor. 400 keeps a
         // cover + title + trailing actions legible (the overlay layer clamps to the window edge like any flyout).
         float measuredWidth = _width.Value > 0f ? _width.Value : 720f;
         float width = _allowNarrow ? measuredWidth : MathF.Max(measuredWidth, 400f);
-        // Live path (FluentRichOmnibar) does not pass Services/go — resolve them from ambient context so row actions
-        // (Play / Like / context menu) work the same as the retained RichOmnibar constructor.
-        var svc = _svc ?? UseContext(Services.Slot);
+        // Row actions (Play / Like / context menu) resolve from ambient context; choosing a row goes through _choose.
+        var svc = UseContext(Services.Slot);
         var acts = UseContext(ActionServices.Slot);
         var overlay = UseContext(Overlay.Service);
         var lib = UseContext(LibraryBridge.Slot);
-        var goOrigin = UseContext(HistoryStore.GoWithOrigin);
-        _goOrigin = goOrigin;
 
         // No client-side re-filter: the server's fuzzy matching (apostrophes, word order) is authoritative;
         // a literal Contains() check would drop most of its hits. Staleness is handled at publish time.
@@ -344,15 +385,14 @@ sealed class OmnibarSuggestionsPopup : Component
         Element body;
         if (rows.Count == 0)
         {
-            body = loading
-                ? new BoxEl { Width = width, MinWidth = width, MinHeight = AutoSuggestBox.ItemMinHeight }
-                : new BoxEl
-                {
-                    Width = width, MinWidth = width, MinHeight = AutoSuggestBox.ItemMinHeight,
-                    AlignItems = FlexAlign.Center,
-                    Padding = new Edges4(24, 0, 24, 0),
-                    Children = [new TextEl(Loc.Get(Strings.Search.NoResults)) { Size = 14f, Color = Tok.TextPrimary, Grow = 1f }],
-                };
+            body = state switch
+            {
+                SuggestState.Empty => Notice(width, Loc.Get(Strings.Search.NoResults)),
+                SuggestState.Failed => Notice(width, Loc.Get(Strings.Search.SuggestFailed),
+                    Button.Subtle(Loc.Get(Strings.Common.Retry), _retry)),
+                // Pending (the progress bar above is the whole answer) and Idle (the box is closing): no sentence.
+                _ => new BoxEl { Width = width, MinWidth = width, MinHeight = AutoSuggestBox.ItemMinHeight },
+            };
         }
         else
         {
@@ -378,9 +418,20 @@ sealed class OmnibarSuggestionsPopup : Component
         return new BoxEl
         {
             Direction = 1, Width = width, MinWidth = width, Padding = new Edges4(0, 2, 0, 2),
-            Children = loading ? [ProgressBar.Indeterminate(width), body] : [body],
+            Children = pending ? [ProgressBar.Indeterminate(width), body] : [body],
         };
     }
+
+    // One sentence in the row slot, optionally with a trailing affordance (the failure's Retry).
+    static Element Notice(float width, string text, Element? trailing = null) => new BoxEl
+    {
+        Width = width, MinWidth = width, MinHeight = AutoSuggestBox.ItemMinHeight,
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+        Padding = new Edges4(24, 0, trailing is null ? 24 : 12, 0),
+        Children = trailing is null
+            ? [new TextEl(text) { Size = 14f, Color = Tok.TextPrimary, Grow = 1f }]
+            : [new TextEl(text) { Size = 14f, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, trailing],
+    };
 
     Element QueryRow(string query, string typed, int selectionIndex, bool selected) => new BoxEl
     {
@@ -393,13 +444,7 @@ sealed class OmnibarSuggestionsPopup : Component
         Fill = selected ? Tok.FillSubtleSecondary : ColorF.Transparent,
         HoverFill = Tok.FillSubtleSecondary,
         PressedFill = Tok.FillSubtleTertiary,
-        OnClick = () =>
-        {
-            if (_choose is not null) { _choose(selectionIndex); return; }
-            _text.Value = query;
-            _go?.Invoke("search", query);
-            _close?.Invoke();
-        },
+        OnClick = () => _choose(selectionIndex),
         Children = QueryContent(query, typed),
     };
 
@@ -411,11 +456,7 @@ sealed class OmnibarSuggestionsPopup : Component
         bool saved = lib?.IsSaved(item.Uri) ?? false;
         bool canPlay = item.Kind is not (SearchSuggestionKind.User or SearchSuggestionKind.Genre);
         Action play = () => PlayItem(item, svc);
-        Action open = () =>
-        {
-            if (_choose is not null) { _choose(selectionIndex); return; }
-            Invoke(item, svc);
-        };
+        Action open = () => _choose(selectionIndex);
         var trailingKids = new List<Element>(4);
         if (canPlay) trailingKids.Add(IconButton(Icons.Play, play));
         if (item.Kind == SearchSuggestionKind.Track)
@@ -474,42 +515,6 @@ sealed class OmnibarSuggestionsPopup : Component
         if (item.Kind is SearchSuggestionKind.User or SearchSuggestionKind.Genre) return;
         if (item.Kind == SearchSuggestionKind.Track) _ = svc.Player.PlayTrackAsync(item.Uri);
         else _ = svc.Player.PlayAsync(item.Uri, 0);
-        _close?.Invoke();
-    }
-
-    void Invoke(SearchSuggestionItem item, Services? svc = null)
-    {
-        svc ??= _svc;
-        switch (item.Kind)
-        {
-            case SearchSuggestionKind.Track:
-                if (svc is not null) _ = svc.Player.PlayTrackAsync(item.Uri);
-                break;
-            case SearchSuggestionKind.Artist:
-                _go?.Invoke("artist:" + item.Uri, item.Title);
-                break;
-            case SearchSuggestionKind.Album:
-                _go?.Invoke("album:" + item.Uri, item.Title);
-                break;
-            case SearchSuggestionKind.Playlist:
-                _go?.Invoke("pl:" + item.Uri, item.Title);
-                break;
-            case SearchSuggestionKind.Podcast:
-            case SearchSuggestionKind.Audiobook:
-                _go?.Invoke("show:" + item.Uri, item.Title);
-                break;
-            case SearchSuggestionKind.Episode:
-                if (svc is not null) _ = svc.Player.PlayAsync(item.Uri, 0);
-                break;
-            case SearchSuggestionKind.Genre:
-                if (_go is { } go)
-                {
-                    string q = _text.Peek().Trim();
-                    var origin = q.Length == 0 ? (NavOrigin?)null : new NavOrigin(q, "search", q);
-                    SearchRoutes.OpenGenre(item.Uri, item.Title, go, origin, _goOrigin);
-                }
-                break;
-        }
         _close?.Invoke();
     }
 

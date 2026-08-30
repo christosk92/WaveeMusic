@@ -1405,7 +1405,7 @@ sealed class SidebarPane : Component
         for (int i = 0; i < n; i++)
         {
             string uri = RowPlayUri(i);
-            if (uri.Length == 0 || !NowPlayingOverlay.Matches(uri, identity.ContextUri, identity.Track)) continue;
+            if (uri.Length == 0 || !NowPlayingMatch.RelatesToPlaying(uri, identity.ContextUri, identity.Track)) continue;
             _rowPlaySet.Add(i);
             if (play[i] == packed) continue;
             play[i] = packed;

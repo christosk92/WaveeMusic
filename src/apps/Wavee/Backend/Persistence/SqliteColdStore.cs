@@ -33,8 +33,12 @@ public sealed class SqliteColdStore : IColdStore, IMutationOutbox, IExtensionCac
     /// v8 = `rootlist.added_at` (a folder rename resends the marker's ORIGINAL create timestamp) + `outbox.parent_folder`
     /// (a queued rootlist ADD remembers its folder, because the INDEX moves while the op waits). v9 =
     /// `playlist_items.chart_*` (status/current_pos/previous_pos/rank) — a chart playlist's per-row rank movement,
-    /// so a cold-opened chart shows its arrows before the live re-fetch lands.</summary>
-    public const int CurrentSchemaVersion = 9;
+    /// so a cold-opened chart shows its arrows before the live re-fetch lands. v10 = `collection_rev` cleared once
+    /// (no DDL): every pre-v10 sync token could have been advanced by an UNVERIFIED snapshot walk — a page loop that
+    /// lost its tail swept the newest members and then stored the current server revision, so no later delta could
+    /// ever re-ship them (the 274-vs-293 Liked Songs drift). Tokens are now keyed by WIRE set and stored only by a
+    /// verified walk; clearing the table makes the next InitialHydrate re-walk each wire set once under the shields.</summary>
+    public const int CurrentSchemaVersion = 10;
 
     /// <summary>Cap for the bulk <see cref="LoadAllExtensions"/> read. NOT used by the live path any more — the cache is
     /// point-read per miss — so this only bounds tests and offline tooling.</summary>
@@ -290,7 +294,24 @@ public sealed class SqliteColdStore : IColdStore, IMutationOutbox, IExtensionCac
             if (ver == "6") { MigrateToV7(); ver = "7"; }
             if (ver == "7") { MigrateToV8(); ver = "8"; }
             if (ver == "8") { MigrateToV9(); ver = "9"; }
+            if (ver == "9") { MigrateToV10(); ver = "10"; }
         }
+    }
+
+    // ── v9 → v10: the one-time collection sync-token repair ──────────────────────────────────────────────────────────
+    // No DDL. Every row of collection_rev is deleted: a pre-v10 token was keyed by LOGICAL set ("liked"/"albums" each
+    // advancing over the shared "collection" walk) and could have been stored by a walk that silently lost its tail —
+    // which both swept the newest members AND parked the token past them, so the delta stream had nothing left to
+    // ship and the loss was permanent across restarts. The fetcher now keys tokens by WIRE set and stores one only
+    // after CollectionSnapshotLedger verified the walk, so a cleared table costs exactly one re-walk per wire set on
+    // the next InitialHydrate (the members are re-applied idempotently; the sweep runs under the pending + recency
+    // shields) and then the token discipline holds from there. Idempotent: an empty table deletes nothing.
+    void MigrateToV10()
+    {
+        using var tx = _conn.BeginTransaction();
+        ExecLocked("DELETE FROM collection_rev;", tx);
+        ExecLocked("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','10');", tx);
+        tx.Commit();
     }
 
     // ── v8 → v9: chart-playlist per-row rank movement ────────────────────────────────────────────────────────────────

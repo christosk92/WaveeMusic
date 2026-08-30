@@ -35,6 +35,7 @@ sealed class BrowseDirectory : Component
         var svc = UseContext(Services.Slot);
         var model = UseContext(Props);
         var go = UseContext(HistoryStore.NavCtx);
+        var goOrigin = UseContext(HistoryStore.GoWithOrigin);
         var sectionPreview = UseContext(HomeSectionPreviewStore.Slot);
         var navPreview = UseContext(NavPreviewStore.Slot);
         var cache = UseContext(BrowseDirectoryStore.Slot);
@@ -72,9 +73,14 @@ sealed class BrowseDirectory : Component
                 : await LoadChartsAsync(browseSvc, cache, ct).ConfigureAwait(false),
             seed: cachedCharts ?? HomeBrowseCards.ChartDeckSeed, deps: DepKey.From(browseSvc is null ? 0 : 1));
 
+        // An explicit Browse origin, the mirror of Home handing over ITS origin for the same tiles: the arrival's
+        // crumb is written by whoever opened the section (latest arrival wins, DrillTrail composes it), and the origin
+        // being the IA root itself is what keeps the trail at Browse › X here rather than Browse › Browse › X.
         void OpenBrowseSection(HomeSection s) =>
             HomeCardNav.OpenBrowseSection(s, navPreview, sectionPreview, go,
-                uri => { if (svc is not null) _ = svc.Player.PlayTrackAsync(uri); });
+                uri => { if (svc is not null) _ = svc.Player.PlayTrackAsync(uri); },
+                origin: new NavOrigin(Loc.Get(Strings.Browse.HomeTitle), BrowseRoutes.Home, null),
+                goOrigin: goOrigin);
 
         // SkelReveal.None, not the default Soft: the CONTENT owns its entrance here (the title + each band cascade in
         // through WaveeEntrance below), and a block-level blur-reveal on top of that would fade the whole directory in

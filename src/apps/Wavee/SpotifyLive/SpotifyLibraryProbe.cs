@@ -75,14 +75,18 @@ public static class SpotifyLibraryProbe
         var store = new InMemoryStore();
         var revs = new Dictionary<string, string?>();
         var fetcher = new CollectionFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username, store,
-            s => revs.TryGetValue(s, out var r) ? r : null, (s, r) => revs[s] = r, CatalogHydrate(live, store, log));
+            s => revs.TryGetValue(s, out var r) ? r : null, (s, r) => revs[s] = r, CatalogHydrate(live, store, log), log: log);
 
-        log.Info("Fetching collection set '" + setId + "' ...");
-        try { await fetcher.FetchSetAsync(setId, ct).ConfigureAwait(false); }
+        // The fetcher speaks WIRE sets (one walk of "collection" carries both liked and albums); the probe takes the
+        // logical name the user knows and prints that set's members. The token is the wire set's.
+        string wireSet = CollectionSets.WireSet(setId);
+        if (CollectionSets.LogicalSetsForWireSet(wireSet).Count == 0) { log.Info("unknown collection set '" + setId + "'"); return 2; }
+        log.Info("Fetching collection set '" + setId + "' (wire set '" + wireSet + "') ...");
+        try { await fetcher.FetchWireSetAsync(wireSet, ct).ConfigureAwait(false); }
         catch (Exception ex) { log.Info("collection fetch failed: " + ex.Message); return 1; }
 
         var items = store.SavedUris(setId);
-        log.Info("  " + items.Count + " items in '" + setId + "' (sync token " + (revs.GetValueOrDefault(setId) ?? "none") + "):");
+        log.Info("  " + items.Count + " items in '" + setId + "' (sync token " + (revs.GetValueOrDefault(CollectionSets.RevisionKey(wireSet)) ?? "none") + "):");
         for (int i = 0; i < items.Count; i++)
         {
             if (i >= 50) { log.Info("    ... (" + (items.Count - 50) + " more)"); break; }
