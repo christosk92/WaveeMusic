@@ -122,7 +122,11 @@ function Get-WaveeFeedDocument {
             Start-Sleep -Seconds 2
         }
     }
-    $txt = "$($r.Content)".TrimStart([char]0xFEFF)
+    # GitHub serves the .appinstaller as application/octet-stream, so on 5.1 -UseBasicParsing hands back a byte[]
+    # (a text content-type gives a string). Stringifying the array yields "60 63 120 ..." - decode it instead.
+    $raw = $r.Content
+    if ($raw -is [byte[]]) { $txt = [System.Text.Encoding]::UTF8.GetString($raw) } else { $txt = [string]$raw }
+    $txt = $txt.TrimStart([char]0xFEFF)
     [xml]$x = $txt
     [pscustomobject]@{
         Version = [version]$x.AppInstaller.Version
