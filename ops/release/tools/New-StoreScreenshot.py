@@ -101,7 +101,7 @@ def headline_block(text: str, max_w: int, color, size: int, align: str = "left")
     return img
 
 
-def compose(shot: str, out: str, headline: str | None, side: str, dark: bool, seed: int, overlay: str | None):
+def compose(shot: str, out: str, headline: str | None, side: str, dark: bool, seed: int, overlay: str | None, fit_all: bool = False):
     bg = backdrop(seed, dark).convert("RGBA")
     win = Image.open(shot).convert("RGB")
     if overlay:
@@ -127,13 +127,14 @@ def compose(shot: str, out: str, headline: str | None, side: str, dark: bool, se
         else:
             bg.alpha_composite(card, (W - wx - win.width - pad, cy))
             bg.alpha_composite(text, (W - MARGIN - text.width, ty))
-    else:  # top: headline above, the window runs off the bottom edge
-        win = fit(win, 1840, 1100)
-        card, pad = shadowed(win)
+    else:  # top: headline above; the window runs off the bottom edge, or with --fit sits whole below the headline
         text = headline_block(headline, 1500, ink, 62, align="center")
         top = 60
+        win_top = top + text.height + (28 if fit_all else 94)   # the window's own top edge (the shadow pad sits above it)
+        win = fit(win, 1840, (H - win_top - 40) if fit_all else 1100)
+        card, pad = shadowed(win)
         bg.alpha_composite(text, ((W - text.width) // 2, top))
-        bg.alpha_composite(card, ((W - card.width) // 2, top + text.height + 4))
+        bg.alpha_composite(card, ((W - card.width) // 2, win_top - pad))
     bg.convert("RGB").save(out, "PNG", optimize=True)
     print(out, bg.size, "window", win.size)
 
@@ -147,5 +148,6 @@ if __name__ == "__main__":
     ap.add_argument("--dark", action="store_true")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--overlay", default=None, help="frame.png@x,y,w,h in capture pixels")
+    ap.add_argument("--fit", action="store_true", help="top layout: scale the window so nothing is cropped (for bottom-anchored flyouts)")
     a = ap.parse_args()
-    compose(a.shot, a.out, a.headline, a.side, a.dark, a.seed, a.overlay)
+    compose(a.shot, a.out, a.headline, a.side, a.dark, a.seed, a.overlay, a.fit)
