@@ -76,6 +76,8 @@ Support: https://cproducts.dev/contact (hello@cproducts.dev). "This app accesses
 
 Capture at the size you want shown (`Capture-WaveeWindow.ps1 -KeepSize -Route …`, 1828×1066 today) and compose with `--side top` — at that width a side headline would crop the window. `01-home` takes no headline; `--fit` keeps the whole window under the headline for bottom-anchored flyouts (13, 12b). The Store takes at most 10 screenshots per device family — choose from the 14.
 
+Trailer: `listing/trailer.mp4` + `listing/trailer-thumb.png` (ops/release/tools/New-StoreTrailer.py — 29 s, H.264 1080p30, silent; needs the 16:9 super hero to be uploaded too or the Store will not show it).
+
 Store logos: `tile-300.png` (1:1 app tile), `hero-1920x1080.png` (16:9 super hero, no text, no UI).
 
 ## Notes for certification (Submission options)
