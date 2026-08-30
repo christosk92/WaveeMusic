@@ -70,11 +70,11 @@ Support: https://cproducts.dev/contact (hello@cproducts.dev). "This app accesses
 | 8 | 08-concerts.png | Concerts near you: live shows and festival dates, filtered by city and genre. |
 | 9 | 09-customize.png | Your sidebar, your layout: templates, sections, density and pins. |
 | 10 | 10-search.png | Search songs, artists, albums, playlists, podcasts and audiobooks at once. |
-| 11 | 11-lyrics.png | Synced lyrics beside the player, syllable-level where available. |
-| 12 | 12-video.png (to capture + frame overlay) | The official video docked next to the queue. |
-| 13 | 13-queue.png | Queue, autoplay and drag-reorder. |
+| 11 | 11-lyrics.png | Synced lyrics beside the player, syllable-level where available. (Same capture as 02 today; recapture the expanded lyrics view for a distinct shot.) |
+| 12 | 12-video.png / 12b-video-miniplayer.png / 12c-video-strips.png | The official video: docked next to the queue, floating in a mini player, or in its own window. Pick one — the strips shot (New-VideoStripsShot.py) shows all three. |
+| 13 | 13-queue.png | Queue, autoplay, and Spotify Connect to your other devices. |
 
-Capture at the size you want shown (`Capture-WaveeWindow.ps1 -KeepSize -Route …`, 1828×1066 today) and compose with `--side top` — at that width a side headline would crop the window. `01-home` takes no headline.
+Capture at the size you want shown (`Capture-WaveeWindow.ps1 -KeepSize -Route …`, 1828×1066 today) and compose with `--side top` — at that width a side headline would crop the window. `01-home` takes no headline; `--fit` keeps the whole window under the headline for bottom-anchored flyouts (13, 12b). The Store takes at most 10 screenshots per device family — choose from the 14.
 
 Store logos: `tile-300.png` (1:1 app tile), `hero-1920x1080.png` (16:9 super hero, no text, no UI).
 
