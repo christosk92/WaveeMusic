@@ -53,7 +53,9 @@ def overlay_frame(win: Image.Image, spec: str) -> Image.Image:
     frame = frame.resize((round(frame.width * s), round(frame.height * s)), Image.LANCZOS)
     fx, fy = (frame.width - w) // 2, (frame.height - h) // 2
     win = win.copy()
-    win.paste(frame.crop((fx, fy, fx + w, fy + h)), (x, y))
+    mask = Image.new("L", (w, h), 0)                       # rounded like the player card it covers
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), 10, fill=255)
+    win.paste(frame.crop((fx, fy, fx + w, fy + h)), (x, y), mask)
     return win
 
 
