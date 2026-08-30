@@ -69,7 +69,7 @@
     <_PlayReadyNativeArch Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</_PlayReadyNativeArch>
     <_PlayReadyNativeArch Condition="'$(_PlayReadyNativeArch)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'AMD64'">x64</_PlayReadyNativeArch>
     <_PlayReadyNativeArch Condition="'$(_PlayReadyNativeArch)' == ''">arm64</_PlayReadyNativeArch>
-    <_PlayReadyNativeDir>$(MSBuildProjectDirectory)\..\..\..\ops\tools\playready-native</_PlayReadyNativeDir>
+    <_PlayReadyNativeDir>$(EngineRoot)ops\tools\playready-native</_PlayReadyNativeDir>
     <_PlayReadyNativeDll>$(_PlayReadyNativeDir)\out\$(_PlayReadyNativeArch)\FluentGpu.PlayReady.Native.dll</_PlayReadyNativeDll>
   </PropertyGroup>
   <Target Name="BuildDesktopPlayReadyNative" BeforeTargets="PrepareForBuild"
