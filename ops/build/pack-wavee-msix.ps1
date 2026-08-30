@@ -31,7 +31,7 @@ param(
   [string]$Quad = '',
   # M.m.p or M.m.p-beta.N. Default: the props WaveeVersion.
   [string]$Semver = '',
-  [ValidateSet('stable','beta','dev')]
+  [ValidateSet('stable','beta','dev','store')]
   [string]$Channel = 'dev',
   [string]$Codename = '',
   [string]$IdentityName = 'cproducts.Wavee',
