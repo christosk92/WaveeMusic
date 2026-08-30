@@ -151,3 +151,4 @@ tmp/
 tmp_*/
 tmp_saz_*/
 *.saz
+__pycache__/
