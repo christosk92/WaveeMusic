@@ -46,20 +46,41 @@ it is **making the thing legible**: one image that explains it, one page that le
 - A 20–30 s screen recording (navigation speed, lyrics, video, queue) exported as MP4 ≤600 KB + poster for
   What's new, and a GIF-free (MP4/WebM) embed on the landing page. Motion is what sells "GPU-rendered".
 
-### 6. Distribution channels, in order
-1. **Microsoft Store** — the biggest lever for a Windows app: discoverability, trust, and a "Get it from Microsoft"
-   badge in the README next to the installer buttons. The MSIX is already signed; the listing needs the screenshots
-   from 3 and a 300×300 tile. Decide whether the Store build is the same package identity (`cproducts.Wavee`) or a
-   Store-signed one.
-2. **winget** manifest (`christosk92.Wavee`) pointing at the release MSIX — developers install everything this way.
-3. **Show HN** with the engine story ("a from-scratch GPU UI engine for .NET, and the Spotify client built on it"),
-   posted early in the week, benchmark linked, author available in the thread.
-4. **Reddit**: r/Windows11, r/opensource, r/software, r/dotnet (engine), r/spotify (carefully — it is a third-party
-   client; lead with "for your own Premium account"). One post per sub, screenshots + a 30 s clip, first comment
-   introduces yourself and answers "why not the official app".
-5. **AlternativeTo** listing (Spotify alternatives / clients) and the Windows app roundup sites that syndicate
-   from it (Windows Central, Beebom, XDA "best open-source apps" lists).
-6. **Product Hunt** only once the Store listing and landing page exist — it rewards a finished funnel.
+### 6. Distribution channels, in order — and why the Microsoft Store is NOT one of them
+
+**Store verdict (2026-08-30): do not list the streaming client.** No Store policy bans unofficial clients as such,
+but three things line up against it:
+- **Policy 11.2** ("content ... must be originally created, appropriately licensed, used as permitted by the rights
+  holder, or otherwise permitted by law") plus the one-click IP infringement form is exactly how Spotify had
+  *Spotimo* — a client on the official APIs — pulled: Spotify filed a claim citing its trademarks/logos and
+  Microsoft removed the app without adjudication. Wavee reimplements Spotify's protocols and derives its content
+  keys; it is far more exposed than Spotimo was.
+- **Spotify's terms**: the Terms of Use forbid reverse engineering and "circumventing any technology used by
+  Spotify"; the Developer Terms (IV.2.a.ii) forbid decompiling/reverse-engineering the platform and license playback
+  only through the official platform. Spotify's 2025 GitHub DMCA notices asserted copyright, derivative-work AND
+  anti-circumvention ("encryption and ... transfer keys") claims and took down whole fork networks (520 repos).
+- **Certification itself** (10.3.1) requires handing Microsoft a working Premium account and describing how the
+  product works — documenting the derivation to a party that must act on infringement complaints. A Store listing
+  also raises the profile of the private PlayPlay repo and the fork network behind it.
+The librespot precedent ("probably forbidden by them, use at your own risk") shows a protocol reimplementation can
+live on GitHub for years; the Store is a different venue with a formal removal channel. Positioning follows from
+this: Wavee is a **third-party client for your own Premium account**, never a "Spotify alternative"; no Spotify marks
+in the icon, name, screenshots or tiles beyond nominative "for Spotify"; the not-affiliated line everywhere.
+
+Channels, in order:
+1. **GitHub + the `.appinstaller` feed** stay the primary install path (signed MSIX, silent updates) — the buttons
+   on the README and the landing page.
+2. **winget** manifest (`christosk92.Wavee`) — also a Microsoft-run catalog with an infringement process, but
+   community-reviewed and far lighter than Store certification; acceptable risk, revisit if a complaint ever lands.
+3. **Show HN** with the engine story ("a from-scratch GPU UI engine for .NET, and the client built on it"), posted
+   early in the week, benchmark linked, author in the thread.
+4. **Reddit**: r/Windows11, r/opensource, r/software, r/dotnet (engine); r/spotify carefully — lead with "for your
+   own Premium account". One post per sub, screenshots + a 30 s clip, first comment introduces yourself.
+5. **AlternativeTo** ("Spotify clients", not "alternatives") and the Windows app roundups that syndicate from it.
+6. **Product Hunt** only once the landing page and demo exist.
+
+A Store-safe *companion* (official Web API + Spotify Connect control only, own icon/name) is the only shape that
+could ever be listed — and Spotimo shows even that draws a trademark claim if the branding leans on Spotify.
 
 ### 7. Trust signals to keep visible
 - The privacy statement, the "not affiliated" line and "Premium required" in every listing.
@@ -67,5 +88,5 @@ it is **making the thing legible**: one image that explains it, one page that le
   carefully" part; say so in one line on the README and the site.
 
 ### Order of work
-README polish (1) → social preview (2) → screenshot pipeline (3) → landing page (4) → Store + winget (6.1–6.2) →
-demo clip (5) → HN/Reddit/AlternativeTo (6.3–6.5) → Product Hunt (6.6).
+README polish (1) → social preview (2) → screenshot pipeline (3) → landing page (4) → winget (6.2) →
+demo clip (5) → HN/Reddit/AlternativeTo (6.3–6.5) → Product Hunt (6.6). No Microsoft Store listing (see 6).
