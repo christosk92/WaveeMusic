@@ -1110,11 +1110,18 @@ function Invoke-Verify {
         foreach ($a in $arches) {
             # The quad alone is not proof the feed points at THIS release: a document whose root Version moved but
             # whose MainPackage/@Uri still names the previous tag would hand every client the old package.
-            $live = Test-WaveeFeedLive -Repo $Repo -FeedRelease $f -Arch $a -AssetPrefix $AssetPrefix `
-                -ExpectedQuad $quad -ExpectedMsixUri (Get-MsixUri $quad $a)
-            if (-not $live) { throw "feed $f/$a did not come up at $quad pointing at $(Get-MsixUri $quad $a)" }
+            # The asset was uploaded seconds ago and GitHub's download CDN can still serve the previous document
+            # for a short while (observed on the first release from this repo: everything published, verify read
+            # the old feed once). Poll, do not judge on the first answer.
+            $live = $false
+            for ($try = 1; $try -le 8 -and -not $live; $try++) {
+                if ($try -gt 1) { Start-Sleep -Seconds 10 }
+                $live = Test-WaveeFeedLive -Repo $Repo -FeedRelease $f -Arch $a -AssetPrefix $AssetPrefix `
+                    -ExpectedQuad $quad -ExpectedMsixUri (Get-MsixUri $quad $a)
+            }
+            if (-not $live) { throw "feed $f/$a did not come up at $quad pointing at $(Get-MsixUri $quad $a) after 8 reads over ~70 s" }
             $script:FeedRows += [pscustomobject]@{ Feed = $f; Arch = $a; Version = $quad }
-            Good "$f/$a is live at $quad"
+            Good "$f/$a is live at $quad (read $try)"
         }
     }
 
