@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="ops/release/wavee/0.2.0/media/redesigned.jpg" alt="Wavee — the redesigned home page, rendered by FluentGpu" width="820" />
+  <img src="assets/readme/promo/home.jpg" alt="Wavee — Home, rendered by FluentGpu on Windows 11" width="820" />
 </p>
 
 <h1 align="center">Wavee</h1>
@@ -27,7 +27,12 @@
     <picture>
       <source media="(prefers-color-scheme: light)" srcset="assets/readme/DownloadInstaller-arm64-dark.png" height="64" />
       <img src="assets/readme/DownloadInstaller-arm64-light.png" height="64" alt="Download Wavee for ARM64" /></picture></a>
+  &ensp;
+  <a href="https://apps.microsoft.com/detail/9NJPVWTQPT9H">
+    <img src="https://get.microsoft.com/images/en-us%20dark.svg" height="64" alt="Get Wavee from the Microsoft Store" /></a>
 </p>
+
+<p align="center"><sub>The Microsoft Store listing is in certification — the badge goes live when it clears.</sub></p>
 
 One ~30 MB MSIX, no bundled runtime, Mica, dynamic accent, 10k-row virtualized lists, synced lyrics, video,
 out-of-process playback modules (YouTube / Twitch / radio).
@@ -35,7 +40,21 @@ out-of-process playback modules (YouTube / Twitch / radio).
 > Wavee is an independent client for your own Spotify **Premium** account. It is not made by, endorsed by, or
 > affiliated with Spotify AB. Privacy statement: [PRIVACY.md](PRIVACY.md).
 
+## A quick look
+
+| | |
+|---|---|
+| ![Artist pages with live lyrics](assets/readme/promo/artist.jpg) | ![The official video — docked, mini player, or its own window](assets/readme/promo/video.jpg) |
+| ![Liked Songs with weekly stats and tempo curves](assets/readme/promo/liked.jpg) | ![Queue, autoplay and Spotify Connect](assets/readme/promo/queue.jpg) |
+| ![Playlists that show tempo, key and recommendations](assets/readme/promo/playlist.jpg) | ![Home on Windows 11 — Mica, dynamic accent, tabs](assets/readme/promo/home.jpg) |
+
 ## Install
+
+Two ways in, same app:
+
+- **Microsoft Store** — [apps.microsoft.com/detail/9NJPVWTQPT9H](https://apps.microsoft.com/detail/9NJPVWTQPT9H):
+  install and update through the Store (listing currently in certification).
+- **Direct download** — the buttons above; signed MSIX from this repository's releases, silent auto-updates.
 
 Click the button for your architecture (x64 for most PCs, ARM64 for Snapdragon / Surface Pro X-class devices) and
 open the downloaded `.appinstaller` — Windows App Installer installs the signed package. Updates are checked in the
