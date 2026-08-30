@@ -1,0 +1,1 @@
+Inter (fonts/Inter-*.ttf, InterVariable.ttf) - Copyright 2016 The Inter Project Authors, SIL Open Font License 1.1 (https://github.com/rsms/inter). Used only by New-StoreScreenshot.py for Store listing headlines; never shipped in the app.
