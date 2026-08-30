@@ -47,7 +47,15 @@ versions separately under `v*` and is not tracked in this file.)
   and "What's new" icons rendered as boxes on Windows 10).
 - **Opening a playlist** — a cold open no longer flashes "You no longer have access to this playlist", "0 songs" or
   "Nothing here yet" while the header and tracks are still loading; it shows the skeleton until they land.
-- **Hero layout** — the cover art no longer renders detached at the bottom-left of the page.
+- **Home facets** — the Music / Podcasts / Audiobooks chips now swap the whole feed: a facet is its own document
+  (server sections in server order, its own scroll position), the feed carries the facet it was read for so a stale
+  poll can never land under a newer chip, and shelves re-describe on every feed change (a facet swap, the periodic
+  refresh, a daylist rollover) instead of keeping the first feed they mounted with. The Home pill's trailing mark is
+  an X that clears the sub-facet, not a chevron that promised a menu.
+- **Hero layout** — the cover art no longer renders detached at the bottom-left of the page, and the facts bento (this
+  week's likes, tempo, top artists) moved from the hero column to the page footer so the first track is above the
+  fold; the two-column layout keeps it in the rail.
+- **Concert filter pills** — the pill's trailing glyph reflects what a tap does (reopen the chooser vs clear).
 - **Lyrics** — credit and metadata rows that some providers ship inside the lyric body (lyricist / composer /
   arranger headers, boilerplate, stray tags) no longer reach the screen or the ranking. The cleaner first honours what
   the provider marks structurally, then trims leading/trailing lines that align to nothing in the reference document

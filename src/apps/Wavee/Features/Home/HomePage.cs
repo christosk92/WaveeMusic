@@ -101,6 +101,10 @@ sealed class HomePage : Component
         // Home groups have substantially different heights (quick grid / hero / compact grid / shelf / editorial).
         // Hoist one measured extent table so the viewport can correct and anchor rows while recycling offscreen groups.
         var homeLayout = UseMemo(static () => new HomeFeedVirtualLayout(), DepKey.Empty);
+        // The FACET page is a different DOCUMENT with a different row table (the server's sections, in server order),
+        // so it keeps its own extent table rather than sharing the landing's: one table describing two shapes would
+        // reseed on every All<->facet swap and throw away every measured correction belonging to both.
+        var facetLayout = UseMemo(static () => new HomeFacetVirtualLayout(), DepKey.Empty);
         // The background home-refresh loop, tied to this component's lifetime. Its Reactive.OnCleanup fires on unmount
         // (KeepAlive eviction / a page whose cache entry was evicted) and before each re-run. Without it, each cold
         // remount of Home leaked an orphaned 60s PeriodicTimer loop that COMPOUNDED over a long session. Mirrors the
@@ -379,35 +383,49 @@ sealed class HomePage : Component
             // user reorder is the order RowAt / KeyAt / Estimate all switch on.
             var rows = homeLayout.Rows;
 
-            // A facet is a different DOCUMENT, not a filtered view of one, so it is part of every identity on this page.
-            // The feed itself says which facet produced it (HomeFeed.Facet), so the tag needs no page state. Row keys
-            // carrying it force a REMOUNT across a facet swap (no positional patch of "Podcasts" onto "Music"), and the
-            // matching ScrollKey drops the previous facet's offset instead of landing 3000px down a document that no
-            // longer exists. "" (unfiltered) keeps the historic bare "home" tag.
-            string facetTag = feed.Facet.Length == 0 ? "home" : "home:" + feed.Facet;
+            // This viewport is the UNFILTERED document, and only that: a facet is not a filtered view of the landing
+            // but a different document with a different row table (VirtualFacet), reached through the content arm
+            // below. So every identity on this page is the bare "home" tag it has always been.
 
+            // EVERY row is a component (Responsive.Of → ResponsiveBox), and a component's build closure FREEZES at mount
+            // (the component-props contract): a parent re-render that re-runs RenderItem over an unchanged window finds
+            // the same type + key at the slot and diffs it in place — the closure it mounted with, over the feed it
+            // mounted with, stays. That is what made every Ready→Ready swap (a facet, the 60 s poll, a daylist
+            // rollover) invisible: the shelves kept describing the FIRST feed while the chip row, which reads a signal,
+            // moved on. Two things keep a row honest now:
+            //   1. its KEY — module rows carry the group's content fingerprint, so a module that changed REMOUNTS and
+            //      one that did not is left alone; chrome rows (Chips / Artists / Timeline / Charts / Sections / Tail)
+            //      carry the row NAME alone, which is what lets the chip row keep ONE key across the whole page family
+            //      — the facet viewport describes its chip row under the very same "home:row:Chips", so switching
+            //      All<->facet re-describes it in place and never replays the fused pill's animation;
+            //   2. its build closure reads the LIVE feed off the loadable (RowAt), so a same-key row re-describes from
+            //      the current landing — the chip row's greeting/has-hero, the section deck — without a remount.
             string KeyAt(int index)
             {
                 var row = rows[index];
                 var g = FeedGroup(landing, row);
-                // Key on the group's identity so a recycled shell rebinds rather than positionally patching one module's
-                // tree onto another's.
                 return g is null
-                    ? facetTag + ":row:" + row
-                    : facetTag + ":row:" + row + ":" + HomeModuleLayout.SourceGroupKey(g);
+                    ? "home:row:" + row
+                    : "home:row:" + row + ":" + HomeModuleLayout.SourceGroupKey(g);
             }
 
             Element RowAt(int index)
             {
                 var row = rows[index];
-                var child = RenderRow(feed, landing, row);
+                string key = KeyAt(index);
                 float tailBottom = PlayerDock.Reserve + Spacing.XXL;
-                return Responsive.Of(width => HomeRowShell(child, KeyAt(index),
-                    // The first row opens on the page gutter, not on half of it: 24 top matches the 36 sides closely
-                    // enough to read as one inset, where 12 read as "the page starts before it starts".
-                    row == HomeRow.Chips ? Spacing.XXL : 0f,
-                    row == HomeRow.Tail ? tailBottom : RowHasContent(landing, row) ? HomeModuleLayout.Gap(width) : 0f),
-                    fallback: HomeModuleLayout.FallbackWidth);
+                return Responsive.Of(width =>
+                {
+                    // `.Value` SUBSCRIBES this row's ResponsiveBox to the feed: a swap re-renders the realized rows from
+                    // the landing that is actually on the page, not the one the closure was born with.
+                    var liveFeed = home.Value.Value;
+                    var liveLanding = Landing(liveFeed);
+                    return HomeRowShell(RenderRow(liveFeed, liveLanding, row), key,
+                        // The first row opens on the page gutter, not on half of it: 24 top matches the 36 sides closely
+                        // enough to read as one inset, where 12 read as "the page starts before it starts".
+                        row == HomeRow.Chips ? Spacing.XXL : 0f,
+                        row == HomeRow.Tail ? tailBottom : RowHasContent(liveLanding, row) ? HomeModuleLayout.Gap(width) : 0f);
+                }, fallback: HomeModuleLayout.FallbackWidth) with { Key = key };
             }
 
             return Virtual.Measured(rows.Length, homeLayout, RowAt, KeyAt, overscan: 1) with
@@ -415,13 +433,128 @@ sealed class HomePage : Component
                 Grow = 1f,
                 Shrink = 1f,
                 MinHeight = 0f,
-                ScrollKey = facetTag,
+                ScrollKey = "home",
                 OnVisibleRange = (first, end) =>
                 {
                     for (int i = first; i < end && i < rows.Length; i++)
                         if (FeedGroup(landing, rows[i]) is { } g) WarmGroup(g);
                 },
             };
+        }
+
+        // -- the FACET viewport -------------------------------------------------------------------------------
+        // A facet chip does not filter the landing page - it asks the server a different question and gets a different
+        // DOCUMENT back, which Spotify renders as a plain ordered list of that document's sections. The authored
+        // landing is the wrong composition for it, and demonstrably lies about it: "Podcasts" answers four separately
+        // titled show shelves ("Your shows", "Podcasts for you", ...) plus ~20 single-card baseline sections, and the
+        // landing merged the four shelves into one "Podcasts" module, the baselines into one feed, and still offered a
+        // "Your top artists" chrome row that the facet never asked for.
+        //
+        // So this viewport walks HomeFeed.Sections in server order (HomeFacetProjection) and renders one module per
+        // section, each wearing the SERVER's title and drilling into its own section page. The only thing coalesced is
+        // a run of consecutive baseline sections, which is twenty one-card shelves otherwise.
+        Element VirtualFacet(HomeFeed feed)
+        {
+            HomeFeedDiagnostics.LogModules(feed);
+            var facetRows = FacetRows(feed);
+            facetLayout.Configure(facetRows);
+            int count = facetRows.Count + 2;                     // chips + one row per section + tail
+
+            // The CHIPS key is deliberately byte-identical to VirtualHome's: the chip row is the one element on the
+            // page that survives an All<->facet swap, and a remount a second after the tap would replay the fused
+            // pill's morph. Section rows carry the facet, their ORDINAL (two sections may share a title) and the
+            // group's content fingerprint, so a section that changed remounts and one that did not is left alone.
+            string facetTag = "home:" + feed.Facet;
+            string KeyAt(int index)
+            {
+                if (index == 0) return "home:row:Chips";
+                if (index > facetRows.Count) return "home:row:Tail";
+                var row = facetRows[index - 1];
+                return facetTag + ":sec:" + (index - 1) + ":" + HomeModuleLayout.SourceGroupKey(row.Group);
+            }
+
+            Element RowAt(int index)
+            {
+                string key = KeyAt(index);
+                bool chips = index == 0;
+                bool isTail = index > facetRows.Count;
+                var mounted = chips || isTail ? null : facetRows[index - 1];
+                float tailBottom = PlayerDock.Reserve + Spacing.XXL;
+                return Responsive.Of(width =>
+                {
+                    // `.Value` SUBSCRIBES this row to the feed, so a Ready->Ready swap (the 60 s poll, a re-read of the
+                    // same facet) re-describes the realized rows from the feed that is actually on the page instead of
+                    // leaving them frozen on the one their closure was born with. The row's ROLE stays as mounted: a
+                    // feed whose shape moved produces a different key above and remounts the row outright.
+                    var liveFeed = home.Value.Value;
+                    if (chips)
+                        // No hero band on a facet, so the greeting has nowhere else to go: a null landing is what makes
+                        // GreetingBlock render its standalone form above the chip strip.
+                        return HomeRowShell(GreetingBlock(name, liveFeed, home, svc, post, LiveHasHero(liveFeed), go), key,
+                            Spacing.XXL, HomeModuleLayout.Gap(width));
+                    if (isTail) return HomeRowShell(tail, key, 0f, tailBottom);
+                    var liveRows = FacetRows(liveFeed);
+                    var row = index - 1 < liveRows.Count ? liveRows[index - 1] : mounted!;
+                    return HomeRowShell(RenderFacetRow(liveFeed, row), key, 0f, HomeModuleLayout.Gap(width));
+                }, fallback: HomeModuleLayout.FallbackWidth) with { Key = key };
+            }
+
+            return Virtual.Measured(count, facetLayout, RowAt, KeyAt, overscan: 1) with
+            {
+                Grow = 1f,
+                Shrink = 1f,
+                MinHeight = 0f,
+                // Per facet: the previous facet's offset belongs to a document that no longer exists, so it is dropped
+                // rather than landing 3000px down this one.
+                ScrollKey = facetTag,
+                OnVisibleRange = (first, end) =>
+                {
+                    for (int i = Math.Max(1, first); i < end && i - 1 < facetRows.Count; i++)
+                        WarmGroup(facetRows[i - 1].Group);
+                },
+            };
+        }
+
+        // One server section, in the shape the projection decided its cards name. The dispatcher for the facet page,
+        // exactly as RenderRow is for the landing. `openSection` drills into the section the row came FROM, so a shelf's
+        // chevron opens the server's own "show all" page for it; the coalesced discover feed is the one row that is not
+        // a single section, so it has none.
+        Element RenderFacetRow(HomeFeed feed, HomeFacetRow row)
+        {
+            var g = row.Group;
+            void Navigate(string key) => NavUri(feed, key);
+            Action<HomeGroup>? open = row.Section is { } section ? _ => OpenSection(section) : null;
+            switch (row.Kind)
+            {
+                case HomeFacetRowKind.Hero:
+                {
+                    var card = g.Cards[0];
+                    return HomeModules.SourceModule(g,
+                        Responsive.Of(w => HomeCards.HeroBand(card, HeroEyebrow(card, feed), CardMeta(card),
+                            () => PlayCard(card), () => ShuffleCard(card), () => NavCard(card),
+                            () => lib?.ToggleSaved(card.Uri, card.Title),
+                            ChromeOf(card).Menu,
+                            w),
+                            fallback: 900f),
+                        open);
+                }
+                case HomeFacetRowKind.Recents:
+                    // Recents drills to its OWN page (the "recents" destination, backed by a different endpoint), never
+                    // through OpenSection - the same rule the landing's Recents row follows.
+                    return HomeModules.Recents(g, NavOf, PlayOf, KindLabel, ChromeOf, () => go("recents", null));
+                case HomeFacetRowKind.Podcasts:
+                    return HomeModules.Podcasts(g, NavOf, PlayOf, ChromeOf, open);
+                case HomeFacetRowKind.Audiobooks:
+                    return HomeModules.SplitSingle(HomeModules.Audiobooks(g, NavOf, ChromeOf, open));
+                case HomeFacetRowKind.Episodes:
+                    return HomeModules.SplitSingle(HomeModules.UpNext(g, NavOf, ChromeOf, open));
+                case HomeFacetRowKind.Feed:
+                    // The coalesced baseline run: one paged browse module wearing the app's own copy. It is not one
+                    // section, so there is nothing honest to drill into.
+                    return HomeModules.Feed(g, NavOf, PlayOf, ChromeOf, Navigate, null);
+                default:
+                    return HomeModules.Shelf(g, NavOf, PlayOf, ChromeOf, open);
+            }
         }
 
         // Which feed group (if any) a row renders. The Chips / Artists / Timeline / Tail rows are service- or
@@ -466,7 +599,7 @@ sealed class HomePage : Component
             switch (row)
             {
                 case HomeRow.Chips:
-                    return GreetingBlock(name, feed, home, svc, post, landing, go);
+                    return GreetingBlock(name, feed, home, svc, post, LiveHasHero(feed), go);
                 case HomeRow.Hero:
                     return landing.Get(HomeGroupKind.Hero) is { Group: { } h }
                         ? HomeModules.SourceModule(h,
@@ -610,7 +743,7 @@ sealed class HomePage : Component
             Direction = 1,
             Gap = Spacing.XL,
             Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, PlayerDock.Reserve + Spacing.XXL),
-            Children = [ GreetingBlock(name, null, home, svc, post, null, go), state, tail ],
+            Children = [ GreetingBlock(name, null, home, svc, post, false, go), state, tail ],
         }) with { Grow = 1f, ScrollKey = "home" };   // empty/failed states are facet-agnostic - one offset for all of them
 
         // Swap one viewport for another. There is deliberately no outer ScrollView around VirtualHome: doing that would
@@ -625,7 +758,8 @@ sealed class HomePage : Component
             isEmpty: feed => feed.Groups.Count == 0,
             onEmpty: () => StateHome(EmptyState.Default()),
             onFailed: () => StateHome(ErrorState.Build(home.Error)),
-            content: VirtualHome);
+            // A facet renders the server's ORDERED SECTIONS, not the authored landing rhythm — see VirtualFacet.
+            content: feed => feed.Facet.Length == 0 ? VirtualHome(feed) : VirtualFacet(feed));
     }
 
     // The feed epoch this page's rendered feed was read at. Instance state, like _facetCts: two mounted HomePages
@@ -695,10 +829,10 @@ sealed class HomePage : Component
     // blocks before any content wastes its best row. With no hero on the page there is nowhere else for it to go, so it
     // comes back rather than being lost.
     Element GreetingBlock(string? name, HomeFeed? feed, Loadable<HomeFeed> home, Services? svc, Action<Action> post,
-        HomeLanding? landing, Action<string, string?>? go)
+        bool hasHero, Action<string, string?>? go)
     {
-        // A hidden Hero must not steal the greeting — HasHero reads the PROJECTED landing, not the raw feed.
-        bool hasHero = landing?.Get(HomeGroupKind.Hero) is not null;
+        // `hasHero` is the caller's answer for the page it is composing (LiveHasHero): a hidden Hero must not steal
+        // the greeting, and a facet page decides its hero by its own rule, not the landing's.
         Element? hero = hasHero ? null : GreetingHero(name, feed?.Greeting);
 
         Element? chipRow = null;
@@ -848,6 +982,42 @@ sealed class HomePage : Component
         _landingLayout = layout;
         _landingLayoutVersion = version;
         return landing;
+    }
+
+    // ── the facet projection, memoized on the feed (the Landing(feed) contract, verbatim) ──────────────────────────
+    // Rows() walks every section and every card and is a PURE function of (feed, titles), and EVERY realized facet row
+    // re-projects inside its own Responsive closure so it re-describes from the live feed. Without the memo that is one
+    // full walk per realized row per render — a hover fade would rebuild the projection a dozen times over a feed that
+    // had not moved. The feed is an immutable snapshot, so a REFERENCE hit is a content hit; titles compare by value
+    // because Loc is live and a language change must re-title the coalesced discover feed.
+    HomeFeed? _facetFeed;
+    HomeModuleTitles? _facetTitles;
+    IReadOnlyList<HomeFacetRow>? _facetRows;
+
+    IReadOnlyList<HomeFacetRow> FacetRows(HomeFeed feed)
+    {
+        var titles = HomeModuleCopy.Titles;
+        if (_facetRows is { } cached && ReferenceEquals(_facetFeed, feed) && titles.Equals(_facetTitles))
+            return cached;
+        var rows = HomeFacetProjection.Rows(feed, titles);
+        _facetFeed = feed;
+        _facetTitles = titles;
+        _facetRows = rows;
+        return rows;
+    }
+
+    /// <summary>Whether the page composed for <paramref name="feed"/> opens with a hero band — which is what decides
+    /// whether the chip row carries the standalone greeting. ONE answer for both lists: the chip row is the element
+    /// that survives an All<->facet swap under a shared key, so whichever list's closure happens to be live must reach
+    /// the same verdict for the same feed. The landing asks its projection (a hidden Hero is a hidden Hero); a facet
+    /// asks its own rows, where a daylist inside a five-card "Jump back in" section is a shelf, not a hero.</summary>
+    bool LiveHasHero(HomeFeed feed)
+    {
+        if (feed.Facet.Length == 0) return Landing(feed).Get(HomeGroupKind.Hero) is not null;
+        var rows = FacetRows(feed);
+        for (int i = 0; i < rows.Count; i++)
+            if (rows[i].Kind == HomeFacetRowKind.Hero) return true;
+        return false;
     }
 
     // ── greeting hero (the no-hero fallback only) ────────────────────────────────────────────────────
@@ -1118,6 +1288,153 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
     public int IndexAt(float offset, float crossSize)
     {
         Ensure(_rows.Length, crossSize);
+        return _extents.IndexAt(offset);
+    }
+}
+
+/// <summary>Variable-height FACET stack: the chip/greeting block, one row per SERVER SECTION in server order, then the
+/// tail. The same mechanics as <see cref="HomeFeedVirtualLayout"/> - a Fenwick extent table seeded from per-row
+/// estimates and corrected by the engine's measured pass - over a different row table.
+///
+/// <para>Two objects rather than one on purpose: a facet and the landing are different documents, and a single table
+/// asked to describe both would reseed on every swap and discard every measured correction belonging to both.</para>
+///
+/// <para>The fingerprint is (kind, card count, titled) per row - nothing else about a section can change its height.
+/// <see cref="Estimate"/> has exactly three index cases (chips at 0, the tail past the rows, a section between) and no
+/// other arithmetic.</para></summary>
+sealed class HomeFacetVirtualLayout : IMeasuredVirtualLayout
+{
+    readonly record struct RowMetric(HomeFacetRowKind Kind, int Count, bool Titled);
+
+    static readonly RowMetric[] NoRows = [];
+    RowMetric[] _rows = NoRows;
+
+    readonly ExtentTable _extents = new(0, 1f);
+    int _shapeVersion;
+    int _seededVersion = -1;
+    float _seededCross = float.NaN;
+
+    /// <summary>The section rows plus the two chrome rows the page always has: the chip block at 0 and the tail last.</summary>
+    public int ItemCount => _rows.Length + 2;
+
+    /// <summary>Mirror the projected rows in. Bumps <see cref="_shapeVersion"/> only on an ACTUAL shape change, so a
+    /// steady re-render (a hover fade, a landed cover grading) costs nothing here and never reseeds mid-scroll.</summary>
+    public void Configure(IReadOnlyList<HomeFacetRow> rows)
+    {
+        if (SameShape(_rows, rows)) return;
+        var next = new RowMetric[rows.Count];
+        for (int i = 0; i < next.Length; i++) next[i] = Metric(rows[i]);
+        _rows = next;
+        _shapeVersion++;
+    }
+
+    static RowMetric Metric(HomeFacetRow row)
+        => new(row.Kind, row.Group.Cards.Count, row.Group.Title is { Length: > 0 });
+
+    static bool SameShape(RowMetric[] a, IReadOnlyList<HomeFacetRow> b)
+    {
+        if (a.Length != b.Count) return false;
+        for (int i = 0; i < a.Length; i++)
+            if (a[i] != Metric(b[i])) return false;
+        return true;
+    }
+
+    void Ensure(int itemCount, float crossSize)
+    {
+        // Measure can ask for an estimate before arrange publishes a finite cross size. Reuse the last real width when
+        // available so a 0-width prepass cannot reset a corrected table every frame.
+        float cross = crossSize > 1f ? crossSize : !float.IsNaN(_seededCross) ? _seededCross : 1100f;
+        if (_extents.Count == itemCount && _seededVersion == _shapeVersion
+            && !float.IsNaN(_seededCross) && MathF.Abs(_seededCross - cross) <= 0.5f)
+            return;
+
+        // Trace the reseed trigger (code 111, the facet twin of the landing's 110): f0=incoming cross, f1=previously
+        // seeded cross, i1=itemCount vs i2=seeded count - a reseed mid-scroll wipes every measured correction.
+        if (FluentGpu.Foundation.ScrollTrace.CompiledIn && FluentGpu.Foundation.ScrollTrace.Enabled)
+            FluentGpu.Foundation.ScrollTrace.Note(111, cross, itemCount, (_extents.Count << 8) | (_seededVersion == _shapeVersion ? 1 : 0), _seededCross);
+
+        _extents.Reset(itemCount, 240f);
+        for (int i = 0; i < itemCount; i++) _extents.SetExtent(i, Estimate(i, cross));
+        _seededCross = cross;
+        _seededVersion = _shapeVersion;
+    }
+
+    // A module head is Subtitle 20/28 plus the module head gap - the same constant the landing estimator uses.
+    const float Head = 28f + HomeModuleLayout.HeadGap;
+
+    float Estimate(int index, float cross)
+    {
+        // The SAME arithmetic HomeRowShell performs: cap the row at the app page measure, then take the page gutter off
+        // both sides. If these two ever disagree the estimator sizes a module for a width the renderer never uses, and
+        // the measured list re-pins its scroll anchor mid-scroll.
+        float available = MathF.Max(1f, MathF.Min(cross, WaveeSize.PageMaxW) - 2f * Spacing.PageWide);
+        float gap = HomeModuleLayout.Gap(available);
+
+        // Row 0 is the greeting block + the chip strip. A facet page never has a hero band, so the greeting ALWAYS
+        // shows: the landing's "hero ? 0 : 84" conditional has exactly one answer here.
+        if (index == 0) return 84f + 40f + Spacing.XXL + gap;
+
+        int row = index - 1;
+        if ((uint)row >= (uint)_rows.Length)
+            return Wavee.Features.Concerts.ConcertLayout.WideEditorial(available).Height * 2f
+                   + Spacing.XL + PlayerDock.Reserve + Spacing.XXL;
+
+        var metric = _rows[row];
+        if (metric.Count == 0) return 0f;
+        return metric.Kind switch
+        {
+            // Through ContentExtent, not a second literal: the hero band's authored text/action allocation and the
+            // estimator's prediction stay the same arithmetic.
+            HomeFacetRowKind.Hero => (metric.Titled ? Head : 0f)
+                + HomeModuleLayout.ContentExtent(HomeGroupKind.Hero, available, 1) + gap,
+            // Every PagedShelf owns its own header, chevrons and lift clearance, so ShelfExtent IS the whole row.
+            HomeFacetRowKind.Podcasts or HomeFacetRowKind.Recents or HomeFacetRowKind.Feed or HomeFacetRowKind.Shelf
+                => HomeModuleLayout.ShelfExtent(available) + gap,
+            // The two tabular stacks wear a separate module head above their content (when the section is titled).
+            HomeFacetRowKind.Audiobooks => (metric.Titled ? Head : 0f)
+                + HomeModuleLayout.ContentExtent(HomeGroupKind.RatedShelf, available, metric.Count) + gap,
+            HomeFacetRowKind.Episodes => (metric.Titled ? Head : 0f)
+                + HomeModuleLayout.ContentExtent(HomeGroupKind.QueueList, available, metric.Count) + gap,
+            _ => HomeModuleLayout.ShelfExtent(available) + gap,
+        };
+    }
+
+    public float ContentExtent(int itemCount, float crossSize)
+    {
+        Ensure(itemCount, crossSize);
+        return (float)_extents.Total;
+    }
+
+    public void Window(int itemCount, float crossSize, float viewportExtent, float scrollOffset, int overscan,
+        out int first, out int last)
+    {
+        Ensure(itemCount, crossSize);
+        first = Math.Max(0, _extents.IndexAt(scrollOffset) - overscan);
+        last = Math.Min(itemCount, _extents.IndexAt(scrollOffset + viewportExtent) + 1 + overscan);
+        if (last < first) last = first;
+    }
+
+    public RectF ItemRect(int index, float crossSize)
+    {
+        Ensure(ItemCount, crossSize);
+        return new RectF(0f, _extents.OffsetOf(index), crossSize, _extents.ExtentAt(index));
+    }
+
+    public void SetMeasured(int index, float mainExtent, float crossSize)
+    {
+        Ensure(ItemCount, crossSize);
+        _extents.SetExtent(index, mainExtent);
+    }
+
+    public float OffsetOf(int index, float crossSize)
+    {
+        Ensure(ItemCount, crossSize);
+        return _extents.OffsetOf(index);
+    }
+
+    public int IndexAt(float offset, float crossSize)
+    {
+        Ensure(ItemCount, crossSize);
         return _extents.IndexAt(offset);
     }
 }

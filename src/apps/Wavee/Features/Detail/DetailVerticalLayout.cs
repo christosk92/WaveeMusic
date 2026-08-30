@@ -3,7 +3,7 @@ using System;
 namespace Wavee.Features.Detail;
 
 /// <summary>Identity of one slot in the vertical playlist's measured viewport.</summary>
-internal enum DetailVerticalItemRole { Hero, Chrome, ExpandableTrack, Empty }
+internal enum DetailVerticalItemRole { Hero, Chrome, ExpandableTrack, Footer, Empty }
 
 /// <summary>Pure width→layout rules for the UNIFIED detail hero. BCL-only (no FluentGpu types) so it is source-included
 /// by Wavee.Tests.
@@ -228,17 +228,44 @@ public static class DetailVerticalLayout
     public static float StickyClipInset(float contentFilterExtent = 0f)
         => CompactIdentityHeight + ChromeExtent(contentFilterExtent);
 
-    /// <summary>The first two slots are persistent chrome; every live suffix slot is an expandable track container.
-    /// Keeping this decision pure prevents the vertical playlist from accidentally bypassing the drawer host.</summary>
-    internal static DetailVerticalItemRole ItemRole(int itemIndex, int visibleTracks)
-        => itemIndex switch
-        {
-            0 => DetailVerticalItemRole.Hero,
-            1 => DetailVerticalItemRole.Chrome,
-            _ when itemIndex >= 2 && itemIndex - 2 < Math.Max(0, visibleTracks)
-                => DetailVerticalItemRole.ExpandableTrack,
-            _ => DetailVerticalItemRole.Empty,
-        };
+    // ── the vertical viewport's slot map ───────────────────────────────────────────────────────────────────────────
+    // Two persistent prefix slots (the hero, then the pinned chrome), then the recycled row band, then — in the HERO
+    // system only — the metadata-facts FOOTER. The footer is a slot down here rather than a block in the hero's
+    // identity column because that column is the page's OPENING: three stacked analytics cards under the description
+    // push the first track below the fold, so the page opens on charts instead of on the songs it is about. The
+    // two-column/rail arm has no such problem (there the cards sit in a column BESIDE the tracks, never above them)
+    // and is deliberately untouched — see DetailRail's `rail:likedfacts` row.
+    /// <summary>The persistent prefix slots every vertical viewport leads with (hero, pinned chrome). Track rows — and
+    /// the facts footer — recycle beneath them; <c>TrackList.VerticalTrackStart</c> is this number.</summary>
+    public const int PrefixCount = 2;
+
+    /// <summary>Row slots the viewport holds open. An empty / still-loading list keeps ONE (the placeholder,
+    /// <see cref="DetailVerticalItemRole.Empty"/>), so the footer's index never depends on whether the list loaded.</summary>
+    internal static int RowSlots(int visibleTracks) => Math.Max(1, visibleTracks);
+
+    /// <summary>Where the facts footer lands: immediately after the last row slot — the very bottom of the page. Only
+    /// addressed when the caller says the footer exists.</summary>
+    internal static int FooterIndex(int visibleTracks) => PrefixCount + RowSlots(visibleTracks);
+
+    /// <summary>The viewport's item TOTAL — what the list's count signal carries. The footer is ONE extra item, not a
+    /// wrapper around the list, so it scrolls with the rows and costs nothing while it is off-screen.</summary>
+    internal static int ItemCount(int visibleTracks, bool hasFacts)
+        => PrefixCount + RowSlots(visibleTracks) + (hasFacts ? 1 : 0);
+
+    /// <summary>The first two slots are persistent chrome; every live suffix slot is an expandable track container,
+    /// except the optional trailing facts footer. Keeping this pure prevents the vertical playlist from accidentally
+    /// bypassing the drawer host — and keeps "where do the facts cards go" a testable answer rather than index
+    /// arithmetic buried inside a recycled slot.</summary>
+    internal static DetailVerticalItemRole ItemRole(int itemIndex, int visibleTracks, bool hasFacts = false)
+    {
+        if (itemIndex == 0) return DetailVerticalItemRole.Hero;
+        if (itemIndex == 1) return DetailVerticalItemRole.Chrome;
+        int display = itemIndex - PrefixCount;
+        if (display >= 0 && display < Math.Max(0, visibleTracks)) return DetailVerticalItemRole.ExpandableTrack;
+        // After the rows — and after the empty-list placeholder, which owns the single row slot an empty list keeps.
+        if (hasFacts && itemIndex == FooterIndex(visibleTracks)) return DetailVerticalItemRole.Footer;
+        return DetailVerticalItemRole.Empty;
+    }
 
     /// <summary>The expanded hero stays readable until its final 96 DIP, then yields continuously to the context band.</summary>
     public static float ExpandedFadeStart(float collapseDistance)

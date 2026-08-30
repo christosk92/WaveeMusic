@@ -233,8 +233,15 @@ static class DetailVerticalHero
                 u => { if (RichText.RouteForUri(u) is { } k) h.Go(k, null); });
         Add("hero-description", description, late: true);
 
-        if (LikedFacts.Has(m, cfg.Badges))
-            Add("hero-facts", LikedFacts.Panel(m, h, outerPadding: false), late: true);
+        // ── WHERE THE FACTS CARDS WENT ─────────────────────────────────────────────────────────────────────────────
+        // The metadata bento (this week's adds + the 12-week strip, the tempo curve, the top-artists ranking) used to
+        // be the last block of THIS column, straight under the description. It is the same panel and the same cards —
+        // it just is not composed here any more. The hero is the page's OPENING, and three stacked analytics cards in
+        // it push the first track below the fold on every window the hero system runs at: the page then opens on
+        // charts about the songs rather than on the songs. So in the hero system the panel is the page's FOOTER
+        // instead — one virtual-list slot after the last row (TrackList.VerticalFactsFooter /
+        // DetailVerticalLayout.ItemRole's Footer). The two-column/rail arm still renders it in the rail, unchanged and
+        // for the same reason: there the cards sit BESIDE the tracks, so they cost the tracks no vertical space.
 
         // AlignItems = Stretch (plus an explicit width in stacked flow) is load-bearing, not tidiness: the action row
         // is a WRAPPING flex row, and a wrap needs a DEFINITE width to wrap against. Left to its intrinsic size it
@@ -250,9 +257,10 @@ static class DetailVerticalHero
         // Stacked ↔ row is the SAME two children in the same order — only the axis changes, so the reflow animates as
         // one gesture instead of tearing the subtree down. Cross alignment is Start in BOTH arms: the row arm used to
         // bottom-align the pair (cover edge on the action row's baseline), which reads well only while the identity
-        // column is about as tall as the art — and it is not: it carries the description and the facts card panel, so
-        // on a wide hero page the 240-DIP cover sank hundreds of DIP below the title to the band's bottom-left corner
-        // and read as a detached, misplaced square. The cover belongs beside the title.
+        // column is about as tall as the art — and it is not: it carries the description (and, until the facts bento
+        // moved to the page footer, three analytics cards under it), so on a wide hero page the 240-DIP cover sank
+        // hundreds of DIP below the title to the band's bottom-left corner and read as a detached, misplaced square.
+        // The cover belongs beside the title, and Start keeps it there whatever the column below grows to.
         Element hero = new BoxEl
         {
             Direction = rowFlow ? (byte)0 : (byte)1,

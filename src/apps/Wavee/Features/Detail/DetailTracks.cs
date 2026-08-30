@@ -47,7 +47,7 @@ sealed class TrackList : Component
     const float AlbumStar = TrackLane.AlbumStar;
     const int VerticalHeroIndex = 0;
     const int VerticalChromeIndex = 1;
-    const int VerticalTrackStart = 2;
+    const int VerticalTrackStart = DetailVerticalLayout.PrefixCount;   // the slot map's owner is DetailVerticalLayout
     const int TrackOverscanItems = 8;
 
     // The detail model is a Loadable: the HEADER bits (HasVideo, columns) read reactively from its current value
@@ -104,7 +104,13 @@ sealed class TrackList : Component
     DetailTrackTableRules.TrackTableLanes _reliefLanes;
     float _reliefGap = TrackRow.ColGap, _reliefPad = TrackRow.PadX;
     readonly Signal<int> _visibleCount = new(0);
-    readonly Signal<int> _verticalItemCount = new(VerticalTrackStart + 1);
+    readonly Signal<int> _verticalItemCount = new(DetailVerticalLayout.ItemCount(0, hasFacts: false));
+    // Does the HERO system's page footer (the metadata-facts bento — this week's adds, the tempo curve, the top
+    // artists) exist for this page? A SIGNAL, not a plain field like _recsLive, because the answer flips when
+    // hydration lands — and the slot that renders the footer is a recycled one whose index does not necessarily
+    // change on that flip. Reading it inside the slot is the subscription that repaints it. Written from the same
+    // layout effect as the item count, never from Render.
+    readonly Signal<bool> _verticalFacts = new(false);
 
     // ── progressive reveal (cold shimmer→content swap) ───────────────────────────────────────────────────────────────
     // Measured: navigating to a detail/playlist page, the whole visible track band swapped shimmer→real in ONE ~80ms UI
@@ -869,12 +875,19 @@ sealed class TrackList : Component
         _recsLive = recsLive;                            // published to the bound slots (plain field: never write a signal from Render)
         int recCount = recsLive ? _recs.Value.Count : 0;   // subscribe (only when LIVE) → the list re-sizes when a batch lands / an add removes one
         int listTotal = recsLive ? visible + 1 + recCount : visible;   // +1 = the always-present "Recommended" header row
+        // The HERO system's page FOOTER: the metadata-facts bento. Same panel the two-column arm puts in its rail, and
+        // the same honesty gate (LikedFacts.Has — a list with nothing true to say mounts no cards, so no footer); the
+        // only thing that changed is WHERE the hero system puts it. Not in the hero's identity column any more: that
+        // column is the page's opening, and three stacked analytics cards there push the first track below the fold.
+        // Has() is an allocation-free early-exit scan (it already runs on every rail render), so it is cheap here.
+        bool verticalFacts = _verticalHeader && !_cfg.HasTrailing && LikedFacts.Has(model, _cfg.Badges);
         UseLayoutEffect(() =>
         {
             _visibleCount.Value = visible;
             _listCount.Value = listTotal;
-            _verticalItemCount.Value = VerticalTrackStart + Math.Max(visible, 1);
-        }, (visible, listTotal));
+            _verticalFacts.Value = verticalFacts;
+            _verticalItemCount.Value = DetailVerticalLayout.ItemCount(visible, verticalFacts);
+        }, DepKey.From(HashCode.Combine(visible, listTotal, verticalFacts)));
 
         Element RealList()
         {
@@ -883,7 +896,7 @@ sealed class TrackList : Component
             // clip below the sticky chrome (never one reactive clip binding per realized row).
             if (_verticalHeader && !_cfg.HasTrailing)
                 return VerticalList(visible, set, tracks, labeled, tier, rowH, narrateRemount, staggerCold,
-                    verticalLayout, verticalStickyInset);
+                    verticalLayout, verticalStickyInset, verticalFacts);
             if (recsCapable)
             {
                 // A search/filter that matched nothing still shows the no-match message (recs browse the whole list, not
@@ -1391,12 +1404,22 @@ sealed class TrackList : Component
     // both the unbounded outer ScrollView regression and the former O(realized rows) ClipTopAtViewport bindings.
     Element VerticalList(int visible, ColumnSet set, TrackSize[] tracks, bool labeled, int tier,
                          float rowH, bool narrateRemount, bool staggerCold, MeasuredStackVirtualLayout layout,
-                         float stickyInset)
+                         float stickyInset, bool facts)
     {
-        int itemCount = VerticalTrackStart + Math.Max(visible, 1);
+        // The MOUNT seed only — CountSignal (_verticalItemCount) owns it from the first layout effect on. `facts` is
+        // passed rather than peeked off _verticalFacts so the seed and that signal cannot disagree for a frame.
+        int itemCount = DetailVerticalLayout.ItemCount(visible, facts);
         int DisplayOf(int itemIndex) => itemIndex - VerticalTrackStart;
-        (float dx, float dy)? FlipFrom(int itemIndex) => SeedFlip(DisplayOf(itemIndex));
-        (float from, float delayMs)? FadeFrom(int itemIndex) => SeedFade(DisplayOf(itemIndex));
+        // ROW slots only. §4.6's seeds are keyed by DISPLAY index, and the non-row slots below the prefix — the
+        // empty-list placeholder and the facts footer — sit at display indices ≥ the live row count, where a stale
+        // seed from a just-committed reorder would otherwise make the footer rise/fade like a track that moved.
+        bool IsRowSlot(int itemIndex)
+        {
+            int display = DisplayOf(itemIndex);
+            return display >= 0 && display < _rowItems!.Count.Peek();
+        }
+        (float dx, float dy)? FlipFrom(int itemIndex) => IsRowSlot(itemIndex) ? SeedFlip(DisplayOf(itemIndex)) : null;
+        (float from, float delayMs)? FadeFrom(int itemIndex) => IsRowSlot(itemIndex) ? SeedFade(DisplayOf(itemIndex)) : null;
 
         return ItemsView.CreateBound(
             itemCount,
@@ -1661,6 +1684,41 @@ sealed class TrackList : Component
         {
             Key = "vitem:hero", Direction = 1,
             Children = [header],
+        };
+    }
+
+    // ── the page FOOTER (hero system only) ─────────────────────────────────────────────────────────────────────────
+    // The metadata-facts bento — "This week" + the 12-week strip, the tempo curve, the top-artists ranking — as the
+    // LAST slot of the virtual viewport, i.e. under the last track. Identical panel, identical cards, identical
+    // honesty gate: the ONLY thing this method changes about them is the address. It is here because the hero's
+    // identity column is the page's opening and three stacked analytics cards there push the tracks below the fold;
+    // the two-column arm keeps them in the rail (DetailRail `rail:likedfacts`), where they cost the tracks nothing.
+    //
+    // WHY A LIST SLOT and not a box wrapped around the list: this viewport is the page's only scroller (Grow=1), so
+    // anything composed as a SIBLING of it would dock to the window bottom instead of following the rows. As an item
+    // it scrolls with them, realizes only when it is scrolled to, and stays outside the insertion Range (which is
+    // (TrackStart, View().Length)) so a drag can never aim a drop at it.
+    Element VerticalFactsFooter(int tier)
+    {
+        // Subscribe through the SAME snapshot the rows read: hydration hands the page a new track list without
+        // necessarily changing the row COUNT, and this slot's index would not move for it, so without this read the
+        // footer would keep the props it mounted with. The snapshot is a record struct — equality-gated, so an
+        // unchanged model costs no re-render. (LikedFactsPanel coalesces an equal list on top of that.)
+        var snap = _rowsSnapshot!.Value;
+        // Aligned to the TRACK ROWS, not to the hero: the footer's neighbour above is the last row, and the eye reads
+        // the shared left edge. Same padX the pinned chrome/column header uses (TrackList.Chrome).
+        float padX = TrackRow.PadXFor(tier);
+        return new BoxEl
+        {
+            Key = "vitem:facts",
+            Direction = 1,
+            // The page's own rhythm (Spacing.XXL == the hero's HeroPad grid): a full block of air off the last row so
+            // the cards read as a separate closing section, and the same again below so the list does not end flush
+            // against the docked player bar. No PlayerDock.Reserve here — the shell's content region is a flex
+            // SIBLING of the bar and is clipped to its top edge (WaveeShell), so the dock never overlaps this page and
+            // a 72-DIP reserve would only be dead space at the end of every playlist.
+            Padding = new Edges4(padX, Spacing.XXL, padX, Spacing.XXL),
+            Children = [LikedFacts.Panel(snap.Model, snap.Handlers, outerPadding: false)],
         };
     }
 
@@ -2720,7 +2778,7 @@ sealed class TrackList : Component
             bool labeled = tier <= 1;
             Element child;
             int visible = _o._rowItems!.Count.Value;
-            switch (DetailVerticalLayout.ItemRole(i, visible))
+            switch (DetailVerticalLayout.ItemRole(i, visible, _o._verticalFacts.Value))
             {
                 case DetailVerticalItemRole.Hero:
                     child = _o.VerticalHero();
@@ -2731,6 +2789,11 @@ sealed class TrackList : Component
                         _o._checksVisible?.Value ?? false, contentFilterBar: filterBar,
                         lensHeader: _o.LensHeader()) with { Key = "vitem:chrome" };
                     break;
+                case DetailVerticalItemRole.Footer:
+                    // The metadata cards, once, at the very bottom of the page. Hero system only — the rail arm never
+                    // reaches this switch (it is not a vertical viewport at all).
+                    child = _o.VerticalFactsFooter(tier);
+                    break;
                 case DetailVerticalItemRole.ExpandableTrack:
                     // The vertical viewport has two persistent prefix slots, but its track suffix must use the SAME
                     // expandable slot as the flat/recommendations lists. Building BoundRow directly made the chevron
@@ -2739,17 +2802,23 @@ sealed class TrackList : Component
                         with { Key = "vitem:row" };
                     break;
                 default:
-                    child = new BoxEl
-                    {
-                        Key = "vitem:empty",
-                        MinHeight = 160f,
-                        Direction = 1,
-                        Children =
-                        [
-                            _o.ListPlaceholder(PlaylistListState.For(_o._model.MembershipLoaded, _o._tracks.Count, visible),
-                                               shape.Set, shape.Tracks, _rowH),
-                        ],
-                    };
+                    // The empty/loading PLACEHOLDER owns the single row slot an empty list keeps — and only that slot.
+                    // Any other unaddressed index is transient: the footer's slot on the frame before _verticalFacts
+                    // publishes sits here, and a shimmer band flashing under the last row of a short playlist would be
+                    // the whole cost of the move. Render nothing there instead.
+                    child = i == DetailVerticalLayout.PrefixCount
+                        ? new BoxEl
+                        {
+                            Key = "vitem:empty",
+                            MinHeight = 160f,
+                            Direction = 1,
+                            Children =
+                            [
+                                _o.ListPlaceholder(PlaylistListState.For(_o._model.MembershipLoaded, _o._tracks.Count, visible),
+                                                   shape.Set, shape.Tracks, _rowH),
+                            ],
+                        }
+                        : new BoxEl { Key = "vitem:blank" };
                     break;
             }
 

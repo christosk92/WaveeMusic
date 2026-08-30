@@ -665,7 +665,7 @@ public static class ConcertUi
                 ],
             },
             new TextEl(valueText) { Size = s.TextSize, Weight = 600, Color = s.ValueInk, MaxLines = 1 },
-            Icon(Icons.ChevronDown, s.ChevronSize, s.ChevronInk) with { Shrink = 0f },
+            Icon(s.TrailingGlyph, s.TrailingSize, s.TrailingInk) with { Shrink = 0f },
         ],
     };
 
@@ -903,10 +903,10 @@ public sealed class ConcertLocationPickerPanel : Component
 /// into the pill.</para></summary>
 public sealed record SegmentedPillStyle(
     float Height, float SegmentHeight, Edges4 Padding, Edges4 SegmentPadding, float Gap, float SegmentGap,
-    float TextSize, float CheckSize, float ChevronSize,
+    float TextSize, float CheckSize, float TrailingSize,
     ColorF Fill, ColorF HoverFill, ColorF PressedFill,
     ColorF SegmentFill, ShadowSpec SegmentShadow, ColorF SegmentInk,
-    ColorF ValueInk, ColorF ChevronInk,
+    ColorF ValueInk, ColorF TrailingInk, string TrailingGlyph,
     float BorderWidth = 0f, ColorF BorderColor = default)
 {
     /// <summary>The Concerts register: a 32-DIP accent capsule carrying an OPAQUE raised segment.
@@ -916,10 +916,12 @@ public sealed record SegmentedPillStyle(
     /// accent-on-neutral ink for it.</para></summary>
     public static SegmentedPillStyle Accent => new(
         Height: 32f, SegmentHeight: 26f, Padding: new Edges4(3f, 3f, 12f, 3f), SegmentPadding: new Edges4(11f, 0f, 11f, 0f),
-        Gap: 8f, SegmentGap: 5f, TextSize: 14f, CheckSize: 12f, ChevronSize: 10f,
+        Gap: 8f, SegmentGap: 5f, TextSize: 14f, CheckSize: 12f, TrailingSize: 10f,
         Fill: Tok.AccentDefault, HoverFill: Tok.AccentSecondary, PressedFill: Tok.AccentTertiary,
         SegmentFill: Tok.FillControlSolid, SegmentShadow: Elevation.Flyout, SegmentInk: Tok.AccentTextPrimary,
-        ValueInk: Tok.TextOnAccentPrimary, ChevronInk: Tok.TextOnAccentPrimary);
+        ValueInk: Tok.TextOnAccentPrimary, TrailingInk: Tok.TextOnAccentPrimary,
+        // The chevron REOPENS the when-flyout: the pill's value is a choice among many, and the glyph says so.
+        TrailingGlyph: Icons.ChevronDown);
 
     /// <summary>The Home tab-strip register: a neutral bordered 28-DIP pill (<see cref="ConcertUi.RestDatePill"/>'s
     /// surface) whose SEGMENT is the accent — the tab's underline already says "selected", so the outer capsule must
@@ -927,9 +929,12 @@ public sealed record SegmentedPillStyle(
     /// live accent currently is.</summary>
     public static SegmentedPillStyle Strip => new(
         Height: 28f, SegmentHeight: 22f, Padding: new Edges4(3f, 3f, 10f, 3f), SegmentPadding: new Edges4(9f, 0f, 9f, 0f),
-        Gap: 6f, SegmentGap: 4f, TextSize: 14f, CheckSize: 11f, ChevronSize: 9f,
+        Gap: 6f, SegmentGap: 4f, TextSize: 14f, CheckSize: 11f, TrailingSize: 9f,
         Fill: Tok.FillControlDefault, HoverFill: Tok.FillControlSecondary, PressedFill: Tok.FillControlTertiary,
         SegmentFill: Tok.AccentDefault, SegmentShadow: Elevation.Card, SegmentInk: Tok.OnAccent,
-        ValueInk: Tok.TextPrimary, ChevronInk: Tok.TextSecondary,
+        ValueInk: Tok.TextPrimary, TrailingInk: Tok.TextSecondary,
+        // An X, not a chevron: tapping the Home pill CLEARS the sub-facet (one step back to the parent tab), it does
+        // not open a chooser — a chevron would promise a menu that never comes.
+        TrailingGlyph: Icons.Cancel,
         BorderWidth: 1f, BorderColor: Tok.StrokeControlDefault);
 }

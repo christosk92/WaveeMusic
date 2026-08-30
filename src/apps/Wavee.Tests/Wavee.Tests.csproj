@@ -178,6 +178,10 @@
          fused into its parent under the tab's key — is pure (System + Wavee.Core.HomeChip only), so HomeFacetStripTests
          drives the real sequencing without a page, a service or a signal. -->
     <Compile Include="..\Wavee\Features\Home\HomeFacetStrip.cs" />
+    <!-- The FACETED home page's rows: walk HomeFeed.Sections in server order, keep every titled section as its own
+         module, coalesce only a run of consecutive baseline sections. Pure (System + Wavee.Core) - the landing
+         projection's sibling - so HomeFacetProjectionTests drives the real composition without a page or a window. -->
+    <Compile Include="..\Wavee\Features\Home\HomeFacetProjection.cs" />
     <!-- Home layout document + store (System.Text.Json + Wavee.Core.Home only) — HomeLayoutTests. -->
     <Compile Include="..\Wavee\Features\Home\Persistence\HomeLayoutDoc.cs" />
     <Compile Include="..\Wavee\Features\Home\Persistence\HomeLayoutStore.cs" />

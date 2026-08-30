@@ -336,6 +336,29 @@ static class HomeModules
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
             keyOf: i => HomeModuleLayout.SourceCardKey(g, g.Cards[i]));
 
+    /// <summary>The facet page's "any server section" shelf: ONE paged shelf for a section whose cards name no single
+    /// module — mixed playlists and albums, an artist row, a section type this build has never seen. A facet renders
+    /// the server's own ordered list of sections, so it needs a shape that can wear any section's title honestly rather
+    /// than one that forces the cards into a per-kind module (which is what flattened four separately titled show
+    /// shelves into one "Podcasts" on the landing).
+    /// <para>Mixed entities is the whole point, so ARTIST cards stay circular the way the recents rail's do: the shape
+    /// names the entity type, and a square artist beside a square album says nothing.</para></summary>
+    public static Element Shelf(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
+                                Func<HomeCard, HomeCardChrome> chrome, Action<HomeGroup>? openSection = null)
+        => PagedShelf.Create(g.Cards.Count,
+            (i, cardW) =>
+            {
+                var c = g.Cards[i];
+                var ch = chrome(c);
+                return MediaCard.Shelf(c.Image, c.Title, c.Subtitle ?? "", c.Uri, nav(c), play(c), cardW,
+                    circular: c.Kind == HomeCardKind.Artist, menu: ch.Menu, drag: ch.Drag);
+            },
+            cardHeight: HomeModuleLayout.ShelfCardHeight,
+            header: ModuleHeader(g, g.Subtitle, null, openSection),
+            minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
+            gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
+            keyOf: i => HomeModuleLayout.SourceCardKey(g, g.Cards[i]));
+
     /// <summary>THE Fold deck. Home's section directory, Home's Charts row and Browse's Charts band are the SAME one row —
     /// one factory, one card height, one key shape. rows:1, no tile chevron; pager chevrons stay on PagedShelf.
     /// <paramref name="eyebrowOf"/> is per-tile (Charts: charts/weekly/daily); <paramref name="tileEyebrow"/> is the
