@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.3] - unreleased
+
+### Fixed
+
+- Fixed rare text rendering glitches (a letter occasionally drawing incorrectly) that could persist on some screens.
+- A background page could still scroll while a dialog was open on top of it.
+
 ## [0.2.2] - 2026-08-31
 
 ### Added
