@@ -409,7 +409,11 @@ sealed class CoverShimmer : Component
         }
         // On the loading→settled edge `loading` flips, the dep changes, and the effect re-seeds a finite flat track
         // (loop:false) — the looping pulse is replaced in place and the loop-track count drops so the frame loop quiesces.
-        UseKeyframes(AnimChannel.Opacity, loading ? Breathe : Flat, loading ? 1000f : 1f, loading, DepKey.From(loading));   // #9: DepKey, not a boxed object[]
+        // Weak/UMA GPUs (the Adreno DEVICE_HUNG amplifier): a per-frame opacity loop keeps the render loop hot so every
+        // decoded cover uploads at max cadence — hold the placeholder FLAT (loop:false) even while loading so the frame
+        // loop idles between decodes and uploads coalesce. Discrete GPUs keep the breathing shimmer.
+        bool shimmer = loading && !GpuProfile.IsWeak;
+        UseKeyframes(AnimChannel.Opacity, shimmer ? Breathe : Flat, shimmer ? 1000f : 1f, shimmer, DepKey.From(shimmer));   // #9: DepKey, not a boxed object[]
         // Tint is paint-only: the Fill bind reads the per-key Watch signal, so a landed grading marks PaintDirty on
         // exactly this tile — never a CoverShimmer re-render, and never the global Epoch fan-out that used to re-render
         // every still-loading cover in the grid at once.

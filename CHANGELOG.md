@@ -8,6 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.2] - unreleased
+
+### Added
+
+- **Settings > About** — the graphics adapter in use is now shown, with a picker to select a different GPU (applies
+  live). Useful on hybrid-GPU laptops/desktops.
+- **App zoom** — Ctrl+Plus/Minus/0 (top row and numpad), Ctrl+mouse-wheel, and three new command-palette entries
+  (Zoom in/out/reset) scale the whole app UI.
+
+### Fixed
+
+- **Crash navigating to an artist page.** A placeholder layout shape built while an artist's real data is still
+  loading could overflow an internal index and crash the app.
+- **Stability and smoothness on integrated/weak GPUs** (e.g. hybrid laptops) — the app could intermittently freeze
+  (visuals stuck, audio still playing) during heavy navigation or long sessions on some integrated GPUs. Frame
+  pacing, texture upload, and memory-budget handling were hardened so a GPU hiccup now recovers automatically in
+  under a second instead of freezing the window; large album art / cover images that could get stuck as blank
+  placeholders on affected hardware now load correctly.
+- **Correct GPU selection** — on machines with more than one GPU (e.g. a laptop with both an integrated and a
+  dedicated graphics card), Wavee now reliably picks the faster one instead of sometimes landing on the weaker
+  integrated GPU.
+- Playlist/album pages now show a clear, in-place notice when Spotify reports content as deleted, revoked, or still
+  loading (minified), instead of silently failing to update.
+
 ## [0.2.1] - 2026-08-30
 
 ### Fixed

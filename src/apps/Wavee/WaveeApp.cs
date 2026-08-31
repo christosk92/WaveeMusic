@@ -67,6 +67,7 @@ sealed class WaveeApp : Component
         var wasAuthed = UseRef(false);   // have we EVER authenticated this run? (fake demo: logout → takeover, but no initial-launch flash)
         var governorTimer = UseRef<System.Threading.Timer?>(null);   // rooted here so the periodic MemoryGovernor poll isn't GC-collected (the app root never unmounts)
         var volumeSaveTimer = UseRef<System.Threading.Timer?>(null); // remember-volume: debounced persist of the slider value
+        var zoomSaveTimer = UseRef<System.Threading.Timer?>(null);   // app zoom: debounced persist of FluentApp.Zoom (chords/wheel never write the store themselves)
 
         // ── Simultaneous live login (device code + browser race) ─────────────────────────────────────────────────────
         // The takeover runs BOTH methods at once: RestartCode polls the device code (the two-pane's QR + pairing code), and
@@ -181,6 +182,17 @@ sealed class WaveeApp : Component
                 float v = bridge.Volume.Peek();
                 if (Math.Abs(v - _services.Settings.Get(WaveeSettings.SavedVolume)) > 0.004f)
                     _services.Settings.Set(WaveeSettings.SavedVolume, v);
+            }, null, dueTime: 2_000, period: 2_000);
+
+            // Persist app-zoom changes the same way (the SavedVolume shape above): the chords, the Ctrl+wheel hook and
+            // the palette all mutate FluentApp.Zoom without touching the store — a held-down Ctrl+= or a wheel spin
+            // must not write the registry once per rung. No Remember gate: zoom has no opt-out, the setting IS the
+            // memory. A Settings-page pick writes immediately at the picker and lands here as an already-equal no-op.
+            zoomSaveTimer.Value ??= new System.Threading.Timer(_ =>
+            {
+                float z = FluentApp.Zoom;
+                if (MathF.Abs(z - _services.Settings.Get(WaveeSettings.ZoomLevel)) > 0.004f)
+                    _services.Settings.Set(WaveeSettings.ZoomLevel, z);
             }, null, dueTime: 2_000, period: 2_000);
 
             // Publish the app-side census contributor (entity store + detail caches) for the engine's FG_MEM_DIAG

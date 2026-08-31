@@ -1007,8 +1007,26 @@ sealed class LibraryDetailPane : Component
         return new BoxEl
         {
             Direction = 1, Grow = 1f, ClipToBounds = true,
-            Children = [Hero(m, go, navPreview), Actions(uri, m.Title, Play, Shuffle), body],
+            // DetailNoticeBar between the actions and the list: the SAME strip the full detail page mounts, reading the
+            // SAME model fact (DetailModel.Notice — for an album, "the rows below are still the minified gid-only
+            // view"). Zero-height when there is nothing to say; no thin-checking here — the model already knows.
+            Children = [Hero(m, go, navPreview), Actions(uri, m.Title, Play, Shuffle, _show ? null : ViewFullAlbum(m, uri, go, navPreview)), DetailNoticeBar.For(_model), body],
         };
+    }
+
+    // The pane's SECOND way out (the hero title is the first — see Hero below): a plain navigation to the full album
+    // page, where the trailing band's Full ask heals whatever the embedded list cannot (it never mounts trailing, so it
+    // never self-heals a minified album). PURE NAVIGATION — no data semantics, always offered for an album regardless
+    // of the model's state. Same click body as TitleLink: stash the resolved model as the nav preview so the
+    // destination paints its header from real data on frame one. Albums only (a show's full page adds nothing the pane
+    // lacks), and never a dead target: no ContextUri ⇒ no button (the file's rule — see TitleLink).
+    static Element? ViewFullAlbum(DetailModel m, string uri, Action<string, string?> go, NavPreviewStore? navPreview)
+    {
+        if (uri.Length == 0) return null;
+        string routeKey = "album:" + uri;
+        return Button.Create(Loc.Get(Strings.Library.ViewFullAlbum),
+            () => { navPreview?.Set(routeKey, m); go(routeKey, m.Title); },
+            ButtonAppearance.Subtle, ControlSize.Small);
     }
 
     // Minimal handlers for the embedded TrackList. They act on the pane's CURRENT model (read at call-time via _model, so
@@ -1054,9 +1072,10 @@ sealed class LibraryDetailPane : Component
             a => DetailNav.OpenAlbum(null, go, a), p => DetailNav.OpenPlaylist(null, go, p));
     }
 
-    // The pane is a COMPACT panel, so its header carries the pane's only way out: the title opens the album/show's real
-    // page and the artist line opens each billed artist. Both were dead text before — and the library search hits that
-    // used to navigate now select in place, so this header is where "take me to the actual page" lives.
+    // The pane is a COMPACT panel; its header carries the first of its two ways out (the action row's "View full album"
+    // button is the other): the title opens the album/show's real page and the artist line opens each billed artist.
+    // Both were dead text before — and the library search hits that used to navigate now select in place, so this
+    // header is where "take me to the actual page" lives.
     Element Hero(DetailModel m, Action<string, string?> go, NavPreviewStore? navPreview)
     {
         string uri = m.ContextUri ?? "";
@@ -1113,7 +1132,9 @@ sealed class LibraryDetailPane : Component
         }.Interactive(Interaction.Subtle);
     }
 
-    Element Actions(string uri, string? name, Action play, Action shuffle) => new BoxEl
+    // `viewFullAlbum` is built by Render (null for a show / an empty uri) so this row stays a dumb layout: the
+    // navigation wiring (routeKey, nav preview, go) lives beside TitleLink's, where the pane's other exit is defined.
+    Element Actions(string uri, string? name, Action play, Action shuffle, Element? viewFullAlbum) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
         Padding = new Edges4(Spacing.XL, 0f, Spacing.XL, Spacing.M),
@@ -1125,6 +1146,8 @@ sealed class LibraryDetailPane : Component
             WaveeCta.Play(Tok.AccentDefault, play),
             Fab(Icons.Shuffle, shuffle),
             _show ? Embed.Comp(() => new FollowButton(uri, name)) : Embed.Comp(() => new SaveButton(uri, name: name)),
+            // Small/subtle on purpose — a second accent CTA would compete with Play; this is a doorway, not an action.
+            .. (viewFullAlbum is null ? Array.Empty<Element>() : new Element[] { viewFullAlbum }),
         ],
     };
 

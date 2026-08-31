@@ -349,6 +349,26 @@ static class Program
         Theme.IconFont = WaveeFonts.Icons;
         WaveeLog.Instance.Info("app", "icon font: " + WaveeFonts.IconsPath + " exists=" + File.Exists(WaveeFonts.IconsPath));
 
+        // Preferred render GPU: honor the persisted About-tab pick BEFORE the first device init. LUIDs are not stable
+        // across reboots, so match the stored LUID first, then fall back to the adapter NAME (the durable identity);
+        // an unresolved preference (adapter unplugged, driver changed) sets 0 → the engine's auto HIGH_PERFORMANCE walk.
+        {
+            long prefLuid = settings.Get(WaveeSettings.PreferredGpuLuid);
+            string prefName = settings.Get(WaveeSettings.PreferredGpuName);
+            if (prefLuid != 0L || prefName.Length > 0)
+            {
+                long resolved = 0L;
+                foreach (var a in FluentGpu.Rhi.D3D12.GpuAdapterInfo.EnumerateAdapters())
+                {
+                    if (prefLuid != 0L && a.Luid == prefLuid) { resolved = a.Luid; break; }
+                    if (resolved == 0L && prefName.Length > 0 && string.Equals(a.Name, prefName, StringComparison.Ordinal)) resolved = a.Luid;
+                }
+                FluentGpu.Rhi.D3D12.GpuAdapterInfo.PreferredAdapterLuid = resolved;
+                WaveeLog.Instance.Info("app", "preferred GPU: name=" + (prefName.Length > 0 ? prefName : "—")
+                    + " storedLuid=" + prefLuid + " resolvedLuid=" + resolved + (resolved == 0L ? " (auto)" : ""));
+            }
+        }
+
         // ── Localization: load the bundled culture tables (assets/loc/*.json, copied next to the exe) before the first
         // frame, so every Loc.Get(Strings.*) resolves. en-US is the base + terminal fallback; more cultures drop in later.
         // Real (live Spotify) backend is the DEFAULT: the persistent Store-backed catalog + durable mutations, hydrated by
@@ -455,6 +475,11 @@ static class Program
                     Title = "Wavee Music", Width = winW, Height = winH,
                     MinWidth = 300, CustomFrame = true,
                     MicaAlt = !settings.Get(WaveeSettings.WindowMaterialBaseMica),
+                    // App-wide UI zoom, seeded BEFORE the first frame (the ThemeMode discipline: no startup jump from
+                    // 100% to the user's scale). Snap, not Clamp: a persisted value that drifted off the ladder (a
+                    // hand-edited registry value, an older ladder) re-enters the discrete step set here, so Ctrl+±
+                    // always steps between rungs instead of landing beside them.
+                    Zoom = ZoomLadder.Snap(settings.Get(WaveeSettings.ZoomLevel)),
                     // The engine's decoded-image disk cache lands under Wavee's own app data (next to logs/ and the
                     // library), not in the engine's default location — one folder for "everything Wavee wrote", which is
                     // what the Storage settings tab measures and what factory reset wipes.

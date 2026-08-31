@@ -222,6 +222,7 @@
       "deleted": "This playlist was deleted.",
       "accessRevoked": "You no longer have access to this playlist.",
       "createFailed": "This playlist couldn’t be created.",
+      "minifiedAlbum": "Minified album view — track details load on the full album page.",
       "goToLibrary": "Go to Library"
     },
     "badge": {
@@ -676,6 +677,7 @@
     "matchedAlbum": "Matched · album ‘{name}’",
     "matchedSong": "Matched · song ‘{name}’",
     "noMatch": "Nothing matches your filter",
+    "viewFullAlbum": "View full album",
     "selectAlbum": "Select an album to see its tracks",
     "selectArtist": "Select an artist to see their discography",
     "selectShow": "Select a show to see its episodes",
@@ -784,6 +786,14 @@
       "dutch": "Nederlands",
       "korean": "한국어"
     },
+    "gpu": {
+      "title": "Graphics",
+      "subtitle": "Which GPU Wavee renders on",
+      "label": "Graphics adapter",
+      "restartSub": "Switching applies immediately — the window may flicker briefly while the renderer restarts.",
+      "automatic": "Automatic (recommended)",
+      "inUse": "{name} (in use)"
+    },
     "layout": {
       "title": "Layout & density",
       "subtitle": "How track lists and detail pages are laid out"
@@ -800,6 +810,11 @@
       "effectsSub": "Marquee scrolling and artwork color washes",
       "effectsAllOn": "All on",
       "effectsDisabled": "{count} disabled",
+      "zoom": "Zoom",
+      "zoomSub": "Scale the whole app, like Ctrl + and Ctrl − in a browser",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "zoomReset": "Reset zoom",
       "theme": "Theme",
       "themeSub": "System follows the Windows setting live",
       "palette": "Palette",

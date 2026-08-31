@@ -123,7 +123,7 @@
     <Compile Include="..\Wavee\Features\Detail\LikedFactsRules.cs" />
     <!-- the PURE playlist-edit failure map (exception -> PlaylistMutationFailure -> loc key) and the playlist-page
          notice rule. Both are System + Wavee.Core + the generated Strings consts only — the engine-side raise
-         (PlaylistEditErrors / PlaylistNoticeBar) is deliberately NOT included. PlaylistEditErrorKindsTests +
+         (PlaylistEditErrors / DetailNoticeBar) is deliberately NOT included. PlaylistEditErrorKindsTests +
          PlaylistPageNoticeRulesTests drive the real decisions. -->
     <Compile Include="..\Wavee\Features\Detail\PlaylistEditErrorKinds.cs" />
     <Compile Include="..\Wavee\Features\Detail\PlaylistPageNoticeRules.cs" />

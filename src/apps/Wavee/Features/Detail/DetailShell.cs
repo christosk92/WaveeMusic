@@ -551,7 +551,7 @@ sealed class DetailShell : Component
                 Direction = 1, Grow = 1f, ClipToBounds = true,
                 // The notice strip sits between the header and the list — it is about the PAGE, so it must be read
                 // before the content it is qualifying, and it must not scroll away with the rows.
-                Children = [PlaylistNoticeBar.For(_model), verticalBody],
+                Children = [DetailNoticeBar.For(_model), verticalBody],
             };
             return new BoxEl
             {
@@ -618,7 +618,7 @@ sealed class DetailShell : Component
             // moved onto the row itself.
             Children =
             [
-                PlaylistNoticeBar.For(_model),
+                DetailNoticeBar.For(_model),
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.Center,

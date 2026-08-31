@@ -189,8 +189,20 @@ public sealed class WaveeLog : IWaveeLog
         try { DrainFileQueue(); } catch { }
     }
 
-    /// <summary>An action to plug into the engine Diag sink. Engine noise remains Debug-gated by MinLevel.</summary>
-    public static Action<string> DiagSink => static s => Instance.Log(WaveeLogLevel.Debug, "engine", s);
+    /// <summary>An action to plug into the engine Diag sink. GPU-forensics lines (adapter identity, the device-lost
+    /// dump, the fence-stall watchdog, present-time DWM glitches) route at <see cref="WaveeLogLevel.Warning"/> so they
+    /// clear the default Info file threshold and land in wavee-YYYYMMDD.log — the one channel the user can send after
+    /// an intermittent hang. Everything else (topology and other engine chatter) stays Debug-gated by MinLevel.</summary>
+    public static Action<string> DiagSink => static s => Instance.Log(GpuForensic(s) ? WaveeLogLevel.Warning : WaveeLogLevel.Debug, "engine", s);
+
+    /// <summary>True for the sink-routed engine lines that name a GPU stall, loss, recovery or adapter — the evidence
+    /// that must survive the Info file gate. Allocation-free ordinal prefix/substring checks on the incoming line.</summary>
+    static bool GpuForensic(string s) =>
+        s.StartsWith("[d3d12.adapter]", StringComparison.Ordinal)
+        || s.StartsWith("[device-lost]", StringComparison.Ordinal)
+        || s.StartsWith("[d3d12.stall]", StringComparison.Ordinal)
+        || s.StartsWith("[d3d12] ", StringComparison.Ordinal)
+        || s.Contains("dwmGlitches", StringComparison.Ordinal);
 
     void Write(WaveeLogLevel level, string category, string eventId, string message,
         string? operationId, long elapsedMs, WaveeLogField[]? fields, Exception? ex)

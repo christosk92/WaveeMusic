@@ -291,14 +291,19 @@ sealed class DetailPage : Component
         };
     }
 
-    /// <summary>Fold the live-refresh verdict into the model that is about to be published. Playlist-only: nothing else
-    /// can be deleted or revoked under the reader.
+    /// <summary>Fold the live-refresh verdict into the model that is about to be published. Playlists carry the
+    /// deleted/revoked/create verdicts; albums carry exactly one — <see cref="DetailNotice.MinifiedAlbum"/> — and
+    /// Liked/Show carry none (nothing can be deleted, revoked, or minified under the reader there).
     /// <para>The CONTENT is deliberately kept when the verdict is <see cref="DetailNotice.Deleted"/>: the reload that
     /// found nothing is exactly the moment the user is looking at the rows, and replacing them with an empty page (or a
     /// skeleton) both loses their place and says less than the notice strip does.</para></summary>
     static DetailModel WithNotice(DetailKind kind, Loadable<DetailModel> model, DetailModel fresh,
                                  LibraryBridge? lib, string? uri)
     {
+        // ALBUM: recomputed from the model's OWN rows on every projection — MapAlbum stamps the cold open, and this
+        // arm keeps the live pump honest (a store change re-projects through here, so the notice clears in place the
+        // frame the TrackV4 repair fills the names). No probe, no store read: the tracklist in hand is the fact.
+        if (kind == DetailKind.Album) return fresh with { Notice = PlaylistPageNoticeRules.ForAlbum(fresh.Tracks) };
         if (kind != DetailKind.Playlist) return fresh;
         var cur = model.Value.Peek();
         bool freshIsNull = string.IsNullOrEmpty(fresh.ContextUri);
@@ -694,6 +699,10 @@ sealed class DetailPage : Component
             OtherVersions: a.OtherVersions, CourtesyLine: a.CourtesyLine, ReleaseDatePrecision: a.ReleaseDatePrecision,
             DiscCount: a.DiscCount, ShareUrl: a.ShareUrl, IsPreRelease: a.IsPreRelease, PreReleaseEnd: a.PreReleaseEnd)
         {
+            // The album path's cold-open notice, the exact counterpart of MapPlaylist's Cold(...) stamp below: an album
+            // whose disc rows are still gid-only (a failed TrackV4 repair sealed it thin) must say so on the FIRST
+            // paint, not only after a store change routes the live pump through WithNotice.
+            Notice = PlaylistPageNoticeRules.ForAlbum(tracks),
             ReleaseInstant = PreReleaseDerivation.ReleaseInstant(a.ReleaseDate),
             UpcomingAt = PreReleaseDerivation.UpcomingAt(a, DateTimeOffset.UtcNow),
             // Only while genuinely ahead of us: a kind-138 link is cached for up to 30 days and must not turn the heart

@@ -124,4 +124,54 @@ public class PlaylistPageNoticeRulesTests
         Assert.Equal(DetailNotice.None, PlaylistPageNoticeRules.Cold(headerDeleted: false, Unknown, NoView, NotOwner));
         Assert.Equal(DetailNotice.Deleted, PlaylistPageNoticeRules.Cold(headerDeleted: true, Unknown, NoView, NotOwner));
     }
+
+    // ── The ALBUM path's one verdict: MinifiedAlbum (ForAlbum) ───────────────────────────────────────────────────────
+    // The bug it surfaces: AlbumV4's disc rows are gid-only, ProjectAlbum mints them with Title == "" / DurationMs == 0,
+    // and when the TrackV4 repair fails the album seals thin — play counts land separately, so the embedded library
+    // pane shows Plays beside blank names. The rule reads HydrationLevels.TrackUnnamed (the app's ONE notion of a thin
+    // row), never a restated emptiness predicate.
+
+    /// <summary>A named row in the shape the AlbumV4 projection eventually produces once repaired.</summary>
+    static Wavee.Core.Track Row(string title, long durationMs = 200_000, string artistName = "Artist")
+        => new("id", "spotify:track:id", title,
+            new[] { new Wavee.Core.ArtistRef("a", "spotify:artist:a", artistName) },
+            new Wavee.Core.AlbumRef("al", "spotify:album:al", "Album"), durationMs, IsExplicit: false, Image: null);
+
+    [Fact]
+    public void Album_AllRowsNamed_HasNoNotice()
+        => Assert.Equal(DetailNotice.None,
+            PlaylistPageNoticeRules.ForAlbum(new[] { Row("One"), Row("Two"), Row("Three") }));
+
+    /// <summary>One blank title anywhere in the list is enough: the user can SEE that row, and it is blank.</summary>
+    [Fact]
+    public void Album_OneUnnamedRow_IsMinified()
+        => Assert.Equal(DetailNotice.MinifiedAlbum,
+            PlaylistPageNoticeRules.ForAlbum(new[] { Row("One"), Row(""), Row("Three") }));
+
+    /// <summary>The uri-placeholder title every thin writer seeds (<c>HydrationLevels.TitleMissing</c>: title == uri)
+    /// is just as unnamed as an empty string — the two spellings of the same gid-only row.</summary>
+    [Fact]
+    public void Album_UriPlaceholderTitle_IsMinified()
+        => Assert.Equal(DetailNotice.MinifiedAlbum,
+            PlaylistPageNoticeRules.ForAlbum(new[] { Row("spotify:track:id") }));
+
+    /// <summary>An EMPTY tracklist is not "minified" — it is still loading (the list renders shimmer), and the notice
+    /// is about visible rows being blank, not about rows that have not arrived.</summary>
+    [Fact]
+    public void Album_EmptyTracklist_HasNoNotice()
+        => Assert.Equal(DetailNotice.None, PlaylistPageNoticeRules.ForAlbum(Array.Empty<Wavee.Core.Track>()));
+
+    /// <summary>Zero duration on a NAMED row is not "unnamed": TrackUnnamed asks for a title and named artists only
+    /// (a missing duration is an Identity-vs-Open fact the ladder handles) — so the strip stays down for it.</summary>
+    [Fact]
+    public void Album_ZeroDurationButNamed_HasNoNotice()
+        => Assert.Equal(DetailNotice.None,
+            PlaylistPageNoticeRules.ForAlbum(new[] { Row("One", durationMs: 0) }));
+
+    /// <summary>The other half of TrackUnnamed: a titled row whose artist refs point somewhere real but carry no name
+    /// is still thin — the repair is owed, and the strip says so.</summary>
+    [Fact]
+    public void Album_NamelessArtistRefs_IsMinified()
+        => Assert.Equal(DetailNotice.MinifiedAlbum,
+            PlaylistPageNoticeRules.ForAlbum(new[] { Row("One", artistName: "") }));
 }

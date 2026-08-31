@@ -625,6 +625,19 @@ sealed class WaveeShell : Component
             FluentApp.AppNavigationCommand += onNav;
             return () => FluentApp.AppNavigationCommand -= onNav;
         }, DepKey.Empty);
+        // Ctrl+mouse-wheel zoom (the browser gesture). The dispatcher invokes InputHooks.ZoomWheel for a Ctrl+wheel
+        // only AFTER element-level OnPointerWheel handlers declined it and BEFORE the viewport scrolls, and the Win32
+        // backend synthesizes pinch-zoom from Ctrl + hi-res/touchpad scroll before events ever reach the dispatcher —
+        // so this hook only sees detented mouse wheels, exactly the population that wants discrete ladder steps.
+        // Installed once for the shell's lifetime (the AppNavigationCommand shape above); cleared on unmount only if
+        // still ours (the drawer's KeyPreview restore rule), since ZoomWheel is a single slot, not an event.
+        UseEffect(() =>
+        {
+            var hooks = _inputHooks;
+            Func<float, bool> zoomWheel = notch => { ZoomStep(notch > 0f ? +1 : -1); return true; };
+            if (hooks is not null) hooks.ZoomWheel = zoomWheel;
+            return () => { if (hooks is not null && ReferenceEquals(hooks.ZoomWheel, zoomWheel)) hooks.ZoomWheel = null; };
+        }, DepKey.Empty);
         // The row indicator / "Videos only" filter read the association plane + the curation through a process-wide
         // probe rather than context, because they run per ROW (a context read or a signal subscription per row is not
         // affordable there). Both halves of the has-video answer are attached here, and nothing else answers it.
@@ -840,6 +853,47 @@ sealed class WaveeShell : Component
                 {
                     Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
                     Accelerator = VideoFullscreenChord, OnClick = ToggleVideoFullscreen,
+                },
+                // App zoom (Ctrl+± / Ctrl+0, top row and numpad — the chord statics explain why there are eight).
+                new BoxEl
+                {
+                    Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                    Accelerator = ZoomInChord, OnClick = () => ZoomStep(+1),
+                },
+                new BoxEl
+                {
+                    Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                    Accelerator = ZoomInShiftChord, OnClick = () => ZoomStep(+1),
+                },
+                new BoxEl
+                {
+                    Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                    Accelerator = ZoomInNumpadChord, OnClick = () => ZoomStep(+1),
+                },
+                new BoxEl
+                {
+                    Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                    Accelerator = ZoomOutChord, OnClick = () => ZoomStep(-1),
+                },
+                new BoxEl
+                {
+                    Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                    Accelerator = ZoomOutShiftChord, OnClick = () => ZoomStep(-1),
+                },
+                new BoxEl
+                {
+                    Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                    Accelerator = ZoomOutNumpadChord, OnClick = () => ZoomStep(-1),
+                },
+                new BoxEl
+                {
+                    Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                    Accelerator = ZoomResetChord, OnClick = () => ZoomStep(0),
+                },
+                new BoxEl
+                {
+                    Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                    Accelerator = ZoomResetNumpadChord, OnClick = () => ZoomStep(0),
                 },
                 // THE chrome row. One 48-DIP TitleBar in merged mode: the tabs island carries Wavee's nav cluster and
                 // the text-first strip, the flexible centre column carries the window-centred omnibar, and the trailing
@@ -1913,6 +1967,19 @@ sealed class WaveeShell : Component
     // matches Ctrl/Alt OR an F-key), unlike bare Space/Escape. No existing shell chord claims F11 (checked: NewTab is
     // Ctrl+T, palette Ctrl+K, find Ctrl+F, back/forward Alt+Left/Right — none is an F-key), so this is a fresh binding.
     static readonly KeyAccelerator VideoFullscreenChord = new(Keys.F11, KeyModifiers.None);
+    // App zoom — the browser chord set, spelled out per VK because a KeyAccelerator matches EXACT modifiers: the
+    // top-row '=' key (OemPlus) types '+' only WITH Shift on many layouts, so Ctrl+Shift+= must be its own chord or
+    // the natural way users type "Ctrl and plus" silently does nothing; and the numpad's + / − / 0 are DISTINCT VKs
+    // (Add / Subtract / NumPad0), never aliases of the top-row keys, so each needs its own binding too. Eight chords,
+    // three verbs — the same spread Chromium registers for its zoom accelerators.
+    static readonly KeyAccelerator ZoomInChord = new(Keys.OemPlus, KeyModifiers.Ctrl);
+    static readonly KeyAccelerator ZoomInShiftChord = new(Keys.OemPlus, KeyModifiers.Ctrl | KeyModifiers.Shift);
+    static readonly KeyAccelerator ZoomInNumpadChord = new(Keys.Add, KeyModifiers.Ctrl);
+    static readonly KeyAccelerator ZoomOutChord = new(Keys.OemMinus, KeyModifiers.Ctrl);
+    static readonly KeyAccelerator ZoomOutShiftChord = new(Keys.OemMinus, KeyModifiers.Ctrl | KeyModifiers.Shift);
+    static readonly KeyAccelerator ZoomOutNumpadChord = new(Keys.Subtract, KeyModifiers.Ctrl);
+    static readonly KeyAccelerator ZoomResetChord = new(Keys.D0, KeyModifiers.Ctrl);
+    static readonly KeyAccelerator ZoomResetNumpadChord = new(Keys.NumPad0, KeyModifiers.Ctrl);
 
     void OpenPalette() => _paletteOpen.Value = !_paletteOpen.Peek();
 
@@ -2015,6 +2082,16 @@ sealed class WaveeShell : Component
         _settings.Set(WaveeSettings.ThemeMode, next == ThemeKind.Dark ? 2 : 1);
         _requestTheme?.Invoke(250f);
     }
+
+    // App zoom, one ladder rung per invocation (0 = reset to 100%). STATIC and internal on purpose: the chord boxes,
+    // the Ctrl+wheel hook AND the command palette (WaveeCommands.Invoke — a static table dispatch with no shell
+    // instance in hand) all land on this one verb. FluentApp.SetZoom clamps and drops no-change writes itself;
+    // persistence is deliberately NOT here — WaveeApp's debounced zoom-save timer picks the value up, so a held-down
+    // chord or a wheel spin never writes the registry once per rung.
+    internal static void ZoomStep(int dir)
+        => FluentApp.SetZoom(dir == 0 ? ZoomLadder.Default
+            : dir > 0 ? ZoomLadder.In(FluentApp.Zoom)
+            : ZoomLadder.Out(FluentApp.Zoom));
 }
 
 /// <summary>Narrow-shell light-dismissible pane. It stays mounted while closed so its sidebar state and scene nodes are

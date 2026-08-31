@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using FluentGpu;   // FluentApp (the live app-zoom read for the receipts)
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -84,7 +85,7 @@ sealed partial class SettingsPage
         string dotnet = ".NET " + Environment.Version;
 
         string DiagInfo() =>
-            $"{me.OneLine(os, ArchToken)}\nOS: {os}\nEngine: FluentGpu · {dotnet}\nData folder: {SettingsShared.AppDataRoot}\n" +
+            $"{me.OneLine(os, ArchToken)}\nOS: {os}\nEngine: FluentGpu · {dotnet}\nGPU: {WaveeNowReceipts.GpuSummary()}\nData folder: {SettingsShared.AppDataRoot}\n" +
             $"Feed: {(svc?.AppUpdate.FeedUrl is { Length: > 0 } f ? f : "—")}\n" +
             $"Playback runtime: {(svc?.Playback.RuntimeStatus.Value ?? PlaybackRuntimeStatus.NotApplicable).Outcome}\n" +
             WaveeNowReceipts.LastCopyText;
@@ -94,6 +95,8 @@ sealed partial class SettingsPage
             Embed.Comp(() => new AboutUpdatePanel()) with { Key = "about:update" },
             SettingsSectionHeader("Wavee right now", Icons.Info),
             Embed.Comp(() => new WaveeNowReceipts()),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.Gpu.Title), Icons.Devices, Loc.Get(Strings.Settings.Gpu.Subtitle)),
+            Embed.Comp(() => new GpuPickerCard()),
             AboutLinksCard(svc, hooks, DiagInfo, os),
             SettingsSectionHeader(Loc.Get(Strings.Settings.About.Licenses), Icons.Document),
         };
@@ -233,13 +236,29 @@ sealed partial class SettingsPage
         internal static string LastCopyText { get; private set; } = "";
 
         const float TickMs = 5000f;
+        readonly Signal<string> _gpu = new("—");
         readonly Signal<string> _workingSet = new("—");
         readonly Signal<string> _managed = new("—");
         readonly Signal<string> _uptime = new("—");
         readonly Signal<string> _fps = new("—");
+        readonly Signal<string> _zoom = new("—");
         readonly Signal<string> _gpuAssets = new("—");
         readonly Signal<string> _appExcl = new("—");
         readonly Signal<string> _detail = new("—");
+
+        /// <summary>The render adapter identity + power class (+ software note), a static read — shared by the receipt
+        /// line here and by <c>DiagInfo()</c> so "Copy diagnostics" names the GPU. Empty adapter name reads as "—".</summary>
+        internal static string GpuSummary()
+        {
+            string name = GpuProfile.AdapterName is { Length: > 0 } n ? n : "—";
+            string tier = GpuProfile.Tier switch
+            {
+                GpuPowerTier.Weak => "Weak",
+                GpuPowerTier.Strong => "Strong",
+                _ => "Unknown",
+            };
+            return GpuProfile.IsSoftwareAdapter ? name + "  (" + tier + " · software)" : name + "  (" + tier + ")";
+        }
 
         public override Element Render()
         {
@@ -253,10 +272,12 @@ sealed partial class SettingsPage
                     Direction = 1, Gap = Spacing.XS,
                     Children =
                     [
+                        ReceiptLine(_gpu, "GPU"),
                         ReceiptLine(_workingSet, "Working set"),
                         ReceiptLine(_managed, "Managed heap"),
                         ReceiptLine(_uptime, "Uptime"),
                         ReceiptLine(_fps, "FPS"),
+                        ReceiptLine(_zoom, "Zoom"),
                         ReceiptLine(_gpuAssets, "GPU assets"),
                         ReceiptLine(_appExcl, "App memory excl. GPU assets"),
                         new TextEl(_detail) { Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
@@ -275,10 +296,14 @@ sealed partial class SettingsPage
             double fps = WaveeStartupBench.Host?.LastStats.Fps ?? 0;
             var snap = D3D12Device.LastVideoMemory;
 
+            _gpu.Value = GpuSummary();
             _workingSet.Value = FormatBytes(ws);
             _managed.Value = FormatBytes(managed);
             _uptime.Value = FormatUptime(up);
             _fps.Value = fps > 0 ? fps.ToString("0.0", CultureInfo.InvariantCulture) : "—";
+            // The 5s tick is plenty for a receipt (a fresh Ctrl+= shows within a tick) — deliberately no ZoomChanged
+            // subscription here, so this component's lifecycle stays "one interval", nothing to unhook.
+            _zoom.Value = ZoomLadder.Percent(FluentApp.Zoom) + "%";
 
             if (!snap.Valid)
             {
@@ -314,6 +339,7 @@ sealed partial class SettingsPage
                 + "\nManaged heap: " + _managed.Peek()
                 + "\nUptime: " + _uptime.Peek()
                 + "\nFPS: " + _fps.Peek()
+                + "\nZoom: " + _zoom.Peek()
                 + "\nGPU assets: " + _gpuAssets.Peek()
                 + "\nApp memory excl. GPU assets: " + _appExcl.Peek()
                 + "\n" + _detail.Peek();
@@ -349,6 +375,80 @@ sealed partial class SettingsPage
             if (t.TotalHours >= 1) return ((int)t.TotalHours).ToString(CultureInfo.InvariantCulture) + "h " + t.Minutes.ToString(CultureInfo.InvariantCulture) + "m";
             if (t.TotalMinutes >= 1) return ((int)t.TotalMinutes).ToString(CultureInfo.InvariantCulture) + "m " + t.Seconds.ToString(CultureInfo.InvariantCulture) + "s";
             return Math.Max(0, (int)t.TotalSeconds).ToString(CultureInfo.InvariantCulture) + "s";
+        }
+    }
+
+    /// <summary>Settings › About render-GPU picker. Its own <see cref="Component"/> for the same reason as
+    /// <see cref="WaveeNowReceipts"/>: the About body is built conditionally (only while the tab is selected), so the
+    /// hooks here (<c>UseEffect</c> to seed the selection, <c>UseContext</c> for the settings seam) must live on a
+    /// child whose lifetime IS the tab, never in <c>AboutTab</c> itself. The adapter list is enumerated ONCE at mount
+    /// (cold DXGI walk) and frozen. Selecting an adapter persists the LUID + name and live-applies via the engine's
+    /// device-reset path (<see cref="GpuAdapterInfo.RequestAdapterSwitch"/>) — a brief flicker, no restart.</summary>
+    sealed class GpuPickerCard : Component
+    {
+        readonly Signal<int> _selected = new(0);
+        // Frozen at mount: one factory run per Embed.Comp, so this cold enumeration happens once, not per re-render.
+        readonly IReadOnlyList<GpuAdapterDesc> _adapters = GpuAdapterInfo.EnumerateAdapters();
+
+        public override Element Render()
+        {
+            var svc = UseContext(Services.Slot);
+
+            // Seed the selection ONCE from the persisted preference: LUID first (the fast, exact match), then the
+            // durable name (LUIDs are not stable across reboots), else 0 = Automatic. Runs after mount so the
+            // ComboBox shows the honored choice without a write.
+            UseEffect(() =>
+            {
+                if (svc is null) return;
+                long luid = svc.Settings.Get(WaveeSettings.PreferredGpuLuid);
+                string name = svc.Settings.Get(WaveeSettings.PreferredGpuName);
+                int idx = 0;
+                if (luid != 0L || name.Length > 0)
+                {
+                    for (int k = 0; k < _adapters.Count; k++)
+                    {
+                        if (luid != 0L && _adapters[k].Luid == luid) { idx = k + 1; break; }
+                        if (idx == 0 && name.Length > 0 && string.Equals(_adapters[k].Name, name, StringComparison.Ordinal)) idx = k + 1;
+                    }
+                }
+                _selected.Value = idx;
+            }, DepKey.Empty);
+
+            string[] labels = new string[_adapters.Count + 1];
+            labels[0] = Loc.Get(Strings.Settings.Gpu.Automatic);
+            for (int k = 0; k < _adapters.Count; k++)
+            {
+                var a = _adapters[k];
+                labels[k + 1] = a.IsCurrent ? Strings.Settings.Gpu.InUse(a.Name) : a.Name;
+            }
+
+            return SettingsCard.Create(new SettingsCard.Options
+            {
+                Header = Loc.Get(Strings.Settings.Gpu.Label),
+                Description = Loc.Get(Strings.Settings.Gpu.RestartSub),
+                HeaderIcon = Icons.Devices,
+                Content = ComboBox.Create(labels, _selected, width: 300f, isEnabled: svc is not null,
+                    onChange: i => Pick(svc, i)),
+            });
+        }
+
+        void Pick(Services? svc, int i)
+        {
+            // Index 0 (or any out-of-range) = Automatic → clear the preference and pass LUID 0 (the engine's
+            // HIGH_PERFORMANCE walk). Otherwise persist the chosen adapter's LUID + name and apply it.
+            if (i <= 0 || i > _adapters.Count)
+            {
+                svc?.Settings.Set(WaveeSettings.PreferredGpuLuid, 0L);
+                svc?.Settings.Set(WaveeSettings.PreferredGpuName, "");
+                _selected.Value = 0;
+                GpuAdapterInfo.RequestAdapterSwitch(0L);
+                return;
+            }
+            var a = _adapters[i - 1];
+            svc?.Settings.Set(WaveeSettings.PreferredGpuLuid, a.Luid);
+            svc?.Settings.Set(WaveeSettings.PreferredGpuName, a.Name);
+            _selected.Value = i;
+            GpuAdapterInfo.RequestAdapterSwitch(a.Luid);
         }
     }
 }

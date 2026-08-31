@@ -65,6 +65,8 @@ static class WaveeSettings
     public static readonly SettingKey<int> SetupBootstrapVersion = new("setup.bootstrap.version", 0);
     public static readonly SettingKey<string> VideoAspectMode = new("video.aspect.mode", "fit");
     public static readonly SettingKey<double> VideoCustomAspectRatio = new("video.aspect.customRatio", VideoAspectPersistence.DefaultCustomRatio);
+    // ── appearance — MIRRORS src/apps/Wavee/Platform/AppSettings.cs VERBATIM (same rule as the sidebar keys above).
+    public static readonly SettingKey<float> ZoomLevel = new("appearance.zoom", 1f);
 }
 
 // The per-design sidebar keys (F.3.1), mirroring the production SidebarKeys. Depends on SidebarDesignInfo.Slug/Tiers —

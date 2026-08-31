@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.2.2",
+  "packageVersion": "",
+  "name": "Breaker",
+  "tagline": "A stability round for Breaker: a crash fix, GPU smoothness on integrated graphics, and app zoom.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "artist-crash",
+      "title": "Fixed a crash opening artist pages",
+      "body": "An internal index could overflow while an artist page was still loading its real data, crashing the app. Fixed.",
+      "kind": "fixed",
+      "issues": []
+    },
+    {
+      "id": "gpu-stability",
+      "title": "Smoother on integrated GPUs",
+      "body": "On some hybrid-GPU machines the app could freeze (audio still playing) during heavy navigation or long sessions. Frame pacing, texture uploads, and GPU memory handling are hardened so a hiccup now recovers in under a second instead of freezing, and the correct (usually faster) GPU is now reliably selected on multi-GPU machines.",
+      "kind": "fixed",
+      "issues": []
+    },
+    {
+      "id": "app-zoom",
+      "title": "App zoom",
+      "body": "Scale the whole app UI with Ctrl+Plus/Minus/0, Ctrl+mouse-wheel, or the command palette.",
+      "kind": "added",
+      "issues": []
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

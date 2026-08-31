@@ -27,7 +27,10 @@ sealed partial class SettingsPage
     readonly Signal<int> _density = new(1);
     readonly Signal<int> _language = new(0);
 
-    static (string[] Codes, string[] Labels) LanguageOptions()
+    // Enabled is a parallel mask: nl / ko-KR are shown but DISABLED (greyed, unselectable) — their tables aren't
+    // complete enough to ship as a pick yet. Keep them visible so the row advertises what's coming; flip to true
+    // per locale as each table lands. System + en-US stay enabled.
+    static (string[] Codes, string[] Labels, bool[] Enabled) LanguageOptions()
     {
         return (
             ["system", "en-US", "nl", "ko-KR"],
@@ -36,12 +39,13 @@ sealed partial class SettingsPage
                 Loc.Get(Strings.Settings.Language.EnglishUs),
                 Loc.Get(Strings.Settings.Language.Dutch),
                 Loc.Get(Strings.Settings.Language.Korean),
-            ]);
+            ],
+            [true, true, false, false]);
     }
 
     static int LanguageIndex(string culture)
     {
-        var (codes, _) = LanguageOptions();
+        var (codes, _, _) = LanguageOptions();
         for (int i = 0; i < codes.Length; i++)
             if (string.Equals(codes[i], culture, StringComparison.OrdinalIgnoreCase)) return i;
         return 0;
@@ -76,6 +80,17 @@ sealed partial class SettingsPage
         Loc.Get(Strings.Settings.Appearance.MaterialMica),
         Loc.Get(Strings.Settings.Appearance.MaterialMicaAlt),
     ];
+
+    // The zoom picker's labels, hoisted ONCE — unlike the Loc-backed label builders around it these can never change
+    // with culture (digits + '%'), so rebuilding the array per render would be pure churn. The picker index IS the
+    // ZoomLadder.Steps index (the ThemeMode/RowDensity "index == stored shape" convention, with the ladder as the wire).
+    static readonly string[] ZoomLabels = BuildZoomLabels();
+    static string[] BuildZoomLabels()
+    {
+        var labels = new string[ZoomLadder.Steps.Length];
+        for (int i = 0; i < labels.Length; i++) labels[i] = ZoomLadder.Percent(ZoomLadder.Steps[i]) + "%";
+        return labels;
+    }
 
     // The lyrics SECOND line. Ordered to match WaveeSettings.LyricsSecondaryLine (0 none · 1 translation · 2
     // romanization) so the SelectorBar index IS the stored value — the ThemeMode/RowDensity convention.
@@ -118,6 +133,10 @@ sealed partial class SettingsPage
         int pageLayout = Math.Clamp(settings?.Get(WaveeSettings.DetailPageLayout) ?? 0, 0, PageLayoutLabels().Length - 1);
         int lyricsSecondary = Math.Clamp(settings?.Get(WaveeSettings.LyricsSecondaryLine) ?? 0, 0, LyricsSecondaryLabels().Length - 1);
         int windowMaterial = (settings?.Get(WaveeSettings.WindowMaterialBaseMica) ?? true) ? 0 : 1;
+        // The LIVE zoom, not the stored key: the chords/wheel change FluentApp.Zoom ahead of the debounced persist,
+        // and the row must show what the window is doing right now. Snap → IndexOf is exact (Snap returns a Steps
+        // element); Max is belt-and-suspenders for an engine value the ladder somehow doesn't contain.
+        int zoomIndex = Math.Max(0, Array.IndexOf(ZoomLadder.Steps, ZoomLadder.Snap(FluentApp.Zoom)));
         var languageOptions = LanguageOptions();
 
         void SetTheme(int mode)
@@ -160,6 +179,19 @@ sealed partial class SettingsPage
             Bump();
         }
 
+        // The SetWindowMaterial shape (write the setting, then the live side effect — here inverted: apply live, then
+        // write): FluentApp.SetZoom re-derives the effective window scale at once, and the picker writes the setting
+        // IMMEDIATELY rather than waiting for WaveeApp's debounced zoom-save timer — a deliberate pick from a
+        // deliberate control, unlike the chords/wheel where the debounce exists to absorb a spin of repeats.
+        void SetZoom(int i)
+        {
+            if (settings is null || (uint)i >= (uint)ZoomLadder.Steps.Length) return;
+            float z = ZoomLadder.Steps[i];
+            FluentApp.SetZoom(z);   // live, no restart
+            settings.Set(WaveeSettings.ZoomLevel, z);
+            Bump();
+        }
+
         // Its own writer rather than an AppearanceToggle: the lyrics surfaces re-read this one under LyricsPrefs.Epoch
         // (which the rail/immersive header toggles also bump), not under AppearancePrefs — one setting, one epoch, so a
         // change from either place reaches both mounted surfaces on the same frame.
@@ -172,6 +204,7 @@ sealed partial class SettingsPage
         void SetLanguage(int i)
         {
             if (settings is null || (uint)i >= (uint)languageOptions.Codes.Length) return;
+            if (!languageOptions.Enabled[i]) return;   // belt-and-suspenders: the ComboBox already rejects a disabled pick
             settings.Set(WaveeSettings.UiCulture, languageOptions.Codes[i]);
             _language.Value = i;
             Bump();
@@ -186,6 +219,11 @@ sealed partial class SettingsPage
                 PaletteRow(settings, requestTheme), Icons.Brush),
             SettingsRow(Loc.Get(Strings.Settings.Appearance.WindowMaterial), Loc.Get(Strings.Settings.Appearance.WindowMaterialSub),
                 SelectorBar.Create(WindowMaterialLabels(), new Signal<int>(windowMaterial), onChange: SetWindowMaterial), Icons.Brush),
+            // A ComboBox, not a SelectorBar: twelve ladder steps would be twelve segments wide. Same chords as a
+            // browser (Ctrl+± / Ctrl+0 / Ctrl+wheel) — the row is the discoverable face of the same ladder.
+            SettingsRow(Loc.Get(Strings.Settings.Appearance.Zoom), Loc.Get(Strings.Settings.Appearance.ZoomSub),
+                ComboBox.Create(ZoomLabels, new Signal<int>(zoomIndex), width: 140f, isEnabled: settings is not null,
+                    onChange: SetZoom), Icons.Brush),
             VisualEffectsGroup(settings),
 
             // Layout & density: the two picker groups that decide how a track page is put together. Both collapsed —
@@ -219,7 +257,7 @@ sealed partial class SettingsPage
                 Loc.Get(Strings.Settings.Language.Subtitle)),
             SettingsRow(Loc.Get(Strings.Settings.Language.Label), Loc.Get(Strings.Settings.Language.RestartSub),
                 ComboBox.Create(languageOptions.Labels, _language, width: 260f, isEnabled: settings is not null,
-                    onChange: SetLanguage), Icons.Globe),
+                    onChange: SetLanguage, itemEnabled: languageOptions.Enabled), Icons.Globe),
 
             SettingsSectionHeader(Loc.Get(Strings.Settings.Links.Title), Icons.Link,
                 Loc.Get(Strings.Settings.Links.Subtitle)),

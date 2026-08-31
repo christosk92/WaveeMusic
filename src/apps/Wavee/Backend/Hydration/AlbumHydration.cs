@@ -81,7 +81,13 @@ public sealed class AlbumHydration : IKindHydration
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
-                    // Best-effort: the getAlbum fallback below is exactly the answer for a failed repair.
+                    // Best-effort: the getAlbum fallback below is exactly the answer for a failed repair. But the
+                    // failure must still seal on the SHORT window, exactly like the trait and envelope catches: this
+                    // was the one swallow with no ReportTransient, so a single network blip here let the ladder seal
+                    // the album's rung as exhausted for the LONG window (ExhaustedAlbumRichTtl, 24h) with its gid-only
+                    // disc rows intact — the "play counts beside blank titles" library pane. Transient means the next
+                    // open retries in minutes instead of tomorrow.
+                    for (int i = 0; i < uris.Count; i++) ctx.ReportTransient(uris[i].Uri);
                     _log.Event(WaveeLogLevel.Warning, "hydration.album.repair.fail", "TrackV4 disc-row repair failed", ex: ex);
                 }
             }

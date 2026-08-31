@@ -113,6 +113,12 @@ static class WaveeSettings
     // going transparent, when an opaque ground hid the difference. The key is the startup seed for AppOptions.MicaAlt
     // (Program.cs: MicaAlt = !this) and backs the Settings ▸ Appearance row.
     public static readonly SettingKey<bool> WindowMaterialBaseMica = new("appearance.windowMaterial.baseMica", true);
+    // App-wide UI zoom — the browser-style Ctrl+± ladder (the engine's ZoomLadder steps; effective window scale =
+    // OS DPI × zoom). Seeded into AppOptions.Zoom BEFORE the window comes up (Program.cs) so the first frame already
+    // paints at the user's scale, and SNAPPED on that read: a hand-edited registry value (or a value persisted by a
+    // build with a different ladder) must never seed a non-ladder scale — off-rung zooms alias glyph-raster buckets,
+    // which is the whole reason the ladder is discrete. Written back (debounced) by WaveeApp's zoom-save timer.
+    public static readonly SettingKey<float> ZoomLevel = new("appearance.zoom", 1f);
     // The immersive lyrics surface's slowly-drifting blurred-cover backdrop. TRUE (the default) = the baked-blur cover
     // wanders on two incommensurate sinusoids; FALSE = the same cover, held perfectly still (and no ticker at all).
     // Deliberately a SETTING, not an env var — the DisableColorWashes precedent: it is a taste/comfort choice a
@@ -246,6 +252,11 @@ static class WaveeSettings
     // (used in the reconnect toast while the device is absent). AppDataSettings cannot round-trip null → empty means unset.
     public static readonly SettingKey<string> OutputDeviceId = new("playback.output.deviceId", "");
     public static readonly SettingKey<string> OutputDeviceName = new("playback.output.deviceName", "");
+    // Preferred render GPU (Settings › About picker). Same shape/rationale as the output-device pair above: the LUID
+    // (0 = Automatic / the engine's HIGH_PERFORMANCE walk) is the fast path, but LUIDs are not stable across reboots,
+    // so the adapter NAME is stored too and re-resolved to a live LUID at startup when the LUID no longer matches.
+    public static readonly SettingKey<long> PreferredGpuLuid = new("gpu.preferredLuid", 0L);
+    public static readonly SettingKey<string> PreferredGpuName = new("gpu.preferredName", "");
     public static readonly SettingKey<bool> EqualizerEnabled = new("playback.eq.enabled", false);
     public static readonly SettingKey<string> EqualizerPreset = new("playback.eq.preset", "flat");
     public static readonly SettingKey<string> EqualizerGains = new("playback.eq.gains", "0,0,0,0,0,0,0,0,0,0");

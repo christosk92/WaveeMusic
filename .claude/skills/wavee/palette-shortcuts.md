@@ -27,6 +27,10 @@ A `>` prefix (VS Code) restricts the scan to commands. Typing without `>` also a
 | Ctrl+T | New Home tab | existing `NewTabChord` |
 | Alt+Left | Back | `BackChord` → `Back()` |
 | Alt+Right | Forward | `ForwardChord` → `Forward()` |
+| Ctrl+= / Ctrl+Shift+= / Ctrl+Numpad+ | Zoom in | `ZoomInChord` / `ZoomInShiftChord` / `ZoomInNumpadChord` → `WaveeShell.ZoomStep(+1)` |
+| Ctrl+- / Ctrl+Shift+- / Ctrl+Numpad− | Zoom out | `ZoomOutChord` / `ZoomOutShiftChord` / `ZoomOutNumpadChord` → `ZoomStep(-1)` |
+| Ctrl+0 / Ctrl+Numpad0 | Reset zoom | `ZoomResetChord` / `ZoomResetNumpadChord` → `ZoomStep(0)` |
+| Ctrl+mouse-wheel | Zoom in/out | `InputHooks.ZoomWheel` (shell mount effect → `ZoomStep(±1)`). Mouse wheel only — the platform consumes Ctrl+touchpad scroll as pinch synthesis before the dispatcher. |
 | Space | Play/pause | `column.OnKeyDown` → `OnShellKey` (not an accelerator) |
 | Mouse XButton1/2 | — | **Not delivered.** `InputDispatcher` handles buttons 0/1/2 only. |
 

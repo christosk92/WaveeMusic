@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
+using Wavee.Core;
 
 namespace Wavee;
 
-/// <summary>Why the open playlist page is showing a notice strip instead of its ordinary edit affordances.
+/// <summary>Why the open detail page is showing a notice strip instead of its ordinary affordances.
 /// <see cref="None"/> is the overwhelmingly normal state — the strip mounts for nothing else.</summary>
 public enum DetailNotice : byte
 {
@@ -14,10 +16,18 @@ public enum DetailNotice : byte
     AccessRevoked,
     /// <summary>An optimistic create never became real: the page is showing a playlist the server rejected.</summary>
     CreateFailed,
+    /// <summary>ALBUM path: the tracklist still contains unnamed rows — AlbumV4's gid-only disc rows whose TrackV4
+    /// repair has not landed yet (<c>ExtendedMetadataSource.ProjectAlbum</c> mints them with an empty title and a zero
+    /// duration; play counts arrive on a separate trait pass, so the rows can show a Plays value beside a blank name).
+    /// A MODEL fact, not a probe: the surface never asks the network whether it is thin — the rows it was handed say
+    /// so. The full <c>album:</c> page self-heals (its trailing band asks for Full); the embedded library pane never
+    /// does, which is why it says where the details WILL load instead of pretending the album has none.</summary>
+    MinifiedAlbum,
 }
 
 /// <summary>
-/// The PURE rule behind the playlist page's notice strip. Engine-free by construction (System only) so it is pinned by
+/// The PURE rules behind the detail page's notice strip (playlist verdicts + the album thinness fact). Engine-free by
+/// construction (System + Wavee.Core only) so it is pinned by
 /// <c>PlaylistPageNoticeRulesTests</c> against the production code rather than a copy of it.
 /// <para>The shape of the answer is deliberate: a notice never un-renders the page. A playlist that vanished under the
 /// user keeps its content on screen (they were reading it, and blanking it to a skeleton or an error state loses their
@@ -65,4 +75,20 @@ static class PlaylistPageNoticeRules
     /// create in flight, so the header alone decides.</summary>
     public static DetailNotice Cold(bool headerDeleted, bool capabilitiesKnown, bool canView, bool isOwner)
         => Next(DetailNotice.None, freshIsNull: false, headerDeleted, capabilitiesKnown, canView, isOwner, isCreatePending: false);
+
+    /// <summary>The ALBUM path's one verdict: <see cref="DetailNotice.MinifiedAlbum"/> when the tracklist the model
+    /// carries still holds any unnamed row, else <see cref="DetailNotice.None"/>.
+    /// <para>Stateless on purpose (no <c>prev</c>): thinness is re-read off every projection, so the notice clears
+    /// itself the moment a later hydration pass fills the names — nothing to un-latch. The emptiness predicate is NOT
+    /// restated here: <see cref="HydrationLevels.TrackUnnamed"/> is the app's single notion of a thin row (blank or
+    /// uri-placeholder title, or artist uris with no names), the same one the album ladder's Open rung and the TrackV4
+    /// repair key on — so the strip and the repair can never disagree about which rows are broken.</para>
+    /// <para>An EMPTY tracklist is deliberately <see cref="DetailNotice.None"/>: no rows is "still loading" (the list
+    /// renders its own shimmer), not "minified" — the notice is about rows the user can SEE being blank.</para></summary>
+    public static DetailNotice ForAlbum(IReadOnlyList<Track> tracks)
+    {
+        for (int i = 0; i < tracks.Count; i++)
+            if (HydrationLevels.TrackUnnamed(tracks[i])) return DetailNotice.MinifiedAlbum;
+        return DetailNotice.None;
+    }
 }

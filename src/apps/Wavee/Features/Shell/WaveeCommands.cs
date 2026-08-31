@@ -19,7 +19,7 @@ static class WaveeCommands
 
     public enum Kind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library }
     public enum PlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum SettingsVerb : byte { ToggleTheme, ToggleCrossfade }
+    public enum SettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset }
     /// <summary>Library-structure verbs. "New folder" lives here because the only other way to reach it is a right-click
     /// on a sidebar row — and on a pane with no folders yet there is no such row to right-click.</summary>
     public enum LibraryVerb : byte { NewPlaylist, NewFolder }
@@ -50,7 +50,7 @@ static class WaveeCommands
     }
 
     /// <summary>Builtin table size (nav + playback + settings). Registry rows are appended by <see cref="BuildIndex"/>.</summary>
-    public const int BuiltinCount = 14;
+    public const int BuiltinCount = 17;
 
     /// <summary>Allocate a fresh index for one palette-open. Labels are localized at this edge (not per keystroke).</summary>
     public static Entry[] BuildIndex(WaveeExtensionRegistry? registry)
@@ -159,6 +159,11 @@ static class WaveeCommands
                         bool on = host.Settings.Get(WaveeSettings.CrossfadeEnabled);
                         host.Settings.Set(WaveeSettings.CrossfadeEnabled, !on);
                         break;
+                    // The SAME verb the Ctrl+± chords and the Ctrl+wheel hook land on (static — no shell instance in
+                    // this table dispatch); persistence rides WaveeApp's debounced zoom-save timer either way.
+                    case SettingsVerb.ZoomIn: WaveeShell.ZoomStep(+1); break;
+                    case SettingsVerb.ZoomOut: WaveeShell.ZoomStep(-1); break;
+                    case SettingsVerb.ZoomReset: WaveeShell.ZoomStep(0); break;
                 }
                 break;
             case Kind.Registry:
@@ -196,6 +201,10 @@ static class WaveeCommands
         Play("playback.repeat", Loc.Get(Strings.Player.Repeat), Icons.RepeatAll, PlaybackVerb.Repeat),
         Set("settings.theme", Loc.Get(Strings.Settings.Appearance.Theme), Icons.Brush, SettingsVerb.ToggleTheme),
         Set("settings.crossfade", Loc.Get(Strings.Settings.Sound.Crossfade), Icons.MusicNote, SettingsVerb.ToggleCrossfade),
+        // No Zoom* glyph exists in the Fluent set the engine bundles — +/−/undo carry the in/out/reset semantics.
+        Set("settings.zoomIn", Loc.Get(Strings.Settings.Appearance.ZoomIn), Icons.Add, SettingsVerb.ZoomIn),
+        Set("settings.zoomOut", Loc.Get(Strings.Settings.Appearance.ZoomOut), Icons.Remove, SettingsVerb.ZoomOut),
+        Set("settings.zoomReset", Loc.Get(Strings.Settings.Appearance.ZoomReset), Icons.Undo, SettingsVerb.ZoomReset),
         Lib("library.newPlaylist", Loc.Get(Strings.Detail.NewPlaylist), Icons.Add, LibraryVerb.NewPlaylist),
         Lib("library.newFolder", Loc.Get(Strings.Sidebar.CreateFolder), Icons.Folder, LibraryVerb.NewFolder),
     ];
