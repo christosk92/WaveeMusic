@@ -20,9 +20,12 @@ public readonly record struct ArtistHeroMetrics(
 /// the copy placement and veil direction. Tier selection retains the detail layout's 24-DIP recovery band.</summary>
 public static class ArtistHeroLayout
 {
-    public const float CompactWidth = 480f;
-    public const float MediumWidth = 760f;
-    public const float WideWidth = 1040f;
+    // Lowered from 480/760/1040: the old thresholds dropped into the stacked (Compact/Narrow) presentation at
+    // ordinary desktop widths — e.g. opening the Lyrics panel alongside a normal window was enough to trigger the
+    // dramatic photo-on-top/identity-below layout. These trigger only once the content column is genuinely narrow.
+    public const float CompactWidth = 360f;
+    public const float MediumWidth = 600f;
+    public const float WideWidth = 880f;
     public const float TierHysteresis = 24f;
 
     public const float WideHeight = 440f;
