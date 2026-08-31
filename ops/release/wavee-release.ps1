@@ -488,8 +488,8 @@ if (-not (Test-PhaseDone 'preflight')) {
     }
     Add-Check 'release notes' 'hard' {
         if ($NoNotes) {
-            if (-not $Force) { throw '-NoNotes requires -Force (a release without notes is a degraded release)' }
-            return 'SKIP: -NoNotes -Force'
+            if (-not $Force) { throw '-NoNotes requires -Force (skipping hand-authored notes is a degraded release, even though the notes step now reuses the last release''s content instead of shipping none)' }
+            return 'REUSE: -NoNotes -Force (last authored whatsnew.json, restamped for this version)'
         }
         if (-not (Test-Path (Join-Path $notesSrc 'whatsnew.json'))) { throw "missing $notesSrc\whatsnew.json" }
         $notesSrc
@@ -670,12 +670,43 @@ function Get-PreviousIndex {
 function Invoke-Notes {
     Step 'Validate release notes'
     if ($NoNotes) {
-        New-Item -ItemType Directory -Force -Path $notesOut | Out-Null
-        $body = "# Wavee $semver $EmDash $codename`n`nBuild $quad.`n"
-        [IO.File]::WriteAllText((Join-Path $notesOut 'RELEASE_BODY.md'), $body, (New-Object System.Text.UTF8Encoding $false))
-        Warn 'running with -NoNotes: no whatsnew.json, no index, a placeholder release body'
-        Complete-Phase 'notes'
-        return
+        # -NoNotes used to mean "ship with NO whatsnew.json at all" — but ReleaseNotesStore.TryReadEmbedded
+        # (Wavee/App/ReleaseNotesStore.cs) requires the EMBEDDED document's own `version` field to equal the
+        # running build's semver, so an empty/absent doc makes the What's New page show "No release notes were
+        # found for this version" for EVERY install that updates to a silent release — not merely "no popup for
+        # this one," which is what -NoNotes is meant to promise. (Diagnosed after wavee-v0.2.3 shipped exactly
+        # this: see the session notes.)
+        #
+        # Fixed meaning: reuse the last AUTHORED release's editorial content (tagline/highlights/notices/media —
+        # the only fields an author actually writes; README.md's own contract says version/date/links/sections/
+        # packageVersion/generatedAt are tool-owned) as this release's SOURCE doc, then fall through to the exact
+        # same validated Wavee.ReleaseTool pipeline every release uses. That tool stamps version/quad/date from
+        # --semver/--quad and derives `sections` from THIS release's own --changelog entry, so the published
+        # document is accurate for everything except the tagline/highlight framing, which is deliberately carried
+        # over rather than fabricated. Requires a $root\ops\release\wavee\<semver>\whatsnew.json to already exist
+        # from a prior real release — the very first release can never be silent.
+        $notesRoot = Join-Path $root 'ops\release\wavee'
+        $prevDir = Get-ChildItem $notesRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne $semver -and (Test-Path (Join-Path $_.FullName 'whatsnew.json')) } |
+            Sort-Object { [version]($_.Name -replace '-beta.*$', '') } -Descending |
+            Select-Object -First 1
+        if (-not $prevDir) { throw "-NoNotes has nothing to reuse: no prior $notesRoot\<semver>\whatsnew.json exists (the first release cannot be -NoNotes)." }
+        $prevDoc = Get-Content (Join-Path $prevDir.FullName 'whatsnew.json') -Raw | ConvertFrom-Json
+        New-Item -ItemType Directory -Force -Path $notesSrc | Out-Null
+        $reused = [ordered]@{
+            schema = $prevDoc.schema; product = $prevDoc.product
+            version = ''; packageVersion = ''; name = $codename
+            tagline = $prevDoc.tagline; date = ''; channel = $Channel; lang = $prevDoc.lang
+            minOs = $prevDoc.minOs; arch = $prevDoc.arch
+            links = [ordered]@{ release = ''; changelog = ''; compare = '' }
+            highlights = $prevDoc.highlights; sections = @()
+            notices = $prevDoc.notices; media = @(); generatedAt = ''
+        }
+        ($reused | ConvertTo-Json -Depth 10) | Set-Content -Path (Join-Path $notesSrc 'whatsnew.json') -Encoding utf8
+        $prevMedia = Join-Path $prevDir.FullName 'media'
+        if (Test-Path $prevMedia) { Copy-Item $prevMedia (Join-Path $notesSrc 'media') -Recurse -Force }
+        Warn "running with -NoNotes: reusing $($prevDir.Name)'s tagline/highlights for $semver (sections still derive from THIS release's CHANGELOG.md entry)"
+        # fall through — the block below runs the SAME validated pipeline as a normal release, now seeded from $notesSrc
     }
 
     # EVERYTHING that can fail in this phase is inside the one try: the previous-index fetch and the token read both
