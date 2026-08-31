@@ -49,11 +49,15 @@ public static class FakeData
         // wire's per-slot colour, and one primary descriptor.
         int hump = i % 3;
         double bpm = (hump == 0 ? 96 : hump == 1 ? 128 : 172) + (i % 7) - 3;
-        int slot = 1 + i % 12;
+        // Wrap, don't raw-mod: a URI-hashed index (IndexFromUri) can be huge, and the Album/track offset
+        // multiplications (i*6, i*10) can overflow Int32 to NEGATIVE — a negative `i % 12` would make slot 0 or less
+        // and index CamelotKeys/Colors[-1] (the crash on ArtistPage's pending-shape path). A fake generator must be
+        // total for any int, so every array index below wraps into range.
+        int slot = 1 + Wrap(i, 12);
         string ring = i % 5 < 3 ? "B" : "A";
         return new Track($"tr{i}", $"spotify:track:tr{i}", s.Title, [ArtistRef(i)], album, dur, i % 6 == 0, Cover(i, 64),
             TempoBpm: bpm, MusicalKey: CamelotKeys[slot - 1], CamelotCode: slot + ring, CamelotColor: CamelotColors[slot - 1],
-            Tags: [Descriptors[i % Descriptors.Length]], Year: 2008 + i % 17);
+            Tags: [Descriptors[Wrap(i, Descriptors.Length)]], Year: 2008 + i % 17);
     }
 
     static readonly string[] Descriptors = ["Pop", "Dance", "Indie", "Hip Hop", "Rock", "Electronic"];
