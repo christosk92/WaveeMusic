@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.2.5",
+  "packageVersion": "",
+  "name": "Breaker",
+  "tagline": "Smoother audio, faster sign-in.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "smoother-audio",
+      "title": "Smoother audio under load",
+      "body": "Writing a streamed chunk to the local cache used to hash it, check free disk space and fsync all on the audio decode thread. That work now runs in the background, and read-ahead buffering adapts to your connection instead of a fixed size — so playback holds up better on a busy disk or a fast connection.",
+      "kind": "fixed",
+      "issues": []
+    },
+    {
+      "id": "instant-launch",
+      "title": "Wavee opens straight into your library",
+      "body": "Sign-in no longer blocks the app on launch: Wavee shows your library immediately from the last session and reconnects to Spotify quietly behind it.",
+      "kind": "fixed",
+      "issues": []
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

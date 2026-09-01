@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.5] - unreleased
+
+### Fixed
+
+- **Audio could glitch or stutter under disk or CPU load.** Writing a streamed chunk to the local cache used to
+  hash it, check free disk space and fsync — all synchronously on the audio decode thread, for every 64 KB chunk.
+  That work now runs on a background thread, and a CDN cache miss during playback no longer blocks the decode
+  thread on a network fetch either.
+- **Read-ahead buffering is now adaptive** instead of a fixed 256 KB window — it grows toward several minutes of
+  audio on a fast connection (fewer chances to run dry) and shrinks on a metered one (less data used), based on
+  measured throughput and the track's bitrate.
+- Audio underruns are now logged individually, with timing and cause, instead of only as a running count.
+- **Sign-in no longer blocks the app on every launch.** Wavee now shows your library immediately from the last
+  session and reconnects to Spotify quietly behind it; if your credentials were revoked, it still falls back to
+  the sign-in screen.
+- **Microsoft Store builds** — "Check for updates" was a silent no-op; it now opens the Store listing. The
+  after-update "What's new" plate also now appears correctly on Store installs, not only sideloaded ones.
+
 ## [0.2.4] - 2026-09-01
 
 ### Added
