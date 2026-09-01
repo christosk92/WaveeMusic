@@ -89,9 +89,17 @@ sealed class SetupSignInPage : Component
 
         if (wide)
         {
-            stage = SetupSignInPresentation.StageKind(facet) == SignInStageKind.Pairing
-                ? PairingStage(snap, SetupSignInPresentation.PaneOpacity(facet), SetupSignInPresentation.PaneInteractive(facet))
-                : TerminalStage(facet, snap.Error);
+            // Busy folds RequestingCode/AwaitingBrowser/SilentResume alongside Finalizing, but only RequestingCode
+            // (and Idle's own LoggedOut) ever has a code coming — see ExpectsPairingCode. When neither a challenge
+            // nor one in flight exists, the stage has nothing live to show: falling back to `null` lets
+            // SetupPageHost.Frame use its own bare-Rail default instead of a pane that would spin forever (item 3)
+            // or double up with the decision column's own live step list once it takes over (item 5).
+            bool pairingPaneUsable = snap.Challenge is not null || ExpectsPairingCode(snap.Phase);
+            stage = SetupSignInPresentation.StageKind(facet) != SignInStageKind.Pairing
+                ? TerminalStage(facet, snap.Error)
+                : pairingPaneUsable
+                    ? PairingStage(snap, SetupSignInPresentation.PaneOpacity(facet), SetupSignInPresentation.PaneInteractive(facet))
+                    : null;
             body = DecisionColumn(facet, snap, bridge, session?.StartBrowser) with
             {
                 Key = "signin:" + facet,
@@ -110,6 +118,29 @@ sealed class SetupSignInPage : Component
             lead: Loc.Get(facet == SetupSignInPhase.Done ? Strings.Setup.SignIn.ConfirmLead : Strings.Setup.SignIn.Lead), leadMaxLines: 2,
             stage: wide ? stage : null, scrollBody: !wide);
     }
+
+    // ── pure phase-reading helpers (item 3 / item 5) ────────────────────────────────────────────────────────────────
+    // SetupCommands.Project folds ten LoginPhase values down to six SetupSignInPhase facets, and Busy alone covers
+    // four of them (Finalizing/RequestingCode/AwaitingBrowser/SilentResume) — too coarse to tell "a code is coming"
+    // apart from "we're already past pairing and finalizing the account". These two read the raw LoginPhase this
+    // page already carries to make that distinction where it actually matters: which single progress affordance (if
+    // any) the pairing pane vs. the live step ladder gets to show.
+
+    /// <summary>Whether a device-code pairing challenge is genuinely in flight: <see cref="LoginPhase.LoggedOut"/>
+    /// (about to request one — the moment this page mounts, <c>NeedsPairingChallenge</c> fires <c>RestartCode</c>)
+    /// or <see cref="LoginPhase.RequestingCode"/> (one is being requested right now). The other two phases the same
+    /// "AwaitingCredential" backend event can report — <see cref="LoginPhase.SilentResume"/> (a stored credential
+    /// resumed silently) and <see cref="LoginPhase.AwaitingBrowser"/> (a browser hop that carries no device code) —
+    /// never mint a code at all, so a "Getting your code…" spinner there would spin forever showing nothing.</summary>
+    static bool ExpectsPairingCode(LoginPhase phase) => phase is LoginPhase.LoggedOut or LoginPhase.RequestingCode;
+
+    /// <summary>Whether the bootstrap has actually started finalizing the sign-in (post-credential — the four-step
+    /// "Signing you in" ladder means something real). The other Busy sub-phases —
+    /// <see cref="LoginPhase.RequestingCode"/>, <see cref="LoginPhase.AwaitingBrowser"/>,
+    /// <see cref="LoginPhase.SilentResume"/> — are all pre-connection: showing the SAME live ladder there would draw
+    /// "Connecting to Spotify" already spinning while the pairing side independently spins its own "Getting your
+    /// code" — two progress indicators for one state.</summary>
+    static bool IsFinalizing(LoginPhase phase) => phase == LoginPhase.Finalizing;
 
     // ── Wide: the pairing STAGE (SetupStage.Column) ─────────────────────────────────────────────────────────────────
 
@@ -183,7 +214,9 @@ sealed class SetupSignInPage : Component
     /// <summary>The pairing code is minted asynchronously (deliberately not until the wizard REACHES this page, so
     /// it cannot expire while the user reads Welcome/Terms). Until it lands, show that it is coming — promoted
     /// as-is from the page's original inline pending branch so both the Wide stage and the non-Wide
-    /// <see cref="StackedOrRowBody"/> show the identical waiting state.</summary>
+    /// <see cref="StackedOrRowBody"/> show the identical waiting state. Callers only ever mount this when
+    /// <see cref="ExpectsPairingCode"/> says a code is actually on its way — never as a permanent stand-in for a
+    /// code that will never arrive.</summary>
     static BoxEl PendingCodePane() => new BoxEl
     {
         Width = SetupLayout.CompactPairingWidth, Shrink = 0f, Direction = 1, AlignItems = FlexAlign.Center,
@@ -230,9 +263,14 @@ sealed class SetupSignInPage : Component
         if (facet == SetupSignInPhase.Busy)
             kids.Add(new TextEl(Loc.Get(Strings.Auth.SigningIn)) { Size = 14f, Weight = 600, Color = Tok.TextPrimary });
 
-        // Busy with no bridge (headless/no backend) has nothing live to preview — the plain status line above already
-        // covers that case exactly like the old BusyLeft fallback did, so no card is added at all.
-        if (SetupSignInPresentation.ShowsApproveCard(facet) && (facet != SetupSignInPhase.Busy || bridge is not null))
+        // The live four-step ladder means something only once the bootstrap has actually started finalizing
+        // (IsFinalizing) — Busy also covers RequestingCode/AwaitingBrowser/SilentResume, all pre-connection, and
+        // rendering the SAME ladder there would double up with the stage column's own pairing spinner (item 5).
+        // Idle's own branch below is a static PREVIEW (nothing spins), so it never competes with anything and
+        // keeps showing unconditionally. Bridge-less Busy (headless/no backend) has nothing live to preview either —
+        // the plain status line above already covers that case exactly like the old BusyLeft fallback did.
+        if (SetupSignInPresentation.ShowsApproveCard(facet) &&
+            (facet == SetupSignInPhase.Idle || (bridge is not null && IsFinalizing(snap.Phase))))
             kids.Add(ApproveCard(facet, bridge));
 
         if (facet == SetupSignInPhase.Done)
@@ -241,9 +279,13 @@ sealed class SetupSignInPage : Component
         if (facet is SetupSignInPhase.Failed or SetupSignInPhase.Expired or SetupSignInPhase.Premium)
             kids.Add(TerminalInfoBar(facet, snap.Error));
 
+        // Genuine fine print, not a headline — let it wrap in full rather than clip mid-sentence (item 2). `wide:
+        // false` sizes the column to its own content instead of reserving the full DecisionBodyBudget(2) MinHeight:
+        // this page never fills that budget, and the forced height was the dead space between the last card and
+        // this disclaimer (item 4). `pinnedBottom` still lands it after a Spacer, exactly like every other caller.
         Element disclaimer = new TextEl(Loc.Get(Strings.Auth.Disclaimer))
-            { Size = 11.5f, LineHeight = 17f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 3, Trim = TextTrim.WordEllipsis };
-        return SetupDecision.Column(wide: true, kids: kids, pinnedBottom: disclaimer, leadLines: 2);
+            { Size = 11.5f, LineHeight = 17f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
+        return SetupDecision.Column(wide: false, kids: kids, pinnedBottom: disclaimer, leadLines: 2);
     }
 
     /// <summary>"Don't have a Spotify account? Sign up" — the way OUT of the sign-in page for someone who has no
@@ -295,7 +337,9 @@ sealed class SetupSignInPage : Component
     /// <see cref="LoginStepRow"/>, whose bridge signal already defaults its step to <c>LoginStep.Connecting</c>
     /// even while merely LoggedOut, which would incorrectly draw the first row as "current"/spinning before the
     /// flow has even started). Busy: the SAME four steps, now the real <see cref="LoginStepRow"/> off the live
-    /// bridge signal, exactly like the takeover's own Finalizing splash.</summary>
+    /// bridge signal, exactly like the takeover's own Finalizing splash — the caller (<see cref="DecisionColumn"/>)
+    /// only reaches this branch once <see cref="IsFinalizing"/> is true, so <paramref name="bridge"/> is both
+    /// non-null and genuinely mid-finalizing here, never mid-pairing.</summary>
     static Element ApproveCard(SetupSignInPhase facet, PlaybackBridge? bridge)
     {
         if (facet == SetupSignInPhase.Idle)
@@ -328,8 +372,7 @@ sealed class SetupSignInPage : Component
                     Row(LoginStep.Audio, Loc.Get(Strings.Auth.StepAudio)),
                     Row(LoginStep.Profile, Loc.Get(Strings.Auth.StepProfile)),
                 ],
-            },
-            new TextEl(Loc.Get(Strings.Setup.SignIn.BusyNote)) { Size = 11.5f, LineHeight = 17f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap });
+            });
     }
 
     static Element CardShell(params Element[] kids) => new BoxEl
@@ -385,16 +428,20 @@ sealed class SetupSignInPage : Component
         float rightOpacity = SetupSignInPresentation.PaneOpacity(facet);
         bool rightInteractive = SetupSignInPresentation.PaneInteractive(facet);
 
-        Element right = snap.Challenge is { } challenge
+        // No pane at all once Busy has moved past pairing without ever minting a code (AwaitingBrowser/SilentResume
+        // — see ExpectsPairingCode): a "Getting your code…" spinner there would spin forever (item 3) beside
+        // BusyLeft's own live step list once it takes over (item 5), and there is nothing to fade FROM either.
+        Element? right = snap.Challenge is { } challenge
             ? LoginView.CompactRightPane(challenge)
-            : PendingCodePane();
-        right = right with
-        {
-            Key = snap.Challenge is { } c ? "signin:challenge:" + c.UserCode : "signin:challenge:pending",
-            Enter = new EnterExit(Dy: 4f, Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true),
-            Exit = new EnterExit(Dy: -2f, Opacity: 0f, Active: true),
-            Transition = MotionTok.StandardEnter,
-        };
+            : ExpectsPairingCode(snap.Phase) ? PendingCodePane() : null;
+        if (right is not null)
+            right = right with
+            {
+                Key = snap.Challenge is { } c ? "signin:challenge:" + c.UserCode : "signin:challenge:pending",
+                Enter = new EnterExit(Dy: 4f, Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true),
+                Exit = new EnterExit(Dy: -2f, Opacity: 0f, Active: true),
+                Transition = MotionTok.StandardEnter,
+            };
 
         Element leftHost = new BoxEl
         {
@@ -402,13 +449,13 @@ sealed class SetupSignInPage : Component
             Padding = new Edges4(Spacing.XXS, Spacing.XXS, Spacing.XL, Spacing.S),
             Children = [left],
         };
-        Element divider = new BoxEl
+        Element? divider = right is null ? null : new BoxEl
         {
             Shrink = 0f, AlignSelf = FlexAlign.Stretch, Opacity = rightOpacity,
             HitTestVisible = rightInteractive,
             Children = [LoginView.OrDivider(SetupLayout.CompactDividerWidth, SetupLayout.StacksSignIn(tier))],
         };
-        Element rightHost = new BoxEl
+        Element? rightHost = right is null ? null : new BoxEl
         {
             Shrink = 0f, AlignSelf = SetupLayout.StacksSignIn(tier) ? FlexAlign.Center : FlexAlign.Stretch,
             Opacity = rightOpacity, HitTestVisible = rightInteractive, Children = [right],
@@ -419,13 +466,13 @@ sealed class SetupSignInPage : Component
             {
                 Key = "signin:layout:" + (int)tier,
                 Direction = 1, Gap = Spacing.M, MinWidth = 0f, MinHeight = 0f,
-                Children = rightOpacity > 0f ? [leftHost, divider, rightHost] : [leftHost],
+                Children = right is not null && rightOpacity > 0f ? [leftHost, divider!, rightHost!] : [leftHost],
             }
             : new BoxEl
             {
                 Key = "signin:layout:" + (int)tier,
                 Direction = 0, AlignItems = FlexAlign.Start, MinWidth = 0f, MinHeight = 0f,
-                Children = [leftHost, divider, rightHost],
+                Children = right is not null ? [leftHost, divider!, rightHost!] : [leftHost],
             };
 
         // The content lane is intentionally taller than the row itself. Centering the login composition in it restores
@@ -441,7 +488,7 @@ sealed class SetupSignInPage : Component
     static Element LeftPane(SetupSignInPhase facet, LoginSnapshot snap, PlaybackBridge? bridge, Action? startBrowser) => facet switch
     {
         SetupSignInPhase.Idle => IdleLeft(startBrowser),
-        SetupSignInPhase.Busy => BusyLeft(bridge),
+        SetupSignInPhase.Busy => BusyLeft(bridge, snap.Phase),
         SetupSignInPhase.Done => DoneLeft(snap.User),
         SetupSignInPhase.Failed => FailedLeft(snap.Error),
         SetupSignInPhase.Expired => ExpiredLeft(),
@@ -467,9 +514,13 @@ sealed class SetupSignInPage : Component
 
     // ── Busy: the same step bar + four step rows the login takeover's own Finalizing splash uses, reading the SAME
     // bridge.Login signal — this page's own state, not a second dialog stacked on top of it. ─────────────────────
-    static Element BusyLeft(PlaybackBridge? bridge)
+    static Element BusyLeft(PlaybackBridge? bridge, LoginPhase phase)
     {
-        if (bridge is null) return new BoxEl { Children = [new TextEl(Loc.Get(Strings.Auth.SigningIn)) { Size = 14f, Weight = 600, Color = Tok.TextPrimary }] };
+        // The live ladder means something only once the bootstrap has actually started finalizing (IsFinalizing) —
+        // RequestingCode/AwaitingBrowser/SilentResume are Busy too, but pre-connection: showing it there would
+        // double up with the pairing pane's own "Getting your code" spinner beside it (item 5).
+        if (bridge is null || !IsFinalizing(phase))
+            return new BoxEl { Children = [new TextEl(Loc.Get(Strings.Auth.SigningIn)) { Size = 14f, Weight = 600, Color = Tok.TextPrimary }] };
         Element Row(LoginStep step, string label) => Embed.Comp(() => new LoginStepRow(bridge.Login, step, label));
         return new BoxEl
         {
@@ -490,8 +541,6 @@ sealed class SetupSignInPage : Component
                         Row(LoginStep.Profile, Loc.Get(Strings.Auth.StepProfile)),
                     ],
                 },
-                new TextEl(Loc.Get(Strings.Setup.SignIn.BusyNote))
-                    { Size = 11.5f, LineHeight = 17f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
             ],
         };
     }

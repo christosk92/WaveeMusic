@@ -123,6 +123,10 @@ sealed class FakeDeriver : IPlayPlayKeyDeriver
 sealed class RecordingAudioHost : IAudioHost
 {
     public bool LoadFastStartCalled, PlayCalled, SupplyBodyCalled, StopCalled;
+    /// <summary>Was the clear head already loaded when the body arrived? The wall-clock "supply grace" that used to
+    /// enforce that ordering is gone; the host's serialized Enqueue pump is what guarantees it now, so tests pin the
+    /// ordering itself rather than the delay that used to imply it.</summary>
+    public bool LoadFastStartPrecededBody;
     public int LoadCalls;
     public readonly List<long> Seeks = [];
     public readonly TaskCompletionSource SupplyBodySignaled = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -131,7 +135,12 @@ sealed class RecordingAudioHost : IAudioHost
 
     public void Load(in AudioStreamHandle s) { LoadCalls++; }
     public void LoadFastStart(in AudioFastStart s) => LoadFastStartCalled = true;
-    public void SupplyBody(in AudioStreamHandle b) { SupplyBodyCalled = true; SupplyBodySignaled.TrySetResult(); }
+    public void SupplyBody(in AudioStreamHandle b)
+    {
+        LoadFastStartPrecededBody = LoadFastStartCalled;
+        SupplyBodyCalled = true;
+        SupplyBodySignaled.TrySetResult();
+    }
     public void Play() => PlayCalled = true;
     public void Pause() { }
     public void Stop() { StopCalled = true; PlayCalled = false; StopSignaled.TrySetResult(); }

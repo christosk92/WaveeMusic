@@ -1,9 +1,72 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 
 namespace Wavee.Sdk.Streams;
+
+/// <summary>Pure decision for the CDN read-ahead window size (see <see cref="RangedHttpSource.ConfigureReadAhead"/>).
+/// No I/O, no clock reads — a table function of (measured throughput, bitrate, metered, memory cap) so it is testable
+/// without a network. Never returns below <see cref="FloorBytes"/> (today's fixed baseline) regardless of inputs.</summary>
+public static class ReadAheadPolicy
+{
+    /// <summary>The floor this policy will never go below — today's fixed read-ahead window.</summary>
+    public const int FloorBytes = 256 * 1024;
+    /// <summary>Seconds of audio held on a metered/roaming/over-limit connection.</summary>
+    public const int MeteredWindowSeconds = 15;
+    /// <summary>Seconds of audio held at/near realtime throughput.</summary>
+    public const int NearRealtimeWindowSeconds = 30;
+    /// <summary>Seconds of audio held once throughput is comfortably ahead of realtime (a "whole track" proxy — a
+    /// 4-minute 320 kbps track is ~9.6 MB, well inside this at 320 kbps).</summary>
+    public const int FastWindowSeconds = 600;
+    /// <summary>Delivered-vs-realtime ratio at/above which the window grows toward <see cref="FastWindowSeconds"/>.</summary>
+    public const double FastThroughputMultiple = 3.0;
+    /// <summary>Bitrate assumed when the caller has not supplied one yet (very high quality Ogg, so the window errs
+    /// generous rather than starving a track we don't know the rate of).</summary>
+    const int DefaultBitrateBitsPerSec = 320_000;
+
+    /// <summary>Why <see cref="Decision.WindowBytes"/> landed where it did — always logged, never gated.</summary>
+    public enum Reason { Bandwidth, Metered, MemoryCap }
+
+    /// <summary>The computed window, in both units, plus why.</summary>
+    public readonly record struct Decision(int WindowBytes, int WindowSeconds, Reason Reason);
+
+    /// <summary>Compute the read-ahead window. All inputs are plain numbers — no I/O.</summary>
+    /// <param name="measuredBytesPerSec">Rolling delivered-bytes/sec from recent range fetches; 0 = not measured yet
+    /// (treated as near-realtime, the conservative assumption).</param>
+    /// <param name="bitrateBitsPerSec">The track's bitrate; &lt;= 0 = unknown (assumes a high-quality Ogg rate).</param>
+    /// <param name="metered">True on a metered/roaming/over-limit connection — clamps to a modest window regardless
+    /// of throughput.</param>
+    /// <param name="memoryCapBytes">This stream's share of the read-ahead memory budget (bounds the total across the
+    /// active stream + a gapless-prepared next track — see <see cref="RangedHttpSource.ConfigureReadAhead"/>).</param>
+    public static Decision Compute(long measuredBytesPerSec, int bitrateBitsPerSec, bool metered, long memoryCapBytes)
+    {
+        int bitrateBytesPerSec = bitrateBitsPerSec > 0 ? bitrateBitsPerSec / 8 : DefaultBitrateBitsPerSec / 8;
+        long cap = Math.Max(FloorBytes, memoryCapBytes);
+
+        if (metered)
+        {
+            long meteredBytes = (long)bitrateBytesPerSec * MeteredWindowSeconds;
+            long clamped = Math.Max(FloorBytes, Math.Min(meteredBytes, cap));
+            return Make(clamped, bitrateBytesPerSec, Reason.Metered);
+        }
+
+        double realtimeRatio = measuredBytesPerSec > 0 ? measuredBytesPerSec / (double)bitrateBytesPerSec : 1.0;
+        int targetSeconds = realtimeRatio >= FastThroughputMultiple ? FastWindowSeconds : NearRealtimeWindowSeconds;
+        long target = (long)bitrateBytesPerSec * targetSeconds;
+        long bounded = Math.Min(target, cap);
+        var reason = bounded < target ? Reason.MemoryCap : Reason.Bandwidth;
+        return Make(Math.Max(FloorBytes, bounded), bitrateBytesPerSec, reason);
+    }
+
+    static Decision Make(long windowBytes, int bitrateBytesPerSec, Reason reason)
+    {
+        int bytes = (int)Math.Min(int.MaxValue, windowBytes);
+        int seconds = bitrateBytesPerSec > 0 ? bytes / bitrateBytesPerSec : 0;
+        return new Decision(bytes, seconds, reason);
+    }
+}
 
 /// <summary>Why a ranged byte fetch failed, in source-neutral terms. Hosts map this onto their own failure vocabulary.</summary>
 public enum StreamFailureReason
@@ -117,7 +180,16 @@ public sealed record RangedHttpRecoveryPolicy(
 public sealed class RangedHttpSource : IDisposable
 {
     const int MinFetchBytes = 64 * 1024;
-    const int MaxReadAheadBytes = 256 * 1024;
+
+    // This stream's share of the read-ahead memory budget: the active stream and a gapless-prepared next track share
+    // one modest total, so growing toward whole-track prefetch on a fast connection never lets the pair balloon.
+    const long TotalReadAheadMemoryCapBytes = 24L * 1024 * 1024;
+    const long PerStreamMemoryCapBytes = TotalReadAheadMemoryCapBytes / 2;
+
+    // A rolling throughput sample rolls over (and feeds a fresh window decision) once it has accumulated at least this
+    // much wall-clock time across fetches — short enough to react to a connection change, long enough that one small
+    // fetch's latency spike doesn't whipsaw the window.
+    const long ThroughputWindowMs = 2_000;
 
     /// <summary>The chunk granularity of the in-memory raw store — the <see cref="ChunkDiskCache"/> chunk size.</summary>
     public const int CdnChunkBytes = ChunkDiskCache.ChunkBytes;
@@ -149,6 +221,20 @@ public sealed class RangedHttpSource : IDisposable
     int _readAheadResourcesDisposed;
     volatile bool _stopped;
     Task? _readAheadTask;
+
+    // Bandwidth-adaptive read-ahead window (§3): starts at the old fixed baseline (byte-identical behaviour until
+    // ConfigureReadAhead is ever called), then adapts from measured throughput + the caller's bitrate/metered hints.
+    int _readAheadWindowBytes = ReadAheadPolicy.FloorBytes;
+    int _bitrateBitsPerSec;
+    volatile bool _metered;
+    readonly object _throughputGate = new();
+    long _throughputWindowBytes;
+    long _throughputWindowMs;
+    long _lastMeasuredBytesPerSec;
+
+    // Non-blocking prefetch for SpotifyAudioStream.TryRead (§1): at most one in-flight kick at a time so a decode
+    // thread polling every few ms never floods Task.Run.
+    int _asyncPrefetchInFlight;
 
     // Per-range tracing is gated on the sink's Trace level (never an environment switch): at the default Info level
     // nothing is emitted, and turning the host's logger down to Trace turns the whole range ledger on.
@@ -223,12 +309,89 @@ public sealed class RangedHttpSource : IDisposable
         try { _disposeCts.Cancel(); } catch (ObjectDisposedException) { }
     }
 
-    /// <summary>Start (or restart) the background read-ahead loop.</summary>
+    /// <summary>Start (or restart) the background read-ahead loop. Runs as a dedicated <see cref="TaskCreationOptions.LongRunning"/>
+    /// task rather than <c>Task.Run</c>: a plain queued task waits its turn behind whatever else the app's ThreadPool is
+    /// running (hydration sweeps, HTTP fan-out) — under load the pool's hill-climbing injection adds new worker threads
+    /// at roughly one per second, so a saturated pool can delay this pump's very first tick by seconds. LongRunning asks
+    /// the scheduler for its own thread immediately, so audio byte supply never queues behind unrelated app work.</summary>
     public void StartReadAhead()
     {
         if (_stopped || _disposeCts.IsCancellationRequested) return;
         if (_readAheadTask is { IsCompleted: false }) return;
-        _readAheadTask = Task.Run(ReadAheadLoopAsync, CancellationToken.None);
+        _readAheadTask = Task.Factory.StartNew(ReadAheadLoopAsync, CancellationToken.None,
+            TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+    }
+
+    /// <summary>Bandwidth-adaptive read-ahead window (§3, pinned signature). Feeds the track's bitrate and the
+    /// connection's metered/roaming/over-limit state into <see cref="ReadAheadPolicy"/> alongside the throughput this
+    /// source has already measured from its own range fetches (no new I/O). Safe to call at any time, including before
+    /// the first byte is fetched (falls back to a high-quality-Ogg assumption) and repeatedly as the network cost
+    /// changes. Never below <see cref="ReadAheadPolicy.FloorBytes"/> — today's fixed baseline is the floor, not the
+    /// ceiling.</summary>
+    public void ConfigureReadAhead(int bitrateBitsPerSec, bool metered)
+    {
+        Volatile.Write(ref _bitrateBitsPerSec, Math.Max(0, bitrateBitsPerSec));
+        _metered = metered;
+        RecomputeReadAheadWindow(Volatile.Read(ref _lastMeasuredBytesPerSec), "configure");
+    }
+
+    void RecomputeReadAheadWindow(long measuredBytesPerSec, string trigger)
+    {
+        var decision = ReadAheadPolicy.Compute(measuredBytesPerSec, Volatile.Read(ref _bitrateBitsPerSec), _metered,
+            PerStreamMemoryCapBytes);
+        Volatile.Write(ref _readAheadWindowBytes, decision.WindowBytes);
+        // Always-on, one line per decision — never gated on an env var (house rule): measured throughput, the chosen
+        // window in both units, and why.
+        _log.Info($"stream {_name}: read-ahead window trigger={trigger} throughputBps={measuredBytesPerSec} " +
+            $"bitrateBps={Volatile.Read(ref _bitrateBitsPerSec)} metered={_metered} windowSeconds={decision.WindowSeconds} " +
+            $"windowBytes={decision.WindowBytes} reason={decision.Reason}");
+    }
+
+    // Pure arithmetic over fetches this source already made — no new I/O. Rolls over (and republishes the window)
+    // once the accumulated window has enough wall-clock time to be a meaningful rate rather than a single fetch's
+    // latency spike.
+    void RecordThroughputSample(int bytes, long elapsedMs)
+    {
+        if (bytes <= 0 || elapsedMs <= 0) return;
+        long windowBytes, windowMs;
+        lock (_throughputGate)
+        {
+            _throughputWindowBytes += bytes;
+            _throughputWindowMs += elapsedMs;
+            if (_throughputWindowMs < ThroughputWindowMs) return;
+            windowBytes = _throughputWindowBytes;
+            windowMs = _throughputWindowMs;
+            _throughputWindowBytes = 0;
+            _throughputWindowMs = 0;
+        }
+        long bytesPerSec = windowMs > 0 ? windowBytes * 1000 / windowMs : 0;
+        Volatile.Write(ref _lastMeasuredBytesPerSec, bytesPerSec);
+        RecomputeReadAheadWindow(bytesPerSec, "throughput");
+    }
+
+    /// <summary>Non-blocking prefetch kick for <see cref="Wavee.Sdk.Streams"/> callers that must never do sync I/O on
+    /// their calling thread (the engine's decode worker — see <c>SpotifyAudioStream.TryRead</c>). No-op if the range is
+    /// already buffered or a prefetch is already in flight (bounded to one at a time so a caller polling every few ms
+    /// never floods <see cref="Task.Run"/>). Failures are traced, never thrown — the caller already treated this as a
+    /// miss and will simply see the range still missing on its next call.</summary>
+    public void RequestAsyncPrefetch(long start, int length)
+    {
+        if (_stopped || _disposeCts.IsCancellationRequested) return;
+        var size = Volatile.Read(ref _size);
+        var end = size > 0 ? Math.Min(size, start + length) : start + length;
+        if (start >= end) return;
+        if (_ranges.ContainsRange(start, end)) return;
+        if (Interlocked.CompareExchange(ref _asyncPrefetchInFlight, 1, 0) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            try { await FetchRangeWithRecoveryAsync(start, end, _disposeCts.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                if (RangeTrace) TraceLine($"stream {_name}: async prefetch failed range=[{start},{end}): {ex.GetType().Name}: {ex.Message}");
+            }
+            finally { Interlocked.Exchange(ref _asyncPrefetchInFlight, 0); }
+        });
     }
 
     /// <summary>Tell the read-ahead where the reader is now.</summary>
@@ -266,10 +429,11 @@ public sealed class RangedHttpSource : IDisposable
         var size = Volatile.Read(ref _size);
         if (_headFloor <= 0 || (size > 0 && _headFloor >= size)) return;
 
+        var window = Volatile.Read(ref _readAheadWindowBytes);
         var start = _headFloor;
         var end = size > 0
-            ? Math.Min(size, start + MaxReadAheadBytes)
-            : start + MaxReadAheadBytes;
+            ? Math.Min(size, start + window)
+            : start + window;
         if (_ranges.ContainsRange(start, end)) return;
 
         var sw = Stopwatch.StartNew();
@@ -300,9 +464,10 @@ public sealed class RangedHttpSource : IDisposable
                     continue;
                 }
 
+                var window = Volatile.Read(ref _readAheadWindowBytes);
                 var start = Math.Max(Volatile.Read(ref _readAheadOffset), _headFloor);
                 if (size > 0 && start >= size) break;
-                var end = size > 0 ? Math.Min(size, start + MaxReadAheadBytes) : start + MaxReadAheadBytes;
+                var end = size > 0 ? Math.Min(size, start + window) : start + window;
                 if (!_ranges.ContainsRange(start, end))
                     await FetchRangeAsync(start, end, _disposeCts.Token).ConfigureAwait(false);
 
@@ -485,9 +650,9 @@ public sealed class RangedHttpSource : IDisposable
                     if (resp.StatusCode == HttpStatusCode.OK)
                     {
                         if (_requireRange) { last = new CdnPermanentException("CDN ignored Range request"); break; }
-                        // Range-optional (plain-HTTP server ignored Range): buffer the whole body once and serve all reads from it.
+                        // Range-optional (plain-HTTP server ignored Range): stream the whole body once and serve all reads from it.
+                        // BufferFullBodyAsync wakes _onRangeAvailable itself, before queuing the disk write-through.
                         await BufferFullBodyAsync(resp, ct).ConfigureAwait(false);
-                        _onRangeAvailable?.Invoke();
                         if (RangeTrace) TraceLine($"stream {_name}: full-body fetch ok (range ignored) size={Volatile.Read(ref _size)} elapsed={sw.ElapsedMilliseconds}ms");
                         return;
                     }
@@ -522,26 +687,35 @@ public sealed class RangedHttpSource : IDisposable
                         throw new CdnPermanentException($"CDN returned unexpected range end {expectedEnd}, requested through {requestedEnd}");
 
                     var expectedBytes = checked((int)(expectedEnd - start));
-                    var buf = new byte[expectedBytes];
-                    var read = 0;
-                    await using var body = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                    while (read < buf.Length)
+                    var buf = ArrayPool<byte>.Shared.Rent(expectedBytes);
+                    try
                     {
-                        var n = await body.ReadAsync(buf.AsMemory(read, buf.Length - read), ct).ConfigureAwait(false);
-                        if (n <= 0) break;
-                        read += n;
-                    }
-                    if (read <= 0)
-                        throw new IOException($"CDN returned no bytes for range [{start},{expectedEnd})");
-                    if (contentRange?.To is not null && read != expectedBytes)
-                        throw new IOException($"CDN returned {read} bytes for range [{start},{expectedEnd}), expected {expectedBytes}");
+                        var read = 0;
+                        var bodySw = Stopwatch.StartNew();
+                        await using var body = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                        while (read < expectedBytes)
+                        {
+                            var n = await body.ReadAsync(buf.AsMemory(read, expectedBytes - read), ct).ConfigureAwait(false);
+                            if (n <= 0) break;
+                            read += n;
+                        }
+                        bodySw.Stop();
+                        if (read <= 0)
+                            throw new IOException($"CDN returned no bytes for range [{start},{expectedEnd})");
+                        if (contentRange?.To is not null && read != expectedBytes)
+                            throw new IOException($"CDN returned {read} bytes for range [{start},{expectedEnd}), expected {expectedBytes}");
 
-                    WriteCdnBytes(start, buf, read);
-                    _ranges.AddRange(start, start + read);
-                    FlushCompletedChunks(start, start + read);
-                    _onRangeAvailable?.Invoke();
-                    if (RangeTrace) TraceLine($"stream {_name}: range fetch ok range=[{start},{start + read}) bytes={read} elapsed={sw.ElapsedMilliseconds}ms");
-                    return;
+                        WriteCdnBytes(start, buf, read);
+                        _ranges.AddRange(start, start + read);
+                        // Wake the caller's blocked readers FIRST — the disk-cache write-through (item 5) is queued to a
+                        // background writer inside FlushCompletedChunks/ChunkDiskCache and must never sit on this path.
+                        _onRangeAvailable?.Invoke();
+                        FlushCompletedChunks(start, start + read);
+                        RecordThroughputSample(read, bodySw.ElapsedMilliseconds);
+                        if (RangeTrace) TraceLine($"stream {_name}: range fetch ok range=[{start},{start + read}) bytes={read} elapsed={sw.ElapsedMilliseconds}ms");
+                        return;
+                    }
+                    finally { ArrayPool<byte>.Shared.Return(buf); }
                 }
                 catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
                 {
@@ -558,28 +732,50 @@ public sealed class RangedHttpSource : IDisposable
         throw last ?? new IOException($"all CDN mirrors failed for range [{start},{end})");
     }
 
-    /// <summary>Range-optional path: the server ignored our Range and returned 200 with the whole file. Buffer it once
-    /// from offset 0 and record the size, so every subsequent read is satisfied from the store.</summary>
+    /// <summary>Range-optional path: the server ignored our Range and returned 200 with the whole file. Streams the
+    /// body straight into the chunk store as it arrives (a pooled read buffer, no whole-body <see cref="MemoryStream"/>
+    /// / <c>ToArray</c> — the podcast 200-fallback previously buffered an entire episode body in managed memory before
+    /// this ever reached the store) and records the size once EOF is known, so every subsequent read is satisfied from
+    /// the store.</summary>
     async Task BufferFullBodyAsync(HttpResponseMessage resp, CancellationToken ct)
     {
         await using var body = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        using var ms = new MemoryStream();
-        await body.CopyToAsync(ms, ct).ConfigureAwait(false);
-        var len = (int)ms.Length;
-        if (len <= 0) throw new IOException("plain-HTTP server returned an empty body");
+        var buffer = ArrayPool<byte>.Shared.Rent(CdnChunkBytes);
+        long total = 0;
+        try
+        {
+            int n;
+            while ((n = await body.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false)) > 0)
+            {
+                WriteCdnBytes(total, buffer, n);
+                total += n;
+            }
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
+
+        if (total <= 0) throw new IOException("plain-HTTP server returned an empty body");
+        var len = checked((int)total);
         SetSize(len);
-        WriteCdnBytes(0, ms.GetBuffer(), len);
         _ranges.AddRange(0, len);
+        // Wake blocked readers before queuing the (now background) disk write-through — item 5's ordering.
+        _onRangeAvailable?.Invoke();
         FlushCompletedChunks(0, len);
     }
 
     /// <summary>Copy buffered RAW (untransformed) bytes into <paramref name="destination"/>. The caller applies any
     /// decrypt transform afterwards. Throws if the range is not buffered.</summary>
-    public void ReadRaw(long start, byte[] destination, int destinationOffset, int count)
+    public void ReadRaw(long start, byte[] destination, int destinationOffset, int count) =>
+        ReadRawCore(start, destination.AsSpan(destinationOffset), count);
+
+    /// <summary>Span overload of <see cref="ReadRaw(long,byte[],int,int)"/> — lets a non-blocking caller
+    /// (<c>SpotifyAudioStream.TryRead</c>) copy out without an intermediate array allocation.</summary>
+    public void ReadRaw(long start, Span<byte> destination, int count) => ReadRawCore(start, destination, count);
+
+    void ReadRawCore(long start, Span<byte> destination, int count)
     {
         lock (_dataGate)
         {
-            int dst = destinationOffset;
+            int dst = 0;
             long pos = start;
             int remaining = count;
             while (remaining > 0)
@@ -589,7 +785,7 @@ public sealed class RangedHttpSource : IDisposable
                 int n = Math.Min(remaining, CdnChunkBytes - chunkOffset);
                 if (!_cdnChunks.TryGetValue(chunkIndex, out var chunk))
                     throw new IOException($"CDN range [{start},{start + count}) is not buffered");
-                Buffer.BlockCopy(chunk, chunkOffset, destination, dst, n);
+                chunk.AsSpan(chunkOffset, n).CopyTo(destination.Slice(dst, n));
                 dst += n;
                 pos += n;
                 remaining -= n;
@@ -650,13 +846,14 @@ public sealed class RangedHttpSource : IDisposable
             if (!_ranges.ContainsRange(cs, ce)) continue;
             int len = checked((int)(ce - cs));
 
-            byte[] snapshot;
+            // No per-flush ToArray snapshot: ChunkDiskCache.WriteChunk takes the copy it needs (into its own pooled
+            // buffer for the background writer) synchronously, so handing it a span of the live chunk under _dataGate
+            // is enough — item 4.
             lock (_dataGate)
             {
                 if (!_cdnChunks.TryGetValue(chunkIndex, out var chunk)) continue;
-                snapshot = chunk.AsSpan(0, len).ToArray();
+                _disk.WriteChunk(_name, chunkIndex, chunk.AsSpan(0, len));
             }
-            _disk.WriteChunk(_name, chunkIndex, snapshot);
         }
     }
 
@@ -677,7 +874,10 @@ public sealed class RangedHttpSource : IDisposable
     /// <summary>Drop this source's entry from the disk cache (a key change invalidated the stored ciphertext).</summary>
     public void InvalidateDiskCache() => _disk?.Invalidate(_name);
 
-    /// <summary>Stop read-ahead, wait briefly for the loop, and release the fetch resources.</summary>
+    /// <summary>Stop read-ahead, wait briefly for the loop, and release the fetch resources. Also waits (briefly, and
+    /// only here — never on the hot fetch path) for this stream's queued disk write-throughs to land, so a caller that
+    /// disposes a stream right after fetching can rely on the bytes being on disk for a subsequent stream over the same
+    /// key (item 5 moved the actual flush to <see cref="ChunkDiskCache"/>'s background writer).</summary>
     public void Dispose()
     {
         Stop();
@@ -686,6 +886,7 @@ public sealed class RangedHttpSource : IDisposable
         {
             try { readAhead.Wait(250); } catch { }
         }
+        _disk?.WaitForPendingWrites();
         DisposeReadAheadResources();
     }
 

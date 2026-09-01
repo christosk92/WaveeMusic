@@ -215,6 +215,10 @@ public sealed class AudioPlaybackStack : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Host.DisposeAsync().ConfigureAwait(false);
+        // Each cache owns a background writer thread (ChunkDiskCache starts one in its ctor and only stops it on
+        // Dispose), so leaving them undisposed leaks a thread per stack for the process lifetime. Teardown never throws.
+        try { BodyDiskCache?.Dispose(); } catch { /* teardown never throws */ }
+        try { LicenseDiskCache?.Dispose(); } catch { /* teardown never throws */ }
 #if WAVEE_PLAYPLAY_LOCAL
         _playPlay?.Dispose();
 #endif

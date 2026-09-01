@@ -553,12 +553,12 @@ sealed class AboutUpdatePanel : Component
         var pills = new List<Element>(4);
         if (me.Quad is { Length: > 0 } quad) pills.Add(ReleaseNotesHero.Pill(quad, mono: true));
         pills.Add(ReleaseNotesHero.Pill(ChannelLabel(me.Channel)));
-        pills.Add(StatePill(inert, s));
+        pills.Add(StatePill(inert, me.IsStore, s));
 
         string stamp = (me.Commit is { Length: > 0 } c ? c + " · " : "") + SettingsPage.ArchToken;
         pills.Add(new TextEl(stamp) { Size = 12f, Color = Tok.TextTertiary, FontFamily = "Cascadia Code" });
 
-        var right = new List<Element>(3) { PrimaryButton(inert, s, upd) };
+        var right = new List<Element>(3) { PrimaryButton(inert, me.IsStore, s, upd) };
         if (nav is not null && me.Codename is { Length: > 0 } name)
             right.Add(HyperlinkButton.Create(Strings.Update.About.WhatsNewIn(name), () => nav("whatsnew", null)));
         if (showSummary is not null)
@@ -617,9 +617,16 @@ sealed class AboutUpdatePanel : Component
         _ => Strings.Update.About.ChannelDev,
     });
 
-    static Element StatePill(bool inert, AppUpdateSnapshot s)
+    /// <summary>The hero's state pill. A Store build's <paramref name="isStore"/> branch comes BEFORE the
+    /// <see cref="AppUpdateSnapshot.State"/> switch below: <c>StoreUpdateService.Current</c> is permanently
+    /// <see cref="AppUpdateState.None"/> (the Store owns checking, this process never learns the answer), so falling
+    /// through to that switch's default arm would print "Up to date" — a claim this build cannot back up and one
+    /// that directly contradicts <see cref="Provenance"/>'s honest "not checked yet" on the very same card. Reusing
+    /// that same "not checked yet" copy here keeps the two lines from disagreeing with each other.</summary>
+    static Element StatePill(bool inert, bool isStore, AppUpdateSnapshot s)
     {
         if (inert) return ReleaseNotesHero.Pill(Loc.Get(Strings.Settings.About.DevBuild));
+        if (isStore) return ReleaseNotesHero.Pill(Loc.Get(Strings.Update.About.NeverChecked));
         return s.State switch
         {
             AppUpdateState.Checking => ReleaseNotesHero.Pill(Loc.Get(Strings.Update.About.PillChecking)),
@@ -634,12 +641,24 @@ sealed class AboutUpdatePanel : Component
     }
 
     /// <summary>The ONE primary action, in the hero. A dev build gets a disabled "Check for updates": the button has to
-    /// stay put (the row is the same shape in every build) but there is nothing for the feed to be newer than.</summary>
-    static Element PrimaryButton(bool inert, AppUpdateSnapshot s, IAppUpdateService upd)
+    /// stay put (the row is the same shape in every build) but there is nothing for the feed to be newer than.
+    ///
+    /// <para>A Store build gets the SAME "stay put, change the verb" treatment: this process never polls a feed (the
+    /// Store does), so the button opens the Store listing (<see cref="IAppUpdateService.ApplyAsync"/>, which for
+    /// <c>StoreUpdateService</c> is exactly <c>_openUrl(FeedUrl)</c> → the <c>ms-windows-store://pdp/…</c> deep
+    /// link) instead of calling the no-op <c>CheckAsync</c> — that no-op, wired here before this fix, was the whole
+    /// of "Check for updates does nothing" on a Store build. <see cref="StoreCard"/> a little further down the page
+    /// offers the identical action again with the explanatory copy ("this copy of Wavee ... updates arrive through
+    /// the Store") — a deliberate, small duplication rather than leaving the hero's one always-present CTA either
+    /// dead or silently missing on this one build shape, which would make the row's shape depend on the install
+    /// type in a way nothing else in this file does.</para></summary>
+    static Element PrimaryButton(bool inert, bool isStore, AppUpdateSnapshot s, IAppUpdateService upd)
     {
         if (inert)
             return Button.Create(Loc.Get(Strings.Update.Action.Check), static () => { },
                 ButtonAppearance.Standard, ControlSize.Medium, isEnabled: false);
+        if (isStore)
+            return Button.Standard(Loc.Get(Strings.Update.Store.Open), () => _ = upd.ApplyAsync(CancellationToken.None));
 
         return s.State switch
         {

@@ -76,13 +76,20 @@ sealed class AppInstallerUpdateService : IAppUpdateService
     /// <param name="arch">"arm64" or "x64" — selects the per-arch feed asset.</param>
     /// <param name="updater">The packaged-deployment seam; a <c>NullPackageUpdater</c> when unpackaged.</param>
     /// <param name="log">The app log.</param>
+    /// <param name="updatedFrom">The version this launch updated FROM, or "" when this launch was not an update —
+    /// the return of <see cref="AppLaunchVersion.Arm"/>, which the composition root (<c>Services.cs</c>) calls ONCE,
+    /// for BOTH install shapes, before either updater is constructed. This ctor no longer decides that itself: doing
+    /// so here (as it used to) meant a Store-installed build — whose composition root never constructs this class —
+    /// silently skipped the arming entirely. Consuming the already-decided answer, rather than re-deciding it, also
+    /// avoids reading <c>WaveeSettings.LastRunVersion</c> a second time after <see cref="AppLaunchVersion.Arm"/> has
+    /// already advanced it to <c>me.LastRunKey</c> (which would always answer "no update").</param>
     /// <param name="isMetered">The live metered-connection probe. The composition root passes
     /// <c>NetworkPolicy.IsMetered</c>; the default is unmetered-conservative, matching that policy's own fail-soft
     /// (a probe we do not have must never silently block an update the user asked for).</param>
     /// <param name="openUrl">How a link reaches the browser. Defaults to the shell (<see cref="ShellOpen.OpenUrl"/>).</param>
     public AppInstallerUpdateService(IAppSettings settings, HttpClient github, WaveeVersionInfo me, string arch,
-        IPackageUpdater updater, IWaveeLog log, Func<bool>? isMetered = null, Action<string>? openUrl = null,
-        ReleaseNotesStore? notes = null)
+        IPackageUpdater updater, IWaveeLog log, string updatedFrom, Func<bool>? isMetered = null,
+        Action<string>? openUrl = null, ReleaseNotesStore? notes = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(github);
@@ -102,24 +109,10 @@ sealed class AppInstallerUpdateService : IAppUpdateService
         string assetPrefix = me.Channel == "beta" ? "Wavee.Beta." : "Wavee.";
         FeedUrl = me.UpdateBaseUrl + me.FeedRelease + "/" + assetPrefix + _arch + ".appinstaller";
 
-        // "You were updated" is decided ONCE, here, by comparing the build that last ran with the one now running —
-        // the only moment where the previous run's value is still on disk. A first-ever launch is not an update, and a
-        // dev build never claims one (its LastRunKey is its semver, which does not move between builds).
-        string lastRun = settings.Get(WaveeSettings.LastRunVersion);
-
-        // ALWAYS-ON, and deliberately BEFORE the decision below: "was this launch an update?" is answered from exactly
-        // three facts, and when the answer is wrong (the local E2E run where the first process of the new build saw an
-        // EMPTY lastRun, so no "updated: A -> B" line was written and previousVersion stayed blank) the only way to
-        // tell WHICH fact moved is to have recorded all three at the moment they were read. The package full name
-        // pins WHICH package identity is running (and therefore which per-package LocalCache the settings/log came
-        // from — a reset of that store is precisely what would blank lastRun); appData pins the unpackaged root.
-        // (The root is spelled out rather than read from SettingsShared: this file is linked into Wavee.Tests, which
-        // does not — and cannot — compile the engine-bound Features/Shell sources. Same value, one place to change.)
-        log.Info(LogCategory, "identity: " + (PackageIdentity.PackageFullName is { Length: > 0 } pfn ? pfn : "unpackaged")
-            + "; lastRun='" + lastRun + "'; appData="
-            + System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee"));
-
-        if (!me.IsDev && AppUpdateVersion.IsFirstRunAfterUpdate(lastRun, me.LastRunKey))
+        // "You were updated" was decided ONCE, by AppLaunchVersion.Arm (see the <param> above) — the only moment
+        // where the previous run's LastRunVersion was still on disk. All this ctor does with the answer is publish
+        // the resulting Completed snapshot; it never re-reads settings to re-derive it.
+        if (updatedFrom is { Length: > 0 })
         {
             Current = AppUpdateSnapshot.Idle with
             {
@@ -128,18 +121,7 @@ sealed class AppInstallerUpdateService : IAppUpdateService
                 TargetSemVer = me.Core,
                 TargetCodename = me.Codename,
             };
-            // The after-update plate needs to know where the user came FROM, and this is the only moment that value
-            // exists. It is written TWICE, on purpose, because the two readers have opposite lifetimes:
-            //   pendingFrom      — the ARMING flag for the automatic plate. A one-shot: AfterUpdateDialog.Open clears
-            //                      it whether or not the user reads the plate, so it never re-raises itself.
-            //   previousVersion  — the same value as a FACT about this install, never cleared by anyone. Settings ›
-            //                      About's "Show the update summary again" and the local E2E harness both need the
-            //                      from-quad long after the one-shot has been consumed.
-            settings.Set(WaveeSettings.ReleaseNotesPendingFrom, lastRun);
-            settings.Set(WaveeSettings.ReleaseNotesPreviousVersion, lastRun);
-            log.Info(LogCategory, "updated: " + lastRun + " -> " + me.LastRunKey);
         }
-        settings.Set(WaveeSettings.LastRunVersion, me.LastRunKey);
         Instance = this;
     }
 

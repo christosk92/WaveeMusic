@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
@@ -62,7 +63,7 @@ public readonly record struct ChunkCachePolicy(
 /// Chunks are committed only after their bytes are durable and are verified with SHA-256 on every disk read, so a
 /// ciphertext body may be cached at rest and decrypted later, in memory.
 /// </summary>
-public sealed class ChunkDiskCache
+public sealed class ChunkDiskCache : IDisposable
 {
     /// <summary>The fixed chunk granularity (64 KiB). Baked into the on-disk map format.</summary>
     public const int ChunkBytes = 64 * 1024;
@@ -99,6 +100,39 @@ public sealed class ChunkDiskCache
     bool _scanPending;   // a WarmScan is owed for the current _activeDirectory (guarded by _stateGate)
     int _scanGen;        // bumped on every directory switch so a stale scan can't publish over the new root's count
 
+    // ── Background write-through (item 5) ───────────────────────────────────────────────────────────────────────────
+    // WriteChunk used to do everything — per-file lock, header re-read, DriveInfo probe, SHA-256, and a
+    // flush-to-physical-disk fsync — INLINE, on the caller's thread, which for a RangedHttpSource fetch is the thread
+    // the decode worker is blocked on. None of that needs to happen before the fetch returns: the caller only needs
+    // its bytes (RAM already has them) and its wake-up. So WriteChunk now just rents a pooled copy of the chunk and
+    // hands it to one dedicated low-priority writer thread; the actual disk work (WriteChunkCore) runs there, off the
+    // fetch path entirely. Crash consistency doesn't regress: TryReadChunk already re-verifies SHA-256 on every read
+    // and discards on mismatch, which is what covered a torn write before this change too.
+    readonly BlockingCollection<PendingWrite> _writeQueue = new();
+    readonly object _drainGate = new();
+    int _pendingWrites;
+    Thread? _writerThread;
+    int _disposed;   // 0/1 — guards WriteChunk against racing a Dispose() and makes Dispose() itself idempotent
+
+    readonly record struct PendingChunk(byte[] Buffer, int Length);
+    readonly record struct PendingWrite(string FileId, int ChunkIndex, string Key, PendingChunk Chunk);
+
+    // Read-your-own-write staging: WriteChunk is now fire-and-forget (the actual disk commit happens later, on the
+    // background writer), but a caller that writes a chunk and immediately reads it back — the common in-process
+    // pattern, and the shape every existing test uses — must still see it. TryReadChunk checks here FIRST. Keyed by
+    // (root, fileId, chunkIndex); last-writer-wins on a key collision (an overwritten predecessor's buffer is simply
+    // left for the GC rather than pooled — safe, just not reused, and this race is vanishingly rare in practice: a
+    // chunk index is normally flushed exactly once per fetch completion).
+    readonly ConcurrentDictionary<string, PendingChunk> _pending = new(StringComparer.Ordinal);
+
+    static string PendingKey(string root, string fileId, int chunkIndex) => root + "\0" + Stem(fileId) + "\0" + chunkIndex;
+
+    // Per-volume DriveInfo probe cache: CanCommit used to call DriveInfo.AvailableFreeSpace on every single 64 KiB
+    // chunk write. Free space does not move fast enough to need a live read every time — a few seconds of staleness
+    // is fine, and avoiding the syscall is exactly the point (this ran per-chunk, inline, on the fetch path before).
+    static readonly ConcurrentDictionary<string, (long Total, long Free, long AtTicks)> _driveCache = new(StringComparer.OrdinalIgnoreCase);
+    const long DriveCacheTicks = 5 * TimeSpan.TicksPerSecond;
+
     readonly record struct MapHeader(long TotalSize, int ChunkCount);
 
     /// <summary>A cache rooted at a fixed directory with a fixed budget.</summary>
@@ -115,6 +149,7 @@ public sealed class ChunkDiskCache
         _staticDirectory = Path.GetFullPath(directory);
         _staticBudget = Math.Max(MinBudgetBytes, budgetBytes);
         EnsureActiveDirectory(CurrentPolicy().Directory);
+        StartWriterThread();
     }
 
     /// <summary>A cache whose root and budget are re-read from <paramref name="policyProvider"/> on every operation
@@ -131,6 +166,59 @@ public sealed class ChunkDiskCache
         _staticDirectory = policy.Directory;
         _staticBudget = policy.FixedBytes;
         EnsureActiveDirectory(policy.Directory);
+        StartWriterThread();
+    }
+
+    void StartWriterThread()
+    {
+        var thread = new Thread(WriterLoop)
+        {
+            IsBackground = true,
+            Name = "Wavee.ChunkDiskCache.Writer",
+            Priority = ThreadPriority.BelowNormal,
+        };
+        _writerThread = thread;
+        thread.Start();
+    }
+
+    void WriterLoop()
+    {
+        foreach (var item in _writeQueue.GetConsumingEnumerable())
+        {
+            try { WriteChunkCore(item.FileId, item.ChunkIndex, item.Chunk.Buffer.AsSpan(0, item.Chunk.Length)); }
+            catch { }
+            finally
+            {
+                // Only pool the buffer if we're still the CURRENT pending entry for this key (a newer WriteChunk for
+                // the same chunk may already have replaced us in _pending — see WriteChunk). If it did, our buffer is
+                // simply left for the GC instead of pooled: safe (nobody else can reach it once superseded), just not
+                // reused.
+                if (_pending.TryRemove(new KeyValuePair<string, PendingChunk>(item.Key, item.Chunk)))
+                    ArrayPool<byte>.Shared.Return(item.Chunk.Buffer);
+                if (Interlocked.Decrement(ref _pendingWrites) <= 0)
+                    lock (_drainGate) Monitor.PulseAll(_drainGate);
+            }
+        }
+    }
+
+    /// <summary>Block (briefly — this is for a deterministic shutdown/handoff, never the fetch path) until every chunk
+    /// queued so far by <see cref="WriteChunk"/> has been written, or <paramref name="timeoutMs"/> elapses. Note this
+    /// drains the WHOLE shared writer (every fileId currently queued on this cache instance), not just one stream's
+    /// chunks — precise-enough for "give a just-fetched track's bytes a chance to land before this stream goes away"
+    /// without a per-fileId tracking structure.</summary>
+    public bool WaitForPendingWrites(int timeoutMs = 2000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        lock (_drainGate)
+        {
+            while (Volatile.Read(ref _pendingWrites) > 0)
+            {
+                var remaining = deadline - Environment.TickCount64;
+                if (remaining <= 0) return false;
+                Monitor.Wait(_drainGate, (int)Math.Min(remaining, int.MaxValue));
+            }
+        }
+        return true;
     }
 
     /// <summary>A picker stores a PARENT directory; the cache owns only its dedicated child beneath it.</summary>
@@ -324,6 +412,17 @@ public sealed class ChunkDiskCache
         if (chunkIndex < 0) return false;
         var policy = CurrentPolicy();
         string root = EnsureActiveDirectory(policy.Directory);
+
+        // Read-your-own-write: a chunk WriteChunk queued but the background writer hasn't committed yet is still
+        // served correctly, straight out of memory — no need to wait for (or race) the disk commit.
+        if (_pending.TryGetValue(PendingKey(root, fileId, chunkIndex), out var pending))
+        {
+            if (destination.Length < pending.Length) return false;
+            pending.Buffer.AsSpan(0, pending.Length).CopyTo(destination);
+            length = pending.Length;
+            return true;
+        }
+
         try
         {
             using var lease = TryAcquireRoot(root, 25);
@@ -357,11 +456,65 @@ public sealed class ChunkDiskCache
         catch { return false; }
     }
 
-    /// <summary>Durably store one chunk and commit its digest. Silently no-ops when writes are disabled, the size was
-    /// never declared, the length is wrong, or the budget/free-space reserve would be breached.</summary>
+    /// <summary>Queue one chunk for a durable, background write + digest commit. Returns immediately — no per-file
+    /// lock, header re-read, DriveInfo probe, SHA-256 or disk flush on THIS thread; all of that happens later, off the
+    /// caller's thread, in <see cref="WriteChunkCore"/> on the cache's single background writer. The chunk is staged
+    /// into <see cref="_pending"/> synchronously first, so <see cref="TryReadChunk"/> can serve it before the disk
+    /// commit lands (read-your-own-write). Silently drops the chunk (same as before) when writes are disabled — the
+    /// actual "was there room / was the size right" checks are deferred to the writer, since they need the (possibly
+    /// stale) on-disk header anyway.</summary>
     public void WriteChunk(string fileId, int chunkIndex, ReadOnlySpan<byte> data)
     {
         if (chunkIndex < 0 || data.IsEmpty) return;
+        if (Volatile.Read(ref _disposed) != 0) return;   // Dispose() owns the queue from here on — drop, don't race it
+        var policy = CurrentPolicy();
+        if (!policy.WriteEnabled) return;
+        string root = EnsureActiveDirectory(policy.Directory);
+        var pooled = ArrayPool<byte>.Shared.Rent(data.Length);
+        data.CopyTo(pooled);
+        var mine = new PendingChunk(pooled, data.Length);
+        string key = PendingKey(root, fileId, chunkIndex);
+        _pending[key] = mine;
+        Interlocked.Increment(ref _pendingWrites);
+        bool queued;
+        try { queued = _writeQueue.TryAdd(new PendingWrite(fileId, chunkIndex, key, mine)); }
+        catch (ObjectDisposedException) { queued = false; }        // lost the race with Dispose() disposing the queue
+        catch (InvalidOperationException) { queued = false; }      // lost the race with Dispose()'s CompleteAdding()
+        if (!queued)
+        {
+            if (_pending.TryRemove(new KeyValuePair<string, PendingChunk>(key, mine)))
+                ArrayPool<byte>.Shared.Return(pooled);
+            if (Interlocked.Decrement(ref _pendingWrites) <= 0)
+                lock (_drainGate) Monitor.PulseAll(_drainGate);
+        }
+    }
+
+    /// <summary>Stops the background writer and releases its queue. Idempotent, and safe even with a write in flight:
+    /// setting <see cref="_disposed"/> first stops any new chunk from being queued (<see cref="WriteChunk"/> checks it
+    /// before touching <see cref="_writeQueue"/>), so by the time <see cref="BlockingCollection{T}.CompleteAdding"/>
+    /// runs, nothing can still be racing an add against it. Never throws — this runs from ordinary teardown paths
+    /// (including finalizer-adjacent `using` blocks), where an exception would just mask whatever caused it.</summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        try { WaitForPendingWrites(); } catch { }
+        try { _writeQueue.CompleteAdding(); } catch { }
+        bool joined = true;
+        try { if (_writerThread is { IsAlive: true } thread) joined = thread.Join(2000); } catch { }
+        // Only dispose the collection once we know the writer thread is done pulling from it — GetConsumingEnumerable()
+        // can throw ObjectDisposedException on that thread if the collection is disposed out from under a still-running
+        // enumerator. A timed-out Join leaks the BlockingCollection (same leaked-thread shape as before this change),
+        // which beats crashing the writer thread.
+        if (joined) try { _writeQueue.Dispose(); } catch { }
+    }
+
+    /// <summary>Durably store one chunk and commit its digest — the actual disk work <see cref="WriteChunk"/> used to
+    /// do inline, now run only on the background writer thread. No <c>fs.Flush(true)</c>: a flush-to-physical-disk
+    /// fsync per 64 KiB chunk cost tens of ms on a loaded drive for no correctness gain — <see cref="TryReadChunk"/>
+    /// already re-verifies the SHA-256 on every read and discards on mismatch, which is what actually covers a torn
+    /// write (crash mid-write, power loss), flushed or not.</summary>
+    void WriteChunkCore(string fileId, int chunkIndex, ReadOnlySpan<byte> data)
+    {
         var policy = CurrentPolicy();
         if (!policy.WriteEnabled) return;
         string root = EnsureActiveDirectory(policy.Directory);
@@ -385,7 +538,6 @@ public sealed class ChunkDiskCache
                     long offset = (long)chunkIndex * ChunkBytes;
                     fs.Position = offset;
                     fs.Write(data);
-                    fs.Flush(true);
                 }
 
                 Span<byte> digest = stackalloc byte[32];
@@ -435,16 +587,30 @@ public sealed class ChunkDiskCache
 
     readonly record struct CapacityState(bool Available, long FreeBytes, long ReserveBytes, long? BudgetBytes);
 
+    // DriveInfo.AvailableFreeSpace is a syscall; Capacity used to make one per chunk write (potentially thousands per
+    // track). Free space doesn't move fast enough to need a live read every time, so this caches per volume for a few
+    // seconds — see the field doc on _driveCache.
+    static (long Total, long Free) ReadDriveInfoCached(string volumeRoot)
+    {
+        long now = DateTime.UtcNow.Ticks;
+        if (_driveCache.TryGetValue(volumeRoot, out var cached) && now - cached.AtTicks < DriveCacheTicks)
+            return (cached.Total, cached.Free);
+        var drive = new DriveInfo(volumeRoot);
+        if (!drive.IsReady) throw new IOException($"drive '{volumeRoot}' not ready");
+        var fresh = (drive.TotalSize, drive.AvailableFreeSpace, now);
+        _driveCache[volumeRoot] = fresh;
+        return (fresh.TotalSize, fresh.AvailableFreeSpace);
+    }
+
     static CapacityState Capacity(string root, ChunkCachePolicy policy)
     {
         try
         {
             string? volumeRoot = Path.GetPathRoot(Path.GetFullPath(root));
             if (string.IsNullOrEmpty(volumeRoot)) return new(false, 0, MinimumReserveBytes, null);
-            var drive = new DriveInfo(volumeRoot);
-            if (!drive.IsReady) return new(false, 0, MinimumReserveBytes, null);
-            long total = drive.TotalSize;
-            long free = drive.AvailableFreeSpace;
+            long total, free;
+            try { (total, free) = ReadDriveInfoCached(volumeRoot); }
+            catch { return new(false, 0, MinimumReserveBytes, null); }
             long reserve = Math.Max(MinimumReserveBytes, total / 20);
             long? budget = policy.Mode switch
             {
@@ -538,7 +704,8 @@ public sealed class ChunkDiskCache
         entry[0] = 1;
         digest.CopyTo(entry[1..]);
         fs.Write(entry);
-        fs.Flush(true);
+        // No fs.Flush(true) here either — see WriteChunkCore: the SHA-256 verify-and-discard on read already covers
+        // a torn commit-entry write, so paying an fsync per chunk buys nothing.
     }
 
     void ClearEntry(string root, string fileId, int index)
@@ -571,6 +738,11 @@ public sealed class ChunkDiskCache
     /// <summary>Delete every cached body + map under the active root (the root must be owned).</summary>
     public void ClearAll()
     {
+        // Same hazard PrepareRelocation guards against (see its call to WaitForPendingWrites): a chunk WriteChunk
+        // queued before this call but that the background writer hadn't committed yet would otherwise land AFTER the
+        // delete pass below and resurrect a file the caller just believed cleared. Draining first also empties
+        // _pending as a side effect (the writer removes its entry once it finishes, win or lose — see WriterLoop).
+        WaitForPendingWrites();
         string root = EnsureActiveDirectory(CurrentPolicy().Directory);
         try
         {
@@ -650,6 +822,10 @@ public sealed class ChunkDiskCache
 
     bool PrepareRelocation(string newBasePath, AudioCacheRelocationMode mode, CancellationToken ct)
     {
+        // Relocation walks the ON-DISK .map/.enc pairs directly (CopyValidatedPair / DeleteOwnedContents) — it must
+        // never race the background writer, or it can silently miss a chunk that was WriteChunk'd moments ago but
+        // hadn't committed yet (or, worse, have that late commit resurrect a file into a root relocation just cleared).
+        WaitForPendingWrites();
         string oldRoot = EnsureActiveDirectory(CurrentPolicy().Directory);
         string newRoot = ResolveDirectory(newBasePath, _defaultDirectory);
         if (string.Equals(oldRoot, newRoot, StringComparison.OrdinalIgnoreCase)) return true;

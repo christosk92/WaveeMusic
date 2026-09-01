@@ -2131,7 +2131,6 @@
     },
     "signIn": {
       "title": "Sign in to Spotify",
-      "busyNote": "This happens on the same page on purpose — the step list is the page's own state, not a second dialog on top of it.",
       "doneLead": "You're signed in. Wavee is now reading your library in the background — the rest of setup doesn't wait for it.",
       "lead": "Sign in with your Spotify® account on the Spotify® website — or scan the code with your phone.",
       "browserCardTitle": "Continue in your browser",

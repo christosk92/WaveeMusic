@@ -355,6 +355,13 @@ public sealed class Services
         // packed against a loopback feed must not silently fall back to reading its documents off GitHub.
         ReleaseNotes = new ReleaseNotesStore(githubHttp, SettingsShared.AppDataRoot, AppVersion.Info.FeedRelease, Log,
             releasesRoot: AppVersion.Info.UpdateBaseUrl);
+        // "Was this launch an update?" is armed ONCE here, BEFORE the IsStore branch below, so both install shapes
+        // arm identically and WaveeSettings.LastRunVersion is written exactly once per launch either way. This used
+        // to live inside AppInstallerUpdateService's ctor, which a Store-installed build never constructs — so a
+        // Store build silently never wrote LastRunVersion and its after-update plate (AfterUpdateChrome, which reads
+        // ReleaseNotesPendingFrom straight off settings) could never open. See AppLaunchVersion's remarks.
+        string updatedFrom = AppLaunchVersion.Arm(settings, AppVersion.Info, Log,
+            FluentGpu.WindowsApi.Packaging.PackageIdentity.PackageFullName is { Length: > 0 } pfn ? pfn : "unpackaged");
         // A Store-installed build never polls the feed: the Store owns downloads, staging and the restart, so the
         // updater is the one that opens the product page and stays Idle (no toast, no install-on-quit).
         AppUpdate = AppVersion.Info.IsStore
@@ -367,6 +374,7 @@ public sealed class Services
                 ? new FluentGpu.WindowsApi.Packaging.PackageUpdater { RestartArgument = AppRelaunch.RelaunchedAfterUpdateFlag }
                 : new FluentGpu.WindowsApi.Packaging.NullPackageUpdater(),
             Log,
+            updatedFrom,
             isMetered: static () => NetworkPolicy.IsMetered,
             openUrl: static url => ShellOpen.OpenUrl(url),
             notes: ReleaseNotes);
@@ -919,7 +927,10 @@ public sealed class Services
         // and a fresh open (robust even if no live session captured one / it was a silent resume).
         CredStore?.Clear();
         Wavee.SpotifyLive.SpotifyLiveLogin.ClearStoredCredential();
-        Playback.Login.Value = new Wavee.Core.LoginSnapshot(Wavee.Core.LoginPhase.LoggedOut);
+        // Through ReportLogin, not Login.Value: that is the single writer that also refolds ShellAuthState, which the
+        // shell/sign-in gate now reads. The credential wipe above happens FIRST by design, so the refold here already
+        // sees "no credential on disk" and lands on SignInRequired rather than Offline.
+        Playback.ReportLogin(new Wavee.Core.LoginSnapshot(Wavee.Core.LoginPhase.LoggedOut));
         await Session.LogoutAsync().ConfigureAwait(false);   // LiveSpotifySession → LoggedOut → gate swaps shell → takeover
         if (LiveHost is { } h)
         {

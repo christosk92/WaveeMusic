@@ -626,8 +626,12 @@ public class AppInstallerUpdateServiceTests
         string semver = channel == "dev" ? core + "-dev" : core;
         var me = new WaveeVersionInfo(semver, core, null, quad, codename, channel, "abc1234", "2026-08-01T00:00:00Z",
             feedRelease, WaveeVersionInfo.NormalizeUpdateBaseUrl(updateBaseUrl));
+        var log = new CapturingWaveeLog();
+        // Production wires this through Services.cs, BEFORE either updater is constructed (see AppLaunchVersion's
+        // remarks) — the harness mirrors that ordering exactly, rather than re-deriving the ctor's old inline decision.
+        string updatedFrom = AppLaunchVersion.Arm(settings, me, log, "unpackaged");
         var svc = new AppInstallerUpdateService(settings, new HttpClient(scripted), me, arch, updater,
-            new CapturingWaveeLog(), isMetered: () => metered, openUrl: openUrl ?? (_ => { }));
+            log, updatedFrom, isMetered: () => metered, openUrl: openUrl ?? (_ => { }));
         return svc;
     }
 

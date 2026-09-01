@@ -39,6 +39,15 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
     Exception? _error;
     int _readAheadPauseCount;
     IDisposable? _attachedReadAheadPause;
+
+    // Bandwidth shaping across an eager body attach (replaces PlaybackController's old FastStartBodySupplyGrace
+    // wall-clock guess): while there IS a clear head to protect, read-ahead is held paused from the moment the body
+    // attaches until the decoder's first real read past the head succeeds — at that point the clear-head decode has
+    // already reached the body, so continuing to withhold read-ahead buys nothing. Self-contained: no dependency on a
+    // "Playing" signal from the host, which this class has no way to observe.
+    IDisposable? _bandwidthShapePause;
+    int _bandwidthShapeArmed;
+
     event Action<AudioNetworkRecoveryEvent>? NetworkRecovery;
 
     event Action<AudioNetworkRecoveryEvent>? IAudioNetworkRecoverySource.NetworkRecovery
@@ -137,6 +146,14 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
             _ranged = ranged;
             if (_readAheadPauseCount > 0)
                 _attachedReadAheadPause = ranged.PauseReadAhead();
+            // Shape bandwidth across the attach: only meaningful when there is a clear head actively decoding AND
+            // this is the eager path (the lazy path explicitly wants read-ahead running immediately — see the "lazy
+            // body attached; decoder can continue on clear head while read-ahead runs" log below).
+            if (eagerFetch && _headLen > 0)
+            {
+                _bandwidthShapePause = ranged.PauseReadAhead();
+                Volatile.Write(ref _bandwidthShapeArmed, 1);
+            }
             _bodyAttached = true;
             Monitor.PulseAll(_stateGate);
         }
@@ -258,11 +275,75 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
             Decrypt(buffer.AsSpan(offset, m), pos);
             Volatile.Write(ref _pos, pos + m);
             MarkReadAheadProgress(pos + m);
+            ReleaseBandwidthShapePauseIfArmed();
             return m;
         }
     }
 
+    /// <summary>Non-blocking counterpart to <see cref="Read"/> for the engine's dedicated decode thread, which must
+    /// never do synchronous network I/O: returns the bytes available RIGHT NOW (which may be fewer than requested, or
+    /// zero) instead of blocking on a CDN fetch. On a miss it sets <paramref name="wouldBlock"/>, returns 0, and kicks
+    /// an ASYNC prefetch (<see cref="RangedHttpSource.RequestAsyncPrefetch"/>) rather than stalling the caller — the
+    /// caller is expected to poll again shortly (its ring buffer absorbs the gap). The clear head and any range that is
+    /// already buffered are served exactly like <see cref="Read"/>. A permanent failure (<see cref="AbortBody"/>, or a
+    /// body fetch that already exhausted its recovery budget) still throws: that is a terminal error, not a "would
+    /// block", and the caller must surface it. Trace: <see cref="Read"/> → <c>EnsureRangeAvailable</c> →
+    /// <see cref="RangedHttpSource.EnsureRange"/> is the BLOCKING chain this exists to bypass.</summary>
+    public int TryRead(Span<byte> dst, out bool wouldBlock)
+    {
+        wouldBlock = false;
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (dst.Length == 0) return 0;
+
+        var size = Size;
+        var pos = Volatile.Read(ref _pos);
+        if (size > 0 && pos >= size) return 0;
+
+        if (pos < _headLen)
+        {
+            var n = (int)Math.Min(dst.Length, _headLen - pos);
+            _head.AsSpan((int)pos, n).CopyTo(dst);
+            Volatile.Write(ref _pos, pos + n);
+            MarkReadAheadProgress(pos + n);
+            return n;
+        }
+
+        bool bodyAttached, failed;
+        Exception? error;
+        lock (_stateGate) { bodyAttached = _bodyAttached; failed = _failed; error = _error; }
+        if (failed) throw error ?? new IOException("CDN body unavailable");
+        if (!bodyAttached) { wouldBlock = true; return 0; }   // never wait for attach here — that is the blocking path's job
+
+        size = Size;
+        if (size > 0 && pos >= size) return 0;
+        var wanted = size > 0 ? (int)Math.Min(dst.Length, size - pos) : dst.Length;
+        if (wanted <= 0) return 0;
+
+        var available = _ranged!.ContainedLengthFrom(pos);
+        if (size > 0) available = Math.Min(available, size - pos);
+        if (available <= 0)
+        {
+            _ranged.RequestAsyncPrefetch(pos, Math.Max(wanted, RangedHttpSource.CdnChunkBytes));
+            wouldBlock = true;
+            return 0;
+        }
+
+        var m = (int)Math.Min(wanted, available);
+        _ranged.ReadRaw(pos, dst[..m], m);
+        Decrypt(dst[..m], pos);
+        Volatile.Write(ref _pos, pos + m);
+        MarkReadAheadProgress(pos + m);
+        ReleaseBandwidthShapePauseIfArmed();
+        return m;
+    }
+
     void MarkReadAheadProgress(long offset) => _ranged?.MarkProgress(offset);
+
+    void ReleaseBandwidthShapePauseIfArmed()
+    {
+        if (Interlocked.CompareExchange(ref _bandwidthShapeArmed, 0, 1) != 1) return;
+        Interlocked.Exchange(ref _bandwidthShapePause, null)?.Dispose();
+    }
 
     public IDisposable PauseReadAhead()
     {
@@ -291,6 +372,12 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
     }
 
     public void ResumeReadAheadAtCurrentOffset() => _ranged?.ResumeReadAheadAt(Volatile.Read(ref _pos));
+
+    /// <summary>Forwards to <see cref="RangedHttpSource.ConfigureReadAhead"/> (pinned signature) once the body is
+    /// attached; a no-op before attach (the source doesn't exist yet — call again after attach, or rely on the next
+    /// call once the caller learns the bitrate/metered state).</summary>
+    public void ConfigureReadAhead(int bitrateBitsPerSec, bool metered) =>
+        _ranged?.ConfigureReadAhead(bitrateBitsPerSec, metered);
 
     /// <summary>Block until [start, start+length) is buffered. Waits for body attach first (so a direct caller such as
     /// the key-check doesn't fetch before the body exists), then delegates the fetch to the ranged source.</summary>
@@ -343,6 +430,7 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
             _failed = true;
             Monitor.PulseAll(_stateGate);
         }
+        ReleaseBandwidthShapePauseIfArmed();   // a failed attach must not leave read-ahead paused forever
         _ranged?.Stop();
     }
 

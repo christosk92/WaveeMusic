@@ -97,9 +97,11 @@ internal sealed class SpotifyMediaByteSource : IMediaByteSource
     /// across two concurrently-live sessions. Null for external/plain or not-yet-attached sources (treated as not re-openable).</summary>
     internal AudioStreamHandle? ReopenBody { get; set; }
 
-    /// <summary>Open a fresh forward decode view (the codec owns it). The <see cref="SkipStream"/> presents byte
-    /// <c>skipOffset</c> as logical 0 (past the Spotify container header).</summary>
-    public Stream OpenDecodeStream() => new SkipStream(_stream.AsStream(), _skipOffset);
+    /// <summary>Open a fresh forward decode view (the codec owns it). <see cref="PrefetchingReadStream"/> presents byte
+    /// <c>skipOffset</c> as logical 0 (past the Spotify container header) — the same offset remap <see cref="SkipStream"/>
+    /// did — but pulls through <see cref="IAudioReadStream.TryRead"/> so a CDN range miss kicks an async prefetch
+    /// instead of the decode thread synchronously driving the fetch.</summary>
+    public Stream OpenDecodeStream() => new PrefetchingReadStream(_stream, _skipOffset);
 
     // The decoder reads via OpenDecodeStream, not this seam — these satisfy the interface but are inert on this path.
     public bool TryOpen(in DataSpec spec) => true;
@@ -449,7 +451,13 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         _nativeDecryptorFactory = (_, seed) => decryptors()?.CreateCdnDecryptor(seed);
         _core = new MediaPlayerCore(_effects);
         _sink = new MediaSignalSink(_core);
-        // DiagSink stays unwired — the 1 Hz feed/play counters are opt-in (set WasapiAudioDevice.DiagSink in a debugger).
+        // Always-on: the negotiated WASAPI device format is the one fact that finally answers "what sample rate is
+        // this user's device actually running at" — FormatSink fires exactly ONCE per device Open, off the RT path,
+        // so wiring it straight into the app log costs nothing and is never gated (house rule: diagnostics are
+        // always-on, never debugger-only). The 1 Hz feed/play DiagSink counters stay UNWIRED here on purpose — they
+        // run ON the RT audio thread inside an alloc-free contract; wiring them to the logger from the RT path would
+        // violate it (another change moves them off-RT).
+        WasapiAudioDevice.FormatSink = line => _log.Info($"[audio] format {line}");
         // The PCM backend is deliberately NOT built here; see Backend.
         _ticker = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
     }
@@ -473,9 +481,17 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     {
         long start = Environment.TickCount64;
         var backend = WasapiPcm.CreateBackend(_effects, decoderFactory: static _ => new SpotifyEngineAudioDecoder());
-        _log.Event(WaveeLogLevel.Info, "audio.backend_init", "PCM backend built (WASAPI mix-format probe)",
-            elapsedMs: Environment.TickCount64 - start,
-            fields: [WaveeLogField.Of("audio.backend_init_ms", Environment.TickCount64 - start)]);
+        long elapsedMs = Environment.TickCount64 - start;
+        // States the negotiated mix format instead of the old content-free "(WASAPI mix-format probe)" line — this
+        // is the rate/channel count the decode/mixer graph is built for, BEFORE the real device opens. Paired with
+        // WasapiAudioDevice.FormatSink (wired above, fires at Open) that finally answers "what rate is this user's
+        // device actually running at" end to end.
+        _log.Event(WaveeLogLevel.Info, "audio.backend_init",
+            $"PCM backend built mixRate={backend.Format.SampleRate} mixCh={backend.Format.Channels}",
+            elapsedMs: elapsedMs,
+            fields: [WaveeLogField.Of("audio.backend_init_ms", elapsedMs),
+                     WaveeLogField.Of("audio.mix_rate", backend.Format.SampleRate),
+                     WaveeLogField.Of("audio.mix_channels", backend.Format.Channels)]);
         return backend;
     }
 
@@ -773,6 +789,10 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         {
             // Fast path: attach the encrypted body to the already-open, already-playing head stream.
             await s.AttachBodyWithNativeDecryptorAsync(decryptor, cdnUrls, null, CancellationToken.None).ConfigureAwait(false);
+            // Size the CDN read-ahead window to this track's bitrate + connection cost now that the body (and its
+            // RangedHttpSource) exist — dropout mitigation: an undersized window under-fetches on a fast connection,
+            // an oversized one wastes the shared read-ahead budget on a metered one.
+            s.ConfigureReadAhead(AudioBitratePolicy.BitsPerSecond(body.Format), Wavee.NetworkPolicy.IsMetered);
             // Retain the body handle on the active source so a mid-track device-rate change can rebuild an INDEPENDENT stream.
             if (_activeBytes is not null) _activeBytes.ReopenBody = body;
             return;
@@ -783,6 +803,9 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         int skip = SpotifyAesCtr.SpotifyHeaderSize;   // no head to inspect → the standard Spotify container offset
         var stream = SpotifyAudioStream.CreateHeadOnly(_http, ReadOnlyMemory<byte>.Empty, 0, body.FileIdHex, _log, _bodyDisk);
         await stream.AttachBodyWithNativeDecryptorAsync(decryptor, cdnUrls, null, CancellationToken.None).ConfigureAwait(false);
+        // _pendingFmt (captured back in LoadFastStartAsync's deferred branch), not body.Format — this path has no
+        // fast-start head to have carried the negotiated rung on.
+        stream.ConfigureReadAhead(AudioBitratePolicy.BitsPerSecond(_pendingFmt), Wavee.NetworkPolicy.IsMetered);
         _activeStream = stream;
         // Retain the body handle so a mid-track device-rate change can rebuild an INDEPENDENT stream (see SoftReloadAsync).
         var bytes = new SpotifyMediaByteSource(stream, skip, kind2, _pendingDurMs, DbToLinear(_pendingGainDb)) { ReopenBody = body };
@@ -971,6 +994,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
             // play from 0 for a beat before the seek lands. OpenSessionAsync re-applies volume/mute; _playIntent survives.
             var cdnUrls = body.CdnUrls ?? (string.IsNullOrEmpty(body.CdnUrl) ? Array.Empty<string>() : new[] { body.CdnUrl });
             await freshStream.AttachBodyWithNativeDecryptorAsync(BuildDecryptor(body), cdnUrls, null, CancellationToken.None).ConfigureAwait(false);
+            freshStream.ConfigureReadAhead(AudioBitratePolicy.BitsPerSecond(body.Format), Wavee.NetworkPolicy.IsMetered);
             await OpenSessionAsync(freshBytes, epoch, autoResume: false).ConfigureAwait(false);
         }
         catch
@@ -1226,6 +1250,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
                 {
                     var cdnUrls = b.CdnUrls ?? (string.IsNullOrEmpty(b.CdnUrl) ? Array.Empty<string>() : new[] { b.CdnUrl });
                     await s.AttachBodyWithNativeDecryptorAsync(BuildDecryptor(b), cdnUrls, null, ct).ConfigureAwait(false);
+                    s.ConfigureReadAhead(AudioBitratePolicy.BitsPerSecond(b.Format), Wavee.NetworkPolicy.IsMetered);
                     // Retain B's body handle so a device-rate reload after the crossfade commit can rebuild B independently.
                     if (_prepBytes is not null) _prepBytes.ReopenBody = b;
                     _log.Info($"[gapless] next-body token={token} attached=1");
@@ -1484,6 +1509,14 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         long rawPos = RawPositionMs;
         long pos = PositionMs;
 
+        // Per-xrun diagnostics (always-on, house rule — never gated, never debugger-only). Drained here, off the RT
+        // feed thread, on every 200 ms tick: each incident the RT thread actually recorded (a ring underrun — real
+        // dropped audio, not merely "a callback in which something starved") becomes its OWN Warning line with when,
+        // how much, and why, instead of the old "xruns=17" cumulative count that only ever surfaced at the NEXT track
+        // boundary. Keep the existing [gapless] xrun fields as they are — they still answer "what happened right at
+        // the hand-off"; this answers "what happened mid-track that nothing else could see".
+        if (_session is PcmAudioSession xrunSession) DrainXruns(xrunSession, pos, state);
+
         if (_diagResumeTicks > 0)   // TEMP (#3): trace position for a few ticks after resume to locate the overshoot
         {
             _diagResumeTicks--;
@@ -1681,6 +1714,30 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
 
     long SessionClock() => _session is PcmAudioSession s ? s.SampleClock : 0;
     long SessionXruns() => _session is PcmAudioSession s ? s.XrunCount : 0;
+
+    // Drain every per-xrun event the RT feed thread recorded since the last tick and log ONE Warning line per
+    // incident — never a cumulative count. A bounded stack buffer + a drain loop (not a single call) so a burst
+    // larger than the buffer still gets logged in full, in order, within this one tick.
+    void DrainXruns(PcmAudioSession sess, long posMs, PlaybackState state)
+    {
+        int sampleRate = sess.Format.SampleRate;
+        string stateText = state.ToString();
+        Span<AudioFeedThread.XrunEvent> buf = stackalloc AudioFeedThread.XrunEvent[16];
+        int n;
+        while ((n = sess.DrainXrunEvents(buf)) > 0)
+        {
+            long totalFramesLost = sess.XrunFramesLost;
+            for (int i = 0; i < n; i++)
+            {
+                var ev = buf[i];
+                double gapMs = XrunLogLine.GapMs(ev.GapFrames, sampleRate);
+                long ageMs = XrunLogLine.AgeMs(ev.Timestamp, Environment.TickCount64);
+                _log.Warn(XrunLogLine.Format(ev.VoiceId, ev.GapFrames, totalFramesLost, ev.RingFrames,
+                    ev.GcPauseTicksDelta, gapMs, ageMs, posMs, stateText));
+            }
+            if (n < buf.Length) break;   // drained everything currently available
+        }
+    }
 
     // The ending-soon margin (W2 fix §1): the overlap plus a worst-case prime budget (key + CDN + TryOpen + ring
     // prefill), clamped to the full duration on shorter tracks. Mirrors Wavee.Backend.PreparedNextPolicy — the

@@ -54,6 +54,25 @@ public readonly struct PlaybackIdentity : IEquatable<PlaybackIdentity>
     public static bool operator !=(PlaybackIdentity left, PlaybackIdentity right) => !left.Equals(right);
 }
 
+/// <summary>The coarse state the SHELL's own mount/gate decisions collapse onto — coarser than <see cref="PlaybackBridge.Auth"/>
+/// (the raw backend status) or <see cref="PlaybackBridge.Login"/> (the rich pairing/finalizing projection the takeover
+/// renders). It answers exactly one question a render needs synchronously: does anything need to interrupt the shell
+/// right now, and if so, why.
+/// <list type="bullet">
+/// <item><see cref="ShellAuthState.SignInRequired"/> — no usable stored credential (never signed in, a completed
+/// logout, or one that was just rejected — <c>SpotifyLiveLogin</c> clears the blob on rejection, so this becomes true
+/// the instant that happens). The ONLY state that mounts the sign-in surface.</item>
+/// <item><see cref="ShellAuthState.Connecting"/> — a stored credential exists and a resume (silent, or the wizard's
+/// own interactive device-code/browser flow) is attempting it right now. The shell is already up wherever nothing
+/// forced <see cref="ShellAuthState.SignInRequired"/>.</item>
+/// <item><see cref="ShellAuthState.Live"/> — the session is authenticated and usable (mirrors
+/// <see cref="AuthStatus.Authenticated"/>).</item>
+/// <item><see cref="ShellAuthState.Offline"/> — a resume did not complete (no network, a stalled AP, a timeout) but
+/// the credential itself was never rejected: the shell stays up, offline-capable, and a later retry can still reach
+/// <see cref="ShellAuthState.Live"/> without the user doing anything.</item>
+/// </list></summary>
+public enum ShellAuthState { SignInRequired, Connecting, Live, Offline }
+
 /// <summary>
 /// THE single boundary between framework-neutral <c>Wavee.Core</c> (<see cref="IObservable{T}"/>) and the engine's
 /// reactive <see cref="Signal{T}"/>. It subscribes to the Core observables and, marshaling every callback onto the UI
@@ -204,8 +223,55 @@ public sealed class PlaybackBridge
     public Signal<AuthStatus> Auth { get; } = new(AuthStatus.LoggedOut);
     public Signal<WaveeUser?> User { get; } = new(null);
     /// <summary>The rich login projection driving the full-screen login takeover (device-code / QR / phase). Fed by the
-    /// live bootstrap through <see cref="Progress"/>; the coarse <see cref="Auth"/> still gates shell ↔ takeover.</summary>
+    /// live bootstrap through <see cref="Progress"/> (and a couple of WaveeApp-local catch/cancel handlers that report
+    /// straight through <see cref="ReportLogin"/>).</summary>
     public Signal<LoginSnapshot> Login { get; } = new(new(LoginPhase.LoggedOut));
+
+    /// <summary>The coarse shell gate/render decision — see <see cref="ShellAuthState"/>. Seeded before
+    /// <see cref="Activate"/> ever runs (constructor-time, from a plain disk check) so a <c>Render()</c> that reads it on
+    /// the very first frame — before the live bootstrap has reported anything — still gets an honest answer: the real
+    /// backend with a stored credential on disk is ABOUT to attempt a silent resume (<see cref="ShellAuthState.Connecting"/>),
+    /// anything else starts unauthenticated (<see cref="ShellAuthState.SignInRequired"/>). Refolded every time either
+    /// input changes — see <see cref="ProjectAuthState"/>, called from <see cref="Activate"/>'s StatusChanged subscription
+    /// and from <see cref="ReportLogin"/> — so it can never disagree with <see cref="Auth"/> or <see cref="Login"/>.</summary>
+    public Signal<ShellAuthState> AuthState { get; } =
+        new(Services.UseRealBackend && Wavee.SpotifyLive.SpotifyLiveLogin.HasStoredCredential()
+            ? ShellAuthState.Connecting : ShellAuthState.SignInRequired);
+
+    /// <summary>Fold the raw <see cref="Auth"/> status with the current <see cref="Login"/> phase into
+    /// <see cref="ShellAuthState"/>. <see cref="AuthStatus.Authenticated"/> always wins outright (Live) — it is the one
+    /// fact <c>svc.GoLive</c>'s session swap publishes, and nothing about the login phase can contradict it. Below that,
+    /// the phase says WHY: <see cref="LoginPhase.SilentResume"/>/<see cref="LoginPhase.Finalizing"/> is a resume actually
+    /// running (Connecting); <see cref="LoginPhase.LoggedOut"/>/<see cref="LoginPhase.Failed"/> against a credential that
+    /// is STILL ON DISK is a stalled/failed resume that never got REJECTED (Offline — see
+    /// <see cref="Wavee.SpotifyLive.SpotifyLiveLogin.HasStoredCredential"/>); the same two phases with nothing on disk,
+    /// and every other phase (the wizard's own interactive device-code/browser dance, an expired challenge, a Premium
+    /// refusal — the credential is already cleared by the time any of those report), fall to SignInRequired.</summary>
+    static ShellAuthState ProjectAuthState(AuthStatus auth, LoginSnapshot login)
+    {
+        if (auth == AuthStatus.Authenticated) return ShellAuthState.Live;
+        return login.Phase switch
+        {
+            LoginPhase.SilentResume or LoginPhase.Finalizing => ShellAuthState.Connecting,
+            // The disk check is gated on the REAL backend on purpose: the fake/demo backend has no credential store of
+            // its own, and consulting the machine's real (unrelated) one here would let a leftover real-Spotify
+            // credential leak Connecting/Offline into a demo run that should only ever answer SignInRequired.
+            LoginPhase.LoggedOut or LoginPhase.Failed => Services.UseRealBackend && Wavee.SpotifyLive.SpotifyLiveLogin.HasStoredCredential()
+                ? (login.Phase == LoginPhase.Failed ? ShellAuthState.Offline : ShellAuthState.Connecting)
+                : ShellAuthState.SignInRequired,
+            _ => ShellAuthState.SignInRequired,
+        };
+    }
+
+    /// <summary>THE single write path for <see cref="Login"/> — publishes the snapshot and refolds <see cref="AuthState"/>
+    /// from it in the same call, so the two can never land a frame apart. <see cref="Progress"/> (the live bootstrap's
+    /// off-UI-thread sink) already marshals through this; WaveeApp's own login catch/cancel/seed handlers — which used to
+    /// write <c>Login.Value</c> directly — call this instead for the same reason. UI-thread only.</summary>
+    public void ReportLogin(LoginSnapshot snapshot)
+    {
+        Login.Value = snapshot;
+        AuthState.Value = ProjectAuthState(Auth.Peek(), snapshot);
+    }
 
     /// <summary>The now-playing track has an accompanying music video (the <c>VideoService</c> association, detected
     /// asynchronously after the track resolves). Drives the player-bar video button's visibility. Fed by the optional
@@ -900,6 +966,10 @@ public sealed class PlaybackBridge
         {
             Auth.Value = st;
             User.Value = _session.CurrentUser;            // profile chip (name/avatar) follows the session
+            // Refold AuthState from THIS Auth flip + whatever Login already says — see ProjectAuthState. This is the
+            // other half of the pinned contract (ReportLogin is the half that fires on a Login write): together they
+            // guarantee AuthState is recomputed on every event that could move it, from either side.
+            AuthState.Value = ProjectAuthState(st, Login.Peek());
         })));
         WireStore();   // if a store was attached before mount, start observing it now
         WireRestoreSeam();   // playback restore (§8): reader hook onto the live controller; re-checked on every push
@@ -1263,7 +1333,7 @@ public sealed class PlaybackBridge
 
     sealed class SignalProgress(PlaybackBridge bridge, Action<Action> post) : ILoginProgress
     {
-        public void Report(LoginSnapshot snapshot) => post(() => bridge.Login.Value = snapshot);
+        public void Report(LoginSnapshot snapshot) => post(() => bridge.ReportLogin(snapshot));
     }
 
     void PushState(IPlaybackState s)

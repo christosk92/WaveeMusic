@@ -42,6 +42,9 @@ public class RangedHttpSourceDiskCacheTests
         Assert.Equal(afterFirst, Volatile.Read(ref calls));
 
         disk.ClearAll();
+        // Drain and stop the writer thread BEFORE the directory goes away: a queued chunk committing after the delete
+        // would recreate the tree and leave temp litter behind (Dispose itself never throws).
+        disk.Dispose();
         Directory.Delete(dir, true);
     }
 
@@ -74,6 +77,9 @@ public class RangedHttpSourceDiskCacheTests
         Assert.True(Volatile.Read(ref calls) > afterPartial);
 
         disk.ClearAll();
+        // Drain and stop the writer thread BEFORE the directory goes away: a queued chunk committing after the delete
+        // would recreate the tree and leave temp litter behind (Dispose itself never throws).
+        disk.Dispose();
         Directory.Delete(dir, true);
     }
 
@@ -102,6 +108,9 @@ public class RangedHttpSourceDiskCacheTests
             Assert.Equal(body.AsSpan(AudioBodyDiskCache.ChunkBytes, 211).ToArray(), read);
         }
         Assert.Equal(afterFirst, calls);
+        // Drain and stop the writer thread BEFORE the directory goes away: a queued chunk committing after the delete
+        // would recreate the tree and leave temp litter behind (Dispose itself never throws).
+        disk.Dispose();
         Directory.Delete(dir, true);
     }
 

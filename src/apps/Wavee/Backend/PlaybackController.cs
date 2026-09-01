@@ -1,7 +1,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -133,7 +132,6 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     readonly IDisposable _projSub;
     readonly SemaphoreSlim _lock = new(1, 1);
     readonly object _ownershipGate = new();
-    static readonly TimeSpan FastStartBodySupplyGrace = TimeSpan.FromMilliseconds(250);
     string _lastActive = "";
     double _lastVolume = -1;
     double _lastIntentVolume = double.NaN;
@@ -663,22 +661,19 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     // Instant-start body supply: await the (parallel) key+CDN resolve and hand it to the host; a body failure surfaces
     // as a typed playback error (the head already started, so this is the "couldn't continue" case).
-    async Task SupplyBodyWhenReadyAsync(Task<AudioStreamHandle> body, string expectedTrackUri, long loadStartedTicks, int clearHeadBytes)
+    //
+    // This used to defer the SupplyBody call by a fixed FastStartBodySupplyGrace (250ms) "so clear-head decode can
+    // queue first PCM" — a wall-clock guess that behaved differently on every machine. It bought two things, neither
+    // of which needs a timer: (1) ordering — the host's Enqueue pump already serializes LoadFastStartAsync before
+    // SupplyBodyAsync, so the clear head is always queued first regardless of when this method runs; (2) bandwidth —
+    // the newly-attached CDN body's read-ahead competing with the still-decoding clear head is now shaped at the
+    // source instead (SpotifyAudioStream pauses read-ahead across an eager attach and releases it itself on the
+    // decoder's first real body byte — see SpotifyAudioStream.AttachBodyCoreAsync / ReleaseBandwidthShapePauseIfArmed).
+    async Task SupplyBodyWhenReadyAsync(Task<AudioStreamHandle> body, string expectedTrackUri)
     {
         try
         {
             var h = await body.ConfigureAwait(false);
-            if (clearHeadBytes > 0)
-            {
-                var elapsed = ElapsedSince(loadStartedTicks);
-                if (elapsed < FastStartBodySupplyGrace)
-                {
-                    var remaining = FastStartBodySupplyGrace - elapsed;
-                    _log.Info($"fast-start body ready early track={expectedTrackUri} file={h.FileIdHex}; deferring supply {remaining.TotalMilliseconds:0}ms so clear-head decode can queue first PCM");
-                    await Task.Delay(remaining).ConfigureAwait(false);
-                }
-            }
-
             var current = _session.Current?.Uri ?? "";
             if (!string.Equals(current, expectedTrackUri, StringComparison.Ordinal))
             {
@@ -719,9 +714,6 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             ReportPlaybackError(ex);
         }
     }
-
-    static TimeSpan ElapsedSince(long startTicks) =>
-        startTicks == 0 ? TimeSpan.Zero : TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - startTicks) / (double)Stopwatch.Frequency);
 
     /// <summary>Re-attempt the current track after a surfaced playback error (the toast/player-bar "Retry" action).</summary>
     public async Task RetryCurrentAsync(CancellationToken ct = default)
@@ -2685,7 +2677,6 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) { await HandleUnplayableCurrentAsync(ex, skipOnUnplayable, initiallyPaused, ct).ConfigureAwait(false); return; }
             if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while the fast-start plan resolved
-            var loadStartedTicks = Stopwatch.GetTimestamp();
             _audioHost.LoadFastStart(plan.Start);   // audio-specific loading (guarded: current kind is audio/local here)
             if (!initiallyPaused) _currentHost.Play();
             if (resumePositionMs > 0) _currentHost.Seek(resumePositionMs, SeekMode.Accurate);
@@ -2694,7 +2685,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             Emit(BuildEvent(kind, cur, Math.Max(0, resumePositionMs), mediaId, bitrateKbps, audioFormat, durationMs, fileId));
             SchedulePreparedNext("after-start");
             MaybeStartContinuationFetch();
-            _ = SupplyBodyWhenReadyAsync(plan.Body, cur.Uri, loadStartedTicks, plan.Start.HeadBytes.Length);
+            _ = SupplyBodyWhenReadyAsync(plan.Body, cur.Uri);
             return;
         }
 

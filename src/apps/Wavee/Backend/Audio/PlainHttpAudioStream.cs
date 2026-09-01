@@ -32,6 +32,9 @@ public sealed class PlainHttpAudioStream : Stream, IAsyncDisposable, IAudioReadS
     public int ClearHeadLength => 0;
     public IDisposable PauseReadAhead() => _source.PauseReadAhead();
     public void ResumeReadAheadAtCurrentOffset() => _source.ResumeReadAheadAt(Volatile.Read(ref _pos));
+    // Unlike the interface's no-op default, this stream DOES have a read-ahead window worth tuning — forward to the
+    // shared RangedHttpSource so an external podcast episode gets the same bitrate/metered-aware sizing as Spotify.
+    public void ConfigureReadAhead(int bitrateBitsPerSec, bool metered) => _source.ConfigureReadAhead(bitrateBitsPerSec, metered);
 
     PlainHttpAudioStream(HttpClient http, string url, long knownSize, string? contentType, WaveeLogger log)
     {

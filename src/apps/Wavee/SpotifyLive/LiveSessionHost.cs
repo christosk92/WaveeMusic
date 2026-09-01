@@ -210,6 +210,13 @@ public sealed class LiveSessionHost : IAsyncDisposable
             forceRefreshToken: live.ForceTokenProvider);   // G6 — force-mint after a failed wss handshake
         long transportMs = Environment.TickCount64 - goLiveStart;
         attempt.Transport(transport);   // rollback handle: a throw before the host exists still has to stop this socket
+        // Start the dealer socket NOW rather than after the WHOLE go-live stack (extended metadata, audio, every wiring
+        // install) has built, as it used to. Start() only SCHEDULES the connect/receive loop
+        // (LiveDealerTransport.Start: `_loop ??= Task.Run(...)`) and returns immediately, so this move costs nothing and
+        // lets the socket be mid-handshake for the rest of this method instead of only beginning once everything else
+        // already exists — the cache-first-shell fix's "stop putting things between the user and a usable session for
+        // no reason" applied to the one piece here that was genuinely free to move.
+        transport.Start();
 
         // Context resolution (inbound Connect play + UI play) needs the metadata stack to hydrate the resolved order, so
         // build it up front — over the SAME store the catalog reads — and hand the controller a unified context resolver.
@@ -334,39 +341,51 @@ public sealed class LiveSessionHost : IAsyncDisposable
         wiring.Set(Wavee.Backend.Wiring.LiveSeams.ModuleHostServices,
             () => { if (moduleHostServices is not null) LiveConnect.RegisterModuleHostServices(moduleHostServices, spotifyHostSession); },
             () => { if (moduleHostServices is not null) LiveConnect.UnregisterModuleHostServices(moduleHostServices); });
-        transport.Start();
-        // Profile (name + avatar) fetched before go-live so CurrentUser is complete on the first render (no refresh hook).
-        // Best-effort — a failure just omits that field.
+        // transport.Start() now runs right after the transport is constructed (see above) — it used to sit here, after
+        // the ENTIRE go-live stack was already built, which bought it nothing (Start() only schedules a background Task
+        // and returns) but read as though the dealer socket waited on everything above it.
         //
-        // It runs through the SAME port every other owner goes through (SpotifyUserProfileFetch), not a private copy of
-        // the parser: this step happens LONG before the session's extended-metadata reader exists, so the fetch is
-        // constructed reader-less (REST-only) and the answer is written into the store as an ordinary Owner row — which
-        // is what makes the signed-in user's own byline render from the store like everybody else's, with no seed call
-        // and no service-private cache to prime.
+        // Profile (name + avatar) is fetched in the BACKGROUND now — never awaited on the path to go-live. It used to
+        // be a REST round trip sitting directly between "we have a session" and "the shell can show it", even though
+        // nothing downstream needs it to proceed: LiveSpotifySession below falls back to the bare username, and the
+        // profile chip reads PlaybackBridge.User — a signal this can update the moment the fetch actually lands, with
+        // no rebuild. It still runs through the SAME port every other owner goes through (SpotifyUserProfileFetch), not
+        // a private copy of the parser, and the answer still lands in the store as an ordinary Owner row.
         report.Report(new LoginSnapshot(LoginPhase.Finalizing, Step: LoginStep.Profile));
-        var me = UserProfileIds.Normalize(live.Username);
-        Owner? meOwner = null;
-        if (me is not null)
-        {
-            var meFetch = new Wavee.SpotifyLive.Hydration.SpotifyUserProfileFetch(
-                reader: null, live.Pipeline, () => live.BaseUrl, socialLog);
-            try
-            {
-                var resolved = await meFetch.ResolveAsync([me], ct).ConfigureAwait(false);
-                if (resolved.TryGetValue(me, out var owner) && owner is not null)
-                {
-                    meOwner = owner;
-                    svc.RealStore?.UpsertOwner(owner);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException) { socialLog.Info("login profile: " + ex.Message); }
-        }
-        string displayName = meOwner?.Name is { Length: > 0 } n ? n : live.Username;
-        string? avatarUrl = meOwner?.Avatar?.Url;
-        var liveSession = new LiveSpotifySession(live.Username, displayName, avatarUrl, live.Session.Tier == Tier.Premium);
+        string profileAccount = live.Username;
+        var liveSession = new LiveSpotifySession(live.Username, live.Session.Tier == Tier.Premium);
 
-        // Owned CTS — INDEPENDENT of the bootstrap ct (a racing-sibling cancel must not kill hydration); cancelled on logout.
+        // Owned CTS — INDEPENDENT of the bootstrap `ct` (a racing-sibling cancel must not kill hydration); cancelled on
+        // logout. Declared here (rather than immediately before `host`, as before) because the deferred profile fetch
+        // below needs this SAME independence: `ct` is the interactive dual-race's shared token, and the WINNING side
+        // cancels it the instant it returns (WaveeApp's RestartCode/StartBrowser) — a fetch still in flight at that
+        // moment would be aborted before it ever reaches PlaybackBridge.User. `cts` has no such cancel-on-success edge.
         var cts = new CancellationTokenSource();
+        if (UserProfileIds.Normalize(profileAccount) is { } me)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var meFetch = new Wavee.SpotifyLive.Hydration.SpotifyUserProfileFetch(
+                        reader: null, live.Pipeline, () => live.BaseUrl, socialLog);
+                    var resolved = await meFetch.ResolveAsync([me], cts.Token).ConfigureAwait(false);
+                    if (!resolved.TryGetValue(me, out var owner) || owner is null) return;
+                    svc.RealStore?.UpsertOwner(owner);
+                    // Publish onto the LIVE profile chip only if this is still the active account — a fast
+                    // logout/re-login (or a losing racing sibling) must not stomp a different session's name/avatar
+                    // with a stale fetch that resolves late.
+                    postUi(() =>
+                    {
+                        if (!string.Equals(svc.Session.CurrentUser?.Id, profileAccount, StringComparison.Ordinal)) return;
+                        string name = owner.Name is { Length: > 0 } n ? n : profileAccount;
+                        svc.Playback.User.Value = new WaveeUser(profileAccount, name, owner.Avatar?.Url,
+                            live.Session.Tier == Tier.Premium);
+                    });
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException) { socialLog.Info("login profile: " + ex.Message); }
+            }, cts.Token);
+        }
         var host = new LiveSessionHost(transport, connect, cts, wiring);
         attempt.Built(host);   // from here a rollback disposes the HOST (which tears the transports down in order)
         audio?.StartProvisioning(cts.Token);   // background PlayPlay pack provision — off the play path, owned CTS

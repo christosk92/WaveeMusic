@@ -92,7 +92,7 @@ sealed class WaveeApp : Component
                 {
                     _services.Log.Event(WaveeLogLevel.Warning, "connect", "login.code.failed",
                         "Code login failed", ex: ex, fields: [WaveeLogField.Of("phase", bridge.Login.Peek().Phase.ToString())]);
-                    post(() => { if (loginSession.Value == cts) bridge.Login.Value = new LoginSnapshot(LoginPhase.Failed, Error: Loc.Get(Strings.Auth.GenericError)); });
+                    post(() => { if (loginSession.Value == cts) bridge.ReportLogin(new LoginSnapshot(LoginPhase.Failed, Error: Loc.Get(Strings.Auth.GenericError))); });
                 }
             });
         }
@@ -122,7 +122,7 @@ sealed class WaveeApp : Component
                     post(() =>
                     {
                         if (loginSession.Value == cts)
-                            bridge.Login.Value = new LoginSnapshot(LoginPhase.Failed, Error: Strings.Auth.BrowserFailed(ex.Message));
+                            bridge.ReportLogin(new LoginSnapshot(LoginPhase.Failed, Error: Strings.Auth.BrowserFailed(ex.Message)));
                     });
                 }
             });
@@ -136,7 +136,7 @@ sealed class WaveeApp : Component
         {
             loginSession.Value?.Cancel();
             loginSession.Value = null;
-            bridge.Login.Value = new LoginSnapshot(LoginPhase.LoggedOut);
+            bridge.ReportLogin(new LoginSnapshot(LoginPhase.LoggedOut));
         }
 
         void CloseApp()
@@ -148,8 +148,34 @@ sealed class WaveeApp : Component
         // The FAKE demo has no real auth: "Log in" just connects the fake session; "Get a new code" re-seeds a demo
         // challenge. This lets the SAME two-pane takeover model the logged-out → logged-in round-trip without a real backend.
         void FakeSignIn() => _ = _services.Session.ConnectAsync();
-        void SeedDemoChallenge() => bridge.Login.Value = new LoginSnapshot(LoginPhase.AwaitingApproval,
-            new LoginChallenge("WAVE-DEMO", "https://spotify.com/pair", "https://spotify.com/pair?code=WAVEDEMO", DateTimeOffset.UtcNow.AddMinutes(15)));
+        void SeedDemoChallenge() => bridge.ReportLogin(new LoginSnapshot(LoginPhase.AwaitingApproval,
+            new LoginChallenge("WAVE-DEMO", "https://spotify.com/pair", "https://spotify.com/pair?code=WAVEDEMO", DateTimeOffset.UtcNow.AddMinutes(15))));
+
+        // ── Cache-first background resume (the fix's core wiring) ──────────────────────────────────────────────────
+        // The old design only ever attempted a silent resume from INSIDE the sign-in wizard (SetupSignInPage owned the
+        // request — see its own remarks) — which worked because a returning user with valid cached credentials sat on
+        // the wizard the whole time anyway. Now that a stored credential means the SHELL mounts instead (needsSignIn
+        // below), nothing would ever kick that resume off, so the app root does it directly the moment it decides not
+        // to show a sign-in surface. Non-interactive, no challenge, no CTS shared with RestartCode/StartBrowser — those
+        // only ever run once the wizard is ALREADY mounted (needsSignIn was already true to get there), so there is no
+        // live sign-in surface for this to race. A rejection clears the stored credential itself (SpotifyLiveLogin) —
+        // needsSignIn flips true on the next render and the wizard's own sign-in page takes over cleanly; a mere
+        // network failure leaves the credential in place, which PlaybackBridge.ProjectAuthState folds to Offline
+        // (shell stays up, nothing further to do here).
+        void SilentResume() => _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                await Wavee.SpotifyLive.LiveSessionHost.StartAsync(_services, new WaveeLogger(_services.Log, "connect"),
+                    System.Threading.CancellationToken.None, bridge.Progress(post), uiPost: post,
+                    interactive: false, useBrowser: false).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _services.Log.Event(WaveeLogLevel.Warning, "connect", "resume.silent.failed", "Silent resume failed", ex: ex);
+                post(() => bridge.ReportLogin(new LoginSnapshot(LoginPhase.Failed, Error: Loc.Get(Strings.Auth.GenericError))));
+            }
+        });
 
         Context.UseEffect(() =>
         {
@@ -223,16 +249,25 @@ sealed class WaveeApp : Component
             {
                 // Deterministic login screenshots (no network): seed a canned pairing challenge so the takeover renders the
                 // marquee hero. The gate below forces the takeover whenever this flag is set.
-                bridge.Login.Value = new LoginSnapshot(LoginPhase.AwaitingApproval,
-                    new LoginChallenge("WZY5-Q6TX", "https://spotify.com/pair", "https://spotify.com/pair?code=WZY5Q6TX", DateTimeOffset.UtcNow.AddSeconds(872)));
+                bridge.ReportLogin(new LoginSnapshot(LoginPhase.AwaitingApproval,
+                    new LoginChallenge("WZY5-Q6TX", "https://spotify.com/pair", "https://spotify.com/pair?code=WZY5Q6TX", DateTimeOffset.UtcNow.AddSeconds(872))));
                 _services.Log.Info("app", "WAVEE_FAKE_CHALLENGE: seeded a canned pairing challenge for the login takeover");
             }
             else if (Services.UseRealBackend)
             {
-                // Real backend: do NOT auto-authenticate the fake. Try a SILENT resume (stored credentials only, no
-                // challenge minted); with none on disk the takeover rests on Welcome until the user hits "Continue". On a
-                // successful resume the bootstrap swaps the live backend in via Services.GoLive — no UI rebuild.
-                _services.Log.Info("app", "Online; the takeover will start the Spotify login (silent resume → two-pane code).");
+                // Cache-first shell: with a stored credential the shell already mounted this frame (see needsSignIn
+                // below) — kick the silent resume that authenticates BEHIND it. With none on disk there is nothing to
+                // resume; the sign-in surface is already mounted instead, and its own SignIn page owns the interactive
+                // device-code/browser flow exactly as before.
+                if (Wavee.SpotifyLive.SpotifyLiveLogin.HasStoredCredential())
+                {
+                    SilentResume();
+                    _services.Log.Info("app", "Online; shell up from cache, resuming the stored session silently.");
+                }
+                else
+                {
+                    _services.Log.Info("app", "Online; no stored credential — the sign-in surface owns the Spotify login (device code / browser).");
+                }
             }
             else
             {
@@ -249,12 +284,10 @@ sealed class WaveeApp : Component
         // effect, not the app-root render (a play/pause must not re-render the shell).
         Context.UseEffect(PowerBridge.SyncFromSignals);
 
-        // ── The login GATE's boolean, computed early ────────────────────────────────────────────────────────────────
-        // The fake demo never shows the takeover (no real auth); the real backend shows it until Authenticated. The coarse
-        // bridge.Auth drives the swap (identical for fake + live). WAVEE_FAKE_CHALLENGE forces the takeover (deterministic
-        // login screenshots, no network). Authenticated → shell. Logged out → the takeover (real backend always; the fake
-        // demo only AFTER its first auth, so the initial demo launch lands on the shell — but a fake LOGOUT now shows the
-        // same two-pane, re-signing-in via FakeSignIn).
+        // ── The login GATE's booleans, computed early ───────────────────────────────────────────────────────────────
+        // `authed` keeps its ORIGINAL meaning exactly — "fully signed in" (profile chip, "is this you" logic, the
+        // fake-demo's post-first-auth logout handling) — because other code below still needs that precise question
+        // answered, WAVEE_FAKE_CHALLENGE and the fake-demo's own bootstrap-order quirk included.
         //
         // Computed HERE (not down at the gate itself, as before) because both the setup wizard's pre-auth mount below AND
         // the device-code restart effect right after it need to know "authenticated yet?" before the gate is built.
@@ -262,13 +295,35 @@ sealed class WaveeApp : Component
         bool authed = !Diag.EnvFlag("WAVEE_FAKE_CHALLENGE")
                    && (authState == AuthStatus.Authenticated || (!Services.UseRealBackend && !wasAuthed.Value));
 
+        // `needsSignIn` is the thing that actually decides which LEAF mounts (below) — see the cache-first-shell design.
+        // Old rule: mount the shell only once FULLY authenticated, so every relaunch with valid cached credentials sat
+        // behind "Signing you in…" until the entire Spotify bootstrap finished. New rule: the shell mounts the moment
+        // there is EITHER nothing left to prove (authed) OR something to authenticate BEHIND it (a stored credential a
+        // resume can retry) — the sign-in surface is reserved for when auth is truly required and currently
+        // unsatisfiable.
+        //   • WAVEE_FAKE_CHALLENGE — preserved exactly: always forces the sign-in surface (deterministic screenshots).
+        //   • Real backend — reads bridge.AuthState (subscribing) rather than re-deriving from HasStoredCredential()
+        //     here: AuthState is the one signal ReportLogin/the StatusChanged handler ALWAYS refold on every relevant
+        //     change (including a resume's credential getting REJECTED-and-cleared mid-flight — SpotifyLiveLogin wipes
+        //     the blob, ProjectAuthState folds that to SignInRequired the same tick), so this render is guaranteed to
+        //     re-run the instant it matters. A plain HasStoredCredential() re-check here would be a non-reactive read —
+        //     nothing subscribes THIS render to a disk write that happens off in LiveSessionHost — so a rejection could
+        //     land and never trigger the re-render that was supposed to swap the leaf.
+        //   • Fake/demo backend — preserved exactly: unchanged from the old `!authed` (the demo's own two-pane governs
+        //     logged-out, with no stored-credential concept of its own; see AuthState's remarks for why it must NOT be
+        //     consulted here for the fake backend — its "no takeover flash" trick relies on `authed` alone).
+        bool needsSignIn = Diag.EnvFlag("WAVEE_FAKE_CHALLENGE")
+            || (Services.UseRealBackend
+                ? bridge.AuthState.Value == ShellAuthState.SignInRequired
+                : !authed);
+
         // ── The first-run setup wizard's PRE-AUTH mount ──────────────────────────────────────────────────────────────
-        // Not yet authenticated ⇒ SetupPreAuthRoot is the whole window (it IS the sign-in surface). Reads
+        // needsSignIn ⇒ SetupPreAuthRoot is the whole window (it IS the sign-in surface). Reads
         // SetupSession.MarkerEpoch (subscribing) so a completion burned by SetupDialog.Open's ClosedAction — the marker
         // discipline, see that method — makes THIS re-evaluate immediately rather than waiting on an unrelated re-render.
         _ = SetupSession.MarkerEpoch.Value;   // subscribe
         SetupSession? setupSession = null;
-        if (!authed)
+        if (needsSignIn)
         {
             // The wizard is Wavee's ONE sign-in surface. There is deliberately no second standalone login takeover:
             // shipping both meant the same action looked different in two places, and "Not now" dropped the user from
@@ -305,15 +360,18 @@ sealed class WaveeApp : Component
 
         this.UseSoftReveal(); // app entrance (compositor-only, reduced-motion-aware)
 
-        // ── The login GATE ───────────────────────────────────────────────────────────────────────────────────────────
+        // ── The login GATE (cache-first shell) ──────────────────────────────────────────────────────────────────────
         // Providers stay ABOVE the gate so the bridges' subscriptions survive the pre-auth-wizard ↔ shell swap (and
-        // back, on logout). TWO leaves, not three: signed in ⇒ the shell; otherwise ⇒ the setup wizard, which owns
-        // sign-in. The old standalone LoginView takeover component is DELETED — only its shared building blocks
-        // survive, as the statics the wizard's SignIn page composes (LoginView.cs: CompactRightPane, OrDivider,
-        // BrowserLoginButton, GlyphBadge, LoginStepRow/Bar, WaitingDots, LoginCountdown, OpenUrl).
-        Element leaf = authed
-            ? Embed.Comp(() => new WaveeShell(_services.Settings, _services.Sidebar))
-            : Embed.Comp(() => new SetupPreAuthRoot(setupSession!, _services.Settings));
+        // back, on logout). TWO leaves, not three: needsSignIn ⇒ the setup wizard, which owns sign-in; otherwise ⇒ the
+        // shell — which is now the leaf for "fully authenticated" AND "authenticating behind it" AND "offline with a
+        // cached library" alike (see needsSignIn's remarks above and PlaybackBridge.ShellAuthState). Every relaunch
+        // WITH valid cached credentials lands here instead of behind a blocking "Signing you in…" screen. The old
+        // standalone LoginView takeover component is DELETED — only its shared building blocks survive, as the statics
+        // the wizard's SignIn page composes (LoginView.cs: CompactRightPane, OrDivider, BrowserLoginButton, GlyphBadge,
+        // LoginStepRow/Bar, WaitingDots, LoginCountdown, OpenUrl).
+        Element leaf = needsSignIn
+            ? Embed.Comp(() => new SetupPreAuthRoot(setupSession!, _services.Settings))
+            : Embed.Comp(() => new WaveeShell(_services.Settings, _services.Sidebar));
 
         var root = Ctx.Provide(Services.Slot, _services,
             Ctx.Provide(PlaybackBridge.Slot, bridge,

@@ -383,6 +383,10 @@
     <Compile Include="..\Wavee\SpotifyLive\Audio\VideoLoadPump.cs" Link="VideoLoadPump.cs" />
     <Compile Include="..\Wavee\SpotifyLive\Audio\VideoStartWatchdog.cs" Link="VideoStartWatchdog.cs" />
     <Compile Include="..\Wavee\SpotifyLive\Audio\VideoSwitchPolicy.cs" Link="VideoSwitchPolicy.cs" />
+    <!-- The per-xrun incident log line's pure arithmetic (gap-in-ms, event age) + message assembly (System only) —
+         split out of FluentMediaAudioHost.DrainXruns, which opens a real WASAPI device and cannot be instantiated
+         headlessly. XrunLogLineTests drives the real formatting instead of a copy of it. -->
+    <Compile Include="..\Wavee\SpotifyLive\Audio\XrunLogLine.cs" Link="XrunLogLine.cs" />
     <!-- the v9 video-manifest parser (System.Text.Json + FluentGpu.WindowsApi's DashSourceDescriptor) — SpotifyVideoManifestTests
          drive it against a real captured manifest in Fixtures\spotify-video-manifest-v9.json -->
     <Compile Include="..\Wavee\SpotifyLive\SpotifyVideoManifest.cs" Link="SpotifyVideoManifest.cs" />
@@ -512,6 +516,10 @@
          IPackageUpdater. AppVersion comes along because Backend\Spotify\HttpPools.cs stamps its user-agent from it. -->
     <Compile Include="..\Wavee\App\AppVersion.cs" />
     <Compile Include="..\Wavee\App\ReleaseNotesStore.cs" />
+    <!-- The PURE "was this launch an update" arming AppInstallerUpdateService's ctor used to decide inline (System +
+         IAppSettings + WaveeVersionInfo + IWaveeLog + AppUpdateVersion only) — split out so both a Store and an
+         AppInstaller composition path can call it, and so AppLaunchVersionTests drives the REAL decision directly. -->
+    <Compile Include="..\Wavee\App\AppLaunchVersion.cs" />
     <Compile Include="..\Wavee\App\AppInstallerUpdateService.cs" />
     <Compile Include="..\Wavee\App\AppUpdateToasts.cs" />
     <!-- The engine-free half of ReleaseNotesText (repo, release-page/tag URLs, the one date format). The updater and
