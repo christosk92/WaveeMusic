@@ -48,6 +48,32 @@ public class ModulePageGateTests
         Assert.False(ShellOpen.OpenUrl(url));   // false = the launch was never attempted
     }
 
+    /// <summary>The ONE scheme <c>OpenUrl</c> accepts beyond http(s): the Store app's own deep link, built by
+    /// <c>StoreLinks.ProductPage</c> (the store-highlight card's button, the Store build's "Open Store page"). It
+    /// passes the launch guard while staying OUTSIDE <c>IsWebUrl</c> — a module document still cannot name it.
+    /// (Asserted via the predicate, not <c>OpenUrl</c>: a passing string would actually launch the Store.)</summary>
+    [Theory]
+    [InlineData("ms-windows-store://pdp/?productid=9NJPVWTQPT9H")]
+    [InlineData("MS-WINDOWS-STORE://pdp/?productid=9NJPVWTQPT9H")]
+    public void TheStoreDeepLink_PassesTheLaunchGuard_ButIsNotAWebUrl(string url)
+    {
+        Assert.True(ShellOpen.IsOpenableUrl(url));
+        Assert.False(ShellOpen.IsWebUrl(url));
+    }
+
+    [Theory]
+    [InlineData("https://apps.microsoft.com/detail/9NJPVWTQPT9H")]
+    public void AWebUrl_IsAlsoOpenable(string url) => Assert.True(ShellOpen.IsOpenableUrl(url));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("ms-settings:")]
+    [InlineData("ms-windows-store")]
+    [InlineData(@"C:\Windows\System32\calc.exe")]
+    public void EveryOtherScheme_StaysRefusedByTheLaunchGuard(string? url)
+        => Assert.False(ShellOpen.IsOpenableUrl(url));
+
     // ── the strings ───────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

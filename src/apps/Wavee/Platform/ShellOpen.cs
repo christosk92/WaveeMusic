@@ -24,14 +24,27 @@ static class ShellOpen
         return parsed.Host.Length > 0;
     }
 
-    /// <summary>Open a web link in the user's browser. Silently refuses anything <see cref="IsWebUrl"/> rejects, and
-    /// is best-effort by design: a missing browser or a denied launch must never throw into the UI thread that invoked
-    /// a page action.</summary>
+    /// <summary>May <see cref="OpenUrl"/> hand this text to the shell? <see cref="IsWebUrl"/> plus exactly one more
+    /// allowlisted scheme: <c>ms-windows-store:</c>, the Store app's own deep link — the "Get it from the Microsoft
+    /// Store" highlight card and the Store build's "Open Store page" both open the listing through it, and the strings
+    /// are built by <c>StoreLinks</c>, never received over a pipe. Still an allowlist, never "any registered
+    /// protocol": <c>ms-settings:</c>, <c>file:</c> and friends stay refused.</summary>
+    public static bool IsOpenableUrl(string? url)
+    {
+        if (IsWebUrl(url)) return true;
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)) return false;
+        return string.Equals(parsed.Scheme, "ms-windows-store", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Open a link with the user's registered handler (the browser, or the Store app for
+    /// <c>ms-windows-store:</c>). Silently refuses anything <see cref="IsOpenableUrl"/> rejects, and is best-effort by
+    /// design: a missing browser or a denied launch must never throw into the UI thread that invoked a page action.</summary>
     /// <param name="url">The link to open.</param>
     /// <returns>True when the launch was attempted (the string passed the guard).</returns>
     public static bool OpenUrl(string? url)
     {
-        if (!IsWebUrl(url)) return false;
+        if (!IsOpenableUrl(url)) return false;
         try { Process.Start(new ProcessStartInfo(url!) { UseShellExecute = true }); }
         catch { }
         return true;

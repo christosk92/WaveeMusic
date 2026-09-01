@@ -2308,6 +2308,7 @@
     "onlyLatest": "Only the latest",
     "highlights": "Highlights",
     "tryIt": "Try it →",
+    "storeCta": "Get it from the Microsoft Store",
     "showAll": "Show all {count}",
     "asOf": "Issue states as of {date}",
     "releases": "Releases",
@@ -2327,7 +2328,8 @@
     "kind": {
       "new": "New",
       "improved": "Improved",
-      "rebuilt": "Rebuilt"
+      "rebuilt": "Rebuilt",
+      "store": "Microsoft Store"
     },
     "section": {
       "added": "Added",

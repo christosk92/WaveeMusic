@@ -144,12 +144,14 @@ static class AfterUpdateDialog
                 if (doc is null) return;
 
                 // Posters resolve HERE, off the UI thread, exactly like the page's own loader: the plate is opened at
-                // launch, when the disk is already the busiest thing on the machine.
+                // launch, when the disk is already the busiest thing on the machine. SelectVisible applies the same
+                // cap-and-channel rule as the page's strip: a Store install never sees the "get it from the Store"
+                // announcement, and its slot goes to the next highlight.
                 var highlights = doc.Highlights;   // never null: the store Normalize()s every document it hands out
-                int n = highlights.Length > HighlightStrip.Max ? HighlightStrip.Max : highlights.Length;
-                var cards = new HighlightItem[n];
-                for (int i = 0; i < n; i++)
-                    cards[i] = new HighlightItem(highlights[i], doc, HighlightCard.ResolvePoster(highlights[i], store, doc));
+                var visible = HighlightVisibility.SelectVisible(highlights, me.IsStore, HighlightStrip.Max);
+                var cards = new HighlightItem[visible.Count];
+                for (int i = 0; i < visible.Count; i++)
+                    cards[i] = new HighlightItem(visible[i], doc, HighlightCard.ResolvePoster(visible[i], store, doc));
 
                 post(() => _loaded.Value = (doc, cards));
             }

@@ -5,6 +5,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
+using Wavee.Core;
 using Wavee.Core.ReleaseNotes;
 using static FluentGpu.Dsl.Ui;
 
@@ -51,6 +52,7 @@ static class HighlightCard
     static Element Build(HighlightItem item, Action<string, string?>? nav, float mediaMaxH, bool compact)
     {
         var h = item.Highlight;
+        bool store = HighlightVisibility.IsStore(h);
         var body = new List<Element>(3)
         {
             new TextEl(h.Title) { Size = 13.5f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
@@ -59,8 +61,18 @@ static class HighlightCard
                 with { Size = 12.5f, Color = Tok.TextSecondary },
         };
 
+        // The store announcement carries its own call to action — a real accent button opening the listing in the
+        // Store app — and, below, never the whole-card deep-link treatment: a card that is one big button AND holds a
+        // button is two nested click targets.
+        if (store)
+            body.Add(new BoxEl
+            {
+                Direction = 0, Margin = new Edges4(0f, 8f, 0f, 0f),
+                Children = [ Button.Accent(Loc.Get(Strings.WhatsNew.StoreCta), OpenStoreListing) ],
+            });
+
         (string Route, string? Arg)? link = null;
-        if (!compact && h.DeepLink is { Length: > 0 } dl && DeepLink.TryParse(dl, out var verb) && verb.Kind == DeepLinkKind.Open)
+        if (!store && !compact && h.DeepLink is { Length: > 0 } dl && DeepLink.TryParse(dl, out var verb) && verb.Kind == DeepLinkKind.Open)
         {
             link = (verb.Route, verb.Arg.Length == 0 ? null : verb.Arg);
             body.Add(new TextEl(Loc.Get(Strings.WhatsNew.TryIt))
@@ -71,10 +83,12 @@ static class HighlightCard
         {
             Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = CardMaxW,
             Corners = CornerRadius4.All(Radii.Card), ClipToBounds = true,
-            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            // The store card wears the accent edge (the SinceBanner treatment): the one announcement with a button
+            // should read as the strip's headline without leaving the stock card language.
+            BorderWidth = 1f, BorderColor = store ? Tok.AccentDefault : Tok.StrokeCardDefault,
             Children =
             [
-                Media(h, item.Poster, mediaMaxH),
+                Media(h, item.Poster, mediaMaxH, store),
                 new BoxEl
                 {
                     Direction = 1, Gap = 4f, MinWidth = 0f,
@@ -101,7 +115,9 @@ static class HighlightCard
     /// (<see cref="PosterAspect"/>), which is the shape release images are authored at. <paramref name="maxHeight"/>
     /// caps that on the dialog's compact card and is <c>NaN</c> (uncapped) on the page.</para></summary>
     /// <param name="maxHeight">A cap on the derived 16:9 height, or <c>NaN</c> for none.</param>
-    static Element Media(ReleaseHighlight h, string? poster, float maxHeight)
+    /// <param name="store">The store announcement: its plate and pill go accent-tinted (the card has no poster to
+    /// carry, so the tint is what makes the band read as deliberate rather than as a missing screenshot).</param>
+    static Element Media(ReleaseHighlight h, string? poster, float maxHeight, bool store)
     {
         var layers = new List<Element>(3);
         if (poster is { Length: > 0 })
@@ -128,16 +144,25 @@ static class HighlightCard
         {
             Grow = 1f, Direction = 0, AlignItems = FlexAlign.Start, Padding = Edges4.All(8f),
             HitTestVisible = false,
-            Children = [ KindPill(h.Kind), Spacer(), PlayGlyph(h) ],
+            Children = [ KindPill(h.Kind, store), Spacer(), PlayGlyph(h) ],
         });
 
         return new BoxEl
         {
             AspectRatio = PosterAspect, MaxHeight = maxHeight,
             AlignSelf = FlexAlign.Stretch, MinWidth = 0f, ZStack = true, ClipToBounds = true,
-            Fill = Tok.FillSubtleSecondary,
+            Fill = store ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
             Children = layers.ToArray(),
         };
+    }
+
+    /// <summary>Open the Wavee listing in the Store app. <c>StoreId</c> is stamped for EVERY channel
+    /// (<c>Wavee.csproj</c> defaults <c>WaveeStoreId</c>, so feed builds carry it too); the literal only covers an
+    /// unstamped build (a headless test host, a hand-built MSIX), where a dead button would read as broken.</summary>
+    static void OpenStoreListing()
+    {
+        string id = AppVersion.Info.StoreId is { Length: > 0 } stamped ? stamped : "9NJPVWTQPT9H";
+        ShellOpen.OpenUrl(StoreLinks.ProductPage(id));
     }
 
     /// <summary>Resolve a highlight's poster to a real on-disk path, or null.
@@ -159,9 +184,9 @@ static class HighlightCard
         catch { return null; }   // a malformed src is a missing poster, never a crash on a notes page
     }
 
-    static Element KindPill(string? kind)
+    static Element KindPill(string? kind, bool store)
     {
-        string label = Loc.Get(kind switch
+        string label = Loc.Get(store ? Strings.WhatsNew.Kind.Store : kind switch
         {
             "rebuilt" => Strings.WhatsNew.Kind.Rebuilt,
             "improved" => Strings.WhatsNew.Kind.Improved,
@@ -170,8 +195,9 @@ static class HighlightCard
         return new BoxEl
         {
             Shrink = 0f, Padding = new Edges4(8f, 2f, 8f, 2f), Corners = CornerRadius4.All(Radii.Pill),
-            Fill = Tok.FillSolidBase,
-            Children = [ new TextEl(label) { Size = 11f, Weight = 600, Color = Tok.TextPrimary } ],
+            Fill = store ? Tok.AccentDefault : Tok.FillSolidBase,
+            Children = [ new TextEl(label)
+                { Size = 11f, Weight = 600, Color = store ? Tok.TextOnAccentPrimary : Tok.TextPrimary } ],
         };
     }
 

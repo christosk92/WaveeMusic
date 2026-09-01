@@ -290,13 +290,16 @@ sealed class ReleaseNotesPage(string? versionArg) : Component
     {
         // Highlights MERGE across the stack, newest first, capped: three cards is the strip, and a reader who skipped
         // four releases wants the four best things, not four strips. Posters are resolved HERE (off the UI thread,
-        // once) rather than in the card's Render.
+        // once) rather than in the card's Render. Only VISIBLE highlights count against the cap — a Store install
+        // hides the "get it from the Store" announcement (HighlightVisibility), and its slot goes to the next one.
+        bool isStoreInstall = AppVersion.Info.IsStore;
         var merged = new List<HighlightItem>(HighlightStrip.Max);
         foreach (var e in entries)
         {
             foreach (var h in e.Doc.Highlights)
             {
                 if (merged.Count >= HighlightStrip.Max) break;
+                if (!HighlightVisibility.IsVisible(h, isStoreInstall)) continue;
                 merged.Add(new HighlightItem(h, e.Doc, HighlightCard.ResolvePoster(h, store, e.Doc)));
             }
             if (merged.Count >= HighlightStrip.Max) break;
