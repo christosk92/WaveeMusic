@@ -7,9 +7,11 @@ Wavee is released by hand from this machine. There is no CI release job: a CI ch
 |---|---|
 | `wavee-release.ps1` | the orchestrator - 13 phases (0, 1a, 2, 1b, 3-11), a `release-state.json` ledger, `-Resume` / `-Abort` / `-RepointFeed` |
 | `Wavee.Release.psm1` | the pure helpers (semver, quad, feed monotonicity, `.appinstaller` substitution, manifest, `gh`) |
+| `wavee-store-submit.ps1` | the Microsoft Store submission runbook - run after the feed release from the same tag; packs both `store`-channel MSIX, one `.msixupload`, submits via msstore-cli, a `store-state.json` ledger in `artifacts\store\<semver>\`, `-DryRun` / `-Resume` / `-Abort` / `-Status` |
+| `Wavee.Store.psm1` | its pure decisions (store quad, `.msixupload` assembly, release-notes patching, submission-state classification) plus the thin `msstore` wrapper |
 | `feed-release-body.md` | the body of the rolling `wavee-stable` feed release - read it before touching that tag |
 | `wavee/<semver>/` | hand-authored release notes: `whatsnew.json` plus its `media/` (tagline, highlights, notices) |
-| `tests/` | Pester 3.4 tests over the pure helpers, plus `LocalFeedServer.psm1` (the loopback update feed) and `local-update-e2e.ps1` (the local update rehearsal) - `Invoke-Pester ops\release\tests` |
+| `tests/` | Pester 3.4 tests over the pure helpers (`Wavee.Release.Tests.ps1`, `Wavee.Store.Tests.ps1`), plus `LocalFeedServer.psm1` (the loopback update feed) and `local-update-e2e.ps1` (the local update rehearsal) - `Invoke-Pester ops\release\tests` |
 
 The build side lives next door in `ops/build` (`Wavee.Build.psm1`, `pack-wavee-msix.ps1`,
 `Wavee.AppInstaller.template.xml`, `Wavee.AppxManifest.xml`).

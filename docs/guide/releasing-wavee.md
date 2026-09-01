@@ -271,6 +271,31 @@ Things to know:
 
 ---
 
+## 5c. After the feed: the Microsoft Store submission
+
+The Microsoft Store leg is a **separate runbook**, run from the still-checked-out tag right after §5 verifies:
+
+```powershell
+powershell -File ops\release\wavee-store-submit.ps1        # -DryRun to rehearse; also -Resume / -Abort / -Status
+```
+
+It packs both `store`-channel MSIX from the tag commit (store quad `(M+1).m.(p*100+build).0`), zips them into one
+`Wavee_<storeQuad>_store.msixupload`, uploads it via msstore-cli, sets the en-US "What's new" from the release's
+`store-listing.txt` (phase 2 of the feed release already rendered it into `<staging>\notes\`), commits the
+submission, and polls until it is past PreProcessing. Certification itself takes 1–3 business days — check later
+with `-Status`. Staging is `artifacts\store\<semver>\` with its own `store-state.json` ledger; the one-time setup
+(Entra app, `msstore reconfigure`) and the hard no-Partner-Center-edits rule are in
+`docs/guide/microsoft-store-onboarding.md` §6.
+
+| Symptom | What it means | Recovery |
+|---|---|---|
+| Preflight: a pending submission exists | a draft is already open on the product; `msstore publish` would silently delete it, so the script refuses instead | finish or delete the pending submission first — and if it was hand-made in Partner Center, finish it **there** (an API-created one is deleted with `msstore submission delete`) |
+| `msstore` authentication fails | the Entra client secret expired (Entra policy) | new secret in Entra → `msstore reconfigure` again (onboarding guide §6) |
+| Certification failed | the Store rejected the submission | `-Status` prints the errors; fix the cause, `msstore submission delete`, re-run the script |
+| The poll timed out | benign — PreProcessing was just slow | nothing to recover; check later with `-Status` |
+
+---
+
 ## 6. When something fails
 
 | Symptom | What it means | Recovery |
@@ -641,5 +666,6 @@ All of them — `Invalid tenant id`, `SignerSign() failed 0x80004005`, the wrong
 - `ops/release/wavee/README.md` — authoring `whatsnew.json`, the validator's rules, the media budgets.
 - `ops/release/feed-release-body.md` — why `wavee-stable` must never be deleted (it is also that release's body).
 - `ops/build/README.md` — the packaging scripts and their flags.
+- `docs/guide/microsoft-store-onboarding.md` — the Store account, identity, listing, and the msstore-cli setup (§6) behind §5c.
 - `.claude/skills/releasing/SKILL.md` — signing config, secrets, troubleshooting.
 - `docs/guide/playplay-private-split.md` — the PlayPlay junction and what `-PublicOnly` leaves out.

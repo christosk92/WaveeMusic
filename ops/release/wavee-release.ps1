@@ -670,21 +670,21 @@ function Get-PreviousIndex {
 function Invoke-Notes {
     Step 'Validate release notes'
     if ($NoNotes) {
-        # -NoNotes used to mean "ship with NO whatsnew.json at all" — but ReleaseNotesStore.TryReadEmbedded
+        # -NoNotes used to mean "ship with NO whatsnew.json at all" -- but ReleaseNotesStore.TryReadEmbedded
         # (Wavee/App/ReleaseNotesStore.cs) requires the EMBEDDED document's own `version` field to equal the
         # running build's semver, so an empty/absent doc makes the What's New page show "No release notes were
-        # found for this version" for EVERY install that updates to a silent release — not merely "no popup for
+        # found for this version" for EVERY install that updates to a silent release -- not merely "no popup for
         # this one," which is what -NoNotes is meant to promise. (Diagnosed after wavee-v0.2.3 shipped exactly
         # this: see the session notes.)
         #
-        # Fixed meaning: reuse the last AUTHORED release's editorial content (tagline/highlights/notices/media —
+        # Fixed meaning: reuse the last AUTHORED release's editorial content (tagline/highlights/notices/media --
         # the only fields an author actually writes; README.md's own contract says version/date/links/sections/
         # packageVersion/generatedAt are tool-owned) as this release's SOURCE doc, then fall through to the exact
         # same validated Wavee.ReleaseTool pipeline every release uses. That tool stamps version/quad/date from
         # --semver/--quad and derives `sections` from THIS release's own --changelog entry, so the published
         # document is accurate for everything except the tagline/highlight framing, which is deliberately carried
         # over rather than fabricated. Requires a $root\ops\release\wavee\<semver>\whatsnew.json to already exist
-        # from a prior real release — the very first release can never be silent.
+        # from a prior real release -- the very first release can never be silent.
         $notesRoot = Join-Path $root 'ops\release\wavee'
         $prevDir = Get-ChildItem $notesRoot -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -ne $semver -and (Test-Path (Join-Path $_.FullName 'whatsnew.json')) } |
@@ -706,7 +706,7 @@ function Invoke-Notes {
         $prevMedia = Join-Path $prevDir.FullName 'media'
         if (Test-Path $prevMedia) { Copy-Item $prevMedia (Join-Path $notesSrc 'media') -Recurse -Force }
         Warn "running with -NoNotes: reusing $($prevDir.Name)'s tagline/highlights for $semver (sections still derive from THIS release's CHANGELOG.md entry)"
-        # fall through — the block below runs the SAME validated pipeline as a normal release, now seeded from $notesSrc
+        # fall through -- the block below runs the SAME validated pipeline as a normal release, now seeded from $notesSrc
     }
 
     # EVERYTHING that can fail in this phase is inside the one try: the previous-index fetch and the token read both

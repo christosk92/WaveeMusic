@@ -1,0 +1,251 @@
+{
+  "Id": "1152921505701771860",
+  "ApplicationCategory": "Music",
+  "Pricing": {
+    "TrialPeriod": "NoFreeTrial",
+    "MarketSpecificPricings": {
+      "LB": "NotAvailable",
+      "EH": "NotAvailable"
+    },
+    "PriceId": "Free",
+    "IsAdvancedPricingModel": true
+  },
+  "Visibility": "Public",
+  "TargetPublishMode": "Immediate",
+  "TargetPublishDate": "1601-01-01T00:00:00Z",
+  "Listings": {
+    "en-us": {
+      "BaseListing": {
+        "Keywords": [
+          "spotify client",
+          "music player",
+          "lyrics",
+          "playlists",
+          "podcasts",
+          "audiobooks",
+          "music"
+        ],
+        "Description": "Wavee is a third-party Spotify client for Windows 11, built for people who want the desktop app Windows deserves. It plays music from your own Spotify Premium account. Wavee is not made by, endorsed by, or affiliated with Spotify AB.\n\nFast by construction. Wavee runs on FluentGpu, a GPU-rendered UI engine built from scratch for Windows: the app opens in well under a second, scrolls a 10,000-row library without a hitch, and holds the full refresh rate of your display while you navigate. Mica, dynamic accent, light and dark — it looks and moves like part of Windows 11.\n\nWhat you get\n• Home, Browse, Search and Charts as you know them, in a native window with tabs.\n• Artist pages with hero art, top tracks, discography and live lyrics beside the player.\n• Albums with credits, related music and the official video — docked, floating in a mini player, or in its own window.\n• Playlists that show their data: tempo, key, added-by, recommendations, and a resizable rail of facts.\n• A three-pane library for artists, albums and playlists; Liked Songs with weekly stats and tempo curves.\n• Recents grouped by day, with every play listed.\n• Queue, autoplay and drag-reorder; Spotify Connect to and from your other devices.\n• Synced lyrics (syllable-level where available), concerts near you, podcasts and audiobooks.\n• One ~30 MB package, no runtime to install, updates through the Store.\n\nRequirements\n• Windows 11 (x64 or ARM64).\n• A Spotify Premium account. Free accounts cannot sign in — Spotify's playback terms require Premium.\n\nPrivacy\nWavee talks to Spotify with your own credentials and keeps its cache on your device. It contains no ads and no tracking. Privacy statement: https://cproducts.dev/privacy\n\nOpen source under the MIT licence: https://github.com/christosk92/WaveeMusic",
+        "Features": [
+          "Native and GPU-rendered — opens in under a second",
+          "Synced lyrics, down to the syllable",
+          "Artist pages with hero art and full discography",
+          "Playlists with tempo, key and recommendations",
+          "Liked Songs with weekly stats and tempo curves",
+          "Queue, autoplay and drag to reorder",
+          "Spotify Connect to and from your other devices",
+          "Official videos: docked, mini player or own window",
+          "Concerts near you",
+          "Podcasts and audiobooks",
+          "A sidebar you design yourself",
+          "Light and dark, Mica, dynamic accent"
+        ],
+        "ReleaseNotes": "",
+        "Images": [
+          {
+            "FileName": "01-home.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027181434",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "02-artist.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027181435",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "03-liked.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027182199",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "04-playlist.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027181437",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "07-album.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027181438",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "12c-video-strips.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027182170",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "13-queue.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027182088",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "08-concerts.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027182089",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "10-search.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027182171",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "09-customize.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027181439",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "tile-300.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027182173",
+            "ImageType": "Icon"
+          },
+          {
+            "FileName": "boxart-2160.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027182172",
+            "ImageType": "StoreLogoSquare"
+          },
+          {
+            "FileName": "poster-1440x2160.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027181440",
+            "ImageType": "StoreLogo9x16"
+          },
+          {
+            "FileName": "hero-1920x1080.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700027182180",
+            "ImageType": "PromotionalArt16x9"
+          }
+        ],
+        "RecommendedHardware": [],
+        "MinimumHardware": [],
+        "Title": "Wavee",
+        "LicenseTerms": "",
+        "CopyrightAndTrademarkInfo": "© 2026 cproducts. Wavee is an independent third-party client, not made by, endorsed by, or affiliated with Spotify AB. Spotify is a trademark of Spotify AB.",
+        "ShortDescription": "A native, GPU-rendered Spotify client for Windows 11 — for your own Premium account. Not affiliated with Spotify AB.",
+        "ShortTitle": "Wavee",
+        "VoiceTitle": null,
+        "DevStudio": "cproducts"
+      },
+      "PlatformOverrides": {}
+    }
+  },
+  "HardwarePreferences": [
+    "Keyboard",
+    "Mouse"
+  ],
+  "AutomaticBackupEnabled": true,
+  "CanInstallOnRemovableMedia": true,
+  "IsGameDvrEnabled": false,
+  "GamingOptions": [
+    {
+      "Genres": [],
+      "IsLocalMultiplayer": false,
+      "IsLocalCooperative": false,
+      "IsOnlineMultiplayer": false,
+      "IsOnlineCooperative": false,
+      "IsBroadcastingPrivilegeGranted": true,
+      "IsCrossPlayEnabled": false,
+      "KinectDataForExternal": "Disabled"
+    }
+  ],
+  "HasExternalInAppProducts": false,
+  "MeetAccessibilityGuidelines": false,
+  "NotesForCertification": "",
+  "Status": "Published",
+  "StatusDetails": {
+    "Errors": [],
+    "Warnings": [
+      {
+        "Code": "SalesUnsupportedWarning",
+        "Details": "The sales resource is no longer supported. To view or edit the sales data for this submission, use the Dev Center dashboard."
+      }
+    ],
+    "CertificationReports": []
+  },
+  "FileUploadUrl": null,
+  "ApplicationPackages": [
+    {
+      "FileName": "Wavee_1.2.102.0_arm64.msix",
+      "FileStatus": "Uploaded",
+      "Id": "2000000000097664557",
+      "Version": "1.2.102.0",
+      "Architecture": "arm64",
+      "Languages": [
+        "en-US"
+      ],
+      "Capabilities": [
+        "Microsoft.storeFilter.core.notSupported_8wekyb3d8bbwe",
+        "runFullTrust"
+      ],
+      "MinimumDirectXVersion": "None",
+      "MinimumSystemRam": "None"
+    },
+    {
+      "FileName": "Wavee_1.2.102.0_x64.msix",
+      "FileStatus": "Uploaded",
+      "Id": "2000000000097665149",
+      "Version": "1.2.102.0",
+      "Architecture": "x64",
+      "Languages": [
+        "en-US"
+      ],
+      "Capabilities": [
+        "Microsoft.storeFilter.core.notSupported_8wekyb3d8bbwe",
+        "runFullTrust"
+      ],
+      "MinimumDirectXVersion": "None",
+      "MinimumSystemRam": "None"
+    }
+  ],
+  "PackageDeliveryOptions": {
+    "PackageRollout": {
+      "IsPackageRollout": false,
+      "PackageRolloutPercentage": 0,
+      "PackageRolloutStatus": "PackageRolloutNotStarted",
+      "FallbackSubmissionId": "0"
+    },
+    "IsMandatoryUpdate": false,
+    "MandatoryUpdateEffectiveDate": "1601-01-01T00:00:00Z"
+  },
+  "EnterpriseLicensing": "Online",
+  "AllowMicrosoftDecideAppAvailabilityToFutureDeviceFamilies": true,
+  "AllowTargetFutureDeviceFamilies": {
+    "Desktop": true,
+    "Mobile": false,
+    "Xbox": false,
+    "Team": false,
+    "Holographic": false,
+    "7": false
+  },
+  "FriendlyName": "Submission 1",
+  "Trailers": [
+    {
+      "Id": "1152922700027182092",
+      "VideoFileName": "trailer.mp4",
+      "VideoFileId": "3002616667829500776",
+      "TrailerAssets": {
+        "en-us": {
+          "Title": "Trailer",
+          "ImageList": [
+            {
+              "FileName": "trailer-thumb.png",
+              "Id": "3029193743651923978",
+              "Description": null
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

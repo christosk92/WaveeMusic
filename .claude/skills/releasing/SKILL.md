@@ -41,6 +41,9 @@ Import-Module ops\release\Wavee.Release.psm1
 Get-WaveeFeedVersion christosk92/WaveeMusic wavee-stable arm64   # the feed head clients poll
 ```
 
+The **Microsoft Store leg is a separate runbook**: `ops\release\wavee-store-submit.ps1`, run after the feed release
+from the same tag (`-DryRun` / `-Resume` / `-Abort` / `-Status`) — see `docs/guide/microsoft-store-onboarding.md`.
+
 **Full runbook — prerequisites, the `-DryRun` review, the phase table, failure/recovery, rollback, the local E2E
 harness (`ops/release/tests/local-update-e2e.ps1 -Scenario inapp|os`, elevated) and the scratch-feed rehearsal:
 `docs/guide/releasing-wavee.md`.**

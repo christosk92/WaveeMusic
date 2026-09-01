@@ -32,7 +32,6 @@
     <img src="https://get.microsoft.com/images/en-us%20dark.svg" height="64" alt="Get Wavee from the Microsoft Store" /></a>
 </p>
 
-<p align="center"><sub>The Microsoft Store listing is in certification — the badge goes live when it clears.</sub></p>
 
 One ~30 MB MSIX, no bundled runtime, Mica, dynamic accent, 10k-row virtualized lists, synced lyrics, video,
 out-of-process playback modules (YouTube / Twitch / radio).
@@ -53,7 +52,7 @@ out-of-process playback modules (YouTube / Twitch / radio).
 Two ways in, same app:
 
 - **Microsoft Store** — [apps.microsoft.com/detail/9NJPVWTQPT9H](https://apps.microsoft.com/detail/9NJPVWTQPT9H):
-  install and update through the Store (listing currently in certification).
+  install and update through the Store.
 - **Direct download** — the buttons above; signed MSIX from this repository's releases, silent auto-updates.
 
 Click the button for your architecture (x64 for most PCs, ARM64 for Snapdragon / Surface Pro X-class devices) and

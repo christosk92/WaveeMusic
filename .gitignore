@@ -152,3 +152,4 @@ tmp_*/
 tmp_saz_*/
 *.saz
 __pycache__/
+ops/release/store/store-credentials.json

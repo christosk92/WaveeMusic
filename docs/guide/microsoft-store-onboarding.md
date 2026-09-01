@@ -37,7 +37,7 @@ Store-wide; have "Wavee Music" ready as a fallback). Then Product management →
 - Package Family Name `cproducts.Wavee_thwr6bfjtcshw`, Store ID **`9NJPVWTQPT9H`** (baked into the build as `WaveeStoreId`).
 - Package SID `S-1-15-2-368211831-3534161536-959983934-995995205-4036165895-2946672076-447861987`, MSA app Id
   `e24d2383-af70-4d4f-ab6b-9c8b8f0bc39e` (from Product identity; needed only for WNS or MSA sign-in, unused today).
-- Submission 1 (packages 1.2.102.0 x64+arm64, listing, trailer) entered certification **2026-08-30**.
+- Submission 1 (packages 1.2.102.0 x64+arm64, listing, trailer) entered certification **2026-08-30** and went **live 2026-09-01**: <https://apps.microsoft.com/detail/9NJPVWTQPT9H>.
 - `Package/Properties/PublisherDisplayName` — `cproducts`.
 
 The Store re-signs every MSIX with Microsoft's certificate, so the Store package carries the Store publisher. Two
@@ -124,10 +124,57 @@ and questions: reportapp@microsoft.com.
 
 - The Store product page gets a **Store ID** (`9N…`); put the official "Get it from Microsoft" badge
   (<https://apps.microsoft.com/store/app-badge/>) beside the installer buttons in the README and on the site.
-- Every later release: pack the two `store`-channel packages from the same commit as the feed release and submit
-  them as a new submission; the Store distributes to its own users, the feed to sideloaded ones.
+- Every later release: run `powershell -File ops\release\wavee-store-submit.ps1` from the still-checked-out tag,
+  right after the feed release verifies (§6; runbook walkthrough in `docs/guide/releasing-wavee.md` §5c). It packs
+  the two `store`-channel packages from the tag commit and submits them with the en-US What's-new; the Store
+  distributes to its own users, the feed to sideloaded ones. Manual fallback (msstore-cli broken, or the one
+  Submission-1-style hand run): the §3 pack commands plus a hand upload in Partner Center still work.
 - Watch the Partner Center *Health* and *Reviews* pages; a rights-holder complaint arrives as a removal notice
   by email with an appeal window — respond within it.
+
+## 6. Automated submissions (msstore-cli)
+
+Update submissions are scripted: `ops\release\wavee-store-submit.ps1` (walkthrough in
+`docs/guide/releasing-wavee.md` §5c) packs both `store`-channel packages from the release tag, wraps them in one
+`.msixupload`, and drives the submission through the Store submission API via Microsoft's **msstore-cli** — a
+preview tool (its app-update commands work for free products only; Wavee is free today).
+
+Two preconditions and one hard rule:
+
+- **Automation only works after Submission 1 is fully Published.** One completed manual submission is a
+  requirement of the submission API itself; until then every `msstore` call against the product fails, and the
+  script's preflight says so.
+- **A one-time Microsoft Entra application** must be associated with the Partner Center account (below).
+- **A submission created via the API/CLI must NEVER be edited in Partner Center afterwards.** Mixing the two can
+  wedge the submission unrecoverably; if an API-created submission needs a change, delete it
+  (`msstore submission delete`) and recreate it. The reverse also bites: `msstore publish` deletes any pending
+  draft by design, so a hand-made Partner Center draft must be finished or deleted *there* before the script runs.
+
+### One-time setup on the release box
+
+1. Install the CLI: `winget install "Microsoft Store Developer CLI"` (it needs the .NET 9 Desktop Runtime).
+2. Create the Entra app: Partner Center → **Account settings → User management → Microsoft Entra applications** →
+   create (or add) an application with the **Manager** role, and give it a client secret. Record:
+
+| Item | Value |
+|---|---|
+| Tenant ID | `2bc83c61-9370-4d4d-8474-c1da08643e30` (the ckarapasias1outlook.onmicrosoft.com tenant — no cproducts.dev tenant exists) |
+| Seller ID | `95884590` |
+| Client ID | `f1fbbf8d-37cc-44aa-8158-56f370264ee8` ("Wavee Store Submission" app, created 2026-09-01) |
+
+The client secret is deliberately **not** recorded in this repo — it lives only in msstore-cli's per-user
+credential cache on the release box. It expires per Entra policy; when it does, create a new secret in Entra and
+run `msstore reconfigure` again.
+
+3. Configure the CLI once:
+
+```powershell
+msstore reconfigure --tenantId <tenant> --sellerId <seller> --clientId <client> --clientSecret <secret>
+```
+
+Sanity check: `msstore apps get 9NJPVWTQPT9H` must return the product with Package Family Name
+`cproducts.Wavee_thwr6bfjtcshw` — the script's preflight runs exactly this, and an authentication failure here
+usually means the client secret expired.
 
 ## References
 
