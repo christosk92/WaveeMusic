@@ -4,6 +4,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Media;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Core;
@@ -82,6 +83,7 @@ sealed class InWindowVideoPip : Component
     // shape of what it is showing instead of a fixed ~16:9 box that letterboxes everything else. A plain field, not a
     // signal: only the height effect reads it, and it is written from gesture/seed code that runs outside render.
     bool _sized;
+    float _fitRatio;   // last content aspect (h/w) the fit applied or acknowledged; 0 = none yet
 
     // Captured nodes for window-space pointer reconstruction (the grips move with the surface). The bands are indexed
     // by their build slot (see BuildResizeBands) — allocated ONCE, never per render.
@@ -144,10 +146,24 @@ sealed class InWindowVideoPip : Component
         UseSignalEffect(() =>
         {
             var natural = b.VideoPlayer.Value.Player?.NaturalSize.Value ?? default;   // subscribe → fit when MF reports
+            // The decoder's NaturalSize lands seconds after mount; fall back to the manifest's own dims (SEEDED on the
+            // resolved source) so the mini player is the right shape AT MOUNT, and the decoder's later report becomes a
+            // CONFIRM rather than a second reflow.
+            if (natural.Width <= 0 || natural.Height <= 0)
+            {
+                var src = b.PopOutVideoSource.Value;                                  // subscribe → fit once the manifest resolves
+                if (src is { NaturalWidth: > 0, NaturalHeight: > 0 }) natural = new SizeI(src.NaturalWidth, src.NaturalHeight);
+            }
             float w = _w.Value;
             float free = vp.Value.Height - WaveeSize.PlayerBarH - (2f * Margin);
-            if (_sized) return;
             float ratio = natural.Width > 0 && natural.Height > 0 ? (float)natural.Height / natural.Width : DefaultH / DefaultW;
+            // A deliberate size (a resize gesture, a remembered rect) wins — until the CONTENT's shape changes.
+            // A remembered near-square card letterboxing a 2.35:1 stream is the defect, not a preference: when a
+            // source with a different aspect arrives, the height refits from the KEPT width (the user owns the
+            // width, the content owns the shape — mini-player behavior everywhere else).
+            bool aspectChanged = _fitRatio > 0f && Math.Abs(ratio - _fitRatio) > 0.01f;
+            if (_sized && !aspectChanged) { if (_fitRatio <= 0f) _fitRatio = ratio; return; }
+            _fitRatio = ratio;
             _h.Value = Math.Max(MinH, Math.Min(w * ratio, Math.Max(MinH, free)));
         });
 
@@ -268,7 +284,9 @@ sealed class InWindowVideoPip : Component
         };
     }
 
-    // ── the video area — hosts the SHARED PopOutVideoStage, keyed on the source identity so it remounts cleanly ──
+    // ── the video area — hosts the SHARED PopOutVideoStage, keyed on the PLAYER identity (the binding generation) so a
+    // source change alone (a video→video skip) never remounts it, only a rebuilt player does; the switching overlay
+    // below covers the gap by staying stacked on a still-live stage instead of replacing it ──────────────────────────
     // The stage PRESENTS the player owned by FluentVideoMediaHost (via PlaybackBridge.VideoPlayer); neither this surface nor
     // the stage builds one, which is why moving between the PiP and the pop-out no longer restarts the video from 0.
     //
@@ -279,13 +297,15 @@ sealed class InWindowVideoPip : Component
     // those seconds reads as broken rather than as loading.
     static Element BuildVideoArea(PlaybackBridge b, IAppSettings? settings)
     {
-        var src = b.PopOutVideoSource.Value;                          // subscribe → remount the stage on a source change
+        var src = b.PopOutVideoSource.Value;                          // subscribe → re-render (switching overlay/poster), not a remount — see stageKey below
         var binding = b.VideoPlayer.Value;                            // subscribe → poster ↔ hole
         // Mount whenever a player exists — a brief source null (override re-resolve) must NOT tear down the only MF pump.
         bool mount = VideoSurfaceMount.ShouldMountPlayerStage(binding.Player is not null);
         if (mount)
         {
-            string stageKey = src?.Key ?? ("gen:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            // PLAYER identity only — a source change (a video→video skip) must never remount the stage, only a
+            // rebuilt player (a new Generation) may. See DockedVideoSurface's identical stage-key remark.
+            string stageKey = "gen:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
             // Bridge/Settings put the placement ladder on the video's OWN ⋯ menu, so the mini player can be moved from
             // the surface the user is actually looking at instead of only from the player bar across the window.
             // The mini player shares the window with the global 72-DIP player bar, so the BAR owns the transport
@@ -298,17 +318,14 @@ sealed class InWindowVideoPip : Component
                 Host = new VideoStageHost(TransportOwner.Docked, b.TransportOwnerNow,
                     () => b.ShowVideoAt(SurfacePlacement.Fullscreen)),
             }) with { Key = "pipstage:" + stageKey };
-            if (src is not null)
-                return new BoxEl
-                {
-                    Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = ColorF.Transparent,
-                    Children = [ stage ],
-                };
-            // Player present, source still resolving — keep pumping under a Loading overlay.
+            // While a stage is mounted the ENGINE element is the one loading affordance (poster + spinner +
+            // "Starting playback…") — stacking the app's own LoadingOverlay on top produced two spinners at once.
+            // The stage stays mounted and pumping across a source switch; the engine holds the previous frame and
+            // crossfades to the new source's first frame on its own.
             return new BoxEl
             {
-                Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent,
-                Children = [ stage, LoadingOverlay(b.CurrentTrack.Value) ],
+                Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = ColorF.Transparent,
+                Children = [ stage ],
             };
         }
 

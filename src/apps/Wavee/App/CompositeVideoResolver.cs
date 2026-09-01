@@ -36,16 +36,19 @@ public sealed class CompositeVideoResolver
     public static CompositeVideoResolver OverridesOnly(VideoOverrideService? overrides)
         => new((_, _) => Task.FromResult<PopOutVideoSource?>(null), overrides);
 
-    public Task<PopOutVideoSource?> ResolveAsync(string playableUri, CancellationToken ct = default)
+    public async Task<PopOutVideoSource?> ResolveAsync(string playableUri, CancellationToken ct = default)
     {
         if (_overrides is { } svc)
         {
-            var decision = svc.Decide(playableUri);
+            // Decide() runs a File.Exists probe on the attachment path, which can block for seconds against a
+            // UNC/offline share — off the calling thread (originally the UI thread for the primed-intent caller),
+            // never inline. The decision body itself is UNCHANGED; only where it runs moved.
+            var decision = await Task.Run(() => svc.Decide(playableUri), ct).ConfigureAwait(false);
             switch (decision.Tier)
             {
                 case VideoOverrideTier.UseOverride:
                     svc.NoteResolved(playableUri, decision.Override);
-                    return Task.FromResult<PopOutVideoSource?>(PopOutVideoSource.LocalFile(decision.Override));
+                    return PopOutVideoSource.LocalFile(decision.Override);
                 case VideoOverrideTier.Broken:
                     // The file moved / the drive is offline. Keep the link (it is repairable), warn once, and fall through
                     // to the original — a bad attachment must never block the music. The File.Exists probe inside Decide
@@ -61,9 +64,9 @@ public sealed class CompositeVideoResolver
         // already resolved this playable before it ever reached the queue), and keyed on the module PLAYABLE ID rather
         // than the url, so the host's same-Key no-op survives a re-resolve that hands back a fresh, differently-signed
         // url for the very same broadcast.
-        if (ModuleVideoSource(playableUri) is { } moduleSource) return Task.FromResult<PopOutVideoSource?>(moduleSource);
+        if (ModuleVideoSource(playableUri) is { } moduleSource) return moduleSource;
 
-        return _sourceTier(playableUri, ct);
+        return await _sourceTier(playableUri, ct).ConfigureAwait(false);
     }
 
     /// <summary>The module tier as a pure lookup: a cached, video-form module playable with a <c>url</c> locator, or

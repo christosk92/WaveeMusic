@@ -32,7 +32,7 @@ public sealed class ShellUi
     /// <summary>Has the user DELIBERATELY sized the docked cap for what is playing right now? False (the default) means
     /// <see cref="DockedVideoHeight"/> follows the content's own aspect — <c>ShellResponsiveLayout.FitDockedVideoHeight</c>
     /// — so a 16:9 stream fills the card edge to edge instead of sitting in letterbox bars. The vertical splitter sets it
-    /// on commit, and the next SOURCE clears it: an explicit drag is a decision about THIS video, not a standing one.</summary>
+    /// on a committed drag; the docked surface clears it when the SOURCE changes.</summary>
     public Signal<bool> DockedVideoHeightPinned { get; } = new(false);
 
     /// <summary>The PLAYABLE uri the attached page's own stage would host — a module watch page's video — or

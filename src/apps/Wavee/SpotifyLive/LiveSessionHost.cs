@@ -778,7 +778,15 @@ public sealed class LiveSessionHost : IAsyncDisposable
             wiring.Set(Wavee.Backend.Wiring.LiveSeams.PlaybackResolveVideoSource,
                 () => svc.Playback.ResolveVideoSource =
                     new CompositeVideoResolver((uri, ct) => videoManifests.ResolvePlayableAsync(uri, transport, ct), svc.VideoOverrides).ResolveAsync,
-                () => svc.Playback.ResolveVideoSource = CompositeVideoResolver.OverridesOnly(svc.VideoOverrides).ResolveAsync);
+                () =>
+                {
+                    svc.Playback.ResolveVideoSource = CompositeVideoResolver.OverridesOnly(svc.VideoOverrides).ResolveAsync;
+                    // The bridge's resolve memo may hold answers (CDN urls, license-relay closures) captured against
+                    // THIS session's transport — a re-login (or a different account) must never be handed one of
+                    // those back. Drop the whole cache; the overrides-only composite above still resolves fresh for
+                    // any attached local file.
+                    svc.Playback.ClearVideoResolveMemo();
+                });
             // Owner identities are a LADDER now (UserHydration, registered below), not a switchable service: the kind-15
             // batch + the REST remainder live behind IUserProfileFetch and the resolved Owners land in the store. There
             // is nothing to install and nothing to tear down — going offline just stops the ladder from being asked.

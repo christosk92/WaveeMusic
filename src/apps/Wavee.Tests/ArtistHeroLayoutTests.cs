@@ -7,11 +7,13 @@ namespace Wavee.Tests;
 public class ArtistHeroLayoutTests
 {
     [Theory]
-    [InlineData(420f, ArtistHeroTier.Narrow, ArtistHeroTier.Narrow)]
+    // Thresholds are the shipped 880/600/360 (lowered from 1040/760/480 — "the stacked layout triggered way too
+    // soon"), hysteresis 24: hold rows sit just inside a tier's keep-band, promote/demote rows just outside it.
+    [InlineData(380f, ArtistHeroTier.Narrow, ArtistHeroTier.Narrow)]
     [InlineData(504f, ArtistHeroTier.Narrow, ArtistHeroTier.Compact)]
-    [InlineData(700f, ArtistHeroTier.Compact, ArtistHeroTier.Compact)]
-    [InlineData(784f, ArtistHeroTier.Compact, ArtistHeroTier.Medium)]
-    [InlineData(1000f, ArtistHeroTier.Wide, ArtistHeroTier.Medium)]
+    [InlineData(610f, ArtistHeroTier.Compact, ArtistHeroTier.Compact)]
+    [InlineData(700f, ArtistHeroTier.Compact, ArtistHeroTier.Medium)]
+    [InlineData(850f, ArtistHeroTier.Wide, ArtistHeroTier.Medium)]
     [InlineData(1016f, ArtistHeroTier.Wide, ArtistHeroTier.Wide)]
     [InlineData(1064f, ArtistHeroTier.Medium, ArtistHeroTier.Wide)]
     public void TierFor_UsesTheDetailLayoutHysteresis(float width, ArtistHeroTier previous, ArtistHeroTier expected)
@@ -37,8 +39,8 @@ public class ArtistHeroLayoutTests
     [Fact]
     public void CompactAndNarrow_StackThePhotoAboveTheIdentityColumn()
     {
-        var compact = ArtistHeroLayout.For(720f, ArtistHeroTier.Compact);
-        var narrow = ArtistHeroLayout.For(420f, ArtistHeroTier.Narrow);
+        var compact = ArtistHeroLayout.For(500f, ArtistHeroTier.Compact);
+        var narrow = ArtistHeroLayout.For(320f, ArtistHeroTier.Narrow);
 
         Assert.Equal(ArtistHeroVeilAxis.Vertical, compact.VeilAxis);
         Assert.Equal(ArtistHeroVeilAxis.Vertical, narrow.VeilAxis);
@@ -78,9 +80,9 @@ public class ArtistHeroLayoutTests
     [Fact]
     public void PageGutter_UsesOnlySemanticSpacingTokens()
     {
-        Assert.Equal(Spacing.PageNarrow, ArtistHeroLayout.PageGutterFor(420f));
-        Assert.Equal(Spacing.L, ArtistHeroLayout.PageGutterFor(700f));
-        Assert.Equal(Spacing.XXXL, ArtistHeroLayout.PageGutterFor(900f));
+        Assert.Equal(Spacing.PageNarrow, ArtistHeroLayout.PageGutterFor(320f));
+        Assert.Equal(Spacing.L, ArtistHeroLayout.PageGutterFor(420f));
+        Assert.Equal(Spacing.XXXL, ArtistHeroLayout.PageGutterFor(700f));
         Assert.Equal(Spacing.PageWide, ArtistHeroLayout.PageGutterFor(1200f));
     }
 

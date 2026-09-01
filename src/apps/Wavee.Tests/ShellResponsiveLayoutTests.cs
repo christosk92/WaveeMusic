@@ -162,11 +162,14 @@ public class ShellResponsiveLayoutTests
     [Fact]
     public void DockedVideoHeight_FitFallsBackToSixteenByNine_AndClampsLikeEveryOtherWriter()
     {
-        // Nothing reported yet (an audio-only player, a stage still resolving) — the 16:9 floor, so the tile never
+        // Nothing reported yet (an audio-only player, a stage still resolving) — the 16:9 default, so the tile never
         // flashes at a wrong shape on the way in.
         Assert.Equal(191.25f, ShellResponsiveLayout.FitDockedVideoHeight(340f, 0, 0));
-        // Wider than 16:9 cannot go below the rail's floor, and a very tall clip cannot exceed its ceiling.
-        Assert.Equal(191.25f, ShellResponsiveLayout.FitDockedVideoHeight(340f, 2560, 1080));
+        // Wider than 16:9 fits SHORTER than 16:9 — the content fit is deliberately NOT floored at the splitter's
+        // 16:9 minimum (that floor forced every ultra-wide stream into guaranteed letterbox bars). A 2.35:1 clip
+        // gets its own aspect; only the hard fit floor and the ceiling bind.
+        Assert.Equal(340f * 1080f / 2560f, ShellResponsiveLayout.FitDockedVideoHeight(340f, 2560, 1080), 2);
+        Assert.Equal(ShellResponsiveLayout.DockedVideoFitMinH, ShellResponsiveLayout.FitDockedVideoHeight(340f, 3840, 1080));
         Assert.Equal(ShellResponsiveLayout.DockedVideoMaxH, ShellResponsiveLayout.FitDockedVideoHeight(340f, 1080, 1920));
     }
 

@@ -257,11 +257,17 @@ public class PlaybackAttributionTests
         using (c)
         {
             var dead = new List<string>();
+            Task? pendingVideoLoad = null;
             c.ShouldPlayAsVideo = _ => true;
             c.LoadCurrentVideoAsync = (_, _, _) => Task.FromResult(false);   // resolved to nothing → fall back to audio
             c.OnVideoMediaUnavailable = t => dead.Add(t.Uri);
+            c.VideoLoadSpawnedForTest = t => pendingVideoLoad = t;
 
             await c.PlayAsync("spotify:playlist:p", 0);
+            // The video branch resolves off-lock now (video-smooth-switching Milestone C): the "no source" fallback
+            // re-acquires the controller's lock, which PlayAsync itself is still holding at the moment this spawns —
+            // so it only settles AFTER PlayAsync returns. Await it explicitly rather than assuming it already ran.
+            if (pendingVideoLoad is { } t) await t;
 
             Assert.Equal(new[] { "spotify:track:a" }, dead);
             Assert.Contains("load:spotify:track:a", host.Calls);   // the song still plays — just as audio

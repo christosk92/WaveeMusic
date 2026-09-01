@@ -124,20 +124,28 @@ public static class ShellResponsiveLayout
         return h <= 0f ? min : Math.Clamp(h, min, max);
     }
 
+    /// <summary>Hard floor for a CONTENT-fitted cap (not the splitter's 16:9 floor): tall enough that the transport
+    /// chrome stays usable, short enough that an ultra-wide (2.35:1+) stream fits edge to edge without bars.</summary>
+    public const float DockedVideoFitMinH = 120f;
+
     /// <summary>The cap height that matches the CONTENT'S OWN aspect at the current rail width — the card's default
     /// size, so a video fills it edge to edge instead of sitting inside <c>Tok.MediaLetterbox</c> bars.
     /// <para>The card used to be sized purely by the rail's persisted/dragged height, which made letterboxing the
     /// DEFAULT for every stream that was not exactly as tall as whatever the user (or a previous session) had left
-    /// there. A player that has not reported its size yet answers 16:9 — the same floor the splitter uses — so the
-    /// tile never flashes at a wrong shape on the way in. The result is clamped through
-    /// <see cref="ClampDockedVideoHeight"/>: one clamp for every writer.</para></summary>
+    /// there. A player that has not reported its size yet answers 16:9 — the splitter's own floor — so the tile never
+    /// flashes at a wrong shape on the way in.</para>
+    /// <para>Deliberately NOT routed through <see cref="ClampDockedVideoHeight"/>: that clamp's minimum is the 16:9
+    /// splitter floor, and flooring a CONTENT fit at 16:9 forces every wider-than-16:9 stream (a 2.35:1 music video)
+    /// 32%+ taller than its own aspect — guaranteed black bars, the exact thing this fit exists to remove. The fit
+    /// clamps between <see cref="DockedVideoFitMinH"/> and <see cref="DockedVideoMaxH"/> instead; the 16:9 minimum
+    /// remains the SPLITTER's drag floor only.</para></summary>
     /// <param name="railW">The rail's current width — the card is full-bleed, so this IS the video's width.</param>
     /// <param name="naturalW">The media's natural pixel width; ≤ 0 = not reported yet.</param>
     /// <param name="naturalH">The media's natural pixel height; ≤ 0 = not reported yet.</param>
     public static float FitDockedVideoHeight(float railW, int naturalW, int naturalH)
     {
         float ratio = naturalW > 0 && naturalH > 0 ? (float)naturalH / naturalW : 9f / 16f;
-        return ClampDockedVideoHeight(railW * ratio, railW);
+        return Math.Clamp(railW * ratio, DockedVideoFitMinH, DockedVideoMaxH);
     }
     /// <summary>Viewport-fit test for sidebar + rail + a minimum usable content region.</summary>
     public static bool CanFitRail(float viewportW, float sidebarW, float railW = RailDefaultW, float minContentW = 480f)

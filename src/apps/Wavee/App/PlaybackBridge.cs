@@ -475,7 +475,11 @@ public sealed class PlaybackBridge
         if (!refreshKind) return;
         // a real kind edge — never needs forcing
         if (isActive != wasActive) RequestKindRefresh(forceReloadIfVideo: false, clearConnectAudioFirst);
-        if (isActive && !wasActive) RequestPopOutSource(CurrentTrack.Peek()?.Uri);
+        // NOTE: turning the surface ON used to ALSO fire RequestPopOutSource here — a second, independent resolve
+        // racing the one RequestKindRefresh triggers through the playback path (ResolveVideoSourceForPlaybackAsync).
+        // Both ran the full tier walk for the same track; whichever published second silently overwrote the first's
+        // (gen-fenced but otherwise identical) source. The playback path is the one that actually loads the media, so
+        // it already resolves-and-publishes for this exact track — there is nothing left for this edge to kick.
     }
 
     /// <summary>The ONE call site for <see cref="RequestMediaKindRefresh"/> — logs placement/has/latch state so a
@@ -583,6 +587,31 @@ public sealed class PlaybackBridge
     /// bootstrap to <c>SpotifyVideoManifestResolver.ResolvePlayableAsync</c>; null on the fake/offline backend. Off the UI thread.</summary>
     public System.Func<string, System.Threading.CancellationToken, System.Threading.Tasks.Task<Wavee.SpotifyLive.PopOutVideoSource?>>? ResolveVideoSource;
 
+    // ── the single-flight/TTL memo fronting ResolveVideoSource for EVERY consumer ──────────────────────────────────────
+    // A toggle (RequestPopOutSource), the playback load (ResolveVideoSourceForPlaybackAsync) and a next-track prefetch
+    // (PrefetchVideoSource) used to each call ResolveVideoSource independently — up to three full network walks for the
+    // SAME track. Every one of them now goes through ResolveMemoizedAsync instead, so concurrent callers for the same
+    // uri share ONE resolve (SingleFlightMemo's whole point) and a uri revisited inside the TTL (prefetched, then
+    // played; skip back onto a track just played) costs zero network calls. 10 minutes: comfortably longer than a
+    // prefetch-to-play gap or a quick skip-back, short enough that a signed CDN url in the resolved descriptor is
+    // still fresh when it is finally opened (§9 risk: memo staleness vs signed CDN urls — bounded by this TTL plus
+    // eviction on an open failure, see InvalidateVideoSource/ApplyVideoMediaEnded).
+    static readonly TimeSpan VideoResolveMemoTtl = TimeSpan.FromMinutes(10);
+    readonly SingleFlightMemo<Wavee.SpotifyLive.PopOutVideoSource?> _videoResolveMemo = new(VideoResolveMemoTtl);
+
+    /// <summary>THE call path to <see cref="ResolveVideoSource"/> — every consumer goes through this instead of
+    /// invoking the delegate directly. Returns null immediately (no flight started) when no resolver is wired
+    /// (fake/offline backend). The underlying flight always runs on <see cref="System.Threading.CancellationToken.None"/>
+    /// (see <see cref="SingleFlightMemo{T}"/>'s contract) — <paramref name="ct"/> only lets THIS caller detach early;
+    /// it never cancels the shared resolve, so a cancelled toggle can't abort the very network call a follow-up
+    /// prefetch or the playback path is relying on.</summary>
+    System.Threading.Tasks.Task<Wavee.SpotifyLive.PopOutVideoSource?> ResolveMemoizedAsync(string uri, System.Threading.CancellationToken ct)
+    {
+        if (ResolveVideoSource is not { } resolve)
+            return System.Threading.Tasks.Task.FromResult<Wavee.SpotifyLive.PopOutVideoSource?>(null);
+        return _videoResolveMemo.GetOrStartAsync(uri, key => resolve(key, System.Threading.CancellationToken.None), ct);
+    }
+
     // ── M0: the ONE player, owned by the backend host and PRESENTED by the surfaces ─────────────────────────────────
     /// <summary>The live video player + a monotonic generation, as ONE atomic equality-gated value. The player is built and
     /// owned by <c>FluentVideoMediaHost</c> (never by a surface — that was the "video restarts from 0 on every placement
@@ -629,6 +658,9 @@ public sealed class PlaybackBridge
     {
         var uri = string.IsNullOrEmpty(playableUri) ? CurrentTrack.Peek()?.Uri : playableUri;
         if (!VideoMediaLatch.MarkDead(uri, ref _videoDeadUri)) return;   // already latched → no republish
+        // The backend just proved this exact uri has no live video media — a cached resolve for it (a memoized
+        // "here's a source" answer) would be wrong to hand back for the rest of the TTL window.
+        if (uri is { Length: > 0 }) _videoResolveMemo.Invalidate(uri);
         if (string.Equals(_videoSourceUri, uri, StringComparison.Ordinal))
         {
             _videoSourceUri = null;
@@ -658,19 +690,18 @@ public sealed class PlaybackBridge
     /// request or a track change is dropped at publish (never overwrites the current track's source).</summary>
     public void RequestPopOutSource(string? trackUri)
     {
-        if (ResolveVideoSource is not { } resolve || string.IsNullOrEmpty(trackUri) || _post is not { } post) return;
+        if (ResolveVideoSource is null || string.IsNullOrEmpty(trackUri) || _post is not { } post) return;
         _videoResolveCts?.Cancel();
         _videoResolveCts = new System.Threading.CancellationTokenSource();
         var gen = ++_videoResolveGen;
-        _ = ResolveAndPublishAsync(resolve, trackUri!, post, gen, _videoResolveCts.Token);
+        _ = ResolveAndPublishAsync(trackUri!, post, gen, _videoResolveCts.Token);
     }
 
     async System.Threading.Tasks.Task ResolveAndPublishAsync(
-        System.Func<string, System.Threading.CancellationToken, System.Threading.Tasks.Task<Wavee.SpotifyLive.PopOutVideoSource?>> resolve,
         string uri, System.Action<System.Action> post, long gen, System.Threading.CancellationToken ct)
     {
         Wavee.SpotifyLive.PopOutVideoSource? src = null;
-        try { src = await resolve(uri, ct).ConfigureAwait(false); } catch { /* resolution failure / cancellation → no source (pop-out stays letterbox) */ }
+        try { src = await ResolveMemoizedAsync(uri, ct).ConfigureAwait(false); } catch { /* resolution failure / cancellation → no source (pop-out stays letterbox) */ }
         post(() =>
         {
             if (!PlacementCore.IsCurrentGeneration(gen, _videoResolveGen)) return;   // drop a stale (superseded-track) resolve
@@ -680,26 +711,34 @@ public sealed class PlaybackBridge
     }
 
     /// <summary>The AWAITABLE half of <see cref="RequestPopOutSource"/>, for the playback path
-    /// (<c>PlaybackController.LoadCurrentVideoAsync</c>): resolve this track's video source with the SAME
-    /// <see cref="ResolveVideoSource"/> resolver, publish it onto <see cref="PopOutVideoSource"/> (so the mounted surface keys
-    /// its content on the very source the media host is about to play), and return it so the caller can hand it to
+    /// (<c>PlaybackController.LoadCurrentVideoAsync</c>): resolve this track's video source through the shared
+    /// <see cref="ResolveMemoizedAsync"/> memo (so a prefetch that already warmed this exact track costs 0 network
+    /// calls), publish it onto <see cref="PopOutVideoSource"/> (so the mounted surface keys its content on the very
+    /// source the media host is about to play), and return it so the caller can hand it to
     /// <c>FluentVideoMediaHost.LoadVideo</c>. Returns null when there is no resolver (fake/offline backend) or the track has no
     /// playable video — the controller then falls back to audio rather than leaving the user in silence.
     ///
-    /// Callable from any thread. It needs no generation fence of its own: the controller serializes its loads under one lock,
-    /// so at most ONE playback resolve is ever in flight and it always belongs to the playable currently being loaded (a
-    /// cancelled load throws out of <paramref name="ct"/> and publishes nothing).</summary>
+    /// <para>Callable from any thread, and from MULTIPLE concurrent playable loads: the load-restructure that moved
+    /// video loading off the controller's <c>_lock</c> (video-smooth-switching plan §3) means this is no longer
+    /// guaranteed to be the only playback resolve in flight. It therefore fences its OWN publish the same way
+    /// <see cref="RequestPopOutSource"/> does: snapshot <see cref="_videoResolveGen"/> before awaiting, and skip the
+    /// write to <see cref="PopOutVideoSource"/>/<c>_videoSourceUri</c> if a track change (or another resolve) has
+    /// since moved the generation on. The RETURN value is unaffected by the fence — the controller's own
+    /// generation-fenced re-entry (<c>RunVideoLoadAsync</c>) is what decides whether a superseded caller's resolved
+    /// source is still worth handing to the video host.</para></summary>
     public async System.Threading.Tasks.Task<Wavee.SpotifyLive.PopOutVideoSource?> ResolveVideoSourceForPlaybackAsync(
         string? trackUri, System.Threading.CancellationToken ct)
     {
-        if (ResolveVideoSource is not { } resolve || string.IsNullOrEmpty(trackUri)) return null;
+        if (ResolveVideoSource is null || string.IsNullOrEmpty(trackUri)) return null;
         // Already resolved for this exact track (the player-bar intent pre-resolved it) → reuse it; re-resolving would only
         // republish an equal source and make the surface remount.
         if (string.Equals(_videoSourceUri, trackUri, StringComparison.Ordinal) && PopOutVideoSource.Peek() is { } cached)
             return cached;
 
+        long gen = _videoResolveGen;   // fence: see the doc comment above
+
         Wavee.SpotifyLive.PopOutVideoSource? src;
-        try { src = await resolve(trackUri!, ct).ConfigureAwait(false); }
+        try { src = await ResolveMemoizedAsync(trackUri!, ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { return null; }
         catch (Exception ex)
         {
@@ -710,9 +749,70 @@ public sealed class PlaybackBridge
         }
         if (src is null) return null;
 
-        if (_post is { } post) post(() => { _videoSourceUri = trackUri; PopOutVideoSource.Value = src; });
-        else { _videoSourceUri = trackUri; PopOutVideoSource.Value = src; }
+        void Publish()
+        {
+            if (!PlacementCore.IsCurrentGeneration(gen, _videoResolveGen)) return;   // superseded — a newer load already owns the signals
+            _videoSourceUri = trackUri;
+            PopOutVideoSource.Value = src;
+        }
+        if (_post is { } post) post(Publish); else Publish();
         return src;
+    }
+
+    // The uri PrefetchVideoSource is currently (or most recently) prefetching — dedup gate for repeated calls with the
+    // same upcoming track (SchedulePreparedNext re-asks on every heartbeat while the same track sits next in line).
+    string? _prefetchUri;
+    System.Threading.CancellationTokenSource? _prefetchCts;
+
+    /// <summary>Prefetch the video source for an UPCOMING (not-yet-current) playable — the "no next-track video
+    /// preload" gap: without this, a video→video skip paid the full resolve+CDN-handshake tail AFTER the boundary
+    /// every time. Wired to <c>PlaybackController.PrefetchVideo</c>, called when <c>SchedulePreparedNext</c>
+    /// determines the next track will play as video.
+    ///
+    /// <para>Dedup'd on <paramref name="trackUri"/> (repeated calls for the SAME upcoming track are free — the
+    /// resolve itself is also memoized by <see cref="ResolveMemoizedAsync"/>); the PREVIOUS prefetch's token is
+    /// cancelled the instant the upcoming track changes (the user skipped again before the first prefetch finished —
+    /// its flight keeps running and populates the memo regardless, per <see cref="SingleFlightMemo{T}"/>'s contract,
+    /// this token only detaches THIS caller so it stops warming a CDN nobody is about to play). Skipped outright on a
+    /// metered connection (<see cref="NetworkPolicy.ShouldDeferPrefetch"/> — the same gate
+    /// <c>FastTrackPlayback.Warm</c> uses for the audio warm path). Fire-and-forget; NEVER publishes onto
+    /// <see cref="PopOutVideoSource"/> — only the playback path (the track that is actually about to play) may do
+    /// that, so a prefetch racing a real load can never flash the wrong source onto a mounted surface.</para></summary>
+    public void PrefetchVideoSource(string? trackUri)
+    {
+        if (ResolveVideoSource is null || string.IsNullOrEmpty(trackUri)) return;
+        if (string.Equals(_prefetchUri, trackUri, StringComparison.Ordinal)) return;   // already prefetching this one
+        _prefetchCts?.Cancel();
+        _prefetchCts = new System.Threading.CancellationTokenSource();
+        _prefetchUri = trackUri;
+        _ = PrefetchAsync(trackUri!, _prefetchCts.Token);
+    }
+
+    async System.Threading.Tasks.Task PrefetchAsync(string trackUri, System.Threading.CancellationToken ct)
+    {
+        if (NetworkPolicy.ShouldDeferPrefetch)
+        {
+            WaveeLog.Instance.Debug("playback", $"video prefetch {trackUri}: skipped metered");
+            return;
+        }
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var src = await ResolveMemoizedAsync(trackUri, ct).ConfigureAwait(false);
+            if (ct.IsCancellationRequested) return;   // this caller detached — the flight (and its cache write) still ran
+            if (src is null)
+            {
+                WaveeLog.Instance.Debug("playback", $"video prefetch {trackUri}: no video elapsed={sw.ElapsedMilliseconds}ms");
+                return;
+            }
+            WaveeLog.Instance.Debug("playback", $"video prefetch {trackUri}: ready key={src.Key} elapsed={sw.ElapsedMilliseconds}ms");
+            VideoCdnWarm.WarmInit(src);
+        }
+        catch (OperationCanceledException) { /* detached — see the doc comment on PrefetchVideoSource */ }
+        catch (Exception ex)
+        {
+            WaveeLog.Instance.Debug("playback", $"video prefetch {trackUri}: failed elapsed={sw.ElapsedMilliseconds}ms: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>Monotonic "open the device picker" request. The critical "playback unsupported" toast's <em>Choose device</em>
@@ -1031,11 +1131,21 @@ public sealed class PlaybackBridge
     /// what the playback-thread resolve reads; the published signal is cleared on the UI thread.</summary>
     public void InvalidateVideoSource(string playableUri)
     {
+        if (string.IsNullOrEmpty(playableUri)) return;
+        // Evict unconditionally (not gated on being the CURRENTLY published source): the point of an invalidation is
+        // "this uri's resolved answer is bad", and the next resolve for it — whether or not it is playing right now —
+        // must walk the tiers again rather than replay the memo for the rest of its TTL window.
+        _videoResolveMemo.Invalidate(playableUri);
         if (!string.Equals(_videoSourceUri, playableUri, StringComparison.Ordinal)) return;
         _videoSourceUri = null;
         if (_post is { } post) post(() => { if (_videoSourceUri is null) PopOutVideoSource.Value = null; });
         else PopOutVideoSource.Value = null;
     }
+
+    /// <summary>Drop every cached/in-flight video resolve. Called at logout / live-seam teardown
+    /// (<c>LiveSessionHost</c>'s <c>PlaybackResolveVideoSource</c> inverse) so a resolve memoized against the
+    /// outgoing session's transport can never be handed to the next session (a re-login, or a different account).</summary>
+    public void ClearVideoResolveMemo() => _videoResolveMemo.Clear();
 
     // Observe store changes for the CURRENT track's uri (or a bulk sync) and recompute the has-video signal. Detection is
     // fire-and-forget, so the association lands after the track is already playing — this is what lights the button up.

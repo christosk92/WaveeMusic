@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Backend;
@@ -31,9 +33,12 @@ sealed class SpotifyVideoManifestResolver
     readonly IStore _store;
     readonly WaveeLogger _log;
 
-    /// <param name="metadata">The shared extended-metadata transport. This path is deliberately UNCACHED (no
-    /// <c>ExtensionEtagCache</c>): it runs once per play, its answer is a manifest id we immediately spend, and the
-    /// row-facing kind-99 read that IS worth caching goes through the trait pipeline instead.</param>
+    /// <param name="metadata">The shared extended-metadata transport. This resolver is deliberately STATELESS (no
+    /// <c>ExtensionEtagCache</c>, no per-uri memo of its own): every call re-walks the tiers and re-fetches. Caching now
+    /// lives ABOVE it, in <c>PlaybackBridge</c>'s <see cref="SingleFlightMemo{T}"/> (10-min TTL, single-flight per uri)
+    /// which fronts <c>PlaybackBridge.ResolveVideoSource</c> for every consumer — the playback path, the prefetch, and
+    /// the pop-out. That is the one place a repeated resolve for the same playable is actually avoided; the row-facing
+    /// kind-99 read that IS worth caching independently of a play still goes through the trait pipeline.</param>
     /// <param name="store">Read-only here — the last two tiers read the VideoAssociation the projector wrote. Required:
     /// without it a relinked (alias) track resolves to nothing and plays as audio while showing a video badge.</param>
     public SpotifyVideoManifestResolver(ExtendedMetadataSource metadata, IStore store, WaveeLogger log = default)
@@ -51,27 +56,63 @@ sealed class SpotifyVideoManifestResolver
     public async Task<PopOutVideoSource?> ResolvePlayableAsync(string trackUri, ITransport transport, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(trackUri) || transport is null) return null;
+        var sw = Stopwatch.StartNew();
         _log.Debug($"[video] resolve begin track={trackUri}");
 
         string? manifestId;
         try { (manifestId, _) = await ResolveManifestIdAsync(trackUri, ct).ConfigureAwait(false); }
-        catch (Exception ex) when (ex is not OperationCanceledException) { _log.Info("video resolve TrackV4: " + ex.Message); return null; }
-        if (string.IsNullOrEmpty(manifestId)) return null;
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.Info($"video resolve TrackV4: {ex.Message} elapsed={sw.ElapsedMilliseconds}ms");
+            return null;
+        }
+        if (string.IsNullOrEmpty(manifestId))
+        {
+            _log.Debug($"[video] resolve no-manifest track={trackUri} elapsed={sw.ElapsedMilliseconds}ms");
+            return null;
+        }
 
+        var manifestSw = Stopwatch.StartNew();
         var manifest = await SpotifyVideoResolver.ResolveManifestAsync(transport, manifestId, ct).ConfigureAwait(false);
+        _log.Debug($"[video] manifest GET id={manifestId} elapsed={manifestSw.ElapsedMilliseconds}ms");
         if (manifest is null || !manifest.HasPlayReadyMp4)
         {
-            _log.Info($"video resolve {trackUri}: no PlayReady mp4 (widevine={manifest?.HasWidevine == true})");
+            _log.Info($"video resolve {trackUri}: no PlayReady mp4 (widevine={manifest?.HasWidevine == true}) elapsed={sw.ElapsedMilliseconds}ms");
             return null;
         }
         var descriptor = manifest.ToDashDescriptor();
         if (descriptor is null) return null;
         string initHost = ""; try { initHost = new Uri(descriptor.InitUrl).Host; } catch { }
+        var (naturalWidth, naturalHeight) = HighestVideoProfileSize(manifest);
         _log.Debug($"[video] resolved PlayReady manifest={manifestId} isDrm=true initHost={initHost} " +
                    $"segs={descriptor.SegmentCount} stride={descriptor.SegmentStride} kid={descriptor.DefaultKid ?? "-"} " +
-                   $"codecs={descriptor.Codecs ?? "-"} licSrv={manifest.LicenseServerEndpoint ?? "-"}");
+                   $"codecs={descriptor.Codecs ?? "-"} licSrv={manifest.LicenseServerEndpoint ?? "-"} " +
+                   $"natural={naturalWidth}x{naturalHeight} elapsed={sw.ElapsedMilliseconds}ms");
         var relay = SpotifyLicenseRelay.Create(transport, manifest.LicenseServerEndpoint);
-        return PopOutVideoSource.PlayReady(manifestId, descriptor, relay, manifest.LicenseServerEndpoint);
+        return PopOutVideoSource.PlayReady(manifestId, descriptor, relay, manifest.LicenseServerEndpoint)
+            with { NaturalWidth = naturalWidth, NaturalHeight = naturalHeight };
+    }
+
+    /// <summary>The natural pixel size to seed <see cref="PopOutVideoSource.NaturalWidth"/>/<c>NaturalHeight</c> with, so
+    /// the docked/PiP surfaces can size themselves AT MOUNT instead of re-laying-out when the decoder reports
+    /// <c>NaturalSize</c> seconds later. Picks the HIGHEST video profile the manifest offered (not the conservative
+    /// ≤480p one <see cref="SpotifyVideoManifest.ToDashDescriptor"/> selected as the initial representation — the
+    /// player can switch up to a higher rung, and the card should already be sized for that), falling back to the
+    /// selected profile's own size when the manifest carried no profile list.</summary>
+    static (int Width, int Height) HighestVideoProfileSize(SpotifyVideoManifest manifest)
+    {
+        var profiles = manifest.VideoProfiles;
+        if (profiles.Count > 0)
+        {
+            var best = profiles[0];
+            for (int i = 1; i < profiles.Count; i++)
+            {
+                var p = profiles[i];
+                if (p.Height > best.Height || (p.Height == best.Height && p.Bandwidth > best.Bandwidth)) best = p;
+            }
+            if (best.Width > 0 && best.Height > 0) return (best.Width, best.Height);
+        }
+        return (manifest.Width, manifest.Height);
     }
 
     /// <summary>The manifest-id resolution ORDER — the ONE definition, shared by playback above and the
@@ -90,18 +131,42 @@ sealed class SpotifyVideoManifestResolver
     /// the live pair already produced nothing, so they can turn a null into an answer and never the reverse.</para></summary>
     internal async Task<(string? ManifestId, string Source)> ResolveManifestIdAsync(string trackUri, CancellationToken ct = default)
     {
+        var sw = Stopwatch.StartNew();
+        // Tiers 1+2 collapse into ONE batched request: the track's own TrackV4 (self-contained video) and its
+        // VIDEO_ASSOCIATIONS counterpart pointer used to be two sequential RTTs — they travel over the wire together
+        // now, because GetExtensionsWithHeadersAsync already batches any number of (uri, kind) pairs into one POST.
+        var reqs = new (string Uri, Xm.ExtensionKind Kind, string? Etag)[]
+        {
+            (trackUri, Xm.ExtensionKind.TrackV4, null),
+            (trackUri, Xm.ExtensionKind.VideoAssociations, null),
+        };
+        var results = await _metadata.GetExtensionsWithHeadersAsync(reqs, ct).ConfigureAwait(false);
+        _log.Debug($"[video] manifest tier1+2 fetch track={trackUri} elapsed={sw.ElapsedMilliseconds}ms");
+
         // Self-contained first: the track's OWN TrackV4 → OriginalVideo[0].Gid.
-        if (await ResolveManifestIdFromTrackV4Async(trackUri, ct).ConfigureAwait(false) is { Length: > 0 } own)
+        if (TrackV4Gid(results, trackUri) is { Length: > 0 } own)
+        {
+            _log.Debug($"[video] manifest via track-v4 track={trackUri} manifest={own} elapsed={sw.ElapsedMilliseconds}ms");
             return (own, "track-v4");
-        // Fallback: the VIDEO_ASSOCIATIONS counterpart (an audio track linking out to its paired video track).
-        if (await ResolveLinkedManifestIdAsync(trackUri, ct).ConfigureAwait(false) is { Length: > 0 } linked)
-            return (linked, "video-associations");
+        }
+        // Fallback: the VIDEO_ASSOCIATIONS counterpart (an audio track linking out to its paired video track). The
+        // pointer came back with tier 1 above; resolving the LINKED track's own TrackV4 → manifest_id is necessarily
+        // a second request (we don't know the counterpart uri until this payload is parsed).
+        if (VideoAssociationTarget(results, trackUri) is { Length: > 0 } linkedUri)
+        {
+            _log.Info($"video resolve {trackUri}: VIDEO_ASSOCIATIONS linked video {linkedUri}");
+            if (await ResolveManifestIdFromTrackV4Async(linkedUri, ct).ConfigureAwait(false) is { Length: > 0 } linked)
+            {
+                _log.Debug($"[video] manifest via video-associations track={trackUri} linked={linkedUri} manifest={linked} elapsed={sw.ElapsedMilliseconds}ms");
+                return (linked, "video-associations");
+            }
+        }
 
         // The relink tiers. Read the plane ONCE; a record only exists here if some fetch already landed one.
         var stored = _store.GetVideoAssociation(trackUri);
         if (stored is not { HasVideo: true })
         {
-            _log.Debug($"[video] manifest none track={trackUri} stored={(stored is null ? "no-row" : "no-video")}");
+            _log.Debug($"[video] manifest none track={trackUri} stored={(stored is null ? "no-row" : "no-video")} elapsed={sw.ElapsedMilliseconds}ms");
             return (null, "none");
         }
         // The canonical entity's paired video track, as recorded under this (possibly alias) uri.
@@ -109,48 +174,47 @@ sealed class SpotifyVideoManifestResolver
             && !string.Equals(counterpart, trackUri, StringComparison.Ordinal)
             && await ResolveManifestIdFromTrackV4Async(counterpart, ct).ConfigureAwait(false) is { Length: > 0 } viaStore)
         {
-            _log.Debug($"[video] manifest via stored counterpart track={trackUri} counterpart={counterpart} manifest={viaStore}");
+            _log.Debug($"[video] manifest via stored counterpart track={trackUri} counterpart={counterpart} manifest={viaStore} elapsed={sw.ElapsedMilliseconds}ms");
             return (viaStore, "assoc-counterpart");
         }
         // Last: the kind-212 gid IS the manifest id (same value Connect publishes as associated_video_id).
         if (stored.VideoGidHex is { Length: > 0 } gid)
         {
-            _log.Debug($"[video] manifest via stored gid track={trackUri} manifest={gid}");
+            _log.Debug($"[video] manifest via stored gid track={trackUri} manifest={gid} elapsed={sw.ElapsedMilliseconds}ms");
             return (gid, "assoc-gid");
         }
-        _log.Debug($"[video] manifest none track={trackUri} stored=hasVideo-but-no-counterpart-or-gid");
+        _log.Debug($"[video] manifest none track={trackUri} stored=hasVideo-but-no-counterpart-or-gid elapsed={sw.ElapsedMilliseconds}ms");
         return (null, "none");
     }
 
-    /// <summary>Fetch <paramref name="uri"/>'s TrackV4 and read <c>OriginalVideo[0].Gid</c> (hex) = manifest_id; null when
-    /// the track carries no self-contained video (or the extension is unavailable).</summary>
-    async Task<string?> ResolveManifestIdFromTrackV4Async(string uri, CancellationToken ct)
+    /// <summary>Read <c>OriginalVideo[0].Gid</c> (hex) = manifest_id out of a batched TrackV4 result for <paramref name="uri"/>;
+    /// null when the track carries no self-contained video (or the extension was not in the batch / unavailable).</summary>
+    static string? TrackV4Gid(IReadOnlyDictionary<(string Uri, Xm.ExtensionKind Kind), ExtendedMetadataSource.ExtensionResult> results, string uri)
     {
-        var reqs = new (string, Xm.ExtensionKind, string?)[] { (uri, Xm.ExtensionKind.TrackV4, null) };
-        var results = await _metadata.GetExtensionsWithHeadersAsync(reqs, ct).ConfigureAwait(false);
-        if (!results.TryGetValue((uri, Xm.ExtensionKind.TrackV4), out var res) || res.Payload is not { } payload)
-            return null;
+        if (!results.TryGetValue((uri, Xm.ExtensionKind.TrackV4), out var res) || res.Payload is not { } payload) return null;
         var track = M.Track.Parser.ParseFrom(payload);
         return track.OriginalVideo.Count > 0 && track.OriginalVideo[0].Gid.Length > 0
             ? Convert.ToHexStringLower(track.OriginalVideo[0].Gid.Span)
             : null;
     }
 
-    /// <summary>Fallback for a track with no video of its own: fetch its VIDEO_ASSOCIATIONS extension, follow
-    /// <c>Association.AssociatedUri</c> (the paired video track) and resolve THAT track's TrackV4 → manifest_id. Mirrors
-    /// the proven AudioFormatProbe.ProbeVideoDrmAsync path. null when there is no association or the linked track has no
-    /// video.</summary>
-    async Task<string?> ResolveLinkedManifestIdAsync(string trackUri, CancellationToken ct)
+    /// <summary>Read <c>Association.AssociatedUri</c> (the paired video track) out of a batched VIDEO_ASSOCIATIONS
+    /// result for <paramref name="uri"/>; null when there is no association in the batch.</summary>
+    static string? VideoAssociationTarget(IReadOnlyDictionary<(string Uri, Xm.ExtensionKind Kind), ExtendedMetadataSource.ExtensionResult> results, string uri)
     {
-        var reqs = new (string, Xm.ExtensionKind, string?)[] { (trackUri, Xm.ExtensionKind.VideoAssociations, null) };
-        var results = await _metadata.GetExtensionsWithHeadersAsync(reqs, ct).ConfigureAwait(false);
-        if (!results.TryGetValue((trackUri, Xm.ExtensionKind.VideoAssociations), out var res) || res.Payload is not { } payload)
-            return null;
+        if (!results.TryGetValue((uri, Xm.ExtensionKind.VideoAssociations), out var res) || res.Payload is not { } payload) return null;
         var assoc = Xm.VideoAssociations.Parser.ParseFrom(payload);
         var a = assoc.Association;
-        if (a is null || !a.HasAssociatedUri || string.IsNullOrEmpty(a.AssociatedUri))
-            return null;
-        _log.Info($"video resolve {trackUri}: VIDEO_ASSOCIATIONS linked video {a.AssociatedUri}");
-        return await ResolveManifestIdFromTrackV4Async(a.AssociatedUri, ct).ConfigureAwait(false);
+        return a is not null && a.HasAssociatedUri && !string.IsNullOrEmpty(a.AssociatedUri) ? a.AssociatedUri : null;
+    }
+
+    /// <summary>Fetch <paramref name="uri"/>'s TrackV4 and read <c>OriginalVideo[0].Gid</c> (hex) = manifest_id; null when
+    /// the track carries no self-contained video (or the extension is unavailable). Used for the relink/counterpart tiers,
+    /// which don't know their target uri until an earlier fetch names it — those cannot join the tier-1+2 batch above.</summary>
+    async Task<string?> ResolveManifestIdFromTrackV4Async(string uri, CancellationToken ct)
+    {
+        var reqs = new (string, Xm.ExtensionKind, string?)[] { (uri, Xm.ExtensionKind.TrackV4, null) };
+        var results = await _metadata.GetExtensionsWithHeadersAsync(reqs, ct).ConfigureAwait(false);
+        return TrackV4Gid(results, uri);
     }
 }

@@ -113,6 +113,13 @@ public class PlaybackControllerHostSwapTests
         /// audio→video switch rides the LOAD (not a follow-up Seek) because the real host has no player yet at that
         /// moment — so this, not a "video:seek:N" log entry, is where the carry is observable.</summary>
         public long LastVideoStartAtMs = -1;
+        /// <summary>The most recent detached video-load task (StartVideoLoadDetached → RunVideoLoadAsync,
+        /// video-smooth-switching Milestone C). The controller never awaits this itself — the fake hooks below
+        /// complete synchronously, so a SUCCESSFUL load has already settled by the time PlayAsync/RefreshCurrentMediaKindAsync
+        /// returns; only the no-source→audio fallback re-acquires the controller's lock (still held by the outer call at
+        /// the moment it is spawned) and therefore genuinely completes later — <see cref="AwaitVideoLoadAsync"/> is for
+        /// exactly that case.</summary>
+        Task? _pendingVideoLoad;
 
         public Harness(bool wireHooks = true, bool injectVideoHost = true, bool wireLoadHook = true,
             string[]? contextTracks = null, bool videoOnly = false)
@@ -122,6 +129,7 @@ public class PlaybackControllerHostSwapTests
             Projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
             Contexts = new FakeContextResolver(contextTracks ?? ["spotify:track:a", "spotify:track:b"]);
             Controller = new PlaybackController(Audio, new StubTrackResolver(), Projection, Contexts, "us", videoHost: Video);
+            Controller.VideoLoadSpawnedForTest = t => _pendingVideoLoad = t;
             VideoOnlyPlayable = videoOnly;
             // Left NULL unless asked for, so every other test keeps the "every playable is choosable" default verbatim.
             if (videoOnly) Controller.IsVideoOnlyPlayable = _ => VideoOnlyPlayable;
@@ -136,6 +144,14 @@ public class PlaybackControllerHostSwapTests
                 Video?.LoadVideo(track.Uri);
                 return Task.FromResult(true);
             };
+        }
+
+        /// <summary>Await the most recently spawned detached video load — needed ONLY when it can fall back to audio
+        /// (VideoSourceAvailable = false), since that fallback re-enters the controller's lock and therefore cannot
+        /// finish until the outer PlayAsync/RefreshCurrentMediaKindAsync call has released it.</summary>
+        public async Task AwaitVideoLoadAsync()
+        {
+            if (_pendingVideoLoad is { } t) await t;
         }
 
         public void Dispose() => Controller.Dispose();
@@ -354,6 +370,10 @@ public class PlaybackControllerHostSwapTests
         h.VideoSourceAvailable = false;
 
         await h.Controller.PlayAsync("spotify:playlist:p");
+        // The video branch resolves off-lock now (video-smooth-switching Milestone C): "no source" is discovered
+        // AFTER PlayAsync's own lock hold has already released, so the audio fallback lands on a separate, later
+        // continuation — await it explicitly rather than assuming it already ran.
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(1, h.LoadVideoCalls);
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);

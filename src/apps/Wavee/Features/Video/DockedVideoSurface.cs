@@ -133,12 +133,12 @@ sealed class DockedVideoSurface : Component
     /// <summary>The <c>PopOutVideoSource.Key</c> the cap height was last fitted for (Cap face only). A change means a
     /// NEW source, which is what ends the previous splitter drag's override — see the height-fit effect in
     /// <see cref="Render"/>.</summary>
-    string? _fittedFor;
 
     /// <summary>The ALWAYS-ON fit report (no env switch) — the four numbers that decide whether the Cap card is the
     /// content's own shape or a letterboxing box. Value-gated on the whole tuple so the effect can run freely.</summary>
     static readonly WaveeLogger FitLog = new(WaveeLog.Instance, "video");
-    (string Key, float RailW, int Nw, int Nh, float H, bool Pinned) _loggedFit;
+    string? _fittedFor;
+    (string Key, float RailW, int Nw, int Nh, float H, bool Pinned, string Src) _loggedFit;
     (VideoAspectMode Mode, double Custom, TransportOwner Owner) _loggedPolicy = ((VideoAspectMode)255, -1, (TransportOwner)255);
 
     /// <summary>Dedupe for the host-arbitration line: every TERM of the mount decision, so the line fires when any one
@@ -151,13 +151,13 @@ sealed class DockedVideoSurface : Component
     static string Show(string? uri)
         => string.IsNullOrEmpty(uri) ? "(none)" : uri.Length <= 24 ? uri : "…" + uri[^24..];
 
-    void LogFit(string key, float railW, SizeI natural, float height, bool pinned)
+    void LogFit(string key, float railW, SizeI natural, float height, bool pinned, string source)
     {
-        var now = (key, railW, natural.Width, natural.Height, height, pinned);
+        var now = (key, railW, natural.Width, natural.Height, height, pinned, source);
         if (now == _loggedFit) return;
         _loggedFit = now;
         FitLog.Info($"docked cap fit face={Face} rail={railW:0.#} natural={natural.Width}x{natural.Height} " +
-                    $"height={height:0.##} pinned={pinned} key={(key.Length == 0 ? "(none)" : key)}");
+                    $"height={height:0.##} pinned={pinned} source={source} key={(key.Length == 0 ? "(none)" : key)}");
     }
 
     public override Element Render()
@@ -186,7 +186,8 @@ sealed class DockedVideoSurface : Component
         // unconditional for the rail: Cap is the rail's only face, mounted in every body, always full-bleed.
         UseSignalEffect(() =>
         {
-            string sourceKey = b.PopOutVideoSource.Value?.Key ?? "";      // subscribe → a new source re-fits
+            var src = b.PopOutVideoSource.Value;                          // subscribe → a new source (+ its manifest dims) re-fits
+            string sourceKey = src?.Key ?? "";
             var natural = b.VideoPlayer.Value.Player?.NaturalSize.Value ?? default;   // subscribe → fit when MF reports
             float railW = ui.RailWidth.Value;                             // subscribe → re-fit as the rail resizes
             if (Face != DockedVideoFace.Cap) return;
@@ -195,10 +196,17 @@ sealed class DockedVideoSurface : Component
                 _fittedFor = sourceKey;
                 if (ui.DockedVideoHeightPinned.Peek()) ui.DockedVideoHeightPinned.Value = false;
             }
-            if (ui.DockedVideoHeightPinned.Peek()) { LogFit(sourceKey, railW, natural, ui.DockedVideoHeight.Peek(), true); return; }
+            // The decoder's NaturalSize lands seconds after mount (a manifest/DRM round-trip must finish first). The
+            // manifest's own dims — SEEDED on the resolved source — size the card right AT MOUNT instead; the decoder's
+            // later report is then a CONFIRM against the same aspect, not a second rail reflow.
+            string dimSource;
+            if (natural.Width > 0 && natural.Height > 0) dimSource = "decoder";
+            else if (src is { NaturalWidth: > 0, NaturalHeight: > 0 }) { natural = new SizeI(src.NaturalWidth, src.NaturalHeight); dimSource = "manifest"; }
+            else dimSource = "none";
+            if (ui.DockedVideoHeightPinned.Peek()) { LogFit(sourceKey, railW, natural, ui.DockedVideoHeight.Peek(), true, dimSource); return; }
             float fitted = ShellResponsiveLayout.FitDockedVideoHeight(railW, natural.Width, natural.Height);
             ui.DockedVideoHeight.Value = fitted;
-            LogFit(sourceKey, railW, natural, fitted, false);
+            LogFit(sourceKey, railW, natural, fitted, false, dimSource);
         });
 
         // ALWAYS-ON aspect/transport report (no env switch): the two policy values whose effect on this card is
@@ -332,7 +340,7 @@ sealed class DockedVideoSurface : Component
     // the fullscreen delegate). ──────────────────────────────────────────────────────────────────────────────────
     Element BuildVideoArea(PlaybackBridge b, Action enterFullscreen, IAppSettings? settings)
     {
-        var src = b.PopOutVideoSource.Value;                          // subscribe → remount the stage on a source change
+        var src = b.PopOutVideoSource.Value;                          // subscribe → re-render (switching overlay/poster), not a remount — see stageKey below
         var binding = b.VideoPlayer.Value;                            // subscribe → poster ↔ hole
         var track = b.CurrentTrack.Value;
         bool mount = VideoSurfaceMount.ShouldMountPlayerStage(binding.Player is not null);
@@ -344,7 +352,10 @@ sealed class DockedVideoSurface : Component
             // it. Read through the ONE derived signal, never a local bool: two independent visibility flags is exactly
             // how the fullscreen surface and the bar ended up rendering both at once.
             bool suppress = b.TransportOwnerNow.Value != TransportOwner.Docked;
-            string stageKey = src?.Key ?? ("gen:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            // PLAYER identity only — a source change (video→video track skip) must NEVER remount the stage; only a
+            // rebuilt player (a new Generation) may. Dropping src.Key here is what lets the element keep pumping the
+            // previous frame under the switching overlay below instead of tearing down and rebuilding on every skip.
+            string stageKey = "gen:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
             Element element = Embed.Comp(() => new MediaPlayerElement
             {
                 Player = player,
@@ -368,7 +379,10 @@ sealed class DockedVideoSurface : Component
                 SuppressTransport = suppress,
                 ShowLetterboxBars = true,
                 IsDecorative = false,                      // MUST stay false: decorative skips the pump while parked
-                PosterContent = Poster(track),
+                // LIVE, not Poster(track): PosterContent freezes at the element's mount, and the stage key is now
+                // stable across source switches — a frozen poster would show the FIRST track's art during every
+                // later switch. LivePosterArt reads the current track inside its OWN render, so it always matches.
+                PosterContent = LivePosterArt.Make(),
                 // The transport's More button, right-click and the Menu key all open this same complete menu.
                 MoreMenuItems = () => VideoPlacementMenu.Items(b, settings, includeFullscreen: false),
                 // E3: F11 / F / the transport fullscreen button / the ⋯ Fullscreen row delegate to us instead of
@@ -378,14 +392,11 @@ sealed class DockedVideoSurface : Component
             // The Activation.IsActive override lives HERE, tight around the element that actually reads it — see the
             // class doc's park-but-keep-pumping paragraph for why this Ctx.Provide, and not a settable prop, is real.
             Element stage = Ctx.Provide<IReadSignal<bool>?>(FluentGpu.Hooks.Activation.IsActive, _activeGate, element);
-            if (src is not null)
-                return new BoxEl { Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = ColorF.Transparent, Children = [ stage ] };
-            // Player present, source still resolving (a manifest/DRM round-trip in flight) — keep pumping under Loading.
-            return new BoxEl
-            {
-                Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent,
-                Children = [ stage, LoadingOverlay() ],
-            };
+            // While a stage is mounted the ENGINE element is the one loading affordance (poster + spinner +
+            // "Starting playback…") — stacking the app's own LoadingOverlay on top produced two spinners at once.
+            // The stage stays mounted and pumping across a source switch; the engine holds the previous frame and
+            // crossfades to the new source's first frame on its own.
+            return new BoxEl { Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = ColorF.Transparent, Children = [ stage ] };
         }
 
         return Poster(track);
@@ -483,4 +494,28 @@ sealed class DockedVideoSurface : Component
             },
         ],
     }, tip);
+}
+
+/// <summary>The LIVE poster ground for a video stage: the CURRENT track's artwork, dimmed, over the letterbox fill.
+/// Passed as <c>MediaPlayerElement.PosterContent</c> by every surface whose stage key is player-identity-only:
+/// PosterContent freezes at the element's mount (component-props-contract.md), and the stage deliberately never
+/// remounts on a source switch any more — a frozen <c>Poster(track)</c> would therefore show the FIRST track's art
+/// during every later switch. This component reads the track inside its OWN render, so the poster follows the track
+/// while the element (and its DComp binding) stays put. No spinner of its own — the element's status overlay is the
+/// one loading affordance.</summary>
+sealed class LivePosterArt : Component
+{
+    public override Element Render()
+    {
+        var b = UseContext(PlaybackBridge.Slot);
+        var track = b?.CurrentTrack.Value;   // signal read INSIDE this child's render — follows the track live
+        return new BoxEl
+        {
+            Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = Tok.MediaLetterbox,
+            Children = [ DockedVideoSurface.PosterGround(track?.Image) ],
+        };
+    }
+
+    /// <summary>The embedded, stably-keyed element form the surfaces pass as <c>PosterContent</c>.</summary>
+    internal static Element Make() => Embed.Comp(() => new LivePosterArt()) with { Key = "live-poster" };
 }

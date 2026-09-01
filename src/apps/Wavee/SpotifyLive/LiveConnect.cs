@@ -301,9 +301,21 @@ public sealed partial class LiveConnect : IDisposable
     {
         if (_onVideoPlayerChanged is not null) return;
 
+        // Eagerly preload the native PlayReady component (E2) so the FIRST real protected open does not pay for an
+        // implicit LoadLibrary of the native CDM + its MF/PlayReady dependency chain. WireVideoMedia is called ONCE,
+        // right as the live session comes up — well before the user is likely to open a DRM video — and the call
+        // itself is documented idempotent/non-blocking, so firing it here needs no extra guard beyond the one above.
+        FluentGpu.WindowsApi.Media.PlayReady.ProtectedMediaBackend.WarmupNative();
+
         // 1. The per-playable video decision. The bridge folds the sticky intent × this track's has-video × the per-content
         //    dismissal through the one pure rule; a throwing predicate degrades to audio inside the controller.
         Controller.ShouldPlayAsVideo = track => bridge.ShouldPlayAsVideo(track);
+
+        // 1b. Next-track video preload (A4): SchedulePreparedNext calls this when the UPCOMING playable will play as
+        //     video, well before its track boundary — the bridge resolves (and CDN-warms) it in the background so the
+        //     eventual video→video skip finds the memo already warm instead of paying the resolve+handshake tail after
+        //     the boundary.
+        Controller.PrefetchVideo = track => bridge.PrefetchVideoSource(track.Uri);
 
         // 2. The async source handoff. Reuses the bridge's resolve path (same resolver, same publish onto PopOutVideoSource so
         //    the surfaces key their content on the very source the host plays). Returns FALSE on "no playable video", which is

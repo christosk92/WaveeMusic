@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using FluentGpu.Media;
 using FluentGpu.Media.Adaptive;
@@ -34,15 +35,31 @@ namespace Wavee.SpotifyLive.Audio;
 // PlayerChanged (the app mirrors them onto PlaybackBridge.VideoPlayer, a UI-thread signal the surfaces read); EXACTLY ONE
 // mounted surface may pump a given player at a time, which the single-placement state guarantees.
 //
-// SUPERSESSION IS SERIALIZED (the video→video wedge fix). The native PlayReady/CENC session is a PROCESS-GLOBAL singleton
-// with a session-less ABI, so a predecessor's teardown Stop lands on whatever session holds the latch. When LoadVideo tore
-// the old player down fire-and-forget and immediately opened the successor (a video→video track skip: two LoadVideo calls
-// ~250ms apart, no host swap), the predecessor's Stop could shut the SUCCESSOR down; that returned a SUCCESS hr, settled
-// the snapshot on native "stopped" → PlaybackState.Idle, and Idle is a state Tick's switch has no case for — so the host
-// went silent forever and the transport stayed paused at 0:00 with no Fault to recover from. Every load/stop now runs on
-// the single VideoLoadPump worker (teardown awaited to completion before the successor is built, only the LATEST request
-// built), and every load arms a VideoStartWatchdog so a session that never reaches a playing/advancing state raises a
-// Fault on the normal signal channel instead of wedging silently.
+// ONE LONG-LIVED PLAYER (video-smooth-switching rework). This host used to build a FRESH MediaPlayer for every load — a
+// clear/local one via the plain MfMediaPlayer, or a DRM one via BuildProtectedPlayer's own MfMediaPlayer(new
+// ProtectedMediaBackend(src.LicenseRelay, descriptor)), each pinned to that ONE source's relay/descriptor. Every track
+// change therefore rebuilt the whole MF engine/native-CDM stack even when the switch was video→video with no placement
+// change. It now builds exactly ONE MediaPlayer, lazily, on the first video of the session (see
+// BuildLiveMediaPlayer/ApplyAsync's Rebuild branch) — a single MfMediaPlayer(new ProtectedMediaBackend(defaultRelay:
+// null, descriptor: null)) that plays clear video, a local file, AND every DRM source across the app's whole lifetime.
+// The two pieces that used to be baked into the backend at construction now travel PER LOAD instead: the parsed DASH
+// descriptor rides on DrmConfig.SourceDescriptor (see BuildMediaSource — ProtectedMediaBackend.BuildRequest resolves
+// `drm.SourceDescriptor as DashSourceDescriptor` ahead of any ctor-baked fallback), and the license relay is forwarded
+// through RelayForward, which reads whichever relay ResetPerLoadState last stored in _activeRelay. PlayerChanged now
+// fires only when the PLAYER INSTANCE actually changes — a first load or a Rebuild — never on an ordinary track skip, so
+// a mounted surface never unmounts/remounts on a video→video switch.
+//
+// SUPERSESSION IS SERIALIZED (the video→video wedge fix, still load-bearing). The native PlayReady/CENC session is a
+// PROCESS-GLOBAL singleton with a session-less ABI, so a predecessor's teardown Stop lands on whatever session holds the
+// latch. Every load/stop still runs on the single VideoLoadPump worker, so two loads (or a load and a stop) can never be
+// in flight on the process-global session at once. What changed is WHAT most loads do once dequeued: VideoSwitchPolicy
+// decides per load whether the target session even needs tearing down at all. A video→video skip to a DIFFERENT healthy
+// source is a Switch — SwitchInPlaceAsync calls OpenAsync directly on the warm player, no teardown, so there is no
+// predecessor Stop in flight for a successor to race. A first-ever load or a session VideoSwitchPolicy judges faulted is
+// a Rebuild — ApplyAsync awaits TeardownAsync to completion (exactly the original ordering) before building the new
+// player, so the wedge this pump exists to prevent is still structurally impossible. Every load also arms a
+// VideoStartWatchdog so a session that never reaches a playing/advancing state raises a Fault on the normal signal
+// channel instead of wedging silently.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>
@@ -58,17 +75,26 @@ public sealed class FluentVideoMediaHost : IMediaHost
     readonly Timer _ticker;
     readonly IAppSettings? _settings;
 
-    // Every load/stop is serialized through ONE worker (teardown→build, latest-wins) so a predecessor's process-global
-    // native Stop can never land on a successor session. See VideoLoadPump for the wedge this removes.
+    // Every load/stop is serialized through ONE worker (never two overlapping) so a predecessor's process-global native
+    // Stop can never land on a successor. See VideoLoadPump for the ordering guarantee; see ApplyAsync/VideoSwitchPolicy
+    // for what each dequeued load actually does (switch-in-place vs. a full teardown+rebuild).
     readonly VideoLoadPump<VideoLoadRequest> _pump;
     // Players handed over for disposal off the pump (Stop nulls the player synchronously so IsPlaying is false at once,
     // but the ACTUAL native teardown is queued so it stays ordered against the next load).
     readonly ConcurrentQueue<MediaPlayer> _toDispose = new();
 
     MediaPlayer? _player;
+    // The shared ABR policy wired into _player at build time (WithAbr) and reused for the player's whole lifetime.
+    // ProtectedMediaSession seeds its OWN quality selection from this object's CURRENT Selection/MaxHeight at EACH open
+    // (one native session per open), so mutating it per-load (see ApplyPreferredQuality) is what lets one long-lived
+    // controller carry a per-app quality preference across every DRM source without rebuilding the player.
+    AdaptiveBitrateController? _abr;
+    // The license relay for the CURRENT load — RelayForward (baked into _player via WithDrm, once, for its whole
+    // lifetime) forwards every native CDM challenge to whichever delegate is here. Set by ResetPerLoadState.
+    Func<LicenseRequest, ValueTask<LicenseResponse>>? _activeRelay;
     string _sourceKey = "";           // the PopOutVideoSource.Key the live player was built for ("" = none)
     double _volume = 1.0;
-    bool _muted;                      // the app's mute intent — re-applied to EVERY player this host builds (see BuildAndOpenAsync)
+    bool _muted;                      // the app's mute intent — re-applied to EVERY player this host builds (see BuildLiveMediaPlayer)
     PlaybackState _lastState = PlaybackState.Idle;
     bool _errorReported;
     // The duration last relayed for the CURRENT load (0 = none yet). NOT a one-shot bool: Media Foundation publishes a
@@ -106,6 +132,10 @@ public sealed class FluentVideoMediaHost : IMediaHost
     // Remaining play re-assertions for the CURRENT load (see the Ready/Paused arm in Tick). Bounded so a genuinely
     // paused-by-the-user session can never be nudged back into playing, and a wedged one cannot spin.
     int _playReassertsLeft;
+    // FirstFrame bookkeeping for the CURRENT load: fired at most once, timed from the instant ResetPerLoadState armed
+    // this load (not from OpenAsync's return — the caller cares how long the WHOLE switch felt, CDM handshake included).
+    bool _firstFrameFired;
+    long _loadStartTick;
 
     /// <summary>Bounded teardown budget for one player. Larger than the 3s native thread join inside the protected
     /// player's Dispose, so a healthy teardown always completes inside it and a wedged one still cannot block forever.</summary>
@@ -144,21 +174,23 @@ public sealed class FluentVideoMediaHost : IMediaHost
         _settings = settings;
         _watchdog = new VideoStartWatchdog(startWatchdogMs);
         _ticker = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
-        _pump = new VideoLoadPump<VideoLoadRequest>(TeardownAsync, BuildAndOpenAsync, IsAlreadyLive, log);
+        _pump = new VideoLoadPump<VideoLoadRequest>(TeardownAsync, ApplyAsync, log);
     }
 
     /// <summary>The live engine player for the current video source (null before the first <see cref="LoadVideo"/> / after a
     /// clear). A mounted video surface (PiP / pop-out) MUST bind to this instance so it pumps the MF session — see the MF-pump
-    /// caveat above. Rebuilt on every source change (a clear↔DRM / track switch), announced on <see cref="PlayerChanged"/>.</summary>
+    /// caveat above. ONE instance now serves the whole session (see the ONE LONG-LIVED PLAYER note above) — rebuilt only for
+    /// the first load or a faulted recovery, announced on <see cref="PlayerChanged"/> only when that happens.</summary>
     public MediaPlayer? CurrentPlayer { get { lock (_gate) return _player; } }
 
     /// <summary>The <c>PopOutVideoSource.Key</c> the live <see cref="CurrentPlayer"/> was built for ("" = no player). Used by
-    /// <see cref="LoadVideo"/> to make a redundant load of the SAME source a no-op, so re-entering the video path for a track
-    /// already playing can never restart it from 0.</summary>
+    /// <see cref="LoadVideo"/> (via <see cref="VideoSwitchPolicy"/>) to make a redundant load of the SAME source a no-op, so
+    /// re-entering the video path for a track already playing can never restart it from 0.</summary>
     public string CurrentSourceKey { get { lock (_gate) return _sourceKey; } }
 
     /// <summary>Fires (on the caller's thread) whenever <see cref="CurrentPlayer"/> is rebuilt/cleared, so a mounted surface
-    /// can re-bind to the new player instance. Carries the new player (null after a stop/clear).</summary>
+    /// can re-bind to the new player instance. Carries the new player (null after a stop/clear). Does NOT fire for an
+    /// ordinary video→video switch-in-place — the instance does not change, so nothing needs to re-bind.</summary>
     public event Action<MediaPlayer?>? PlayerChanged;
 
     /// <summary>Fires ONCE per loaded source (on the ticker thread) the first time the media engine reports a positive
@@ -232,6 +264,8 @@ public sealed class FluentVideoMediaHost : IMediaHost
             _startAtMs = 0;
             _startSeekPending = false;
             _playReassertsLeft = 0;
+            _activeRelay = null;
+            _firstFrameFired = false;
             _watchdog.Disarm();
         }
         if (old is not null)
@@ -300,7 +334,8 @@ public sealed class FluentVideoMediaHost : IMediaHost
         || Math.Abs(a.PositionMs - b.PositionMs) > LiveRelayEpsilonMs;
 
     /// <summary>Publish "no longer a live broadcast" for the load that is going away, iff a live window was ever
-    /// published for it. Idempotent and silent when nothing was live.</summary>
+    /// published for it. Idempotent and silent when nothing was live. Called with the OLD <see cref="_sourceKey"/> still
+    /// in place — callers must call this BEFORE <see cref="ResetPerLoadState"/> overwrites it.</summary>
     void RetractLiveWindow()
     {
         if (!_reportedLive.IsLive) return;
@@ -331,8 +366,9 @@ public sealed class FluentVideoMediaHost : IMediaHost
 
     /// <summary>Mute/unmute the VIDEO half of the current media. Mirrors <see cref="SetVolume"/>: the intent is STORED, so a
     /// player built later (a track skip, a placement flip, a video that starts while the app is already muted) opens muted
-    /// too — <see cref="BuildAndOpenAsync"/> re-applies it to every player. Without this the app's mute was silently lost the
-    /// moment a music video became the current media and the video played at full volume.</summary>
+    /// too — <see cref="BuildLiveMediaPlayer"/> applies it once at build; <see cref="SetMuted"/> and <see cref="SetVolume"/>
+    /// also re-apply it live to whatever player is current. Without this the app's mute was silently lost the moment a
+    /// music video became the current media and the video played at full volume.</summary>
     public void SetMuted(bool muted)
     {
         _muted = muted;
@@ -359,71 +395,84 @@ public sealed class FluentVideoMediaHost : IMediaHost
 
     // ── video-specific load (called by the controller at the switch, NOT via IMediaHost) ─────────────────────────────
 
-    /// <summary>Build (or rebuild) the engine <see cref="MediaPlayer"/> for a resolved <see cref="PopOutVideoSource"/> and open
-    /// it — the clear MF backend for a Canvas/clear URL, or the clear+DRM backend (native in-process PlayReady CDM) for a DRM
-    /// descriptor. THIS HOST OWNS THE PLAYER (the M0 ownership inversion): the surfaces only present <see cref="CurrentPlayer"/>,
-    /// so a placement flip re-binds a presenter instead of rebuilding a player — no restart from 0. The prior player (if any)
-    /// is torn down first so two sessions never coexist, and a redundant load of the SAME <see cref="PopOutVideoSource.Key"/> is
-    /// a no-op for the same reason. Playback advances only once a surface pumps the MF session (see the MF-pump caveat).
-    /// <para>NON-BLOCKING AND SERIALIZED: the request is handed to the <see cref="VideoLoadPump{T}"/>, which tears the
-    /// previous session down TO COMPLETION before building this one, and drops this request entirely if a newer load
-    /// arrives while it is queued (latest-wins coalescing). That ordering is what keeps the process-global native
-    /// PlayReady session from being stopped out from under its own successor on a video→video track skip.</para></summary>
+    /// <summary>Queue a load for <paramref name="src"/>, non-blocking. What actually happens — nothing (already live at
+    /// the start), a seek on the live session, an in-place switch on the warm player, or a full teardown+rebuild — is
+    /// decided by <see cref="VideoSwitchPolicy"/> inside <see cref="ApplyAsync"/> at DEQUEUE time (so it reflects the
+    /// state after anything already ahead of it in the pump, not the state at the moment this call was made).
+    /// <para>THIS HOST OWNS THE PLAYER (the M0 ownership inversion): the surfaces only present <see cref="CurrentPlayer"/>,
+    /// so an in-place switch or a placement flip re-binds a presenter instead of rebuilding a player — no restart from 0.
+    /// Playback advances only once a surface pumps the MF session (see the MF-pump caveat above).</para></summary>
     public void LoadVideo(PopOutVideoSource src, long startAtMs = 0)
     {
         if (_disposed || src is null) return;
-        // The idempotence check lives in the pump (IsAlreadyLive), evaluated at DEQUEUE time — checking it here would
-        // wrongly drop a load that follows a queued teardown, when the "already playing" key is about to be gone.
         _pump.Request(new VideoLoadRequest(src, startAtMs));
     }
 
-    // The pump's liveness probe: is this exact source ALREADY the live player? The controller may re-enter the video path
-    // for the track that is already playing (a placement flip, a re-published source, a kind re-evaluation) — rebuilding
-    // would restart it from 0, so that request is dropped without a teardown or a rebuild.
-    bool IsAlreadyLive(VideoLoadRequest req)
+    // ── the pump's single entry point: decide via VideoSwitchPolicy, then act ──────────────────────────────────────────
+
+    /// <summary>The pump's <c>applyAsync</c> delegate — the ONLY place a dequeued load is acted on. Snapshots the current
+    /// session's identity/health, asks <see cref="VideoSwitchPolicy"/> what to do, and dispatches. Every branch is
+    /// epoch-fenced against a newer request landing while this one runs (<see cref="VideoLoadPump{T}.IsStale"/>).</summary>
+    async System.Threading.Tasks.Task ApplyAsync(VideoLoadRequest req, long epoch)
     {
+        PopOutVideoSource src = req.Source;
         MediaPlayer? live;
-        lock (_gate)
+        bool hasPlayer;
+        string liveKey;
+        bool faulted;
+        lock (_gate) { live = _player; hasPlayer = live is not null; liveKey = _sourceKey; faulted = _errorReported; }
+
+        var plan = VideoSwitchPolicy.Plan(new VideoSwitchInput(
+            HasPlayer: hasPlayer,
+            LiveFaulted: faulted,
+            LiveKey: liveKey,
+            RequestKey: src.Key ?? "",
+            StartAtMs: req.StartAtMs));
+
+        switch (plan)
         {
-            if (_player is null || !string.Equals(_sourceKey, req.Source.Key, StringComparison.Ordinal)) return false;
-            live = _player;
+            case VideoSwitchAction.None:
+                _log.Info($"video-host load ignored — already playing key={src.Key}");
+                return;
+
+            case VideoSwitchAction.SeekOnly:
+                _log.Info($"video-host load ignored (already playing key={src.Key}) — seeking live session to {req.StartAtMs}ms");
+                // A carried start position is a committed reposition, never a scrub.
+                SeekPlayer(live, req.StartAtMs, SeekMode.Accurate);
+                return;
+
+            case VideoSwitchAction.Rebuild:
+                await TeardownAsync(epoch).ConfigureAwait(false);
+                if (_disposed || _pump.IsStale(epoch))
+                {
+                    _log.Info($"video-host load superseded before rebuild key={src.Key}");
+                    return;
+                }
+                await BuildAndOpenAsync(req, epoch).ConfigureAwait(false);
+                return;
+
+            case VideoSwitchAction.Switch:
+                await SwitchInPlaceAsync(req, epoch).ConfigureAwait(false);
+                return;
         }
-        // Same source, already playing: never rebuild — that is what would restart it from 0 on a placement flip or a
-        // re-published source. But a request carrying an explicit start position is a deliberate reposition (a retry
-        // checkpoint, a forced same-kind reload), so honor it on the LIVE session instead of dropping it silently.
-        if (req.StartAtMs > 0)
-        {
-            _log.Info($"video-host load ignored (already playing key={req.Source.Key}) — seeking live session to {req.StartAtMs}ms");
-            // A carried start position is a committed reposition, never a scrub.
-            SeekPlayer(live, req.StartAtMs, SeekMode.Accurate);
-        }
-        else _log.Info($"video-host load ignored — already playing key={req.Source.Key}");
-        return true;
     }
 
-    // ── the pump's two steps: teardown (always first, always complete) then build+open ────────────────────────────────
+    // ── the shared per-load steps (used by BOTH the Rebuild and the Switch path) ───────────────────────────────────────
 
-    /// <summary>Step 1 — release the CURRENT session completely, bounded. Nothing may open a new native session until this
-    /// has returned: the native PlayReady session is a process-global singleton whose Stop carries no session identity, so
-    /// an un-awaited teardown is exactly what used to shut a freshly-started successor down.
-    /// <para>UNBIND BEFORE DISPOSE: the mounted <c>MediaPlayerElement</c> keeps pumping whatever
-    /// <see cref="PlayerChanged"/> last published. Clearing <see cref="_player"/> without notifying left the surface
-    /// pumping a player mid-dispose on every video→video skip (track change while already on the video host) — MF then
-    /// never published duration/NaturalSize on the successor, and the PiP sat on the Opening/Loading poster at 0:00.
-    /// <see cref="Stop"/> already fires <c>PlayerChanged(null)</c>; teardown must do the same.</para></summary>
-    async System.Threading.Tasks.Task TeardownAsync(long epoch)
+    /// <summary>The per-load field reset shared by <see cref="BuildAndOpenAsync"/> (Rebuild) and
+    /// <see cref="SwitchInPlaceAsync"/> (Switch): everything that describes "what/where the CURRENT load is" gets a
+    /// fresh slate — the source key, the once-per-load diagnostics latches, the carried start position, the
+    /// play-reassert budget, the start watchdog, and (video-smooth-switching contract) the active DRM relay and the
+    /// first-frame timer. Deliberately does NOT touch <see cref="_player"/> — the caller assigns/keeps that itself,
+    /// which is exactly the difference between a Rebuild (new instance) and a Switch (same instance, new content).
+    /// <para>Callers that have a live window to retract (a Switch — a Rebuild's window died with its
+    /// <see cref="TeardownAsync"/>) MUST call <see cref="RetractLiveWindow"/> BEFORE this, since it reads the OLD
+    /// <see cref="_sourceKey"/> this call is about to overwrite.</para></summary>
+    void ResetPerLoadState(VideoLoadRequest req)
     {
-        StopTicker();
-        // The window dies WITH the session it described. The ticker stops here, so nothing else would ever retract a
-        // live window — and a stale one is not a cosmetic leak: it keeps CanSeek armed and the DVR rail on screen over
-        // whatever plays next.
-        RetractLiveWindow();
-        MediaPlayer? old;
         lock (_gate)
         {
-            old = _player;
-            _player = null;
-            _sourceKey = "";
+            _sourceKey = req.Source.Key ?? "";
             _lastState = PlaybackState.Idle;
             _errorReported = false;
             _reportedDurMs = 0;
@@ -431,59 +480,102 @@ public sealed class FluentVideoMediaHost : IMediaHost
             _liveReported = false;
             _sizeLogged = false;
             _noSizeLogged = false;
+            _playIntent = true;
             _progressed = false;
-            _startAtMs = 0;
-            _startSeekPending = false;
-            _playReassertsLeft = 0;
-            _watchdog.Disarm();
+            _startAtMs = Math.Max(0, req.StartAtMs);
+            _startSeekPending = _startAtMs > 0;   // applied+clamped in Tick once the duration proves the session is seekable
+            _playReassertsLeft = PlayReassertBudget;
+            _watchdog.Arm(Environment.TickCount64);   // armed per load; disarmed by progress or by the next teardown
+            _lastAppliedAutoCap = -1;
+            _hasObservedQuality = false;
+            _activeRelay = req.Source.LicenseRelay;
+            _firstFrameFired = false;
+            _loadStartTick = Environment.TickCount64;
         }
-        if (old is not null)
-        {
-            try { old.Stop(); } catch (Exception ex) { _log.Info($"video-host stop failed: {ex.Message}"); }
-            // Drop the surface binding BEFORE native dispose — same contract as Stop(). Without this, video→video
-            // LoadVideo pumps a dying session and the successor never receives a pump (no duration, stuck Loading).
-            try { PlayerChanged?.Invoke(null); }
-            catch (Exception ex) { _log.Info($"video-host PlayerChanged(null) failed: {ex.Message}"); }
-            _log.Info("video-host teardown — unbound surface before dispose");
-            await DisposeBoundedAsync(old).ConfigureAwait(false);
-        }
-        // Anything Stop() handed over (its observable state was cleared synchronously) is released here, in order.
-        while (_toDispose.TryDequeue(out var queued)) await DisposeBoundedAsync(queued).ConfigureAwait(false);
     }
 
-    /// <summary>Step 2 — build the player for <paramref name="src"/>, announce it, and AWAIT the open. Awaiting the open
-    /// inside the pump is the second half of the fix: a later teardown can then never land on a half-opened session whose
-    /// <c>IMediaSession</c> had not been assigned yet (which would leak the native session and wedge every later video on
-    /// the singleton latch).</summary>
-    MediaPlayer BuildProtectedPlayer(PopOutVideoSource src)
+    /// <summary>Build the <see cref="MediaSource"/> for <paramref name="src"/> — the clear/local-file/DRM branch shared
+    /// by both open paths. For a DRM source the parsed descriptor now travels ON the source's own
+    /// <see cref="DrmConfig.SourceDescriptor"/> (the video-smooth-switching cross-plan contract) rather than being baked
+    /// into the backend at construction, which is what lets the ONE long-lived player open ANY DRM source in turn.</summary>
+    MediaSource BuildMediaSource(PopOutVideoSource src) =>
+        src.FilePath is { } file
+            // A user-attached local file: the plain clear MF backend, exactly like a Canvas URL. No DRM plumbing is
+            // built for it even if a DRM source was playing a moment ago — the descriptor/relay are per-load, not baked.
+            ? MediaSource.FromFile(file)
+            : src.IsDrm
+            // MfMediaPlayer routes a DrmConfig-carrying source to the injected DRM backend (native CDM); the descriptor
+            // rides on DrmConfig.SourceDescriptor (ProtectedMediaBackend.BuildRequest resolves it ahead of any
+            // ctor-baked fallback) and the relay flows through RelayForward (see WithDrm in BuildLiveMediaPlayer).
+            ? MediaSource.FromUri(src.DrmDescriptor!.InitUrl)
+                .With(new DrmConfig(DrmSystem.PlayReady, src.LicenseServerUri) { SourceDescriptor = src.DrmDescriptor })
+            // A LIVE broadcast is opened as one. Without this the backend infers live-ness from the container, and
+            // Media Foundation simply cannot: it reports the sliding DVR window as an ordinary finite GetDuration, which
+            // the session then latches and publishes as the track's length. SourceLiveness.Live tells the session up
+            // front, so it never publishes a duration for this source at all and the bar reads the timeline instead.
+            // Auto keeps every finite source on exactly today's inference.
+            : MediaSource.FromUri(src.ClearUrl ?? "")
+                .WithLiveness(src.IsLive ? SourceLiveness.Live : SourceLiveness.Auto);
+
+    /// <summary>Pin (or release) the shared <see cref="_abr"/> controller's <see cref="AdaptiveBitrateController.Selection"/>
+    /// for THIS load. The controller is built ONCE with the long-lived player and reused across every switch, but a
+    /// pinned height only makes sense against the representation IDs of the manifest about to open — a leftover pin from
+    /// the PREVIOUS DRM source's catalog would resolve to a meaningless (or wrong) variant id on the new one.
+    /// <c>ProtectedMediaSession</c> seeds its own selection from this shared field's CURRENT value at session
+    /// construction (one per open), so mutating it here, before <c>OpenAsync</c>, is what makes the app's
+    /// per-app quality preference apply to every DRM source without rebuilding the player.</summary>
+    void ApplyPreferredQuality(PopOutVideoSource src)
     {
-        var descriptor = src.DrmDescriptor!;
-        int policyCap = _settings is null ? int.MaxValue : Wavee.NetworkPolicy.EffectiveVideoMaxHeight(_settings);
-        var abr = new AdaptiveBitrateController
-        {
-            MaxHeight = policyCap,
-        };
+        if (_abr is null) return;
         int preferredHeight = _settings?.Get(Wavee.WaveeSettings.VideoQuality) ?? 0;
-        if (preferredHeight > 0 && descriptor.Catalog is { } catalog)
+        if (preferredHeight <= 0 || !src.IsDrm || src.DrmDescriptor?.Catalog is not { } catalog)
         {
-            for (int t = 0; t < catalog.Tracks.Count; t++)
-            {
-                var track = catalog.Tracks[t];
-                if (track.Kind != TrackKind.Video) continue;
-                for (int r = 0; r < track.Representations.Count; r++)
-                    if (track.Representations[r].Quality.Resolution.Height == preferredHeight)
-                    {
-                        abr.Selection = QualitySelection.Pin(track.Representations[r].Id);
-                        break;
-                    }
-                if (!abr.Selection.IsAuto) break;
-            }
+            _abr.Selection = QualitySelection.Auto;
+            return;
         }
+        for (int t = 0; t < catalog.Tracks.Count; t++)
+        {
+            var track = catalog.Tracks[t];
+            if (track.Kind != TrackKind.Video) continue;
+            for (int r = 0; r < track.Representations.Count; r++)
+                if (track.Representations[r].Quality.Resolution.Height == preferredHeight)
+                {
+                    _abr.Selection = QualitySelection.Pin(track.Representations[r].Id);
+                    return;
+                }
+        }
+        _abr.Selection = QualitySelection.Auto;
+    }
+
+    /// <summary>The ONE license relay baked into the long-lived player at build time (<c>WithDrm</c> takes a single
+    /// delegate for the player's whole lifetime). Forwards every native CDM challenge to whichever source's relay
+    /// <see cref="ResetPerLoadState"/> most recently stored in <see cref="_activeRelay"/> — the per-load indirection
+    /// that lets one player serve every DRM source's own license endpoint
+    /// (see <see cref="PopOutVideoSource.LicenseRelay"/>). The pump's serialization guarantees at most one load is ever
+    /// mid-open at a time, so there is never more than one candidate relay live when a challenge arrives.</summary>
+    ValueTask<LicenseResponse> RelayForward(LicenseRequest req)
+    {
+        Func<LicenseRequest, ValueTask<LicenseResponse>>? relay;
+        lock (_gate) relay = _activeRelay;
+        if (relay is null)
+            throw new InvalidOperationException("video-host: a DRM challenge arrived with no active license relay for the current load");
+        return relay(req);
+    }
+
+    /// <summary>Build the ONE long-lived <see cref="MediaPlayer"/> that plays every video family — clear, local-file,
+    /// and DRM — for the lifetime of this host (until a fault forces a <see cref="VideoSwitchAction.Rebuild"/>). The DRM
+    /// backend is built with a null ctor-baked relay/descriptor: both now travel PER LOAD instead (see
+    /// <see cref="BuildMediaSource"/> and <see cref="RelayForward"/>), which is what lets this one instance switch
+    /// between arbitrary DRM sources across the app's whole session.</summary>
+    MediaPlayer BuildLiveMediaPlayer()
+    {
+        int policyCap = _settings is null ? int.MaxValue : Wavee.NetworkPolicy.EffectiveVideoMaxHeight(_settings);
+        _abr = new AdaptiveBitrateController { MaxHeight = policyCap };
         return MediaPlayer.Build()
             .WithBackend(MediaKind.MfVideoOrFile,
-                new MfMediaPlayer(new ProtectedMediaBackend(src.LicenseRelay!, descriptor)))
-            .WithAbr(abr)
-            .WithDrm(src.LicenseRelay!)
+                new MfMediaPlayer(new ProtectedMediaBackend(defaultRelay: null, descriptor: null)))
+            .WithAbr(_abr)
+            .WithDrm(RelayForward)
             .Build();
     }
 
@@ -514,26 +606,18 @@ public sealed class FluentVideoMediaHost : IMediaHost
         _settings.Set(Wavee.WaveeSettings.VideoQuality, height);
     }
 
+    // ── the Rebuild path: teardown already ran (see ApplyAsync) — build a brand-new player and open it ─────────────────
+
+    /// <summary>Build a NEW player for <paramref name="req"/>, announce it, and AWAIT the open. Runs only for
+    /// <see cref="VideoSwitchAction.Rebuild"/> — the first video of the session, or a recovery from a faulted one — the
+    /// predecessor (if any) has already been torn down to completion by <see cref="TeardownAsync"/> before this is
+    /// called (see <see cref="ApplyAsync"/>), which is what keeps a later teardown from ever landing on a half-opened
+    /// session.</summary>
     async System.Threading.Tasks.Task BuildAndOpenAsync(VideoLoadRequest req, long epoch)
     {
         PopOutVideoSource src = req.Source;
         MediaPlayer built;
-        try
-        {
-            built = src.FilePath is not null
-                // A user-attached local file: the plain clear MF backend, exactly like a Canvas URL. No DRM plumbing is
-                // built for it even if a DRM source was playing a moment ago — the player is rebuilt per source.
-                ? MediaPlayer.Build()
-                    .WithBackend(MediaKind.MfVideoOrFile, new MfMediaPlayer())
-                    .Build()
-                : src.IsDrm
-                // MfMediaPlayer routes a DrmConfig-carrying source to the injected DRM backend (native CDM); ProtectedMediaBackend
-                // carries the parsed Spotify descriptor (init/segment/stride/PSSH) and the relay POSTs the license challenge.
-                ? BuildProtectedPlayer(src)
-                : MediaPlayer.Build()
-                    .WithBackend(MediaKind.MfVideoOrFile, new MfMediaPlayer())
-                    .Build();
-        }
+        try { built = BuildLiveMediaPlayer(); }
         catch (Exception ex)
         {
             _log.Info($"video-host build failed key={src.Key}: {ex.GetType().Name}: {ex.Message}");
@@ -553,46 +637,15 @@ public sealed class FluentVideoMediaHost : IMediaHost
             return;
         }
 
-        lock (_gate)
-        {
-            // The pump guarantees the previous player is already fully torn down here — there is no `old` to race.
-            _player = built;
-            _sourceKey = src.Key ?? "";
-            _lastState = PlaybackState.Idle;
-            _errorReported = false;
-            _reportedDurMs = 0;
-            _reportedLive = default;
-            _liveReported = false;
-            _sizeLogged = false;
-            _noSizeLogged = false;
-            _playIntent = true;
-            _progressed = false;
-            _startAtMs = Math.Max(0, req.StartAtMs);
-            _startSeekPending = _startAtMs > 0;   // applied+clamped in Tick once the duration proves the session is seekable
-            _playReassertsLeft = PlayReassertBudget;
-            _watchdog.Arm(Environment.TickCount64);   // armed per load; disarmed by progress or by the next teardown
-            _lastAppliedAutoCap = -1;
-            _hasObservedQuality = false;
-        }
-        // Announce the new player so the mounted surface re-binds its MediaPlayerElement to THIS instance (the app marshals
-        // this onto the UI thread; the event fires on the pump's worker thread).
+        lock (_gate) _player = built;
+        ResetPerLoadState(req);
+        ApplyPreferredQuality(src);
+        // Announce the new player so the mounted surface re-binds its MediaPlayerElement to THIS instance (the app
+        // marshals this onto the UI thread; the event fires on the pump's worker thread).
         PlayerChanged?.Invoke(built);
 
         MediaSource source;
-        try
-        {
-            source = src.FilePath is { } file
-                ? MediaSource.FromFile(file)
-                : src.IsDrm
-                ? MediaSource.FromUri(src.DrmDescriptor!.InitUrl).With(new DrmConfig(DrmSystem.PlayReady, src.LicenseServerUri))
-                // A LIVE broadcast is opened as one. Without this the backend infers live-ness from the container, and
-                // Media Foundation simply cannot: it reports the sliding DVR window as a finite GetDuration, which the
-                // session then latches and publishes as the track's length. SourceLiveness.Live tells the session up
-                // front, so it never publishes a duration for this source at all and the bar reads the timeline
-                // instead. Auto keeps every finite source on exactly today's inference.
-                : MediaSource.FromUri(src.ClearUrl ?? "")
-                    .WithLiveness(src.IsLive ? SourceLiveness.Live : SourceLiveness.Auto);
-        }
+        try { source = BuildMediaSource(src); }
         catch (Exception ex)
         {
             _log.Info($"video-host source build failed key={src.Key}: {ex.GetType().Name}: {ex.Message}");
@@ -605,11 +658,11 @@ public sealed class FluentVideoMediaHost : IMediaHost
         _log.Info($"video-host loaded key={src.Key} drm={src.IsDrm}{(src.FilePath is null ? "" : " local-file")}");
         // A DRM music video plays its OWN soundtrack: the manifest carries an AAC representation under the same content
         // key, and the native CENC source demuxes it alongside the video so Media Foundation renders both under one
-        // clock. That is why the song's audio host is stopped while video is the current media — the plain audio track is
-        // a DIFFERENT edit (no intro, no spoken pre/post-roll) and would drift against the picture.
-        // Logged either way so a silent video is diagnosable: "audio=no" means the manifest offered no AAC representation
-        // under the PlayReady index (the parser refuses Opus, which the protected pipeline cannot decode).
-        // A clear/Canvas source is unaffected — the MF media engine renders its audio itself.
+        // clock. That is why the song's audio host is stopped while video is the current media — the plain audio track
+        // is a DIFFERENT edit (no intro, no spoken pre/post-roll) and would drift against the picture. Logged either way
+        // so a silent video is diagnosable: "audio=no" means the manifest offered no AAC representation under the
+        // PlayReady index (the parser refuses Opus, which the protected pipeline cannot decode). A clear/Canvas source
+        // is unaffected — the MF media engine renders its audio itself.
         if (src.IsDrm)
             _log.Info($"video-host: DRM video is now the current media; the song's audio host is stopped. " +
                 $"own-soundtrack={(string.IsNullOrEmpty(src.DrmDescriptor?.AudioInitUrl) ? "NO (video-only manifest)" : "yes " + src.DrmDescriptor!.AudioCodecs)}");
@@ -636,16 +689,85 @@ public sealed class FluentVideoMediaHost : IMediaHost
         // Superseded during the open — leave it alone; the pump's next teardown disposes it in order.
         if (_disposed || _pump.IsStale(epoch)) return;
         if (built.Error.Peek() is not null) return;   // Tick's Error poll raises the Fault
-        // NOTE: the carried position is deliberately NOT seeked here. `OpenAsync` returning does NOT mean the session can
-        // accept a seek — on the protected (PlayReady/CENC) path the open completes in ~30ms while the native session is
-        // still spinning up, and a seek issued in that window is silently DROPPED (observed: a carried 126034ms seek
-        // followed by a put-state reporting pos=1145, i.e. it started at 0 regardless). Seeking a not-yet-running
-        // protected session is also a plausible cause of the "video sits buffering until I press play" stall.
-        // It is applied in Tick instead, at the first moment the engine reports a positive duration — which proves
-        // metadata is loaded and the session is live and seekable.
+        // NOTE: the carried position is deliberately NOT seeked here — see Tick's start-clamp block. On the protected
+        // (PlayReady/CENC) path the open completes in ~30ms while the native session is still spinning up, and a seek
+        // issued in that window is silently dropped; it is applied in Tick instead, at the first moment the engine
+        // reports readiness.
         // Play is NOT awaited: the protected transport ack can take up to 5s and must not hold the pump (a skip would
         // queue behind it). Observed via the helper so a faulted ack can never surface as an unobserved task exception.
         _ = PlayQuietlyAsync(built);
+    }
+
+    // ── the Switch path: the warm player stays, only its content changes ──────────────────────────────────────────────
+
+    /// <summary>Switch the WARM, long-lived player to <paramref name="req"/>'s source in place — the video-smooth-switching
+    /// win. No teardown, no <see cref="PlayerChanged"/>, no surface unmount: <c>OpenAsync</c> on the SAME
+    /// <see cref="MediaPlayer"/> instance is the engine's own warm-reuse switch (spec: a long-lived player's OpenAsync is
+    /// a cheap in-place source change). A timeout leaves the watchdog to own the load exactly like the Rebuild path; any
+    /// OTHER failure degrades ONCE — a bounded fallback to <see cref="TeardownAsync"/> + <see cref="BuildAndOpenAsync"/>
+    /// — rather than leaving a half-switched player stuck.</summary>
+    async System.Threading.Tasks.Task SwitchInPlaceAsync(VideoLoadRequest req, long epoch)
+    {
+        PopOutVideoSource src = req.Source;
+        MediaPlayer? live;
+        lock (_gate) live = _player;
+        if (live is null)
+        {
+            // VideoSwitchPolicy only returns Switch when a live player was observed moments ago — a concurrent Stop()
+            // could still have raced it. Degrade to the safe path rather than dereference nothing.
+            _log.Info($"video-host switch had no live player (raced with a teardown) — rebuilding key={src.Key}");
+            await BuildAndOpenAsync(req, epoch).ConfigureAwait(false);
+            return;
+        }
+
+        var sw = Stopwatch.StartNew();
+        RetractLiveWindow();      // uses the OLD _sourceKey — must run before ResetPerLoadState overwrites it
+        ResetPerLoadState(req);
+        ApplyPreferredQuality(src);
+
+        MediaSource source;
+        try { source = BuildMediaSource(src); }
+        catch (Exception ex)
+        {
+            _log.Info($"video-host switch source build failed key={src.Key}: {ex.GetType().Name}: {ex.Message}");
+            _signals.OnNext(AudioHostSignal.Fault(0, AudioKeyFailureReason.None, ex.Message));
+            return;
+        }
+
+        _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Buffering, 0));
+        StartTicker();
+        _log.Info($"video-host switching key={src.Key} drm={src.IsDrm}{(src.FilePath is null ? "" : " local-file")}");
+        if (src.IsDrm)
+            _log.Info($"video-host: DRM video is now the current media; the song's audio host is stopped. " +
+                $"own-soundtrack={(string.IsNullOrEmpty(src.DrmDescriptor?.AudioInitUrl) ? "NO (video-only manifest)" : "yes " + src.DrmDescriptor!.AudioCodecs)}");
+
+        try
+        {
+            await live.OpenAsync(source).AsTask()
+                .WaitAsync(TimeSpan.FromMilliseconds(OpenTimeoutMs)).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            _log.Info($"video-host switch open did not complete within {OpenTimeoutMs}ms key={src.Key} — the start watchdog now owns this load");
+            return;
+        }
+        catch (Exception ex)
+        {
+            _log.Info($"video-host switch open failed key={src.Key}: {ex.GetType().Name}: {ex.Message} — degrading to a full rebuild");
+            if (_disposed || _pump.IsStale(epoch)) return;
+            await TeardownAsync(epoch).ConfigureAwait(false);
+            if (_disposed || _pump.IsStale(epoch)) return;
+            await BuildAndOpenAsync(req, epoch).ConfigureAwait(false);
+            return;
+        }
+
+        // Superseded during the open — leave it alone; the next dequeued load (or a clear) picks up from here.
+        if (_disposed || _pump.IsStale(epoch)) return;
+        if (live.Error.Peek() is not null) return;   // Tick's Error poll raises the Fault
+
+        _log.Info($"video-host switch ok key={src.Key} drm={src.IsDrm} switchMs={sw.ElapsedMilliseconds}");
+        // Play is NOT awaited — see the same note in BuildAndOpenAsync.
+        _ = PlayQuietlyAsync(live);
     }
 
     async System.Threading.Tasks.Task PlayQuietlyAsync(MediaPlayer p)
@@ -730,7 +852,7 @@ public sealed class FluentVideoMediaHost : IMediaHost
             // "metadata loaded and the native session is running", and it is a proxy that a LIVE source never satisfies
             // (there is no duration to publish), which would strand a carried position forever. Ready/Playing/Paused say
             // the same thing directly, and say it for every source. Seeking at the open instead silently did nothing
-            // (see BuildAndOpenAsync). Runs at most once per load.
+            // (see BuildAndOpenAsync/SwitchInPlaceAsync). Runs at most once per load.
             // Clamped against the duration when there IS one, for free: a music video is a different — often shorter —
             // edit, so a carried position can sit at or past its end, which would land on a dead frame or fire Ended.
             if (_startSeekPending && IsSeekReady(p, durMs))
@@ -797,6 +919,28 @@ public sealed class FluentVideoMediaHost : IMediaHost
         }
 
         var state = p.State.Peek();
+
+        // ── FIRST FRAME (video-smooth-switching): fires ONCE per load the moment playback demonstrably progresses. A
+        // tighter test than the watchdog's own "progressed" (which also counts Ended/Failed, deliberately, so it never
+        // fires a false start-fault after a definitive terminal state) — a source that fails or ends before ever
+        // advancing never legitimately showed a first frame.
+        if (!_firstFrameFired && (state == PlaybackState.Playing || pos > 0))
+        {
+            bool fire;
+            string key;
+            long sinceLoadMs;
+            lock (_gate)
+            {
+                fire = !_firstFrameFired;
+                if (fire) _firstFrameFired = true;
+                key = _sourceKey;
+                sinceLoadMs = Environment.TickCount64 - _loadStartTick;
+            }
+            // Once per load: the time-to-first-frame stamp the switch-latency verification checks (DRM ~1.5s, clear
+            // ~500ms). Purely a log — the engine element's own poster crossfade is what visually clears the loading
+            // affordance, so nothing subscribes here.
+            if (fire) _log.Info($"video-host first frame key={key} sinceLoadMs={sinceLoadMs}");
+        }
 
         // ── the per-load START WATCHDOG (piggybacks this ticker — no extra timer, no allocation) ──────────────────────
         // A load that reported "loaded" but never reaches a playing/advancing state must not sit silent forever. The
@@ -880,6 +1024,59 @@ public sealed class FluentVideoMediaHost : IMediaHost
                 break;
         }
         _lastState = state;
+    }
+
+    // ── the pump's clear step: release the CURRENT session completely, bounded ─────────────────────────────────────────
+
+    /// <summary>The pump's <c>clearAsync</c> delegate for a <see cref="VideoLoadPump{T}.RequestClear"/> (the host's Stop
+    /// / Dispose), AND the teardown half of a <see cref="VideoSwitchAction.Rebuild"/> (called directly from
+    /// <see cref="ApplyAsync"/>, on the same worker). Either way nothing may open a new native session until this has
+    /// returned: the native PlayReady session is a process-global singleton whose Stop carries no session identity, so
+    /// an un-awaited teardown is exactly what used to shut a freshly-started successor down.
+    /// <para>UNBIND BEFORE DISPOSE: the mounted <c>MediaPlayerElement</c> keeps pumping whatever
+    /// <see cref="PlayerChanged"/> last published. Clearing <see cref="_player"/> without notifying left the surface
+    /// pumping a player mid-dispose — <see cref="Stop"/> already fires <c>PlayerChanged(null)</c>; teardown must do the
+    /// same.</para></summary>
+    async System.Threading.Tasks.Task TeardownAsync(long epoch)
+    {
+        StopTicker();
+        // The window dies WITH the session it described. The ticker stops here, so nothing else would ever retract a
+        // live window — and a stale one is not a cosmetic leak: it keeps CanSeek armed and the DVR rail on screen over
+        // whatever plays next.
+        RetractLiveWindow();
+        MediaPlayer? old;
+        lock (_gate)
+        {
+            old = _player;
+            _player = null;
+            _sourceKey = "";
+            _lastState = PlaybackState.Idle;
+            _errorReported = false;
+            _reportedDurMs = 0;
+            _reportedLive = default;
+            _liveReported = false;
+            _sizeLogged = false;
+            _noSizeLogged = false;
+            _progressed = false;
+            _startAtMs = 0;
+            _startSeekPending = false;
+            _playReassertsLeft = 0;
+            _activeRelay = null;
+            _firstFrameFired = false;
+            _watchdog.Disarm();
+        }
+        if (old is not null)
+        {
+            try { old.Stop(); } catch (Exception ex) { _log.Info($"video-host stop failed: {ex.Message}"); }
+            // Drop the surface binding BEFORE native dispose — same contract as Stop(). Without this, a rebuild pumps a
+            // dying session and the successor never receives a pump (no duration, stuck Loading).
+            try { PlayerChanged?.Invoke(null); }
+            catch (Exception ex) { _log.Info($"video-host PlayerChanged(null) failed: {ex.Message}"); }
+            _log.Info("video-host teardown — unbound surface before dispose");
+            await DisposeBoundedAsync(old).ConfigureAwait(false);
+        }
+        // Anything Stop() handed over (its observable state was cleared synchronously) is released here, in order.
+        while (_toDispose.TryDequeue(out var queued)) await DisposeBoundedAsync(queued).ConfigureAwait(false);
     }
 
     /// <summary>Release one player, BOUNDED. The protected player's own Dispose already joins its native thread for 3s;

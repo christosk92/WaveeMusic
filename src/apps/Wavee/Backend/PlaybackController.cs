@@ -226,6 +226,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // published atomic snapshot.
     internal string? NextPageUrlForTest => _nextPageUrl;
     internal QueueSnapshot SnapForTest => _snap;
+    // Milestone C (video smooth-switching): StartVideoLoadDetached spawns the off-lock RunVideoLoadAsync continuation
+    // fire-and-forget — production never awaits it. A test that needs the detached video load (or its off-lock
+    // no-source→audio fallback, which re-acquires _lock) to have SETTLED before asserting sets this to capture the
+    // Task, then awaits it. Set synchronously inside the same _lock-held call that spawns it, so a hook set BEFORE
+    // calling into the controller is guaranteed to observe the spawn. Null in production.
+    internal Action<Task>? VideoLoadSpawnedForTest { get; set; }
 
     public PlaybackController(IAudioHost host, ITrackResolver resolver, NowPlayingProjection projection,
         IContextResolver contexts,
@@ -372,6 +378,16 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     /// sticky "watch video" and sticky-off both keep their exact meaning. NULL (unit tests, audio-only builds) = today.
     /// <para>Invoked while <c>_lock</c> is held, so the handler must be non-blocking (the live one posts to the UI thread).</para></summary>
     public Action<Track>? OnVideoMediaUnavailable { get; set; }
+
+    /// <summary>Milestone C (video smooth-switching, A4) — called from <see cref="SchedulePreparedNext"/> when the
+    /// UPCOMING playable (the one prepared-next would consider) will play as VIDEO: gives the app a chance to warm the
+    /// video source (resolve + CDN edge warm) BEFORE the current track ends, mirroring the audio prepared-next warm
+    /// this same method does for an audio upcoming. This is a NOTIFICATION only — the controller never awaits it and
+    /// does nothing else with a video upcoming (crossfade/prepared-next stays an AUDIO-only capability, per
+    /// <see cref="MediaSwitchLogic.AllowCrossfade"/>). Wired by <c>LiveConnect.WireVideoMedia</c> to
+    /// <c>PlaybackBridge.PrefetchVideoSource</c>. Fail-soft like every other app-facing hook: NULL (unit tests,
+    /// audio-only builds) makes this a no-op. <para>Invoked while <c>_lock</c> is held — non-blocking only.</para></summary>
+    public Action<Track>? PrefetchVideo { get; set; }
 
     // The loop guard's playable half: the uri a video recovery has already been attempted for. Cleared when a DIFFERENT
     // playable loads, never by the recovery's own reload — otherwise the fallback could ping-pong forever. The (uri, source
@@ -572,7 +588,13 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     /// <para><paramref name="clearConnectAudioFirst"/> is ORTHOGONAL to it: only an EXPLICIT local media intent may drop
     /// the remote playback ids, because <see cref="ClearRemotePlaybackIds"/> also wipes <c>_connectOriginatedPlayback</c>
     /// (the audio-first rule a Connect-originated session depends on) plus the per-playable video-recovery and
-    /// audio-fallback latches. A refresh triggered by a mere availability edge passes false.</para></summary>
+    /// audio-fallback latches. A refresh triggered by a mere availability edge passes false.</para>
+    /// <para>Milestone C (video smooth-switching): the <c>_lock</c> held here now spans only <c>MetaResolver</c> +
+    /// <see cref="SwitchCurrentMedia"/> + the load KICKOFF — never a video source resolve/open. A video kind swap
+    /// hands off to <see cref="StartVideoLoadDetached"/>, which returns (and this method's lock releases) before the
+    /// video ever resolves; the resolve/open runs fully off-lock in <see cref="RunVideoLoadAsync"/>, guarded by the
+    /// <c>_contextGeneration</c> fence instead of the lock hold. "The lock serializes the whole video load" is no
+    /// longer true — do not re-introduce that assumption here.</para></summary>
     public async Task RefreshCurrentMediaKindAsync(bool forceReloadIfVideo = false, bool clearConnectAudioFirst = true,
         CancellationToken ct = default)
     {
@@ -2627,19 +2649,33 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         var mediaKind = SwitchCurrentMedia(cur, mediaKindOverride);
         if (mediaKind == PlayableKind.Video)
         {
-            if (await LoadAndPlayVideoAsync(cur, kind, mediaId, bitrateKbps, audioFormat, durationMs, fileId,
-                resumePositionMs, initiallyPaused, ct).ConfigureAwait(false))
+            if (StartVideoLoadDetached(cur, kind, mediaId, bitrateKbps, audioFormat, durationMs, fileId,
+                resumePositionMs, initiallyPaused, skipOnUnplayable, generation))
                 return;
-            // No playable video source for this track (the account isn't served one, the manifest resolve failed, or the hooks
-            // are unwired). Fall back to AUDIO for this playable rather than leaving the user in silence: re-point the host at
-            // audio and continue down the normal audio path below. The audio host was stopped by the swap above, so this is a
-            // clean load — never two decoders.
-            _log.Info($"no playable video source for {cur.Uri} — falling back to audio for this playable");
+            // LoadCurrentVideoAsync is unwired (unit tests / audio-only build — ShouldPlayAsVideo is null too and we
+            // never get here in practice). Fall back to AUDIO for this playable rather than leaving the user in
+            // silence: re-point the host at audio and continue down the normal audio path below. The audio host was
+            // stopped by the swap above, so this is a clean load — never two decoders. (The OTHER "no playable video"
+            // case — the hook IS wired but resolves to nothing — is discovered OFF-LOCK inside RunVideoLoadAsync,
+            // which re-enters _lock to run this exact same fallback.)
+            _log.Info($"video playable but LoadCurrentVideoAsync is not wired — playing {cur.Uri} as audio");
             SwitchHost(_audioHost);
             _currentKind = MediaSwitchLogic.KindOf(false, cur.Origin == TrackOrigin.Local);
             NotifyVideoUnavailable(cur);   // the app still thinks this playable has a video → its surface would spin forever
         }
 
+        await LoadAudioCurrentLockedAsync(kind, cur, ct, resumePositionMs, initiallyPaused, skipOnUnplayable, generation,
+            mediaId, bitrateKbps, audioFormat, durationMs, fileId).ConfigureAwait(false);
+    }
+
+    // The AUDIO tail of LoadAndPlayCurrentAsync, extracted verbatim (A5 / Milestone C: video-smooth-switching-
+    // implementation.md §3) so the video branch above can return before ever touching it. Fast-start when wired, else
+    // the plain resolve — body byte-identical to what used to run inline. Caller holds _lock; every await below still
+    // re-checks `generation` before touching the host, exactly as when this lived inline in LoadAndPlayCurrentAsync.
+    async Task LoadAudioCurrentLockedAsync(EvKind kind, Track cur, CancellationToken ct, long resumePositionMs,
+        bool initiallyPaused, bool skipOnUnplayable, long generation, byte[]? mediaId, int bitrateKbps,
+        string audioFormat, long durationMs, byte[]? fileId)
+    {
         if (_fast is not null)
         {
             // Instant-start: play the clear head immediately; the encrypted body (key + CDN) resolves in parallel and is
@@ -2710,44 +2746,92 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         ReportPlaybackError(ex);
     }
 
-    // Load + start the current VIDEO playable on the swapped-in video host. The resolved PopOutVideoSource is obtained via the
-    // injected LoadCurrentVideoAsync hook (the async PlaybackBridge resolve → FluentVideoMediaHost.LoadVideo handoff) so the
-    // portable controller never references the SpotifyLive video types. THE HOST OWNS THE PLAYER: this controller never sees a
-    // MediaPlayer, and the mounted video surface only PRESENTS the host's player — which is why a placement flip no longer
-    // rebuilds (and restarts) it. Prepared-next / crossfade are skipped across a video boundary (MediaSwitchLogic.AllowCrossfade
-    // is false for any video pair). Returns TRUE when the video was handled (started, or failed with an error already
-    // surfaced) and FALSE when there is simply no playable video source, so the caller falls back to audio.
-    // Caller holds _lock.
-    async Task<bool> LoadAndPlayVideoAsync(Track cur, EvKind kind, byte[]? mediaId, int bitrateKbps, string audioFormat,
-        long durationMs, byte[]? fileId, long resumePositionMs, bool initiallyPaused, CancellationToken ct)
+    // Video branch of LoadAndPlayCurrentAsync (A4/A5, Milestone C: video-smooth-switching-implementation.md §3): kicks
+    // the video load OFF _lock so the resolve/open chain (up to 5 sequential RTTs today, A2) never blocks the ~40
+    // transport verbs that would otherwise queue behind it (A5). Under _lock this ONLY emits the track-changed event +
+    // re-arms continuation/prepared-next + spawns the detached RunVideoLoadAsync — it never resolves or opens a
+    // source itself. THE HOST OWNS THE PLAYER: this controller never sees a MediaPlayer, and the mounted video
+    // surface only PRESENTS the host's player — which is why a placement flip no longer rebuilds (and restarts) it.
+    // Returns FALSE only when LoadCurrentVideoAsync is unwired (unit tests / audio-only build — ShouldPlayAsVideo is
+    // null too and we never get here in practice), so the caller falls through to the existing SYNCHRONOUS audio
+    // fallback; TRUE means the load is in flight (fire-and-forget) and the caller must return without touching the
+    // host again — the resolve/open must NEVER run while _lock is held. Caller holds _lock.
+    bool StartVideoLoadDetached(Track cur, EvKind kind, byte[]? mediaId, int bitrateKbps, string audioFormat,
+        long durationMs, byte[]? fileId, long resumePositionMs, bool initiallyPaused, bool skipOnUnplayable, long generation)
     {
-        if (LoadCurrentVideoAsync is not { } loadVideo)
-        {
-            // Hooks unwired (unit tests / audio-only build — in which case ShouldPlayAsVideo is null too and we never get
-            // here). Report "no source" so the caller plays the track as audio.
-            _log.Info($"video playable but LoadCurrentVideoAsync is not wired — playing {cur.Uri} as audio");
-            return false;
-        }
+        if (LoadCurrentVideoAsync is not { } loadVideo) return false;
+        // Publish the track change even while the video source is still resolving/opening — the projection is
+        // source-agnostic (position comes from the host clock; duration from Track.DurationMs), and the surface stays
+        // mounted showing the previous frame + a loading overlay rather than unmounting (S in the app plan). Prepared-
+        // next / crossfade are skipped across a video boundary (MediaSwitchLogic.AllowCrossfade is false for any video
+        // pair) — SchedulePreparedNext still runs so it CANCELS any prior audio-prepared token and, when the NEXT
+        // playable will itself be video, fires PrefetchVideo (A4) ahead of the boundary.
+        Emit(BuildEvent(kind, cur, Math.Max(0, resumePositionMs), mediaId, bitrateKbps, audioFormat, durationMs, fileId));
+        MaybeStartContinuationFetch();
+        SchedulePreparedNext("video-start");
+        var loadTask = RunVideoLoadAsync(loadVideo, cur, kind, mediaId, bitrateKbps, audioFormat, durationMs, fileId,
+            resumePositionMs, initiallyPaused, skipOnUnplayable, generation);
+        VideoLoadSpawnedForTest?.Invoke(loadTask);   // test seam only (internal, null in production) — see its doc comment
+        return true;
+    }
 
+    // The OFF-LOCK continuation of StartVideoLoadDetached: awaits the resolve/open hook WITHOUT holding _lock, so
+    // transport verbs never queue behind it (A5). _contextGeneration-fences at every re-entry — mirroring the existing
+    // guards in LoadAndPlayCurrentAsync/LoadAudioCurrentLockedAsync — so a takeover/other load that ran while this was
+    // in flight always wins outright; past a lost race this never touches _currentHost/_currentKind again. Caller does
+    // NOT hold _lock; this re-acquires it ONLY for the no-source→audio fallback's state mutation (mirrors the same
+    // re-enter-for-the-mutation-only shape as RecoverVideoAsync/FallbackVideoToAudioAsync below).
+    async Task RunVideoLoadAsync(Func<Track, long, CancellationToken, Task<bool>> loadVideo, Track cur, EvKind kind,
+        byte[]? mediaId, int bitrateKbps, string audioFormat, long durationMs, byte[]? fileId,
+        long resumePositionMs, bool initiallyPaused, bool skipOnUnplayable, long generation)
+    {
+        bool ok;
         try
         {
-            if (!await loadVideo(cur, resumePositionMs, ct).ConfigureAwait(false)) return false;
+            // CancellationToken.None: this continuation outlives the original caller (StartVideoLoadDetached has
+            // already returned by the time the resolve/open finishes) — same discipline as
+            // RecoverVideoAsync/FallbackVideoToAudioAsync, which detach from the caller's ct for the same reason.
+            ok = await loadVideo(cur, resumePositionMs, CancellationToken.None).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex) { ReportPlaybackError(ex); return true; }   // handled (surfaced) — do not also start audio
+        catch (OperationCanceledException) { return; }   // fire-and-forget: nobody is awaiting this task — swallow, never fault it
+        catch (Exception ex)
+        {
+            if (generation != Volatile.Read(ref _contextGeneration)) return;   // superseded — the error belongs to a load nobody is waiting on
+            ReportPlaybackError(ex);   // handled (surfaced) — do not also start audio
+            return;
+        }
 
-        if (!initiallyPaused) _currentHost.Play();
+        if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while the video resolve/open was in flight
+
+        if (!ok)
+        {
+            // No playable video source for this track (the account isn't served one, or the manifest resolve failed).
+            // Fall back to AUDIO rather than leaving the user in silence: re-point the host at audio and run the exact
+            // same audio path LoadAndPlayCurrentAsync would have. The resolve/open above already ran fully off-lock —
+            // re-enter _lock here for the state mutation only.
+            await _lock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (generation != Volatile.Read(ref _contextGeneration)) return;   // superseded while queued for the lock
+                if (!string.Equals(_session.Current?.Uri, cur.Uri, StringComparison.Ordinal)) return;   // a different playable loaded meanwhile
+                _log.Info($"no playable video source for {cur.Uri} — falling back to audio for this playable");
+                SwitchHost(_audioHost);
+                _currentKind = MediaSwitchLogic.KindOf(false, cur.Origin == TrackOrigin.Local);
+                NotifyVideoUnavailable(cur);   // the app still thinks this playable has a video → its surface would spin forever
+                await LoadAudioCurrentLockedAsync(kind, cur, CancellationToken.None, resumePositionMs, initiallyPaused,
+                    skipOnUnplayable, generation, mediaId, bitrateKbps, audioFormat, durationMs, fileId).ConfigureAwait(false);
+            }
+            finally { _lock.Release(); }
+            return;
+        }
+
         // NO follow-up Seek here: the resume position was handed to `loadVideo` above and is applied INSIDE the load, after
         // the session opens and before it plays. That ordering is the whole point — at an audio→video switch the video
         // player does not exist yet (the host serializes teardown→build→open through its load pump), so a seek issued at
         // this line would land on a null player and be dropped. That is exactly why every audio→video switch used to
         // restart at 0. Applying it in the load also means the first frame shown is already at the right place.
         // A retry checkpoint on the same video travels the same path (the host seeks the live session instead of rebuilding).
-        // Publish the track change even while the video source is still opening — the projection is source-agnostic (position
-        // comes from the host clock; duration from Track.DurationMs). A video boundary is a hard cut: no prepared-next warm.
-        Emit(BuildEvent(kind, cur, Math.Max(0, resumePositionMs), mediaId, bitrateKbps, audioFormat, durationMs, fileId));
-        MaybeStartContinuationFetch();
-        return true;
+        if (!initiallyPaused) _currentHost.Play();
     }
 
     void MaybeStartContinuationFetch()
@@ -3139,13 +3223,23 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         if (_preparedHost is null) return;
 
         var current = _snap.Current;
+        // Milestone C (video smooth-switching, A4): the UPCOMING playable's kind is computed UNCONDITIONALLY (not
+        // fenced on _currentKind) so a video-bound next boundary — video→video, or audio about to become video — still
+        // gets its source warmed ahead of time via PrefetchVideo. This is a fire-and-forget notification only; the
+        // controller itself does nothing else with a video upcoming.
+        var previewEntry = current is null ? null : _session.PreviewNext();
+        if (previewEntry is not null && KindFor(previewEntry.Track) == PlayableKind.Video)
+        {
+            try { PrefetchVideo?.Invoke(previewEntry.Track); }
+            catch (Exception ex) { _log.Info($"video prefetch hook failed for {previewEntry.Track.Uri}: {ex.Message}"); }
+        }
         // Milestone B: the prepared-next / crossfade path is an AUDIO-host capability. While a VIDEO is the current media
-        // there is nothing to prepare — fall through with next = null so any PRIOR prepared token is CANCELLED rather than
-        // left dangling on a host that has been stopped (a swap back to audio re-schedules from LoadAndPlayCurrent). This is
-        // a no-op on the unchanged audio path (_currentKind stays Audio when ShouldPlayAsVideo is unwired).
+        // there is nothing to (audio-)prepare — fence the preview to null so any PRIOR prepared token is CANCELLED rather
+        // than left dangling on a host that has been stopped (a swap back to audio re-schedules from LoadAndPlayCurrent).
+        // This is a no-op on the unchanged audio path (_currentKind stays Audio when ShouldPlayAsVideo is unwired).
         // The decision rules (video boundaries, the prepare gate, overlap eligibility, the dedupe signature) live in the
         // PURE PreparedNextPolicy (W2) — this method only reads the live values and acts on the returned decision.
-        var preview = _currentKind == PlayableKind.Video || current is null ? null : _session.PreviewNext();
+        var preview = _currentKind == PlayableKind.Video ? null : previewEntry;
         var decision = PreparedNextPolicy.Decide(_currentKind, current, preview,
             preview is null ? PlayableKind.Audio : KindFor(preview.Track),
             preview is not null && MayPrepare(preview.Track), _snap.Repeat);

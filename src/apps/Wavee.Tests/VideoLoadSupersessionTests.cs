@@ -21,19 +21,26 @@ namespace Wavee.Tests;
 // hr — nothing reported an error — and the snapshot settled on native "stopped" → PlaybackState.Idle, a state the host's
 // Tick switch has no case for. The host went silent forever: no signal, no fault, no position, transport paused at 0:00.
 //
-// The fix has two halves, both pinned here against PRODUCTION code (the two units are engine-free on purpose, so these
-// tests drive the real classes rather than a mock of them — the PlacementCore/MediaSwitchLogic discipline):
-//   • VideoLoadPump      — teardown(previous) is AWAITED TO COMPLETION before build(next), and a request that is already
-//                          superseded is never built at all (latest-wins coalescing).
-//   • VideoStartWatchdog — a load that never reaches a playing/advancing state raises exactly ONE fault, never fires for
-//                          a deliberately paused session, and disarms on progress and on teardown.
-// Plus the routing leg: that fault travels the ordinary AudioHostSignal channel into PlaybackController.OnHostSignal and
-// out through the existing error path, so the paused-at-0:00 zombie state is impossible.
+// (1) below pins the PUMP's half of the fix against PRODUCTION VideoLoadPump code (it is engine-free on purpose, so
+// these tests drive the real class rather than a mock of it — the PlacementCore/MediaSwitchLogic discipline):
+//   • every clear and every apply run ONE AT A TIME, never overlapping — the process-global session is never touched by
+//     two in-flight operations at once;
+//   • a request that is already superseded before it is DEQUEUED is never applied at all (latest-wins coalescing);
+//   • a RequestClear() (the host's Stop) overtakes any load already queued behind it.
+// The video-smooth-switching rework moved the OLDER "teardown always precedes build" guarantee out of the pump and into
+// the host (FluentVideoMediaHost.ApplyAsync + VideoSwitchPolicy, covered by VideoSwitchPolicyTests) — a video→video
+// switch to a different, healthy source no longer tears anything down at all, which is exactly the "apply for a new key
+// does not invoke clear" case pinned below.
+//
+// (2) pins VideoStartWatchdog: a load that never reaches a playing/advancing state raises exactly ONE fault, never fires
+// for a deliberately paused session, and disarms on progress and on teardown.
+// (3) pins the routing leg: that fault travels the ordinary AudioHostSignal channel into PlaybackController.OnHostSignal
+// and out through the existing error path, so the paused-at-0:00 zombie state is impossible.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 public class VideoLoadSupersessionTests
 {
-    // ── the pump rig: fake teardown/build steps that append to ONE ordered log, so "A was fully torn down BEFORE B was
-    //    built" is a provable ordering fact rather than two independent counters (the HostSwap-tests shape).
+    // ── the pump rig: fake clear/apply steps that append to ONE ordered log, so "A finished before B started" is a
+    //    provable ordering fact rather than two independent counters (the HostSwap-tests shape).
     sealed class FakeSource(string key)
     {
         public string Key { get; } = key;
@@ -45,36 +52,40 @@ public class VideoLoadSupersessionTests
         readonly object _g = new();
         readonly List<string> _log = new();
         public string LiveKey = "";
-        public TaskCompletionSource? TeardownGate;
-        public TaskCompletionSource? BuildGate;
-        public readonly List<long> BuildEpochs = new();
-        public readonly List<bool> BuildSawStaleness = new();
+        public TaskCompletionSource? ClearGate;
+        public TaskCompletionSource? ApplyGate;
+        public readonly List<long> ApplyEpochs = new();
+        public readonly List<bool> ApplySawStaleness = new();
+        public int ClearCalls;
+        public int ApplyCalls;
         public readonly VideoLoadPump<FakeSource> Pump;
 
         public Rig()
         {
-            Pump = new VideoLoadPump<FakeSource>(TeardownAsync, BuildAsync, s => s.Key == Volatile.Read(ref LiveKey));
+            Pump = new VideoLoadPump<FakeSource>(ClearAsync, ApplyAsync);
         }
 
         public string[] Log { get { lock (_g) return _log.ToArray(); } }
         void Note(string s) { lock (_g) _log.Add(s); }
 
-        async Task TeardownAsync(long epoch)
+        async Task ClearAsync(long epoch)
         {
-            Note("teardown:start:" + LiveKey);
-            if (TeardownGate is { } gate) await gate.Task.ConfigureAwait(false);
+            Interlocked.Increment(ref ClearCalls);
+            Note("clear:start:" + Volatile.Read(ref LiveKey));
+            if (ClearGate is { } gate) await gate.Task.ConfigureAwait(false);
             Volatile.Write(ref LiveKey, "");
-            Note("teardown:end");
+            Note("clear:end");
         }
 
-        async Task BuildAsync(FakeSource src, long epoch)
+        async Task ApplyAsync(FakeSource src, long epoch)
         {
-            Note("build:start:" + src.Key);
-            lock (_g) BuildEpochs.Add(epoch);
-            if (BuildGate is { } gate) await gate.Task.ConfigureAwait(false);
-            lock (_g) BuildSawStaleness.Add(Pump.IsStale(epoch));
+            Interlocked.Increment(ref ApplyCalls);
+            Note("apply:start:" + src.Key);
+            lock (_g) ApplyEpochs.Add(epoch);
+            if (ApplyGate is { } gate) await gate.Task.ConfigureAwait(false);
+            lock (_g) ApplySawStaleness.Add(Pump.IsStale(epoch));
             Volatile.Write(ref LiveKey, src.Key);
-            Note("build:end:" + src.Key);
+            Note("apply:end:" + src.Key);
         }
     }
 
@@ -88,136 +99,121 @@ public class VideoLoadSupersessionTests
         }
     }
 
-    /// <summary>The core invariant: no build may start while a teardown is in flight. Replayed over the whole log, this is
-    /// the "a predecessor's process-global Stop can never land on its successor" guarantee.</summary>
-    static void AssertNoBuildInsideATeardown(IReadOnlyList<string> log)
+    /// <summary>The core invariant: no apply may start while a clear is in flight (and vice versa). Replayed over the
+    /// whole log, this is the "the process-global session is never touched by two in-flight operations at once"
+    /// guarantee.</summary>
+    static void AssertNeverOverlapping(IReadOnlyList<string> log)
     {
-        bool tearingDown = false;
+        bool clearing = false;
         for (int i = 0; i < log.Count; i++)
         {
-            if (log[i].StartsWith("teardown:start", StringComparison.Ordinal)) tearingDown = true;
-            else if (log[i] == "teardown:end") tearingDown = false;
-            else if (log[i].StartsWith("build:start", StringComparison.Ordinal))
-                Assert.False(tearingDown, $"a build started while a teardown was still in flight at step {i} — log: {string.Join(" → ", log)}");
+            if (log[i].StartsWith("clear:start", StringComparison.Ordinal)) clearing = true;
+            else if (log[i] == "clear:end") clearing = false;
+            else if (log[i].StartsWith("apply:start", StringComparison.Ordinal))
+                Assert.False(clearing, $"an apply started while a clear was still in flight at step {i} — log: {string.Join(" → ", log)}");
         }
     }
 
-    // ── (1) serialization + coalescing ───────────────────────────────────────────────────────────────────────────────
+    // ── (1) serialization + coalescing over the clear/apply contract ────────────────────────────────────────────────
 
     [Fact]
-    public async Task SingleLoad_TearsDownThenBuilds_InThatOrder()
+    public async Task SingleLoad_AppliesDirectly_NoImplicitClear()
     {
         var rig = new Rig();
         rig.Pump.Request(new FakeSource("A"));
         await rig.Pump.WhenIdleAsync();
 
-        Assert.Equal(new[] { "teardown:start:", "teardown:end", "build:start:A", "build:end:A" }, rig.Log);
-    }
-
-    [Fact]
-    public async Task RapidVideoToVideo_FullyTearsTheFirstSessionDownBeforeTheSecondIsBuilt()
-    {
-        var rig = new Rig();
-        rig.Pump.Request(new FakeSource("A"));
-        await rig.Pump.WhenIdleAsync();
-
-        // The skip: B arrives while A's teardown is still releasing the native session (the exact 250ms race from the log).
-        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        rig.TeardownGate = gate;
-        rig.Pump.Request(new FakeSource("B"));
-        await WaitUntilAsync(() => rig.Log.Contains("teardown:start:A"));
-
-        // While A is still tearing down, nothing may have been built — the old code opened B's native session right here.
-        Assert.DoesNotContain("build:start:B", rig.Log);
-
-        rig.TeardownGate = null;
-        gate.SetResult();
-        await rig.Pump.WhenIdleAsync();
-
-        AssertNoBuildInsideATeardown(rig.Log);
-        Assert.Contains("build:end:B", rig.Log);
-        Assert.Equal("B", rig.LiveKey);
-    }
-
-    [Fact]
-    public async Task ThreeLoadsInFlight_OnlyTheLatestIsEverBuilt()
-    {
-        var rig = new Rig();
-        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        rig.TeardownGate = gate;
-
-        rig.Pump.Request(new FakeSource("A"));
-        await WaitUntilAsync(() => rig.Log.Contains("teardown:start:"));
-        rig.Pump.Request(new FakeSource("B"));
-        rig.Pump.Request(new FakeSource("C"));
-
-        rig.TeardownGate = null;
-        gate.SetResult();
-        await rig.Pump.WhenIdleAsync();
-
-        // A and B are both known-stale by the time their turn comes — a session we already know is stale is NEVER built.
-        Assert.DoesNotContain("build:start:A", rig.Log);
-        Assert.DoesNotContain("build:start:B", rig.Log);
-        Assert.Contains("build:end:C", rig.Log);
-        Assert.Equal("C", rig.LiveKey);
-        AssertNoBuildInsideATeardown(rig.Log);
-    }
-
-    [Fact]
-    public async Task ARequestArrivingDuringABuild_MakesThatBuildObserveItselfStale()
-    {
-        var rig = new Rig();
-        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        rig.BuildGate = gate;
-
-        rig.Pump.Request(new FakeSource("A"));
-        await WaitUntilAsync(() => rig.Log.Contains("build:start:A"));
-        rig.Pump.Request(new FakeSource("B"));   // the user skips again mid-open
-
-        rig.BuildGate = null;
-        gate.SetResult();
-        await rig.Pump.WhenIdleAsync();
-
-        // The in-flight build sees IsStale == true and (in the host) abandons publishing/opening its player.
-        Assert.True(rig.BuildSawStaleness[0], "the superseded build did not observe its own staleness");
-        Assert.Equal("B", rig.LiveKey);
-        AssertNoBuildInsideATeardown(rig.Log);
-    }
-
-    [Fact]
-    public async Task RedundantLoadOfTheLiveSource_IsDropped_NoTeardownNoRebuild()
-    {
-        var rig = new Rig();
-        rig.Pump.Request(new FakeSource("A"));
-        await rig.Pump.WhenIdleAsync();
-        int before = rig.Log.Length;
-
-        rig.Pump.Request(new FakeSource("A"));   // a placement flip / re-published source / kind re-evaluation
-        await rig.Pump.WhenIdleAsync();
-
-        Assert.Equal(before, rig.Log.Length);    // nothing happened — the video must never restart from 0
+        // No teardown precedes the very first load anymore — clear only ever runs for a RequestClear() (the host's
+        // Stop) or when the HOST itself, not the pump, decides a Rebuild needs one.
+        Assert.Equal(new[] { "apply:start:A", "apply:end:A" }, rig.Log);
+        Assert.Equal(0, rig.ClearCalls);
         Assert.Equal("A", rig.LiveKey);
     }
 
     [Fact]
-    public async Task Clear_TearsDownWithoutBuilding_AndInvalidatesAQueuedLoad()
+    public async Task ApplyForANewKey_DoesNotInvokeClear()
     {
         var rig = new Rig();
         rig.Pump.Request(new FakeSource("A"));
         await rig.Pump.WhenIdleAsync();
 
-        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        rig.TeardownGate = gate;
+        // The video→video switch-in-place shape: a different key, no teardown anywhere in the pump.
         rig.Pump.Request(new FakeSource("B"));
-        await WaitUntilAsync(() => rig.Log.Contains("teardown:start:A"));
-        rig.Pump.RequestClear();                 // the host's Stop — it must not be overtaken by the load already on its way
+        await rig.Pump.WhenIdleAsync();
 
-        rig.TeardownGate = null;
+        Assert.Equal(new[] { "apply:start:A", "apply:end:A", "apply:start:B", "apply:end:B" }, rig.Log);
+        Assert.Equal(0, rig.ClearCalls);
+        Assert.Equal("B", rig.LiveKey);
+    }
+
+    [Fact]
+    public async Task ThreeLoadsInFlight_OnlyTheLatestIsEverApplied()
+    {
+        var rig = new Rig();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.ApplyGate = gate;
+
+        rig.Pump.Request(new FakeSource("A"));
+        await WaitUntilAsync(() => rig.Log.Contains("apply:start:A"));
+        rig.Pump.Request(new FakeSource("B"));
+        rig.Pump.Request(new FakeSource("C"));
+
+        rig.ApplyGate = null;
         gate.SetResult();
         await rig.Pump.WhenIdleAsync();
 
-        Assert.DoesNotContain("build:start:B", rig.Log);
+        // A's own apply was already in flight when B/C arrived, so the pump lets it finish (an apply in flight is never
+        // aborted mid-way — that is the HOST's job via IsStale). B never even reaches the coalescing slot's front: only
+        // the LATEST pending request (C) survives it.
+        Assert.Contains("apply:end:A", rig.Log);
+        Assert.DoesNotContain("apply:start:B", rig.Log);
+        Assert.Contains("apply:start:C", rig.Log);
+        Assert.Contains("apply:end:C", rig.Log);
+        Assert.Equal("C", rig.LiveKey);
+    }
+
+    [Fact]
+    public async Task ARequestArrivingDuringAnApply_MakesThatApplyObserveItselfStale()
+    {
+        var rig = new Rig();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.ApplyGate = gate;
+
+        rig.Pump.Request(new FakeSource("A"));
+        await WaitUntilAsync(() => rig.Log.Contains("apply:start:A"));
+        rig.Pump.Request(new FakeSource("B"));   // the user skips again mid-open
+
+        rig.ApplyGate = null;
+        gate.SetResult();
+        await rig.Pump.WhenIdleAsync();
+
+        // The in-flight apply sees IsStale == true and (in the host) abandons publishing/opening its player.
+        Assert.True(rig.ApplySawStaleness[0], "the superseded apply did not observe its own staleness");
+        Assert.Equal("B", rig.LiveKey);
+    }
+
+    [Fact]
+    public async Task Clear_InvalidatesAQueuedLoad_AndNeverApplies()
+    {
+        var rig = new Rig();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.ApplyGate = gate;
+
+        rig.Pump.Request(new FakeSource("A"));
+        await WaitUntilAsync(() => rig.Log.Contains("apply:start:A"));
+        rig.Pump.Request(new FakeSource("B"));       // queued behind A's in-flight apply
+        rig.Pump.RequestClear();                     // must overtake B — the host's Stop() call
+
+        rig.ApplyGate = null;
+        gate.SetResult();
+        await rig.Pump.WhenIdleAsync();
+
+        Assert.Contains("apply:end:A", rig.Log);      // A, already in flight, still finishes
+        Assert.DoesNotContain("apply:start:B", rig.Log);
+        Assert.Contains(rig.Log, l => l.StartsWith("clear:start", StringComparison.Ordinal));
+        Assert.Contains("clear:end", rig.Log);
         Assert.Equal("", rig.LiveKey);
+        AssertNeverOverlapping(rig.Log);
     }
 
     // ── (2) the start watchdog ───────────────────────────────────────────────────────────────────────────────────────

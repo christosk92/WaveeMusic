@@ -116,7 +116,7 @@ sealed class PopOutVideoContent : Component
         // Size the root to THIS window's viewport (the AppHost does NOT auto-stretch a scene root — a bare Grow=1 hugs to
         // 0×0; WaveeShell fills the same way).
         var vp = UseContextSignal(Viewport.Size);
-        var src = Source.Value;                 // subscribe → remount the stage on a source change
+        var src = Source.Value;                 // subscribe → re-render on a source change (does NOT remount the stage — see stageKey below)
         var binding = Player.Value;             // subscribe → repaint the plate when the player arrives
         // Mount whenever a player exists — a brief source null must not unmount the only MF pump.
         bool live = VideoSurfaceMount.ShouldMountPlayerStage(binding.Player is not null);
@@ -125,7 +125,9 @@ sealed class PopOutVideoContent : Component
         // ("Exit full screen") and MediaPlayerElement's `case Keys.Escape when PresentingFullscreen` reflect the REAL
         // state instead of permanently reading "not fullscreen" and offering to enter a mode we are already in.
         bool hostFullscreen = Bridge is { } fsBridge && fsBridge.DetachedFullscreen.Value;
-        string stageKey = src?.Key ?? ("gen:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        // PLAYER identity only — a source change (a video→video skip) must never remount the stage, only a rebuilt
+        // player (a new Generation) may. See DockedVideoSurface's identical stage-key remark.
+        string stageKey = "gen:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return new BoxEl
         {
             Direction = 1,
@@ -218,6 +220,9 @@ sealed class PopOutVideoStage : Component
                 CustomAspectRatio = bridge?.VideoCustomAspectRatio,
                 AspectModeChanged = bridge is null ? null : bridge.SetVideoAspect,
                 MoreMenuItems = bridge is null ? null : () => VideoPlacementMenu.Items(bridge, settings, includeFullscreen: false),
+                // Live current-track art instead of the engine's black DefaultPoster — during a source switch the
+                // poster covers the stage, and black there reads as broken. See LivePosterArt for the freeze rationale.
+                PosterContent = LivePosterArt.Make(),
                 SuppressTransport = suppress,
                 // Wired on EVERY Wavee surface: MediaPlayerElement.ToggleFullscreen prefers this over its own overlay
                 // path, so the engine's modal light-dismiss fullscreen (and with it "Alt-Tab leaves fullscreen" and the

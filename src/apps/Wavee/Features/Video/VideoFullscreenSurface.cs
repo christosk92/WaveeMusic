@@ -211,17 +211,21 @@ sealed class VideoFullscreenSurface : Component
         OnClick = () => { if (!_root.IsNull) hooks.FocusNode?.Invoke(_root, false); },
     };
 
-    /// <summary>The video area — hosts the SHARED <see cref="PopOutVideoStage"/>, keyed on the source identity so it
-    /// remounts cleanly on a track/source change. Poster + spinner cover the brief no-player window a placement MOVE
-    /// leaves (close-then-open — B22), exactly like <see cref="InWindowVideoPip.BuildVideoArea"/>.</summary>
+    /// <summary>The video area — hosts the SHARED <see cref="PopOutVideoStage"/>, keyed on the PLAYER identity (the
+    /// binding generation) so a source change alone (a video→video skip) never remounts it; only a rebuilt player does.
+    /// Poster + spinner cover the brief no-player window a placement MOVE leaves (close-then-open — B22), and overlay
+    /// (rather than replace) a still-live stage while its resolved source's first frame has not landed yet — see the
+    /// `switching` derivation below — exactly like <see cref="InWindowVideoPip.BuildVideoArea"/>.</summary>
     static Element VideoArea(PlaybackBridge b, Action<NodeHandle> realized)
     {
-        var src = b.PopOutVideoSource.Value;      // subscribe → remount the stage on a source change
+        var src = b.PopOutVideoSource.Value;      // subscribe → re-render (switching overlay/poster), not a remount — see stageKey below
         var binding = b.VideoPlayer.Value;        // subscribe → poster ↔ hole
         bool mount = VideoSurfaceMount.ShouldMountPlayerStage(binding.Player is not null);
         if (mount)
         {
-            string stageKey = src?.Key ?? ("gen:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            // PLAYER identity only — a source change (a video→video skip) must never remount the stage, only a
+            // rebuilt player (a new Generation) may. See DockedVideoSurface's identical stage-key remark.
+            string stageKey = "gen:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
             // Bridge puts the placement ladder on the ⋯ menu so fullscreen is not a dead end — you can leave it FOR a
             // placement, not only back to wherever ReturnTo happens to point. Settings is deliberately null: the only
             // row that reads it is "Always on top", which is Detached-only and therefore unreachable from fullscreen.
@@ -241,18 +245,15 @@ sealed class VideoFullscreenSurface : Component
                 // `case Keys.Escape when PresentingFullscreen` arm — i.e. Escape did not leave.
                 IsHostFullscreen = true,
             }) with { Key = "fsstage:" + stageKey };
-            if (src is not null)
-                return new BoxEl
-                {
-                    Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = ColorF.Transparent,
-                    OnRealized = realized,
-                    Children = [stage],
-                };
+            // While a stage is mounted the ENGINE element is the one loading affordance (poster + spinner +
+            // "Starting playback…") — stacking the app's own LoadingOverlay on top produced two spinners at once.
+            // The stage stays mounted and pumping across a source switch; the engine holds the previous frame and
+            // crossfades to the new source's first frame on its own.
             return new BoxEl
             {
-                Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent,
+                Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = ColorF.Transparent,
                 OnRealized = realized,
-                Children = [stage, LoadingOverlay(b.CurrentTrack.Value)],
+                Children = [stage],
             };
         }
 

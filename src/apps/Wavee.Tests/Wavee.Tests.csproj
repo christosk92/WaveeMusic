@@ -374,12 +374,15 @@
     <!-- P4's synthetic-playable builder (the Track a picked/dropped file becomes) + the shell drop-classification rule.
          Engine-free on purpose, so "what does a file become?" is pinned without a picker, a window or a disk. -->
     <Compile Include="..\Wavee\App\LocalPlayables.cs" Link="LocalPlayables.cs" />
-    <!-- The video-supersession fix's two engine-free decision units: the serialized/coalescing load pump (teardown before
-         build, latest-wins) and the per-load start watchdog. Both are System+BCL only BY DESIGN so VideoLoadSupersessionTests
-         pin the real ordering/fault contract against production code instead of a mock — the process-global native
-         PlayReady session it guards cannot be exercised headlessly. -->
+    <!-- The video-supersession fix's engine-free decision units: the serialized/coalescing load pump (clear/apply,
+         latest-wins), the per-load start watchdog, and (video-smooth-switching rework) the pure switch-action table
+         VideoSwitchPolicy that decides none/seek/switch-in-place/rebuild for FluentVideoMediaHost.ApplyAsync. All are
+         System+BCL only BY DESIGN so VideoLoadSupersessionTests/VideoSwitchPolicyTests pin the real ordering/decision
+         contract against production code instead of a mock — the process-global native PlayReady session they guard
+         cannot be exercised headlessly. -->
     <Compile Include="..\Wavee\SpotifyLive\Audio\VideoLoadPump.cs" Link="VideoLoadPump.cs" />
     <Compile Include="..\Wavee\SpotifyLive\Audio\VideoStartWatchdog.cs" Link="VideoStartWatchdog.cs" />
+    <Compile Include="..\Wavee\SpotifyLive\Audio\VideoSwitchPolicy.cs" Link="VideoSwitchPolicy.cs" />
     <!-- the v9 video-manifest parser (System.Text.Json + FluentGpu.WindowsApi's DashSourceDescriptor) — SpotifyVideoManifestTests
          drive it against a real captured manifest in Fixtures\spotify-video-manifest-v9.json -->
     <Compile Include="..\Wavee\SpotifyLive\SpotifyVideoManifest.cs" Link="SpotifyVideoManifest.cs" />
@@ -515,6 +518,10 @@
          the notes store both link through it, so the test compilation needs it too; its engine-bound sibling
          (ReleaseNotesText.cs, span runs over FluentGpu.Controls) is deliberately NOT here. -->
     <Compile Include="..\Wavee\Features\ReleaseNotes\ReleaseNotesLinks.cs" />
+    <!-- video-smooth-switching plan §2/§6: the keyed single-flight + TTL memo fronting PlaybackBridge.ResolveVideoSource.
+         Engine-free/BCL-only by construction (System.Threading only) — SingleFlightMemoTests drive the real dedupe/TTL/
+         cancellation-detach/invalidate/failure-not-cached contract against production code, not a mock of it. -->
+    <Compile Include="..\Wavee\App\SingleFlightMemo.cs" />
   </ItemGroup>
 
   <ItemGroup>
