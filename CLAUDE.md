@@ -72,5 +72,6 @@ this reason.
   code, component trees and ASCII wireframes; implementation is parallel subagents on disjoint files, and only the
   orchestrator builds/tests/launches.
 - App skills: `.claude/skills/wavee` (deep links, backend, diagnostics), `wavee-sidebar` (the sidebar platform),
-  `releasing` (the release runbook + gotchas). Sidebar platform design: `docs/guide/sidebar-extension-platform.md`;
+  `releasing` (the release runbook + gotchas), `github-triage` (labels, milestones, the project board, issue
+  forms — every modifying `gh` call is approved by the user first). Sidebar platform design: `docs/guide/sidebar-extension-platform.md`;
   playback modules: `docs/guide/playback-modules.md`; releasing: `docs/guide/releasing-wavee.md`.
