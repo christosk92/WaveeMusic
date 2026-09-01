@@ -333,6 +333,11 @@ static class WaveeSettings
     public static readonly SettingKey<string> ReleaseNotesPreviousVersion = new("app.whatsnew.previousVersion", "");
     // A crash report written by the previous run that the shell has not yet surfaced (cleared after the toast).
     public static readonly SettingKey<string> PendingCrashReport = new("crash.pendingReport", "");
+    // "Don't ask again after a crash" — checked in the crash prompt dialog; suppresses the modal in favor of a sticky toast.
+    public static readonly SettingKey<bool> CrashPromptOptOut = new("crash.promptOptOut", false);
+    // RunMarker.Begin/End bracket every launch ("running" → "clean"); a stale "running" seen on the next Begin means
+    // the previous process exited without running managed shutdown (crash, kill, or an OS-forced termination).
+    public static readonly SettingKey<string> RunMarker = new("app.runMarker", "");
 }
 
 // The LibraryPage's per-kind persisted state (the "Your Library" master–detail: albums/artists/podcasts). Keys are built

@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.6] - unreleased
+
+### Added
+
+- **Report a problem from inside Wavee.** Settings › About has "Report a problem…" and "Suggest a feature…", the
+  Diagnostics tab lists recent crash reports with a Report button, and after a crash the next launch offers to file
+  it. Wavee opens the matching GitHub form with the version, install source, architecture and Windows build filled
+  in, and copies a redacted report (personal paths, account details, secrets and addresses removed; track names
+  kept) to the clipboard and to a `wavee-report-<date>.txt` file beside the logs for you to paste.
+
 ## [0.2.5] - 2026-09-01
 
 ### Fixed

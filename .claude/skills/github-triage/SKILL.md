@@ -43,6 +43,40 @@ There is **no CI**: everything below is applied locally with `gh` from the dev b
 - **`resolution:`** on close — `duplicate`, `wontfix`, `invalid`, `by-design`, `cannot-reproduce`.
 - `good first issue`, `help wanted` unchanged.
 
+## In-app reports (what arrives from Wavee)
+
+Wavee's own "Report a problem…" / "Suggest a feature…" flow (`src/apps/Wavee/Features/Feedback/ReportDialog.cs` +
+`Diagnostics/{ReportKinds,ReportBundle,IssueFormUrl,ReportRedactor}.cs`; full design in
+`docs/plans/wavee/issue-reporting-implementation.md`) opens a prefilled issue-form URL and puts the full report on
+the clipboard — recognise its shape when triaging:
+
+- **Title** starts with `[Crash]: `, `[Bug]: `, or `[Feature]: ` (Discussions posts — Question/Idea — have no prefix).
+- **Version / Install source / Architecture / Windows version** arrive prefilled — install-source and
+  architecture are `input` fields (not dropdowns, see Gotchas below) so they show the app's own values verbatim
+  (`Microsoft Store` / `Sideloaded (.appinstaller or .msix from GitHub)` / `Built from source`, `x64` / `ARM64`).
+- **The first line of the neighbouring textarea carries the dropdown answers Wavee couldn't prefill directly**:
+  crash reports show `"When: <x> · Reproduces: <y>"` above the "what were you doing" text; bug/feature reports
+  show `"Area: <x>"` above the problem/what-happened text. Treat that line as the dropdown answer even though it
+  landed in a textarea.
+- **The pasted report** (clipboard content the reporter pastes into the crash-report / diagnostics / log-lines
+  field) is fenced as `--- Crash report (redacted) ---`, `--- Diagnostics ---`, and
+  `--- Log excerpt (<source>, last N lines, redacted) --- \`\`\`text ... \`\`\``. A copy is also saved next to the
+  reporter's own logs as `wavee-report-<yyyyMMdd-HHmmss>.txt`, so "check your logs folder for a file starting with
+  `wavee-report-`" is a legitimate ask if a paste got mangled.
+- **Redaction guarantees**: every report is passed through `ReportRedactor.Redact` before it ever left the app —
+  Windows user/machine names, the signed-in Spotify user id + display name, Connect device names, profile paths,
+  emails, bearer tokens and other `key=value` secrets, country/tier, IPs and MACs are all replaced with placeholder
+  tokens (`<user>`, `<ip>`, `<token>`, …). **Track/artist/playlist names are deliberately kept** — reporters can
+  still say what was playing. A report that still contains obvious personal data was hand-edited after copying, or
+  predates this pipeline.
+- **Crash-prompt sources**, strongest first: a managed exception handler's own written report (`ManagedReport`), a
+  Windows Error Reporting `.dmp` the app noticed (`WerDump`), or a `RunMarker` left reading `"running"` from a
+  process that never reached its own shutdown path (`UncleanExit` — also fires on an OS-forced logoff kill, not
+  only a real crash, so treat an `UncleanExit`-only report with a little more skepticism than a `ManagedReport`
+  one). A developer can rehearse the whole pipeline locally with `dotnet run --project src/apps/Wavee -- --fake
+  --crash-probe throw` (managed report path) or `--crash-probe failfast` (no managed report, WER/unclean-exit
+  path) — mention this if you need someone to reproduce the reporting flow itself rather than the underlying bug.
+
 ## Triage recipe (ask first, then run)
 
 ```powershell
@@ -123,3 +157,8 @@ Drift 0.4, Ebb 0.5, Fetch 0.6, …
 - `git fetch --prune` may drop many stale `origin/*` refs — GitHub only has `main`; that is expected.
 - The user works in the same checkout with uncommitted changes: when committing docs/tooling, `git add` only the
   files you wrote, use a `chore/…` branch, and switch back to `main` afterwards.
+- **Issue-form `?field-id=` query params prefill `input`/`textarea` fields but never `dropdown` fields** (verified
+  2026-09-02) — this is why `crash_report.yml`/`bug_report.yml`'s `install-source` and `architecture` are `input`
+  fields with the option list in the description rather than `dropdown` fields, and why the app mirrors its other
+  dropdown answers (`when`/`reproduces`/`area`) into the first line of the neighbouring textarea instead of relying
+  on the URL. Keep this in mind before adding a new prefillable field to any issue form.

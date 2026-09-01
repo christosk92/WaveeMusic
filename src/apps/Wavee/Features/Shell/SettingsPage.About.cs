@@ -75,20 +75,28 @@ sealed partial class SettingsPage
         },
     };
 
+    /// <summary>The "Copy diagnostics" text — hoisted to <c>internal static</c> (was a local closure of
+    /// <see cref="AboutTab"/>) so <c>ReportComposer.Compose</c> can build the SAME diagnostics block for a report,
+    /// off the UI thread, without a component in scope. Callable with any <paramref name="svc"/> including null
+    /// (the pre-login / no-services shell state), matching every other read in here.</summary>
+    internal static string DiagInfoText(Services? svc)
+    {
+        var me = AppVersion.Info;
+        string os = OsDescription;
+        string dotnet = ".NET " + Environment.Version;
+        return $"{me.OneLine(os, ArchToken)}\nOS: {os}\nEngine: FluentGpu · {dotnet}\nGPU: {WaveeNowReceipts.GpuSummary()}\nData folder: {SettingsShared.AppDataRoot}\n" +
+            $"Feed: {(svc?.AppUpdate.FeedUrl is { Length: > 0 } f ? f : "—")}\n" +
+            $"Playback runtime: {(svc?.Playback.RuntimeStatus.Value ?? PlaybackRuntimeStatus.NotApplicable).Outcome}\n" +
+            WaveeNowReceipts.LastCopyText;
+    }
+
     /// <summary>The About tab. Everything that has LIVE state (the update snapshot, the three persisted switches) is
     /// inside <see cref="AboutUpdatePanel"/>, an embedded component — never a hook in this method, which the tab switch
     /// calls conditionally.</summary>
     Element AboutTab(Services? svc, InputHooks hooks)
     {
-        var me = AppVersion.Info;
         string os = OsDescription;
-        string dotnet = ".NET " + Environment.Version;
-
-        string DiagInfo() =>
-            $"{me.OneLine(os, ArchToken)}\nOS: {os}\nEngine: FluentGpu · {dotnet}\nGPU: {WaveeNowReceipts.GpuSummary()}\nData folder: {SettingsShared.AppDataRoot}\n" +
-            $"Feed: {(svc?.AppUpdate.FeedUrl is { Length: > 0 } f ? f : "—")}\n" +
-            $"Playback runtime: {(svc?.Playback.RuntimeStatus.Value ?? PlaybackRuntimeStatus.NotApplicable).Outcome}\n" +
-            WaveeNowReceipts.LastCopyText;
+        string DiagInfo() => DiagInfoText(svc);
 
         var kids = new List<Element>
         {
@@ -133,7 +141,9 @@ sealed partial class SettingsPage
                 Children =
                 [
                     whatsNew,
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.SendFeedback), FeedbackUrl),
+                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutReportProblem), () => ReportRequests.Open(ReportKind.Bug)),
+                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutSuggestFeature), () => ReportRequests.Open(ReportKind.Feature)),
+                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutAllIssues), FeedbackUrl),
                     HyperlinkButton.Create(Loc.Get(Strings.Settings.About.Website), WebsiteUrl),
                     HyperlinkButton.Create(Loc.Get(Strings.Settings.About.PrivacyPolicy), PrivacyUrl),
                     HyperlinkButton.Create(Loc.Get(Strings.Settings.About.ThirdPartyNotices), OpenThirdPartyNotices),

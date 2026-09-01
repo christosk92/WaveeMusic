@@ -45,6 +45,8 @@ static class WaveeSettings
     public static readonly SettingKey<string> ReleaseNotesPendingFrom = new("app.whatsnew.pendingFrom", "");
     public static readonly SettingKey<string> ReleaseNotesPreviousVersion = new("app.whatsnew.previousVersion", "");
     public static readonly SettingKey<string> PendingCrashReport = new("crash.pendingReport", "");
+    public static readonly SettingKey<bool> CrashPromptOptOut = new("crash.promptOptOut", false);
+    public static readonly SettingKey<string> RunMarker = new("app.runMarker", "");
     public static readonly SettingKey<string> LastSeenCrashDumpPath = new("diagnostics.crash.lastDumpPath", "");
     public static readonly SettingKey<long> LastSeenCrashDumpTicksUtc = new("diagnostics.crash.lastDumpTicksUtc", 0L);
 

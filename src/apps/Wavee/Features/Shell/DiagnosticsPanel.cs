@@ -182,6 +182,11 @@ sealed class DiagnosticsPanel(IAppSettings? settings = null) : Component
                 IsEnabled = _nc is not null,
             }));
 
+        // The crash-reports listing lives at the end of this switches block, not inside the log card below it — it
+        // is "what crashed", not "what was logged", and belongs beside the other diagnostic surfaces a reporter
+        // reaches for first.
+        rows.Add(Embed.Comp(() => new CrashReportsCard()));
+
         return new BoxEl
         {
             Direction = 1, Gap = Spacing.XS, Shrink = 0f, AlignSelf = FlexAlign.Stretch,
@@ -395,6 +400,8 @@ sealed class DiagnosticsPanel(IAppSettings? settings = null) : Component
             MenuFlyoutItem.SubMenu(Loc.Get(Strings.Settings.Diagnostics.Category), cats, Icons.Filter),
             MenuFlyoutItem.Separator,
             new(Loc.Get(Strings.Settings.Diagnostics.ExportSession), Icons.Download, true, () => ExportSession(hooks, copy)),
+            new(Loc.Get(Strings.Report.ThisSession), Icons.Attention, true,
+                () => ReportRequests.Open(ReportKind.Bug, new ReportPrefill(PastSession: SelectedPastSession()))),
             new(Loc.Get(Strings.Settings.Diagnostics.OpenLogFolder), Icons.Folder, true,
                 () => SettingsShared.OpenFolder(Path.GetDirectoryName(WaveeLog.Instance.FilePath ?? "") ?? SettingsShared.AppDataRoot)),
             new(Loc.Get(Strings.Settings.Diagnostics.RefreshSessions), Icons.Refresh, true,
@@ -407,6 +414,16 @@ sealed class DiagnosticsPanel(IAppSettings? settings = null) : Component
                     Loc.Get(Strings.Settings.Diagnostics.ClearRing),
                     () => { WaveeLog.Instance.ClearRing(); _refresh.Value = _refresh.Peek() + 1; })),
         ];
+    }
+
+    /// <summary>The past session the picker currently has selected, or null when the live ring (index 0) is
+    /// selected — <see cref="ReportComposer.Compose"/> reads null as "use the live ring" the same way the rest
+    /// of this panel does.</summary>
+    WaveeLogSessions.Info? SelectedPastSession()
+    {
+        int sel = _session.Peek();
+        if (sel == 0 || _sessions is not { } sessions || sel - 1 >= sessions.Count) return null;
+        return sessions[sel - 1];
     }
 
     void ExportSession(InputHooks hooks, IReadOnlyList<LogRowData> visible)

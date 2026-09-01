@@ -151,6 +151,10 @@ static class Program
                 }
             }
             catch { }
+            // A managed handler already wrote (or tried to write) a report above — mark the run "crashed" rather
+            // than leaving "running" on disk, so the next launch's RunMarker.Begin doesn't ALSO read it as an
+            // unexplained UncleanExit (CrashPromptPolicy would otherwise double-count the same crash).
+            try { RunMarker.MarkCrashed(settings); } catch { }
         };
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
@@ -163,12 +167,24 @@ static class Program
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
             try { DealerArchive.Instance.Flush(); } catch { }
+            // Belt-and-braces: the normal path (after FluentAppHarness.Run returns, below) already calls
+            // RunMarker.End, but ProcessExit is the one hook that ALSO fires when Windows force-closes us during
+            // an otherwise-orderly shutdown before that line runs.
+            try { RunMarker.End(settings); } catch { }
         };
 
         if (Array.IndexOf(args, "--perf-bench") >= 0)
             Environment.SetEnvironmentVariable("WAVEE_PERF_BENCH", "1");
         if (Array.IndexOf(args, "--startup-bench") >= 0)
             Environment.SetEnvironmentVariable("WAVEE_STARTUP_BENCH", "1");
+        // --crash-probe [throw|failfast]: a rehearsal knob for the crash-prompt pipeline (a static, not an env var —
+        // this repo's CLAUDE.md bans behaviour switches via environment variables). ReportChrome reads CrashProbe.Mode
+        // after mount and either throws (exercises the managed UnhandledException path + a written crash report) or
+        // Environment.FailFast's (exercises the no-managed-report / WER path) two seconds in.
+        int crashProbeIdx = Array.IndexOf(args, "--crash-probe");
+        if (crashProbeIdx >= 0)
+            CrashProbe.Mode = crashProbeIdx + 1 < args.Length && !args[crashProbeIdx + 1].StartsWith("--")
+                ? args[crashProbeIdx + 1] : "throw";
 
         int frames = -1;
         string? screenshot = null;
@@ -335,7 +351,26 @@ static class Program
         // Seed the theme BEFORE the window comes up (no startup flash): honor the persisted preference, falling back to
         // the live OS theme for a fresh install (mode == System). FluentApp.Run then applies the matching Mica material
         // and the in-app surfaces mount with the right tokens; the store is reused by the app so there's one instance.
-        CrashDumpProbe.LogPendingCrashDump(settings, WaveeLog.Instance);
+        //
+        // This is also where the crash-prompt decision for THIS launch is made, once, from every signal the previous
+        // process could have left behind: a managed report (strongest), a WER dump the probe just surfaced, or —
+        // absent both — a RunMarker still reading "running" (the previous process never reached its own orderly
+        // shutdown). versionChanged distinguishes "the previous process was replaced by an update deployment" from
+        // an actual crash, since a deployment kills the old process the same way an unclean exit does; it must NOT
+        // suppress a managed report or a WER dump — only the weaker UncleanExit signal (CrashPromptPolicy.Decide).
+        string? newDump = CrashDumpProbe.LogPendingCrashDump(settings, WaveeLog.Instance);
+        RunOutcome prevRun = RunMarker.Begin(settings);
+        bool versionChanged = Array.IndexOf(args, AppRelaunch.RelaunchedAfterUpdateFlag) >= 0
+            || settings.Get(WaveeSettings.LastRunVersion) != AppVersion.Info.LastRunKey;
+        CrashPromptPolicy.ThisLaunch = CrashPromptPolicy.Decide(
+            settings.Get(WaveeSettings.PendingCrashReport), newDump, prevRun,
+            settings.Get(WaveeSettings.CrashPromptOptOut), versionChanged);
+        // One-shot: the next read of PendingCrashReport (a relaunch, a fresh launch after this one) must not find
+        // the same report and prompt again — ReportChrome/ReportComposer carry the path they need via
+        // CrashPromptPolicy.ThisLaunch.ReportPath instead. Deferred to the shell the same way AfterUpdateDialog
+        // defers its own one-shot "what's new" plate — hence the sibling latch set right below.
+        settings.Set(WaveeSettings.PendingCrashReport, "");
+        AfterUpdateDialog.CrashNoticeThisLaunch = CrashPromptPolicy.ThisLaunch.Mode != CrashPromptMode.None;
         int themeMode = settings.Get(WaveeSettings.ThemeMode);
         var themeKind = themeMode switch { 1 => ThemeKind.Light, 2 => ThemeKind.Dark, _ => FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark };
         Tok.Use(WaveeTheme.ResolvePalette(settings.Get(WaveeSettings.PaletteId)), themeKind);
@@ -486,6 +521,9 @@ static class Program
                     ImageCacheDirectory = Path.Combine(SettingsShared.AppDataRoot, "cache", "images"),
                 },
                 new HarnessOptions { Frames = frames, Screenshot = screenshot });
+            // The window came down in an orderly way (FluentAppHarness.Run returned instead of throwing) — close out
+            // the marker RunMarker.Begin opened above so the NEXT launch's Begin reads "clean", not a stale "running".
+            RunMarker.End(settings);
             // Process-exit flush for session.json (nav + the playback restore section): the shell's unmount cleanup never
             // runs on shutdown (AppHost.Dispose doesn't unmount the tree), so a pending debounced save would be lost.
             SessionSnapshotStore.FlushActive();
@@ -503,6 +541,10 @@ static class Program
             // front of the machine, and a crash the user walked away from should still be offered when they come back.
             try { if (reportPath.Length > 0) settings.Set(WaveeSettings.PendingCrashReport, reportPath); }
             catch { }
+            // Same reasoning as the UnhandledException handler above: a report was just written (or attempted) for
+            // THIS run, so mark the run "crashed" rather than leaving "running" behind for the next launch's
+            // RunMarker.Begin to (correctly, but redundantly) read as an unexplained UncleanExit.
+            try { RunMarker.MarkCrashed(settings); } catch { }
             try
             {
                 var body = Loc.Get(Strings.Crash.Body) + "\n\n"

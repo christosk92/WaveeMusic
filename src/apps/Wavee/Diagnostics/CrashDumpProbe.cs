@@ -9,15 +9,17 @@ namespace Wavee;
 /// </summary>
 static class CrashDumpProbe
 {
-    public static void LogPendingCrashDump(IAppSettings settings, IWaveeLog log)
+    /// <returns>The newest dump path when this launch found a NEW dump it hadn't logged before; otherwise null
+    /// (no CrashDumps dir, no dumps, the newest dump was already seen, or the probe itself failed).</returns>
+    public static string? LogPendingCrashDump(IAppSettings settings, IWaveeLog log)
     {
         try
         {
             string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrashDumps");
-            if (!Directory.Exists(dir)) return;
+            if (!Directory.Exists(dir)) return null;
 
             string[] dumps = Directory.GetFiles(dir, "Wavee.exe*.dmp");
-            if (dumps.Length == 0) return;
+            if (dumps.Length == 0) return null;
 
             string newestPath = dumps[0];
             DateTime newestWrite = File.GetLastWriteTimeUtc(newestPath);
@@ -35,7 +37,7 @@ static class CrashDumpProbe
             long seenTicks = settings.Get(WaveeSettings.LastSeenCrashDumpTicksUtc);
             if (string.Equals(seenPath, newestPath, StringComparison.OrdinalIgnoreCase) &&
                 seenTicks == newestWrite.Ticks)
-                return;
+                return null;
 
             long size = 0;
             try { size = new FileInfo(newestPath).Length; } catch { }
@@ -51,10 +53,12 @@ static class CrashDumpProbe
 
             settings.Set(WaveeSettings.LastSeenCrashDumpPath, newestPath);
             settings.Set(WaveeSettings.LastSeenCrashDumpTicksUtc, newestWrite.Ticks);
+            return newestPath;
         }
         catch (Exception ex)
         {
             log.Error("crash", "wer.dump.detect.failed", "Failed to inspect CrashDumps", ex);
+            return null;
         }
     }
 }

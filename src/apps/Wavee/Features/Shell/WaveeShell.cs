@@ -592,30 +592,10 @@ sealed class WaveeShell : Component
         });
         // Best-effort session flush on shell unmount. Process-exit Flush lives in Program.cs.
         UseEffect(() => (Action?)(() => _session.Flush()), DepKey.Empty);
-        // The crash notice. A previous run that died wrote the report path into settings; the shell is the first
-        // surface that can TELL anyone, so it raises one warning toast on mount and clears the setting immediately —
-        // the notice is about the LAST run, so it must not survive into the next one whether or not it was read.
-        UseEffect(() =>
-        {
-            string pendingReport = _settings.Get(WaveeSettings.PendingCrashReport);
-            // Latch it for AfterUpdateChrome, whose effect drains AFTER this one and would otherwise find the setting
-            // already cleared: one launch raises either the crash notice or the "welcome to the new version" plate,
-            // never both. The deferred plate stays armed for the next launch.
-            AfterUpdateDialog.CrashNoticeThisLaunch = pendingReport.Length > 0;
-            if (pendingReport is { Length: > 0 } report)
-            {
-                _settings.Set(WaveeSettings.PendingCrashReport, "");
-                string folder = Path.GetDirectoryName(report) ?? SettingsShared.AppDataRoot;
-                Toast.Show(Loc.Get(Strings.Common.CrashLastRun), new ToastOptions
-                {
-                    Severity = InfoBarSeverity.Warning,
-                    DurationMs = 0f,                   // sticky: a crash report the user never saw is not a transient
-                    ActionLabel = Loc.Get(Strings.Common.OpenReportFolder),
-                    OnAction = () => SettingsShared.OpenFolder(folder),
-                    DedupeKey = "crash.pendingReport",
-                });
-            }
-        }, DepKey.Empty);
+        // The crash notice used to live here (a sticky toast reading PendingCrashReport off settings). It moved to
+        // Program.cs (RunMarker + CrashPromptPolicy.Decide, latched into CrashPromptPolicy.ThisLaunch before the app
+        // loop even starts) and ReportChrome (which consumes that latch and opens the modal report prompt, or the
+        // opted-out toast) — see the ReportChrome mount below.
         // Mouse side buttons / keyboard Back-Forward keys arrive as an OS COMMAND (WM_APPCOMMAND), not as a click at a
         // position, so they cannot be an Accelerator box like Alt+Left/Right — they come in through the PAL seam and land
         // on the same Back()/Forward() the chord boxes use. Subscribed once for the shell's lifetime.
@@ -1424,6 +1404,12 @@ sealed class WaveeShell : Component
             // was still pending when auth completed). See Features/Setup/SetupChrome.cs.
             Embed.Comp(() => new SetupChrome(_settings)),
             // Zero-size chrome, same reason as the two above (the real Overlay.Service resolves only inside the
+            // OverlayHost subtree): opens the in-app report dialog on request (About / Diagnostics / deep link) and,
+            // once per launch, the crash-reopen prompt Program.cs latched into CrashPromptPolicy.ThisLaunch. MUST
+            // mount before AfterUpdateChrome below — CrashNoticeThisLaunch has to be set before AfterUpdateChrome's
+            // own effect decides whether to show the What's-new plate this launch.
+            Embed.Comp(() => new ReportChrome(_settings)),
+            // Zero-size chrome, same reason as the two above (the real Overlay.Service resolves only inside the
             // OverlayHost subtree): raises the after-update "What's new" plate once, on the first launch that follows
             // an update. See Features/ReleaseNotes/AfterUpdateDialog.cs for the three deferrals.
             Embed.Comp(() => new AfterUpdateChrome(_settings)),
@@ -1736,6 +1722,13 @@ sealed class WaveeShell : Component
     /// opened a real tab on the not-found page and wrote it into the persisted history log.</para></summary>
     void GoDeepLinkOpen(string route, string arg)
     {
+        // wavee://open?route=report&arg=bug|feature|crash|question|idea — a report is a dialog, never a tab/history
+        // entry, so it is handled and returns before the entity-route / ShellRoutes.IsKnown machinery below.
+        if (route.Equals("report", StringComparison.OrdinalIgnoreCase))
+        {
+            ReportRequests.Open(ReportChannels.TryParseKind(arg, out var k) ? k : ReportKind.Bug);
+            return;
+        }
         string key = route;
         string? a = arg.Length == 0 ? null : arg;
         if (a is not null && route.IndexOf(':') < 0

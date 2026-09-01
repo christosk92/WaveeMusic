@@ -16,24 +16,20 @@ body:
       placeholder: "0.2.5 Breaker (0.2.5.6) — from Settings › About"
     validations:
       required: true
-  - type: dropdown
+  - type: input
     id: install-source
     attributes:
       label: Install source
-      options:
-        - Microsoft Store
-        - Sideloaded (.appinstaller or .msix from GitHub)
-        - Built from source
+      description: Microsoft Store · Sideloaded (.appinstaller or .msix from GitHub) · Built from source. Wavee's Report a problem… fills this in.
+      placeholder: Microsoft Store
     validations:
       required: true
-  - type: dropdown
+  - type: input
     id: architecture
     attributes:
       label: Architecture
-      options:
-        - x64
-        - ARM64
-        - Not sure
+      description: x64 or ARM64 (Settings › About shows it). Wavee's Report a problem… fills this in.
+      placeholder: x64
     validations:
       required: true
   - type: input
@@ -73,8 +69,10 @@ body:
     attributes:
       label: Crash report
       description: |
-        Settings › Diagnostics shows the last crash report — paste it whole. If the app won't start at all, the
-        report is also saved in `logs\wavee.log` inside the log folder.
+        In Wavee, open **Settings › About › Report a problem…** (or the prompt shown after a crash) — it copies
+        the redacted crash report to your clipboard and saves it as `wavee-report-<date>.txt` next to the logs;
+        paste it here whole. Raw reports: `crash-report-<date>.txt` in the log folder (**Settings › Diagnostics ›
+        Crash reports › Open**); if the app won't start, the folder is `%LOCALAPPDATA%\Wavee\logs`.
       render: text
     validations:
       required: true

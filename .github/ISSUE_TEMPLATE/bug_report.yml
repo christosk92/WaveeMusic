@@ -23,24 +23,20 @@ body:
       placeholder: "0.2.5 Breaker (0.2.5.6) — from Settings › About"
     validations:
       required: true
-  - type: dropdown
+  - type: input
     id: install-source
     attributes:
       label: Install source
-      options:
-        - Microsoft Store
-        - Sideloaded (.appinstaller or .msix from GitHub)
-        - Built from source
+      description: Microsoft Store · Sideloaded (.appinstaller or .msix from GitHub) · Built from source. Wavee's Report a problem… fills this in.
+      placeholder: Microsoft Store
     validations:
       required: true
-  - type: dropdown
+  - type: input
     id: architecture
     attributes:
       label: Architecture
-      options:
-        - x64
-        - ARM64
-        - Not sure
+      description: x64 or ARM64 (Settings › About shows it). Wavee's Report a problem… fills this in.
+      placeholder: x64
     validations:
       required: true
   - type: input
@@ -73,7 +69,9 @@ body:
     id: diagnostics
     attributes:
       label: Diagnostics info
-      description: Settings › Diagnostics › **Copy diagnostics info**, then paste here.
+      description: |
+        Settings › Diagnostics › **Copy diagnostics info**, then paste here. Settings › About › **Report a
+        problem…** also copies this, already redacted.
       render: text
   - type: textarea
     id: log-lines
@@ -81,7 +79,8 @@ body:
       label: Relevant log lines
       description: |
         Settings › Diagnostics › **Open log folder** → `logs\wavee.log`. Paste only the relevant lines, and please
-        remove anything personal before posting.
+        remove anything personal before posting. Settings › About › **Report a problem…** also copies both this
+        and the diagnostics info above, already redacted.
       render: text
   - type: checkboxes
     id: checklist
