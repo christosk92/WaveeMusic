@@ -34,7 +34,7 @@ static class Program
                 {
                     var bad = a.UnknownKeys("semver", "quad", "codename", "channel", "changelog", "notes", "out",
                                             "repo", "previous-index", "previous-tag", "github-token",
-                                            "allow-unresolved");
+                                            "allow-unresolved", "commits", "allow-unlinked");
                     if (bad.Count > 0) { Console.Error.WriteLine("error: unknown option(s): " + string.Join(", ", bad)); PrintUsage(); return Validator.ExitUsage; }
                     return await Validator.RunAsync(a, cts.Token).ConfigureAwait(false);
                 }
@@ -129,6 +129,9 @@ static class Program
           --previous-index <file>   Optional. The whatsnew-index.json from the rolling feed release; this release
                                     is prepended to it (newest first, capped at 12).
           --previous-tag <tag>      Optional. Fills links.compare and generate-notes' previous_tag_name.
+          --commits <file>          Required with --previous-tag. The commits.json the script writes from
+                                    `git log <previous-tag>..HEAD` — cross-checked against the CHANGELOG's
+                                    (#n) refs; mismatches fail the release (see --allow-unlinked).
           --github-token <token>    Optional. Raises the issue-lookup rate limit and enables the commits and
                                     contributors appendix (POST /releases/generate-notes). Falls back to the
                                     GITHUB_TOKEN environment variable, which is how the release script passes it.
@@ -136,6 +139,9 @@ static class Program
           --allow-unresolved        Optional. Ship even though some referenced issue/PR could not be read from
                                     GitHub (throttled, forbidden, offline). By default that is exit 2: the
                                     authored title/state would otherwise be published as if it had been verified.
+          --allow-unlinked          Optional. Ship although git and CHANGELOG.md disagree about which issues were
+                                    fixed (a commit fixes an issue the CHANGELOG entry doesn't cite, or vice versa).
+                                    By default that is exit 2; mismatches ship as warnings instead.
 
         RENDER OPTIONS
           --notes <file|dir>        Required. An emitted whatsnew.json (or the folder holding one).
@@ -161,6 +167,6 @@ static class Program
             --semver 0.2.0 --quad 0.2.0.17 --codename Breaker --channel stable ^
             --changelog CHANGELOG.md --notes ops/release/wavee/0.2.0 ^
             --out artifacts/release/0.2.0/notes --repo christosk92/WaveeMusic ^
-            --previous-tag wavee-v0.1.2 --github-token $env:GITHUB_TOKEN
+            --previous-tag wavee-v0.1.2 --commits artifacts/release/0.2.0/commits.json --github-token $env:GITHUB_TOKEN
         """;
 }

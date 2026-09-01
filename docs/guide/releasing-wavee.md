@@ -153,7 +153,7 @@ That is the whole command. The run is a ledger of phases; each one records itsel
 |---|---|---|
 | 0 | `preflight` | the gate table below; on any hard failure nothing has happened yet |
 | 1a | `bump` | `<WaveeBuild> + 1`; `CHANGELOG.md` `unreleased` → today (UTC); asserts the diff touched **only** those two files |
-| 2 | `notes` | `Wavee.ReleaseTool validate` → `<staging>\notes\` (`whatsnew.json`, `whatsnew-index.json`, `RELEASE_BODY.md`, `store-listing.txt`, `media/`). Reads the feed's published `whatsnew-index.json` first — a 404 means "first release", and **any other failure stops the run**: phase 10 clobbers that file, so a one-entry index would erase the published history. Exit 2 also when a referenced issue/PR could not be read from GitHub (`--allow-unresolved` ships the authored title/state anyway). On failure it restores both files and un-marks the bump |
+| 2 | `notes` | `Wavee.ReleaseTool validate` → `<staging>\notes\` (`whatsnew.json`, `whatsnew-index.json`, `RELEASE_BODY.md`, `store-listing.txt`, `media/`). Reads the feed's published `whatsnew-index.json` first — a 404 means "first release", and **any other failure stops the run**: phase 10 clobbers that file, so a one-entry index would erase the published history. Exit 2 also when a referenced issue/PR could not be read from GitHub (`--allow-unresolved` ships the authored title/state anyway). When there is a previous `wavee-v*` tag, also writes `<staging>\commits.json` (every commit in `<prevTag>..HEAD`, parsed for closing keywords and PR refs) and passes it with `--previous-tag`/`--commits`, so the tool renders the `## Resolved issues` section and re-does the issue/CHANGELOG cross-check itself. On failure it restores both files and un-marks the bump |
 | 1b | `tag` | commits those two files (`release: Wavee <semver> <codename> (build <quad>)`) and creates the annotated tag — **locally** |
 | 3 | `packArm64` | `pack-wavee-msix.ps1 -Arch arm64 … -NoSign`, then asserts the package's identity name / version / arch / publisher — and that `Wavee-<quad>-win-arm64-symbols.zip` (the PDB of exactly that exe, §5b) landed next to it |
 | 4 | `packX64` | the same for x64 (or `-X64Msix <path>` to adopt a prebuilt package; its symbols zip is adopted from next to it when present, with a warning otherwise) |
@@ -164,6 +164,7 @@ That is the whole command. The run is a ledger of phases; each one records itsel
 | 9 | `release` | `gh release`: draft → upload → publish — always `--latest=false` (`releases/latest` belongs to the gallery's feed) |
 | 10 | `feed` | repoints `wavee-stable` (and `wavee-beta` if it exists) — **always last**: this is the moment installed clients see the release |
 | 11 | `verify` | assets + byte sizes vs staged, the feed live at the new quad **and pointing at this release's msix** (`MainPackage/@Uri`, not only the root `Version`), msix `Content-Length`, optional install |
+| 12 | `notify` | best-effort: comments on every GitHub issue this release's commits closed (never closes or reopens one; skips an issue that already carries a comment naming this tag). Runs **after** verify, so a failure here is `Warn`ed and the phase left incomplete — the release is already live either way; `-Resume` retries just this step |
 
 **Preflight gates** (hard unless noted): version props parse · semver + quad (a `beta` semver is refused — the beta
 channel needs its own package identity and is not built yet) · staging folder free (`-Force` replaces it, `-Resume`
@@ -173,8 +174,13 @@ exists · the PlayPlay junction is present · Windows SDK tools · x64 cross too
 `gh auth` · *(soft)* whether a `wavee-beta` feed exists and will be repointed too · **feed monotonic** (the new quad
 must be strictly greater than each feed's current root `Version`, on every architecture, and the semver must not go
 backwards — the gate itself is always hard, but an *unreachable* feed is downgraded to a warning under `-DryRun` /
-`-NoUpload`, where nothing can be published) · gates (`dotnet build Wavee.slnx` Debug **and** Release, `Wavee.Tests`, and
-the release tooling's Pester suite — the engine's VerticalSlice is the engine repo's gate).
+`-NoUpload`, where nothing can be published) · **issue refs** *(hard)* — every commit in `<prevTag>..HEAD` that
+closes an issue (`Fixes #n` / `Closes #n` / …) must be cited by the CHANGELOG `[<semver>]` entry's trailing `(#n)`
+group, and every `(#n)` the entry cites must be closed by a commit in range; disagreement fails with one line per
+mismatch (see `.claude/skills/github-triage/SKILL.md`) · **issue coverage** *(soft)* — warns when a CHANGELOG bullet
+cites no issue at all. Both SKIP on the first release of a `-TagPrefix` (there is no previous tag to range over) ·
+gates (`dotnet build Wavee.slnx` Debug **and** Release, `Wavee.Tests`, and the release tooling's Pester suite — the
+engine's VerticalSlice is the engine repo's gate).
 
 Useful switches: `-SkipTests` (skip that last gate) · `-PublicOnly` (build without PlayPlay) · `-SkipArch x64` /
 `-X64Msix <path>` · `-NoUpload` (real bump and tag, stop before pushing) · `-NoSign` (only with `-DryRun` / `-NoUpload`)
@@ -301,12 +307,14 @@ with `-Status`. Staging is `artifacts\store\<semver>\` with its own `store-state
 | Symptom | What it means | Recovery |
 |---|---|---|
 | Preflight hard-fails | nothing has happened yet | fix it and re-run |
+| `issue refs` failed | a commit's `Fixes #n` and the CHANGELOG `[<semver>]` entry's `(#n)` disagree | add the missing `(#n)` to the CHANGELOG bullet, or add the missing `Fixes #n` trailer to the commit (amend/reword before pushing); re-run. See `.claude/skills/github-triage/SKILL.md` |
 | `feed monotonic gate failed` | the new quad is not strictly greater than a live feed head | something was published out of band, or `<WaveeBuild>` was hand-edited; bump forward, never sideways |
 | Notes validation fails (exit 2) | the release is not shippable; every problem is listed | fix `whatsnew.json` / `CHANGELOG.md`. The script already restored both files and un-marked the bump — just run again |
 | Pack or signing fails | the tag exists **locally only** | fix, then `-Resume` (nothing is rebuilt, the counter is not bumped again); or `-Abort` to unwind |
 | `origin/<branch> is X but HEAD~1 is Y` | someone pushed while the release was building | rebase the release commit onto origin, then `-Resume` |
 | **Tag pushed but the upload died** | the commit and tag are public; the release may still be a draft | **`-Resume`.** Staging is hash-verified against `MANIFEST.txt` first, then the run continues from the exact phase that failed. A draft release is invisible to users, and the feed has not moved yet |
 | The feed did not come up at the new quad | GitHub asset-replacement lag | `Test-WaveeFeedLive` already retried 6 × 10 s; run `-Resume` (phase 11) |
+| `notify failed` | phase 12 could not comment on a resolved issue (`gh` hiccup, rate limit) | the release is already live and the feed already moved; `-Resume` retries just this phase |
 | A bad build shipped | — | see §7 |
 
 `-Resume` restarts at the first phase that is not `done`. `-Abort` unwinds an **un-pushed** run completely: it refuses

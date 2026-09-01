@@ -226,6 +226,7 @@ public static class ReleaseNotesValidation
             Name = doc.Name,
             Date = doc.Date,
             Channel = doc.Channel,
+            Issues = IssueNumbers(doc),
         };
         var list = new List<ReleaseNotesIndexEntry>(MaxIndexEntries) { head };
         if (previous?.Releases is { } prev)
@@ -350,6 +351,9 @@ public static class ReleaseNotesValidation
             sb.Append('\n');
         }
 
+        AppendResolvedIssues(sb, doc, repo);
+        AppendOtherChanges(sb, doc, repo);
+
         sb.Append("---\n\n");
         var facts = new List<string>(5);
         if (doc.Date.Length > 0) facts.Add("Released " + doc.Date);
@@ -371,6 +375,137 @@ public static class ReleaseNotesValidation
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>The <c>## Resolved issues</c> block: one line per distinct issue number (ascending) the document
+    /// cites, its title, the commits that fix it and any PR that shipped it. Omitted entirely when no section item
+    /// carries a commit (<see cref="ReleaseItem.Commits"/>).</summary>
+    static void AppendResolvedIssues(StringBuilder sb, ReleaseNotesDocument doc, string repo)
+    {
+        bool anyCommits = false;
+        foreach (var s in doc.Sections)
+        {
+            foreach (var item in s.Items)
+            {
+                if (item.Commits.Length == 0) continue;
+                anyCommits = true;
+                break;
+            }
+            if (anyCommits) break;
+        }
+        if (!anyCommits) return;
+
+        sb.Append("## Resolved issues\n\n");
+        foreach (var n in IssueNumbers(doc))
+        {
+            ReleaseIssue? issue = null;
+            var commits = new List<ReleaseCommit>();
+            var seenSha = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var s in doc.Sections)
+            {
+                foreach (var item in s.Items)
+                {
+                    bool cites = false;
+                    foreach (var i in item.Issues)
+                    {
+                        if (i.Number != n) continue;
+                        cites = true;
+                        issue ??= i;
+                    }
+                    if (!cites) continue;
+                    // An item can cite several issues; only the commits that name THIS one (closing keyword or
+                    // squash suffix) belong on its line.
+                    foreach (var c in item.Commits)
+                        if ((Array.IndexOf(c.Issues, n) >= 0 || Array.IndexOf(c.Prs, n) >= 0) && seenSha.Add(c.Sha))
+                            commits.Add(c);
+                }
+            }
+
+            sb.Append("- [#").Append(n).Append("](https://github.com/").Append(repo)
+              .Append(issue is { IsPullRequest: true } ? "/pull/" : "/issues/").Append(n).Append(')');
+            if (issue is { Title.Length: > 0 }) sb.Append(' ').Append(EscapeMarkdown(issue.Title));
+            sb.Append(" — ");
+            if (commits.Count == 0)
+            {
+                sb.Append("no linked commit");
+            }
+            else
+            {
+                for (int i = 0; i < commits.Count; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    sb.Append('[').Append(commits[i].Short).Append("](https://github.com/").Append(repo)
+                      .Append("/commit/").Append(commits[i].Sha).Append(')');
+                }
+                var prs = new SortedSet<int>();
+                foreach (var c in commits)
+                    foreach (var p in c.Prs)
+                        if (p != n) prs.Add(p);
+                if (prs.Count > 0)
+                {
+                    sb.Append(" (PR ");
+                    bool first = true;
+                    foreach (var p in prs)
+                    {
+                        if (!first) sb.Append(", ");
+                        first = false;
+                        sb.Append('[').Append('#').Append(p).Append("](https://github.com/").Append(repo)
+                          .Append("/pull/").Append(p).Append(')');
+                    }
+                    sb.Append(')');
+                }
+            }
+            sb.Append('\n');
+        }
+        sb.Append('\n');
+    }
+
+    /// <summary>The folded <c>&lt;details&gt;Other changes&lt;/details&gt;</c> appendix — every commit in range
+    /// that cites no section item (<see cref="ReleaseNotesDocument.UnlinkedCommits"/>). Omitted when empty.</summary>
+    static void AppendOtherChanges(StringBuilder sb, ReleaseNotesDocument doc, string repo)
+    {
+        if (doc.UnlinkedCommits.Length == 0) return;
+        sb.Append("<details><summary>Other changes</summary>\n\n");
+        foreach (var c in doc.UnlinkedCommits)
+            sb.Append("- [").Append(c.Short).Append("](https://github.com/").Append(repo).Append("/commit/")
+              .Append(c.Sha).Append(") ").Append(EscapeMarkdown(c.Subject)).Append('\n');
+        sb.Append("\n</details>\n\n");
+    }
+
+    /// <summary>Backslash-escapes GitHub Flavored Markdown's special characters (<c>\ * _ ` [ ] &lt; &gt; ~ |</c>)
+    /// so a commit subject or issue title cannot break the release body's formatting. Deliberately leaves
+    /// <c>#</c> alone — GitHub autolinks <c>#52</c> in a subject to the issue/PR, and escaping it would break
+    /// that.</summary>
+    public static string EscapeMarkdown(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        var sb = new StringBuilder(s.Length + 8);
+        foreach (var ch in s)
+        {
+            switch (ch)
+            {
+                case '\\': case '*': case '_': case '`': case '[': case ']':
+                case '<': case '>': case '~': case '|':
+                    sb.Append('\\');
+                    break;
+            }
+            sb.Append(ch);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Distinct issue numbers (&gt; 0) cited by any section item, ascending.</summary>
+    public static int[] IssueNumbers(ReleaseNotesDocument doc)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+        var set = new SortedSet<int>();
+        foreach (var s in doc.Sections)
+            foreach (var item in s.Items)
+                foreach (var i in item.Issues)
+                    if (i.Number > 0) set.Add(i.Number);
+        var result = new int[set.Count];
+        set.CopyTo(result);
+        return result;
     }
 
     /// <summary>

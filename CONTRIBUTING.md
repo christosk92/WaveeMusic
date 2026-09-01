@@ -79,6 +79,9 @@ docs(readme): bring back the download buttons
 Put the *why* in the body, not just the *what*. Keep PRs to one logical change — small, reviewable diffs are
 much more likely to land quickly than a large mixed one.
 
+Every fix references its issue: the commit body carries `Fixes #n`, and the release script's `issue refs` gate
+refuses a mismatch between that trailer and the CHANGELOG (→ `github-triage` skill).
+
 ## Changelog
 
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). If your change is
@@ -87,6 +90,9 @@ the latest released one if it doesn't exist yet, with the appropriate `### Added
 / `### Removed` section). Write it the way the existing entries read: a bold, user-facing lead phrase followed
 by plain-language detail — not an engineering changelog. The release script refuses to ship a version without
 this heading, so a PR that changes behavior and skips it will get flagged in review.
+
+Every fix references its issue: the bullet ends with ` (#n)`, and the release script's `issue refs` gate refuses
+a mismatch between that citation and the commits it ships (→ `github-triage` skill).
 
 ## Gates before you open a PR
 

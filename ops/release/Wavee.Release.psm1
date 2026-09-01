@@ -516,6 +516,238 @@ function Set-ReleaseState {
     [IO.File]::WriteAllText($Path, ($State | ConvertTo-Json -Depth 8), (New-Utf8NoBom))
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+# Release <-> issue linkage (commits, PRs, issues cross-check; see docs/plans/wavee/*-implementation.md Part A)
+#
+# The record/field separators are the ASCII RS (0x1E) / US (0x1F) control characters `git log
+# --format=%H%x1f%h%x1f%s%x1f%b%x1e` emits. Windows PowerShell 5.1 has no `` `u{...} `` escape (that is a
+# PowerShell 7+ addition), so every occurrence here is [char]0x1e / [char]0x1f instead.
+# ---------------------------------------------------------------------------------------------------------------
+
+function ConvertFrom-GitLogRecords {
+    <#
+    .SYNOPSIS
+      Parse `git log --format=%H%x1f%h%x1f%s%x1f%b%x1e` text into one record per commit. Issues = commit-body/
+      subject closing keywords (Fixes/Closes/Resolves #n, case-insensitive); Prs = a squash-merge subject suffix
+      `(#n)` or a bare `!n` anywhere in subject/body.
+    .OUTPUTS
+      Array of pscustomobject @{ Sha; Short; Subject; Issues [int[]]; Prs [int[]] }, always an array (even 0 or 1
+      element) - the caller pipes/indexes it.
+    #>
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+    $rs = [char]0x1e
+    $us = [char]0x1f
+    $records = @()
+    foreach ($rec in ($Text -split $rs)) {
+        if (-not $rec.Trim()) { continue }
+        $f = $rec.TrimStart("`r", "`n") -split $us, 4
+        $subject = $f[2].Trim()
+        $body = if ($f.Count -gt 3) { $f[3] } else { '' }
+        $hay = "$subject`n$body"
+
+        $issues = @([regex]::Matches($hay, '(?im)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)') |
+            ForEach-Object { [int]$_.Groups[1].Value } | Sort-Object -Unique)
+
+        $prs = @()
+        $m = [regex]::Match($subject, '\(#(\d+)\)\s*$')
+        if ($m.Success) { $prs += [int]$m.Groups[1].Value }
+        $prs += @([regex]::Matches($hay, '(?<![\w/])!(\d+)\b') | ForEach-Object { [int]$_.Groups[1].Value })
+
+        $records += [pscustomobject]@{
+            Sha     = $f[0].Trim()
+            Short   = $f[1].Trim()
+            Subject = $subject
+            Issues  = @($issues)
+            Prs     = @($prs | Sort-Object -Unique)
+        }
+    }
+    , $records
+}
+
+function Get-ChangelogEntryRefs {
+    <#
+    .SYNOPSIS
+      The `## [<semver>]` CHANGELOG entry only. Same trailing-group rule as ChangelogParser.cs: a bullet's TRAILING
+      parenthesised group `(#n, !m)` at line end counts; a mid-sentence `(#n)` is ignored by design.
+    .OUTPUTS
+      pscustomobject @{ Issues [int[]]; Prs [int[]]; Bullets [int]; Unreferenced [int] }. Throws when the CHANGELOG
+      has no matching `## [<Semver>]` heading.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Changelog,
+        [Parameter(Mandatory = $true)][string]$Semver)
+
+    $rx = "(?ms)^## \[$([regex]::Escape($Semver))\][^\r\n]*\r?\n(?<body>.*?)(?=^## \[|\z)"
+    $m = [regex]::Match($Changelog, $rx)
+    if (-not $m.Success) { throw "CHANGELOG.md has no '## [$Semver]' entry" }
+
+    $issues = @()
+    $prs = @()
+    $bullets = 0
+    $unref = 0
+    foreach ($line in ($m.Groups['body'].Value -split "\r?\n")) {
+        if ($line -notmatch '^- ') { continue }
+        $bullets++
+        $g = [regex]::Match($line, '\s\((?<refs>(?:[#!]\d+(?:,\s*)?)+)\)\s*$')
+        if (-not $g.Success) { $unref++; continue }
+        foreach ($r in ($g.Groups['refs'].Value -split ',\s*')) {
+            if ($r[0] -eq '#') { $issues += [int]$r.Substring(1) }
+            else { $prs += [int]$r.Substring(1) }
+        }
+    }
+    [pscustomobject]@{
+        Issues       = @($issues | Sort-Object -Unique)
+        Prs          = @($prs | Sort-Object -Unique)
+        Bullets      = $bullets
+        Unreferenced = $unref
+    }
+}
+
+function Compare-ReleaseIssueRefs {
+    <#
+    .SYNOPSIS
+      Cross-check CHANGELOG issue refs against git-log commits over the release range. Parity with the C# side
+      (ReleaseCommits.Link): a CHANGELOG `#n` is satisfied by a commit that FIXES n OR whose squash-merge suffix
+      names PR n; only closing-keyword issues (not bare PR refs) can be "missing in the changelog".
+    .OUTPUTS
+      pscustomobject @{
+        Linked              # [pscustomobject]{ Issue; Commits } for every ChangelogIssue git can satisfy
+        MissingInChangelog  # [pscustomobject]{ Issue; Commits } - a commit closes an issue the entry never cites
+        MissingInGit        # [int[]] - the entry cites an issue no commit in range fixes or names as a PR
+        Unlinked            # commits whose Issues array is empty ("Other changes")
+      }
+    #>
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][int[]]$ChangelogIssues,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Commits)
+
+    $byRef = @{}
+    $byIssue = @{}
+    foreach ($c in $Commits) {
+        foreach ($i in $c.Issues) {
+            if (-not $byIssue.ContainsKey($i)) { $byIssue[$i] = @() }
+            $byIssue[$i] += $c
+        }
+        foreach ($n in (@($c.Issues) + @($c.Prs))) {
+            if (-not $byRef.ContainsKey($n)) { $byRef[$n] = @() }
+            $byRef[$n] += $c
+        }
+    }
+
+    $missingInChangelog = @($byIssue.Keys | Where-Object { $ChangelogIssues -notcontains $_ } | Sort-Object |
+        ForEach-Object { [pscustomobject]@{ Issue = $_; Commits = @($byIssue[$_]) } })
+    $missingInGit = @($ChangelogIssues | Where-Object { -not $byRef.ContainsKey($_) } | Sort-Object)
+    $linked = @($ChangelogIssues | Where-Object { $byRef.ContainsKey($_) } | Sort-Object |
+        ForEach-Object { [pscustomobject]@{ Issue = $_; Commits = @($byRef[$_]) } })
+
+    [pscustomobject]@{
+        Linked             = $linked
+        MissingInChangelog = $missingInChangelog
+        MissingInGit       = $missingInGit
+        Unlinked           = @($Commits | Where-Object { $_.Issues.Count -eq 0 })
+    }
+}
+
+function Format-IssueRefMismatch {
+    <#
+    .SYNOPSIS
+      One line per problem in a Compare-ReleaseIssueRefs result - the gate's throw text and the tool's error
+      parity. Empty array when there is nothing to report.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$Comparison,
+        [string]$Semver,
+        [string]$Range)
+
+    $lines = @()
+    foreach ($m in $Comparison.MissingInChangelog) {
+        $c = ($m.Commits | ForEach-Object { "$($_.Short) `"$($_.Subject)`"" }) -join ', '
+        $lines += "issue #$($m.Issue) is fixed by $c but the CHANGELOG [$Semver] entry does not cite it"
+    }
+    foreach ($i in $Comparison.MissingInGit) {
+        $lines += "CHANGELOG [$Semver] cites #$i but no commit in $Range carries 'Fixes #$i'"
+    }
+    # Unary comma: a 1-element $lines would otherwise unroll to a bare string on return, and the caller's
+    # $lines[0] would then index a CHARACTER of that string instead of the one mismatch line.
+    , $lines
+}
+
+function Write-ReleaseCommitsJson {
+    <#  The `commits.json` file Wavee.ReleaseTool reads via --commits. camelCase keys, arrays even when empty. #>
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Commits,
+        [Parameter(Mandatory = $true)][string]$Path)
+
+    $rows = @($Commits | ForEach-Object {
+        [ordered]@{
+            sha     = $_.Sha
+            short   = $_.Short
+            subject = $_.Subject
+            issues  = @($_.Issues)
+            prs     = @($_.Prs)
+        }
+    })
+    [IO.File]::WriteAllText($Path, (ConvertTo-Json -InputObject $rows -Depth 4), (New-Utf8NoBom))
+}
+
+function New-ShippedIssueComment {
+    <#  The markdown body posted on an issue a released commit closed. #>
+    param(
+        [string]$Repo,
+        [string]$Tag,
+        [string]$Semver,
+        [string]$Codename,
+        [string]$Quad,
+        [object[]]$Commits,
+        [int[]]$Prs)
+
+    $c = ($Commits | ForEach-Object { "[$($_.Short)](https://github.com/$Repo/commit/$($_.Sha))" }) -join ', '
+    $p = if ($Prs.Count) { ' - PR ' + (($Prs | ForEach-Object { "#$_" }) -join ', ') } else { '' }
+    @(
+        "Shipped in **Wavee $Semver $([char]0x2014) $Codename** (build $Quad): https://github.com/$Repo/releases/tag/$Tag",
+        "Commits: $c$p",
+        'Sideloaded installs update automatically from the `wavee-stable` feed; Microsoft Store installs follow once the Store submission is certified.'
+    ) -join "`n`n"
+}
+
+function Test-IssueAlreadyNotified {
+    <#  Idempotency for -Resume: true when any existing comment already names this tag's release URL. #>
+    param(
+        [AllowEmptyCollection()][object[]]$Comments,
+        [string]$Repo,
+        [string]$Tag)
+
+    $needle = "https://github.com/$Repo/releases/tag/$Tag"
+    [bool]($Comments | Where-Object { "$($_.body)" -like "*$needle*" })
+}
+
+function Add-ShippedIssueComments {
+    <#
+    .SYNOPSIS
+      gh-facing (untested, like Publish-WaveeRelease): comment on every issue in $Linked (a
+      Compare-ReleaseIssueRefs .Linked array) with the body $BodyFor produces, skipping any issue already notified
+      for this tag. Never closes or reopens an issue - GitHub's own closing-keyword handling already did that.
+    .OUTPUTS
+      pscustomobject @{ Posted [int[]]; Skipped [int[]] }
+    #>
+    param(
+        [string]$Repo,
+        [string]$Tag,
+        [object[]]$Linked,
+        [scriptblock]$BodyFor)
+
+    $posted = @()
+    $skipped = @()
+    foreach ($l in $Linked) {
+        $existing = ConvertFrom-GhJson (Invoke-Gh @('api', "repos/$Repo/issues/$($l.Issue)/comments", '--paginate'))
+        if (Test-IssueAlreadyNotified -Comments $existing -Repo $Repo -Tag $Tag) { $skipped += $l.Issue; continue }
+        Invoke-Gh @('issue', 'comment', "$($l.Issue)", '--repo', $Repo, '--body', (& $BodyFor $l)) | Out-Null
+        $posted += $l.Issue
+    }
+    [pscustomobject]@{ Posted = @($posted); Skipped = @($skipped) }
+}
+
 Export-ModuleMember -Function @(
     'Set-WaveeTls12',
     'Test-WaveeSemver',
@@ -536,4 +768,12 @@ Export-ModuleMember -Function @(
     'Publish-WaveeRelease',
     'Update-WaveeFeed',
     'Get-ReleaseState',
-    'Set-ReleaseState')
+    'Set-ReleaseState',
+    'ConvertFrom-GitLogRecords',
+    'Get-ChangelogEntryRefs',
+    'Compare-ReleaseIssueRefs',
+    'Format-IssueRefMismatch',
+    'Write-ReleaseCommitsJson',
+    'New-ShippedIssueComment',
+    'Test-IssueAlreadyNotified',
+    'Add-ShippedIssueComments')

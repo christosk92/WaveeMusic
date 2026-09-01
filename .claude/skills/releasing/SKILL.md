@@ -17,7 +17,7 @@ release is cut on the dev box by `ops/release/wavee-release.ps1`.
 #    CHANGELOG.md "## [X.Y.Z] - unreleased", ops/release/wavee/<semver>/whatsnew.json (+ media/)
 # 2. rehearse
 powershell -File ops\release\wavee-release.ps1 -DryRun -SkipTests
-# 3. ship (13 phases; the feed is repointed LAST)
+# 3. ship (14 phases; the feed is repointed LAST)
 powershell -File ops\release\wavee-release.ps1
 # failure after the tag was pushed -> re-run with -Resume; abandon -> -Abort; feed only -> -RepointFeed
 ```
@@ -78,3 +78,9 @@ zip): `docs/guide/releasing-wavee.md` §5b.
 - **`.gitignore` has `[Rr]elease/`**, so `!ops/release/` is what keeps the release tooling tracked.
 - **Testing the tooling never touches production**: `-FeedRelease wavee-stable-test -TagPrefix wavee-test-v -Branch release-test -Force -SkipTests`, or the fully local E2E harness (no GitHub at all).
 - **Packaged runs write into the package's LocalCache.** A real `%LOCALAPPDATA%\Wavee` (from an unpackaged `dotnet run`) captures a packaged app's writes; wipe it before testing a package — the startup line prints `logResolved=`.
+- **The `issue refs` gate is about consistency, not coverage.** A commit without any issue ref is fine (it lands
+  in the release notes as "Other changes"); a CHANGELOG bullet without a ref is fine too (soft `issue coverage`
+  warning only). What the hard gate refuses is *disagreement*: a `Fixes #n` commit the CHANGELOG `(#n)` doesn't
+  cite, or a `(#n)` the CHANGELOG cites that no commit in range actually closes. Fix it in whichever file is
+  wrong — CHANGELOG.md or the commit trailer — and re-run; see `github-triage`'s "Bugfix bookkeeping" section
+  for the contract that avoids ever hitting this at release time.

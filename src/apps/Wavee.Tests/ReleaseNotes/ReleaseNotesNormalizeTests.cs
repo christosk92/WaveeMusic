@@ -150,6 +150,33 @@ public class ReleaseNotesNormalizeTests
     }
 
     [Fact]
+    public void CommitArrays_AreRepaired()
+    {
+        var doc = Parse("""
+        {
+          "version": "0.3.0",
+          "unlinkedCommits": [null, { "sha": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0", "short": null, "subject": null, "issues": null, "prs": null }],
+          "sections": [{ "kind": "fixed", "items": [{ "id": "f1", "text": "Fixed a thing", "commits": null }] }]
+        }
+        """);
+
+        doc.Normalize();
+
+        var commit = Assert.Single(doc.UnlinkedCommits);
+        Assert.Equal("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0", commit.Sha);
+        Assert.Equal("", commit.Short);
+        Assert.Equal("", commit.Subject);
+        Assert.Empty(commit.Issues);
+        Assert.Empty(commit.Prs);
+
+        var item = Assert.Single(Assert.Single(doc.Sections).Items);
+        Assert.Empty(item.Commits);
+
+        string body = ReleaseNotesValidation.RenderBody(doc, "acme/widgets", generatedNotes: null);
+        Assert.Contains("Wavee 0.3.0", body);
+    }
+
+    [Fact]
     public void TheRenderers_SurviveADocumentThatWasAllNulls()
     {
         // The proof that matters: the two surfaces the release tool drives (the GitHub body and the store blurb) run

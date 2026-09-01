@@ -33,6 +33,8 @@ public sealed class ReleaseNotesDocument
     /// <summary>Issue-state snapshot time — the page's "as of".</summary>
     public string GeneratedAt { get; set; } = "";
     public ReleaseMedia[] Media { get; set; } = [];
+    /// <summary>Commits in range that cite no section item's issue/PR — the "Other changes" appendix.</summary>
+    public ReleaseCommit[] UnlinkedCommits { get; set; } = [];
 
     /// <summary>
     /// Replace every <see langword="null"/> the wire could have put here with the empty value the rest of the code
@@ -93,6 +95,8 @@ public sealed class ReleaseNotesDocument
                 foreach (var p in item.Prs) { p.Repo ??= ""; p.Title ??= ""; }
                 item.Contributors = Compact(item.Contributors);
                 foreach (var c in item.Contributors) c.Login ??= "";
+                item.Commits = Compact(item.Commits);
+                foreach (var c in item.Commits) NormalizeCommit(c);
             }
         }
 
@@ -104,6 +108,20 @@ public sealed class ReleaseNotesDocument
 
         Media = Compact(Media);
         foreach (var m in Media) { m.Src ??= ""; m.Sha256 ??= ""; }
+
+        UnlinkedCommits = Compact(UnlinkedCommits);
+        foreach (var c in UnlinkedCommits) NormalizeCommit(c);
+    }
+
+    /// <summary>Repairs a <see cref="ReleaseCommit"/> read from the wire: null strings become <c>""</c>, null
+    /// arrays become <c>[]</c>.</summary>
+    static void NormalizeCommit(ReleaseCommit c)
+    {
+        c.Sha ??= "";
+        c.Short ??= "";
+        c.Subject ??= "";
+        c.Issues ??= [];
+        c.Prs ??= [];
     }
 
     /// <summary>A null array becomes empty, and a null ELEMENT inside one (<c>"sections": [null]</c> is legal JSON) is
@@ -172,6 +190,8 @@ public sealed class ReleaseItem
     public ReleaseIssue[] Issues { get; set; } = [];
     public ReleasePr[] Prs { get; set; } = [];
     public ReleaseContributor[] Contributors { get; set; } = [];
+    /// <summary>Commits (from <c>--commits</c>) whose issues/PRs intersect this item's <see cref="Issues"/>/<see cref="Prs"/>.</summary>
+    public ReleaseCommit[] Commits { get; set; } = [];
 }
 
 public sealed class ReleaseIssue
@@ -198,6 +218,22 @@ public sealed class ReleaseContributor
 {
     public string Login { get; set; } = "";
     public bool FirstTime { get; set; }
+}
+
+/// <summary>One commit in <c>&lt;prevTag&gt;..HEAD</c>, as written by the release script to <c>commits.json</c>
+/// and re-emitted on the wire so the app can link straight to it.</summary>
+public sealed class ReleaseCommit
+{
+    /// <summary>40 hex.</summary>
+    public string Sha { get; set; } = "";
+    /// <summary>7-12 hex; derived from <see cref="Sha"/> when absent.</summary>
+    public string Short { get; set; } = "";
+    /// <summary>Verbatim commit subject; escaped at render time.</summary>
+    public string Subject { get; set; } = "";
+    /// <summary>Issue numbers closed by a closing-keyword trailer (<c>Fixes #n</c>, etc.).</summary>
+    public int[] Issues { get; set; } = [];
+    /// <summary>PR numbers named by a squash suffix <c>(#N)</c> or a <c>!N</c> reference.</summary>
+    public int[] Prs { get; set; } = [];
 }
 
 public sealed class ReleaseNotice
@@ -249,4 +285,6 @@ public sealed class ReleaseNotesIndexEntry
     public string Date { get; set; } = "";
     /// <summary>stable | beta.</summary>
     public string Channel { get; set; } = "stable";
+    /// <summary>Distinct issue numbers this release resolved, ascending.</summary>
+    public int[] Issues { get; set; } = [];
 }
