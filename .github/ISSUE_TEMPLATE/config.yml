@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/christosk92/WaveeMusic/discussions/categories/q-a
+    about: Get help from the community and maintainers
+  - name: Share an idea
+    url: https://github.com/christosk92/WaveeMusic/discussions/categories/ideas
+    about: Half-formed ideas and suggestions that aren't a concrete proposal yet
+  - name: FluentGpu engine bug (rendering, text, input, window)
+    url: https://github.com/christosk92/fluent-gpu/issues/new/choose
+    about: Rendering glitches, text, input, or windowing issues belong in the engine repo
+  - name: Microsoft Store listing
+    url: https://apps.microsoft.com/detail/9NJPVWTQPT9H
+    about: Issues with installing or updating through the Microsoft Store listing itself

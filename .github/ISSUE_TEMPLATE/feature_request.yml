@@ -1,0 +1,65 @@
+name: Feature request
+description: Propose a new capability or an improvement
+title: "[Feature]: "
+labels: ["type: feature", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got a half-formed idea rather than a concrete proposal? [Discussions › Ideas](https://github.com/christosk92/WaveeMusic/discussions/categories/ideas)
+        is a better place for that — issues here are for proposals ready to be triaged.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - playback
+        - video
+        - lyrics
+        - player
+        - connect
+        - library
+        - playlists
+        - search
+        - home
+        - browse
+        - concerts
+        - detail-pages
+        - sidebar
+        - shell
+        - auth
+        - setup
+        - updates
+        - store
+        - release-tooling
+        - diagnostics
+        - modules
+        - i18n
+        - engine
+        - Not sure
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: The official Spotify client has this
+          required: false
+        - label: I'd be willing to help implement it
+          required: false
