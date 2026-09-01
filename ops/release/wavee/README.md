@@ -24,6 +24,7 @@ document with the dated `CHANGELOG.md` entry and stamps the rest.
 | `packageVersion`, `date`, `channel` | the tool (from `--quad` / the CHANGELOG date / `--channel`) |
 | `sections` | the tool — parsed from the `## [<semver>]` entry in `CHANGELOG.md`. **Leave it `[]`.** |
 | `links`, `generatedAt`, `media` (hashes), issue/PR `title`/`state`/`stateReason`/`merged` | the tool |
+| a section item's `commits`, the document's `unlinkedCommits`, an index entry's `issues` | the tool — derived from `--commits` (`<staging>\commits.json`, written by the release script from `git log <prevTag>..HEAD`) and the closing-keyword / squash-suffix parse. Nothing here to author |
 
 So the changelog stays the single human source of the itemised list, and `whatsnew.json` is only the editorial
 layer on top of it. Writing bullets into `sections` by hand is silently overwritten.
@@ -62,6 +63,14 @@ layer on top of it. Writing bullets into `sections` by hand is silently overwrit
   closed weeks ago. That is exit 2: `N issue(s) unresolved`. Fix it with a token (`--github-token`, or `GITHUB_TOKEN`
   in the environment, which is how the release script passes it); `--allow-unresolved` is the deliberate escape
   hatch for "GitHub is down and this release has to go out anyway".
+- **Cross-checked against `--commits` when `--previous-tag` is given.** Every issue the CHANGELOG cites with `(#n)`
+  must be closed by a commit in `<prevTag>..HEAD` (a `Fixes #n` / `Closes #n` / … trailer, or the same `#n` on the
+  squash suffix), and every commit that closes an issue must be cited by the CHANGELOG. A mismatch is exit 2, one
+  line per problem; `--allow-unlinked` ships anyway with the mismatches as warnings. This is the same rule the
+  release script's `issue refs` preflight gate checks before the version bump — see
+  `.claude/skills/github-triage/SKILL.md` for the contract every fix has to leave behind, and §4 of
+  `docs/guide/releasing-wavee.md` for the gate. `commits`, `unlinkedCommits` and an index entry's `issues` (see the
+  table above) are how the result reaches the emitted document — none of that is authored here.
 
 ## Media
 

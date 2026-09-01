@@ -14,6 +14,7 @@ namespace Wavee.Core.ReleaseNotes;
 [JsonSerializable(typeof(ReleaseNotesDocument))]
 [JsonSerializable(typeof(ReleaseNotesIndex))]
 [JsonSerializable(typeof(IssueStateCache))]
+[JsonSerializable(typeof(ReleaseCommit[]))]
 public partial class ReleaseNotesJsonContext : JsonSerializerContext
 {
 }

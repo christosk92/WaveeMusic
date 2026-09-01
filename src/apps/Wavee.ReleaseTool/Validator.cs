@@ -34,10 +34,12 @@ static class Validator
         string repo = a.Require("repo", missing);
         string? previousIndex = a.Get("previous-index");
         string? previousTag = a.Get("previous-tag");
+        string? commitsPath = a.Get("commits");
         // The orchestrator hands the token through the ENVIRONMENT so it never lands in a command line, a
         // transcript or release-state.json; --github-token stays for a hand run. An explicit flag wins.
         string? token = a.Get("github-token") ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
         bool allowUnresolved = a.Flag("allow-unresolved");
+        bool allowUnlinked = a.Flag("allow-unlinked");
         if (missing.Count > 0)
         {
             Console.Error.WriteLine("error: missing required argument(s): " + string.Join(", ", missing));
@@ -47,6 +49,16 @@ static class Validator
         if (channel is not ("stable" or "beta"))
         {
             Console.Error.WriteLine("error: --channel must be 'stable' or 'beta' (got '" + channel + "')");
+            return ExitUsage;
+        }
+        if (previousTag is { Length: > 0 } && commitsPath is null)
+        {
+            Console.Error.WriteLine("error: --commits <file> is required when --previous-tag is given (the script writes <stage>\\commits.json from git log <previous-tag>..HEAD)");
+            return ExitUsage;
+        }
+        if (commitsPath is not null && !File.Exists(commitsPath))
+        {
+            Console.Error.WriteLine("error: commits not found: " + commitsPath);
             return ExitUsage;
         }
 
@@ -103,8 +115,33 @@ static class Validator
         errors.AddRange(ReleaseNotesValidation.ValidateMedia(doc, notesDir));
         errors.AddRange(ReleaseNotesValidation.ValidateDeepLinks(doc));
 
-        // ── GitHub snapshots ────────────────────────────────────────────────────────────────────────────────
+        // ── commits.json cross-check ────────────────────────────────────────────────────────────────────────
         DefaultRepos(doc, repo);
+        if (commitsPath is not null)
+        {
+            ReleaseCommit[] commits;
+            try
+            {
+                commits = ReleaseCommits.Parse(File.ReadAllBytes(commitsPath));
+            }
+            catch (JsonException ex)
+            {
+                Console.Error.WriteLine($"error: {commitsPath} is not a valid commits.json: {ex.Message}");
+                return ExitUsage;
+            }
+            string range = previousTag is { Length: > 0 } pt ? pt + "..HEAD" : "the release range";
+            if (commits.Length == 0)
+                warnings.Add($"{commitsPath} lists no commits ({range} is empty)");
+            var mismatches = ReleaseCommits.Link(doc, commits, repo, range);
+            foreach (var m in mismatches)
+                (allowUnlinked ? warnings : errors).Add(allowUnlinked ? m + " (shipping anyway: --allow-unlinked)" : m);
+        }
+        else
+        {
+            warnings.Add("no --commits: the CHANGELOG/commit cross-check is skipped and RELEASE_BODY.md gets no Resolved issues section");
+        }
+
+        // ── GitHub snapshots ────────────────────────────────────────────────────────────────────────────────
         using var gh = new GitHubApi(token, semver);
         if (!gh.Authenticated)
             warnings.Add("no token (--github-token / GITHUB_TOKEN): issue lookups are unauthenticated (60/hour) and generate-notes is skipped");
@@ -149,8 +186,15 @@ static class Validator
         Console.WriteLine($"ok: Wavee {semver} \"{codename}\" ({quad}, {channel}) -> {Path.GetFullPath(outDir)}");
         Console.WriteLine($"    whatsnew.json + whatsnew-index.json + RELEASE_BODY.md + store-listing.txt + {copied} media file(s)");
         int items = 0;
-        foreach (var s in doc.Sections) items += s.Items.Length;
-        Console.WriteLine($"    {doc.Highlights.Length} highlight(s), {doc.Sections.Length} section(s), {items} item(s); as of {doc.GeneratedAt}");
+        int linked = 0;
+        foreach (var s in doc.Sections)
+            foreach (var item in s.Items)
+            {
+                items++;
+                linked += item.Commits.Length;
+            }
+        Console.WriteLine($"    {doc.Highlights.Length} highlight(s), {doc.Sections.Length} section(s), {items} item(s); as of {doc.GeneratedAt}" +
+                           $"; {linked} linked commit(s), {doc.UnlinkedCommits.Length} other");
         return ExitOk;
     }
 

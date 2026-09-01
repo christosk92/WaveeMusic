@@ -391,6 +391,153 @@ public sealed class ReleaseNotesValidationTests
         Assert.Equal("Security", ReleaseNotesValidation.SectionTitle("security"));
     }
 
+    // ── resolved issues / other changes (issue ⇄ commit linkage) ──────────────────────────────────────────────
+    // BodyDoc() above stays commit-free on purpose (Generated_notes_are_folded_into_a_details_block_and_omitted_when_absent
+    // asserts DoesNotContain("<details>") against it) — every test in this block builds its own document instead.
+
+    const string LinkSha1 = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"; // short: a1b2c3d
+    const string LinkSha2 = "9f8e7d6c5b4a392817069f5a4b3c2d1e0f9e8d76"; // short: 9f8e7d6
+
+    /// <summary>A <see cref="BodyDoc"/> whose only section item cites issue #412 + PR #52 and carries the two
+    /// commits that fixed it — the shape <c>ReleaseCommits.Link</c> leaves behind on a healthy release.</summary>
+    static ReleaseNotesDocument LinkedBodyDoc()
+    {
+        var doc = BodyDoc();
+        doc.Sections =
+        [
+            new ReleaseSection
+            {
+                Kind = "fixed",
+                Items =
+                [
+                    new ReleaseItem
+                    {
+                        Text = "Add mix feature.",
+                        Issues =
+                        [
+                            new ReleaseIssue { Repo = "christosk92/WaveeMusic", Number = 412, Title = "Please add *mix* feature", State = "closed" },
+                        ],
+                        Prs = [new ReleasePr { Repo = "christosk92/WaveeMusic", Number = 52, Merged = true }],
+                        Commits =
+                        [
+                            new ReleaseCommit { Sha = LinkSha1, Short = "a1b2c3d", Subject = "fix: add mix feature", Issues = [412], Prs = [52] },
+                            new ReleaseCommit { Sha = LinkSha2, Short = "9f8e7d6", Subject = "fix: polish mix feature", Issues = [412], Prs = [52] },
+                        ],
+                    },
+                ],
+            },
+        ];
+        return doc;
+    }
+
+    [Fact]
+    public void Resolved_issues_lists_each_issue_once_with_its_commits_and_pr()
+    {
+        string body = ReleaseNotesValidation.RenderBody(LinkedBodyDoc(), "christosk92/WaveeMusic", null);
+        Assert.Contains("## Resolved issues", body);
+
+        const string Golden = "- [#412](https://github.com/christosk92/WaveeMusic/issues/412) Please add \\*mix\\* feature — "
+            + "[a1b2c3d](https://github.com/christosk92/WaveeMusic/commit/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0), "
+            + "[9f8e7d6](https://github.com/christosk92/WaveeMusic/commit/9f8e7d6c5b4a392817069f5a4b3c2d1e0f9e8d76) "
+            + "(PR [#52](https://github.com/christosk92/WaveeMusic/pull/52))\n";
+        Assert.Contains(Golden, body);
+
+        int issueIdx = body.IndexOf(Golden, StringComparison.Ordinal);
+        int footerIdx = body.IndexOf("---\n\n", StringComparison.Ordinal);
+        Assert.True(issueIdx >= 0, "golden Resolved-issues line not found");
+        Assert.True(footerIdx >= 0, "footer not found");
+        Assert.True(issueIdx < footerIdx, "Resolved issues must precede the footer");
+    }
+
+    [Fact]
+    public void Other_changes_folds_unlinked_commits_and_is_omitted_when_empty()
+    {
+        var doc = LinkedBodyDoc();
+        doc.UnlinkedCommits = [new ReleaseCommit { Sha = LinkSha1, Short = "a1b2c3d", Subject = "chore: bump dependencies" }];
+
+        string body = ReleaseNotesValidation.RenderBody(doc, "christosk92/WaveeMusic", null);
+        Assert.Contains("<details><summary>Other changes</summary>", body);
+        Assert.Contains(
+            "- [a1b2c3d](https://github.com/christosk92/WaveeMusic/commit/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0) chore: bump dependencies",
+            body);
+
+        doc.UnlinkedCommits = [];
+        Assert.DoesNotContain("Other changes", ReleaseNotesValidation.RenderBody(doc, "christosk92/WaveeMusic", null));
+    }
+
+    [Fact]
+    public void Resolved_issues_still_lists_an_issue_with_no_commit_when_allow_unlinked_shipped_it()
+    {
+        var doc = BodyDoc();
+        doc.Sections =
+        [
+            new ReleaseSection
+            {
+                Kind = "fixed",
+                Items =
+                [
+                    new ReleaseItem
+                    {
+                        Text = "Two issues, one commit.",
+                        Issues =
+                        [
+                            new ReleaseIssue { Repo = "christosk92/WaveeMusic", Number = 412, Title = "Has a commit", State = "closed" },
+                            new ReleaseIssue { Repo = "christosk92/WaveeMusic", Number = 413, Title = "Shipped unlinked", State = "closed" },
+                        ],
+                        Commits = [new ReleaseCommit { Sha = LinkSha1, Short = "a1b2c3d", Subject = "fix: 412", Issues = [412] }],
+                    },
+                ],
+            },
+        ];
+
+        string body = ReleaseNotesValidation.RenderBody(doc, "christosk92/WaveeMusic", null);
+        Assert.Contains(
+            "[#412](https://github.com/christosk92/WaveeMusic/issues/412) Has a commit — [a1b2c3d](https://github.com/christosk92/WaveeMusic/commit/"
+            + LinkSha1 + ")", body);
+        Assert.Contains(
+            "[#413](https://github.com/christosk92/WaveeMusic/issues/413) Shipped unlinked — no linked commit", body);
+    }
+
+    [Fact]
+    public void EscapeMarkdown_escapes_punctuation_but_keeps_hash_autolinks()
+    {
+        Assert.Equal(@"\\ \* \_ \` \[ \] \< \> \~ \|", ReleaseNotesValidation.EscapeMarkdown(@"\ * _ ` [ ] < > ~ |"));
+        Assert.Equal("(#52) still autolinks", ReleaseNotesValidation.EscapeMarkdown("(#52) still autolinks"));
+        Assert.Equal("Please add \\*mix\\* feature", ReleaseNotesValidation.EscapeMarkdown("Please add *mix* feature"));
+        Assert.Equal("plain text is untouched", ReleaseNotesValidation.EscapeMarkdown("plain text is untouched"));
+    }
+
+    [Fact]
+    public void The_index_entry_carries_the_distinct_issue_numbers_ascending()
+    {
+        var doc = BodyDoc();
+        doc.Sections =
+        [
+            new ReleaseSection
+            {
+                Kind = "fixed",
+                Items =
+                [
+                    new ReleaseItem { Text = "a", Issues = [new ReleaseIssue { Repo = "christosk92/WaveeMusic", Number = 90 }] },
+                    new ReleaseItem
+                    {
+                        Text = "b",
+                        Issues =
+                        [
+                            new ReleaseIssue { Repo = "christosk92/WaveeMusic", Number = 41 },
+                            new ReleaseIssue { Repo = "christosk92/WaveeMusic", Number = 90 }, // duplicate, distinct in the result
+                        ],
+                    },
+                ],
+            },
+        ];
+
+        Assert.Equal(new[] { 41, 90 }, ReleaseNotesValidation.IssueNumbers(doc));
+
+        var merged = ReleaseNotesValidation.MergeIndex(null, doc);
+        Assert.Equal(new[] { 41, 90 }, merged.Releases[0].Issues);
+    }
+
     // ── store listing ───────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

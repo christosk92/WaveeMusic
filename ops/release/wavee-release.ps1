@@ -25,6 +25,9 @@
       9  release       gh release: draft -> upload -> publish
       10 feed          repoint the rolling feed release(s) - ALWAYS LAST, it is what clients poll
       11 verify        assets + sizes vs staged, feed root Version live, msix Content-Length, optional install
+      12 notify        comment on every GitHub issue this release's commits closed (best-effort, after verify;
+                        never closes or reopens an issue - -Resume retries a failed notify, -Abort never touches it
+                        because it only runs after the release is already published)
 
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-release.ps1 -DryRun -SkipTests
@@ -383,6 +386,12 @@ if ($Resume) {
     $Channel = "$($script:State.channel)"
     $arches = @($script:State.arches)
     $feeds = @($script:State.feeds)
+    # The issue-refs gate normally computes this fresh in the preflight block below, but a -Resume that finds
+    # 'preflight' already done skips that block entirely - so the ledger value (persisted by that same block, or
+    # $null on a release cut before this feature existed) is the only source left for phase 2 / phase 12.
+    $previousTag = $null
+    if ($script:State.ContainsKey('previousTag') -and $script:State.previousTag) { $previousTag = "$($script:State.previousTag)" }
+    $range = "$previousTag..HEAD"
     Step "Resume $tag (build $quad)"
     Note "staging $stage"
     if (Test-PhaseDone 'stage') {
@@ -470,6 +479,17 @@ if (-not (Test-PhaseDone 'preflight')) {
         }
         $head.Substring(0, 7)
     }
+
+    # Previous release tag and commit range, computed once at SCRIPT scope (not inside a check scriptblock) so the
+    # issue-refs checks below, Invoke-Notes (phase 2) and Invoke-Notify (phase 12) all see the same value. The first
+    # release of a given -TagPrefix has none - $previousTag stays $null and every consumer treats that as "nothing
+    # to range over" rather than a failure. Persisted into the ledger so a -Resume that skips this block (preflight
+    # already 'done') can still recover it.
+    $previousTag = (Invoke-Git @('describe', '--tags', '--abbrev=0', '--match', "$TagPrefix*") -AllowFailure).Text
+    if (-not $previousTag) { $previousTag = $null }
+    $range = "$previousTag..HEAD"
+    $script:State.previousTag = $previousTag
+
     Add-Check 'tag is free' 'hard' {
         if ($DryRun) { return 'SKIP: -DryRun never tags' }
         if ((Invoke-Git @('tag', '-l', $tag)).Text) { throw "tag $tag already exists locally" }
@@ -485,6 +505,30 @@ if (-not (Test-PhaseDone 'preflight')) {
         $m = [regex]::Match($cl, $rx)
         if (-not $m.Success) { throw "CHANGELOG.md has no '## [$semver] - <date|unreleased>' heading" }
         $m.Groups[1].Value
+    }
+    Add-Check 'issue refs' 'hard' {
+        <#
+            The bugfix-bookkeeping contract (.claude/skills/github-triage/SKILL.md): a commit that closes an issue
+            in $range and the CHANGELOG [$semver] entry that cites it must agree. Disagreement fails hard - it is
+            the whole point of the gate - because an uncited fix ships without the "shipped" comment the issue
+            reporter is owed, and a citation nothing actually fixed just lies to the CHANGELOG's readers.
+        #>
+        if (-not $previousTag) { return "SKIP: no $TagPrefix* tag yet, nothing to range" }
+        $log = (Invoke-Git @('log', '--format=%H%x1f%h%x1f%s%x1f%b%x1e', $range)).Text
+        $script:Commits = ConvertFrom-GitLogRecords $log
+        $refs = Get-ChangelogEntryRefs -Changelog (Get-Content $changelogPathRepo -Raw) -Semver $semver
+        $script:Refs = Compare-ReleaseIssueRefs -ChangelogIssues $refs.Issues -Commits $script:Commits
+        $bad = Format-IssueRefMismatch $script:Refs $semver $range
+        if ($bad.Count) { throw ($bad -join ' / ') }
+        "$($script:Refs.Linked.Count) issue(s) linked, $($script:Refs.Unlinked.Count) commit(s) without an issue, since $previousTag"
+    }
+    Add-Check 'issue coverage' 'soft' {
+        # Soft: a commit (or a bullet) with no issue at all is fine - not every change is a bugfix - this only
+        # warns so an author notices a whole release with no bookkeeping at all.
+        if (-not $previousTag) { return 'SKIP: first release' }
+        $refs = Get-ChangelogEntryRefs -Changelog (Get-Content $changelogPathRepo -Raw) -Semver $semver
+        if ($refs.Unreferenced) { throw "$($refs.Unreferenced) of $($refs.Bullets) CHANGELOG bullet(s) cite no issue" }
+        "all $($refs.Bullets) bullet(s) cite an issue"
     }
     Add-Check 'release notes' 'hard' {
         if ($NoNotes) {
@@ -695,14 +739,16 @@ function Invoke-Notes {
         New-Item -ItemType Directory -Force -Path $notesSrc | Out-Null
         $reused = [ordered]@{
             schema = $prevDoc.schema; product = $prevDoc.product
-            version = ''; packageVersion = ''; name = $codename
+            version = $semver; packageVersion = ''; name = $codename   # the tool asserts version == --semver (an authored file carries it too)
             tagline = $prevDoc.tagline; date = ''; channel = $Channel; lang = $prevDoc.lang
             minOs = $prevDoc.minOs; arch = $prevDoc.arch
             links = [ordered]@{ release = ''; changelog = ''; compare = '' }
             highlights = $prevDoc.highlights; sections = @()
             notices = $prevDoc.notices; media = @(); generatedAt = ''
         }
-        ($reused | ConvertTo-Json -Depth 10) | Set-Content -Path (Join-Path $notesSrc 'whatsnew.json') -Encoding utf8
+        # WriteAllText with a BOM-less encoding: Windows PowerShell's `-Encoding utf8` prepends a BOM, and
+        # Wavee.ReleaseTool's JSON reader (System.Text.Json over raw bytes) rejects it as '0xEF is an invalid start'.
+        [IO.File]::WriteAllText((Join-Path $notesSrc 'whatsnew.json'), ($reused | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
         $prevMedia = Join-Path $prevDir.FullName 'media'
         if (Test-Path $prevMedia) { Copy-Item $prevMedia (Join-Path $notesSrc 'media') -Recurse -Force }
         Warn "running with -NoNotes: reusing $($prevDir.Name)'s tagline/highlights for $semver (sections still derive from THIS release's CHANGELOG.md entry)"
@@ -731,6 +777,20 @@ function Invoke-Notes {
             '--out', $notesOut,
             '--repo', $Repo)
         if ($prev) { $toolArgs += @('--previous-index', $prev) }
+        if ($previousTag) {
+            # $script:Commits is normally populated by the 'issue refs' preflight check that just ran in this same
+            # process; a -Resume that finds 'preflight' already 'done' never runs that check, so it is recomputed
+            # here from the same $range for the one case that matters: re-running just this phase after it failed.
+            # Wavee.ReleaseTool re-does the cross-check itself (authoritative - it also knows the GitHub issue
+            # state); this file exists so a bad range dies here, before the version bump is committed.
+            if (-not $script:Commits) {
+                $log = (Invoke-Git @('log', '--format=%H%x1f%h%x1f%s%x1f%b%x1e', $range)).Text
+                $script:Commits = ConvertFrom-GitLogRecords $log
+            }
+            $commitsPath = Join-Path $stage 'commits.json'
+            Write-ReleaseCommitsJson $script:Commits $commitsPath
+            $toolArgs += @('--previous-tag', $previousTag, '--commits', $commitsPath)
+        }
 
         # The token reaches the child process through the environment only: it never lands in a command line, a
         # transcript, or release-state.json. Get-GhAuthToken owns the parsing (gh prints notices on stderr) and
@@ -1055,6 +1115,25 @@ if ($DryRun -or $NoUpload) {
     foreach ($f in $feeds) {
         Write-Host "   gh release upload $f --repo $Repo --clobber $(($feedPaths | ForEach-Object { '"' + $_ + '"' }) -join ' ')"
     }
+
+    if ($script:Refs -and $script:Refs.Linked.Count -gt 0) {
+        Write-Host ''
+        Step 'Resolved issues (preview)'
+        $script:Refs.Linked | ForEach-Object {
+            [pscustomobject]@{
+                Issue   = "#$($_.Issue)"
+                Commits = (($_.Commits | ForEach-Object { $_.Short }) -join ', ')
+                Prs     = (($_.Commits.Prs | Sort-Object -Unique | ForEach-Object { "#$_" }) -join ', ')
+            }
+        } | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+        Write-Host '   A real run comments on each of these after verify (phase 12 notify), never closes or reopens:' -ForegroundColor DarkGray
+        foreach ($l in $script:Refs.Linked) {
+            $prs = @($l.Commits.Prs | Sort-Object -Unique)
+            $body = New-ShippedIssueComment -Repo $Repo -Tag $tag -Semver $semver -Codename $codename -Quad $quad -Commits $l.Commits -Prs $prs
+            Write-Host "   gh issue comment $($l.Issue) --repo $Repo --body `"$($body -replace "`r?`n", '\n')`""
+        }
+    }
+
     Write-Host ''
     Good "dry run complete: $stage"
     return
@@ -1212,6 +1291,48 @@ else {
 }
 
 # ===============================================================================================================
+# 12  notify (comment on every GitHub issue this release's commits closed)
+# ===============================================================================================================
+
+function Invoke-Notify {
+    Step 'Comment on resolved issues'
+    if (-not $previousTag) { Note 'no previous tag; nothing to link'; return }
+    if (-not $script:Refs) {
+        # A -Resume that found 'preflight' already 'done' never ran the 'issue refs' check in this process, so
+        # $script:Refs is still $null here even though $previousTag came back from the ledger. Recompute it from
+        # the same range rather than skip: the release is already live, so this is the one chance to notify.
+        $log = (Invoke-Git @('log', '--format=%H%x1f%h%x1f%s%x1f%b%x1e', $range)).Text
+        $commits = ConvertFrom-GitLogRecords $log
+        $refs = Get-ChangelogEntryRefs -Changelog (Get-Content $changelogPathRepo -Raw) -Semver $semver
+        $script:Refs = Compare-ReleaseIssueRefs -ChangelogIssues $refs.Issues -Commits $commits
+    }
+    if ($script:Refs.Linked.Count -eq 0) { Note 'no linked issues'; return }
+    $bodyFor = {
+        param($l)
+        New-ShippedIssueComment -Repo $Repo -Tag $tag -Semver $semver -Codename $codename -Quad $quad `
+            -Commits $l.Commits -Prs @($l.Commits.Prs | Sort-Object -Unique)
+    }
+    $r = Add-ShippedIssueComments -Repo $Repo -Tag $tag -Linked $script:Refs.Linked -BodyFor $bodyFor
+    Good "commented on #$($r.Posted -join ', #')$(if ($r.Skipped) { " (already: #$($r.Skipped -join ', #'))" })"
+}
+
+if (-not (Test-PhaseDone 'notify')) {
+    # Best-effort by design: the release is already published (phase 9) and the feed already repointed (phase 10)
+    # by the time this runs, so a comment failure must never look like the release itself failed. The phase is
+    # left incomplete on failure so -Resume retries just this step.
+    try {
+        Invoke-Notify
+        Complete-Phase 'notify'
+    }
+    catch {
+        Warn "notify failed: $($_.Exception.Message -replace "`r?`n", ' / ') ($tag is already live; -Resume to retry)"
+    }
+}
+else {
+    Note 'issues already notified'
+}
+
+# ===============================================================================================================
 # Summary
 # ===============================================================================================================
 
@@ -1223,6 +1344,8 @@ Step 'Summary'
     Channel  = $Channel
     Branch   = $Branch
     Commit   = $commit
+    Since    = if ($previousTag) { $previousTag } else { '(first release)' }
+    Issues   = if ($script:Refs -and $script:Refs.Linked.Count -gt 0) { ($script:Refs.Linked | ForEach-Object { "#$($_.Issue)" }) -join ', ' } else { '(none)' }
     Staging  = $stage
     Release  = "https://github.com/$Repo/releases/tag/$tag"
 } | Format-List | Out-String -Width 200 | Write-Host

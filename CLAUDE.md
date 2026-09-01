@@ -68,6 +68,8 @@ this reason.
   `ReleaseNotesRange` are the pattern).
 - **No environment-variable switches** for behaviour or verification: always-on logs, the diagnostics page, gates.
 - **No legacy paths.** Replace outright; delete obsolete code. Breaking is acceptable.
+- **Every fix references its issue.** The CHANGELOG bullet ends with ` (#n)`, the commit body carries `Fixes #n`,
+  and the release script's `issue refs` gate refuses a mismatch between the two (→ `github-triage` skill).
 - **Plans with real code.** Multi-part work gets a plan in `docs/plans/wavee/*-implementation.md` with the actual
   code, component trees and ASCII wireframes; implementation is parallel subagents on disjoint files, and only the
   orchestrator builds/tests/launches.

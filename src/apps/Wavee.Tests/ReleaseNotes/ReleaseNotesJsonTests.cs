@@ -116,6 +116,62 @@ public class ReleaseNotesJsonTests
         Assert.DoesNotContain("\"scope\"", json);
     }
 
+    // ── commit linkage (ReleaseCommit) ──────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AnOldDocumentWithoutCommits_ReadsAsEmptyArrays()
+    {
+        // Example predates the commit-linkage fields entirely — no "commits" or "unlinkedCommits" anywhere in it.
+        var doc = Read(Example);
+        Assert.Empty(doc.UnlinkedCommits);
+        Assert.Empty(Assert.Single(Assert.Single(doc.Sections).Items).Commits);
+    }
+
+    [Fact]
+    public void Commits_RoundTrip_CamelCased()
+    {
+        var doc = new ReleaseNotesDocument
+        {
+            Version = "0.2.6",
+            UnlinkedCommits =
+            [
+                new ReleaseCommit { Sha = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0", Short = "a1b2c3d", Subject = "chore: bump" },
+            ],
+            Sections =
+            [
+                new ReleaseSection
+                {
+                    Kind = "fixed",
+                    Items =
+                    [
+                        new ReleaseItem
+                        {
+                            Id = "fixed-0",
+                            Text = "x",
+                            Commits = [new ReleaseCommit { Sha = "9f8e7d6c5b4a392817069f5a4b3c2d1e0f9e8d76", Short = "9f8e7d6", Subject = "fix: y", Issues = [412] }],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        string once = Write(doc);
+        Assert.Contains("\"commits\":", once);
+        Assert.Contains("\"unlinkedCommits\":", once);
+        Assert.Contains("\"short\":", once);
+        Assert.Equal(once, Write(Read(once)));
+    }
+
+    [Fact]
+    public void AnOldIndexEntryWithoutIssues_ReadsAsEmpty()
+    {
+        const string Json = """
+{ "schema": 1, "product": "wavee", "releases": [ { "version": "0.2.5", "packageVersion": "0.2.5.6", "name": "Old", "date": "2026-08-01", "channel": "stable" } ] }
+""";
+        var index = JsonSerializer.Deserialize(Json, ReleaseNotesJsonContext.Default.ReleaseNotesIndex)!;
+        Assert.Empty(index.Releases[0].Issues);
+    }
+
     // ── the index ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
