@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.4] - unreleased
+
+### Added
+
+- **Wavee is on the Microsoft Store** — the What's-new page and the after-update dialog now announce the Store
+  listing to sideloaded installs, with a button that opens it. Store-installed copies (which already get updates
+  through the Store) don't see the announcement.
+
+### Fixed
+
+- **Music videos: smooth switching, no more freezes.** Turning video on, or skipping tracks while video was
+  playing, could freeze the whole app for seconds — and every track change tore the video player down and rebuilt
+  it from scratch. Video now switches in place: the previous frame holds until the next video's first frame
+  arrives, the next track's video is looked up ahead of time during playback, and play/pause/seek stay responsive
+  through the whole switch. Also fixed along the way: the docked video card letterboxed wider-than-16:9 videos
+  (it now fits the video's real shape), the video controls could lay out wider than their card and stick that way,
+  and two loading spinners could stack on top of each other while a video started.
+- The What's-new highlight cards could cut their text off mid-line — cards in a row were sized against a wider
+  text wrap than they actually got. Rows of equal-width cards now measure at their real share of the width, so the
+  cards fit their text.
+
 ## [0.2.3] - 2026-08-31
 
 ### Fixed

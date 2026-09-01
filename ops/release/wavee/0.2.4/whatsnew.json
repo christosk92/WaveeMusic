@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.2.4",
+  "packageVersion": "",
+  "name": "Breaker",
+  "tagline": "Wavee is now on the Microsoft Store.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "microsoft-store",
+      "title": "Wavee is now on the Microsoft Store",
+      "body": "The same Wavee, installed and updated by Windows: Store installs get every new release automatically, with nothing to download by hand. Already running this copy? Keep it — or use the button below to open the listing and switch.",
+      "kind": "store",
+      "issues": []
+    },
+    {
+      "id": "smooth-video-switching",
+      "title": "Music videos switch smoothly",
+      "body": "Skipping tracks with video on no longer freezes the app or rebuilds the player: the previous frame holds until the next video's first frame, the next track's video is fetched ahead of time, and the controls stay responsive the whole way. The docked card now also fits the video's real shape instead of forcing 16:9 bars.",
+      "kind": "fixed",
+      "issues": []
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}
