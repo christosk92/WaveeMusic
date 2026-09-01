@@ -80,9 +80,13 @@ Drift 0.4, Ebb 0.5, Fetch 0.6, …
 - `gh label list --json name,color,description` — **no spaces after commas**, or gh treats them as extra args.
 - `updateProjectV2Field` (GraphQL) takes `fieldId` + `singleSelectOptions` only — no `projectId`; that is how the
   Status options were set. `gh project field-create` cannot edit the built-in Status field.
-- Project **views** and the **auto-add / auto-close workflows** have no API — they are done in the project UI.
-  Intended set: Board by Status, Roadmap grouped by Milestone, Bugs table (`type: bug|crash|regression`); workflows
-  auto-add → Triage, item closed / PR merged → Done.
+- Project **views** exist: 1 Triage (table, `status:Triage is:open`), 2 Board (board, by Status), 3 Roadmap
+  (table, `is:open -status:Triage` — group by Milestone in the UI), 4 Bugs (table,
+  `label:"type: bug","type: crash","type: regression"`). They were made with GraphQL `createProjectV2View` +
+  `updateProjectV2View` (name, layout, filter, `configuration.visibleFieldIds`); grouping and sorting have no API.
+  Pass a list argument by inlining it in the query — `gh api graphql -f ids='[…]'` sends a string.
+- The **auto-add / auto-close workflows** have no create API (only `deleteProjectV2Workflow`): set them in the
+  project UI — auto-add → Status Triage, item closed / PR merged → Done.
 - Enabling Discussions seeds the default categories; there is no API to create categories.
 - `git fetch --prune` may drop many stale `origin/*` refs — GitHub only has `main`; that is expected.
 - The user works in the same checkout with uncommitted changes: when committing docs/tooling, `git add` only the
