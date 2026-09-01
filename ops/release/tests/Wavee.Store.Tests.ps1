@@ -252,6 +252,62 @@ Describe 'New-WaveeMsixUpload' {
 
 # ===================================================================================================================
 
+Describe 'ConvertTo-Win32QuotedArgument' {
+
+    <#
+      This is the fix for a defect confirmed twice against the live API (2026-09-01): PowerShell 5.1's own
+      `& exe @array` native-argv marshaling cannot carry the large, complex JSON `submission update` needs -
+      first it silently stripped every '"', then (after an in-place escaping attempt) it split the same string
+      on whitespace into dozens of bogus arguments. Invoke-MsStore now bypasses that layer entirely via
+      System.Diagnostics.Process, building the command line itself with this function - the same quoting
+      CommandLineToArgvW (and every .NET/native argv parser, including msstore-cli's) expects. Verified
+      byte-for-byte round-trip against a real external process, including a value with an already-escaped quote,
+      before being wired in.
+    #>
+
+    It 'leaves a token with no space, tab or quote completely unquoted' {
+        ConvertTo-Win32QuotedArgument 'wavee-v0.2.4' | Should Be 'wavee-v0.2.4'
+        ConvertTo-Win32QuotedArgument '9NJPVWTQPT9H' | Should Be '9NJPVWTQPT9H'
+    }
+
+    It 'quotes an argument containing a space' {
+        ConvertTo-Win32QuotedArgument 'two words' | Should Be '"two words"'
+    }
+
+    It 'quotes an argument containing a tab' {
+        ConvertTo-Win32QuotedArgument "a`tb" | Should Be "`"a`tb`""
+    }
+
+    It 'escapes an embedded quote as backslash-quote and still wraps the whole thing' {
+        ConvertTo-Win32QuotedArgument 'a"b' | Should Be '"a\"b"'
+    }
+
+    It 'doubles a backslash run immediately before a quote, then adds one more for the quote itself' {
+        # 1 backslash before a quote -> 2*1+1 = 3 backslashes then the literal quote
+        ConvertTo-Win32QuotedArgument 'a\"b' | Should Be '"a\\\"b"'
+    }
+
+    It 'doubles a trailing backslash run so it cannot escape the closing quote' {
+        ConvertTo-Win32QuotedArgument 'a\ b\' | Should Be '"a\ b\\"'
+    }
+
+    It 'leaves an interior backslash NOT followed by a quote untouched' {
+        ConvertTo-Win32QuotedArgument 'line1\nline2 x' | Should Be '"line1\nline2 x"'
+    }
+
+    It 'round-trips the real compact submission JSON with zero characters lost or added besides the wrap' {
+        $json = [IO.File]::ReadAllText($script:FixturePath)
+        $quoted = ConvertTo-Win32QuotedArgument $json
+        $quoted.Substring(0, 1) | Should Be '"'
+        $quoted.Substring($quoted.Length - 1, 1) | Should Be '"'
+        # every '"' in the original became '\"' in the body; nothing else changed
+        $body = $quoted.Substring(1, $quoted.Length - 2)
+        $body.Replace('\"', '"') | Should Be $json
+    }
+}
+
+# ===================================================================================================================
+
 Describe 'ConvertFrom-MsStoreJson' {
 
     It 'parses a payload behind a notice line' {
@@ -490,6 +546,22 @@ Describe 'Get-StoreSubmissionState' {
         $s.Terminal | Should Be $true
         $s.Status | Should Be 'None'
         ($null -eq $s.SubmissionId) | Should Be $true
+    }
+
+    It 'reads plain "submission status" output (no -v) as not pending, EVEN WHEN one really is pending' {
+        # Real msstore-cli behaviour observed against the live API (2026-09-01): unlike `submission get`,
+        # `submission status` never emits JSON without -v - it prints prose only, e.g.:
+        #   Found Pending Submission.
+        #   Retrieving Pending Submission
+        #   Submission Status = PendingCommit
+        # This deliberately documents that Get-StoreSubmissionState cannot see a real pending submission through
+        # that prose (there is no JSON to parse) - it silently reports "not pending" no matter the truth. A caller
+        # MUST feed this function `submission get` output, never `submission status`; wavee-store-submit.ps1's
+        # Get-CurrentSubmissionState does exactly that for this reason - see its own comment.
+        $prose = "Found Pending Submission.`nRetrieving Pending Submission`nSubmission Status = PendingCommit"
+        $s = Get-StoreSubmissionState $prose
+        $s.Pending | Should Be $false
+        $s.Status | Should Be 'None'
     }
 
     It 'classifies empty output as not pending' {

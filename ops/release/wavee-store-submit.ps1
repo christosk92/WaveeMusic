@@ -76,7 +76,11 @@ param(
     [string]$NotesDir = '',
     [string]$Configuration = 'Release',
     [string]$OutputDir = 'artifacts/store',
-    [int]$PollMinutes = 15)
+    [int]$PollMinutes = 15,
+    # msstore-cli's own --uploadTimeout defaults to 0 (its CustomParser has no DefaultValueFactory - see
+    # microsoft/msstore-cli#162), which cancels the blob upload before it starts. Always pass it explicitly;
+    # 900s comfortably covers the ~60 MB .msixupload on a slow uplink.
+    [int]$UploadTimeoutSeconds = 900)
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -261,7 +265,11 @@ function Assert-MsStoreCli {
 }
 
 function Get-CurrentSubmissionState {
-    $text = Invoke-MsStore -Arguments @('submission', 'status', $ProductId) -AllowFailure
+    # 'submission status' never emits JSON - it prints prose ("Submission Status = PendingCommit"), which
+    # ConvertFrom-MsStoreJson correctly parses as "no JSON here" (Status=None, Pending=$false), silently hiding a
+    # real pending submission. 'submission get' returns the same Id/Status/StatusDetails as full structured JSON
+    # (the last published submission's, prefixed with explanatory prose, when nothing is pending) - use that.
+    $text = Invoke-MsStore -Arguments @('submission', 'get', $ProductId) -AllowFailure
     Get-StoreSubmissionState -StatusJson $text
 }
 
@@ -672,12 +680,12 @@ if ($DryRun) {
     Write-Host ''
     Write-Host '   Everything below is what a real run would do next:' -ForegroundColor DarkGray
     Write-Host ''
-    Write-Host "   msstore publish `"$upload`" -id $ProductId --noCommit -v"
-    Write-Host "   msstore submission status $ProductId                  # record the draft's submissionId"
+    Write-Host "   msstore publish `"$upload`" -id $ProductId --noCommit --uploadTimeout $UploadTimeoutSeconds -v"
+    Write-Host "   msstore submission get $ProductId                     # record the draft's submissionId (via Status/Id in the JSON)"
     Write-Host "   msstore submission get $ProductId                     # saved as submission-before.json"
     Write-Host "   msstore submission update $ProductId `"<the full submission JSON with en-us BaseListing.ReleaseNotes patched, passed as ONE argument; saved as submission-after.json>`""
     Write-Host "   msstore submission publish $ProductId                 # the point of no return"
-    Write-Host "   msstore submission status $ProductId                  # then poll every 30 s, up to $PollMinutes min"
+    Write-Host "   msstore submission get $ProductId                     # then poll every 30 s, up to $PollMinutes min"
     Write-Host ''
     Good "dry run complete: $stage"
     return
@@ -692,7 +700,7 @@ function Invoke-Draft {
     # 'msstore publish' clones a new pending submission from the last published one and deletes any existing
     # pending draft first - which is why the no-pending-submission gate ran, and why nothing before this line may
     # write to the Store.
-    Invoke-MsStore -Arguments @('publish', $upload, '-id', $ProductId, '--noCommit', '-v') | Out-Null
+    Invoke-MsStore -Arguments @('publish', $upload, '-id', $ProductId, '--noCommit', '--uploadTimeout', "$UploadTimeoutSeconds", '-v') | Out-Null
 
     $st = Get-CurrentSubmissionState
     if (-not $st.SubmissionId) { throw "msstore publish succeeded but 'submission status' reports no submission id; inspect with -Status before retrying" }

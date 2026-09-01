@@ -410,20 +410,78 @@ function Test-StoreAppIdentity {
 # msstore-cli
 # ---------------------------------------------------------------------------------------------------------------
 
+function ConvertTo-Win32QuotedArgument {
+    <#
+      One argument, quoted exactly the way CommandLineToArgvW (and every .NET/native argv parser, including
+      msstore-cli's) expects: N backslashes immediately before a '"' become 2N+1 backslashes then a literal '"'
+      (the extra one escapes it); N backslashes at the very end (right before the closing quote this function
+      adds) become 2N, so they cannot accidentally escape that closing quote; every other character is copied
+      verbatim. Skips quoting entirely for an argument that needs none (no space/tab/quote) - both forms parse
+      identically, but leaving simple tokens (ids, flags) unquoted keeps them exactly as every other caller
+      already expects them. Verified round-trip byte-for-byte against a real external process (2026-09-01),
+      including a JSON value that itself already contained an escaped quote. Private.
+    #>
+    param([string]$Argument)
+
+    if ($Argument.Length -gt 0 -and $Argument.IndexOfAny(@(' ', "`t", '"')) -lt 0) { return $Argument }
+
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('"')
+    $i = 0
+    while ($i -lt $Argument.Length) {
+        $backslashes = 0
+        while ($i -lt $Argument.Length -and $Argument[$i] -eq '\') { $backslashes++; $i++ }
+        if ($i -eq $Argument.Length) {
+            [void]$sb.Append('\' * ($backslashes * 2))
+        }
+        elseif ($Argument[$i] -eq '"') {
+            [void]$sb.Append('\' * ($backslashes * 2 + 1))
+            [void]$sb.Append('"')
+            $i++
+        }
+        else {
+            [void]$sb.Append('\' * $backslashes)
+            [void]$sb.Append($Argument[$i])
+            $i++
+        }
+    }
+    [void]$sb.Append('"')
+    $sb.ToString()
+}
+
 function Invoke-MsStore {
     <#
     .SYNOPSIS
       Run msstore-cli (must be on PATH: winget install "Microsoft Store Developer CLI") and hand back its combined
       output text. Throws on a non-zero exit unless -AllowFailure - the Invoke-Gh idiom, one native tool per
       wrapper. Callers parse the text with ConvertFrom-MsStoreJson.
+    .DESCRIPTION
+      Invokes msstore.exe directly through System.Diagnostics.Process rather than PowerShell 5.1's `& exe @array`
+      splat (the Invoke-Native idiom every OTHER wrapper in this repo safely uses). That path is provably broken
+      for this module's one large, complex argument: confirmed against the live API (2026-09-01), it first
+      silently stripped every '"' out of the JSON body `submission update` needs, and - after a first escaping
+      attempt - broke a different way, splitting the same JSON on whitespace into dozens of bogus arguments.
+      ConvertTo-Win32QuotedArgument builds the exact command line a correct argv parser expects; Process.Start
+      with UseShellExecute=$false sends it unmodified.
     #>
     param([Parameter(Mandatory = $true)][string[]]$Arguments, [switch]$AllowFailure)
 
-    $r = Invoke-Native 'msstore' $Arguments -AllowFailure
-    if ($r.ExitCode -ne 0 -and -not $AllowFailure) {
-        throw "msstore $($Arguments -join ' ') failed (exit $($r.ExitCode)):`n$($r.Output -join "`n")"
+    $commandLine = ($Arguments | ForEach-Object { ConvertTo-Win32QuotedArgument $_ }) -join ' '
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'msstore'
+    $psi.Arguments = $commandLine
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    $text = (@($stdout, $stderr) | Where-Object { $_.Length -gt 0 }) -join "`n"
+    if ($proc.ExitCode -ne 0 -and -not $AllowFailure) {
+        throw "msstore $($Arguments -join ' ') failed (exit $($proc.ExitCode)):`n$text"
     }
-    ($r.Output -join "`n")
+    $text
 }
 
 Export-ModuleMember -Function @(
@@ -435,4 +493,5 @@ Export-ModuleMember -Function @(
     'Set-StoreSubmissionReleaseNotes',
     'Get-StoreSubmissionState',
     'Test-StoreAppIdentity',
-    'Invoke-MsStore')
+    'Invoke-MsStore',
+    'ConvertTo-Win32QuotedArgument')
