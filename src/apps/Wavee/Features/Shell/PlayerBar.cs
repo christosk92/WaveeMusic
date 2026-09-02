@@ -122,7 +122,7 @@ sealed class PlayerBarContent : Component
         var titleHover = UseSignal(false);           // hover the now-playing text → BOTH lines scroll together (synced); idle = static + edge fade
         var L = _layout.Value;                       // coarse breakpoint signal; does NOT change for every resize pixel
         _ = AppearancePrefs.Epoch.Value;
-        bool marqueeDisabled = svc?.Settings.Get(WaveeSettings.DisableMarquee) ?? false;
+        bool marqueeDisabled = !(svc?.Settings.Get(WaveeSettings.MarqueeEnabled) ?? true);
         if (DiagEnabled)
             WaveeLog.Instance.Event(WaveeLogLevel.Debug, "ui", "playerbar.render", "Player bar rendered",
                 fields:
@@ -1136,7 +1136,9 @@ sealed class TimeText : Component
         bool remainingMode = rightDuration && showRemaining;
         long ms = rightDuration ? (remainingMode ? Math.Max(0, dur - pos) : dur) : pos;
         if (!rightDuration && isLive) ms = ElapsedSinceTuneIn(_b, pos);
-        string s = (remainingMode ? "-" : "") + PlayerBarContent.Fmt(ms);
+        // ms == 0 in remaining mode means "there is nothing left" (paused exactly at/after the end) — "-0:00" reads as
+        // a negative countdown that never resolves; the sign belongs only to an ACTUAL remainder.
+        string s = (remainingMode && ms > 0 ? "-" : "") + PlayerBarContent.Fmt(ms);
         void ToggleDuration()
         {
             if (!rightDuration) return;

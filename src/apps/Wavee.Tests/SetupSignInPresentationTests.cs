@@ -1,75 +1,68 @@
+using Wavee.Core;
 using Xunit;
 
 namespace Wavee.Tests;
 
-// SetupSignInPresentation: the pure stage/decision-column facts the setup wizard's sign-in page (page 2, Work
-// package C) reads off SetupSignInPhase instead of re-deriving the split inline. Pinned per phase so a future edit
-// to the page's Wide-tier composition can't silently change which phase shows what without a red test.
+// SetupSignInPresentation: the pure facts the setup wizard's sign-in page reads off SetupSignInPhase instead of
+// re-deriving the split inline. Pinned per phase so a future edit to the page can't silently change which phase
+// shows the two Idle option cards without a red test.
 public class SetupSignInPresentationTests
 {
     [Theory]
-    [InlineData(SetupSignInPhase.Idle, 1f)]
-    [InlineData(SetupSignInPhase.Busy, 0.22f)]
-    [InlineData(SetupSignInPhase.Done, 0f)]
-    [InlineData(SetupSignInPhase.Failed, 0f)]
-    [InlineData(SetupSignInPhase.Expired, 0f)]
-    [InlineData(SetupSignInPhase.Premium, 0f)]
-    public void PaneOpacity_MatchesPhase(SetupSignInPhase phase, float expected) =>
-        Assert.Equal(expected, SetupSignInPresentation.PaneOpacity(phase));
-
-    [Theory]
     [InlineData(SetupSignInPhase.Idle, true)]
     [InlineData(SetupSignInPhase.Busy, false)]
     [InlineData(SetupSignInPhase.Done, false)]
-    [InlineData(SetupSignInPhase.Failed, false)]
-    [InlineData(SetupSignInPhase.Expired, false)]
-    [InlineData(SetupSignInPhase.Premium, false)]
-    public void PaneInteractive_IdleOnly(SetupSignInPhase phase, bool expected) =>
-        Assert.Equal(expected, SetupSignInPresentation.PaneInteractive(phase));
-
-    [Theory]
-    [InlineData(SetupSignInPhase.Idle, true)]
-    [InlineData(SetupSignInPhase.Busy, false)]
-    [InlineData(SetupSignInPhase.Done, false)]
-    [InlineData(SetupSignInPhase.Failed, false)]
-    [InlineData(SetupSignInPhase.Expired, false)]
-    [InlineData(SetupSignInPhase.Premium, false)]
-    public void ShowsOptionCards_IdleOnly(SetupSignInPhase phase, bool expected) =>
-        Assert.Equal(expected, SetupSignInPresentation.ShowsOptionCards(phase));
-
-    [Theory]
-    [InlineData(SetupSignInPhase.Idle, true)]
-    [InlineData(SetupSignInPhase.Busy, true)]
-    [InlineData(SetupSignInPhase.Done, false)]
-    [InlineData(SetupSignInPhase.Failed, false)]
-    [InlineData(SetupSignInPhase.Expired, false)]
-    [InlineData(SetupSignInPhase.Premium, false)]
-    public void ShowsApproveCard_IdleAndBusyOnly(SetupSignInPhase phase, bool expected) =>
-        Assert.Equal(expected, SetupSignInPresentation.ShowsApproveCard(phase));
-
-    [Theory]
-    [InlineData(SetupSignInPhase.Idle, SignInStageKind.Pairing)]
-    [InlineData(SetupSignInPhase.Busy, SignInStageKind.Pairing)]
-    [InlineData(SetupSignInPhase.Done, SignInStageKind.Terminal)]
-    [InlineData(SetupSignInPhase.Failed, SignInStageKind.Terminal)]
-    [InlineData(SetupSignInPhase.Expired, SignInStageKind.Terminal)]
-    [InlineData(SetupSignInPhase.Premium, SignInStageKind.Terminal)]
-    public void StageKind_PairingForIdleAndBusy_TerminalOtherwise(SetupSignInPhase phase, SignInStageKind expected) =>
-        Assert.Equal(expected, SetupSignInPresentation.StageKind(phase));
+    [InlineData(SetupSignInPhase.Failed, true)]     // retries in place, under the error InfoBar
+    [InlineData(SetupSignInPhase.Expired, true)]
+    [InlineData(SetupSignInPhase.Premium, true)]
+    public void ShowsIdleCards_IdleAndTheThreeRetryFacets(SetupSignInPhase phase, bool expected) =>
+        Assert.Equal(expected, SetupSignInPresentation.ShowsIdleCards(phase));
 
     [Fact]
-    public void EveryPhase_IsCoveredByEveryFunction()
+    public void EveryPhase_IsCoveredByShowsIdleCards()
     {
-        // Exhaustiveness: no SetupSignInPhase value falls through to a caller-supplied fallback in any of the six
-        // functions — a new phase added to the enum without updating this class would still return SOME defined
-        // value here, but a reviewer adding InlineData rows above is what actually catches the missing case.
+        // Exhaustiveness: no SetupSignInPhase value falls through to a caller-supplied fallback.
         foreach (SetupSignInPhase phase in System.Enum.GetValues<SetupSignInPhase>())
-        {
-            _ = SetupSignInPresentation.PaneOpacity(phase);
-            _ = SetupSignInPresentation.PaneInteractive(phase);
-            _ = SetupSignInPresentation.ShowsOptionCards(phase);
-            _ = SetupSignInPresentation.ShowsApproveCard(phase);
-            Assert.True(System.Enum.IsDefined(SetupSignInPresentation.StageKind(phase)));
-        }
+            _ = SetupSignInPresentation.ShowsIdleCards(phase);
     }
+
+    // ── DisplayNameFor (§ the "raw Spotify id" bug — the wizard used to read the frozen LoginSnapshot.User, whose
+    // DisplayName defaults to the account id until the real profile lands, instead of the live PlaybackBridge.User) ──
+
+    static WaveeUser User(string id, string name) => new(id, name, null, false);
+
+    [Fact]
+    public void DisplayNameFor_LiveNameWins_EvenWithAGoodSnapshot()
+    {
+        var live = User("31unjfmo", "Christos");
+        var snapshot = User("31unjfmo", "Snapshot Name");
+        Assert.Equal("Christos", SetupSignInPresentation.DisplayNameFor(live, snapshot));
+    }
+
+    [Fact]
+    public void DisplayNameFor_IdAsLiveName_FallsBackToASnapshotName()
+    {
+        var live = User("31unjfmo", "31unjfmo");       // live profile hasn't resolved a real name yet
+        var snapshot = User("31unjfmo", "Christos");    // the frozen auth-complete snapshot already has one
+        Assert.Equal("Christos", SetupSignInPresentation.DisplayNameFor(live, snapshot));
+    }
+
+    [Fact]
+    public void DisplayNameFor_NoLiveUser_FallsBackToASnapshotName()
+    {
+        var snapshot = User("31unjfmo", "Christos");
+        Assert.Equal("Christos", SetupSignInPresentation.DisplayNameFor(null, snapshot));
+    }
+
+    [Fact]
+    public void DisplayNameFor_BothIdAsName_IsNull()
+    {
+        var live = User("31unjfmo", "31unjfmo");
+        var snapshot = User("31unjfmo", "31unjfmo");
+        Assert.Null(SetupSignInPresentation.DisplayNameFor(live, snapshot));
+    }
+
+    [Fact]
+    public void DisplayNameFor_BothNull_IsNull()
+        => Assert.Null(SetupSignInPresentation.DisplayNameFor(null, null));
 }

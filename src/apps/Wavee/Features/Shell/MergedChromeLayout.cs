@@ -12,7 +12,7 @@ public enum MergedSearchMode : byte { Field, Icon }
 /// </summary>
 public readonly record struct MergedChromeLayout(
     bool ShowName,
-    bool ShowFriends,
+    bool ShowActions,
     bool ShowForward,
     bool ShowBack,
     bool ShowNewTab,
@@ -20,12 +20,16 @@ public readonly record struct MergedChromeLayout(
     MergedSearchMode SearchMode,
     float SearchWidth)
 {
-    public bool FriendsInRow => ShowFriends;
-    public bool FriendsInMenu => !ShowFriends;
-    public bool BareAvatar => !ShowName && !ShowFriends;
+    /// <summary>Bell · Friends · Pin · Settings are in the trailing row together (>= <see
+    /// cref="ShellResponsiveLayout.ChromeActionsEnterW"/>).</summary>
+    public bool ActionsInRow => ShowActions;
+    /// <summary>Below the threshold: bell and friends become profile-menu rows (Settings always is one; pin simply
+    /// drops — the tab/page context menu still offers it).</summary>
+    public bool ActionsInMenu => !ShowActions;
+    public bool BareAvatar => !ShowName && !ShowActions;
 
     internal int Richness =>
-        (ShowName ? 1 : 0) + (ShowFriends ? 1 : 0) + (ShowForward ? 1 : 0)
+        (ShowName ? 1 : 0) + (ShowActions ? 1 : 0) + (ShowForward ? 1 : 0)
         + (ShowBack ? 1 : 0) + (ShowNewTab ? 1 : 0) + (ShowTrailing ? 1 : 0)
         + (SearchMode == MergedSearchMode.Field ? 1 : 0) + (int)(SearchWidth * 0.1f);
 
@@ -46,7 +50,7 @@ public readonly record struct MergedChromeLayout(
             MathF.Max(0f, width - ShellResponsiveLayout.ChromePromotionHysteresisW), naturalTabExtent);
         var held = new Stage(
             candidate.Name && (old.ShowName || reserved.Name),
-            candidate.Friends && (old.ShowFriends || reserved.Friends),
+            candidate.Actions && (old.ShowActions || reserved.Actions),
             candidate.Forward && (old.ShowForward || reserved.Forward),
             candidate.Back && (old.ShowBack || reserved.Back),
             candidate.NewTab && (old.ShowNewTab || reserved.NewTab),
@@ -56,7 +60,7 @@ public readonly record struct MergedChromeLayout(
     }
 
     public float FixedBudgetFor()
-        => FixedBudget(ShowName, ShowFriends, ShowForward, ShowBack, ShowNewTab, ShowTrailing);
+        => FixedBudget(ShowName, ShowActions, ShowForward, ShowBack, ShowNewTab, ShowTrailing);
 
     public float FootprintFor(float naturalTabExtent)
         => FixedBudgetFor()
@@ -84,7 +88,12 @@ public readonly record struct MergedChromeLayout(
             ShellResponsiveLayout.ChromeSearchMinW,
             ShellResponsiveLayout.ChromeSearchMaxW));
 
-    public static float FixedBudget(bool name, bool friends, bool forward, bool back, bool newTab, bool trailing)
+    /// <summary>The row's non-tab, non-search DIPs. <paramref name="actionsInRow"/> reserves FOUR nav buttons at once
+    /// (bell, friends, pin, settings) — the one "actions in row" stage (<see
+    /// cref="ShellResponsiveLayout.ChromeActionsEnterW"/>) — regardless of whether pin actually applies to the current
+    /// destination: a page that gains/loses a pin row must not reflow the whole trailing island. There is no "…"
+    /// reservation any more — Forward simply hides below its own threshold instead of moving to an overflow menu.</summary>
+    public static float FixedBudget(bool name, bool actionsInRow, bool forward, bool back, bool newTab, bool trailing)
         => ShellResponsiveLayout.ChromeBarLeadW
          + ShellResponsiveLayout.ChromeThemeToggleW
          + (back ? ShellResponsiveLayout.ChromeNavButtonW : 0f)
@@ -92,26 +101,25 @@ public readonly record struct MergedChromeLayout(
          + (newTab ? ShellResponsiveLayout.ChromeAddSlotW : 0f)
          + (trailing ? ShellResponsiveLayout.ChromeProfileChipW : 0f)
          + (trailing && name ? ShellResponsiveLayout.ChromeProfileNameW : 0f)
-         + (friends ? ShellResponsiveLayout.ChromeNavButtonW : 0f)
-         + (trailing && !forward ? ShellResponsiveLayout.ChromeNavButtonW : 0f)
+         + (actionsInRow ? 4f * ShellResponsiveLayout.ChromeNavButtonW : 0f)
          + 2f * ShellResponsiveLayout.ChromeGutterMinW
          + ShellResponsiveLayout.ChromeMinDragStripW
          + ShellResponsiveLayout.ChromeCaptionClusterW;
 
     readonly record struct Stage(
-        bool Name, bool Friends, bool Forward, bool Back, bool NewTab, bool Trailing, bool Field);
+        bool Name, bool Actions, bool Forward, bool Back, bool NewTab, bool Trailing, bool Field);
 
     static Stage StageFor(float width, float naturalTabExtent)
     {
         bool name = width >= ShellResponsiveLayout.ChromeNameEnterW;
-        bool friends = width >= ShellResponsiveLayout.ChromeFriendsEnterW;
+        bool actionsInRow = width >= ShellResponsiveLayout.ChromeActionsEnterW;
         bool forward = width > ShellResponsiveLayout.ChromeForwardEnterW;
         bool back = true, newTab = true, trailing = true;
 
         // The tab viewport is the last elastic lane. Under extreme pressure shed fixed islands before allowing it to
         // disappear; captions and the compact search trigger never participate in that trade.
         bool FitsEssential()
-            => width - FixedBudget(name, friends, forward, back, newTab, trailing)
+            => width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing)
                      - ShellResponsiveLayout.ChromeSearchIconW
                >= ShellResponsiveLayout.ChromeTabViewportMinW;
         if (!FitsEssential()) newTab = false;
@@ -121,14 +129,14 @@ public readonly record struct MergedChromeLayout(
         float search = PreferredSearchWidth(width);
         float tabComfort = ComfortableTabExtent(naturalTabExtent);
         float tabLaneWithField = width
-            - FixedBudget(name, friends, forward, back, newTab, trailing)
+            - FixedBudget(name, actionsInRow, forward, back, newTab, trailing)
             - search;
         bool field = tabLaneWithField >= tabComfort;
-        return new Stage(name, friends, forward, back, newTab, trailing, field);
+        return new Stage(name, actionsInRow, forward, back, newTab, trailing, field);
     }
 
     static MergedChromeLayout Compose(float width, in Stage stage)
-        => new(stage.Name, stage.Friends, stage.Forward, stage.Back, stage.NewTab, stage.Trailing,
+        => new(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing,
             stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon,
             stage.Field ? PreferredSearchWidth(width) : ShellResponsiveLayout.ChromeSearchIconW);
 

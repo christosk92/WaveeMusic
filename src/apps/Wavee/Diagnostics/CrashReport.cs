@@ -36,11 +36,18 @@ static class CrashReport
     public static string DefaultDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "logs");
 
+    /// <summary>The path the FIRST successful <see cref="Write"/> of this process produced. Both process-level handlers
+    /// fire for one crash (the app-loop catch rethrows into AppDomain.UnhandledException); the second call returns this
+    /// instead of writing a second, tail-less report that used to land on the SAME second-resolution filename and
+    /// silently overwrite the first.</summary>
+    static string? s_written;
+
     public static string Write(Exception ex, string? logPath)
     {
+        if (s_written is { } already) return already;
         string dir = DefaultDirectory;
         Directory.CreateDirectory(dir);
-        string stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        string stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
         string path = Path.Combine(dir, $"crash-report-{stamp}.txt");
 
         var sb = new StringBuilder(32 * 1024);
@@ -58,6 +65,7 @@ static class CrashReport
         }
 
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        s_written = path;
         Prune(dir);
         return path;
     }
@@ -185,7 +193,13 @@ static class CrashReport
     static IEnumerable<string> TailLines(string path, int maxLines)
     {
         var q = new Queue<string>(Math.Max(16, maxLines));
-        foreach (var line in File.ReadLines(path))
+        // File.ReadLines opens with FileShare.Read, which throws a sharing violation against the LIVE log the writer
+        // holds open for Write (WaveeLog.EnsureStream) — and it threw BEFORE the report was written, so the app-loop
+        // crash report was lost every single time (the same fault WaveeLogSessions.ReadSharedLines fixed for the
+        // session list). Share ReadWrite|Delete, exactly like that reader.
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(fs, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        while (reader.ReadLine() is { } line)
         {
             if (q.Count == maxLines) q.Dequeue();
             q.Enqueue(line);

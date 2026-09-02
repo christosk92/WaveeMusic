@@ -41,8 +41,6 @@ sealed partial class SettingsPage
     static readonly ColorF StorageColorKeys = ColorF.FromRgba(0x95, 0xA5, 0xA6);
     static readonly ColorF StorageColorImages = ColorF.FromRgba(0xE7, 0x4C, 0x3C);
 
-    // No loc key: this row was added with the release-readiness pass and the string is not yet in assets/loc.
-    const string ImageCacheLabel = "Image cache";
 
     readonly Signal<StorageLoadPhase> _storageLoad = new(StorageLoadPhase.NotStarted);
     StorageSnapshot? _storage;
@@ -350,76 +348,76 @@ sealed partial class SettingsPage
                 : StorageUsageBar(s);
 
         return SettingsTabStack(
-            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.OnThisPc), Icons.Folder),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.OnThisPc), SettingsGlyphs.Section(SettingsTab.Storage, "On this PC")),
             top,
             StorageRowCard(Loc.Get(Strings.Settings.Storage.Library), Loc.Get(Strings.Settings.Storage.LibrarySub),
-                s?.LibraryDb, root, StorageColorLibrary, Icons.Document),
+                s?.LibraryDb, root, StorageColorLibrary, SettingsGlyphs.Row(SettingsTab.Storage, "library")),
             StorageRowCard(Loc.Get(Strings.Settings.Storage.Runtime), Loc.Get(Strings.Settings.Storage.RuntimeSub),
-                s?.Runtime, playplayDir, StorageColorRuntime, Icons.Folder),
+                s?.Runtime, playplayDir, StorageColorRuntime, SettingsGlyphs.Row(SettingsTab.Storage, "runtime")),
             StorageRowCard(Loc.Get(Strings.Settings.Storage.Logs),
                 s is { } sn
                     ? sn.LogFiles == 1
                         ? Loc.Get(Strings.Settings.Storage.LogsSubOne)
                         : Loc.Format("settings.storage.logsSub", ("count", sn.LogFiles))
                     : Loc.Get(Strings.Settings.Storage.LogsSubEmpty),
-                s?.Logs, Path.Combine(root, "logs"), StorageColorLogs, Icons.Document,
+                s?.Logs, Path.Combine(root, "logs"), StorageColorLogs, SettingsGlyphs.Row(SettingsTab.Storage, "logs"),
                 Button.Standard(Loc.Get(Strings.Settings.Storage.DeleteOldLogs), () =>
                     ConfirmThen(Loc.Get(Strings.Settings.Storage.DeleteOldLogs),
                         Loc.Get(Strings.Settings.Storage.DeleteOldLogsBody),
                         Loc.Get(Strings.Settings.Storage.DeleteOldLogs),
                         () => DeleteOldLogs(post)))),
             StorageRowCard(Loc.Get(Strings.Settings.Storage.LocalStore), Loc.Get(Strings.Settings.Storage.LocalStoreSub),
-                s?.Store, root, StorageColorStore, Icons.Document),
-            StorageRowCard(ImageCacheLabel, "cache\\images - album art and other remote images",
-                s?.ImageCache, Path.Combine(root, "cache", "images"), StorageColorImages, Icons.Folder),
-            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.PlaybackCache), Icons.Download),
+                s?.Store, root, StorageColorStore, SettingsGlyphs.Row(SettingsTab.Storage, "localStore")),
+            StorageRowCard(Loc.Get(Strings.Settings.Storage.ImageCache), Loc.Get(Strings.Settings.Storage.ImageCacheSub),
+                s?.ImageCache, Path.Combine(root, "cache", "images"), StorageColorImages, SettingsGlyphs.Row(SettingsTab.Storage, "imageCache")),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.PlaybackCache), SettingsGlyphs.Section(SettingsTab.Storage, "Playback cache")),
             SettingsRow(Loc.Get(Strings.Settings.Storage.CacheAudio), Loc.Get(Strings.Settings.Storage.CacheAudioSub),
-                Toggle(WaveeSettings.AudioBodyCacheEnabled), Icons.Download),
+                Toggle(WaveeSettings.AudioBodyCacheEnabled), SettingsGlyphs.Row(SettingsTab.Storage, "cacheAudio")),
             SettingsRow(Loc.Get(Strings.Settings.Storage.CacheKeys), Loc.Get(Strings.Settings.Storage.CacheKeysSub),
-                Toggle(WaveeSettings.AudioKeyCacheEnabled), Icons.Document),
+                Toggle(WaveeSettings.AudioKeyCacheEnabled), SettingsGlyphs.Row(SettingsTab.Storage, "cacheKeys")),
             SettingsRow(Loc.Get(Strings.Settings.Storage.BodyBudget), Loc.Get(Strings.Settings.Storage.BodyBudgetSub),
-                BudgetControl(svc, settings, s), Icons.Download),
+                BudgetControl(svc, settings, s), SettingsGlyphs.Row(SettingsTab.Storage, "budget")),
             SettingsRow(Loc.Get(Strings.Settings.Storage.CacheLocation), audioDir,
-                CacheLocationActions(svc, settings, post, audioDir), Icons.Folder),
+                CacheLocationActions(svc, settings, post, audioDir), SettingsGlyphs.Row(SettingsTab.Storage, "cacheLocation")),
             StorageRowCard(Loc.Get(Strings.Settings.Storage.AudioBodies), Loc.Get(Strings.Settings.Storage.AudioBodiesSub),
-                s?.AudioBody, audioDir, StorageColorAudio, Icons.Download,
+                s?.AudioBody, audioDir, StorageColorAudio, SettingsGlyphs.Row(SettingsTab.Storage, "audioBodies"),
                 Button.Standard(Loc.Get(Strings.Settings.Storage.ClearAudio), () =>
                     ConfirmThen(Loc.Get(Strings.Settings.Storage.ClearAudio),
                         Loc.Get(Strings.Settings.Storage.ClearAudioBody),
                         Loc.Get(Strings.Settings.Storage.ClearAudio),
                         () => ClearAudioBodyCache(svc, post)))),
             StorageRowCard(Loc.Get(Strings.Settings.Storage.LicenseKeys), licenseSub,
-                s?.LicenseDb, Path.GetDirectoryName(licenseDb) ?? audioDir, StorageColorKeys, Icons.Document,
+                s?.LicenseDb, Path.GetDirectoryName(licenseDb) ?? audioDir, StorageColorKeys, SettingsGlyphs.Row(SettingsTab.Storage, "licenseKeys"),
                 Button.Standard(Loc.Get(Strings.Settings.Storage.ClearKeys), () =>
                     ConfirmThen(Loc.Get(Strings.Settings.Storage.ClearKeys),
                         Loc.Get(Strings.Settings.Storage.ClearKeysBody),
                         Loc.Get(Strings.Settings.Storage.ClearKeys),
                         () => ClearLicenseKeys(svc, post)))),
-            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.MetadataCache), Icons.Document),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.MetadataCache), SettingsGlyphs.Section(SettingsTab.Storage, "Metadata cache")),
             SettingsRow(Loc.Get(Strings.Settings.Storage.MetadataBudget), Loc.Get(Strings.Settings.Storage.MetadataBudgetSub),
-                MetadataBudgetControl(svc, settings), Icons.Document),
+                MetadataBudgetControl(svc, settings), SettingsGlyphs.Row(SettingsTab.Storage, "metadataBudget")),
             SettingsRow(Loc.Get(Strings.Settings.Storage.MetadataCache), MetadataCacheDescription(),
                 Button.Standard(Loc.Get(Strings.Settings.Storage.ClearMetadata), () =>
                     ConfirmThen(Loc.Get(Strings.Settings.Storage.ClearMetadata),
                         Loc.Get(Strings.Settings.Storage.ClearMetadataBody),
                         Loc.Get(Strings.Settings.Storage.ClearMetadata),
-                        () => ClearMetadataCache(svc, post))), Icons.Document),
-            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.Memory), Icons.List),
+                        () => ClearMetadataCache(svc, post))), SettingsGlyphs.Row(SettingsTab.Storage, "clearMetadata")),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.Memory), SettingsGlyphs.Section(SettingsTab.Storage, "Memory")),
             SettingsRow(Loc.Get(Strings.Settings.Storage.ResidentCache), residentCacheDescription,
                 Button.Standard(Loc.Get(Strings.Settings.Storage.ReleaseNow), () =>
                 {
                     svc?.LibraryStore.ShedDetails(keep: 16);
                     Toast.Show(Loc.Get(Strings.Settings.Storage.DetailsReleased), new ToastOptions { Severity = InfoBarSeverity.Success });
                     Bump();
-                }), Icons.List),
-            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.FactoryReset), Icons.Delete,
+                }), SettingsGlyphs.Row(SettingsTab.Storage, "residentCache")),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.FactoryReset), SettingsGlyphs.Section(SettingsTab.Storage, "Reset"),
                 Loc.Get(Strings.Settings.Storage.FactoryResetSub)),
             SettingsRow(Loc.Get(Strings.Settings.Storage.FactoryReset), Loc.Get(Strings.Settings.Storage.FactoryResetRowSub),
                 Button.Standard(Loc.Get(Strings.Settings.Storage.FactoryResetAction), () =>
                     ConfirmThen(Loc.Get(Strings.Settings.Storage.FactoryResetConfirmTitle),
                         Loc.Get(Strings.Settings.Storage.FactoryResetConfirmBody),
                         Loc.Get(Strings.Settings.Storage.FactoryResetAction),
-                        () => RequestFactoryReset(svc))), Icons.Delete));
+                        () => RequestFactoryReset(svc))), SettingsGlyphs.Row(SettingsTab.Storage, "factoryReset")));
     }
 
     static void RequestFactoryReset(Services? svc)
@@ -448,7 +446,7 @@ sealed partial class SettingsPage
             (Loc.Get(Strings.Settings.Storage.LocalStore), s.Store, StorageColorStore),
             (Loc.Get(Strings.Settings.Storage.AudioBodies), s.AudioBody, StorageColorAudio),
             (Loc.Get(Strings.Settings.Storage.LicenseKeys), s.LicenseDb, StorageColorKeys),
-            (ImageCacheLabel, s.ImageCache, StorageColorImages),
+            (Loc.Get(Strings.Settings.Storage.ImageCache), s.ImageCache, StorageColorImages),
         ];
 
         var barKids = new List<Element>();

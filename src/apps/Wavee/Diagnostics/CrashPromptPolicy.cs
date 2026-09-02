@@ -22,11 +22,21 @@ static class CrashPromptPolicy
     /// <param name="versionChanged">True when the previous process was killed by an update deployment (a relaunch
     /// after an update, or the running version no longer matches the last-recorded one) rather than by a crash —
     /// suppresses ONLY the weakest signal (UncleanExit), never a managed report or a WER dump.</param>
-    public static CrashPromptDecision Decide(string pendingReport, string? newDumpPath, RunOutcome previousRun, bool optOut, bool versionChanged)
+    /// <param name="uncleanExitOffered">True when an UncleanExit prompt has already been offered since the last CLEAN
+    /// exit (<c>WaveeSettings.UncleanExitOffered</c>, set by Program.cs when this decision lands on UncleanExit and
+    /// cleared by <see cref="RunMarker.End"/>/<see cref="RunMarker.MarkCrashed"/>). The stale-"running" marker is
+    /// evidence-free — it cannot tell a crash from a kill — so it is offered ONCE per unclean streak: a process that
+    /// is stopped from the IDE or Task Manager on every run must not re-ask after every dismissal. A managed report
+    /// or a WER dump is real evidence and is never gated by this.</param>
+    /// <remarks>Opt-out ("Don't ask again after a crash"): an evidence-backed source still surfaces as a passive,
+    /// non-modal toast (the report can be filed later from Settings › About either way); the evidence-free
+    /// UncleanExit is suppressed outright — there is nothing to hand the user but a question.</remarks>
+    public static CrashPromptDecision Decide(string pendingReport, string? newDumpPath, RunOutcome previousRun, bool optOut, bool versionChanged,
+        bool uncleanExitOffered)
     {
         CrashSource src = pendingReport.Length > 0 ? CrashSource.ManagedReport
                         : newDumpPath is { Length: > 0 } ? CrashSource.WerDump
-                        : previousRun == RunOutcome.Unclean && !versionChanged ? CrashSource.UncleanExit
+                        : previousRun == RunOutcome.Unclean && !versionChanged && !uncleanExitOffered && !optOut ? CrashSource.UncleanExit
                         : CrashSource.None;
         if (src == CrashSource.None)
             return default;

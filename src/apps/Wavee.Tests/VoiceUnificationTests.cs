@@ -14,6 +14,10 @@ namespace Wavee.Tests;
 ///   interacted rungs are the row state composited OVER the stripe;</item>
 ///   <item><b>the accent roles</b> — action, selection and decor exist as named values.</item>
 /// </list></summary>
+// Tok is one process-global palette/theme; LightModeOverhaulTests.WithTheme swaps it mid-test, and the assertions here read it
+// live (Tok.AccentDefault twice around a call). xunit runs classes in parallel, so those four classes serialise on one
+// collection — the same discipline EntranceStaggerTests/MotionSystemTests use for the motion globals.
+[Collection("wavee-tok-global")]
 public class VoiceUnificationTests
 {
     // ── The eyebrow ──────────────────────────────────────────────────────────────────────────────────────────────

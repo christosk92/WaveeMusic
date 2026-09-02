@@ -307,8 +307,8 @@ sealed class RecentsPage : Component
 
         // ── the shell MATERIAL (Mica wash). Recents publishes ONE leg — the most recent hydrated cover — through the
         //    same HomeWashSource resolution Home uses, so the colour is the page's own content and never invented.
-        _ = AppearancePrefs.Epoch.Value;   // the Settings toggle applies LIVE (the DisableColorWashes idiom)
-        bool washesDisabled = svc.Settings.Get(WaveeSettings.DisableColorWashes);
+        _ = AppearancePrefs.Epoch.Value;   // the Settings toggle applies LIVE (the ColorWashesEnabled idiom)
+        bool washesDisabled = !svc.Settings.Get(WaveeSettings.ColorWashesEnabled);
         var washCard = WashCard();
         // Watch exactly the ONE artwork whose grading the wash is still waiting on — never the plane's global epoch,
         // which every scrolling batch of this very list would bump.
@@ -2475,7 +2475,7 @@ sealed class RecentsPage : Component
         {
             var page = UseProps<Props>().Page;
             _ = AppearancePrefs.Epoch.Value;   // the Settings toggle applies LIVE — same gate as the wash (Render, ~:266)
-            bool disabled = page._svc?.Settings.Get(WaveeSettings.DisableColorWashes) ?? false;
+            bool disabled = !(page._svc?.Settings.Get(WaveeSettings.ColorWashesEnabled) ?? true);
             _ = page._accentDay.Value;         // subscribe: re-derive once per section crossing, never per row
             _ = page._epoch.Value;             // a hydration landing may be what makes FactsFor resolve a cover at all
 

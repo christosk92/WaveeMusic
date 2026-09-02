@@ -572,7 +572,7 @@ sealed class SearchAllList : Component
     /// not carry, and without this a song right-clicked in search offered a strictly smaller menu than the same song
     /// right-clicked on a detail page. Exactly the resolution the row's DRAG source already performs, for the same
     /// reason, at the same cost: cold, once per gesture. A miss falls back to the uri-only card menu.</summary>
-    static MenuAttach? HitMenu(ActionServices? acts, IOverlayService? overlay, Model model, SearchTopHit h)
+    internal static MenuAttach? HitMenu(ActionServices? acts, IOverlayService? overlay, Model model, SearchTopHit h)
         => h.Kind == SearchHitKind.Track && TrackOf(model, h.Uri) is { } t
             ? TrackMenu(acts, overlay, t)
             : CardMenu(acts, overlay, h.Uri, h.Name, h.Image, h.Subtitle, h.RoundImage);
@@ -583,7 +583,7 @@ sealed class SearchAllList : Component
     /// payload into one a playlist can actually take. Album/playlist hits resolve their tracks on drop through the
     /// library reader; artist/show/episode hits carry none by design and are refused with a cue. The lookup runs inside
     /// the payload factory, so it is cold: once per gesture, never per render.</summary>
-    static DragSource EntityDrag(ActionServices? acts, Model model, SearchTopHit h)
+    internal static DragSource EntityDrag(ActionServices? acts, Model model, SearchTopHit h)
         => Drag.Source(WaveeDragKinds.Resource, () =>
             h.Kind == SearchHitKind.Track && TrackOf(model, h.Uri) is { } t
                 ? WaveeResourceDragPayload.ForTrack(t)

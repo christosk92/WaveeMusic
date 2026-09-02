@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
@@ -6,130 +6,99 @@ using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
-/// <summary>The shared page frame every real setup page uses: a [<see cref="SetupStage"/> column] beside [a content
-/// column: a pinned eyebrow+title(+lead) header over a body]. The stage column drops out ENTIRELY under width
-/// pressure according to <see cref="SetupLayout"/>.
+/// <summary>The shared page frame every real setup page uses — Rise's own <c>SetupPageContent</c>: an icon column
+/// (192-wide Lottie, centred) beside [a <c>TitleTextBlockStyle</c> header over a scrolling body], the icon column
+/// dropping out ENTIRELY below the 770-DIP viewport breakpoint (a single on/off switch — Rise's own
+/// <c>AdaptiveTrigger</c>, no hysteresis band).
 ///
 /// <para><see cref="Frame"/> defers to a <see cref="Component"/> (<see cref="SetupPageFrame"/>) purely so the
-/// stage-drop can read <c>Viewport.Size</c> LIVE — a window resize re-evaluates it without remounting the page body
-/// underneath, the same reason <c>ContentHost.PageFor</c> (Features/Shell/ContentHost.cs) wraps every real page in
-/// its own <c>Embed.Comp</c> rather than reading context itself: a bare static function has no hook context of its
-/// own to read <c>Viewport.Size</c> from.</para></summary>
+/// icon-column drop can read <c>Viewport.Size</c> LIVE — a window resize re-evaluates it without remounting the page
+/// body underneath, the same reason <c>ContentHost.PageFor</c> (Features/Shell/ContentHost.cs) wraps every real page
+/// in its own <c>Embed.Comp</c> rather than reading context itself: a bare static function has no hook context of
+/// its own to read <c>Viewport.Size</c> from.</para></summary>
 static class SetupPageHost
 {
-    /// <param name="pinnedHeader">False omits the eyebrow+title row entirely — the prototype's two Zune bookends
-    /// (Welcome, Done) are <c>.col.solo</c>: they carry their own display headline inside the body and must NOT
-    /// reserve a second header above it, which would leave a blank band.</param>
-    /// <param name="lead">An optional one-line (or <paramref name="leadMaxLines"/>-line) paragraph rendered inside the
-    /// pinned header, under the title — every decision-column budget in <see cref="SetupLayout"/> assumes this lives
-    /// in the header, not the body, which is why <see cref="SetupLayout.DecisionBodyBudget"/> takes a line count.</param>
-    /// <param name="stage">The page's own stage-column content (built with <see cref="SetupStage"/>). Null falls back
-    /// to a bare <see cref="SetupStage.Rail"/> — every page gets SOME stage even before its own work package composes
-    /// a richer one.</param>
-    /// <param name="scrollBody">At Wide only: false swaps the always-<see cref="ScrollEl"/> body for a plain clipped
-    /// column, so a page whose content fits its budget (verified against <see cref="SetupLayout.FitsWide"/>) can pin a
-    /// footer line to its own floor with a <c>Grow</c> spacer — a <see cref="ScrollEl"/> viewport sizes to its content
-    /// and has nothing for that spacer to grow into. Below Wide the body is ALWAYS scrollable regardless (the
-    /// safety net for whatever didn't fit once the stage column dropped).</param>
-    public static Element Frame(SetupPage page, string eyebrow, string title, Element body, bool pinnedHeader = true,
-        string? lead = null, int leadMaxLines = 1, Element? stage = null, bool scrollBody = true)
-        => Embed.Comp(new SetupPageFrame.Props(page, eyebrow, title, body, pinnedHeader, lead, leadMaxLines, stage, scrollBody),
-            () => new SetupPageFrame()) with { Key = "setup:frame:" + (int)page };
-
-    internal static float Width => SetupLayout.StageWidth;
+    /// <param name="page">Selects the Lottie hero (<see cref="WaveeLottie.For"/>) and whether the back-button spacer
+    /// can apply at all (<see cref="SetupGating.BackSpacerApplies"/>).</param>
+    /// <param name="header">The page title — <c>Ui.Title</c> (28/600), Rise's <c>TitleTextBlockStyle</c>.</param>
+    /// <param name="body">The page's own content column — build it with <see cref="SetupText"/>.</param>
+    /// <param name="backAutoPadding">Rise's own per-page <c>PaddingRectangle</c> declaration: whether THIS page ever
+    /// wants the 42-DIP back-button spacer reserved beside its header when the icon column has dropped. Terms/SignIn
+    /// never show a back button anyway (<see cref="SetupGating.ShowsBack"/>), so this is a no-op for them; it exists
+    /// so every page states its own intent explicitly, the same way Rise's XAML does per page.</param>
+    public static Element Frame(SetupPage page, string header, Element body, bool backAutoPadding = true)
+        => Embed.Comp(new SetupPageFrame.Props(page, header, body, backAutoPadding), () => new SetupPageFrame())
+            with { Key = "setup:frame:" + (int)page };
 }
 
-/// <summary>The live-responsive half of <see cref="SetupPageHost.Frame"/>. The frame receives its slots through pushed
-/// props: a page identity is stable inside one KeepAlive entry, but its body/stage are rebuilt when page-local signals
-/// change (notably when Spotify publishes a pairing challenge, or Appearance rebuilds its live-preview stage on every
-/// epoch bump). Passing those through the constructor would freeze the first tree forever, because a reused
-/// <see cref="Component"/> never re-runs its factory.</summary>
+/// <summary>The live-responsive half of <see cref="SetupPageHost.Frame"/>. The frame receives its slots through
+/// pushed props: a page identity is stable inside one KeepAlive entry, but its body is rebuilt when page-local
+/// signals change (notably when Spotify publishes a pairing challenge, or the runtime model advances a phase).
+/// Passing those through the constructor would freeze the first tree forever, because a reused <see cref="Component"/>
+/// never re-runs its factory.</summary>
 sealed class SetupPageFrame : Component
 {
-    internal sealed record Props(SetupPage Page, string Eyebrow, string Title, Element Body, bool PinnedHeader,
-        string? Lead, int LeadMaxLines, Element? Stage, bool ScrollBody);
+    internal sealed record Props(SetupPage Page, string Header, Element Body, bool BackAutoPadding);
 
     public override Element Render()
     {
         var p = UseProps<Props>();
         var viewport = UseContextSignal(Viewport.Size);
-        float plateW = SetupLayout.PlateWidth(viewport.Value.Width);
-        var tierSig = UseSignal(SetupLayout.NominalTierFor(plateW));
-        UseEffect(() =>
-        {
-            var current = tierSig.Peek();
-            var next = SetupLayout.TierFor(plateW, current);
-            if (next != current) tierSig.Value = next;
-        }, plateW);
-        var tier = tierSig.Value;
-        bool showStage = SetupLayout.ShowsHero(tier) && HeroView.Exists(p.Page);
+        bool iconShown = SetupLayout.ShowsIcon(viewport.Value.Width);
+        bool spacer = p.BackAutoPadding && SetupGating.BackSpacerApplies(p.Page, iconShown);
 
-        Element? leadEl = p.Lead is { Length: > 0 } leadText
-            ? Body(leadText).Secondary() with
-            {
-                MinWidth = 0f, MaxLines = p.LeadMaxLines, Trim = TextTrim.WordEllipsis,
-                Wrap = p.LeadMaxLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap,
-            }
-            : null;
-
-        var headerChildren = new List<Element>(3)
-        {
-            WaveeType.Eyebrow(p.Eyebrow) with
-                { Color = Tok.TextTertiary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            WaveeType.PageHero(p.Title) with
-                { FontFamily = "Segoe UI Variable Display", MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis },
-        };
-        if (leadEl is not null) headerChildren.Add(leadEl);
+        var headerChildren = spacer
+            ? new Element[] { new BoxEl { Width = SetupLayout.BackSpacerWidth, Shrink = 0f }, HeaderTitle(p.Header) }
+            : [HeaderTitle(p.Header)];
 
         Element header = new BoxEl
         {
-            Direction = 1, Gap = Spacing.XS, Shrink = 0f, MinWidth = 0f,
-            Children = headerChildren.ToArray(),
+            Direction = 0, Shrink = 0f, Margin = new Edges4(0f, -SetupLayout.HeaderTopPull, 0f, SetupLayout.HeaderBottomGap),
+            Children = headerChildren,
         };
 
-        // Below Wide (no stage column) the body is ALWAYS scrollable — the safety net for whatever didn't fit once
-        // the stage dropped. At Wide, honor the page's own `scrollBody` (a page that fits its budget can pin a
-        // footer line to the floor with a Grow spacer instead, which a ScrollEl viewport has nothing to grow into).
-        bool scroll = !showStage || p.ScrollBody;
-        Element bodyEl = scroll
-            ? ScrollView(p.Body) with { Shrink = 1f, MinWidth = 0f, MinHeight = 0f }
-            : new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true, Children = [p.Body] };
+        Element bodyEl = ScrollView(p.Body) with
+        {
+            Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f,
+            // The ScrollViewer Margin 0,0,-24,0 / Padding 0,0,24,0 trick: the scrollbar rides in the plate's own
+            // outer 24-DIP padding rather than eating into the content column, so a wide scrollbar never narrows text.
+            Margin = new Edges4(0f, 0f, -SetupLayout.ScrollGutter, 0f),
+            Padding = new Edges4(0f, 0f, SetupLayout.ScrollGutter, 0f),
+            EdgeCues = ScrollEdgeCues.None,
+            // Rise's ScrollViewer is VerticalScrollBarVisibility=Auto: whenever the body overflows the lane, the thin
+            // WinUI rail stays visible (hover still expands it), so a cut-off page always SAYS it scrolls. The engine
+            // default reveals the rail only on hover/scroll — on a page a user has never scrolled that is invisible.
+            AlwaysShowScrollbar = true,
+        };
 
         Element content = new BoxEl
         {
-            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = Spacing.M,
-            // A headerless page is a Zune bookend, and those CENTER their block vertically (the prototype's
-            // `.col.solo` + `justify-content:center`). A ScrollEl viewport sizes itself to its content, so a child
-            // asking for Grow=1f/Justify=Center inside one has nothing to grow into and silently pins to the top —
-            // which is exactly what it did. Bookends are authored to fit the plate, so they take the column directly.
-            Children = p.PinnedHeader ? [header, bodyEl] : [p.Body],
+            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            Children = [header, bodyEl],
         };
 
-        bool clearBack = !showStage && p.Page is >= SetupPage.SignIn and <= SetupPage.Notifications;
-        var padding = new Edges4(
-            Spacing.XXL,
-            clearBack ? Spacing.XXXL + Spacing.XXL : Spacing.XXL,
-            Spacing.XXL,
-            Spacing.M);
-
-        if (!showStage)
+        if (!iconShown)
             return new BoxEl
             {
-                Key = "setup:layout:" + (int)tier,
-                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                Padding = padding, Children = [content],
+                Key = "setup:layout:compact", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+                Children = [content],
             };
+
+        Element iconColumn = new BoxEl
+        {
+            Width = SetupLayout.IconColumnWidth, Shrink = 0f, AlignSelf = FlexAlign.Stretch,
+            Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+            Children = [LottieView.Create(WaveeLottie.For(p.Page), SetupLayout.IconColumnWidth, WaveeLottie.Options)],
+        };
 
         return new BoxEl
         {
-            Key = "setup:layout:" + (int)tier,
-            Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Gap = Spacing.XXL, Padding = padding,
-            Children =
-            [
-                p.Stage ?? SetupStage.Rail(p.Page),
-                content,
-            ],
+            Key = "setup:layout:wide", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            Gap = SetupLayout.IconColumnGap,
+            Children = [iconColumn, content],
         };
     }
+
+    static Element HeaderTitle(string header) =>
+        Title(header) with { Grow = 1f, Basis = 0f, MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis };
 }

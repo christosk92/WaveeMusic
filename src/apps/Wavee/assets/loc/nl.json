@@ -139,10 +139,6 @@
     "appearance": {
       "title": "Weergave",
       "subtitle": "Thema, kleurenpalet en effecten van de shell",
-      "effectsTitle": "Visuele effecten",
-      "effectsSub": "Lopende tekst en kleurvlakken uit albumhoezen",
-      "effectsAllOn": "Alles aan",
-      "effectsDisabled": "{count} uitgeschakeld",
       "zoom": "Zoom",
       "zoomSub": "Schaal de hele app, zoals Ctrl + / − in een browser",
       "zoomIn": "Inzoomen",
@@ -150,26 +146,8 @@
       "zoomReset": "Zoom herstellen",
       "theme": "Thema",
       "themeSub": "Systeem volgt de Windows-instelling automatisch",
-      "palette": "Palet",
-      "paletteSub": "Kleurt de interface en accentkleur",
-      "windowMaterial": "Venstermateriaal",
-      "windowMaterialSub": "Mica Alt geeft het venster een sterkere tint vanaf je bureaubladachtergrond",
-      "materialMica": "Mica",
-      "materialMicaAlt": "Mica Alt",
       "rowDensity": "Rijhoogte",
-      "rowDensitySub": "Hoogte van rijen in nummerlijsten",
-      "pageLayout": "Indeling van nummerpagina",
-      "pageLayoutSub": "Gebruik automatisch het zijpaneel, of de artwork-hero op elk formaat",
-      "pageTone": "Paginakleur beperken tot de hero",
-      "pageToneSub": "Laat de artworkkleur onder de hero vervagen in plaats van de hele pagina te tinten",
-      "disableMarquee": "Lopende tekst uitschakelen",
-      "disableMarqueeSub": "Lange titels afkappen in plaats van laten scrollen",
-      "disableColorWashes": "Kleurvlakken uitschakelen",
-      "disableColorWashesSub": "Neutrale interface en pagina's behouden in plaats van kleuren uit artwork",
-      "paletteWarm": "Warm",
-      "paletteSlate": "Leisteen",
-      "paletteNeutral": "Neutraal",
-      "paletteAccent": "Accent"
+      "rowDensitySub": "Hoogte van rijen in nummerlijsten"
     },
     "choice": {
       "system": "Systeem",
@@ -178,9 +156,7 @@
       "compact": "Compact",
       "default": "Standaard",
       "cozy": "Ruim",
-      "comfortable": "Comfortabel",
-      "automatic": "Automatisch",
-      "hero": "Hero"
+      "comfortable": "Comfortabel"
     }
   },
 

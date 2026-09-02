@@ -40,5 +40,12 @@
     "license": "Microsoft font license (system component)",
     "url": "https://learn.microsoft.com/windows/apps/design/style/segoe-ui-symbol-font",
     "note": "One sidebar glyph is drawn from the OS-installed Segoe MDL2 Assets face (present on Windows 10 and 11). Not redistributed."
+  },
+  {
+    "name": "Windows 11 OOBE onboarding animations (eula / connect / patch Lottie)",
+    "version": "Bodymovin 5.6.5 exports, as redistributed by Rise Media Player",
+    "license": "UNVERIFIED -- Microsoft-owned artwork; no licence located",
+    "url": "https://github.com/Rise-Software/Rise-Media-Player",
+    "note": "user accepted the redistribution risk on 2026-09-02"
   }
 ]

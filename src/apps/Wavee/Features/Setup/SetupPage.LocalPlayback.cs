@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using FluentGpu.Animation;
@@ -7,45 +6,29 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
-/// <summary>Page 3 · Local playback (<c>data-step="3"</c>). REUSES <see cref="PlaybackRuntimeSetupModel"/> wholesale
-/// (<c>Features/Shell/PlaybackRuntimeSetupCard.cs</c>) — <see cref="SetupPagePlaceholders"/>'s capture wrapper has
-/// already constructed it (<see cref="SetupSession.EnsureRuntime"/>) by the time this page mounts, so the phase
-/// this page shows is the exact same <see cref="PlaybackRuntimeSetupModel.PhaseSig"/> the footer reads.
+/// <summary>Page 2 · Local playback — the wizard's LAST page (<see cref="SetupGating.IsLastPage"/>: there is no Done
+/// page to advance into; Ready's primary finishes the wizard outright). REUSES <see cref="PlaybackRuntimeSetupModel"/>
+/// and <c>PlaybackRuntimeSetupCard.SetupBody</c>'s internal statics wholesale — <see cref="SetupPagePlaceholders"/>'s
+/// capture wrapper has already constructed the model (<see cref="SetupSession.EnsureRuntime"/>) by the time this page
+/// mounts, so the phase this page shows is the exact same <see cref="PlaybackRuntimeSetupModel.PhaseSig"/> the footer
+/// reads.
 ///
-/// <para>Stage/decision split (Work package D): the DECISION column (480 DIP) shows the "what step am I on"
-/// ladder (<see cref="SetupDecision.StepCard"/> × 3, states from <see cref="SetupRuntimePresentation.StepStates"/>)
-/// plus whichever escape-hatch chip row applies; the STAGE column (344 DIP, Wide only) shows the live detail — the
-/// same progress bar/fact-box content <c>PlaybackRuntimeSetupCard.SetupBody</c>'s extracted arms
-/// (<c>CatalogWaiting</c>/<c>Downloading</c>/<c>Verifying</c>/<c>VerifyDetailBox</c>/<c>ReadyBadge</c>/
-/// <c>ReadyDetailBox</c>/<c>ReadyLinks</c>/<c>VersionPicker</c>) already build for the standalone dialog — never a
-/// second copy of that formatting. Below Wide, <see cref="SetupPageHost.Frame"/> drops the stage column entirely, so
-/// this page appends the stage panel under its own column instead of losing that detail.</para></summary>
+/// <para>One content column, Rise-styled: a download <c>SettingsCard</c> + a <c>SettingsExpander</c> "Advanced" while
+/// Offer; a progress <c>SettingsCard</c> (label/byte or percent text + a 162-wide <c>ProgressBar</c> in its
+/// <c>Content</c> slot) for the three network phases; a warning <c>InfoBar</c> + two fact cards for Untrusted; four
+/// detail cards + fine print for Ready; an error <c>InfoBar</c> + the Offer card again for Failed; the model's own
+/// <c>SetupBody.VersionPicker</c> for Advanced. No account card here (the previous page already confirmed it), no
+/// facts table, no chips, no stage column.</para></summary>
 sealed class SetupLocalPlaybackPage : Component
 {
-    static readonly Dictionary<PlaybackRuntimeSetupModel.Phase, string> TitleKeys = new()
-    {
-        [PlaybackRuntimeSetupModel.Phase.Offer] = Strings.Playback.Runtime.Title,
-        [PlaybackRuntimeSetupModel.Phase.FetchingCatalog] = Strings.Playback.Runtime.Title,
-        [PlaybackRuntimeSetupModel.Phase.Downloading] = Strings.Playback.Runtime.Title,
-        [PlaybackRuntimeSetupModel.Phase.Verifying] = Strings.Playback.Runtime.Title,
-        [PlaybackRuntimeSetupModel.Phase.Untrusted] = Strings.Playback.Runtime.SignatureInvalid,
-        [PlaybackRuntimeSetupModel.Phase.Ready] = Strings.Playback.Runtime.Ready,
-        [PlaybackRuntimeSetupModel.Phase.Failed] = Strings.Playback.Runtime.Title,
-        [PlaybackRuntimeSetupModel.Phase.Advanced] = Strings.Playback.Runtime.ChooseVersion,
-    };
-
-    const float ReadyLabelWidth = 72f;
-
     public override Element Render()
     {
         var svc = UseContext(Services.Slot);
         var bridge = UseContext(PlaybackBridge.Slot);
         var overlay = UseContext(Overlay.Service);
-        var go = UseContext(HistoryStore.NavCtx);
         var post = UsePost();
 
         var session = SetupSession.Current;
@@ -53,51 +36,24 @@ sealed class SetupLocalPlaybackPage : Component
         if (model is null && session is not null && svc?.Settings is { } settings0 && bridge is not null)
             model = session.EnsureRuntime(svc, settings0, bridge, post);
 
-        // Tier hysteresis (pattern: SetupPage.SignIn.cs) — this page decides for ITSELF whether to build the wide
-        // stage/decision split or fold the stage panel under the column, exactly like the frame does structurally.
-        var viewport = UseContextSignal(Viewport.Size);
-        float plateW = SetupLayout.PlateWidth(viewport.Value.Width);
-        var tierSig = UseSignal(SetupLayout.NominalTierFor(plateW));
-        UseEffect(() =>
-        {
-            var current = tierSig.Peek();
-            var next = SetupLayout.TierFor(plateW, current);
-            if (next != current) tierSig.Value = next;
-        }, plateW);
-        var tier = tierSig.Value;
-        bool wide = SetupLayout.ShowsHero(tier);
-        float barW = SetupLayout.RuntimeBarWidth(tier);
-
-        Element body;
-        Element? stage = null;
-        string title;
-        string? lead = null;
-        var phase = PlaybackRuntimeSetupModel.Phase.Offer;
-
         if (model is null)
         {
-            body = SetupCompact.Column(SetupBody.Body(Loc.Get(Strings.Playback.Runtime.NotActive)));
-            title = Loc.Get(Strings.Playback.Runtime.Title);
-        }
-        else
-        {
-            var helper = new SetupBody(model);
-            phase = model.PhaseSig.Value;
-            title = Loc.Get(TitleKeys[phase]);
-            lead = LeadFor(phase);
-
-            Element finePrint = SetupCompact.FinePrint(Loc.Get(Strings.Setup.LocalPlayback.FinePrint));
-            body = SetupDecision.Column(wide, DecisionKids(phase, model, helper, go),
-                phase == PlaybackRuntimeSetupModel.Phase.Advanced ? null : finePrint);
-
-            var panelKind = SetupRuntimePresentation.StagePanelFor(phase);
-            if (wide)
-                stage = Stage(panelKind, phase, model, helper, overlay, barW);
-            else
-                body = SetupCompact.Column(body, StagePanel(panelKind, phase, model, helper, overlay, barW));
+            Element emptyBody = SetupText.Stack(
+                SetupText.Lead(Loc.Get(Strings.Setup.LocalPlayback.Lead)),
+                SetupText.Body(Loc.Get(Strings.Playback.Runtime.NotActive)));
+            return SetupPageHost.Frame(SetupPage.LocalPlayback, Loc.Get(Strings.Setup.LocalPlayback.Header), emptyBody);
         }
 
-        body = body with
+        var helper = new SetupBody(model);
+        var phase = model.PhaseSig.Value;
+        string header = Loc.Get(HeaderFor(phase));
+
+        var kids = new List<Element>(6) { SetupText.Lead(Loc.Get(LeadFor(phase))) };
+        kids.Add(PhaseContent(phase, model, helper, overlay));
+        if (phase != PlaybackRuntimeSetupModel.Phase.Advanced)
+            kids.Add(SetupText.Secondary(Loc.Get(Strings.Setup.LocalPlayback.FinePrint)) with { Key = "runtime:fineprint" });
+
+        Element body = SetupText.Stack([.. kids]) with
         {
             Key = "runtime:" + phase,
             Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
@@ -105,144 +61,120 @@ sealed class SetupLocalPlaybackPage : Component
             Transition = MotionTok.StandardEnter,
         };
 
-        return SetupPageHost.Frame(SetupPage.LocalPlayback, Loc.Get(Strings.Setup.Eyebrow.LocalPlayback), title, body,
-            lead: lead, stage: wide ? stage : null, scrollBody: !wide);
+        return SetupPageHost.Frame(SetupPage.LocalPlayback, header, body);
     }
 
-    // ── Lead (frame header, under the title) ──────────────────────────────────────────────────────────────────────
-    static string? LeadFor(PlaybackRuntimeSetupModel.Phase phase) => phase switch
+    static string HeaderFor(PlaybackRuntimeSetupModel.Phase phase) => phase switch
     {
-        PlaybackRuntimeSetupModel.Phase.Ready => Loc.Get(Strings.Setup.LocalPlayback.ReadyLead),
-        PlaybackRuntimeSetupModel.Phase.Advanced or PlaybackRuntimeSetupModel.Phase.Untrusted => null,
-        _ => Loc.Get(Strings.Setup.LocalPlayback.OfferLead),
+        PlaybackRuntimeSetupModel.Phase.Untrusted => Strings.Playback.Runtime.SignatureInvalid,
+        PlaybackRuntimeSetupModel.Phase.Ready => Strings.Playback.Runtime.Ready,
+        PlaybackRuntimeSetupModel.Phase.Advanced => Strings.Playback.Runtime.ChooseVersion,
+        _ => Strings.Setup.LocalPlayback.Header,
     };
 
-    // ── Decision column (480 DIP): the step ladder + whichever escape-hatch chip row applies, driven by the SAME
-    // SetupRuntimePresentation predicates SetupRuntimePresentationTests pins — never a second "which phase shows
-    // what" table drifting from the tested one. ──────────────────────────────────────────────────────────────────
-    static Element[] DecisionKids(PlaybackRuntimeSetupModel.Phase phase, PlaybackRuntimeSetupModel model,
-        SetupBody helper, Action<string, string?>? go)
+    static string LeadFor(PlaybackRuntimeSetupModel.Phase phase) =>
+        phase == PlaybackRuntimeSetupModel.Phase.Ready ? Strings.Setup.LocalPlayback.ReadyLead : Strings.Setup.LocalPlayback.Lead;
+
+    static Element PhaseContent(PlaybackRuntimeSetupModel.Phase phase, PlaybackRuntimeSetupModel model, SetupBody helper, IOverlayService overlay) => phase switch
     {
-        var kids = new List<Element>();
+        PlaybackRuntimeSetupModel.Phase.Offer => OfferGroup(model),
+        PlaybackRuntimeSetupModel.Phase.FetchingCatalog => CatalogCard(),
+        PlaybackRuntimeSetupModel.Phase.Downloading => DownloadingCard(model),
+        PlaybackRuntimeSetupModel.Phase.Verifying => VerifyingCard(),
+        PlaybackRuntimeSetupModel.Phase.Untrusted => UntrustedGroup(model),
+        PlaybackRuntimeSetupModel.Phase.Ready => ReadyGroup(model, helper, overlay),
+        PlaybackRuntimeSetupModel.Phase.Failed => FailedGroup(model),
+        PlaybackRuntimeSetupModel.Phase.Advanced => helper.Advanced(),
+        _ => new BoxEl(),
+    };
 
-        if (phase == PlaybackRuntimeSetupModel.Phase.Untrusted)
-            kids.Add(SetupBody.Untrusted());
-        if (phase == PlaybackRuntimeSetupModel.Phase.Failed)
-            kids.Add(helper.Failed());
-        if (phase == PlaybackRuntimeSetupModel.Phase.Ready && model.UpToDate.Value)
-            kids.Add(SetupBody.Body(Loc.Get(Strings.Playback.Runtime.UpToDate)));
-        if (phase == PlaybackRuntimeSetupModel.Phase.Advanced)
-        {
-            kids.Add(SetupBody.Body(Loc.Get(Strings.Playback.Runtime.AdvancedBody)));
-            kids.Add(ScrollView(helper.VersionPicker(header: null)) with
-            {
-                ContentSized = true, MaxHeight = SetupLayout.VersionListMaxHeight, Shrink = 1f, MinHeight = 0f,
-            });
-        }
+    // ── Offer: the download card + an Advanced disclosure (SettingsExpander) ───────────────────────────────────────
+    static Element OfferGroup(PlaybackRuntimeSetupModel model) => SetupText.Group(DownloadCard(), AdvancedExpander(model));
 
-        if (SetupRuntimePresentation.ShowsStepCards(phase))
-            kids.AddRange(StepCards(phase));
-        // Both lines belong to the predicate: the label and the chip row are ONE disclosure. Without the braces the
-        // chip row escaped the `if` and rendered on every phase — a "Choose a folder / Use installed Spotify / Choose
-        // a version" row sitting under a live download, offering to start a second, competing install.
-        if (SetupRuntimePresentation.ShowsAdvancedChips(phase))
-        {
-            kids.Add(SetupCompact.SectionLabel(Loc.Get(Strings.Setup.LocalPlayback.Advanced)));
-            kids.Add(AdvancedChipRow(model, phase == PlaybackRuntimeSetupModel.Phase.Failed ? go : null));
-        }
-        if (SetupRuntimePresentation.ShowsLocalSourceChips(phase))
-            kids.Add(LocalSourceChipRow(model));
+    static Element DownloadCard() => SetupText.Card(
+        Loc.Get(Strings.Setup.LocalPlayback.CardTitle),
+        Strings.Setup.LocalPlayback.CardSub(RuntimeInformation.ProcessArchitecture.ToString()),
+        Icons.Download);
 
-        return kids.ToArray();
-    }
-
-    static Element[] StepCards(PlaybackRuntimeSetupModel.Phase phase)
+    static Element AdvancedExpander(PlaybackRuntimeSetupModel model) => SettingsExpander.Create(new SettingsExpander.Options
     {
-        var s = SetupRuntimePresentation.StepStates(phase);
-        return
+        Header = Loc.Get(Strings.Setup.LocalPlayback.Advanced),
+        HeaderIcon = Icons.Settings,
+        Items =
         [
-            SetupDecision.StepCard(1, s.Download,
-                Loc.Get(Strings.Setup.LocalPlayback.Step1Title), Loc.Get(Strings.Setup.LocalPlayback.Step1Body)),
-            SetupDecision.StepCard(2, s.Verify,
-                Loc.Get(Strings.Setup.LocalPlayback.Step2Title), Loc.Get(Strings.Setup.LocalPlayback.Step2Body)),
-            SetupDecision.StepCard(3, s.Ready,
-                Loc.Get(Strings.Setup.LocalPlayback.Step3Title), Loc.Get(Strings.Setup.LocalPlayback.Step3Body)),
-        ];
+            SettingsExpander.Item(Loc.Get(Strings.Setup.LocalPlayback.AdvancedDll), Loc.Get(Strings.Setup.LocalPlayback.AdvancedDllSub),
+                isClickEnabled: true, onClick: model.PickFolder),
+            SettingsExpander.Item(Loc.Get(Strings.Setup.LocalPlayback.AdvancedInstalled), Loc.Get(Strings.Setup.LocalPlayback.AdvancedInstalledSub),
+                isClickEnabled: true, onClick: model.UseInstalled),
+            SettingsExpander.Item(Loc.Get(Strings.Setup.LocalPlayback.AdvancedVersion), Loc.Get(Strings.Setup.LocalPlayback.AdvancedVersionSub),
+                isClickEnabled: true, onClick: model.ShowAdvanced),
+        ],
+    });
+
+    // ── FetchingCatalog / Downloading / Verifying: one progress card each — label/byte text + a 162-wide bar. ───────
+    static Element CatalogCard() => SetupText.Card(
+        Loc.Get(Strings.Playback.Runtime.CheckingSupport),
+        Loc.Get(Strings.Playback.Runtime.ReachingCatalog) + "  ·  " + RuntimeInformation.ProcessArchitecture,
+        Icons.Download,
+        content: ProgressBar.Indeterminate(width: SetupLayout.ProgressWidth));
+
+    static Element DownloadingCard(PlaybackRuntimeSetupModel model)
+    {
+        long received = model.Received.Value, total = model.Total.Value;
+        Element bar = total > 0
+            ? ProgressBar.Determinate(SetupRuntimePresentation.ProgressFraction(received, total), width: SetupLayout.ProgressWidth)
+            : ProgressBar.Indeterminate(width: SetupLayout.ProgressWidth);
+        return SetupText.Card(
+            model.DownloadLabel.Value ?? Loc.Get(Strings.Playback.Runtime.Downloading),
+            DownloadBytesText(received, total),
+            Icons.Download,
+            content: bar);
     }
 
-    /// <summary>Offer/Failed's "Choose a folder / Use installed Spotify / Choose a version" trio.
-    /// <paramref name="diagnosticsGo"/> null (Offer, or Failed with no navigation target) omits the fourth
-    /// diagnostics chip — a clickable-but-inert link is worse than no link (the same rule the old
-    /// SettingsExpander-based disclosure followed).</summary>
-    static Element AdvancedChipRow(PlaybackRuntimeSetupModel model, Action<string, string?>? diagnosticsGo)
+    static Element VerifyingCard() => SetupText.Card(
+        Loc.Get(Strings.Playback.Runtime.Verifying),
+        Loc.Get(Strings.Playback.Runtime.VerifyingCaption),
+        Icons.Download,
+        content: ProgressBar.Indeterminate(width: SetupLayout.ProgressWidth));
+
+    static string DownloadBytesText(long received, long total) => total > 0
+        ? $"{received / 1_000_000.0:0.0} / {total / 1_000_000.0:0.0} MB"
+        : $"{received / 1_000_000.0:0.0} MB";
+
+    // ── Untrusted: a warning InfoBar over two fact cards (the fingerprint the download DID match, and the signature
+    // that couldn't be verified). ───────────────────────────────────────────────────────────────────────────────────
+    static Element UntrustedGroup(PlaybackRuntimeSetupModel model)
     {
-        var chips = new List<Element>
-        {
-            SetupDecision.Chip(Icons.Folder, Loc.Get(Strings.Playback.Runtime.InstallFromFolder), model.PickFolder),
-            SetupDecision.Chip(Icons.MusicNote, Loc.Get(Strings.Playback.Runtime.UseInstalled), model.UseInstalled),
-            SetupDecision.Chip(Icons.List, Loc.Get(Strings.Setup.LocalPlayback.ChipChooseVersion), model.ShowAdvanced),
-        };
-        if (diagnosticsGo is { } goTo)
-            chips.Add(SetupDecision.Chip(Icons.Important, Loc.Get(Strings.Playback.Runtime.ViewDiagnostics),
-                () => model.OpenDiagnostics(goTo)));
-        return SetupDecision.ChipRow(chips.ToArray());
+        var entry = model.ActiveEntry;
+        string version = entry is null ? "—" : $"{entry.SpotifyVersion}  ·  {entry.Arch}";
+        string hash = entry is null ? "—" : SetupRuntimePresentation.ShortHash(entry.DllSha256);
+        return SetupText.Group(
+            InfoBar.Create(InfoBarSeverity.Warning, Loc.Get(Strings.Playback.Runtime.SignatureInvalid),
+                Loc.Get(Strings.Playback.Runtime.UntrustedBody), isClosable: false),
+            SetupText.Card(Loc.Get(Strings.Playback.Runtime.DetailVersion), version),
+            SetupText.Card(Loc.Get(Strings.Playback.Runtime.DetailSha256), hash));
     }
 
-    /// <summary>Advanced's own two-chip row — no "Choose a version" (the version list is already on screen).</summary>
-    static Element LocalSourceChipRow(PlaybackRuntimeSetupModel model) => SetupDecision.ChipRow(
-        SetupDecision.Chip(Icons.Folder, Loc.Get(Strings.Playback.Runtime.InstallFromFolder), model.PickFolder),
-        SetupDecision.Chip(Icons.MusicNote, Loc.Get(Strings.Playback.Runtime.UseInstalled), model.UseInstalled));
-
-    // ── Stage column (344 DIP, Wide only): hero art + a live detail panel + caption. ─────────────────────────────
-    static Element Stage(SetupRuntimeStagePanel panelKind, PlaybackRuntimeSetupModel.Phase phase,
-        PlaybackRuntimeSetupModel model, SetupBody helper, IOverlayService overlay, float barWidth) => SetupStage.Column(
-        SetupStage.Rail(SetupPage.LocalPlayback, SetupLayout.HeroArtSize) with { Key = "runtime:stage:art" },
-        StagePanel(panelKind, phase, model, helper, overlay, barWidth) with
-        {
-            Key = "runtime:stage:panel:" + panelKind,
-            Enter = new EnterExit(Dy: 4f, Opacity: 0f, Active: true),
-            Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
-            Transition = MotionTok.StandardEnter,
-        },
-        SetupStage.Spacer(),
-        StageCaption(phase));
-
-    /// <summary>The stage's lower panel content — keyed by <see cref="SetupRuntimeStagePanel"/> so Verifying and
-    /// Untrusted (both <see cref="SetupRuntimeStagePanel.Verify"/>) cross-fade instead of remounting.</summary>
-    static Element StagePanel(SetupRuntimeStagePanel panelKind, PlaybackRuntimeSetupModel.Phase phase,
-        PlaybackRuntimeSetupModel model, SetupBody helper, IOverlayService overlay, float barWidth) => panelKind switch
+    // ── Ready: four detail cards (version / arch / signature / location). ──────────────────────────────────────────
+    static Element ReadyGroup(PlaybackRuntimeSetupModel model, SetupBody helper, IOverlayService overlay)
     {
-        SetupRuntimeStagePanel.Progress => phase == PlaybackRuntimeSetupModel.Phase.FetchingCatalog
-            ? SetupBody.CatalogWaiting(barWidth)
-            : helper.Downloading(barWidth),
-        SetupRuntimeStagePanel.Verify => phase == PlaybackRuntimeSetupModel.Phase.Untrusted
-            ? helper.VerifyDetailBox()
-            : helper.Verifying(barWidth),
-        SetupRuntimeStagePanel.Ready => new BoxEl
-        {
-            Direction = 1, Gap = Spacing.M, Shrink = 0f,
-            Children =
-            [
-                SetupBody.ReadyBadge(),
-                helper.ReadyDetailBox(model.Status, overlay, ReadyLabelWidth),
-                helper.ReadyLinks(),
-            ],
-        },
-        _ => FactsCard(), // Offer, Failed, Advanced
-    };
+        var status = model.Status;
+        var kids = new List<Element>(5);
+        if (model.UpToDate.Value) kids.Add(SetupText.Body(Loc.Get(Strings.Playback.Runtime.UpToDate)));
+        kids.Add(SetupText.Card(Loc.Get(Strings.Setup.LocalPlayback.Version), status.SpotifyVersion ?? "—"));
+        kids.Add(SetupText.Card(Loc.Get(Strings.Setup.LocalPlayback.Architecture), status.Arch?.ToString() ?? "—"));
+        kids.Add(SetupText.Card(Loc.Get(Strings.Setup.LocalPlayback.Signature), SetupBody.SignatureSummary(status),
+            content: status.SignatureInfo is not null
+                ? HyperlinkButton.Create(Loc.Get(Strings.Setup.LocalPlayback.View), () => helper.ShowSignatureDetails(overlay, status))
+                : null));
+        kids.Add(SetupText.Card(Loc.Get(Strings.Setup.LocalPlayback.Location), status.RuntimePath ?? "—",
+            content: HyperlinkButton.Create(Loc.Get(Strings.Setup.LocalPlayback.OpenFolder), () => ShellOpen.RevealInExplorer(status.RuntimePath))));
+        return SetupText.Group([.. kids]);
+    }
 
-    static Element StageCaption(PlaybackRuntimeSetupModel.Phase phase) => SetupStage.Caption(
-        Loc.Get(Strings.Setup.LocalPlayback.StageTitle),
-        phase == PlaybackRuntimeSetupModel.Phase.Untrusted
-            ? Loc.Get(Strings.Setup.LocalPlayback.UntrustedStageBody)
-            : Loc.Get(Strings.Setup.LocalPlayback.StageBody));
-
-    /// <summary>The static "what gets installed" facts — Source/Checked/Lives in/For — shown while there is no live
-    /// download/verify/ready state to report (Offer, Failed, Advanced).</summary>
-    static Element FactsCard() => SetupStage.DetailBox(
-        SetupBody.RuntimeDetailRow(Loc.Get(Strings.Setup.LocalPlayback.FactSource), Loc.Get(Strings.Setup.LocalPlayback.FactSourceValue)),
-        SetupBody.RuntimeDetailRow(Loc.Get(Strings.Setup.LocalPlayback.FactChecked), Loc.Get(Strings.Setup.LocalPlayback.FactCheckedValue)),
-        SetupBody.RuntimeDetailRow(Loc.Get(Strings.Setup.LocalPlayback.FactLivesIn), Loc.Get(Strings.Setup.LocalPlayback.FactLivesInValue)),
-        SetupBody.RuntimeDetailRow(Loc.Get(Strings.Setup.LocalPlayback.FactFor),
-            Strings.Setup.LocalPlayback.FactForValue(RuntimeInformation.ProcessArchitecture.ToString())));
+    // ── Failed: an error InfoBar over the same download card (primary = "Try again"). ──────────────────────────────
+    static Element FailedGroup(PlaybackRuntimeSetupModel model) => SetupText.Group(
+        InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Playback.Runtime.Missing),
+            model.Error.Value ?? Loc.Get(Strings.Playback.Runtime.NoPack), isClosable: false),
+        DownloadCard());
 }

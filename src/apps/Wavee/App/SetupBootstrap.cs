@@ -22,17 +22,26 @@ static class SetupBootstrap
     public static void Run(IAppSettings settings, string? localAppDataOverride = null, IWaveeLog? log = null)
     {
         log ??= WaveeLog.Instance;
+
+        // Re-probed on EVERY launch — not gated by SetupBootstrapVersion below, which only guards the ONE-TIME arm/
+        // suppress decision a genuine first run makes. The data folder (%LOCALAPPDATA%\Wavee) can disappear on ANY
+        // launch of an already-migrated install (the user wipes it, restores an image, migrates the registry to a
+        // new PC without the data root); when it has, IsFreshInstall reads this launch as a first run even though
+        // the registry still remembers a completed wizard — see SetupGating.NeedsFreshInstallReset.
+        bool fresh = SidebarBootstrap.IsFreshInstall(settings, localAppDataOverride, log);
+        ResetIfDataFolderGone(settings, fresh, log);
+
         if (settings.Get(WaveeSettings.SetupBootstrapVersion) >= TargetVersion) { RearmForTerms(settings, log); return; }
 
-        bool fresh = SidebarBootstrap.IsFreshInstall(settings, localAppDataOverride, log);
         if (fresh)
         {
             settings.Set(WaveeSettings.SetupPending, true);
             settings.Set(WaveeSettings.SetupCompleted, false);
-            // LOAD-BEARING: setup page 5 (Sidebar) *is* the sidebar-design chooser, so a fresh install must never also
-            // arm SidebarDesignGating's OWN one-time chooser — showing both onboardings on one launch is exactly the
-            // bug this line prevents. SidebarBootstrap already defaulted the design to Classic; this only suppresses
-            // the separate popup chooser, it does not touch the chosen design.
+            // The setup wizard is Welcome/Sign in/Local playback only now — it no longer has a Sidebar step, but the
+            // separate one-time sidebar-design chooser popup must still stay suppressed on a fresh install: one
+            // onboarding prompt, not two, on the very first launch. SidebarBootstrap already defaulted the design to
+            // Classic (switchable later from the sidebar's own layout menu); this only suppresses the popup chooser,
+            // it does not touch the chosen design.
             settings.Set(WaveeSettings.SidebarOnboardingSeen, true);
         }
         else
@@ -48,6 +57,25 @@ static class SetupBootstrap
             WaveeLogField.Of("fresh", fresh));
 
         RearmForTerms(settings, log);
+    }
+
+    /// <summary>A wiped/missing DATA folder (<c>%LOCALAPPDATA%\Wavee</c>) on an install whose REGISTRY settings still
+    /// claim a finished wizard (<see cref="SetupGating.NeedsFreshInstallReset"/>) is treated as a fresh install: the
+    /// registry's memory of "already set up" is stale, so it is cleared right along with everything else that memory
+    /// would otherwise suppress (Welcome/EULA, the "Is this you?" reauth shortcut, the local-playback offer). Runs on
+    /// EVERY launch, same as <see cref="RearmForTerms"/> — not just the once-per-install migration above — because the
+    /// data folder can vanish on any launch of an already-migrated install.</summary>
+    static void ResetIfDataFolderGone(IAppSettings settings, bool fresh, IWaveeLog log)
+    {
+        bool completed = settings.Get(WaveeSettings.SetupCompleted);
+        int termsAccepted = settings.Get(WaveeSettings.TermsAcceptedVersion);
+        if (!SetupGating.NeedsFreshInstallReset(fresh, completed, termsAccepted)) return;
+
+        settings.Set(WaveeSettings.SetupPending, true);
+        settings.Set(WaveeSettings.SetupCompleted, false);
+        settings.Set(WaveeSettings.TermsAcceptedVersion, 0);
+        log.Info("setup", "setup.bootstrap.reset", "Data folder is gone — treating as a fresh install",
+            WaveeLogField.Of("terms_accepted_was", termsAccepted));
     }
 
     /// <summary>Re-arm a COMPLETED install whose recorded terms acceptance predates this build

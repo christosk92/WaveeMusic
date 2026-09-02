@@ -509,6 +509,11 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     // projected position instead of publishing that 0 as fact.
     public bool ClockValid => !_clockStale;
     public bool IsBuffering => _core.IsBuffering.Peek();
+    // Read, not Interlocked: _playIntent is only ever written from the serialized-pump/transport-verb call sites
+    // (Play/Pause/Stop, all UI-thread-driven), and a stale-by-one-write read here is no different from any other
+    // racy bool the controller polls — the PlaybackController.SupplyBodyWhenReadyAsync call site that reads this is
+    // fine with "as of a moment ago", never with a torn value (bool reads/writes are atomic on every supported arch).
+    public bool PlayIntent => _playIntent;
     public IObservable<AudioHostSignal> Signals => _signals;
     public IObservable<AudioTransitionSignal> Transitions => _transitions;
 
@@ -675,7 +680,11 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
             _activeStream = null;
             _activeFileIdHex = start.FileIdHex;
             _pendingFmt = start.Format; _pendingDurMs = start.DurationMs; _pendingGainDb = start.NormalizationGainDb;
-            _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
+            // A load nobody asked to hear (no play intent — the launch-recovery paused restore) announces nothing:
+            // see PlayIntentGate. Attaching a clear head/body is work the host does regardless; the buffering BAR is
+            // only ever honest while there is something the user is waiting to hear.
+            if (PlayIntentGate.ShouldAnnounceBuffering(_playIntent))
+                _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
             return;
         }
 
@@ -686,7 +695,8 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         _activeFileIdHex = start.FileIdHex;
         var bytes = new SpotifyMediaByteSource(stream, skip, kind, start.DurationMs, DbToLinear(start.NormalizationGainDb));
         await OpenSessionAsync(bytes, epoch).ConfigureAwait(false);
-        _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
+        if (PlayIntentGate.ShouldAnnounceBuffering(_playIntent))
+            _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
     }
 
     AudioFormat _pendingFmt;
@@ -696,7 +706,8 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     async Task SupplyBodyAsync(AudioStreamHandle body, long epoch)
     {
         if (epoch != Volatile.Read(ref _loadEpoch)) { _log.Info($"supply-body ignored stale epoch file={body.FileIdHex}"); return; }
-        _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Buffering, PositionMs));
+        if (PlayIntentGate.ShouldAnnounceBuffering(_playIntent))
+            _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Buffering, PositionMs));
 
         // Local file (a "Play file…" pick / a shell drop) — open the file and the session now. Same deferred-open shape
         // as the external branch below: the plan carried an EMPTY head, so LoadFastStart parked the load and THIS is
@@ -840,6 +851,19 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
             var source = MediaSource.FromPull(bytes).WithKind(MediaKind.PcmAudio);
             var session = await Backend.OpenAsync(source, new MediaOpenOptions { StartPaused = true }, CancellationToken.None).ConfigureAwait(false);
             if (epoch != Volatile.Read(ref _loadEpoch)) { await session.DisposeAsync().ConfigureAwait(false); return; }
+            // Bind the live effects surface (EQ/crossfade/balance/normalization) so PcmAudioSession.Advance's per-pump
+            // ReconcileEffects() actually folds a SetEqualizer/SetCrossfade write into this session's graph — mirrors
+            // QueuePlaybackCoordinator.OpenAtAsync's audio.BindEffects(_effects) (the engine's own reference call site;
+            // same ordering there — bind right after OpenAsync returns the session, before anything else touches it).
+            // MUST run BEFORE ConnectSignals: on a real device ConnectSignals starts the session's own RT feeder thread
+            // (driveWithOwnThread → StartFeeder), which begins calling Advance/ReconcileEffects immediately. BindEffects
+            // only stashes a plain reference field on the session, so binding it first — same thread, program order —
+            // makes Thread.Start()'s happens-before guarantee cover the write; binding AFTER ConnectSignals would race
+            // the freshly-started feeder thread's very first reconcile against this write.
+            // No unbind on close: BindEffects's reference lives on THIS session instance only, and every re-open builds
+            // a brand-new PcmAudioSession (this same method, above) — the old one (and its own _liveEffects field) is
+            // disposed wholesale, never reused, so there is nothing to clear.
+            if (session is PcmAudioSession pcmSession) pcmSession.BindEffects(_effects);
             session.ConnectSignals(_sink);
             _session = session;
             _activeBytes = bytes;   // retained so a mid-track device-rate change can re-open the SAME stream at the new rate

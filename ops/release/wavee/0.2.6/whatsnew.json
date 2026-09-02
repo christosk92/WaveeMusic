@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.2.6",
+  "packageVersion": "",
+  "name": "Breaker",
+  "tagline": "A three-step setup, a real Logs tab, and problem reports from inside the app.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": ["x64", "arm64"],
+  "links": { "release": "", "changelog": "", "compare": "" },
+  "highlights": [
+    {
+      "id": "three-step-setup",
+      "title": "Setup is three screens",
+      "body": "Terms, sign in, local playback — that is the whole wizard now, in a plain WinUI dialog with an animated hero beside each step. The appearance, sidebar, sound and notification tour pages are gone; those choices live in Settings with the same defaults, and the dialog opens the moment Wavee does.",
+      "kind": "rebuilt",
+      "issues": [53],
+      "media": {
+        "kind": "image",
+        "src": "media/setup.jpg",
+        "alt": "The new setup dialog: the licence and terms page, with the sign-in page in front showing a QR code to scan",
+        "width": 1200, "height": 675
+      }
+    },
+    {
+      "id": "logs-tab",
+      "title": "A real Logs tab",
+      "body": "Settings › Logs is a full-height log viewer: a command bar to refresh, copy, export and open the log folder, a search box with level and category filters, rows that expand on a click to show their fields and exception, a session picker that lists your previous runs, and a Verbose switch that captures Debug and Trace for the running session.",
+      "kind": "new",
+      "issues": [55],
+      "media": {
+        "kind": "image",
+        "src": "media/logs.jpg",
+        "alt": "The Logs tab in Settings, listing log rows with level badges, a filter box and a command bar",
+        "width": 1200, "height": 675
+      }
+    },
+    {
+      "id": "report-a-problem",
+      "title": "Report a problem from inside Wavee",
+      "body": "Settings › About has \"Report a problem…\" and \"Suggest a feature…\", and after a crash the next launch offers to file it. Wavee opens the matching GitHub form with the version, install source, architecture and Windows build filled in, and copies a redacted report — personal paths, account details, secrets and addresses removed — to your clipboard for you to paste.",
+      "kind": "new",
+      "issues": [64],
+      "media": {
+        "kind": "image",
+        "src": "media/report.jpg",
+        "alt": "The Report a problem dialog with a title field, details box, a diagnostics checkbox and the redacted report preview",
+        "width": 1200, "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

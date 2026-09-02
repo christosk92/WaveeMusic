@@ -41,6 +41,24 @@ public class ReportRedactorTests
     // ── Injected literals ──────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
+    public void Redact_InjectedLiteral_MatchesWholeWordsOnly()
+    {
+        // A display name that happens to be a prefix of the GitHub handle in the feed URL must not rewrite the URL.
+        var rules = RedactionRules.None with { DisplayName = "christos" };
+        Assert.Equal("<display-name> · https://github.com/christosk92/WaveeMusic/releases",
+            ReportRedactor.Redact("christos · https://github.com/christosk92/WaveeMusic/releases", rules));
+        Assert.Equal("(<display-name>)", ReportRedactor.Redact("(Christos)", rules));
+    }
+
+    [Fact]
+    public void Redact_DeviceNamedAfterTheApp_IsNeverRedacted()
+    {
+        var rules = RedactionRules.None with { DeviceNames = ["Wavee", "Kitchen speaker"] };
+        Assert.Equal("Wavee 0.2.5-dev on <device> · WaveeMusic",
+            ReportRedactor.Redact("Wavee 0.2.5-dev on Kitchen speaker · WaveeMusic", rules));
+    }
+
+    [Fact]
     public void Redact_InjectedUserName_IsReplaced_CaseInsensitive()
     {
         var rules = RedactionRules.None with { UserName = "chris" };

@@ -664,7 +664,7 @@ sealed class TrackList : Component
             // setting read by a row must be carried in TrackRowsSnapshot (as noMarquee is) — a flag read outside the
             // snapshot would recompute here, compare equal, and silently never reach the rows.
             _ = AppearancePrefs.Epoch.Value;
-            bool noMarquee = svc?.Settings.Get(WaveeSettings.DisableMarquee) ?? false;
+            bool noMarquee = !(svc?.Settings.Get(WaveeSettings.MarqueeEnabled) ?? true);
             bool hideTrackArtwork = svc?.Settings.Get(WaveeSettings.HideTrackArtwork) ?? false;
             bool classic = (svc?.Settings.Get(WaveeSettings.TrackRowStyle) ?? 0) == 1;
             var filters = handlers.Filters.Value;
@@ -1803,7 +1803,7 @@ sealed class TrackList : Component
         {
             // The vertical hero owns the toolbar, but the chip bar still belongs to the LIST — it changes what the
             // rows below contain. Without this the Liked content-filter bar was unreachable in the vertical/hero
-            // layout (and with DetailPageLayout=Hero, unreachable at every width) while its fetch still ran.
+            // layout while its fetch still ran.
             var verticalStack = new List<Element>(3);
             if (contentFilterBar is { } verticalChips) verticalStack.Add(verticalChips);
             if (lensHeader is { } verticalLens) verticalStack.Add(verticalLens);

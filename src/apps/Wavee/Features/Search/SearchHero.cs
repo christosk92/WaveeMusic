@@ -25,6 +25,8 @@ sealed class SearchHero : Component
         var model = UseContext(SearchAllList.Props);
         var lib = UseContext(LibraryBridge.Slot);
         var goOrigin = UseContext(HistoryStore.GoWithOrigin);
+        var acts = UseContext(ActionServices.Slot);
+        var overlay = UseContext(Overlay.Service);
         string q = (UseContext(SearchQuery.Slot)?.Peek() ?? "").Trim();
         if (model is null) return new BoxEl();
         var origin = q.Length == 0 ? (NavOrigin?)null : new NavOrigin(q, "search", q);
@@ -45,6 +47,12 @@ sealed class SearchHero : Component
         Action play = isTrack ? () => model.PlayTrack(h.Uri) : () => model.PlayContext(h.Uri);
         Action open = isTrack ? play : SearchAllList.OpenFor(model, h.Kind, h.Uri, h.Name, origin, goOrigin);
 
+        // Same menu + drag resolution as an ordinary search row (SearchAllList.HitMenu/EntityDrag) — a track hit
+        // resolves the FULL track menu via the page's own results, everything else gets the uri-only card menu; the
+        // hero must not offer a smaller action set than the row it visually replaces.
+        var menu = SearchAllList.HitMenu(acts, overlay, model, h);
+        var drag = SearchAllList.EntityDrag(acts, model, h);
+
         Element? trailing =
             h.Followable ? Embed.Comp(() => new FollowButton(h.Uri, h.Name)) with { Key = "follow:" + h.Uri }
             : isTrack ? SearchAllList.SaveTrailing(lib?.IsSaved(h.Uri) ?? false, () =>
@@ -58,6 +66,10 @@ sealed class SearchHero : Component
         if (canOpen && !isTrack)
             actions.Add(WaveeCta.Pill(Loc.Get(Strings.Search.OpenPage), open, ButtonAppearance.Standard) with { Shrink = 0f });
         if (trailing is not null) actions.Add(trailing);
+        // The "…" More button: the same ClickRequestsContext + BlocksDragArm affordance MediaCard uses (MoreCorner /
+        // MoreInline) — a context-request click re-enters the walk and opens the SAME attached menu (.WithMenu below)
+        // anchored at the button, and never doubles as a drag handle for the card underneath it.
+        if (menu is not null) actions.Add(ToolTip.Wrap(MediaCard.MoreInline(true), Loc.Get(Strings.Common.More)));
 
         var chips = new System.Collections.Generic.List<Element>(3);
         if (h.MatchedTitle) chips.Add(Chip(Loc.Get(Strings.Search.MatchedTitle)));
@@ -100,12 +112,13 @@ sealed class SearchHero : Component
             Children = [Surfaces.Artwork(h.Image, h.Uri.GetHashCode() & 0x7fffffff, art, 260f, Radii.Card)],
         };
 
-        return new BoxEl
+        var card = new BoxEl
         {
             Height = 228f, MinWidth = 0f, Grow = 1f, AlignSelf = FlexAlign.Stretch,
             ClipToBounds = true, Corners = Radii.CardAll,
             Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Role = AutomationRole.Button, OnClick = open, ZStack = true,
+            Draggable = drag,
             Children =
             [
                 scheme is { } graded
@@ -131,6 +144,7 @@ sealed class SearchHero : Component
                 },
             ],
         };
+        return card.Interactive(Interaction.Card).WithMenu(menu);
     }
 
     static Element Chip(string text) => new BoxEl

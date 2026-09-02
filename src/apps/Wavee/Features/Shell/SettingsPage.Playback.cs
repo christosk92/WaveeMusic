@@ -80,27 +80,28 @@ sealed partial class SettingsPage
 
         return SettingsTabStack(
             RuntimeCard(svc),
-            SettingsSectionHeader(Loc.Get(Strings.Settings.Playback.AudioTitle), Icons.MusicNote),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.Playback.AudioTitle),
+                SettingsGlyphs.Section(SettingsTab.Playback, "Audio")),
             SettingsRow(Loc.Get(Strings.Settings.Playback.AudioQuality), Loc.Get(Strings.Settings.Playback.AudioSub),
-                QualityCombo(svc), Icons.MusicNote),
+                QualityCombo(svc), SettingsGlyphs.Row(SettingsTab.Playback, "audioQuality")),
             SettingsRow(Loc.Get(Strings.Settings.Playback.MeteredQuality), MeteredQualitySub(),
-                MeteredQualityCombo(svc), Icons.Globe),
+                MeteredQualityCombo(svc), SettingsGlyphs.Row(SettingsTab.Playback, "meteredQuality")),
             SettingsRow(Loc.Get(Strings.Settings.Playback.RememberVolume), Loc.Get(Strings.Settings.Playback.RememberVolumeSub),
-                Toggle(WaveeSettings.RememberVolume), Icons.Volume),
+                Toggle(WaveeSettings.RememberVolume), SettingsGlyphs.Row(SettingsTab.Playback, "rememberVolume")),
             SettingsRow(Loc.Get(Strings.Settings.Playback.Autoplay), Loc.Get(Strings.Settings.Playback.AutoplaySub),
-                Toggle(WaveeSettings.AutoplayEnabled, bumpPlayback: true), Icons.Play),
-            SettingsSectionHeader(Loc.Get(Strings.Settings.Sound.Title), Icons.Tag),
+                Toggle(WaveeSettings.AutoplayEnabled, bumpPlayback: true), SettingsGlyphs.Row(SettingsTab.Playback, "autoplay")),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.Sound.Title), SettingsGlyphs.Section(SettingsTab.Playback, "Sound")),
             EqualizerGroup(svc, settings, eqOn, gains, preset),
             CrossfadeGroup(svc, settings, crossOn),
-            SettingsSectionHeader(Loc.Get(Strings.VideoOverride.SettingsTitle), Icons.Movie),
+            SettingsSectionHeader(Loc.Get(Strings.VideoOverride.SettingsTitle), SettingsGlyphs.Section(SettingsTab.Playback, "Video")),
             SettingsRow(Loc.Get(Strings.Settings.Playback.VideoQuality), Loc.Get(Strings.Settings.Playback.VideoQualitySub),
-                VideoQualityCombo(svc), Icons.Movie),
+                VideoQualityCombo(svc), SettingsGlyphs.Row(SettingsTab.Playback, "videoQuality")),
             SettingsRow(Loc.Get(Strings.Settings.Playback.VideoMeteredQuality), Loc.Get(Strings.Settings.Playback.VideoMeteredQualitySub),
-                MeteredVideoQualityCombo(svc), Icons.Globe),
+                MeteredVideoQualityCombo(svc), SettingsGlyphs.Row(SettingsTab.Playback, "videoMetered")),
             VideoOverridesGroup(svc),
-            SettingsSectionHeader(Loc.Get(Strings.Settings.Playback.PlayerBar), Icons.Pin),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.Playback.PlayerBar), SettingsGlyphs.Section(SettingsTab.Playback, "Player bar")),
             SettingsRow(Loc.Get(Strings.Settings.Playback.ShowRemaining), Loc.Get(Strings.Settings.Playback.ShowRemainingSub),
-                Toggle(WaveeSettings.PlayerBarShowRemaining, bumpPlayerBar: true), Icons.Clock));
+                Toggle(WaveeSettings.PlayerBarShowRemaining, bumpPlayerBar: true), SettingsGlyphs.Row(SettingsTab.Playback, "playerBarRemaining")));
     }
 
     Element RuntimeCard(Services? svc)
@@ -174,7 +175,7 @@ sealed partial class SettingsPage
         {
             Header = Loc.Get(Strings.Settings.Sound.Equalizer),
             Description = Loc.Get(Strings.Settings.Sound.EqualizerSub),
-            HeaderIcon = Icons.Tag,
+            HeaderIcon = SettingsGlyphs.Row(SettingsTab.Playback, "equalizer"),
             Content = toggle,
             InitiallyExpanded = eqOn,
             Items =
@@ -259,7 +260,7 @@ sealed partial class SettingsPage
         {
             Header = Loc.Get(Strings.Settings.Sound.Crossfade),
             Description = Loc.Get(Strings.Settings.Sound.CrossfadeSub),
-            HeaderIcon = Icons.Shuffle,
+            HeaderIcon = SettingsGlyphs.Row(SettingsTab.Playback, "crossfade"),
             Content = toggle,
             InitiallyExpanded = crossOn,
             Items =

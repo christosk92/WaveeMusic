@@ -163,9 +163,8 @@ public static class WaveeColors
     public static ColorF ShellGround => ShellGroundFor(
         Tok.Theme == ThemeKind.Light ? Tok.Palette.Light : Tok.Palette.Dark, Tok.Theme);
 
-    /// <summary>Pure overload of <see cref="ShellGround"/> for an arbitrary token set — used by the gates and by
-    /// <see cref="PresetSwatch"/> to resolve a palette that is not the active one, without mutating global theme
-    /// state.</summary>
+    /// <summary>Pure overload of <see cref="ShellGround"/> for an arbitrary token set — used by the gates to resolve a
+    /// palette that is not the active one, without mutating global theme state.</summary>
     public static ColorF ShellGroundFor(TokenSet set, ThemeKind theme) => theme == ThemeKind.Light
         ? ColorRamp.Darken(set.FillSolidBase, LightGroundDrop)
         : set.FillSolidBase;
@@ -278,22 +277,10 @@ public static class WaveeColors
     public static ColorF ChromePressed => Tok.FillSubtleTertiary;
     public static ColorF Badge => Tok.AccentDefault;
 
-    /// <summary>Swatch preview for the palette picker: the preset's CONTENT LAYER over the bare Mica base, for the
-    /// CURRENT theme — i.e. exactly the composite the shell's content region produces, so the swatch matches what
-    /// clicking it does to the largest surface in the window.
-    /// <para>It flattens <see cref="FileArea"/> (the translucent <c>LayerFillColorDefault</c> rung the region really
-    /// paints) rather than the opaque <see cref="ContentSurface"/> the swatch used to preview — that showed a rung the
-    /// authenticated shell stopped painting, so a preset whose translucent recipe differed from its opaque one
-    /// advertised the wrong colour.</para>
-    /// <para>THE APPROXIMATION, stated: live Mica has no colour until there is a desktop behind it, so the base here is
-    /// <see cref="MicaRef"/>'s neutral no-wallpaper reference tone (LightDefault / DarkDefault) — the same stand-in the
-    /// palette contrast gates measure against. On a strongly tinted wallpaper the real region drifts toward it; the
-    /// swatch cannot and should not chase that, because it is comparing PRESETS, not desktops.</para>
-    /// Reads the ARGUMENT's token sets, not the active ones — the swatch previews a palette that is not the active
-    /// one.</summary>
-    public static ColorF PresetSwatch(ThemePalette palette) => Tok.Theme == ThemeKind.Light
-        ? ColorContrast.Flatten(palette.LightShell.FileArea, MicaRef.LightDefault)
-        : ColorContrast.Flatten(palette.DarkShell.FileArea, MicaRef.DarkDefault);
+    // PresetSwatch (the palette picker's swatch preview) was deleted here: the palette picker itself is gone from both
+    // Settings and the profile menu (Workstream B, "Settings regroup + removals" — Wavee now always renders the
+    // neutral palette), and Setup's Appearance stage — its only other caller — went with the onboarding rewrite. See
+    // ShellMergedRungTests.cs's own tombstone note for the swatch-composite invariant this used to pin.
 
     // THE STICKY CONTEXT BAND HAS NO MATERIAL HERE ANY MORE, deliberately, and this note is the tombstone.
     //

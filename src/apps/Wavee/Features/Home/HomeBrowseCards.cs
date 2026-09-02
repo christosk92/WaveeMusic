@@ -27,9 +27,15 @@ static class HomeBrowseCards
     }
 
     /// <summary>The Charts Fold deck: one HomeSection per <see cref="ChartSections.All"/> uri, cards kept on that
-    /// section (never fanned into one tile per playlist). Featured null throws; later shelves that return null or
-    /// carry no cards are omitted so a market without Podcast Charts does not blank Home.</summary>
-    public static async Task<IReadOnlyList<HomeSection>> LoadChartDeckAsync(IBrowseService browse, CancellationToken ct = default)
+    /// section (never fanned into one tile per playlist). Featured null throws — UNLESS <paramref name="hasLiveCatalog"/>
+    /// says the live-catalog attempt has not concluded (still connecting, or offline with nothing more coming this
+    /// cycle), in which case a null Featured section is exactly what an unavailable browse looks like and this
+    /// degrades to an empty deck instead of failing loud (the same "offline/logged-out legitimately has no browse"
+    /// contract <see cref="IBrowseService.GetCategoriesAsync"/> documents). Defaults to <c>true</c> so every existing
+    /// caller — which always DOES have a live catalog by the time it calls this — keeps the fail-loud behavior.
+    /// Later shelves that return null or carry no cards are omitted so a market without Podcast Charts does not
+    /// blank Home.</summary>
+    public static async Task<IReadOnlyList<HomeSection>> LoadChartDeckAsync(IBrowseService browse, CancellationToken ct = default, bool hasLiveCatalog = true)
     {
         var uris = ChartSections.All;
         var tasks = new Task<BrowseSection?>[uris.Count];
@@ -38,7 +44,10 @@ static class HomeBrowseCards
         var pages = await Task.WhenAll(tasks).ConfigureAwait(false);
 
         if (pages[0] is null)
+        {
+            if (!hasLiveCatalog) return Array.Empty<HomeSection>();
             throw new InvalidOperationException("browseSection returned no Charts section for " + ChartSections.Featured + ".");
+        }
 
         var list = new List<HomeSection>(pages.Length);
         for (int i = 0; i < pages.Length; i++)

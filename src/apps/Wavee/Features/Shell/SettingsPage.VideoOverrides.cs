@@ -117,7 +117,8 @@ sealed partial class SettingsPage
         {
             _voAnchor = NodeHandle.Null;
             return SettingsRow(Loc.Get(Strings.VideoOverride.SettingsHeader),
-                Loc.Get(Strings.VideoOverride.SettingsSub), null, Icons.Movie, isEnabled: false);
+                Loc.Get(Strings.VideoOverride.SettingsSub), null,
+                SettingsGlyphs.Row(SettingsTab.Playback, "videoOverrides"), isEnabled: false);
         }
 
         Element control;
@@ -166,7 +167,8 @@ sealed partial class SettingsPage
 
         // The trust disclosure lives in the description, not in a dismissible tip: device-wide, and linked-not-copied.
         return SettingsRow(Loc.Get(Strings.VideoOverride.SettingsHeader),
-            Loc.Get(Strings.VideoOverride.SettingsSub), control, Icons.Movie);
+            Loc.Get(Strings.VideoOverride.SettingsSub), control,
+            SettingsGlyphs.Row(SettingsTab.Playback, "videoOverrides"));
     }
 
     // ── the Manage flyout (the ConcertFilterBar anchored-overlay mechanics) ───────────────────────────────────────────

@@ -34,7 +34,12 @@ public sealed class LiveTrackResolver : ITrackResolver
     readonly Func<AudioQualityPreference>? _quality;
     readonly AudioFormatProbe? _probe;
     readonly WaveeLogger _log;
-    readonly ConcurrentDictionary<string, Task<TrackMeta>> _metaCache = new();
+    // Keyed by (uri, quality) rather than uri alone: a quality-setting change must re-resolve, not replay whatever
+    // format was picked the first time this uri was ever seen. File IDs are immutable per-uri but the FORMAT picked
+    // for them is quality-dependent, so the old uri-only cache silently froze a user's quality choice at the rung
+    // that happened to be in effect the first time each track was resolved (see AudioPlaybackStack's `quality:`
+    // delegate doc comment for the intended per-resolve contract this restores).
+    readonly ConcurrentDictionary<(string Uri, AudioQualityPreference Quality), Task<TrackMeta>> _metaCache = new();
     readonly Resource<string, CdnResolve> _cdnCache;
 
     public LiveTrackResolver(
@@ -74,33 +79,37 @@ public sealed class LiveTrackResolver : ITrackResolver
     AudioQualityPreference Quality => _quality?.Invoke() ?? (_preferLossless ? AudioQualityPreference.Lossless : AudioQualityPreference.VeryHigh320);
 
     /// <summary>The fast half: extended-metadata → file select (Ogg or FLAC). No CDN, no key — so the head fetch (which
-    /// needs no key) can start the moment this returns, in parallel with the body resolve. Coalesced + cached per track uri
-    /// (file IDs are immutable); a failed resolve is dropped so it retries.</summary>
+    /// needs no key) can start the moment this returns, in parallel with the body resolve. Coalesced + cached per
+    /// (track uri, quality) — file IDs are immutable per uri, but which one is FORMAT-picked is quality-dependent, so a
+    /// changed quality setting gets its own cache entry instead of replaying a stale pick; a failed resolve is dropped
+    /// so it retries.</summary>
     public readonly record struct TrackMeta(byte[] FileId, string FileIdHex, byte[] FileGid, AudioFormat Fmt, long DurMs, string TrackUri, float NormalizationGainDb, string? ExternalUrl = null);
 
     public Task<TrackMeta> ResolveMetaAsync(Track track, CancellationToken ct = default)
     {
+        // Snapshot the quality ONCE — it is also the cache key, so the key and the format actually picked inside
+        // FetchMetaAsync must agree even if the setting changes again while this resolve is in flight.
+        var quality = Quality;
+        var key = (track.Uri, quality);
         // Cache the shared fetch task (CancellationToken.None so one caller's cancel can't poison the shared result).
-        var task = _metaCache.GetOrAdd(track.Uri, _ => FetchMetaAsync(track));
-        return AwaitAndDropOnFailure(track.Uri, task);
+        var task = _metaCache.GetOrAdd(key, _ => FetchMetaAsync(track, quality));
+        return AwaitAndDropOnFailure(key, task);
     }
 
-    async Task<TrackMeta> AwaitAndDropOnFailure(string uri, Task<TrackMeta> task)
+    async Task<TrackMeta> AwaitAndDropOnFailure((string Uri, AudioQualityPreference Quality) key, Task<TrackMeta> task)
     {
         try { return await task.ConfigureAwait(false); }
-        catch { _metaCache.TryRemove(new KeyValuePair<string, Task<TrackMeta>>(uri, task)); throw; }
+        catch { _metaCache.TryRemove(new KeyValuePair<(string, AudioQualityPreference), Task<TrackMeta>>(key, task)); throw; }
     }
 
-    async Task<TrackMeta> FetchMetaAsync(Track track)
+    async Task<TrackMeta> FetchMetaAsync(Track track, AudioQualityPreference quality)
     {
         if (EntityUri.KindOf(track.Uri) == EntityKind.Episode)
-            return await FetchEpisodeMetaAsync(track).ConfigureAwait(false);
+            return await FetchEpisodeMetaAsync(track, quality).ConfigureAwait(false);
 
         var trackPayload = await _fetchTrackV4(track.Uri, CancellationToken.None).ConfigureAwait(false);
         if (trackPayload is null) throw new AudioPlaybackException(AudioKeyFailureReason.Restricted, "no TRACK_V4 extension for " + track.Uri);
         var t = M.Track.Parser.ParseFrom(trackPayload);
-
-        var quality = Quality;
 
         // Lossless: AUDIO_FILES lives on the spotify:audio: entity derived from original_audio.uuid.
         Af.AudioFilesExtensionResponse? audioFiles = null;
@@ -125,20 +134,24 @@ public sealed class LiveTrackResolver : ITrackResolver
         {
             var gain = NormalizationGain(audioFiles!);
             var hex = Convert.ToHexStringLower(fl.fileId);
-            _log.Debug($"resolve {track.Uri}: selected {fl.fmt} (lossless) file {hex} gain={gain:0.0}dB");
+            // Info (not Debug): this is the one-per-track-start line that lets a user on the default log level verify
+            // which bitrate/format their quality setting actually picked (see the ResolveMeta_RepicksWhenQualityChanges
+            // regression this line exists to make observable).
+            _log.Info($"resolve {track.Uri}: selected {fl.fmt} (lossless) file {hex} format={fl.fmt} uri={track.Uri} gain={gain:0.0}dB");
             return new TrackMeta(fl.fileId, hex, t.Gid.ToByteArray(), fl.fmt,   // FLAC AP-key uses the track's gid
                 t.HasDuration ? t.Duration : track.DurationMs, track.Uri, gain);
         }
         if (ogg is { } og)
         {
             var hex = Convert.ToHexStringLower(og.fileId);
-            _log.Debug($"resolve {track.Uri}: selected {og.fmt} file {hex}");
+            // Info: same one-per-track-start visibility as the lossless branch above.
+            _log.Info($"resolve {track.Uri}: selected {og.fmt} file {hex} format={og.fmt} uri={track.Uri}");
             return new TrackMeta(og.fileId, hex, og.gid, og.fmt, og.durMs > 0 ? og.durMs : track.DurationMs, track.Uri, 0f);
         }
         throw new AudioPlaybackException(AudioKeyFailureReason.Restricted, "no playable file (Ogg or FLAC, incl. alternatives)");
     }
 
-    async Task<TrackMeta> FetchEpisodeMetaAsync(Track track)
+    async Task<TrackMeta> FetchEpisodeMetaAsync(Track track, AudioQualityPreference quality)
     {
         if (_fetchEpisodeV4 is not { } fetchEp)
             throw new AudioPlaybackException(AudioKeyFailureReason.Restricted, "episode resolver not configured");
@@ -155,12 +168,12 @@ public sealed class LiveTrackResolver : ITrackResolver
             return new TrackMeta(extGid, Convert.ToHexStringLower(extGid), extGid, AudioFormat.Mp3, dur, track.Uri, 0f, ep.ExternalUrl);
         }
 
-        var quality = Quality;
         var pick = SelectEpisodeAudio(ep, quality);
         if (pick is null)
             throw new AudioPlaybackException(AudioKeyFailureReason.Restricted, "no playable audio for episode " + track.Uri);
         var hex = Convert.ToHexStringLower(pick.Value.fileId);
-        _log.Debug($"resolve {track.Uri}: episode {pick.Value.fmt} file {hex}");
+        // Info: same one-per-track-start visibility as the track branches in FetchMetaAsync.
+        _log.Info($"resolve {track.Uri}: episode {pick.Value.fmt} file {hex} format={pick.Value.fmt} uri={track.Uri}");
         return new TrackMeta(pick.Value.fileId, hex, ep.Gid.ToByteArray(), pick.Value.fmt, dur, track.Uri, 0f);
     }
 

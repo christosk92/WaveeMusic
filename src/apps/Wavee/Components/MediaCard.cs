@@ -132,7 +132,7 @@ public static class MediaCard
         }.Skeletonized(false)
         : new BoxEl();
 
-    static Element MoreInline(bool show, bool onDark = false, float size = 36f) => show
+    internal static Element MoreInline(bool show, bool onDark = false, float size = 36f) => show
         ? new BoxEl
         {
             Width = size, Height = size, Shrink = 0f,

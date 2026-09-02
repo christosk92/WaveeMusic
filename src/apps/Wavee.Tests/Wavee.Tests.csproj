@@ -111,6 +111,9 @@
     <Compile Include="..\Wavee\Features\Detail\PlaylistListState.cs" />
     <!-- home artist-row Mixview width tier + hysteresis (BCL only) — HomeArtistRowLayoutTests -->
     <Compile Include="..\Wavee\Features\Home\HomeArtistRowLayout.cs" />
+    <!-- the pre-session/empty/ready classification for the home LANDING feed (System only) — split out so
+         RefreshHomeOnce never publishes a 0-group pre-GoLive placeholder as a genuinely empty page — HomeFeedReadinessTests -->
+    <Compile Include="..\Wavee\Features\Home\HomeFeedReadiness.cs" />
     <!-- pure Classic/Modern track-table column + sort grammar — TrackRowStyleRulesTests -->
     <Compile Include="..\Wavee\Features\Detail\DetailTrackTableRules.cs" />
     <!-- the expanded row's fact list: which facts a Track states, in what order, and how the exact stamp / BPM / key /
@@ -232,6 +235,16 @@
          which is what lets the sidebar's built-in document, the customizer palette and DeveloperModeTests all drive the
          REAL gate instead of a copy of it. -->
     <Compile Include="..\Wavee\App\DeveloperMode.cs" Link="DeveloperMode.cs" />
+    <!-- The Settings regroup catalog (Workstream B): a static (Tab, Section, RowId, Glyph) table, engine-free by
+         construction (glyphs are NAME strings, not FluentGpu.Controls.Icons.* constants — Icons is engine-bound and
+         this project does not reference it), so SettingsCatalogTests can assert the "no row repeats its section's
+         glyph" invariant directly. -->
+    <Compile Include="..\Wavee\App\SettingsCatalog.cs" Link="SettingsCatalog.cs" />
+    <!-- The persisted 10-band equalizer gain vector's pure parse/clamp/serialize (System + the IAppSettings shim above
+         only — no Services, no live audio host), extracted out of App\PlaybackDsp.cs (which stays engine/Services-bound
+         and is deliberately NOT included) so EqualizerSettingsTests drives the REAL parse/clamp code the live host,
+         the pre-login local host and the Settings tab all share. -->
+    <Compile Include="..\Wavee\App\EqualizerSettings.cs" Link="EqualizerSettings.cs" />
     <!-- Classic's LOCKED built-in document (R3.0.2). Engine-free apart from the one Signal<bool> the shim above
          supplies (DeveloperMode.Enabled, read by ClassicDocumentCache) — System + Wavee.Core.Sidebar otherwise; the
          rest of Features\Sidebar\Pane\ is the engine-bound renderer and is deliberately NOT included. This is what lets
@@ -253,16 +266,12 @@
          — SetupGatingTests / SetupCommandsTests / SetupSignInProjectionTests drive the REAL decisions, exactly like
          SidebarBootstrap/SidebarDesignGating above. SetupBootstrap reuses SidebarBootstrap.IsFreshInstall directly. -->
     <Compile Include="..\Wavee\App\SetupGating.cs" Link="SetupGating.cs" />
-    <!-- the shared step-state vocabulary for SetupDecision.StepCard and the Done checklist (System-only enum) -->
-    <Compile Include="..\Wavee\App\SetupStepState.cs" Link="SetupStepState.cs" />
+    <!-- why this run of the wizard exists (System-only enum) — SetupGating switches on it, so it has to be engine-free too -->
+    <Compile Include="..\Wavee\App\SetupEntryPoint.cs" Link="SetupEntryPoint.cs" />
     <Compile Include="..\Wavee\App\SetupCommands.cs" Link="SetupCommands.cs" />
     <Compile Include="..\Wavee\App\SetupBootstrap.cs" Link="SetupBootstrap.cs" />
     <Compile Include="..\Wavee\App\SetupRuntimePresentation.cs" Link="SetupRuntimePresentation.cs" />
     <Compile Include="..\Wavee\App\SetupSignInPresentation.cs" Link="SetupSignInPresentation.cs" />
-    <Compile Include="..\Wavee\App\SetupSoundFacts.cs" Link="SetupSoundFacts.cs" />
-    <Compile Include="..\Wavee\App\SetupNotificationSummary.cs" Link="SetupNotificationSummary.cs" />
-    <Compile Include="..\Wavee\App\SetupDoneSteps.cs" Link="SetupDoneSteps.cs" />
-    <Compile Include="..\Wavee\Features\Setup\AppearanceStageModel.cs" Link="AppearanceStageModel.cs" />
     <Compile Include="..\Wavee\Features\Shell\PlaybackRuntimeSetupModel.Phase.cs" Link="PlaybackRuntimeSetupModel.Phase.cs" />
     <Compile Include="..\Wavee\Features\Setup\SetupLayout.cs" Link="SetupLayout.cs" />
     <!-- factory-reset wipe (System + WindowsApi storage only) — FactoryResetTests drive it against TEMP trees, never the real %LOCALAPPDATA% -->
@@ -387,6 +396,9 @@
          split out of FluentMediaAudioHost.DrainXruns, which opens a real WASAPI device and cannot be instantiated
          headlessly. XrunLogLineTests drives the real formatting instead of a copy of it. -->
     <Compile Include="..\Wavee\SpotifyLive\Audio\XrunLogLine.cs" Link="XrunLogLine.cs" />
+    <!-- The buffering-bar-on-a-paused-restored-track fix's host-side half: a load nobody asked to hear (no play
+         intent) announces no Prebuffering/Buffering signal. Same split-for-testability shape as XrunLogLine above. -->
+    <Compile Include="..\Wavee\SpotifyLive\Audio\PlayIntentGate.cs" Link="PlayIntentGate.cs" />
     <!-- the v9 video-manifest parser (System.Text.Json + FluentGpu.WindowsApi's DashSourceDescriptor) — SpotifyVideoManifestTests
          drive it against a real captured manifest in Fixtures\spotify-video-manifest-v9.json -->
     <Compile Include="..\Wavee\SpotifyLive\SpotifyVideoManifest.cs" Link="SpotifyVideoManifest.cs" />
@@ -468,6 +480,10 @@
          already referenced transitively via FluentGpu.WindowsApi — and WaveeColors, hence the sibling token file. -->
     <Compile Include="..\Wavee\Design\WaveePalette.cs" />
     <Compile Include="..\Wavee\Design\WaveeTokens.cs" />
+    <!-- The setup wizard's Lottie hero recolour rule (plan: lottie-heroes-implementation.md §7). Pure over ColorF +
+         the WaveePalette Hsl pair above (Tok is already referenced transitively via FluentGpu.WindowsApi), so
+         WaveeLottieRecolorTests drives the REAL rule instead of a copy of it. -->
+    <Compile Include="..\Wavee\Features\Setup\WaveeLottieRecolor.cs" />
     <!-- The two token layers the design-system convergence pins: the semantic TYPE aliases (every alias must resolve a
          size AND a line height AND an allowed weight) and the ONE on-media colour ladder that replaced 36 hand-rolled
          MediaCard literals. Both are pure value layers over the engine's Ui/Tok/ColorRamp — no window, no theme state,

@@ -62,7 +62,7 @@ readonly record struct DetailHandlers(
 //   • the node remounted → an engine `[img] unmount` then `[img] pin ... state=None`.
 //
 // Cost: every call site is guarded by `DetailCoverTrace.On` (WaveeLog's own level gate), so at the default Info level
-// nothing is formatted and nothing is allocated. Run with WAVEE_LOG_LEVEL=Debug (+ FG_DIAG=1 for the engine half).
+// nothing is formatted and nothing is allocated. Turn it on via Settings › Logs › Verbose (+ FG_DIAG=1 for the engine half).
 static class DetailCoverTrace
 {
     public static bool On => WaveeLog.Instance.IsEnabled(WaveeLogLevel.Debug);
@@ -188,7 +188,7 @@ sealed class DetailShell : Component
         var svc = UseContext(Services.Slot);
         var settings = _settings ?? svc?.Settings;
         _ = AppearancePrefs.Epoch.Value;
-        bool colorWashesDisabled = settings?.Get(WaveeSettings.DisableColorWashes) ?? false;
+        bool colorWashesDisabled = !(settings?.Get(WaveeSettings.ColorWashesEnabled) ?? true);
         var bridge = UseContext(PlaybackBridge.Slot);
         var acts = UseContext(ActionServices.Slot);   // the page-BODY drop destination (see PageDropTarget)
         _actsRef = acts;                             // …and the hero cover's drag payload, built inside RowChildren
@@ -457,14 +457,8 @@ sealed class DetailShell : Component
         // width supports — a stale mode signal would keep the two-column layout at a width where its rail + tracks
         // cannot coexist. Narrower-than-needed is fine; the next Measure widens it.
         if (_measuredW > 0f) { int fit = ModeFor(_measuredW, mode, _modeInitialized); if (fit > mode) mode = fit; }
-        // Page-layout preference: "Hero" forces the vertical hero SYSTEM at every width for track pages — the
-        // metadata rail is never composed; Automatic keeps the responsive rail↔hero behavior. The override is applied
-        // at render time only (the _mode signal keeps tracking the real width, so flipping the setting back reverts
-        // instantly). Epoch-subscribed → the Settings toggle re-renders any mounted (incl. KeepAlive-parked) page live.
-        _ = DetailHeroPrefs.Epoch.Value;
-        if (_cfg.Content == DetailContent.Tracks
-            && (settings?.Get(WaveeSettings.DetailPageLayout) ?? DetailVerticalLayout.PageAuto) == DetailVerticalLayout.PageHero)
-            mode = Vertical;
+        // The page layout is always Automatic now (Workstream B removed the "Track page layout" picker — nobody
+        // should choose between the rail and a forced hero): mode tracks the real width only, via ModeFor above.
         bool verticalTracks = mode == Vertical && _cfg.Content == DetailContent.Tracks;
 
         // The track list (drops columns by breakpoint, owns the now-playing re-skin + an external SelectionModel). Its
@@ -515,10 +509,10 @@ sealed class DetailShell : Component
         // is sampled from the cover at page scale either: the blurred-artwork band this plane used to carry is deleted,
         // because its loudness tracked the SLEEVE's brightness and made the same page read two ways. See that tombstone.
         //
-        // heroBand is now consumed by ONE thing: where hero-only mode fades back to the neutral surface. The vertical
-        // arm publishes its MEASURED hero height; the two-column arm has no single measured hero, so it keeps the 55 %
-        // top band the wash it replaces already faded over (the deleted HeroWash's own fade stop).
-        bool heroOnly = settings?.Get(WaveeSettings.DetailPageToneHeroOnly) ?? false;
+        // "Limit page color to the hero" is gone (Workstream B): the tone always covers the full page now, never just
+        // a band that fades back to neutral. heroBand/pageH stay computed below only because CoverPaletteLeaves
+        // .PageTonePlane's Props still carry them (Design/CoverPaletteLeaves.cs, out of this workstream's scope).
+        const bool heroOnly = false;
         // The window viewport is the pre-measure stand-in: it is larger than the page (it includes the chrome rows),
         // so the first frame's fade lands slightly low and the first real Measure corrects it.
         float pageH = _measuredH > 1f ? _measuredH : viewportSig.Peek().Height;

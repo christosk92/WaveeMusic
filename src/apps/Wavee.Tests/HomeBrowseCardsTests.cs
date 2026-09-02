@@ -193,6 +193,20 @@ public class HomeBrowseCardsTests
         Assert.Contains(ChartSections.Featured, ex.Message);
     }
 
+    [Fact]
+    public async Task LoadChartDeckAsync_FeaturedNull_NoLiveCatalog_ReturnsEmptyInsteadOfThrowing()
+    {
+        // Home §6.1 fix: a null Featured section while the live-catalog attempt has not concluded (still connecting,
+        // or offline with nothing more coming) is exactly what an unavailable browse looks like — not an application
+        // error. Only a caller that KNOWS it has a live catalog (the default, preserving every existing caller's
+        // fail-loud contract above) gets the throw.
+        var browse = new FakeBrowse();
+
+        var deck = await HomeBrowseCards.LoadChartDeckAsync(browse, hasLiveCatalog: false);
+
+        Assert.Empty(deck);
+    }
+
     static BrowseSection Shelf(string uri, string title, int total, params BrowseCard[] cards)
         => new(uri, title, BrowseSectionKind.Shelf, cards, [], total);
 

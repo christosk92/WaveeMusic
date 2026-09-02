@@ -78,6 +78,38 @@ public class LiveTrackResolverTests
         Assert.Null(LiveTrackResolver.SelectOgg(t));
     }
 
+    // The quality ladder (PickOgg, exercised through SelectOgg): a target rung is picked exactly when present; a
+    // missing rung falls back to the NEAREST available file, preferring a LOWER bitrate over a higher one (don't
+    // exceed the user's bandwidth choice just because it's the closest number).
+    [Fact]
+    public void SelectOgg_Respects96And160Rungs()
+    {
+        M.Track AllRungs()
+        {
+            var t = new M.Track { Gid = ByteString.CopyFrom(Gid(1)) };
+            t.File.Add(File(Id(1), M.AudioFile.Types.Format.OggVorbis96));
+            t.File.Add(File(Id(2), M.AudioFile.Types.Format.OggVorbis160));
+            t.File.Add(File(Id(3), M.AudioFile.Types.Format.OggVorbis320));
+            return t;
+        }
+
+        var at96 = LiveTrackResolver.SelectOgg(AllRungs(), AudioQualityPreference.Normal96);
+        Assert.Equal(AudioFormat.OggVorbis96, at96!.Value.fmt);
+        Assert.Equal(Id(1), at96.Value.fileId);
+
+        var at160 = LiveTrackResolver.SelectOgg(AllRungs(), AudioQualityPreference.High160);
+        Assert.Equal(AudioFormat.OggVorbis160, at160!.Value.fmt);
+        Assert.Equal(Id(2), at160.Value.fileId);
+
+        // 160 is missing: targeting it must prefer the LOWER 96 rung over the higher 320 one.
+        var missing160 = new M.Track { Gid = ByteString.CopyFrom(Gid(1)) };
+        missing160.File.Add(File(Id(1), M.AudioFile.Types.Format.OggVorbis96));
+        missing160.File.Add(File(Id(3), M.AudioFile.Types.Format.OggVorbis320));
+        var nearestLower = LiveTrackResolver.SelectOgg(missing160, AudioQualityPreference.High160);
+        Assert.Equal(AudioFormat.OggVorbis96, nearestLower!.Value.fmt);
+        Assert.Equal(Id(1), nearestLower.Value.fileId);
+    }
+
     // ── SelectFlac (pure) ─────────────────────────────────────────────────────────────────────────────────────────────
     [Fact]
     public void SelectFlac_Prefers24Bit()
@@ -169,5 +201,32 @@ public class LiveTrackResolverTests
 
         Assert.Equal(1, calls);   // in-flight coalesced + cached
         Assert.All(metas, m => Assert.Equal(Id(3), m.FileId));
+    }
+
+    // The _metaCache regression this whole class is built around: a resolve is keyed by (uri, quality), not uri
+    // alone, so a Settings quality change is picked up on the very next resolve of an already-seen track instead of
+    // being frozen at whatever rung was in effect the first time — see LiveTrackResolver's _metaCache doc comment.
+    [Fact]
+    public async Task ResolveMeta_RepicksWhenQualityChanges()
+    {
+        var t = new M.Track { Gid = ByteString.CopyFrom(Gid(1)) };
+        t.File.Add(File(Id(1), M.AudioFile.Types.Format.OggVorbis96));
+        t.File.Add(File(Id(2), M.AudioFile.Types.Format.OggVorbis160));
+        t.File.Add(File(Id(3), M.AudioFile.Types.Format.OggVorbis320));
+        var bytes = t.ToByteString();
+
+        var quality = AudioQualityPreference.VeryHigh320;
+        var r = new LiveTrackResolver(null!, new StubAudioKeySource(), Fetch(bytes), fetchAudioFilesV5: null,
+            preferLossless: false, quality: () => quality);
+
+        var track = DomainTrack();
+        var first = await r.ResolveMetaAsync(track);
+        Assert.Equal(AudioFormat.OggVorbis320, first.Fmt);
+        Assert.Equal(Id(3), first.FileId);
+
+        quality = AudioQualityPreference.Normal96;   // simulate a live Settings change
+        var second = await r.ResolveMetaAsync(track);
+        Assert.Equal(AudioFormat.OggVorbis96, second.Fmt);
+        Assert.Equal(Id(1), second.FileId);
     }
 }

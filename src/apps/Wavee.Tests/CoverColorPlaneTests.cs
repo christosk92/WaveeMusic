@@ -16,6 +16,10 @@ namespace Wavee.Tests;
 // IMAGE (so every pre-sized URL and every entity showing that cover share one entry), it survives restarts for ~half a
 // year, a colourless cover is remembered for a shorter window instead of being re-asked forever, light theme never
 // serves a dark-only (kind 179) grading, and a render-path miss is what triggers the fetch.
+// Tok is one process-global palette/theme; LightModeOverhaulTests.WithTheme swaps it mid-test, and the assertions here read it
+// live (Tok.AccentDefault twice around a call). xunit runs classes in parallel, so those four classes serialise on one
+// collection — the same discipline EntranceStaggerTests/MotionSystemTests use for the motion globals.
+[Collection("wavee-tok-global")]
 public class CoverColorPlaneTests
 {
     static string TempFile() => Path.Combine(Path.GetTempPath(), "wavee-colors-" + Guid.NewGuid().ToString("N") + ".json");

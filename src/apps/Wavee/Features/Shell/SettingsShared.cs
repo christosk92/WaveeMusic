@@ -9,7 +9,7 @@ using FluentGpu.Signals;
 
 namespace Wavee;
 
-/// <summary>Cross-tab settings helpers shared by <see cref="SettingsPage"/> and <see cref="DiagnosticsPanel"/>.</summary>
+/// <summary>Cross-tab settings helpers shared by <see cref="SettingsPage"/> and <see cref="LogsPanel"/>.</summary>
 static class SettingsShared
 {
     public static string AppDataRoot => Path.Combine(

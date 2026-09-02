@@ -139,10 +139,6 @@
     "appearance": {
       "title": "모양",
       "subtitle": "테마, 색상 팔레트 및 셸 효과",
-      "effectsTitle": "시각 효과",
-      "effectsSub": "흐르는 텍스트와 앨범 아트 색상 워시",
-      "effectsAllOn": "모두 켜짐",
-      "effectsDisabled": "{count}개 꺼짐",
       "zoom": "확대/축소",
       "zoomSub": "브라우저의 Ctrl + / −처럼 앱 전체 크기를 조절합니다",
       "zoomIn": "확대",
@@ -150,26 +146,8 @@
       "zoomReset": "확대/축소 재설정",
       "theme": "테마",
       "themeSub": "시스템은 Windows 설정을 자동으로 따릅니다",
-      "palette": "팔레트",
-      "paletteSub": "인터페이스와 강조 색상을 지정합니다",
-      "windowMaterial": "창 재질",
-      "windowMaterialSub": "Mica Alt는 바탕화면 배경에서 창에 더 강한 색조를 입힙니다",
-      "materialMica": "Mica",
-      "materialMicaAlt": "Mica Alt",
       "rowDensity": "행 밀도",
-      "rowDensitySub": "트랙 목록의 행 높이",
-      "pageLayout": "트랙 페이지 레이아웃",
-      "pageLayoutSub": "자동 사이드 레일을 사용하거나 모든 크기에서 아트워크 히어로를 사용합니다",
-      "pageTone": "페이지 색상을 히어로로 제한",
-      "pageToneSub": "페이지 전체를 물들이지 않고 히어로 아래에서 아트워크 색조를 서서히 없앱니다",
-      "disableMarquee": "흐르는 텍스트 끄기",
-      "disableMarqueeSub": "긴 제목을 스크롤하지 않고 자릅니다",
-      "disableColorWashes": "색상 워시 끄기",
-      "disableColorWashesSub": "아트워크에서 뽑은 색조 없이 중립적인 인터페이스와 페이지를 유지합니다",
-      "paletteWarm": "따뜻하게",
-      "paletteSlate": "슬레이트",
-      "paletteNeutral": "중립",
-      "paletteAccent": "강조"
+      "rowDensitySub": "트랙 목록의 행 높이"
     },
     "choice": {
       "system": "시스템",
@@ -178,9 +156,7 @@
       "compact": "좁게",
       "default": "기본",
       "cozy": "여유롭게",
-      "comfortable": "편안하게",
-      "automatic": "자동",
-      "hero": "히어로"
+      "comfortable": "편안하게"
     }
   },
 

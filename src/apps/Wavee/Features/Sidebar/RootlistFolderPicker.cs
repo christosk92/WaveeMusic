@@ -137,7 +137,9 @@ public sealed class RootlistFolderPickerPanel : Component
         Element list = rows.Count > 0
             ? new ScrollEl
             {
-                ContentSized = true, MaxHeight = 360f,
+                // No edge cue: this list sits on ContentDialog's translucent overlay fill, where the surface-colour
+                // cue samples the plate behind it and paints a darker band instead (same rule as the dialog body).
+                ContentSized = true, MaxHeight = 360f, EdgeCues = ScrollEdgeCues.None,
                 Content = new BoxEl { Direction = 1, Gap = 2f, Children = rows.ToArray() },
             }
             : new BoxEl

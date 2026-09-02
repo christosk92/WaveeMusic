@@ -129,15 +129,21 @@ sealed class SidebarDesignPicker : Component
 
     // ── render ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+    // Local to this picker (the setup wizard's own row/thumbnail metrics used to live on SetupLayout — the Rise 1:1
+    // visual rework deleted that whole compact-row vocabulary along with the wizard's old tier ladder, so this
+    // picker keeps its own small copies rather than reaching into an unrelated feature's layout file).
+    const float RowGap = 4f;
+    const float SidebarThumbW = 120f, SidebarThumbH = 84f;
+
     /// <summary>Container styling for <see cref="Variant.Rows"/>'s items grid — the single-column vertical LIST a
     /// tall full-width row reads as, unlike <see cref="WaveePicker.Strip"/>'s own default wrapped horizontal strip.
     /// Non-wrapping (there is only ever one column at <c>maxColumns: 1</c>, but a narrow window must not start
-    /// wrapping fixed-width rows into a second column either) and a 4-DIP column gap
-    /// (<see cref="SetupLayout.RowGap"/>) — the same rhythm the disabled Custom row below sits one gap away from.</summary>
+    /// wrapping fixed-width rows into a second column either) and a 4-DIP column gap (<see cref="RowGap"/>) — the
+    /// same rhythm the disabled Custom row below sits one gap away from.</summary>
     static readonly TemplateParts s_rows = new()
     {
         [RadioButtons.PartGrid] = g => g with { Wrap = false },
-        [RadioButtons.PartColumn] = c => c with { Gap = SetupLayout.RowGap },
+        [RadioButtons.PartColumn] = c => c with { Gap = RowGap },
     };
 
     public override Element Render()
@@ -174,7 +180,7 @@ sealed class SidebarDesignPicker : Component
 
         Element thumb = new BoxEl
         {
-            Width = SetupLayout.SidebarThumbW, Height = SetupLayout.SidebarThumbH, Shrink = 0f,
+            Width = SidebarThumbW, Height = SidebarThumbH, Shrink = 0f,
             Direction = 1, Gap = m.Gap, ClipToBounds = true,
             Padding = new Edges4(8f, 7f, 8f, 0f),   // no bottom pad: the miniature CONTINUES past the fold, like a pane
             Corners = CornerRadius4.All(6f),

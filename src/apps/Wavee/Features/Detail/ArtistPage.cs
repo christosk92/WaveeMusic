@@ -62,7 +62,7 @@ sealed partial class ArtistPage : Component
     {
         var svc = UseContext(Services.Slot);
         _ = AppearancePrefs.Epoch.Value;
-        bool colorWashesDisabled = svc?.Settings.Get(WaveeSettings.DisableColorWashes) ?? false;
+        bool colorWashesDisabled = !(svc?.Settings.Get(WaveeSettings.ColorWashesEnabled) ?? true);
         var go = UseContext(HistoryStore.NavCtx);
         var bridge = UseContext(PlaybackBridge.Slot);
         var store = UseContext(LibraryStore.Slot);
@@ -290,7 +290,7 @@ sealed partial class ArtistPage : Component
             Height = 0f, HitTestVisible = false,
         }.Sticky(ArtistHeroLayout.CompactIdentityHeight, v => compactInteractive.Value = v);
         float heroWidth = _heroWidth.Value;
-        bool colorWashesDisabled = svc.Settings.Get(WaveeSettings.DisableColorWashes);
+        bool colorWashesDisabled = !svc.Settings.Get(WaveeSettings.ColorWashesEnabled);
         // Cover-keyed leaf: a late grading re-renders only the wash box, not this Body / magazine sections.
         Element washLayer = CoverPaletteLeaves.ArtistBlendWash(
             paletteUrl, heroWidth, colorWashesDisabled, key: "artist-wash:" + uri);

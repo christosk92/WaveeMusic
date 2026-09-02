@@ -141,14 +141,18 @@ sealed class RecordingAudioHost : IAudioHost
         SupplyBodyCalled = true;
         SupplyBodySignaled.TrySetResult();
     }
-    public void Play() => PlayCalled = true;
-    public void Pause() { }
-    public void Stop() { StopCalled = true; PlayCalled = false; StopSignaled.TrySetResult(); }
+    public void Play() { PlayCalled = true; PlayIntent = true; }
+    public void Pause() => PlayIntent = false;
+    public void Stop() { StopCalled = true; PlayCalled = false; PlayIntent = false; StopSignaled.TrySetResult(); }
     public void Seek(long ms, SeekMode mode) { PositionMs = ms; Seeks.Add(ms); }
     public void SetVolume(double v) { }
     public long PositionMs { get; set; }
     public bool IsPlaying => PlayCalled;
     public bool IsBuffering => false;
+    /// <summary>Mirrors FluentMediaAudioHost's <c>_playIntent</c>: true from Play() until the next Pause()/Stop(), for
+    /// tests exercising PlaybackController's own <c>_audioHost.PlayIntent</c> read (the buffering-bar-on-a-paused-
+    /// restored-track fix's SupplyBodyWhenReadyAsync belt-and-suspenders clear).</summary>
+    public bool PlayIntent { get; private set; }
     public bool ClockValid => true;
     public IObservable<AudioHostSignal> Signals => _sig;
     public void Emit(AudioHostSignal signal) => _sig.OnNext(signal);

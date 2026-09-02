@@ -91,24 +91,19 @@ static class Program
         DeveloperMode.Load(settings);
         string logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "logs");
         string logPath = Path.Combine(logDir, "wavee.log");
-#if DEBUG
         // Dev default: the in-memory ring keeps full Debug detail for the in-app viewer, but the FILE defaults to Info so a
-        // dev run doesn't bloat wavee.log with the demoted verbose flow. The settings-backed level UI (or WAVEE_LOG_FILE_LEVEL)
-        // can raise the file level to Debug/Trace on demand.
-        WaveeLogLevel defaultLevel = WaveeLogLevel.Debug;
-        WaveeLogLevel defaultFileLevel = WaveeLogLevel.Info;
-#else
-        WaveeLogLevel defaultLevel = WaveeLogLevel.Info;
-        WaveeLogLevel defaultFileLevel = WaveeLogLevel.Info;
-#endif
-        int minSetting = settings.Get(WaveeSettings.LogMinLevel);
-        int fileSetting = settings.Get(WaveeSettings.LogFileMinLevel);
+        // dev run doesn't bloat wavee.log with the demoted verbose flow. Settings › Logs › Verbose (or the Capture
+        // level / File log level submenus) can raise either on demand — LogCapturePolicy is the ONE place that
+        // resolves the persisted -1-means-default setting against these build defaults, so this launch path and the
+        // runtime toggle can never disagree about what "-1" means.
+        WaveeLogLevel defaultLevel = LogCapturePolicy.BuildDefaultMinLevel;
+        WaveeLogLevel defaultFileLevel = LogCapturePolicy.BuildDefaultFileLevel;
+        WaveeLogLevel minLevel = LogCapturePolicy.Resolve(settings.Get(WaveeSettings.LogMinLevel), defaultLevel);
+        WaveeLogLevel fileLevel = LogCapturePolicy.Resolve(settings.Get(WaveeSettings.LogFileMinLevel), defaultFileLevel);
         // dailyRolling: the main app log splits into wavee-yyyyMMdd.log per calendar day (the WaveeMusic scheme) —
         // the old single ever-growing wavee.log is migrated into the dated set on first launch.
         WaveeLog.Instance.Configure(crashLogPath: logPath, echo: DebugEcho(),
-            minLevel: minSetting >= 0 ? (WaveeLogLevel)minSetting : defaultLevel,
-            fileMinLevel: fileSetting >= 0 ? (WaveeLogLevel)fileSetting : defaultFileLevel,
-            dailyRolling: true);
+            minLevel: minLevel, fileMinLevel: fileLevel, dailyRolling: true);
         // The dealer firehose archive is opt-in (Settings › Diagnostics): it writes every dealer frame to disk, which is
         // invaluable when reproducing a sync bug and pure cost otherwise. The directory is always configured so turning
         // the setting on mid-session has somewhere to write.
@@ -138,19 +133,25 @@ static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             WaveeLog.Instance.Critical("crash", $"Unhandled exception (terminating={e.IsTerminating})", e.ExceptionObject as Exception);
-            WaveeLog.Instance.Flush();
-            DealerArchive.Instance.Flush();
+            try { WaveeLog.Instance.Flush(); DealerArchive.Instance.Flush(); } catch { }
             // Same treatment as the app-loop catch below: a crash on ANY thread leaves a report on disk and arms the
-            // pending-report key, so the NEXT launch can offer it. Everything here is best-effort — we are terminating.
+            // pending-report key, so the NEXT launch can offer it. Everything here is best-effort (we are terminating),
+            // but a failure is LOGGED, not swallowed: a silent catch here is how a lost report went unnoticed.
+            // The log tail comes from the LIVE dated file (WaveeLog.FilePath), not the startup-time `logPath`, which
+            // daily rolling retired: that path did not exist, so this handler's report had no tail at all. When the
+            // app-loop catch already wrote the report for this crash, CrashReport.Write hands back that same path.
             try
             {
                 if (e.ExceptionObject is Exception fatal)
                 {
-                    string report = CrashReport.Write(fatal, logPath);
+                    string report = CrashReport.Write(fatal, WaveeLog.Instance.FilePath ?? logPath);
                     if (report.Length > 0) settings.Set(WaveeSettings.PendingCrashReport, report);
                 }
             }
-            catch { }
+            catch (Exception writeEx)
+            {
+                try { WaveeLog.Instance.Warn("crash", "Crash report could not be written or armed", writeEx); WaveeLog.Instance.Flush(); } catch { }
+            }
             // A managed handler already wrote (or tried to write) a report above — mark the run "crashed" rather
             // than leaving "running" on disk, so the next launch's RunMarker.Begin doesn't ALSO read it as an
             // unexplained UncleanExit (CrashPromptPolicy would otherwise double-count the same crash).
@@ -364,7 +365,14 @@ static class Program
             || settings.Get(WaveeSettings.LastRunVersion) != AppVersion.Info.LastRunKey;
         CrashPromptPolicy.ThisLaunch = CrashPromptPolicy.Decide(
             settings.Get(WaveeSettings.PendingCrashReport), newDump, prevRun,
-            settings.Get(WaveeSettings.CrashPromptOptOut), versionChanged);
+            settings.Get(WaveeSettings.CrashPromptOptOut), versionChanged,
+            settings.Get(WaveeSettings.UncleanExitOffered));
+        // The evidence-free signal is offered ONCE per unclean streak. Latched HERE, at decision time — the same
+        // moment the WER dump is marked seen (CrashDumpProbe) and the managed report is un-armed (right below) — so
+        // however the prompt is dismissed (Not now, Escape, the window closed, the process killed mid-dialog) it is
+        // never re-asked on the next launch; RunMarker.End (an orderly exit) is what re-arms it.
+        if (CrashPromptPolicy.ThisLaunch.Source == CrashSource.UncleanExit)
+            settings.Set(WaveeSettings.UncleanExitOffered, true);
         // One-shot: the next read of PendingCrashReport (a relaunch, a fresh launch after this one) must not find
         // the same report and prompt again — ReportChrome/ReportComposer carry the path they need via
         // CrashPromptPolicy.ThisLaunch.ReportPath instead. Deferred to the shell the same way AfterUpdateDialog
@@ -373,7 +381,7 @@ static class Program
         AfterUpdateDialog.CrashNoticeThisLaunch = CrashPromptPolicy.ThisLaunch.Mode != CrashPromptMode.None;
         int themeMode = settings.Get(WaveeSettings.ThemeMode);
         var themeKind = themeMode switch { 1 => ThemeKind.Light, 2 => ThemeKind.Dark, _ => FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark };
-        Tok.Use(WaveeTheme.ResolvePalette(settings.Get(WaveeSettings.PaletteId)), themeKind);
+        Tok.Use(WaveeTheme.ResolvePalette(), themeKind);
 
         // The icon face is the BUNDLED Segoe Fluent Icons file (assets/fonts/SegoeFluentIcons.ttf), not the system family
         // of the same name: the system one ships with Windows 11 only, and on Windows 10 every glyph added in Fluent Icons
@@ -485,14 +493,13 @@ static class Program
                 return WaveeStartupBench.TryRun(h, w, d) || WaveePerfBench.TryRun(h, w, d) || WaveeNavProbe.TryRun(h, w, d) || WaveeResizeProbe.TryRun(h, w, d) || WaveeMemSoak.TryRun(h, w, d);
             };
             // customFrame:true → the in-app TitleBar (WaveeShell) draws the extended caption buttons + drag region.
-            // micaAlt → Mica BaseAlt (DWMSBT_TABBEDWINDOW) unless the profile carries base Mica
-            // (WaveeSettings.WindowMaterialBaseMica, now TRUE by default). Alt is a STRONGER tint of the desktop
-            // wallpaper than base Mica (Microsoft's documented behaviour) — matching WaveeMusic's MicaBackdrop
-            // Kind="BaseAlt" was the historical reason Alt was the default, and that parity is now REJECTED: the
-            // visible result was an over-saturated navy chrome next to apps (Wino Mail) that default to
-            // the neutral base Mica on the same wallpaper. The DWM material is visible through EVERY chrome band —
-            // titlebar, sidebar, player dock — because WaveeShell's root is transparent and each band is a deliberate
-            // paint-site omission over live Mica, not just under the login screen and the host fallback.
+            // micaAlt:false → always base Mica (DWMSBT_MAINWINDOW), never the stronger Mica ALT (DWMSBT_TABBEDWINDOW).
+            // The Mica Alt row (Settings ▸ Appearance) is gone (Workstream B, "Settings regroup + removals" — nobody
+            // should have this knob): Alt's stronger tint read as an over-saturated navy chrome next to apps (Wino
+            // Mail) that default to the neutral base Mica on the same wallpaper. The DWM material is visible through
+            // EVERY chrome band — titlebar, sidebar, player dock — because WaveeShell's root is transparent and each
+            // band is a deliberate paint-site omission over live Mica, not just under the login screen and the host
+            // fallback.
             // NO AmbientFps here any more (it used to hard-code 60): the pacing of PERPETUAL ambient motion — the
             // seek playhead, now-playing equalizer, skeleton shimmer, buffering spinner, karaoke lyrics wipe — is
             // AmbientPowerPolicy's call, attached above. Explicit ~30 fps always (HalfRefresh is avoided — on a 120 Hz
@@ -509,7 +516,7 @@ static class Program
                     // ~564 physical-px floor at 150% DPI (300 → ~450) that stopped the window fitting a half-screen split.
                     Title = "Wavee Music", Width = winW, Height = winH,
                     MinWidth = 300, CustomFrame = true,
-                    MicaAlt = !settings.Get(WaveeSettings.WindowMaterialBaseMica),
+                    MicaAlt = false,
                     // App-wide UI zoom, seeded BEFORE the first frame (the ThemeMode discipline: no startup jump from
                     // 100% to the user's scale). Snap, not Clamp: a persisted value that drifted off the ladder (a
                     // hand-edited registry value, an older ladder) re-enters the discrete step set here, so Ctrl+±
@@ -536,7 +543,11 @@ static class Program
             WaveeLog.Instance.Flush();
             string reportPath = "";
             try { reportPath = CrashReport.Write(ex, WaveeLog.Instance.FilePath); }
-            catch { }
+            catch (Exception writeEx)
+            {
+                // Logged, never swallowed: this exact catch hid the log-tail reader's sharing violation.
+                try { WaveeLog.Instance.Warn("crash", "Crash report could not be written", writeEx); WaveeLog.Instance.Flush(); } catch { }
+            }
             // Arm the report for the NEXT launch too: the message box below only reaches a user who is still sitting in
             // front of the machine, and a crash the user walked away from should still be offered when they come back.
             try { if (reportPath.Length > 0) settings.Set(WaveeSettings.PendingCrashReport, reportPath); }

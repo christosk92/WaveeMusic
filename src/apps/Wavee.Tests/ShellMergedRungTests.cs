@@ -19,8 +19,8 @@ namespace Wavee.Tests;
 // The first three tests pin the rung ALGEBRA: the merge of the two rungs must composite to the same bytes as
 // pane-on-plate over ANY backdrop (source-over is associative), it must stay translucent, and the neutral preset must be
 // the stock compounded alpha. FileArea is now painted for real again (over Mica, at the content layer), and the merged
-// two-rung form remains the palette's definition of the preset tint — the contrast gates and PresetSwatch measure
-// through it — so the algebra has to hold either way.
+// two-rung form remains the palette's definition of the preset tint — the contrast gates measure through it — so the
+// algebra has to hold either way.
 //
 // The rest pin the OPAQUE ladder, which the shell no longer paints under its chrome but still resolves for every
 // FLOATING stand-in (WaveeColors.FloatingChrome / FloatingPane), for the login view (no shell under it at all) and as
@@ -289,19 +289,7 @@ public class ShellMergedRungTests
         }
     }
 
-    // The palette picker's swatch has to be the composite the shell actually produces — the translucent rung over the
-    // no-wallpaper Mica reference — not the opaque rung the docked shell stopped painting. (MicaRef is a stand-in by
-    // construction: live Mica has no colour without a desktop behind it. Documented on PresetSwatch.)
-    [Fact]
-    public void PresetSwatch_PreviewsTheContentLayerOverTheMicaReference()
-    {
-        foreach (var p in All)
-        {
-            var want = Tok.Theme == ThemeKind.Light
-                ? ColorContrast.Flatten(p.LightShell.FileArea, MicaRef.LightDefault)
-                : ColorContrast.Flatten(p.DarkShell.FileArea, MicaRef.DarkDefault);
-            Assert.Equal(0, MaxChannelDelta(WaveeColors.PresetSwatch(p), want));
-            Assert.Equal(1f, WaveeColors.PresetSwatch(p).A);   // a swatch must be a solid chip, never a see-through hole
-        }
-    }
+    // WaveeColors.PresetSwatch (the palette picker's swatch preview, once pinned here) was deleted along with the
+    // palette picker itself — Wavee now always renders the neutral palette (Workstream B, "Settings regroup +
+    // removals"). MicaRef stays: every other test above still leans on it as the no-wallpaper Mica reference.
 }

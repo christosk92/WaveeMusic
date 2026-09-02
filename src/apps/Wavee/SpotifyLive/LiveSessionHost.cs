@@ -372,15 +372,22 @@ public sealed class LiveSessionHost : IAsyncDisposable
                     var resolved = await meFetch.ResolveAsync([me], cts.Token).ConfigureAwait(false);
                     if (!resolved.TryGetValue(me, out var owner) || owner is null) return;
                     svc.RealStore?.UpsertOwner(owner);
-                    // Publish onto the LIVE profile chip only if this is still the active account — a fast
-                    // logout/re-login (or a losing racing sibling) must not stomp a different session's name/avatar
-                    // with a stale fetch that resolves late.
                     postUi(() =>
                     {
-                        if (!string.Equals(svc.Session.CurrentUser?.Id, profileAccount, StringComparison.Ordinal)) return;
                         string name = owner.Name is { Length: > 0 } n ? n : profileAccount;
-                        svc.Playback.User.Value = new WaveeUser(profileAccount, name, owner.Avatar?.Url,
-                            live.Session.Tier == Tier.Premium);
+                        // Fold onto the SESSION first. This fetch is deliberately off the go-live path, which means it
+                        // routinely resolves BEFORE `svc.GoLive` swaps `liveSession` in — and GoLive's swap re-publishes
+                        // CurrentUser onto the chip. Writing only the signal therefore lost the name twice over: the
+                        // pre-swap guard below dropped it, and had it passed, the swap would have overwritten it with
+                        // the bare account id `liveSession` was constructed with. Enriching the session makes the swap
+                        // publish the resolved profile instead, whichever side of it we land on.
+                        liveSession.UpdateProfile(name, owner.Avatar?.Url);
+                        // Publish onto the LIVE profile chip only if this is still the active account — a fast
+                        // logout/re-login (or a losing racing sibling) must not stomp a different session's name/avatar
+                        // with a stale fetch that resolves late. Before the swap there is nothing to publish TO: the
+                        // enrichment above is what carries the name across.
+                        if (!string.Equals(svc.Session.CurrentUser?.Id, profileAccount, StringComparison.Ordinal)) return;
+                        svc.Playback.User.Value = liveSession.CurrentUser;
                     });
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException) { socialLog.Info("login profile: " + ex.Message); }
@@ -493,9 +500,17 @@ public sealed class LiveSessionHost : IAsyncDisposable
                 if (snap.Outcome is ProvisioningOutcome.Ready or ProvisioningOutcome.NeverAttempted)
                     snap = new PlaybackRuntimeStatus(ProvisioningOutcome.RuntimeUnavailable);
                 svc.Playback.UpdateRuntimeStatus(snap, uiPost);
-                svc.Settings.Set(WaveeSettings.PlaybackRuntimeSetupDismissed, false);   // re-offer after an explicit play attempt
-                svc.Playback.NotifyPlaybackError(e.UserMessage, Loc.Get(Strings.Playback.Runtime.SetUp),
-                    () => svc.Playback.OpenPlaybackRuntimeSetup.Value++);
+                // The wizard's own Local playback page IS this ask (same predicate as the go-live toast above) — a
+                // toast AND a player-bar status line repeating "needs a one-time setup" while the user is looking at
+                // exactly that page reads as the same ask made twice. Suppressed, this play attempt neither re-arms
+                // the dismissed banner flag (there is no banner to re-offer under the wizard) nor publishes the
+                // toast/status-line text; UpdateRuntimeStatus above still runs so the wizard's own page reflects it.
+                if (!SetupGating.SuppressesRuntimePrompts(SetupGating.IsPending(svc.Settings), SetupSession.Current is not null))
+                {
+                    svc.Settings.Set(WaveeSettings.PlaybackRuntimeSetupDismissed, false);   // re-offer after an explicit play attempt
+                    svc.Playback.NotifyPlaybackError(e.UserMessage, Loc.Get(Strings.Playback.Runtime.SetUp),
+                        () => svc.Playback.OpenPlaybackRuntimeSetup.Value++);
+                }
             }
             else
             {
@@ -571,7 +586,11 @@ public sealed class LiveSessionHost : IAsyncDisposable
         if (audio is not null && Environment.GetEnvironmentVariable("WAVEE_AUDIO_FORMAT_PROBE_TRACK") is { Length: > 0 } formatProbe)
             _ = ProbeAudioFormatsAsync(audio, formatProbe, audioLog, cts.Token);
         report.Report(new LoginSnapshot(LoginPhase.Authenticated, User: liveSession.CurrentUser));
-        if (audio is not null && !svc.Settings.Get(WaveeSettings.PlaybackRuntimeSetupDismissed))
+        // The setup wizard's own Local playback page IS the runtime prompt — while the wizard is armed/open, a toast
+        // repeating the same ask would just be noise (SetupSession.Current is not null while an instance is live;
+        // IsPending covers the moment BEFORE it opens too, e.g. the app is still on its first painted frame).
+        if (audio is not null && !svc.Settings.Get(WaveeSettings.PlaybackRuntimeSetupDismissed)
+            && !SetupGating.SuppressesRuntimePrompts(SetupGating.IsPending(svc.Settings), SetupSession.Current is not null))
         {
             var snap = audio.Provisioner.GetSnapshot();
             if (snap.Outcome == ProvisioningOutcome.RuntimeUnavailable)

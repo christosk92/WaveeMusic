@@ -131,6 +131,14 @@ public sealed class Services
     /// live transport + dealer cleanly (not a no-op).</summary>
     public Wavee.SpotifyLive.LiveSessionHost? LiveHost { get; private set; }
 
+    /// <summary>The pre-login/logged-out local audio host's DSP surface (local files, internet radio, playback
+    /// modules) — the one <see cref="_preLogin"/> stands up before go-live and rebuilds on logout
+    /// (<see cref="BuildLoggedOutPlayer"/>). Mutually exclusive with <see cref="LiveHost"/> in practice (go-live
+    /// disposes it), but exposed unconditionally so <c>PlaybackDsp.Push</c> can seed/push to whichever one actually
+    /// exists without knowing which mode the app is in. Null once a live session takes over, or before either media
+    /// stack has been built.</summary>
+    internal Wavee.Backend.IAudioDspControl? LocalAudioDsp => _preLogin?.AudioHost as Wavee.Backend.IAudioDspControl;
+
     /// <summary>THE go-live install ledger (design §2.6). <c>LiveSessionHost.StartAsync</c> creates it and hands it over
     /// BEFORE its first install — earlier than <see cref="AttachLive"/>, because the very first live install (the video
     /// media hooks) happens before the host object exists — so <see cref="GoOffline"/> can undo a bootstrap that failed
@@ -470,13 +478,17 @@ public sealed class Services
     }
 
     static PreLoginMedia BuildPreLoginMedia(Wavee.Backend.MediaSources.MediaProviderRegistry providers,
-        IEntityHydrator hydrator, Wavee.Backend.IStore store, string deviceId)
+        IEntityHydrator hydrator, Wavee.Backend.IStore store, string deviceId, IAppSettings settings)
     {
         var log = new WaveeLogger(WaveeLog.Instance, "playback");
         // No PlayPlay decryptor factory and no body disk cache: neither exists without a session, and neither is
         // reachable from a local file, an internet radio station or a module's own byte stream.
         var audio = new Wavee.SpotifyLive.Audio.FluentMediaAudioHost(
             static () => null, Wavee.Backend.Spotify.HttpPools.Get(Wavee.Backend.Spotify.HttpPool.Cdn), log, bodyDisk: null);
+        // Seed persisted EQ/crossfade before this host ever opens a session — the SAME helper AudioPlaybackStack uses
+        // for the live host, so a user who sets EQ before signing in (or after logging out, back on local playback)
+        // hears it immediately instead of only after the next go-live.
+        if (audio is Wavee.Backend.IAudioDspControl dsp) PlaybackDsp.SeedFromSettings(dsp, settings);
         var projection = new Wavee.Backend.NowPlayingProjection(deviceId, hydrator, store);
         var controller = new Wavee.Backend.PlaybackController(audio, providers, projection,
             Wavee.Backend.EmptyContextResolver.Instance, deviceId, log: log, fast: providers)
@@ -727,7 +739,7 @@ public sealed class Services
         // which is the whole point. Spotify play intents still reject (nothing owns a spotify: uri here), so the
         // "choose a remote device" toast is unchanged for exactly the playables that genuinely need an account.
         System.Func<PreLoginMedia> preLoginFactory = () =>
-            BuildPreLoginMedia(mediaProviders, hydrationRouter, store, localDeviceId);
+            BuildPreLoginMedia(mediaProviders, hydrationRouter, store, localDeviceId, settings);
         PreLoginMedia preLogin = preLoginFactory();
         player.LocalPlayback = preLogin.Controller;
         player.CanPlayLocally = uri => mediaProviders.OwnerOf(uri) is not null;

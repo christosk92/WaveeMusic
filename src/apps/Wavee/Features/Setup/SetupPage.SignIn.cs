@@ -1,40 +1,41 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using Wavee.Backend.Audio;
 using Wavee.Core;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
-/// <summary>Page 2 · Sign in (<c>data-step="2"</c>). NO NEW STATE: the truth is <see cref="PlaybackBridge.Login"/> +
-/// <see cref="PlaybackBridge.Auth"/>, folded by the already-written pure <see cref="SetupCommands.Project"/> into
-/// the six <see cref="SetupSignInPhase"/> facets this page's LEFT (stage/decision) columns switch on — the footer
-/// reads the exact same two signals through the exact same projection (<see cref="SetupSession.BuildCtx"/>), so
-/// neither ever drifts from the other. <see cref="SetupSignInPresentation"/> holds the pure stage/decision facts
-/// (pane opacity/interactivity, which cards show, which stage kind) both this page and its own theory tests read.
+/// <summary>Page 1 · Sign in — Rise's own <c>ConnectPage</c>: one content column, no stage/decision split. The truth
+/// is <see cref="PlaybackBridge.Login"/> + <see cref="PlaybackBridge.Auth"/>, folded by the already-written pure
+/// <see cref="SetupCommands.Project"/> into the six <see cref="SetupSignInPhase"/> facets this page switches on — the
+/// footer reads the exact same two signals through the exact same projection (<see cref="SetupSession.BuildCtx"/>),
+/// so neither ever drifts from the other. <see cref="SetupSignInPresentation.ShowsIdleCards"/> is the one pure fact
+/// both this page and its own theory tests read for "which facets keep the two option cards visible".
 ///
-/// <para>At Wide (<see cref="SetupLayout.ShowsHero"/>) the page uses the shared stage+decision composition
-/// (<see cref="SetupStage"/>/<see cref="SetupDecision"/>): the STAGE column hosts the live pairing pane while it's
-/// still useful (Idle/Busy) or a resolved glyph badge once the flow is done (Done/Failed/Expired/Premium), and the
-/// DECISION column hosts the actual choice (browser vs. scan) + an approve-progress preview + the identity/result.
-/// Below Wide there is no stage column to spend on the pairing pane, so <see cref="StackedOrRowBody"/> keeps the
-/// ORIGINAL "left pane / OR divider / compact QR pane" row (moved verbatim, unchanged) — reusing
-/// <see cref="LoginView.OrDivider"/>/<see cref="LoginView.CompactRightPane"/> for the QR column, and the takeover's
-/// own <see cref="LoginStepBar"/>/<see cref="LoginStepRow"/> for the busy state.</para></summary>
+/// <para>Idle shows two <c>SettingsCard</c>s (continue in the browser / scan a QR code — the 80-DIP QR sits in the
+/// scan card's own <c>Content</c> slot) and one "needs Premium · Sign up" row, sized to FIT the reference plate's
+/// 325-DIP body lane (<see cref="SetupLayout.SignInIdleBodyHeight"/>); should copy ever push it past that, the body
+/// ScrollView's persistent rail (<see cref="SetupPageHost"/>) says so. Busy replaces them with an <c>InfoBar</c> + the takeover's own
+/// <see cref="LoginStepBar"/>/<see cref="LoginStepRow"/> ladder. Done — "Is this you?" — is a real, user-clicked
+/// confirmation page: a plain account row (avatar, name, Premium/Free caption, "Not me"), no green pill. Failed/
+/// Expired/Premium show an error <c>InfoBar</c> OVER the same two Idle cards, so the user can retry in place.</para></summary>
 sealed class SetupSignInPage : Component
 {
     public override Element Render()
     {
         var bridge = UseContext(PlaybackBridge.Slot);
-        var viewport = UseContextSignal(Viewport.Size);
         var snap = bridge?.Login.Value ?? new LoginSnapshot(LoginPhase.LoggedOut);   // subscribe → re-render on phase change
         var auth = bridge?.Auth.Value ?? AuthStatus.LoggedOut;                       // subscribe → re-render on the auth flip
         var facet = SetupCommands.Project(snap.Phase, snap.Step, auth);
+        var session = SetupSession.Current;
 
         // Screen-reader live region (UIA): announce the actionable state changes — the pairing code SPELLED OUT (a
         // run of characters, not "WZY5Q6TX", which no synthesizer reads back usefully), and the two terminal errors.
@@ -60,310 +61,114 @@ sealed class SetupSignInPage : Component
             }
         }, (int)snap.Phase);
 
-        var session = SetupSession.Current;
         var activePage = session?.Page.Value ?? SetupPage.SignIn;
-        bool needsChallenge = SetupCommands.NeedsPairingChallenge(
-            activePage, snap.Phase, snap.Challenge is not null);
+        bool needsChallenge = SetupCommands.NeedsPairingChallenge(activePage, snap.Phase, snap.Challenge is not null);
         UseEffect(() =>
         {
             if (needsChallenge) session?.RestartCode?.Invoke();
         }, needsChallenge);
-        float plateW = SetupLayout.PlateWidth(viewport.Value.Width);
-        var tierSig = UseSignal(SetupLayout.NominalTierFor(plateW));
-        UseEffect(() =>
+
+        string header = Loc.Get(facet == SetupSignInPhase.Done ? Strings.Setup.SignIn.IsThisYou : Strings.Setup.SignIn.Title);
+
+        Element body = facet switch
         {
-            var current = tierSig.Peek();
-            var next = SetupLayout.TierFor(plateW, current);
-            if (next != current) tierSig.Value = next;
-        }, plateW);
-        var tier = tierSig.Value;
-
-        // No auto-advance after Authenticated: the Done phase is an "Is this you?" confirmation — the user says
-        // Yes (footer primary → next page) or Not me (footer secondary → SetupSession.SwitchAccount → Services.LogoutAsync,
-        // which drops back to Idle with a fresh code). Silently moving on the moment a token lands gave a wrong-account
-        // sign-in no chance to be noticed.
-
-        bool wide = SetupLayout.ShowsHero(tier);
-        Element? stage = null;
-        Element body;
-
-        if (wide)
+            SetupSignInPhase.Busy => BusyBody(bridge, snap.Phase),
+            SetupSignInPhase.Done => DoneBody(bridge, snap.User, session),
+            _ => IdleOrRetryBody(facet, snap, session?.StartBrowser),
+        } with
         {
-            // Busy folds RequestingCode/AwaitingBrowser/SilentResume alongside Finalizing, but only RequestingCode
-            // (and Idle's own LoggedOut) ever has a code coming — see ExpectsPairingCode. When neither a challenge
-            // nor one in flight exists, the stage has nothing live to show: falling back to `null` lets
-            // SetupPageHost.Frame use its own bare-Rail default instead of a pane that would spin forever (item 3)
-            // or double up with the decision column's own live step list once it takes over (item 5).
-            bool pairingPaneUsable = snap.Challenge is not null || ExpectsPairingCode(snap.Phase);
-            stage = SetupSignInPresentation.StageKind(facet) != SignInStageKind.Pairing
-                ? TerminalStage(facet, snap.Error)
-                : pairingPaneUsable
-                    ? PairingStage(snap, SetupSignInPresentation.PaneOpacity(facet), SetupSignInPresentation.PaneInteractive(facet))
-                    : null;
-            body = DecisionColumn(facet, snap, bridge, session?.StartBrowser) with
-            {
-                Key = "signin:" + facet,
-                Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
-                Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
-                Transition = MotionTok.StandardEnter,
-            };
-        }
+            Key = "signin:" + facet,
+            Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
+            Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
+            Transition = MotionTok.StandardEnter,
+        };
+
+        return SetupPageHost.Frame(SetupPage.SignIn, header, body, backAutoPadding: false);
+    }
+
+    // ── Idle + the three "retry in place" terminal facets (SetupSignInPresentation.ShowsIdleCards) ────────────────
+    static Element IdleOrRetryBody(SetupSignInPhase facet, LoginSnapshot snap, Action? startBrowser)
+    {
+        var kids = new List<Element>(6);
+        if (facet == SetupSignInPhase.Idle)
+            kids.Add(SetupText.Lead(Loc.Get(Strings.Setup.SignIn.Lead)));
         else
-        {
-            body = StackedOrRowBody(facet, snap, bridge, session?.StartBrowser, tier);
-        }
+            kids.Add(TerminalBar(facet, snap.Error));
 
-        return SetupPageHost.Frame(SetupPage.SignIn, Loc.Get(Strings.Setup.Eyebrow.SignIn),
-            Loc.Get(facet == SetupSignInPhase.Done ? Strings.Setup.SignIn.IsThisYou : Strings.Setup.SignIn.Title), body,
-            lead: Loc.Get(facet == SetupSignInPhase.Done ? Strings.Setup.SignIn.ConfirmLead : Strings.Setup.SignIn.Lead), leadMaxLines: 2,
-            stage: wide ? stage : null, scrollBody: !wide);
+        kids.Add(BrowserCard(startBrowser));
+        kids.Add(ScanCardSlot(snap));
+        kids.Add(PremiumRow());
+        return SetupText.Stack([.. kids]);
     }
 
-    // ── pure phase-reading helpers (item 3 / item 5) ────────────────────────────────────────────────────────────────
-    // SetupCommands.Project folds ten LoginPhase values down to six SetupSignInPhase facets, and Busy alone covers
-    // four of them (Finalizing/RequestingCode/AwaitingBrowser/SilentResume) — too coarse to tell "a code is coming"
-    // apart from "we're already past pairing and finalizing the account". These two read the raw LoginPhase this
-    // page already carries to make that distinction where it actually matters: which single progress affordance (if
-    // any) the pairing pane vs. the live step ladder gets to show.
-
-    /// <summary>Whether a device-code pairing challenge is genuinely in flight: <see cref="LoginPhase.LoggedOut"/>
-    /// (about to request one — the moment this page mounts, <c>NeedsPairingChallenge</c> fires <c>RestartCode</c>)
-    /// or <see cref="LoginPhase.RequestingCode"/> (one is being requested right now). The other two phases the same
-    /// "AwaitingCredential" backend event can report — <see cref="LoginPhase.SilentResume"/> (a stored credential
-    /// resumed silently) and <see cref="LoginPhase.AwaitingBrowser"/> (a browser hop that carries no device code) —
-    /// never mint a code at all, so a "Getting your code…" spinner there would spin forever showing nothing.</summary>
-    static bool ExpectsPairingCode(LoginPhase phase) => phase is LoginPhase.LoggedOut or LoginPhase.RequestingCode;
-
-    /// <summary>Whether the bootstrap has actually started finalizing the sign-in (post-credential — the four-step
-    /// "Signing you in" ladder means something real). The other Busy sub-phases —
-    /// <see cref="LoginPhase.RequestingCode"/>, <see cref="LoginPhase.AwaitingBrowser"/>,
-    /// <see cref="LoginPhase.SilentResume"/> — are all pre-connection: showing the SAME live ladder there would draw
-    /// "Connecting to Spotify" already spinning while the pairing side independently spins its own "Getting your
-    /// code" — two progress indicators for one state.</summary>
-    static bool IsFinalizing(LoginPhase phase) => phase == LoginPhase.Finalizing;
-
-    // ── Wide: the pairing STAGE (SetupStage.Column) ─────────────────────────────────────────────────────────────────
-
-    /// <summary>Idle/Busy: the live (or fading) pairing pane over a caption. The COLUMN's own key stays the single
-    /// constant <c>"signin:stage:pairing"</c> across Idle↔Busy — only the pane's OWN key changes with the challenge
-    /// (<c>"signin:challenge:"+UserCode</c>, unchanged from the takeover's own convention) — so
-    /// <see cref="LoginCountdown"/>/<see cref="WaitingDots"/> never remount purely because the phase flipped from
-    /// Idle to Busy while the same code is still live.</summary>
-    static Element PairingStage(LoginSnapshot snap, float paneOpacity, bool paneInteractive)
+    /// <summary>"Wavee needs Spotify Premium.  Don't have a Spotify account? Sign up" — ONE 32-DIP row (secondary text
+    /// + the inline HyperlinkButton), not two stacked rows: the Idle body has to fit the 325-DIP reference lane
+    /// (<see cref="SetupLayout.SignInIdleBodyHeight"/>), and this row is the 40 DIP that made the difference.
+    /// <c>Wrap</c> lets it fold at the 320-DIP minimum plate instead of overflowing sideways.</summary>
+    static Element PremiumRow() => new BoxEl
     {
-        // Typed BoxEl (not the abstract Element both LoginView.CompactRightPane/PendingCodePane's DECLARED return
-        // type would otherwise erase this to) — AlignSelf/Opacity/HitTestVisible below are leaf-level properties, not
-        // on the base Element record, so a `with` that touches them needs the concrete type in hand.
-        BoxEl pane = snap.Challenge is { } challenge
-            ? LoginView.CompactRightPane(challenge, paneInteractive)
-            : PendingCodePane();
-        pane = pane with
-        {
-            Key = snap.Challenge is { } c ? "signin:challenge:" + c.UserCode : "signin:challenge:pending",
-            AlignSelf = FlexAlign.Center, Opacity = paneOpacity, HitTestVisible = paneInteractive,
-            Enter = new EnterExit(Dy: 4f, Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true),
-            Exit = new EnterExit(Dy: -2f, Opacity: 0f, Active: true),
-            Transition = MotionTok.StandardEnter,
-        };
-
-        // SetupStage.Caption's declared return type is the abstract Element (it always constructs a BoxEl
-        // internally) — cast once so the Opacity `with` below compiles against the concrete type.
-        var caption = (BoxEl)SetupStage.Caption(Loc.Get(Strings.Setup.SignIn.StageTitle), Loc.Get(Strings.Setup.SignIn.StageBody));
-        caption = caption with { Opacity = paneOpacity };
-
-        return SetupStage.Column(pane, caption) with
-        {
-            Key = "signin:stage:pairing",
-            Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
-            Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
-            Transition = MotionTok.StandardEnter,
-        };
-    }
-
-    /// <summary>Done/Failed/Expired/Premium: the pairing pane is gone (it Exit-animated out when the previous
-    /// render's key was <c>"signin:stage:pairing"</c>) in favor of a single resolved <see cref="LoginView.GlyphBadge"/>
-    /// + caption, reusing the EXACT SAME (title, body) copy pairs the decision column's own terminal InfoBar shows
-    /// (<see cref="FailedLeft"/>/<see cref="ExpiredLeft"/>/<see cref="PremiumLeft"/>) so the stage never disagrees
-    /// with the decision column about what happened.</summary>
-    static Element TerminalStage(SetupSignInPhase facet, string? error)
-    {
-        (string glyph, ColorF tint, string title, string sub) = facet switch
-        {
-            SetupSignInPhase.Done => (Icons.Accept, LoginView.SpotifyGreen,
-                Loc.Get(Strings.Setup.SignIn.StageDoneTitle), Loc.Get(Strings.Setup.SignIn.DoneLead)),
-            SetupSignInPhase.Failed => (Icons.Cancel, Tok.SystemFillCritical,
-                Loc.Get(Strings.Auth.CouldntSignIn),
-                string.IsNullOrWhiteSpace(error) ? Loc.Get(Strings.Auth.NetworkError) : error!),
-            SetupSignInPhase.Expired => (Icons.Important, Tok.SystemFillCaution,
-                Loc.Get(Strings.Auth.CodeExpired), Loc.Get(Strings.Auth.CodeExpiredBody)),
-            _ => (Icons.Important, LoginView.GoldTint,
-                Loc.Get(Strings.Auth.PremiumTitle), Loc.Get(Strings.Auth.PremiumBody)),
-        };
-        // LoginView.GlyphBadge's declared return type is the abstract Element too — same cast-then-with as the pane.
-        var badge = (BoxEl)LoginView.GlyphBadge(glyph, tint);
-        badge = badge with { AlignSelf = FlexAlign.Center };
-        return SetupStage.Column(badge, SetupStage.Caption(title, sub)) with
-        {
-            Key = "signin:stage:terminal:" + facet,
-            Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
-            Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
-            Transition = MotionTok.StandardEnter,
-        };
-    }
-
-    /// <summary>The pairing code is minted asynchronously (deliberately not until the wizard REACHES this page, so
-    /// it cannot expire while the user reads Welcome/Terms). Until it lands, show that it is coming — promoted
-    /// as-is from the page's original inline pending branch so both the Wide stage and the non-Wide
-    /// <see cref="StackedOrRowBody"/> show the identical waiting state. Callers only ever mount this when
-    /// <see cref="ExpectsPairingCode"/> says a code is actually on its way — never as a permanent stand-in for a
-    /// code that will never arrive.</summary>
-    static BoxEl PendingCodePane() => new BoxEl
-    {
-        Width = SetupLayout.CompactPairingWidth, Shrink = 0f, Direction = 1, AlignItems = FlexAlign.Center,
-        Justify = FlexJustify.Center, Gap = Spacing.M, MinHeight = 180f,
+        Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
         Children =
         [
-            ProgressRing.Indeterminate(size: 24f),
-            new TextEl(Loc.Get(Strings.Auth.GettingCode))
-            {
-                Size = 12.5f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxWidth = 176f,
-            },
+            Ui.Body(Loc.Get(Strings.Setup.SignIn.PremiumNote)).Secondary() with { MinWidth = 0f },
+            HyperlinkButton.Create(Loc.Get(Strings.Setup.SignIn.NoAccount), () => LoginView.OpenUrl("https://www.spotify.com/signup")),
         ],
     };
 
-    // ── Wide: the DECISION column (480 DIP) ─────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The card row's own inner width once the card's <c>Spacing.M</c> padding on both sides comes out of
-    /// the 480-DIP decision column, then split into the two-column pending/approve grid with an 8-DIP gap between
-    /// them (<c>SetupLayout.RowGap</c>-sized, matching the wizard's own tight rhythm).</summary>
-    static readonly float ApproveRowWidth =
-        (SetupLayout.DecisionWidth(SetupLayout.TargetWidth) - 2f * Spacing.M - SetupLayout.RowGap * 2f) / 2f;
-
-    /// <summary>Assembles the 480-DIP decision column for every phase, reading <see cref="SetupSignInPresentation"/>
-    /// for which pieces show rather than re-deriving the split inline — the theory tests over that class are what
-    /// actually pin this page's per-phase shape.</summary>
-    static Element DecisionColumn(SetupSignInPhase facet, LoginSnapshot snap, PlaybackBridge? bridge, Action? startBrowser)
+    static Element TerminalBar(SetupSignInPhase facet, string? error) => facet switch
     {
-        var kids = new List<Element>(5);
-
-
-        if (SetupSignInPresentation.ShowsOptionCards(facet))
-        {
-            kids.Add(BrowserOptionCard(startBrowser));
-            kids.Add(ScanOptionCard());
-            // The dead end this closes: both option cards assume an account already exists, so someone without one had
-            // nothing to click and no way forward — the wizard is Wavee's ONLY sign-in surface, and it cannot be
-            // dismissed on a first run. Spotify owns sign-up, so this hands off to spotify.com/signup, and the note
-            // says the part that would otherwise be discovered only after signing up: Free accounts cannot stream here
-            // (LoginPhase.PremiumRequired is the wall they'd hit).
-            kids.Add(SignUpLink());
-            kids.Add(PremiumNote());
-        }
-
-        if (facet == SetupSignInPhase.Busy)
-            kids.Add(new TextEl(Loc.Get(Strings.Auth.SigningIn)) { Size = 14f, Weight = 600, Color = Tok.TextPrimary });
-
-        // The live four-step ladder means something only once the bootstrap has actually started finalizing
-        // (IsFinalizing) — Busy also covers RequestingCode/AwaitingBrowser/SilentResume, all pre-connection, and
-        // rendering the SAME ladder there would double up with the stage column's own pairing spinner (item 5).
-        // Idle's own branch below is a static PREVIEW (nothing spins), so it never competes with anything and
-        // keeps showing unconditionally. Bridge-less Busy (headless/no backend) has nothing live to preview either —
-        // the plain status line above already covers that case exactly like the old BusyLeft fallback did.
-        if (SetupSignInPresentation.ShowsApproveCard(facet) &&
-            (facet == SetupSignInPhase.Idle || (bridge is not null && IsFinalizing(snap.Phase))))
-            kids.Add(ApproveCard(facet, bridge));
-
-        if (facet == SetupSignInPhase.Done)
-            kids.Add(DoneLeft(snap.User));
-
-        if (facet is SetupSignInPhase.Failed or SetupSignInPhase.Expired or SetupSignInPhase.Premium)
-            kids.Add(TerminalInfoBar(facet, snap.Error));
-
-        // Genuine fine print, not a headline — let it wrap in full rather than clip mid-sentence (item 2). `wide:
-        // false` sizes the column to its own content instead of reserving the full DecisionBodyBudget(2) MinHeight:
-        // this page never fills that budget, and the forced height was the dead space between the last card and
-        // this disclaimer (item 4). `pinnedBottom` still lands it after a Spacer, exactly like every other caller.
-        Element disclaimer = new TextEl(Loc.Get(Strings.Auth.Disclaimer))
-            { Size = 11.5f, LineHeight = 17f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
-        return SetupDecision.Column(wide: false, kids: kids, pinnedBottom: disclaimer, leadLines: 2);
-    }
-
-    /// <summary>"Don't have a Spotify account? Sign up" — the way OUT of the sign-in page for someone who has no
-    /// account yet. <c>AlignSelf.Start</c> because the decision column stretches its children and a full-width
-    /// hyperlink reads as a button.</summary>
-    static Element SignUpLink() =>
-        HyperlinkButton.Create(Loc.Get(Strings.Setup.SignIn.NoAccount), () => LoginView.OpenUrl("https://www.spotify.com/signup"))
-            with { AlignSelf = FlexAlign.Start };
-
-    /// <summary>The Premium requirement, stated BEFORE sign-up rather than after — same treatment as the column's
-    /// pinned trademark disclaimer (11.5/17 tertiary), because it is fine print, not a warning.</summary>
-    static Element PremiumNote() => new TextEl(Loc.Get(Strings.Setup.SignIn.PremiumNote))
-        { Size = 11.5f, LineHeight = 17f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis };
-
-    static Element BrowserOptionCard(Action? startBrowser) => SetupDecision.OptionCard(
-        Loc.Get(Strings.Setup.SignIn.BrowserCardTitle),
-        Loc.Get(Strings.Setup.SignIn.BrowserCardSub),
-        LoginView.SpotifyGreen, Icons.Globe, ColorF.FromRgba(11, 26, 18),
-        recommended: true,
-        // The card click IS the primary: the exact same delegate SetupSession.PrimarySignIn invokes for Idle
-        // (SetupSession.cs ~L193) — Enter already routes to Primary() (SetupDialog.cs), so the card and the footer
-        // button can never disagree about what "sign in" does.
-        onClick: startBrowser,
-        trailing: RecommendedPill());
-
-    static Element ScanOptionCard() => SetupDecision.OptionCard(
-        ScanCardTitle(wide: true),
-        Loc.Get(Strings.Setup.SignIn.ScanCardSub),
-        Tok.FillControlSecondary, Icons.Camera, Tok.TextSecondary,
-        recommended: false,
-        onClick: null);   // info-only: the SAME pairing code already lives in the stage pane beside it
-
-    /// <summary>The scan card's own title reads differently depending on whether the QR code is actually sitting
-    /// "on the left" (the Wide stage column) or not — kept as an explicit function (rather than baked into the two
-    /// loc keys' call sites) so a future non-Wide composition of this same card can call it with <c>false</c>
-    /// without re-deriving the choice.</summary>
-    static string ScanCardTitle(bool wide) => wide
-        ? Loc.Get(Strings.Setup.SignIn.ScanCardTitle)
-        : Loc.Get(Strings.Setup.SignIn.ScanCardTitleNeutral);
-
-    static Element RecommendedPill() => new BoxEl
-    {
-        Height = 18f, Shrink = 0f, AlignItems = FlexAlign.Center, Padding = new Edges4(7f, 0f, 7f, 0f),
-        Corners = Radii.FullAll, Fill = Tok.AccentSubtle,
-        Children = [new TextEl(Loc.Get(Strings.Playback.Runtime.Recommended)) { Size = 10.5f, Weight = 600, Color = Tok.AccentTextPrimary }],
+        SetupSignInPhase.Failed => InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Auth.CouldntSignIn),
+            string.IsNullOrWhiteSpace(error) ? Loc.Get(Strings.Auth.NetworkError) : error!, isClosable: false),
+        SetupSignInPhase.Expired => InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Auth.CodeExpired),
+            Loc.Get(Strings.Auth.CodeExpiredBody), isClosable: false),
+        _ => InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Auth.PremiumTitle), Loc.Get(Strings.Auth.PremiumBody), isClosable: false),
     };
 
-    /// <summary>Idle: a PENDING preview of the four finalizing steps (a static render — NOT the live
-    /// <see cref="LoginStepRow"/>, whose bridge signal already defaults its step to <c>LoginStep.Connecting</c>
-    /// even while merely LoggedOut, which would incorrectly draw the first row as "current"/spinning before the
-    /// flow has even started). Busy: the SAME four steps, now the real <see cref="LoginStepRow"/> off the live
-    /// bridge signal, exactly like the takeover's own Finalizing splash — the caller (<see cref="DecisionColumn"/>)
-    /// only reaches this branch once <see cref="IsFinalizing"/> is true, so <paramref name="bridge"/> is both
-    /// non-null and genuinely mid-finalizing here, never mid-pairing.</summary>
-    static Element ApproveCard(SetupSignInPhase facet, PlaybackBridge? bridge)
-    {
-        if (facet == SetupSignInPhase.Idle)
-            return CardShell(
-                new TextEl(Loc.Get(Strings.Setup.SignIn.AfterApprove)) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary },
-                new BoxEl
-                {
-                    Direction = 0, Wrap = true, Gap = SetupLayout.RowGap * 2f,
-                    Children =
-                    [
-                        PendingStepRow(Loc.Get(Strings.Auth.StepConnecting)),
-                        PendingStepRow(Loc.Get(Strings.Auth.StepMetadata)),
-                        PendingStepRow(Loc.Get(Strings.Auth.StepAudio)),
-                        PendingStepRow(Loc.Get(Strings.Auth.StepProfile)),
-                    ],
-                });
+    static Element BrowserCard(Action? startBrowser) => SetupText.Card(
+        Loc.Get(Strings.Setup.SignIn.BrowserCardTitle), Loc.Get(Strings.Setup.SignIn.BrowserCardSub),
+        Icons.Globe, onClick: startBrowser);
 
-        // Busy — bridge is guaranteed non-null here (DecisionColumn only calls this when it is).
-        Element Row(LoginStep step, string label) => Embed.Comp(() => new LoginStepRow(bridge!.Login, step, label, ApproveRowWidth));
-        return CardShell(
-            new BoxEl { AlignSelf = FlexAlign.Start, Children = [Embed.Comp(() => new LoginStepBar(bridge!.Login))] },
-            new BoxEl
+    /// <summary>The scan-QR card: a live <see cref="SetupScanCard"/> once a challenge exists, else a "getting your
+    /// code" placeholder (the code is minted asynchronously the moment this page mounts, deliberately not until the
+    /// user reaches it, so it cannot expire while they read Terms).</summary>
+    static Element ScanCardSlot(LoginSnapshot snap) => snap.Challenge is { } c
+        ? Embed.Comp(new SetupScanCard.Props(c.VerificationUriComplete ?? c.VerificationUri, c.UserCode, c.Expiry), () => new SetupScanCard())
+            with { Key = "signin:scan:" + c.UserCode }
+        : PendingScanCard() with { Key = "signin:scan:pending" };
+
+    static Element PendingScanCard() => SettingsCard.Create(new SettingsCard.Options
+    {
+        Header = Loc.Get(Strings.Setup.SignIn.ScanCardTitleNeutral),
+        HeaderIcon = Icons.Camera,
+        Content = new BoxEl
+        {
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+            Children =
+            [
+                ProgressRing.Indeterminate(20f),
+                new TextEl(Loc.Get(Strings.Auth.GettingCode)) { Size = 12.5f, Color = Tok.TextTertiary },
+            ],
+        },
+    });
+
+    // ── Busy: the takeover's own step bar + four step rows, reading the SAME bridge.Login signal. ──────────────────
+    static Element BusyBody(PlaybackBridge? bridge, LoginPhase phase)
+    {
+        string message = phase is LoginPhase.RequestingCode or LoginPhase.LoggedOut
+            ? Loc.Get(Strings.Auth.GettingCode) : Loc.Get(Strings.Auth.WaitingApproval);
+
+        var kids = new List<Element>(3)
+        {
+            SetupText.Lead(Loc.Get(Strings.Setup.SignIn.Waiting)),
+            InfoBar.Create(InfoBarSeverity.Informational, Loc.Get(Strings.Auth.SigningIn), message, isClosable: false),
+        };
+        if (bridge is not null)
+        {
+            Element Row(LoginStep step, string label) => Embed.Comp(() => new LoginStepRow(bridge.Login, step, label, 300f));
+            kids.Add(new BoxEl { AlignSelf = FlexAlign.Start, Children = [Embed.Comp(() => new LoginStepBar(bridge.Login))] });
+            kids.Add(new BoxEl
             {
-                Direction = 0, Wrap = true, Gap = SetupLayout.RowGap * 2f,
+                Direction = 0, Wrap = true, Gap = Spacing.L,
                 Stagger = Motion.ReducedMotion ? 0f : WaveeMotion.StaggerMs,
                 Children =
                 [
@@ -373,228 +178,84 @@ sealed class SetupSignInPage : Component
                     Row(LoginStep.Profile, Loc.Get(Strings.Auth.StepProfile)),
                 ],
             });
+        }
+        return SetupText.Stack([.. kids]);
     }
 
-    static Element CardShell(params Element[] kids) => new BoxEl
+    // ── Done: "Is this you?" — a plain SettingsCard-styled account row, no green pill. ───────────────────────────────
+    static Element DoneBody(PlaybackBridge? bridge, WaveeUser? snapshotUser, SetupSession? session)
     {
-        Direction = 1, Gap = Spacing.S, Shrink = 0f, AlignSelf = FlexAlign.Stretch,
-        Padding = Edges4.All(Spacing.M),
-        Corners = Radii.CardAll, Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-        Children = kids,
-    };
+        var liveUser = bridge?.User.Value;
+        var user = liveUser ?? snapshotUser;
+        string name = SetupSignInPresentation.DisplayNameFor(liveUser, snapshotUser) ?? user?.DisplayName ?? "";
+        return SetupText.Stack(
+            SetupText.Lead(Loc.Get(Strings.Setup.SignIn.ConfirmLead)),
+            AccountRow(name, user?.AvatarUrl, user?.IsPremium == true, session?.SwitchAccount),
+            SetupText.Secondary(Loc.Get(Strings.Setup.SignIn.ConfirmHint)));
+    }
 
-    /// <summary>One row of <see cref="ApproveCard"/>'s Idle-only pending preview — the same visual grammar
-    /// <see cref="LoginStepRow"/>'s own "pending" branch uses (a dim bullet + tertiary label), but a plain static
-    /// render: see this method's caller for why the live component can't be reused here.</summary>
-    static Element PendingStepRow(string label) => new BoxEl
+    static Element AccountRow(string name, string? avatarUrl, bool premium, Action? switchAccount) => new BoxEl
     {
-        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Width = ApproveRowWidth, Shrink = 0f, Height = 26f,
+        MinHeight = SettingsCard.MinHeight, Padding = Edges4.All(SettingsCard.Padding),
+        Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Corners = CornerRadius4.All(Radii.Control),
+        Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center,
         Children =
         [
+            // imageSourcePath, not the URL passed as `initials` (the old SetupAccountCard's bug) — a real avatar
+            // photo shows when one exists, initials-from-name otherwise.
+            PersonPicture.Create("", 40f, displayName: name, imageSourcePath: avatarUrl) with { Shrink = 0f },
             new BoxEl
             {
-                Width = 18f, Height = 18f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children = [new TextEl(Icons.RadioBullet) { Size = 11f, FontFamily = Theme.IconFont, Color = Tok.TextTertiary }],
+                Direction = 1, Gap = 2f, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Children =
+                [
+                    BodyStrong(name) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    Caption(Loc.Get(premium ? Strings.Auth.PremiumBadge : Strings.Setup.SignIn.Free)).Secondary(),
+                ],
             },
-            new TextEl(label) { Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary },
-        ],
-    };
-
-    static Element TerminalInfoBar(SetupSignInPhase facet, string? error) => facet switch
-    {
-        SetupSignInPhase.Failed => FailedLeft(error),
-        SetupSignInPhase.Expired => ExpiredLeft(),
-        SetupSignInPhase.Premium => PremiumLeft(),
-        _ => new BoxEl(),
-    };
-
-    // ── Non-Wide: the ORIGINAL "left pane / OR divider / compact QR pane" row, moved verbatim ─────────────────────────
-    // No stage column to spend on the pairing pane below Wide, so this keeps today's layout completely unchanged —
-    // a horizontal row at Compact, a vertical stack at Narrow/UltraNarrow (SetupLayout.StacksSignIn).
-
-    static Element StackedOrRowBody(SetupSignInPhase facet, LoginSnapshot snap, PlaybackBridge? bridge, Action? startBrowser, SetupLayoutTier tier)
-    {
-        Element left = LeftPane(facet, snap, bridge, startBrowser) with
-        {
-            Key = "signin:" + facet,
-            Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
-            Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
-            Transition = MotionTok.StandardEnter,
-        };
-
-        // The QR pane dims to ~22% while Busy (the prototype's `.login.busy`) and disappears once the flow has
-        // moved past it (Done/Failed/Expired/Premium) — showing a live pairing code next to a result screen reads
-        // as a second, contradicting affordance.
-        float rightOpacity = SetupSignInPresentation.PaneOpacity(facet);
-        bool rightInteractive = SetupSignInPresentation.PaneInteractive(facet);
-
-        // No pane at all once Busy has moved past pairing without ever minting a code (AwaitingBrowser/SilentResume
-        // — see ExpectsPairingCode): a "Getting your code…" spinner there would spin forever (item 3) beside
-        // BusyLeft's own live step list once it takes over (item 5), and there is nothing to fade FROM either.
-        Element? right = snap.Challenge is { } challenge
-            ? LoginView.CompactRightPane(challenge)
-            : ExpectsPairingCode(snap.Phase) ? PendingCodePane() : null;
-        if (right is not null)
-            right = right with
-            {
-                Key = snap.Challenge is { } c ? "signin:challenge:" + c.UserCode : "signin:challenge:pending",
-                Enter = new EnterExit(Dy: 4f, Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true),
-                Exit = new EnterExit(Dy: -2f, Opacity: 0f, Active: true),
-                Transition = MotionTok.StandardEnter,
-            };
-
-        Element leftHost = new BoxEl
-        {
-            Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f,
-            Padding = new Edges4(Spacing.XXS, Spacing.XXS, Spacing.XL, Spacing.S),
-            Children = [left],
-        };
-        Element? divider = right is null ? null : new BoxEl
-        {
-            Shrink = 0f, AlignSelf = FlexAlign.Stretch, Opacity = rightOpacity,
-            HitTestVisible = rightInteractive,
-            Children = [LoginView.OrDivider(SetupLayout.CompactDividerWidth, SetupLayout.StacksSignIn(tier))],
-        };
-        Element? rightHost = right is null ? null : new BoxEl
-        {
-            Shrink = 0f, AlignSelf = SetupLayout.StacksSignIn(tier) ? FlexAlign.Center : FlexAlign.Stretch,
-            Opacity = rightOpacity, HitTestVisible = rightInteractive, Children = [right],
-        };
-
-        Element login = SetupLayout.StacksSignIn(tier)
-            ? new BoxEl
-            {
-                Key = "signin:layout:" + (int)tier,
-                Direction = 1, Gap = Spacing.M, MinWidth = 0f, MinHeight = 0f,
-                Children = right is not null && rightOpacity > 0f ? [leftHost, divider!, rightHost!] : [leftHost],
-            }
-            : new BoxEl
-            {
-                Key = "signin:layout:" + (int)tier,
-                Direction = 0, AlignItems = FlexAlign.Start, MinWidth = 0f, MinHeight = 0f,
-                Children = right is not null ? [leftHost, divider!, rightHost!] : [leftHost],
-            };
-
-        // The content lane is intentionally taller than the row itself. Centering the login composition in it restores
-        // the old takeover's balanced vertical rhythm while the surrounding page scroller still handles short windows.
-        return new BoxEl
-        {
-            Direction = 1, MinWidth = 0f, MinHeight = SetupLayout.SignInBodyMinHeight,
-            Justify = FlexJustify.Center,
-            Children = [login],
-        };
-    }
-
-    static Element LeftPane(SetupSignInPhase facet, LoginSnapshot snap, PlaybackBridge? bridge, Action? startBrowser) => facet switch
-    {
-        SetupSignInPhase.Idle => IdleLeft(startBrowser),
-        SetupSignInPhase.Busy => BusyLeft(bridge, snap.Phase),
-        SetupSignInPhase.Done => DoneLeft(snap.User),
-        SetupSignInPhase.Failed => FailedLeft(snap.Error),
-        SetupSignInPhase.Expired => ExpiredLeft(),
-        SetupSignInPhase.Premium => PremiumLeft(),
-        _ => new BoxEl(),
-    };
-
-    // ── Idle: preserve the old takeover's identity and direct browser action inside the roomy left pane. ──
-    static Element IdleLeft(Action? startBrowser) => new BoxEl
-    {
-        Direction = 1, Gap = Spacing.M,
-        Children =
-        [
-            LoginView.SpotifyBrand(),
-            SetupRows.Lead(Loc.Get(Strings.Auth.SpotifySignInWeb)),
-            LoginView.BrowserLoginButton(startBrowser ?? Noop),
-            new TextEl(Loc.Get(Strings.Auth.Disclaimer))
-                { Size = 11.5f, LineHeight = 17f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
+            new BoxEl { Grow = 1f, HitTestVisible = false },
+            HyperlinkButton.Create(Loc.Get(Strings.Setup.SignIn.NotMe), switchAccount ?? Noop, size: ControlSize.Small),
         ],
     };
 
     static void Noop() { }
+}
 
-    // ── Busy: the same step bar + four step rows the login takeover's own Finalizing splash uses, reading the SAME
-    // bridge.Login signal — this page's own state, not a second dialog stacked on top of it. ─────────────────────
-    static Element BusyLeft(PlaybackBridge? bridge, LoginPhase phase)
+/// <summary>The Idle scan-QR card, isolated as its OWN <see cref="Component"/> so the pairing-code countdown's 1 Hz
+/// tick (WinUI's "expires in mm:ss") re-renders only this small card, never the whole <see cref="SetupSignInPage"/>
+/// (which also hosts a mounted Lottie) — the run-once-render rule (a bound prop for a hot value, never a per-frame
+/// whole-page re-render).</summary>
+sealed class SetupScanCard : Component
+{
+    internal sealed record Props(string Uri, string Code, DateTimeOffset Expiry);
+
+    public override Element Render()
     {
-        // The live ladder means something only once the bootstrap has actually started finalizing (IsFinalizing) —
-        // RequestingCode/AwaitingBrowser/SilentResume are Busy too, but pre-connection: showing it there would
-        // double up with the pairing pane's own "Getting your code" spinner beside it (item 5).
-        if (bridge is null || !IsFinalizing(phase))
-            return new BoxEl { Children = [new TextEl(Loc.Get(Strings.Auth.SigningIn)) { Size = 14f, Weight = 600, Color = Tok.TextPrimary }] };
-        Element Row(LoginStep step, string label) => Embed.Comp(() => new LoginStepRow(bridge.Login, step, label));
-        return new BoxEl
+        var p = UseProps<Props>();
+        var post = Context.UsePost();
+        var tick = UseSignal(0);
+        var ticker = UseAsyncCommand(cancelOnUnmount: true);
+        UseEffect(() => ticker.Run(async ct =>
         {
-            Direction = 1, Gap = Spacing.M,
-            Children =
-            [
-                new TextEl(Loc.Get(Strings.Auth.SigningIn)) { Size = 14f, Weight = 600, Color = Tok.TextPrimary },
-                new BoxEl { AlignSelf = FlexAlign.Start, Children = [Embed.Comp(() => new LoginStepBar(bridge.Login))] },
-                new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.XS, AlignSelf = FlexAlign.Stretch,
-                    Stagger = Motion.ReducedMotion ? 0f : WaveeMotion.StaggerMs,
-                    Children =
-                    [
-                        Row(LoginStep.Connecting, Loc.Get(Strings.Auth.StepConnecting)),
-                        Row(LoginStep.Metadata, Loc.Get(Strings.Auth.StepMetadata)),
-                        Row(LoginStep.Audio, Loc.Get(Strings.Auth.StepAudio)),
-                        Row(LoginStep.Profile, Loc.Get(Strings.Auth.StepProfile)),
-                    ],
-                },
-            ],
-        };
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(1000, ct).ConfigureAwait(false);
+                post(() => tick.Value++);   // marshal the 1 Hz write to the UI thread (the loop runs off-thread)
+            }
+        }), DepKey.Empty);
+        _ = tick.Value;   // subscribe → re-render this card each second
+
+        var remaining = p.Expiry - DateTimeOffset.UtcNow;
+        if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
+        string mmss = ((int)remaining.TotalMinutes).ToString("00") + ":" + remaining.Seconds.ToString("00");
+        string description = Strings.Setup.SignIn.PairLine(p.Code) + "  ·  " + Strings.Auth.ExpiresIn(mmss);
+
+        return SettingsCard.Create(new SettingsCard.Options
+        {
+            Header = Loc.Get(Strings.Setup.SignIn.ScanCardTitleNeutral),
+            Description = description,
+            HeaderIcon = Icons.Camera,
+            Content = Embed.Comp(() => new QrGrid(p.Uri, SetupLayout.QrSize)),
+        });
     }
-
-    // ── Done: the "Is this you?" profile card (real avatar via PersonPicture, display name, email, Premium pill) + the
-    // switch hint. The header carries the question and lead; the footer carries Yes / Not me. ────────────────────────
-    // Reused by the Wide decision column too (DecisionColumn) — the identical card, not a second copy of it.
-    static Element DoneLeft(WaveeUser? user)
-    {
-        var kids = new List<Element>
-        {
-            new TextEl(user?.DisplayName ?? "") { Size = 16f, LineHeight = 22f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-        };
-        if (!string.IsNullOrWhiteSpace(user?.Email))
-            kids.Add(new TextEl(user!.Email!) { Size = 12f, Color = Tok.TextSecondary });
-        if (user?.IsPremium == true) kids.Add(PremiumPill());
-
-        Element idCard = new BoxEl
-        {
-            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Padding = Edges4.All(14f),
-            Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardDefault,
-            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Children =
-            [
-                PersonPicture.Create(user?.AvatarUrl ?? "", 56f, displayName: user?.DisplayName ?? "") with { Shrink = 0f },
-                new BoxEl { Direction = 1, Gap = 3f, MinWidth = 0f, Children = kids.ToArray() },
-            ],
-        };
-
-        return new BoxEl
-        {
-            Direction = 1, Gap = Spacing.M,
-            Children = [idCard, SetupCompact.FinePrint(Loc.Get(Strings.Setup.SignIn.ConfirmHint), maxLines: 2)],
-        };
-    }
-
-    static Element PremiumPill() => new BoxEl
-    {
-        Direction = 0, Gap = 5f, AlignItems = FlexAlign.Center, Height = 19f, Shrink = 0f,
-        Padding = new Edges4(8f, 0f, 8f, 0f), Corners = CornerRadius4.All(9.5f),
-        Fill = LoginView.SpotifyGreen with { A = 0.24f },
-        Children = [new TextEl(Loc.Get(Strings.Auth.PremiumBadge)) { Size = 11f, Weight = 600, Color = LoginView.SpotifyGreen }],
-    };
-
-    // ── Failed / Expired / Premium: an InfoBar, reusing the exact same copy the login takeover shows. Reused by both
-    // the non-Wide stacked layout (via LeftPane) and the Wide decision column (via TerminalInfoBar). ─────────────────
-    static Element FailedLeft(string? error) => InfoBar.Create(
-        InfoBarSeverity.Error,
-        Loc.Get(Strings.Auth.CouldntSignIn),
-        string.IsNullOrWhiteSpace(error) ? Loc.Get(Strings.Auth.NetworkError) : error!);
-
-    static Element ExpiredLeft() => InfoBar.Create(
-        InfoBarSeverity.Error, Loc.Get(Strings.Auth.CodeExpired), Loc.Get(Strings.Auth.CodeExpiredBody));
-
-    static Element PremiumLeft() => InfoBar.Create(
-        InfoBarSeverity.Error, Loc.Get(Strings.Auth.PremiumTitle), Loc.Get(Strings.Auth.PremiumBody));
 }

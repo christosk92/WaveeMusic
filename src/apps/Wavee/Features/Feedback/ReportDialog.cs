@@ -16,9 +16,9 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>The in-app report dialog: bug / feature / question / idea, and the crash-reopen prompt (a fixed
-/// <see cref="ReportKind.Crash"/> with an <see cref="InfoBar"/> and a "Don't ask again" opt-out). A raw-overlay modal
-/// card, not <c>ContentDialog</c> — 640 DIP is over ContentDialog's clamp (the <see cref="AfterUpdateDialog"/> /
-/// <see cref="PlayLinkDialog"/> precedent).
+/// <see cref="ReportKind.Crash"/> with an <see cref="InfoBar"/> and a "Don't ask again" opt-out). Hosted in the engine's
+/// <c>ContentDialog</c> at its 548-DIP maximum (<see cref="DialogWidth"/>): the same card as every other Wavee dialog,
+/// whose body scroller feathers its own alpha at the edges when the form overflows.
 ///
 /// <para>Everything the reporter can send is composed OFF the UI thread by <see cref="ReportComposer"/> (file I/O +
 /// the whole-text redaction pass), then only the small per-keystroke free-text answers are re-redacted here — the
@@ -166,7 +166,7 @@ sealed class ReportDialogCard : Component
 
     const float FieldWidth = ReportDialog.ContentWidth;
     const float FieldHeight = 72f;               // multi-line TextBox height
-    const float PreviewHeight = 160f;
+    const float PreviewHeight = 220f;
     const float ComboWidth = 260f;
 
     public override Element Render()
@@ -269,7 +269,7 @@ sealed class ReportDialogCard : Component
             [
                 new ScrollEl
                 {
-                    Height = PreviewHeight, ScrollKey = "report-preview",
+                    Height = PreviewHeight, ScrollKey = "report-preview", EdgeCues = ScrollEdgeCues.None,
                     Content = new BoxEl
                     {
                         Padding = Edges4.All(10f),
@@ -335,15 +335,19 @@ sealed class ReportDialogCard : Component
 
     Element CrashInfoBar(ComposedReport? c)
     {
+        // Three honest states: still composing (the report is read off the UI thread — "no report was written" would
+        // be a lie for those first frames), a managed report with its summary, or genuinely no report.
         string message;
-        if (c is { CrashSummary.Length: > 0 })
+        var severity = InfoBarSeverity.Error;
+        if (c is null) { message = Loc.Get(Strings.Report.CrashReading); severity = InfoBarSeverity.Informational; }
+        else if (c is { CrashSummary.Length: > 0 })
         {
             string when = CrashTime();
             message = when.Length > 0 ? Strings.Report.CrashAt(when) + " · " + c.CrashSummary : c.CrashSummary;
         }
         else message = Loc.Get(Strings.Report.CrashNoReport);
 
-        return InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Report.CrashTitle), message,
+        return InfoBar.Create(severity, Loc.Get(Strings.Report.CrashTitle), message,
             isClosable: false, availableWidth: FieldWidth);
     }
 

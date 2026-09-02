@@ -460,7 +460,11 @@ sealed partial class PlaybackRuntimeSetupModel
                 }
             }
         });
-        Toast.Show(Loc.Get(Strings.Playback.Runtime.Ready), new ToastOptions { Severity = InfoBarSeverity.Success });
+        // Skip the toast when this model is wizard-hosted (OnWizardExit set): the wizard's own LocalPlayback page
+        // already shows the Ready state in place, so a toast on top of it would repeat the news the user is already
+        // looking at (SetupGating's onboarding-suppression rationale, pinned pure via ShowsReadyToast).
+        if (PlaybackRuntimeSetupModel.ShowsReadyToast(OnWizardExit is not null))
+            Toast.Show(Loc.Get(Strings.Playback.Runtime.Ready), new ToastOptions { Severity = InfoBarSeverity.Success });
     }
 
     void Fail(string message)

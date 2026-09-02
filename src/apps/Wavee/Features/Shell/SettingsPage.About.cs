@@ -92,7 +92,12 @@ sealed partial class SettingsPage
 
     /// <summary>The About tab. Everything that has LIVE state (the update snapshot, the three persisted switches) is
     /// inside <see cref="AboutUpdatePanel"/>, an embedded component — never a hook in this method, which the tab switch
-    /// calls conditionally.</summary>
+    /// calls conditionally.
+    ///
+    /// <para>Order: version hero + update panel, links, Reports (crash reports — moved here from the old Diagnostics
+    /// tab; it sits next to "Report a problem"), the "Wavee right now" receipts, Licenses. Graphics moved OUT of this
+    /// tab to General (Workstream B, "Settings regroup + removals") — a render-adapter picker is not "about" the app.
+    /// </para></summary>
     Element AboutTab(Services? svc, InputHooks hooks)
     {
         string os = OsDescription;
@@ -101,11 +106,10 @@ sealed partial class SettingsPage
         var kids = new List<Element>
         {
             Embed.Comp(() => new AboutUpdatePanel()) with { Key = "about:update" },
-            SettingsSectionHeader("Wavee right now", Icons.Info),
-            Embed.Comp(() => new WaveeNowReceipts()),
-            SettingsSectionHeader(Loc.Get(Strings.Settings.Gpu.Title), Icons.Devices, Loc.Get(Strings.Settings.Gpu.Subtitle)),
-            Embed.Comp(() => new GpuPickerCard()),
             AboutLinksCard(svc, hooks, DiagInfo, os),
+            Embed.Comp(() => new CrashReportsCard()),
+            SettingsSectionHeader(Loc.Get(Strings.Settings.About.RightNow), Icons.Info),
+            Embed.Comp(() => new WaveeNowReceipts()),
             SettingsSectionHeader(Loc.Get(Strings.Settings.About.Licenses), Icons.Document),
         };
         kids.AddRange(LicenseExpanders());
@@ -388,79 +392,8 @@ sealed partial class SettingsPage
         }
     }
 
-    /// <summary>Settings › About render-GPU picker. Its own <see cref="Component"/> for the same reason as
-    /// <see cref="WaveeNowReceipts"/>: the About body is built conditionally (only while the tab is selected), so the
-    /// hooks here (<c>UseEffect</c> to seed the selection, <c>UseContext</c> for the settings seam) must live on a
-    /// child whose lifetime IS the tab, never in <c>AboutTab</c> itself. The adapter list is enumerated ONCE at mount
-    /// (cold DXGI walk) and frozen. Selecting an adapter persists the LUID + name and live-applies via the engine's
-    /// device-reset path (<see cref="GpuAdapterInfo.RequestAdapterSwitch"/>) — a brief flicker, no restart.</summary>
-    sealed class GpuPickerCard : Component
-    {
-        readonly Signal<int> _selected = new(0);
-        // Frozen at mount: one factory run per Embed.Comp, so this cold enumeration happens once, not per re-render.
-        readonly IReadOnlyList<GpuAdapterDesc> _adapters = GpuAdapterInfo.EnumerateAdapters();
-
-        public override Element Render()
-        {
-            var svc = UseContext(Services.Slot);
-
-            // Seed the selection ONCE from the persisted preference: LUID first (the fast, exact match), then the
-            // durable name (LUIDs are not stable across reboots), else 0 = Automatic. Runs after mount so the
-            // ComboBox shows the honored choice without a write.
-            UseEffect(() =>
-            {
-                if (svc is null) return;
-                long luid = svc.Settings.Get(WaveeSettings.PreferredGpuLuid);
-                string name = svc.Settings.Get(WaveeSettings.PreferredGpuName);
-                int idx = 0;
-                if (luid != 0L || name.Length > 0)
-                {
-                    for (int k = 0; k < _adapters.Count; k++)
-                    {
-                        if (luid != 0L && _adapters[k].Luid == luid) { idx = k + 1; break; }
-                        if (idx == 0 && name.Length > 0 && string.Equals(_adapters[k].Name, name, StringComparison.Ordinal)) idx = k + 1;
-                    }
-                }
-                _selected.Value = idx;
-            }, DepKey.Empty);
-
-            string[] labels = new string[_adapters.Count + 1];
-            labels[0] = Loc.Get(Strings.Settings.Gpu.Automatic);
-            for (int k = 0; k < _adapters.Count; k++)
-            {
-                var a = _adapters[k];
-                labels[k + 1] = a.IsCurrent ? Strings.Settings.Gpu.InUse(a.Name) : a.Name;
-            }
-
-            return SettingsCard.Create(new SettingsCard.Options
-            {
-                Header = Loc.Get(Strings.Settings.Gpu.Label),
-                Description = Loc.Get(Strings.Settings.Gpu.RestartSub),
-                HeaderIcon = Icons.Devices,
-                Content = ComboBox.Create(labels, _selected, width: 300f, isEnabled: svc is not null,
-                    onChange: i => Pick(svc, i)),
-            });
-        }
-
-        void Pick(Services? svc, int i)
-        {
-            // Index 0 (or any out-of-range) = Automatic → clear the preference and pass LUID 0 (the engine's
-            // HIGH_PERFORMANCE walk). Otherwise persist the chosen adapter's LUID + name and apply it.
-            if (i <= 0 || i > _adapters.Count)
-            {
-                svc?.Settings.Set(WaveeSettings.PreferredGpuLuid, 0L);
-                svc?.Settings.Set(WaveeSettings.PreferredGpuName, "");
-                _selected.Value = 0;
-                GpuAdapterInfo.RequestAdapterSwitch(0L);
-                return;
-            }
-            var a = _adapters[i - 1];
-            svc?.Settings.Set(WaveeSettings.PreferredGpuLuid, a.Luid);
-            svc?.Settings.Set(WaveeSettings.PreferredGpuName, a.Name);
-            _selected.Value = i;
-            GpuAdapterInfo.RequestAdapterSwitch(a.Luid);
-        }
-    }
+    // GpuPickerCard moved to SettingsPage.General.cs (Settings › General › Graphics) — a render-adapter picker is not
+    // "about" the app.
 }
 
 /// <summary>Settings › About — the version hero and everything the updater owns.

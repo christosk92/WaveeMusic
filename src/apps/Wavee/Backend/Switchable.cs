@@ -182,6 +182,23 @@ public sealed class LiveSpotifySession : ISpotifySession
     public AuthStatus Status { get; private set; } = AuthStatus.Authenticated;
     public WaveeUser? CurrentUser { get; private set; }
     public IObservable<AuthStatus> StatusChanged => _status;
+
+    /// <summary>Fold the account's resolved profile (display name + avatar) onto this session once the background
+    /// user-profile fetch lands. It has to live HERE, not only on <c>PlaybackBridge.User</c>: that fetch routinely
+    /// resolves BEFORE <c>Services.GoLive</c> swaps this session into the <see cref="SwitchableSession"/>, and the swap
+    /// re-publishes <see cref="CurrentUser"/> onto the profile chip — so a signal-only enrichment was either dropped
+    /// (the pre-swap guard) or clobbered a moment later by the bare account id this session was constructed with.
+    /// A blank name/avatar leaves what is already there (never downgrades a resolved profile back to the id).</summary>
+    public void UpdateProfile(string? displayName, string? avatarUrl)
+    {
+        if (CurrentUser is not { } u) return;
+        CurrentUser = u with
+        {
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? u.DisplayName : displayName,
+            AvatarUrl = string.IsNullOrWhiteSpace(avatarUrl) ? u.AvatarUrl : avatarUrl,
+        };
+    }
+
     public Task<bool> ConnectAsync(CancellationToken ct = default) => Task.FromResult(true);
     public Task LogoutAsync(CancellationToken ct = default) { Status = AuthStatus.LoggedOut; CurrentUser = null; _status.OnNext(AuthStatus.LoggedOut); return Task.CompletedTask; }
 }

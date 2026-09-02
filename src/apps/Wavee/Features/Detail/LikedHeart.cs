@@ -12,7 +12,7 @@ namespace Wavee;
 /// is the biggest place this shape appears, and it would be the one heart in Wavee that did not match the save button
 /// three inches below it.</para>
 ///
-/// <para>Parsed EXACTLY ONCE, through <see cref="PathGeometryTable"/> (the <c>HeroMotion.Geo</c> idiom) rather than a
+/// <para>Parsed EXACTLY ONCE, through <see cref="PathGeometryTable"/> (the <c>PathGeometryTable.Register</c> idiom) rather than a
 /// bare <c>PathDataParser.Parse</c>: the table mints one content epoch per distinct registration and hands back the
 /// same <see cref="PathData"/> instance forever, which is what keeps the tessellation-realization cache warm. A
 /// per-render parse would mint a fresh epoch and re-tessellate the heart on every frame the cover re-renders.</para>

@@ -148,7 +148,7 @@ sealed class PopOutVideoContent : Component
                 // so the fullscreen bit has to be part of the KEY — exactly the way PopOutVideoStage folds `suppress`
                 // into its own element key as ":t0"/":t1". Without it the stage would keep whatever value it was born
                 // with and the toggle would change nothing on screen.
-                ? [new BoxEl { Grow = 1, Children = [Embed.Comp(() => new PopOutVideoStage { Source = src, Player = Player, Bridge = Bridge, Settings = Settings, Host = Host, IsHostFullscreen = hostFullscreen }) with { Key = "stage:" + stageKey + (hostFullscreen ? ":f1" : ":f0") }] }]
+                ? [new BoxEl { Grow = 1, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Children = [Embed.Comp(() => new PopOutVideoStage { Source = src, Player = Player, Bridge = Bridge, Settings = Settings, Host = Host, IsHostFullscreen = hostFullscreen }) with { Key = "stage:" + stageKey + (hostFullscreen ? ":f1" : ":f0") }] }]
                 : Array.Empty<Element>(),
         };
     }

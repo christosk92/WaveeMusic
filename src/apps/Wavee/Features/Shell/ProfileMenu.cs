@@ -17,16 +17,18 @@ namespace Wavee;
 // mounted Overlay.Service (no new host). "Log out" opens a modal confirm → Services.LogoutAsync, which flips the gate back
 // to the takeover with NO process restart.
 //
-// It is also the merged row's IDENTITY SINK: three affordances that used to be separate trailing-island buttons live
-// here now — the notification bell (its unread badge rides the chip's avatar, its panel opens from a menu row anchored
-// to the chip), the theme toggle (a row beside Palette), and — only when the ladder has folded it out of the row —
-// Friends. Every one of them is reached through the avatar the user already looks at for "me" commands.
+// Below ChromeActionsEnterW it is also the FOLD for the trailing island's action buttons: bell and friends, which live
+// as direct buttons in the row above that width (ShellToolbar.NotificationBellButton, MergedChromeRow.Trailing),
+// become menu rows here instead — never both — so neither affordance disappears, only moves. Settings is always a row
+// here (it has no row form); pin has none here at all (it drops below the threshold — the tab/page context menu still
+// offers it). The theme toggle is a permanent caption-leading button now, but keeps a menu row too for discoverability
+// parity with the rest of the "me" cluster. (The Palette submenu that used to sit beside it is gone — Workstream B,
+// "Settings regroup + removals": Wavee always renders the neutral palette now.)
 sealed class ProfileMenu : Component
 {
     static readonly ColorF Gold = ColorF.FromRgba(0xE6, 0xC2, 0x6C);
     const float MenuWidth = 304f;
-    /// <summary>The chip's avatar diameter — also the badge overlay's box, so the unread pill can never change the
-    /// chip's width (which is why the count is NOT in <c>MergedChromeRow.ContentVersion</c>).</summary>
+    /// <summary>The chip's plain avatar diameter (the unread badge lives on the trailing bell now, not here).</summary>
     const float AvatarSize = 24f;
 
     readonly PlaybackBridge _b;
@@ -44,7 +46,6 @@ sealed class ProfileMenu : Component
     {
         var services = UseContext(Services.Slot);
         var overlay = UseContext(Overlay.Service);
-        var requestTheme = UseContext(ThemeControl.Request);
         var go = UseContext(HistoryStore.NavCtx);
         var actions = UseContext(ActionServices.Slot);   // the utility-command bag ("Play file…" needs Svc + Playback)
         var nc = UseContext(NotificationCenterBridge.Slot);
@@ -52,36 +53,26 @@ sealed class ProfileMenu : Component
         var handle = UseRef<OverlayHandle?>(null);
         var notifyHandle = UseRef<OverlayHandle?>(null);
 
-        var l = _layout.Value;      // subscribe → the chip's name column and the Friends row follow the ladder
+        var l = _layout.Value;      // subscribe → the chip's name column and the menu-fold rows follow the ladder
         bool showName = l.ShowName;
-        bool friendsInMenu = l.FriendsInMenu;
-        int unread = nc?.UnreadCount.Value ?? 0;   // subscribe → the avatar badge tracks the count (the bell's contract)
 
         var user = _b.User.Value;   // subscribe → chip + menu header follow the session
         string name = string.IsNullOrWhiteSpace(user?.DisplayName) ? "—" : user!.DisplayName;
         bool premium = user?.IsPremium ?? false;
         string avatar = user?.AvatarUrl ?? "";
         string? email = user?.Email;
-        var pic = Avatar(avatar, name, unread);
+        var pic = PersonPicture.Create(avatar, AvatarSize, displayName: name);
 
         void Close() => handle.Value?.Close();
 
-        // The bell's panel, re-anchored to the CHIP — the OverflowMenu.OpenNotifications mechanism verbatim (same
-        // NotificationPanel, same placement/chrome, same OnPanelOpened unread-seen mark), just a different anchor and a
-        // second handle so it never fights the account flyout's own.
+        // The bell's panel, re-anchored to the CHIP — NotificationPanelLauncher.Open is the exact mechanism
+        // ShellToolbar.NotificationBellButton uses above ChromeActionsEnterW (same NotificationPanel, same
+        // placement/chrome, same OnPanelOpened unread-seen mark); this is just a different anchor and its own handle
+        // so it never fights the account flyout's own.
         void OpenNotifications()
         {
             if (nc is null) return;
-            notifyHandle.Value = overlay.Open(
-                () => anchor.Value,
-                () => Embed.Comp(() => new NotificationPanel(() => notifyHandle.Value?.Close())),
-                FlyoutPlacement.BottomEdgeAlignedRight,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                {
-                    ConstrainToRootBounds = false,
-                });
-            notifyHandle.Value.ClosedAction = () => notifyHandle.Value = null;
-            nc.OnPanelOpened();
+            NotificationPanelLauncher.Open(overlay, nc, () => anchor.Value, notifyHandle);
         }
 
         void ConfirmLogout()
@@ -140,12 +131,6 @@ sealed class ProfileMenu : Component
             return items.ToArray();
         }
 
-        void SetPalette(string id)
-        {
-            WaveeTheme.ApplyPalette(id, services?.Settings);
-            requestTheme?.Invoke(250f);
-        }
-
         void OpenMenu()
         {
             if (handle.Value is { IsOpen: true }) { Close(); return; }
@@ -153,14 +138,14 @@ sealed class ProfileMenu : Component
                 () => anchor.Value,
                 () => MenuContent(name, premium, avatar, email,
                     unread: nc?.UnreadCount.Peek() ?? 0,
-                    showFriends: _layout.Peek().FriendsInMenu,
+                    showNotifications: nc is not null && _layout.Peek().ActionsInMenu,
+                    showFriends: _layout.Peek().ActionsInMenu,
                     close: Close,
                     onAccount: () => { Close(); LoginView.OpenUrl("https://www.spotify.com/account"); },
                     onSettings: () => { Close(); go("settings", null); },
-                    onNotifications: nc is null ? null : () => { Close(); OpenNotifications(); },
+                    onNotifications: () => { Close(); OpenNotifications(); },
                     onFriends: () => { Close(); _toggleFriends(); },
                     onTheme: () => { Close(); _toggleTheme(); },
-                    onPalette: SetPalette,
                     playItems: PlayItems(),
                     onLogout: () => { Close(); ConfirmLogout(); }),
                 FlyoutPlacement.BottomEdgeAlignedRight,
@@ -187,44 +172,13 @@ sealed class ProfileMenu : Component
         }.Interactive(Interaction.Subtle);
     }
 
-    /// <summary>The chip's avatar, carrying the notification centre's unread badge — the bell's exact
-    /// <c>InfoBadge.Count</c> wiring, moved onto the face the bell used to sit beside. The pill is parked at the
-    /// avatar's TOP-RIGHT corner (WinUI PersonPicture badging) inside a ZStack the size of the avatar, so it is
-    /// hit-test-free and — the load-bearing part — the chip's footprint is IDENTICAL badged or not. That is why an
-    /// arriving notification is not in <c>MergedChromeRow.ContentVersion</c>: it moves no island edge.</summary>
-    static Element Avatar(string avatar, string name, int unread)
-    {
-        var pic = PersonPicture.Create(avatar, AvatarSize, displayName: name);
-        if (unread <= 0) return pic;
-        return new BoxEl
-        {
-            ZStack = true, Width = AvatarSize, Height = AvatarSize, Shrink = 0f,
-            Children =
-            [
-                pic,
-                new BoxEl
-                {
-                    Width = AvatarSize, Height = AvatarSize, Direction = 1, Justify = FlexJustify.Start, HitTestVisible = false,
-                    Children = [ new BoxEl { Direction = 0, Justify = FlexJustify.End, Children = [ InfoBadge.Count(unread) ] } ],
-                },
-            ],
-        };
-    }
-
     // The dropdown: a compact account header over stock WinUI menu rows.
-    static Element MenuContent(string name, bool premium, string avatar, string? email, int unread, bool showFriends,
-        Action close, Action onAccount, Action onSettings, Action? onNotifications, Action onFriends, Action onTheme,
-        Action<string> onPalette, IReadOnlyList<MenuFlyoutItem>? playItems, Action onLogout)
+    static Element MenuContent(string name, bool premium, string avatar, string? email, int unread,
+        bool showNotifications, bool showFriends,
+        Action close, Action onAccount, Action onSettings, Action onNotifications, Action onFriends, Action onTheme,
+        IReadOnlyList<MenuFlyoutItem>? playItems, Action onLogout)
     {
-        string active = Tok.Palette.Id;
-        var paletteItems = new MenuFlyoutItem[]
-        {
-            MenuFlyoutItem.RadioItem("Warm", active == "warm", () => onPalette("warm")),
-            MenuFlyoutItem.RadioItem("Slate", active == "slate", () => onPalette("slate")),
-            MenuFlyoutItem.RadioItem("Neutral", active == "neutral", () => onPalette("neutral")),
-            MenuFlyoutItem.RadioItem("Accent", active == "accent", () => onPalette("accent")),
-        };
-        var rows = new List<MenuFlyoutItem>(11)
+        var rows = new List<MenuFlyoutItem>(9)
         {
             new(Loc.Get(Strings.Auth.Account), Icons.Contact, Invoke: onAccount),
             new(Loc.Get(Strings.Auth.Settings), Icons.Settings, Invoke: onSettings),
@@ -232,12 +186,12 @@ sealed class ProfileMenu : Component
         if (playItems is { Count: > 0 })
             rows.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Play.Menu), playItems, Icons.MusicNote));
 
-        // The two ex-buttons that ALWAYS live here, in their own band. Notifications carries the count in its label
-        // exactly as the "⋯" spillover row used to (the badge on the avatar is the glanceable half of the same fact);
-        // Friends only appears when the ladder has taken the standalone button OUT of the row, so the affordance is
-        // reachable at every width and duplicated at none.
-        if (onNotifications is not null || showFriends) rows.Add(MenuFlyoutItem.Separator);
-        if (onNotifications is not null)
+        // Notifications and Friends are the trailing island's own direct buttons above ChromeActionsEnterW
+        // (ShellToolbar.NotificationBellButton, MergedChromeRow.Trailing) — they show HERE only when the ladder has
+        // folded them out of the row, so the affordance is reachable at every width and duplicated at none.
+        // Notifications carries the count in its label exactly as the bell's badge does in the row.
+        if (showNotifications || showFriends) rows.Add(MenuFlyoutItem.Separator);
+        if (showNotifications)
             rows.Add(new MenuFlyoutItem(
                 unread > 0 ? Strings.Notifications.OverflowTitle(unread) : Loc.Get(Strings.Notifications.Title),
                 Icons.Bell, Invoke: onNotifications));
@@ -245,9 +199,8 @@ sealed class ProfileMenu : Component
             rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Shell.Friends), Icons.Friends, Invoke: onFriends));
 
         rows.Add(MenuFlyoutItem.Separator);
-        rows.Add(MenuFlyoutItem.SubMenu("Palette", paletteItems, Icons.Brush));
-        // Beside Palette, because they are the same decision ("how this looks"). Labelled and glyphed with the TARGET
-        // theme — the register the retired "⋯" row and the old button's tooltip both used ("Light theme" while dark).
+        // Labelled and glyphed with the TARGET theme — the register the retired "⋯" row and the old button's tooltip
+        // both used ("Light theme" while dark).
         rows.Add(new MenuFlyoutItem(
             Theme.Dark ? Loc.Get(Strings.Shell.LightTheme) : Loc.Get(Strings.Shell.DarkTheme),
             Theme.Dark ? Icons.Sun : Icons.Moon, Invoke: onTheme));

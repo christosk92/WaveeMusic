@@ -30,7 +30,7 @@ static class WaveeSettings
     public static readonly SettingKey<float> SidebarWidth = new("sidebar.width", 300f);
     public static readonly SettingKey<bool> SidebarWidthUserSet = new("sidebar.width.userSet", false);
     public static readonly SettingKey<bool> SidebarCollapsed = new("sidebar.collapsed", false);
-    // The active sidebar DESIGN as a SidebarDesign int (the RowDensity/ThemeMode/DetailPageLayout convention —
+    // The active sidebar DESIGN as a SidebarDesign int (the RowDensity/ThemeMode/TrackRowStyle convention —
     // AppDataSettings has no enum arm). DEFAULT 0 = Classic IS LOAD-BEARING: an existing install that never wrote the key
     // silently stays Classic. Fresh installs also get Classic written explicitly by SidebarBootstrap.
     public static readonly SettingKey<int> SidebarDesign = new("sidebar.design", 0);
@@ -59,8 +59,6 @@ static class WaveeSettings
     // Theme preference: 0 = System (follow the OS live), 1 = Light, 2 = Dark. Default System so a fresh install matches
     // the OS; an explicit in-app toggle pins Light/Dark and stops following the OS. Seeded at startup before the first frame.
     public static readonly SettingKey<int> ThemeMode = new("theme.mode", 0);
-    // Color palette preset: neutral (default) | warm | slate | accent (OS-accent-tinted neutrals).
-    public static readonly SettingKey<string> PaletteId = new("theme.palette", "neutral");
     // UI culture selected in Settings. "system" asks the startup composition root to resolve the Windows UI locale;
     // an explicit BCP-47/language tag selects the matching bundled JSON table. Applied before first mount on next launch.
     public static readonly SettingKey<string> UiCulture = new("localization.culture", "system");
@@ -71,7 +69,7 @@ static class WaveeSettings
     // App-wide policy for artwork inside TRACK cells only. TRUE removes the thumbnail lane and returns its width to the
     // title; page heroes, media cards, sidebar covers and the player's identity artwork are deliberately unaffected.
     public static readonly SettingKey<bool> HideTrackArtwork = new("appearance.trackArtwork.hidden", false);
-    // The Liked Songs collection cover treatment, as a LikedCoverStyle int (the ThemeMode / RowDensity / DetailPageLayout
+    // The Liked Songs collection cover treatment, as a LikedCoverStyle int (the ThemeMode / RowDensity / TrackRowStyle
     // convention — AppDataSettings has no enum arm). The enum's VALUES are the wire, so a treatment added later appends
     // and a stored int never re-means; anything this build does not define clamps to Stock (LikedCoverRules.FromSetting).
     // DEFAULT = Lens, not Stock: the point of the feature is that the collection cover is made of the user's own music,
@@ -90,29 +88,13 @@ static class WaveeSettings
     // TraitPolicy), because gating the fetch on this setting permanently starved lists opened while it was off — 185
     // has no retry surface. App-wide, like RowDensity and TempoColumn.
     public static readonly SettingKey<bool> PlaysColumn = new("detail.playsColumn", false);
-    // Track-detail page layout: 0 Automatic (metadata rail on wide windows, the hero on narrow) · 1 Hero (the hero
-    // composition at every width — the rail is never composed for track pages; podcasts keep the automatic layout).
-    public static readonly SettingKey<int> DetailPageLayout = new("detail.page.layout", 0);
-    // How far the detail page's art-derived TONE (WaveePalette.PageTone) reaches. FALSE (the default) = the whole page
-    // sits on it; TRUE = it survives the hero band and dissolves back into the neutral content surface below. A taste
-    // choice about how loud a page is allowed to be, so it is a setting rather than a breakpoint — and it is only ever
-    // a REDUCTION of the default, which is why it is a bool and not a third page-layout enum value. Note the tone is
-    // absent entirely (not merely hero-limited) when DisableColorWashes is on or the cover has no grading; this row
-    // chooses between "tinted page" and "tinted hero", never between "tint" and "no tint".
-    public static readonly SettingKey<bool> DetailPageToneHeroOnly = new("detail.page.tone.heroOnly", false);
-    public static readonly SettingKey<bool> DisableMarquee = new("appearance.marquee.disabled", false);
-    public static readonly SettingKey<bool> DisableColorWashes = new("appearance.colorWashes.disabled", false);
-    // The DWM window material. TRUE (the default) = base Mica (DWMSBT_MAINWINDOW — the NEUTRAL "main window" backdrop);
-    // FALSE = Mica ALT (DWMSBT_TABBEDWINDOW — Microsoft's documented STRONGER tint of the desktop wallpaper, the "tabbed
-    // window" kind File Explorer uses). A bool, not an enum: DWM offers exactly these two Mica kinds, and acrylic is not
-    // a window-level option here (mica:false is the engine's no-Mica path, not a user choice). The default flipped to
-    // base Mica because the authenticated shell (WaveeShell) is now transparent over the DWM material end to end — the
-    // titlebar, sidebar and player dock are all deliberate paint-site omissions, so the backdrop kind is visible across
-    // the whole window, not just under the login screen. Mica Alt's stronger tint read as a saturated navy chrome next
-    // to Wino Mail and other apps that default to base Mica on the same wallpaper; the Alt default predated the shell
-    // going transparent, when an opaque ground hid the difference. The key is the startup seed for AppOptions.MicaAlt
-    // (Program.cs: MicaAlt = !this) and backs the Settings ▸ Appearance row.
-    public static readonly SettingKey<bool> WindowMaterialBaseMica = new("appearance.windowMaterial.baseMica", true);
+    // Marquee text (title/lyrics rows that overflow their box). TRUE (the default) = scroll the overflow; FALSE =
+    // truncate with an ellipsis instead. Renamed from the negative DisableMarquee (no migration — pre-1.0, cosmetic):
+    // Settings now presents this as a plain ON switch rather than a "disable" row.
+    public static readonly SettingKey<bool> MarqueeEnabled = new("appearance.marquee.enabled", true);
+    // Color washes (the shell/page surfaces tinted from the current artwork). TRUE (the default) = tint them; FALSE =
+    // keep the neutral surface. Renamed from the negative DisableColorWashes for the same reason as MarqueeEnabled.
+    public static readonly SettingKey<bool> ColorWashesEnabled = new("appearance.colorWashes.enabled", true);
     // App-wide UI zoom — the browser-style Ctrl+± ladder (the engine's ZoomLadder steps; effective window scale =
     // OS DPI × zoom). Seeded into AppOptions.Zoom BEFORE the window comes up (Program.cs) so the first frame already
     // paints at the user's scale, and SNAPPED on that read: a hand-edited registry value (or a value persisted by a
@@ -121,13 +103,13 @@ static class WaveeSettings
     public static readonly SettingKey<float> ZoomLevel = new("appearance.zoom", 1f);
     // The immersive lyrics surface's slowly-drifting blurred-cover backdrop. TRUE (the default) = the baked-blur cover
     // wanders on two incommensurate sinusoids; FALSE = the same cover, held perfectly still (and no ticker at all).
-    // Deliberately a SETTING, not an env var — the DisableColorWashes precedent: it is a taste/comfort choice a
+    // Deliberately a SETTING, not an env var — the ColorWashesEnabled precedent: it is a taste/comfort choice a
     // normal user makes about a surface they look at for whole songs, not a developer escape hatch, and it must apply
     // LIVE (the writer bumps AppearancePrefs.Epoch, which the surface reads). The OS reduced-motion preference
     // independently holds the drift still whatever this says — a value read, never a hook branch.
     public static readonly SettingKey<bool> LyricsAnimatedBackdrop = new("lyrics.backdrop.animated", true);
     // The lyrics SECOND line: 0 = none · 1 = translation · 2 = romanization. An int-enum (the ThemeMode / RowDensity /
-    // DetailPageLayout convention — AppDataSettings has no enum arm), deliberately NOT two independent bools: the two
+    // TrackRowStyle convention — AppDataSettings has no enum arm), deliberately NOT two independent bools: the two
     // layers are mutually exclusive ON SCREEN (stacking both would add two lines to every row, blow the row heights out
     // and push the focal band off), and a tri-state int is the one value both writers agree on — the Settings picker and
     // the cycling toggle in the lyrics headers (rail + immersive). Default 0: most listeners read the original, and the
@@ -287,8 +269,8 @@ static class WaveeSettings
     // click), applied on top of the watermarks by NotificationMerge. Bounded, and cleared whenever a watermark advance
     // subsumes it. Codec + cap: Wavee.Core's NotificationReadIds.
     public static readonly SettingKey<string> NotificationsReadIds = new("notifications.readIds", "");
-    // Runtime log-level overrides for the Diagnostics panel (WaveeLogLevel as int; -1 = build default). The env vars
-    // WAVEE_LOG_LEVEL / WAVEE_LOG_FILE_LEVEL still win over these (resolved inside WaveeLog.Configure).
+    // Runtime log-level overrides for Settings › Logs › Verbose (WaveeLogLevel as int; -1 = build default — see
+    // LogCapturePolicy.Resolve/ToSetting, the one place that reconciles this against the build's own default).
     public static readonly SettingKey<int> LogMinLevel = new("diagnostics.log.minLevel", -1);
     public static readonly SettingKey<int> LogFileMinLevel = new("diagnostics.log.fileMinLevel", -1);
     // ── Release-readiness keys (2026-08-26) ──────────────────────────────────────────────────────────────
@@ -338,6 +320,11 @@ static class WaveeSettings
     // RunMarker.Begin/End bracket every launch ("running" → "clean"); a stale "running" seen on the next Begin means
     // the previous process exited without running managed shutdown (crash, kill, or an OS-forced termination).
     public static readonly SettingKey<string> RunMarker = new("app.runMarker", "");
+    // True once an UNCLEAN-EXIT crash prompt (the evidence-free signal: no report, no dump — just a stale "running"
+    // marker) has been offered; cleared by RunMarker.End / MarkCrashed. Bounds that prompt to ONCE PER UNCLEAN STREAK:
+    // a process that is killed on every run (an IDE stop, Task Manager) is otherwise "unclean" every single launch
+    // and re-asks after every dismissal (CrashPromptPolicy.Decide).
+    public static readonly SettingKey<bool> UncleanExitOffered = new("crash.uncleanExitOffered", false);
 }
 
 // The LibraryPage's per-kind persisted state (the "Your Library" master–detail: albums/artists/podcasts). Keys are built

@@ -155,15 +155,18 @@ public class WaveeLogTests
     }
 
     [Fact]
-    public void EnvPrecedence_EnvBeatsExplicitConfigureArg()
+    public void Configure_ExplicitArgWins_NoEnvOverride()
     {
+        // CLAUDE.md forbids env-var behaviour switches: WAVEE_LOG_LEVEL is deleted (LogCapturePolicy /
+        // Settings › Logs › Verbose is the one place this is decided now). A stray env var set by some OTHER tool
+        // on the machine must have zero effect on Configure's explicit arg.
         var prior = Environment.GetEnvironmentVariable("WAVEE_LOG_LEVEL");
         try
         {
             Environment.SetEnvironmentVariable("WAVEE_LOG_LEVEL", "Error");
             var log = new WaveeLog();
-            log.Configure(minLevel: WaveeLogLevel.Debug);   // arg says Debug; env says Error → env wins
-            Assert.Equal(WaveeLogLevel.Error, log.MinLevel);
+            log.Configure(minLevel: WaveeLogLevel.Debug);
+            Assert.Equal(WaveeLogLevel.Debug, log.MinLevel);
         }
         finally { Environment.SetEnvironmentVariable("WAVEE_LOG_LEVEL", prior); }
     }

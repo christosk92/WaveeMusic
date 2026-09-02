@@ -156,6 +156,16 @@ public interface IAudioHost : IMediaHost
     void LoadFastStart(in AudioFastStart start);
     void SupplyBody(in AudioStreamHandle body);
     bool IsBuffering { get; }
+    /// <summary>Whether the user has actually asked to hear this — true from <see cref="IMediaHost.Play"/> until the
+    /// next <see cref="IMediaHost.Pause"/>/<see cref="IMediaHost.Stop"/>, independent of whether audio is audibly
+    /// flowing yet. A <c>Load</c>/<c>LoadFastStart</c> for a paused (launch-recovery) restore never touches this, so
+    /// it stays whatever it already was — false for a fresh host. The controller reads it (never <see cref="IMediaHost.IsPlaying"/>,
+    /// which lags behind while genuinely buffering) to decide whether a stray transient-buffering flag is safe to
+    /// clear (PlaybackController.SupplyBodyWhenReadyAsync) — see the buffering-bar-on-a-paused-restored-track fix.
+    /// Defaults false (the conservative "OK to clear" answer) so every existing <see cref="IAudioHost"/> fake that has
+    /// no reason to track it — none of them drive the one call site that reads this through a real Play() — keeps
+    /// compiling untouched; the two real hosts and the shared test recorder override it properly.</summary>
+    bool PlayIntent => false;
 }
 
 public interface IAudioDspControl
@@ -244,6 +254,10 @@ public sealed class SilentAudioHost : IAudioHost
     public bool IsBuffering { get { lock (_gate) return _buffering; } }
     // The synthetic clock is never stale — it has no real session to lose, so 0 here is always a genuine position.
     public bool ClockValid => true;
+    // A silent host has no separate "asked to hear it" moment distinct from actually playing (Load/SupplyBody's own
+    // Buffering window is cleared synchronously, right below, before this could ever be read mid-buffer) — _playing
+    // IS the play intent here.
+    public bool PlayIntent { get { lock (_gate) return _playing; } }
     public IObservable<AudioHostSignal> Signals => _signals;
 
     long Pos() => _playing ? Math.Min(_durationMs <= 0 ? long.MaxValue : _durationMs, _anchorPos + (_now() - _anchorWall)) : _anchorPos;

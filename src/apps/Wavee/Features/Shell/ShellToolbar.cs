@@ -15,8 +15,10 @@ namespace Wavee;
 
 // The merged chrome row's shared button STYLE. The 48-DIP navigation toolbar this file used to build is gone — Wavee's
 // chrome is now ONE 48-DIP TitleBar (see MergedChromeRow), and the customizable shortcut band moved to the sidebar.
-// What survives here is the row's reusable furniture: this style, the back/forward history button, the "..." overflow
-// menu, and the omnibar (field + suggestions popup) the merged row's centre island hosts.
+// What survives here is the row's reusable furniture: this style, the back/forward history button, the trailing
+// island's notification bell (badge + panel), and the omnibar (field + suggestions popup) the merged row's centre
+// island hosts. There is no "..." overflow menu any more — every trailing action is a direct button or a profile-menu
+// row (MergedChromeRow.Trailing, ProfileMenu).
 static class ShellToolbar
 {
     /// <summary>The footprint for anything living INSIDE a merged-row island — 40x44, the bar's own nav metric (the
@@ -96,37 +98,48 @@ sealed class NavHistoryButton : Component
     }
 }
 
-// A "⋯" toolbar icon that opens a plain MenuFlyout below it via the overlay service — the same path DropDownButton uses,
-// so it gets the engine's clean MenuPopupThemeTransition clip-reveal (NOT CommandBarFlyout's extra overflow-expand clip).
-sealed class OverflowMenu : Component
+// The trailing island's stand-alone notification bell — mounted only at/above ChromeActionsEnterW
+// (MergedChromeRow.Trailing). Below that width the SAME affordance is a row in the profile menu instead
+// (ProfileMenu.OpenNotifications) — never both, and both paths open the identical panel via
+// NotificationPanelLauncher.Open (same placement/chrome, same unread-seen marking).
+sealed class NotificationBellButton : Component
 {
-    readonly MergedChromeRow _owner;
-    readonly IReadSignal<MergedChromeLayout> _layout;
-    public OverflowMenu(MergedChromeRow owner, IReadSignal<MergedChromeLayout> layout)
-    { _owner = owner; _layout = layout; }
-
     public override Element Render()
     {
+        var nc = UseContext(NotificationCenterBridge.Slot);
+        var overlay = UseContext(Overlay.Service);
         var anchor = UseRef<NodeHandle>(default);
         var handle = UseRef<OverlayHandle?>(null);
-        var svc = UseContext(Overlay.Service);
+        int unread = nc?.UnreadCount.Value ?? 0;   // subscribe → the badge tracks the count
 
-        // Notifications used to be re-anchored HERE when the bell collapsed. They are not any more: the bell merged
-        // into the profile chip's avatar badge and its panel opens from the profile flyout (ProfileMenu re-uses this
-        // file's re-anchoring mechanism verbatim, against the CHIP). The "⋯" is back to being pure spillover.
         void Toggle()
         {
+            if (nc is null) return;
             if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-            handle.Value = svc.Open(
-                () => anchor.Value,
-                () => MenuFlyout.Create(_owner.OverflowItems(_layout.Peek()), () => handle.Value?.Close()),
-                FlyoutPlacement.BottomEdgeAlignedRight,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
-            handle.Value.ClosedAction = () => handle.Value = null;
+            NotificationPanelLauncher.Open(overlay, nc, () => anchor.Value, handle);
         }
 
-        return IconButton.Create(Icons.More, Toggle, ShellToolbar.BarNavStyle)
-            with { Margin = ShellToolbar.BarNavMargin, OnRealized = h => anchor.Value = h };
+        var btn = IconButton.Create(Icons.Bell, Toggle, ShellToolbar.BarNavStyle, isEnabled: nc is not null)
+            with { OnRealized = h => anchor.Value = h };
+
+        // The unread pill (InfoBadge.Count) at the button's top-right corner, exactly the ProfileMenu.Avatar ZStack
+        // this replaces on the chip — sized to the BUTTON's own box (BarNavStyle, before the island margin) so the
+        // badge never changes the button's footprint.
+        float w = ShellToolbar.BarNavStyle.Size, h = ShellToolbar.BarNavStyle.Height ?? w;
+        BoxEl content = unread <= 0 ? btn : new BoxEl
+        {
+            ZStack = true, Width = w, Height = h, Shrink = 0f,
+            Children =
+            [
+                btn,
+                new BoxEl
+                {
+                    Width = w, Height = h, Direction = 1, Justify = FlexJustify.Start, HitTestVisible = false,
+                    Children = [ new BoxEl { Direction = 0, Justify = FlexJustify.End, Children = [ InfoBadge.Count(unread) ] } ],
+                },
+            ],
+        };
+        return ToolTip.Wrap(content with { Margin = ShellToolbar.BarNavMargin }, Loc.Get(Strings.Notifications.Title));
     }
 }
 

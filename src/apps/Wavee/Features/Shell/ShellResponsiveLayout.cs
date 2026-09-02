@@ -30,15 +30,19 @@ public static class ShellResponsiveLayout
 
     /// <summary>The profile NAME beside the avatar — the first thing to go, so the gutters stop being the only give.</summary>
     public const float ChromeNameEnterW = 1360f;
-    /// <summary>Friends keeps the two-row toolbar's own 1000 threshold — but as the band where it is IN THE ROW rather
-    /// than the band where it exists at all: below this it becomes a profile-menu row (<c>MergedChromeLayout.
-    /// FriendsInMenu</c>), so the affordance never disappears.
-    /// <para>The bell's 800 and the theme toggle's 720 are GONE, not moved: notifications now ride the profile chip's
-    /// unread badge and the theme toggle has a permanent caption-leading button, so neither has a width at which it
-    /// drops. The ladder is shorter by two stages on purpose.</para></summary>
-    public const float ChromeFriendsEnterW = 1000f;
-    /// <summary>Forward folds into the "⋯" overflow at the SAME 520/560 band the old ShellToolbar used for its primary
-    /// nav — the raw threshold is <see cref="ToolbarNarrowEnterW"/> and the 40-DIP promotion reserve reproduces 560.</summary>
+    /// <summary>The ONE "actions in row" stage — bell · friends · pin · settings enter the trailing island together at
+    /// this width. 1200, not the old friends-only 1000: four 44-DIP buttons plus the theme toggle would starve the
+    /// search field of a 1000-wide window with two tabs (MergedChromeLayoutTests pins that). Below it every one of the four folds rather than
+    /// vanishing: bell and friends become profile-menu rows (<c>MergedChromeLayout.ActionsInMenu</c>, mirrored by
+    /// <c>ProfileMenu</c>'s Notifications/Friends rows — Settings is always a menu row so it needs no fold), and pin
+    /// simply drops from the row (the tab/page context menu still offers it via <c>PinActions.RowForDestination</c>).
+    /// <para>The bell's old 800 and the theme toggle's old 720 stay gone: the bell now travels WITH this group instead
+    /// of a stage of its own, and the theme toggle is a permanent caption-leading button with no width at which it
+    /// drops.</para></summary>
+    public const float ChromeActionsEnterW = 1200f;
+    /// <summary>Forward hides below the SAME 520/560 band the old ShellToolbar used for its primary nav — the raw
+    /// threshold is <see cref="ToolbarNarrowEnterW"/> and the 40-DIP promotion reserve reproduces 560. There is no
+    /// overflow to catch it any more: Alt+Right and the mouse back button still reach it while it is off-screen.</summary>
     public const float ChromeForwardEnterW = ToolbarNarrowEnterW;
 
     // ── the FIXED BUDGET: every DIP of the row that is neither a tab nor the search ───────────────────────────────────
@@ -52,7 +56,7 @@ public static class ShellResponsiveLayout
     /// is in there. (TitleBar.cs: NavButtonSize/LeftHeaderPad and the root Padding.)</summary>
     public const float ChromeBarLeadW = 60f;
     /// <summary>One island affordance's advance: <c>ShellToolbar.BarNavStyle.Size</c> 40 + <c>BarNavMargin</c> 2+2.
-    /// Back, Forward, the Friends button and the "⋯" overflow are all exactly this.</summary>
+    /// Back, Forward and every trailing action button (bell, friends, pin, settings) are all exactly this.</summary>
     public const float ChromeNavButtonW = 44f;
     /// <summary>The tab strip's PERMANENTLY reserved "+" slot (TabStrip.AddPlate, 32 wide, no margin in text mode). It
     /// is mounted at every width even while invisible — the reason the old hand-tuned keep steps over-evicted.</summary>
@@ -71,8 +75,9 @@ public static class ShellResponsiveLayout
     public const float ChromeMinDragStripW = 4f;
     /// <summary>The caption cluster: 3 × <c>CaptionButton.Width</c> (46).</summary>
     public const float ChromeCaptionClusterW = 138f;
-    /// <summary>The permanent theme toggle immediately before the native caption buttons.</summary>
-    public const float ChromeThemeToggleW = 32f;
+    /// <summary>The permanent theme toggle immediately before the native caption buttons — now a real
+    /// <c>ShellToolbar.BarNavStyle</c> island button (40 + <c>BarNavMargin</c> 2+2), not the old hand-rolled 32-DIP box.</summary>
+    public const float ChromeThemeToggleW = 44f;
     /// <summary>Reserved on EACH flank of the centre island so the search never butts against the tabs strip or the
     /// identity cluster. The bar's two grow bands split the real leftover between them; this is only the floor that
     /// keeps the two clusters from touching when the row is full.</summary>
@@ -88,10 +93,11 @@ public static class ShellResponsiveLayout
     public const float ChromeSearchMaxW = 420f;
     public const float ChromeSearchMinW = 280f;
     public const float ChromeSearchWidthRatio = 0.28f;
-    /// <summary>The MINIMUM GUARANTEED form of the search: a 32-DIP magnifier that CLICK-expands (LibraryV3Search's
-    /// pattern). Tabs are measured against THIS, not against the field — the search yields all the way to an icon
-    /// before a single tab is evicted.</summary>
-    public const float ChromeSearchIconW = 32f;
+    /// <summary>The MINIMUM GUARANTEED form of the search: a magnifier that CLICK-expands (LibraryV3Search's pattern),
+    /// now styled as a <c>ShellToolbar.BarNavStyle</c> island button (40 + <c>BarNavMargin</c> 2+2) like every other
+    /// caption-leading/trailing affordance, not the old hand-rolled 32-DIP box. Tabs are measured against THIS, not
+    /// against the field — the search yields all the way to an icon before a single tab is evicted.</summary>
+    public const float ChromeSearchIconW = 44f;
     // Tabs: the FLOOR is what the allocator counts with (a text tab narrower than this is unreadable); the CAP is what
     // a tab may grow to once the search is comfortable and there is still surplus.
     public const float ChromeTabMaxW = 200f;

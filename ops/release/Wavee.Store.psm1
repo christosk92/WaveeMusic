@@ -449,6 +449,54 @@ function ConvertTo-Win32QuotedArgument {
     $sb.ToString()
 }
 
+function Invoke-CapturedNative {
+    <#
+      Start $FileName with a pre-built Win32 command line and capture stdout+stderr without deadlocking.
+      Confirmed against a live `msstore publish -v` of a 61 MB .msixupload (2026-09-01): the previous
+      sequential `$stdout = ReadToEnd(); $stderr = ReadToEnd()` wedges the child the moment verbose
+      progress fills the ~4 KB stderr pipe, because this caller is still blocked on stdout. Both
+      ReadToEndAsync calls MUST be in flight before WaitForExit. -TimeoutSeconds 0 waits forever.
+      Returns @{ ExitCode; Output }. Private-ish - exported so the pipe-drain regression is testable
+      without talking to msstore or the network.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$FileName,
+        [string]$Arguments = '',
+        [int]$TimeoutSeconds = 0)
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FileName
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    try {
+        $outTask = $proc.StandardOutput.ReadToEndAsync()
+        $errTask = $proc.StandardError.ReadToEndAsync()
+        if ($TimeoutSeconds -gt 0) {
+            if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
+                try { $proc.Kill() } catch { }
+                throw "$FileName timed out after ${TimeoutSeconds}s"
+            }
+            # .NET Framework: after the timeout overload returns true, drain async readers with the
+            # parameterless WaitForExit so redirected output is not truncated.
+            $proc.WaitForExit()
+        }
+        else {
+            $proc.WaitForExit()
+        }
+        $stdout = $outTask.GetAwaiter().GetResult()
+        $stderr = $errTask.GetAwaiter().GetResult()
+        $text = (@($stdout, $stderr) | Where-Object { $_.Length -gt 0 }) -join "`n"
+        @{ ExitCode = $proc.ExitCode; Output = $text }
+    }
+    finally {
+        $proc.Dispose()
+    }
+}
+
 function Invoke-MsStore {
     <#
     .SYNOPSIS
@@ -462,26 +510,21 @@ function Invoke-MsStore {
       silently stripped every '"' out of the JSON body `submission update` needs, and - after a first escaping
       attempt - broke a different way, splitting the same JSON on whitespace into dozens of bogus arguments.
       ConvertTo-Win32QuotedArgument builds the exact command line a correct argv parser expects; Process.Start
-      with UseShellExecute=$false sends it unmodified.
+      with UseShellExecute=$false sends it unmodified. Both stdout and stderr are drained concurrently
+      (Invoke-CapturedNative) - sequential ReadToEnd deadlocks `msstore publish -v` on the blob-upload
+      progress bar.
     #>
-    param([Parameter(Mandatory = $true)][string[]]$Arguments, [switch]$AllowFailure)
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [switch]$AllowFailure,
+        [int]$TimeoutSeconds = 0)
 
     $commandLine = ($Arguments | ForEach-Object { ConvertTo-Win32QuotedArgument $_ }) -join ' '
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = 'msstore'
-    $psi.Arguments = $commandLine
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $proc.StandardOutput.ReadToEnd()
-    $stderr = $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
-    $text = (@($stdout, $stderr) | Where-Object { $_.Length -gt 0 }) -join "`n"
-    if ($proc.ExitCode -ne 0 -and -not $AllowFailure) {
-        throw "msstore $($Arguments -join ' ') failed (exit $($proc.ExitCode)):`n$text"
+    $r = Invoke-CapturedNative -FileName 'msstore' -Arguments $commandLine -TimeoutSeconds $TimeoutSeconds
+    if ($r.ExitCode -ne 0 -and -not $AllowFailure) {
+        throw "msstore $($Arguments -join ' ') failed (exit $($r.ExitCode)):`n$($r.Output)"
     }
-    $text
+    $r.Output
 }
 
 Export-ModuleMember -Function @(
@@ -494,4 +537,5 @@ Export-ModuleMember -Function @(
     'Get-StoreSubmissionState',
     'Test-StoreAppIdentity',
     'Invoke-MsStore',
+    'Invoke-CapturedNative',
     'ConvertTo-Win32QuotedArgument')

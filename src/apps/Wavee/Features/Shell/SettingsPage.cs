@@ -11,15 +11,19 @@ using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
-// ── Settings shell — tab strip + shared layout helpers; tab bodies live in partials + DiagnosticsPanel ─────────────
+// ── Settings shell — tab strip + shared layout helpers; tab bodies live in partials ────────────────────────────────
 sealed partial class SettingsPage : Component
 {
-    const int TabGeneral = 0, TabPlayback = 1, TabNotifications = 2, TabStorage = 3, TabDiagnostics = 4, TabAbout = 5;
+    // 7 tabs (Workstream B, "Settings regroup + removals"): Appearance is new (split out of the old catch-all General
+    // tab), and Diagnostics is renamed Logs — its non-log content (the three developer switches, "Simulate an
+    // update", crash reports) moved to General › Developer and About › Reports, so Logs is now ONLY the full-height
+    // log viewer (LogsPanel, Workstream C).
+    const int TabGeneral = 0, TabAppearance = 1, TabPlayback = 2, TabNotifications = 3, TabStorage = 4, TabLogs = 5, TabAbout = 6;
     const float SettingsContentMaxWidth = 1000f;
     const float SettingsCardSpacing = 4f;
     static readonly Edges4 SettingsSectionHeaderMargin = new(0f, Spacing.XXXL, 0f, Spacing.S);
     // Must stay 1:1 with Tab* / TabLabels() — missing Notifications made About (index 5) IndexOutOfRange.
-    static readonly string[] s_tabKeys = ["general", "playback", "notifications", "storage", "diagnostics", "about"];
+    static readonly string[] s_tabKeys = ["general", "appearance", "playback", "notifications", "storage", "logs", "about"];
 
     readonly Signal<int> _tab = new(0);
     readonly Signal<int> _uiEpoch = new(0);
@@ -29,6 +33,10 @@ sealed partial class SettingsPage : Component
     // The app-wide nav action, captured UNCONDITIONALLY in Render (hooks may not sit behind the tab switch) and read
     // back from the per-tab builders — today the Playback tab's runtime-problem banner ("View diagnostics").
     Action<string, string?>? _nav;
+    // The developer-mode update simulator's injection target (General › Developer › "Simulate an update"), captured
+    // UNCONDITIONALLY here (hooks may not sit behind the tab switch) even though only the General tab's body reads it —
+    // the same rule _nav follows.
+    NotificationCenterBridge? _nc;
 
     void Bump() => _uiEpoch.Value = _uiEpoch.Peek() + 1;
 
@@ -38,10 +46,11 @@ sealed partial class SettingsPage : Component
     static string[] TabLabels() =>
     [
         Loc.Get(Strings.Settings.Tabs.General),
+        Loc.Get(Strings.Settings.Tabs.Appearance),
         Loc.Get(Strings.Settings.Tabs.Playback),
         Loc.Get(Strings.Settings.Notify.Title),
         Loc.Get(Strings.Settings.Tabs.Storage),
-        Loc.Get(Strings.Settings.Tabs.Diagnostics),
+        Loc.Get(Strings.Settings.Tabs.Logs),
         Loc.Get(Strings.Settings.Tabs.About),
     ];
 
@@ -61,6 +70,7 @@ sealed partial class SettingsPage : Component
         var seeded = UseRef(false);
         _overlay = UseContext(Overlay.Service);
         _nav = UseContext(HistoryStore.NavCtx);
+        _nc = UseContext(NotificationCenterBridge.Slot);
         _voPost = post;
 
         UseEffect(() =>
@@ -117,19 +127,20 @@ sealed partial class SettingsPage : Component
 
         Element body = tab switch
         {
+            TabAppearance => AppearanceTab(svc, requestTheme),
             TabPlayback => PlaybackTab(svc),
             TabNotifications => NotificationsTab(svc),
             TabStorage => StorageTab(svc, post),
-            TabDiagnostics => new BoxEl
+            TabLogs => new BoxEl
             {
                 Grow = 1f, Shrink = 1f, MinHeight = 0f,
-                Children = [Embed.Comp(() => new DiagnosticsPanel(svc?.Settings))],
+                Children = [Embed.Comp(() => new LogsPanel(svc?.Settings))],
             },
             TabAbout => AboutTab(svc, hooks),
-            _ => GeneralTab(svc, requestTheme),
+            _ => GeneralTab(svc, _nc),
         };
 
-        Element content = tab == TabDiagnostics
+        Element content = tab == TabLogs
             ? new BoxEl
             {
                 Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,

@@ -308,6 +308,39 @@ Describe 'ConvertTo-Win32QuotedArgument' {
 
 # ===================================================================================================================
 
+Describe 'Invoke-CapturedNative' {
+
+    <#
+      The previous Invoke-MsStore drained stdout then stderr sequentially. That deadlocks the moment the
+      child fills the stderr pipe (~4 KB on Windows) while this side is still blocked on stdout - which
+      is exactly how `msstore publish -v` hangs on a 61 MB blob upload (observed 2026-09-01 on 0.2.5).
+      These tests drive a local powershell.exe child, never msstore, never the network.
+    #>
+
+    $ps = Join-Path $PSHOME 'powershell.exe'
+
+    It 'drains both pipes concurrently when the child floods stderr first' {
+        # 80 KB on stderr before a single stdout byte - sequential ReadToEnd on stdout would hang here.
+        $script = Join-Path $script:TmpRoot 'flood-stderr.ps1'
+        @'
+$e = "E" * 200
+1..400 | ForEach-Object { [Console]::Error.WriteLine($e) }
+Write-Output 'DONE'
+'@ | Set-Content -Path $script -Encoding ASCII
+        $quoted = ConvertTo-Win32QuotedArgument $script
+        $r = Invoke-CapturedNative -FileName $ps -Arguments "-NoProfile -NonInteractive -File $quoted" -TimeoutSeconds 30
+        $r.ExitCode | Should Be 0
+        $r.Output | Should Match 'DONE'
+        $r.Output.Length -gt 70000 | Should Be $true
+    }
+
+    It 'throws when the child outlives -TimeoutSeconds' {
+        { Invoke-CapturedNative -FileName $ps -Arguments '-NoProfile -NonInteractive -Command "Start-Sleep -Seconds 20"' -TimeoutSeconds 2 } | Should Throw
+    }
+}
+
+# ===================================================================================================================
+
 Describe 'ConvertFrom-MsStoreJson' {
 
     It 'parses a payload behind a notice line' {

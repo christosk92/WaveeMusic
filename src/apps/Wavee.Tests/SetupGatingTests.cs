@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using System.Linq;
+using Wavee.Backend.Audio;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -29,8 +29,8 @@ public class SetupGatingTests : IDisposable
 
         Assert.True(settings.Get(WaveeSettings.SetupPending));
         Assert.False(settings.Get(WaveeSettings.SetupCompleted));
-        // LOAD-BEARING: setup page 5 IS the sidebar-design chooser — a fresh install must not also arm the separate
-        // one-time popup chooser, or both onboardings show on the same launch.
+        // LOAD-BEARING: a fresh install must not also arm the separate one-time sidebar-design popup chooser, or
+        // both onboardings show on the same launch.
         Assert.True(settings.Get(WaveeSettings.SidebarOnboardingSeen));
         Assert.Equal(SetupBootstrap.TargetVersion, settings.Get(WaveeSettings.SetupBootstrapVersion));
     }
@@ -71,7 +71,10 @@ public class SetupGatingTests : IDisposable
     [Fact]
     public void AlreadyBootstrapped_GrandfathersUnversionedAcceptance_AndReArmsOnlyForALaterBump()
     {
-        var settings = new MemoryAppSettings();
+        // ExistingInstall(), not a bare MemoryAppSettings: this is testing the terms re-arm, not the fresh-install
+        // reset below — a disk witness (library.db) keeps IsFreshInstall honestly false so the two decisions don't
+        // collide (an empty _local + SetupCompleted=true is exactly NeedsFreshInstallReset's wiped-folder case).
+        var settings = ExistingInstall();
         settings.Set(WaveeSettings.SetupBootstrapVersion, SetupBootstrap.TargetVersion);
         settings.Set(WaveeSettings.SetupCompleted, true);
         settings.Set(WaveeSettings.SetupPending, false);
@@ -90,8 +93,8 @@ public class SetupGatingTests : IDisposable
         Assert.False(SetupGating.GrandfathersTerms(completed: true, accepted: 1));
     }
 
-    /// <summary>Accepting the terms is what STOPS the re-arm: the wizard's Terms page writes the current version, and
-    /// the next launch must then leave the install alone instead of re-opening the wizard forever.</summary>
+    /// <summary>Accepting the terms is what STOPS the re-arm: the wizard's Terms page writes the current version,
+    /// and the next launch must then leave the install alone instead of re-opening the wizard forever.</summary>
     [Fact]
     public void AcceptingTheTerms_StopsTheReArm()
     {
@@ -100,7 +103,7 @@ public class SetupGatingTests : IDisposable
         settings.Set(WaveeSettings.SetupCompleted, true);
         settings.Set(WaveeSettings.SetupPending, true);
 
-        // What SetupSession.Primary()'s Terms case does, then the wizard completing.
+        // What SetupSession.Primary()'s Terms case does on Accept (TermsRearm), then the wizard closing.
         settings.Set(WaveeSettings.TermsAcceptedVersion, SetupGating.TermsVersion);
         SetupGating.MarkCompleted(settings);
         Assert.False(settings.Get(WaveeSettings.SetupPending));
@@ -143,6 +146,41 @@ public class SetupGatingTests : IDisposable
 
         Assert.True(settings.Get(WaveeSettings.SetupPending));
         Assert.Equal(SetupBootstrap.TargetVersion, settings.Get(WaveeSettings.SetupBootstrapVersion));
+    }
+
+    // ── SetupGating.NeedsFreshInstallReset / the wiped-data-folder case ──────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(false, false, 0, false)]   // not fresh at all — never resets regardless of what the registry says
+    [InlineData(false, true, 1, false)]
+    [InlineData(true, false, 0, false)]    // a genuine first run: registry already at its defaults — nothing to reset
+    [InlineData(true, true, 0, true)]      // fresh disk + a completed registry ⇒ the wiped-folder case
+    [InlineData(true, false, 1, true)]     // fresh disk + a stray terms acceptance ⇒ also the wiped-folder case
+    [InlineData(true, true, 1, true)]
+    public void NeedsFreshInstallReset_OnlyWhenDiskIsFreshButRegistryRemembers(bool fresh, bool completed, int termsAccepted, bool expected)
+        => Assert.Equal(expected, SetupGating.NeedsFreshInstallReset(fresh, completed, termsAccepted));
+
+    /// <summary>The bug this rule exists to fix: settings live in the registry (<c>HKCU\Software\Wavee\Wavee\Settings</c>)
+    /// but the library lives in <c>%LOCALAPPDATA%\Wavee</c> — wiping only the latter must not leave a "completed"
+    /// install stuck reopening as Reauth at "Is this you?" with the Terms page never shown again.</summary>
+    [Fact]
+    public void Run_WithAWipedDataFolder_ResetsACompletedInstallToFresh()
+    {
+        // First launch: a genuine existing install (library.db on disk), completed, terms accepted.
+        var settings = ExistingInstall();
+        SetupBootstrap.Run(settings, _local);
+        Assert.True(settings.Get(WaveeSettings.SetupCompleted));
+        Assert.Equal(SetupGating.TermsVersion, settings.Get(WaveeSettings.TermsAcceptedVersion));
+
+        // The user wipes %LOCALAPPDATA%\Wavee — every disk witness IsFreshInstall reads is gone — but the registry
+        // (this same MemoryAppSettings) survives untouched, so SetupCompleted/TermsAcceptedVersion still say "done".
+        Directory.Delete(Path.Combine(_local, "Wavee"), recursive: true);
+
+        SetupBootstrap.Run(settings, _local);   // next launch, wiped folder
+
+        Assert.True(settings.Get(WaveeSettings.SetupPending));
+        Assert.False(settings.Get(WaveeSettings.SetupCompleted));
+        Assert.Equal(0, settings.Get(WaveeSettings.TermsAcceptedVersion));
     }
 
     // ── SetupGating.IsPending / IsCompleted ───────────────────────────────────────────────────────────────────────────
@@ -223,9 +261,9 @@ public class SetupGatingTests : IDisposable
         Assert.False(SetupGating.MarkDeferred(settings));   // already cleared — no second transition
     }
 
-    /// <summary>An already-completed install that is re-armed for new terms reaches Done with <c>SetupCompleted</c>
-    /// already true. <see cref="SetupGating.MarkCompleted"/> must STILL clear <c>SetupPending</c>, or the wizard
-    /// re-opens on every launch with no way to satisfy it.</summary>
+    /// <summary>An already-completed install that is re-armed for new terms reaches the end of the wizard with
+    /// <c>SetupCompleted</c> already true. <see cref="SetupGating.MarkCompleted"/> must STILL clear
+    /// <c>SetupPending</c>, or the wizard re-opens on every launch with no way to satisfy it.</summary>
     [Fact]
     public void MarkCompleted_ClearsPending_EvenWhenAlreadyCompleted()
     {
@@ -238,28 +276,31 @@ public class SetupGatingTests : IDisposable
         Assert.True(settings.Get(WaveeSettings.SetupCompleted));
     }
 
-    // ── CanDismiss ─────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── CanDismiss / EscapeClosesPlate ─────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Escape / light-dismiss may close ONLY a rerun, and only while nothing long-running is in flight. A
-    /// first-run or re-auth wizard dismissed this way leaves a bare titlebar over Mica with no way back in — the
-    /// wizard is Wavee's only sign-in surface, so there is genuinely nothing behind it.</summary>
+    /// <summary>Escape / light-dismiss may close ONLY a TermsRearm run, and only while nothing long-running is in
+    /// flight. FirstRun/Reauth dismissed this way leave a bare titlebar over Mica with no way back in — the wizard is
+    /// Wavee's only sign-in surface, so there is genuinely nothing behind it for those two.</summary>
     [Theory]
-    [InlineData(true, false, true)]    // rerun, idle → the one dismissible case
-    [InlineData(true, true, false)]    // rerun, but busy
-    [InlineData(false, false, false)]  // first-run / re-auth: never
-    [InlineData(false, true, false)]
-    public void CanDismiss_OnlyARerunThatIsNotBusy(bool isRerun, bool busy, bool expected)
-        => Assert.Equal(expected, SetupGating.CanDismiss(isRerun, busy));
+    [InlineData(SetupEntryPoint.TermsRearm, false, true)]    // the one dismissible case
+    [InlineData(SetupEntryPoint.TermsRearm, true, false)]    // TermsRearm, but busy
+    [InlineData(SetupEntryPoint.FirstRun, false, false)]     // FirstRun/Reauth: never
+    [InlineData(SetupEntryPoint.FirstRun, true, false)]
+    [InlineData(SetupEntryPoint.Reauth, false, false)]
+    [InlineData(SetupEntryPoint.Reauth, true, false)]
+    public void CanDismiss_OnlyTermsRearmThatIsNotBusy(SetupEntryPoint entry, bool busy, bool expected)
+        => Assert.Equal(expected, SetupGating.CanDismiss(entry, busy));
 
-    /// <summary>An in-place disclosure (the Terms agreement) spends the Escape: the plate never closes while one is
-    /// open, on ANY entry point; with nothing nested the answer is exactly <see cref="SetupGating.CanDismiss"/>.</summary>
+    /// <summary>A nested popup (kept as a parameter for a future one — Rise's own Terms page has no disclosure to
+    /// close first any more) spends the Escape before the plate itself ever sees it; with nothing nested the answer
+    /// is exactly <see cref="SetupGating.CanDismiss"/>.</summary>
     [Theory]
-    [InlineData(true, true, false, false)]    // nested open on a dismissible rerun → the disclosure closes, not the plate
-    [InlineData(true, false, false, false)]   // nested open on a first run → same
-    [InlineData(false, true, false, true)]    // nothing nested, dismissible rerun → the plate closes
-    [InlineData(false, false, false, false)]  // nothing nested, first run → vetoed as before
-    public void EscapeClosesPlate_NestedDisclosureSpendsTheKey(bool nestedOpen, bool isRerun, bool busy, bool expected)
-        => Assert.Equal(expected, SetupGating.EscapeClosesPlate(nestedOpen, isRerun, busy));
+    [InlineData(true, SetupEntryPoint.TermsRearm, false, false)]   // nested open on a dismissible TermsRearm → the disclosure closes, not the plate
+    [InlineData(true, SetupEntryPoint.FirstRun, false, false)]     // nested open on a first run → same
+    [InlineData(false, SetupEntryPoint.TermsRearm, false, true)]   // nothing nested, dismissible TermsRearm → the plate closes
+    [InlineData(false, SetupEntryPoint.FirstRun, false, false)]    // nothing nested, first run → vetoed as before
+    public void EscapeClosesPlate_NestedDisclosureSpendsTheKey(bool nestedOpen, SetupEntryPoint entry, bool busy, bool expected)
+        => Assert.Equal(expected, SetupGating.EscapeClosesPlate(nestedOpen, entry, busy));
 
     // ── NeedsTermsRearm ────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -306,17 +347,17 @@ public class SetupGatingTests : IDisposable
     }
 
     [Fact]
-    public void NextPage_ClampsAtDone()
+    public void NextPage_ClampsAtLocalPlayback()
     {
-        Assert.Equal(SetupPage.Done, SetupGating.NextPage(SetupPage.Done, skipSignIn: false));
-        Assert.Equal(SetupPage.Done, SetupGating.NextPage(SetupPage.Notifications, skipSignIn: false));
+        Assert.Equal(SetupPage.LocalPlayback, SetupGating.NextPage(SetupPage.LocalPlayback, skipSignIn: false));
+        Assert.Equal(SetupPage.LocalPlayback, SetupGating.NextPage(SetupPage.SignIn, skipSignIn: false));
     }
 
     [Fact]
-    public void PrevPage_ClampsAtWelcome()
+    public void PrevPage_ClampsAtTerms()
     {
-        Assert.Equal(SetupPage.Welcome, SetupGating.PrevPage(SetupPage.Welcome, skipSignIn: false));
-        Assert.Equal(SetupPage.Welcome, SetupGating.PrevPage(SetupPage.Terms, skipSignIn: false));
+        Assert.Equal(SetupPage.Terms, SetupGating.PrevPage(SetupPage.Terms, skipSignIn: false));
+        Assert.Equal(SetupPage.Terms, SetupGating.PrevPage(SetupPage.SignIn, skipSignIn: false));
     }
 
     [Fact]
@@ -329,115 +370,84 @@ public class SetupGatingTests : IDisposable
         Assert.NotEqual(SetupPage.SignIn, forward);
     }
 
-    // ── StepNumber / Progress ──────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void StepNumber_IsNullAtTheEnds()
-    {
-        Assert.Null(SetupGating.StepNumber(SetupPage.Welcome));
-        Assert.Null(SetupGating.StepNumber(SetupPage.Done));
-    }
+    // ── StepNumber / Progress / ShowsBack / BackSpacerApplies ─────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(SetupPage.Terms, 1)]
-    [InlineData(SetupPage.SignIn, 2)]
-    [InlineData(SetupPage.LocalPlayback, 3)]
-    [InlineData(SetupPage.Appearance, 4)]
-    [InlineData(SetupPage.Sidebar, 5)]
-    [InlineData(SetupPage.Sound, 6)]
-    [InlineData(SetupPage.Notifications, 7)]
-    public void StepNumber_IsStepOfSeven(SetupPage page, int expectedStep)
+    [InlineData(SetupPage.SignIn, 1)]
+    [InlineData(SetupPage.LocalPlayback, 2)]
+    public void StepNumber_IsStepOfTwo(SetupPage page, int expectedStep)
     {
         var n = SetupGating.StepNumber(page);
         Assert.NotNull(n);
         Assert.Equal(expectedStep, n!.Value.Step);
-        Assert.Equal(7, n!.Value.Total);
+        Assert.Equal(2, n!.Value.Total);
+    }
+
+    [Fact]
+    public void StepNumber_IsNull_ForTerms()
+    {
+        // A TermsRearm run only ever visits Terms, so this single case covers Rise's "Pre-setup" label for BOTH
+        // FirstRun/Reauth's pre-setup page and a completed install's re-arm — no separate entry-point parameter.
+        Assert.Null(SetupGating.StepNumber(SetupPage.Terms));
     }
 
     [Fact]
     public void StepNumber_DoesNotChange_WhetherOrNotSignInIsSkipped()
     {
-        // The user's mental model is the same wizard whether or not they were already signed in — renumbering to 6
-        // would make the two runs look like different products. StepNumber is keyed on page IDENTITY, never on a
-        // running count of pages actually visited, so this holds trivially — pin it anyway.
-        foreach (SetupPage page in new[]
-                 {
-                     SetupPage.Terms, SetupPage.LocalPlayback, SetupPage.Appearance,
-                     SetupPage.Sidebar, SetupPage.Sound, SetupPage.Notifications,
-                 })
-        {
-            Assert.Equal(SetupGating.StepNumber(page), SetupGating.StepNumber(page));
-        }
-
-        // The concrete regression: LocalPlayback is step 3 whether the wizard skipped SignIn to get there or not.
-        var viaFullRun = SetupGating.NextPage(SetupGating.NextPage(SetupPage.Welcome, false), false);   // Terms -> SignIn... not reached, see below
+        // The concrete regression: LocalPlayback is step 2 whether the wizard skipped SignIn to get there or not.
+        var viaFullRun = SetupGating.NextPage(SetupPage.Terms, false);
         Assert.Equal(SetupPage.SignIn, viaFullRun);
-        var viaSkippedRun = SetupGating.NextPage(SetupGating.NextPage(SetupPage.Welcome, true), true);
+        Assert.Equal(SetupPage.LocalPlayback, SetupGating.NextPage(viaFullRun, false));
+        var viaSkippedRun = SetupGating.NextPage(SetupPage.Terms, true);
         Assert.Equal(SetupPage.LocalPlayback, viaSkippedRun);
-        Assert.Equal(3, SetupGating.StepNumber(SetupPage.LocalPlayback)!.Value.Step);
-    }
-
-    [Fact]
-    public void StepLabelKey_OnlyWelcomeAndDoneHaveAFixedLabel()
-    {
-        Assert.Equal(Strings.Setup.PreSetup, SetupGating.StepLabelKey(SetupPage.Welcome));
-        Assert.Equal(Strings.Setup.Complete, SetupGating.StepLabelKey(SetupPage.Done));
-        foreach (SetupPage page in new[]
-                 {
-                     SetupPage.Terms, SetupPage.SignIn, SetupPage.LocalPlayback, SetupPage.Appearance,
-                     SetupPage.Sidebar, SetupPage.Sound, SetupPage.Notifications,
-                 })
-        {
-            Assert.Null(SetupGating.StepLabelKey(page));
-        }
+        Assert.Equal(2, SetupGating.StepNumber(SetupPage.LocalPlayback)!.Value.Step);
     }
 
     [Theory]
-    [InlineData(SetupPage.Welcome, 0f)]
-    [InlineData(SetupPage.Terms, 1f / 7f)]
-    [InlineData(SetupPage.Notifications, 7f / 7f)]
-    [InlineData(SetupPage.Done, 1f)]
-    public void Progress_MatchesTheLadder(SetupPage page, float expected)
+    [InlineData(SetupPage.Terms, 0f)]
+    [InlineData(SetupPage.SignIn, 0.5f)]
+    [InlineData(SetupPage.LocalPlayback, 1f)]
+    public void Progress_MatchesTheTwoPageLadder(SetupPage page, float expected)
         => Assert.Equal(expected, SetupGating.Progress(page), precision: 5);
 
-    // ── RoadmapPages / RoadmapLabelKey / RoadmapIndexFor (work package A) ─────────────────────────────────────────────
-
-    [Fact]
-    public void RoadmapPages_IsExactlyTheSevenMiddlePages_InEnumOrder()
-    {
-        SetupPage[] expected =
-        [
-            SetupPage.Terms, SetupPage.SignIn, SetupPage.LocalPlayback, SetupPage.Appearance,
-            SetupPage.Sidebar, SetupPage.Sound, SetupPage.Notifications,
-        ];
-        Assert.Equal(expected, SetupGating.RoadmapPages);
-    }
-
-    [Fact]
-    public void RoadmapLabelKey_IsDistinctPerPage()
-    {
-        var keys = SetupGating.RoadmapPages.Select(SetupGating.RoadmapLabelKey).ToList();
-        Assert.Equal(keys.Distinct().Count(), keys.Count);
-        Assert.All(keys, k => Assert.False(string.IsNullOrWhiteSpace(k)));
-    }
-
-    [Fact]
-    public void RoadmapLabelKey_ThrowsForNonRoadmapPages()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => SetupGating.RoadmapLabelKey(SetupPage.Welcome));
-        Assert.Throws<ArgumentOutOfRangeException>(() => SetupGating.RoadmapLabelKey(SetupPage.Done));
-    }
+    [Theory]
+    [InlineData(SetupPage.Terms, false)]
+    [InlineData(SetupPage.SignIn, false)]
+    [InlineData(SetupPage.LocalPlayback, true)]
+    public void ShowsBack_OnlyLocalPlayback(SetupPage page, bool expected)
+        => Assert.Equal(expected, SetupGating.ShowsBack(page));
 
     [Theory]
-    [InlineData(SetupPage.Welcome, 0)]
-    [InlineData(SetupPage.Terms, 0)]
-    [InlineData(SetupPage.SignIn, 1)]
-    [InlineData(SetupPage.LocalPlayback, 2)]
-    [InlineData(SetupPage.Appearance, 3)]
-    [InlineData(SetupPage.Sidebar, 4)]
-    [InlineData(SetupPage.Sound, 5)]
-    [InlineData(SetupPage.Notifications, 6)]
-    [InlineData(SetupPage.Done, 7)]
-    public void RoadmapIndexFor_MapsPagesOntoTheirRoadmapRow(SetupPage page, int expected)
-        => Assert.Equal(expected, SetupGating.RoadmapIndexFor(page));
+    [InlineData(SetupPage.LocalPlayback, true, false)]   // icon column showing → the spacer never applies
+    [InlineData(SetupPage.LocalPlayback, false, true)]   // icon column dropped → the spacer reserves room beside the title
+    [InlineData(SetupPage.Terms, false, false)]          // Terms never shows back, regardless of the icon column
+    [InlineData(SetupPage.SignIn, false, false)]
+    public void BackSpacerApplies_OnlyWhenBackShowsAndTheIconIsGone(SetupPage page, bool iconShown, bool expected)
+        => Assert.Equal(expected, SetupGating.BackSpacerApplies(page, iconShown));
+
+    // ── SkipsLocalPlayback / IsLastPage / SuppressesRuntimePrompts ──────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(SetupEntryPoint.Reauth, ProvisioningOutcome.Ready, true)]
+    [InlineData(SetupEntryPoint.Reauth, ProvisioningOutcome.NeverAttempted, false)]
+    [InlineData(SetupEntryPoint.Reauth, ProvisioningOutcome.RuntimeUnavailable, false)]
+    [InlineData(SetupEntryPoint.FirstRun, ProvisioningOutcome.Ready, false)]
+    [InlineData(SetupEntryPoint.TermsRearm, ProvisioningOutcome.Ready, false)]
+    public void SkipsLocalPlayback_OnlyReauthWithAReadyRuntime(SetupEntryPoint entry, ProvisioningOutcome outcome, bool expected)
+        => Assert.Equal(expected, SetupGating.SkipsLocalPlayback(entry, outcome));
+
+    [Theory]
+    [InlineData(SetupPage.Terms, false)]
+    [InlineData(SetupPage.SignIn, false)]
+    [InlineData(SetupPage.LocalPlayback, true)]
+    public void IsLastPage_OnlyLocalPlayback(SetupPage page, bool expected)
+        => Assert.Equal(expected, SetupGating.IsLastPage(page));
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void SuppressesRuntimePrompts_WhilePendingOrOpen(bool pending, bool sessionOpen, bool expected)
+        => Assert.Equal(expected, SetupGating.SuppressesRuntimePrompts(pending, sessionOpen));
 }

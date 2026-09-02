@@ -8,8 +8,8 @@ using Xunit;
 namespace Wavee.Tests;
 
 // SetupCommands.Resolve: the setup wizard's whole footer/label table in one place. Pins every row of the approved
-// table verbatim, plus the cross-cutting invariants (never >2 buttons, BlocksDismiss's exact trigger, a rerun never
-// reaching a SignIn row, and — the one that stops label rot — every emitted key actually existing in en-US.json).
+// table verbatim, plus the cross-cutting invariants (never >2 buttons, BlocksDismiss's exact trigger, and — the one
+// that stops label rot — every emitted key actually existing in en-US.json).
 public class SetupCommandsTests
 {
     // ── the whole table, pinned ───────────────────────────────────────────────────────────────────────────────────────
@@ -18,33 +18,23 @@ public class SetupCommandsTests
     {
         (SetupCtx Ctx, string? P, SetupButtonKind Kind, bool PEnabled, string? S, bool SEnabled, bool Blocks)[] rows =
         {
-            (Ctx(SetupPage.Welcome), Strings.Setup.StartSetup, SetupButtonKind.Accent, true, Strings.Setup.NotNow, true, false),
             (Ctx(SetupPage.Terms), Strings.Setup.Accept, SetupButtonKind.Accent, true, Strings.Setup.Decline, true, false),
 
-            (SignInCtx(SetupSignInPhase.Idle), Strings.Auth.LogIn, SetupButtonKind.Spotify, true, Strings.Auth.Close, true, false),
-            (SignInCtx(SetupSignInPhase.Busy), Strings.Auth.SigningIn, SetupButtonKind.Spotify, false, Strings.Auth.Cancel, true, false),
+            (SignInCtx(SetupSignInPhase.Idle), Strings.Auth.LogIn, SetupButtonKind.Accent, true, Strings.Auth.Close, true, false),
+            (SignInCtx(SetupSignInPhase.Busy), Strings.Auth.SigningIn, SetupButtonKind.Accent, false, Strings.Auth.Cancel, true, false),
             (SignInCtx(SetupSignInPhase.Done), Strings.Setup.SignIn.YesContinue, SetupButtonKind.Accent, true, Strings.Setup.SignIn.NotMe, true, false),
-            (SignInCtx(SetupSignInPhase.Failed), Strings.Auth.TryAgain, SetupButtonKind.Spotify, true, Strings.Auth.Close, true, false),
-            (SignInCtx(SetupSignInPhase.Expired), Strings.Auth.GetNewCode, SetupButtonKind.Spotify, true, Strings.Auth.Close, true, false),
+            (SignInCtx(SetupSignInPhase.Failed), Strings.Auth.TryAgain, SetupButtonKind.Accent, true, Strings.Auth.Close, true, false),
+            (SignInCtx(SetupSignInPhase.Expired), Strings.Auth.GetNewCode, SetupButtonKind.Accent, true, Strings.Auth.Close, true, false),
             (SignInCtx(SetupSignInPhase.Premium), Strings.Auth.Upgrade, SetupButtonKind.Accent, true, Strings.Auth.UseAnotherAccount, true, false),
 
             (RuntimeCtx(SetupRuntimeFacet.Offer), Strings.Playback.Runtime.DownloadSetup, SetupButtonKind.Accent, true, Strings.Playback.Runtime.NotNow, true, false),
-            (RuntimeCtx(SetupRuntimeFacet.Catalog), Strings.Playback.Runtime.CheckingSupport, SetupButtonKind.Accent, false, Strings.Auth.Cancel, true, true),
+            (RuntimeCtx(SetupRuntimeFacet.Catalog), Strings.Playback.Runtime.Checking, SetupButtonKind.Accent, false, Strings.Auth.Cancel, true, true),
             (RuntimeCtx(SetupRuntimeFacet.Versions), Strings.Playback.Runtime.Install, SetupButtonKind.Accent, true, Strings.Playback.Runtime.Back, true, false),
             (RuntimeCtx(SetupRuntimeFacet.Downloading), Strings.Playback.Runtime.Downloading, SetupButtonKind.Accent, false, Strings.Auth.Cancel, true, true),
             (RuntimeCtx(SetupRuntimeFacet.Verifying), Strings.Playback.Runtime.Verifying, SetupButtonKind.Accent, false, null, false, true),
             (RuntimeCtx(SetupRuntimeFacet.Untrusted), Strings.Playback.Runtime.LoadAnyway, SetupButtonKind.Accent, true, Strings.Playback.Runtime.Back, true, false),
-            (RuntimeCtx(SetupRuntimeFacet.Ready), Strings.Setup.Continue, SetupButtonKind.Accent, true, null, false, false),
+            (RuntimeCtx(SetupRuntimeFacet.Ready), Strings.Setup.OpenWavee, SetupButtonKind.Accent, true, null, false, false),
             (RuntimeCtx(SetupRuntimeFacet.Failed), Strings.Playback.Runtime.TryAgain, SetupButtonKind.Accent, true, Strings.Playback.Runtime.NotNow, true, false),
-
-            (Ctx(SetupPage.Appearance), Strings.Setup.Continue, SetupButtonKind.Accent, true, Strings.Setup.DecideForMe, true, false),
-            (Ctx(SetupPage.Sidebar), Strings.Setup.UseThisLayout, SetupButtonKind.Accent, true, Strings.Setup.DecideForMe, true, false),
-            (Ctx(SetupPage.Sound), Strings.Setup.Continue, SetupButtonKind.Accent, true, Strings.Setup.DecideForMe, true, false),
-            (Ctx(SetupPage.Notifications), Strings.Setup.Continue, SetupButtonKind.Accent, true, Strings.Setup.DecideForMe, true, false),
-
-            (ApplyCtx(SetupApplyState.Idle), Strings.Setup.Continue, SetupButtonKind.Accent, true, Strings.Setup.NotNow, true, false),
-            (ApplyCtx(SetupApplyState.Running), Strings.Setup.OpenWavee, SetupButtonKind.Accent, false, null, false, true),
-            (ApplyCtx(SetupApplyState.Done), Strings.Setup.OpenWavee, SetupButtonKind.Accent, true, null, false, false),
         };
 
         foreach (var r in rows)
@@ -68,19 +58,14 @@ public class SetupCommandsTests
     // ── ShowBack ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void ShowBack_NeverOnWelcomeOrDone()
+    public void ShowBack_IsPageBased_OnlyLocalPlayback()
     {
-        Assert.False(SetupCommands.Resolve(Ctx(SetupPage.Welcome)).ShowBack);
-        Assert.False(SetupCommands.Resolve(ApplyCtx(SetupApplyState.Done)).ShowBack);
-    }
-
-    [Fact]
-    public void ShowBack_StartsOnSignIn_AndHidesWhileBlocked()
-    {
+        // Rise's own back button has no BlocksDismiss exception any more (SetupGating.ShowsBack): it shows on
+        // LocalPlayback regardless of runtime facet, and never on Terms/SignIn.
         Assert.False(SetupCommands.Resolve(Ctx(SetupPage.Terms)).ShowBack);
-        Assert.True(SetupCommands.Resolve(SignInCtx(SetupSignInPhase.Idle)).ShowBack);
-        // Catalog blocks dismissal -> Back must be hidden too, even though the page is in the middle-page range.
-        Assert.False(SetupCommands.Resolve(RuntimeCtx(SetupRuntimeFacet.Catalog)).ShowBack);
+        Assert.False(SetupCommands.Resolve(SignInCtx(SetupSignInPhase.Idle)).ShowBack);
+        Assert.True(SetupCommands.Resolve(RuntimeCtx(SetupRuntimeFacet.Offer)).ShowBack);
+        Assert.True(SetupCommands.Resolve(RuntimeCtx(SetupRuntimeFacet.Catalog)).ShowBack);
     }
 
     [Theory]
@@ -115,8 +100,6 @@ public class SetupCommandsTests
             Assert.NotNull(row.PrimaryKey);
             if (ctx.Page == SetupPage.LocalPlayback && ctx.Runtime == SetupRuntimeFacet.Verifying)
                 Assert.False(row.PrimaryEnabled);
-            if (ctx.Page == SetupPage.Done && ctx.Apply == SetupApplyState.Running)
-                Assert.False(row.PrimaryEnabled);
         }
     }
 
@@ -126,21 +109,20 @@ public class SetupCommandsTests
         foreach (var ctx in AllCtxs())
         {
             var row = SetupCommands.Resolve(ctx);
-            bool expected = (ctx.Page == SetupPage.LocalPlayback &&
-                              ctx.Runtime is SetupRuntimeFacet.Downloading or SetupRuntimeFacet.Verifying or SetupRuntimeFacet.Catalog)
-                          || (ctx.Page == SetupPage.Done && ctx.Apply == SetupApplyState.Running);
+            bool expected = ctx.Page == SetupPage.LocalPlayback &&
+                            ctx.Runtime is SetupRuntimeFacet.Downloading or SetupRuntimeFacet.Verifying or SetupRuntimeFacet.Catalog;
             Assert.Equal(expected, row.BlocksDismiss);
         }
     }
 
     [Fact]
-    public void ARerunCtx_NeverReachesTheSignInPage()
+    public void SkippingSignIn_NeverReachesTheSignInPage()
     {
-        // A rerun (launched from Settings, already authenticated) always skips SignIn — SkipSignIn(authed: true) is
-        // true, so walking the real page flow from Welcome must never land on SetupPage.SignIn.
-        var page = SetupPage.Welcome;
+        // Already-authenticated entry points skip SignIn — SkipSignIn(authed: true) is true, so walking the real
+        // page flow from Terms must never land on SetupPage.SignIn.
+        var page = SetupPage.Terms;
         var seen = new List<SetupPage> { page };
-        while (page != SetupPage.Done)
+        while (page != SetupPage.LocalPlayback)
         {
             page = SetupGating.NextPage(page, skipSignIn: true);
             seen.Add(page);
@@ -163,22 +145,15 @@ public class SetupCommandsTests
 
     // ── helpers ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    static SetupCtx Ctx(SetupPage page) => new(page, default, default, default, false, false);
-    static SetupCtx SignInCtx(SetupSignInPhase phase) => new(SetupPage.SignIn, phase, default, default, false, false);
-    static SetupCtx RuntimeCtx(SetupRuntimeFacet facet) => new(SetupPage.LocalPlayback, default, facet, default, false, false);
-    static SetupCtx ApplyCtx(SetupApplyState apply) => new(SetupPage.Done, default, default, apply, false, false);
+    static SetupCtx Ctx(SetupPage page) => new(page, default, default);
+    static SetupCtx SignInCtx(SetupSignInPhase phase) => new(SetupPage.SignIn, phase, default);
+    static SetupCtx RuntimeCtx(SetupRuntimeFacet facet) => new(SetupPage.LocalPlayback, default, facet);
 
     static IEnumerable<SetupCtx> AllCtxs()
     {
-        yield return Ctx(SetupPage.Welcome);
         yield return Ctx(SetupPage.Terms);
         foreach (SetupSignInPhase p in Enum.GetValues<SetupSignInPhase>()) yield return SignInCtx(p);
         foreach (SetupRuntimeFacet f in Enum.GetValues<SetupRuntimeFacet>()) yield return RuntimeCtx(f);
-        yield return Ctx(SetupPage.Appearance);
-        yield return Ctx(SetupPage.Sidebar);
-        yield return Ctx(SetupPage.Sound);
-        yield return Ctx(SetupPage.Notifications);
-        foreach (SetupApplyState a in Enum.GetValues<SetupApplyState>()) yield return ApplyCtx(a);
     }
 
     /// <summary>Every leaf dotted key in en-US.json (the VideoOverrideUxTests precedent), skipping <c>$</c>-prefixed

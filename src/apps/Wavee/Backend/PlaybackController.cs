@@ -690,6 +690,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             {
                 _log.Info($"fast-start body ready track={expectedTrackUri} file={h.FileIdHex}; supplying to audio host");
                 _audioHost.SupplyBody(h);   // audio-specific: this flow is only scheduled from the audio fast-start path
+                // SupplyBodyAsync's own first statement re-announces Buffering while it attaches/opens the body session —
+                // withheld now when the host has no play intent (FluentMediaAudioHost's gate), but this is the SAME
+                // belt-and-suspenders clear as the two after the Load calls above: a host without play intent RIGHT NOW
+                // (live-checked, not the initiallyPaused snapshot from when the load started — the user may have pressed
+                // Play while the body was still resolving, in which case a real buffering state must stay visible).
+                if (!_audioHost.PlayIntent) _projection.ClearTransientBuffering();
             }
         }
         catch (OperationCanceledException)
@@ -2678,6 +2684,11 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             catch (Exception ex) { await HandleUnplayableCurrentAsync(ex, skipOnUnplayable, initiallyPaused, ct).ConfigureAwait(false); return; }
             if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while the fast-start plan resolved
             _audioHost.LoadFastStart(plan.Start);   // audio-specific loading (guarded: current kind is audio/local here)
+            // Belt-and-suspenders for the buffering-bar-on-a-paused-restored-track fix: FluentMediaAudioHost now withholds
+            // its own Prebuffering/Buffering signals while it has no play intent, but this clears any transient flag
+            // regardless of how it got set (the same reasoning as SwitchHost's clear at :528) — nobody asked to hear this
+            // load yet, so nothing here may show as buffering.
+            if (initiallyPaused) _projection.ClearTransientBuffering();
             if (!initiallyPaused) _currentHost.Play();
             if (resumePositionMs > 0) _currentHost.Seek(resumePositionMs, SeekMode.Accurate);
             else await MaybeSeekEpisodeResumeAsync(cur, ct).ConfigureAwait(false);
@@ -2695,6 +2706,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         catch (Exception ex) { await HandleUnplayableCurrentAsync(ex, skipOnUnplayable, initiallyPaused, ct).ConfigureAwait(false); return; }   // no silent drop
         if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while the resolve was in flight
         _audioHost.Load(handle);   // audio-specific loading (only reached when the current kind is audio/local)
+        // See the fast-start branch above — same belt-and-suspenders clear for the same paused-restore race.
+        if (initiallyPaused) _projection.ClearTransientBuffering();
         if (!initiallyPaused) _currentHost.Play();
         if (resumePositionMs > 0) _currentHost.Seek(resumePositionMs, SeekMode.Accurate);
         else await MaybeSeekEpisodeResumeAsync(cur, ct).ConfigureAwait(false);

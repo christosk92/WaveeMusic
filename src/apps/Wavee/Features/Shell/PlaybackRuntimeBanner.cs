@@ -69,6 +69,12 @@ sealed class PlaybackRuntimeChrome : Component
         _ = PlaybackRuntimeBannerState.Epoch.Value;   // subscribe: re-evaluate when the dismissed setting flips
         bool dismissed = _settings.Get(WaveeSettings.PlaybackRuntimeSetupDismissed);
         bool showBanner = bridge is not null && status.ShowBanner && !dismissed;
+        // The setup wizard's own Local playback page IS the runtime prompt — a banner popping up over (or behind)
+        // it reads as the same ask made twice. Subscribes to Covering (disappears the frame the wizard opens) and
+        // reads IsPending off plain settings (there's no signal for it — SetupSession.MarkerEpoch is what makes
+        // OTHER pending-readers re-evaluate promptly, but this component already re-renders on RuntimeStatus/the
+        // dismissed epoch often enough that a `settings.Get` read here is not stale for long).
+        showBanner &= SetupSession.Covering.Value == SetupCover.None && !SetupGating.IsPending(_settings);
 
         var post = UsePost();
         var setupReq = bridge?.OpenPlaybackRuntimeSetup.Value ?? 0;

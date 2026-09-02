@@ -5,16 +5,16 @@ using FluentGpu.Hooks;
 namespace Wavee;
 
 /// <summary>Zero-size, always-mounted chrome (the <c>PlaybackRuntimeChrome</c> precedent — Features/Shell/
-/// PlaybackRuntimeBanner.cs) that owns BOTH ways the POST-AUTH setup wizard can come up:
-/// <list type="bullet">
-/// <item>a manual re-run — <see cref="SetupSession.OpenRequest"/>, bumped by Settings' "Run setup again" row
-/// (<c>SettingsPage.General.cs</c>) — always <see cref="SetupSession.EntryPoint.Rerun"/>, built HERE (not at the
-/// settings row) since this component owns the session's lifetime;</item>
-/// <item>continuing a first-run wizard that was still pending when auth completed — <see cref="SetupGating.IsPending"/>,
-/// checked ONCE at mount. <c>WaveeShell</c> (and this chrome with it) only (re)mounts on an auth flip, so a
-/// mount-time check exactly answers "did the wizard start pre-auth, in <c>SetupPreAuthRoot</c>, and not finish
-/// yet" — mirroring <c>SidebarOnboardingChrome</c>'s own one-shot <c>opened</c>/<c>DepKey.Empty</c> shape.</item>
-/// </list>
+/// PlaybackRuntimeBanner.cs) that continues a POST-AUTH pending wizard: a first-run/reauth session that was still
+/// pending when auth completed, OR a fresh <see cref="SetupEntryPoint.TermsRearm"/> wizard for a completed,
+/// already-signed-in install whose terms acceptance just fell behind this build's version
+/// (<c>SetupBootstrap.RearmForTerms</c> / <see cref="SetupGating.NeedsTermsRearm"/>) and so never showed
+/// <c>SetupPreAuthRoot</c> at all.
+///
+/// <para>Checked ONCE at mount, via <see cref="SetupGating.IsPending"/>: <c>WaveeShell</c> (and this chrome with it)
+/// only (re)mounts on an auth flip, so a mount-time check exactly answers "is there a pending wizard to pick up
+/// right now" — mirroring <c>SidebarOnboardingChrome</c>'s own one-shot <c>opened</c>/<c>DepKey.Empty</c> shape.</para>
+///
 /// Mounted inside <c>WaveeShell</c>'s <c>shellWithOverlays</c> ZStack, next to <c>SidebarOnboardingChrome</c>, so
 /// <c>UseContext(Overlay.Service)</c> resolves the real overlay host.
 ///
@@ -32,10 +32,13 @@ sealed class SetupChrome : Component
     {
         var overlay = UseContext(Overlay.Service);
         var post = UsePost();
-        int req = SetupSession.OpenRequest.Value;   // subscribe: a Bump() must re-run this render
-        var lastReq = UseRef(req);
         var handle = UseRef<OverlayHandle?>(null);
         var checkedPending = UseRef(false);
+
+        // Fire-and-forget: this chrome is what opens the post-auth wizard, so warm the same three Lottie heroes
+        // SetupPreAuthRoot warms for the pre-auth path — a session that never showed that root (a silent-resume
+        // FirstRun, a TermsRearm on an already-signed-in install) still gets its heroes preloaded.
+        UseEffect(() => { _ = WaveeLottie.Warm(); }, DepKey.Empty);
 
         void OpenBare(SetupSession session)
         {
@@ -51,31 +54,27 @@ sealed class SetupChrome : Component
 
         UseEffect(() =>
         {
-            if (req == lastReq.Value) return;
-            lastReq.Value = req;
-            if (handle.Value is { IsOpen: true }) return;
-            var session = new SetupSession(SetupSession.EntryPoint.Rerun, alreadyAuthenticated: true);
-            SetupSession.Current = session;
-            OpenBare(session);
-        }, req);
-
-        UseEffect(() =>
-        {
             if (checkedPending.Value) return;
             checkedPending.Value = true;
             if (!SetupGating.IsPending(_settings)) return;
             if (handle.Value is { IsOpen: true }) return;
-            // Reuse the SAME session the pre-auth mount was carrying (page/direction/apply state survives the
-            // pre-auth → post-auth remount) when there is one; otherwise (the shell mounted already authenticated —
-            // e.g. a fast silent-resume that never showed SetupPreAuthRoot at all) start a fresh one. Either way
-            // `alreadyAuthenticated: true` here only matters for the FRESH case — a carried-over session already
-            // froze its own SkipSignIn at construction.
-            var session = SetupSession.Current ??= new SetupSession(SetupSession.EntryPoint.FirstRun, alreadyAuthenticated: true);
-            // Resume the carried session exactly where it was. Auth swaps the pre-auth overlay host out the moment a
-            // token lands, so the SignIn page's Done phase — the "Is this you?" confirmation — is only ever SEEN here,
-            // post-auth. The user's "Yes, continue" advances; the auth flip itself must not (an earlier revision jumped
-            // straight to LocalPlayback here, which is exactly the silent wrong-account sign-in the confirmation
-            // exists to catch).
+
+            // Reuse the SAME session the pre-auth mount was carrying (page/direction state survives the pre-auth →
+            // post-auth remount, including whichever page the user had already clicked forward to) when there is
+            // one — the remount then simply lands on whatever page (SignIn's "Is this you?", LocalPlayback, or
+            // already closed) the carried session is on. No carried session means this shell mounted already
+            // authenticated: a completed, signed-in install re-armed for new terms (TermsRearm) — the ONLY reason a
+            // completed install is ever pending again — or a fast silent-resume that never showed SetupPreAuthRoot
+            // at all (FirstRun).
+            var session = SetupSession.Current;
+            if (session is null)
+            {
+                bool completed = SetupGating.IsCompleted(_settings);
+                session = new SetupSession(
+                    completed ? SetupEntryPoint.TermsRearm : SetupEntryPoint.FirstRun,
+                    alreadyAuthenticated: true);
+                SetupSession.Current = session;
+            }
             OpenBare(session);
         }, DepKey.Empty);
 

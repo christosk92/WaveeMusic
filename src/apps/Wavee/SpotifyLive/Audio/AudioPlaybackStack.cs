@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
@@ -61,16 +60,10 @@ public sealed class AudioPlaybackStack : IAsyncDisposable
             HttpPools.Get(HttpPool.Cdn),
             log,
             BodyDiskCache);
-        if (Host is IAudioDspControl dsp)
-        {
-            // Apply persisted DSP before the first load/Hello. Older builds exposed 30 seconds while every host clamped
-            // to 12; migrate those values once so UI, parent and child all report the same effective duration.
-            int storedCrossfadeMs = settings.Get(WaveeSettings.CrossfadeMs);
-            int crossfadeMs = Math.Clamp(storedCrossfadeMs, 0, 12_000);
-            if (storedCrossfadeMs != crossfadeMs) settings.Set(WaveeSettings.CrossfadeMs, crossfadeMs);
-            dsp.SetEqualizer(settings.Get(WaveeSettings.EqualizerEnabled), ReadEqualizerGains(settings));
-            dsp.SetCrossfade(settings.Get(WaveeSettings.CrossfadeEnabled), crossfadeMs);
-        }
+        // Apply persisted DSP before the first load/Hello, via the ONE shared seed helper (also used to seed the
+        // pre-login/logged-out local host in Services.BuildPreLoginMedia) so the two hosts can never parse/clamp the
+        // persisted gains or crossfade differently.
+        if (Host is IAudioDspControl dsp) Wavee.PlaybackDsp.SeedFromSettings(dsp, settings);
 #if WAVEE_PLAYPLAY_LOCAL
         Func<IPlayPlayKeyDeriver?> deriver = () => _playPlay;
 #else
@@ -95,23 +88,16 @@ public sealed class AudioPlaybackStack : IAsyncDisposable
         TrackResolver = new LiveTrackResolver(transport, KeyResolver, fetchTrackV4, fetchAudioFilesV5, fetchEpisodeV4,
             preferLossless: false, log, formatProbe,
             // User PlaybackQuality, capped by MeteredQualityCap when the connection is metered. Read per resolve so a
-            // Settings / network-cost change applies from the next track. Ogg rungs only — Lossless is reserved.
+            // Settings / network-cost change applies from the very next resolve of a track — INCLUDING one the
+            // resolver has already seen: LiveTrackResolver's _metaCache is keyed by (uri, quality), not uri alone,
+            // so a changed setting gets a fresh cache entry instead of replaying whichever format was picked the
+            // first time this uri was ever resolved. Ogg rungs only — Lossless is reserved.
             quality: () => NetworkPolicy.EffectiveQualityPreference(settings),
             ctx: session);
         Log(WaveeLogLevel.Debug, "audio.stack.created", "Audio playback stack created",
             WaveeLogField.Of("playplayLocal", PlayPlayLocalCompiled),
             WaveeLogField.Of("formatProbe", formatProbe is not null),
             WaveeLogField.Of("host", "FluentMediaAudioHost"));
-    }
-
-    static float[] ReadEqualizerGains(IAppSettings settings)
-    {
-        var result = new float[10];
-        var parts = (settings.Get(WaveeSettings.EqualizerGains) ?? "").Split(',');
-        for (int i = 0; i < result.Length && i < parts.Length; i++)
-            if (float.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float gain))
-                result[i] = Math.Clamp(gain, -12f, 12f);
-        return result;
     }
 
     /// <summary>Background provision — off the startup path.</summary>

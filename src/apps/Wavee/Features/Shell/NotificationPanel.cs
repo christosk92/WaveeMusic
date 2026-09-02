@@ -14,9 +14,34 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 // ── The notification center's panel ───────────────────────────────────────────────────────────────────────────────────
-// There is no standalone bell any more. The unread badge rides the PROFILE CHIP's avatar and a "Notifications" row in
-// the profile flyout opens this panel anchored to that chip (ProfileMenu.OpenNotifications, which marks unread-seen via
-// NotificationCenterBridge.OnPanelOpened exactly as the bell did). This component is the body it shows.
+// There are TWO anchors for this panel now, never both mounted at once: the trailing island's stand-alone bell
+// (ShellToolbar.NotificationBellButton, >= ChromeActionsEnterW) and, below that width, a "Notifications" row in the
+// profile flyout (ProfileMenu.OpenNotifications). Both open the identical panel — same placement/chrome, same
+// unread-seen marking via NotificationCenterBridge.OnPanelOpened — through the one NotificationPanelLauncher.Open
+// below. This component is the body either anchor shows.
+
+/// <summary>The one open/anchor path for <see cref="NotificationPanel"/>, shared by both mounts so neither re-derives
+/// the popup placement/chrome or forgets to mark unread-seen. Callers own their own <see cref="Ref{T}"/> handle (so
+/// each anchor can independently know whether ITS popup is open) and pass the anchor node as a getter, since the
+/// button/chip that owns it may not have realized yet on the first render.</summary>
+static class NotificationPanelLauncher
+{
+    public static void Open(IOverlayService overlay, NotificationCenterBridge nc, Func<NodeHandle> anchor,
+        Ref<OverlayHandle?> handle)
+    {
+        handle.Value = overlay.Open(
+            anchor,
+            () => Embed.Comp(() => new NotificationPanel(() => handle.Value?.Close())),
+            FlyoutPlacement.BottomEdgeAlignedRight,
+            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
+            {
+                ConstrainToRootBounds = false,
+            });
+        handle.Value.ClosedAction = () => handle.Value = null;
+        nc.OnPanelOpened();
+    }
+}
+
 sealed class NotificationPanel : Component
 {
     const float Width = 380f;

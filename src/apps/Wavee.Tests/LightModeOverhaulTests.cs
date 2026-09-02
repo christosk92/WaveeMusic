@@ -19,6 +19,10 @@ namespace Wavee.Tests;
 /// </list>
 /// The page tone's own clamp lives with its siblings in <see cref="DetailPageToneTests"/>.
 /// </summary>
+// Tok is one process-global palette/theme; LightModeOverhaulTests.WithTheme swaps it mid-test, and the assertions here read it
+// live (Tok.AccentDefault twice around a call). xunit runs classes in parallel, so those four classes serialise on one
+// collection — the same discipline EntranceStaggerTests/MotionSystemTests use for the motion globals.
+[Collection("wavee-tok-global")]
 public class LightModeOverhaulTests
 {
     // ── D44.3 — the Camelot data dot ─────────────────────────────────────────────────────────────────────────────
@@ -188,38 +192,10 @@ public class LightModeOverhaulTests
         }
     }
 
-    // ── D44.7 — the Warm palette is reachable ────────────────────────────────────────────────────────────────────
-
-    /// <summary>Settings has always offered a Warm swatch that persists <c>"warm"</c>; the app's resolver carried arms
-    /// for the other three ids and silently fell through to Neutral, so every value <c>BuildWarmLight</c> composes was
-    /// unreachable. Every id the picker offers must resolve to a real palette.</summary>
-    [Theory]
-    [InlineData("warm")]
-    [InlineData("slate")]
-    [InlineData("neutral")]
-    [InlineData("accent")]
-    public void EveryPaletteIdTheSettingsPickerOffers_Resolves(string id)
-    {
-        var palette = Tok.PaletteById(id);
-        Assert.NotNull(palette);
-        Assert.Equal(id, palette!.Id);
-    }
-
-    /// <summary>Warm really is a distinct answer — the tests above would pass just as well if the engine had quietly
-    /// aliased it to Neutral — and it is a SANE light palette, not merely a different one.</summary>
-    [Fact]
-    public void TheWarmPalette_IsNotNeutralWearingADifferentName()
-    {
-        var warm = Tok.WarmPalette;
-        Assert.NotEqual(Tok.NeutralPalette.Light.FillSolidBase, warm.Light.FillSolidBase);
-        Assert.True(ColorContrast.MeetsAaText(warm.Light.TextPrimary, warm.Light.FillCardDefault));
-        Assert.True(ColorContrast.MeetsAaText(warm.Light.TextSecondary, warm.Light.FillCardDefault));
-    }
-
-    /// <summary>An unknown or corrupt persisted id must still land on a real palette rather than throwing.</summary>
-    [Fact]
-    public void AnUnknownPaletteId_HasNoEnginePalette_SoTheAppMustFallBack()
-        => Assert.Null(Tok.PaletteById("chartreuse"));
+    // D44.7 ("the Warm palette is reachable") was the palette picker's own reachability test — the picker (Settings +
+    // profile menu) is gone (Workstream B, "Settings regroup + removals"; Wavee always renders Tok.NeutralPalette now),
+    // so there is no app-side id → palette resolution left to pin. Tok.PaletteById itself is an ENGINE api and stays
+    // covered by the engine's own tests.
 
     // ── D44.4 — the shell wash geometry ──────────────────────────────────────────────────────────────────────────
 

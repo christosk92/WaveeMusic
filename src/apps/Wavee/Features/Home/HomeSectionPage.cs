@@ -165,8 +165,8 @@ sealed class HomeSectionPage : Component
         // parallel treatment: these are the app's two drill-in surfaces and they must sit on one ground. The colour is
         // this section's own first gradeable card, through the shared HomeWashSource resolution — payload accent first,
         // graded cover second, and a NULL leg when neither exists (an invented colour is a lie about the content).
-        _ = AppearancePrefs.Epoch.Value;   // the Settings toggle applies LIVE (the DisableColorWashes idiom)
-        bool washesDisabled = svc is null || svc.Settings.Get(WaveeSettings.DisableColorWashes);
+        _ = AppearancePrefs.Epoch.Value;   // the Settings toggle applies LIVE (the ColorWashesEnabled idiom)
+        bool washesDisabled = svc is null || !svc.Settings.Get(WaveeSettings.ColorWashesEnabled);
         var washSource = currentSection;   // subscribe: a landed page (or a paged one) re-picks the wash source
         var washCard = washesDisabled ? null : WashCard(washSource);
         // Watch exactly the ONE artwork whose grading the wash is still waiting on — never the plane's global epoch,

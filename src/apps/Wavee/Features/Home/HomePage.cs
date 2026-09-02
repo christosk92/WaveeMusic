@@ -89,13 +89,55 @@ sealed class HomePage : Component
 
         var home = UseLoadable(Loadable<HomeFeed>.Pending(FakeData.HomeSeed));   // seed renders the loading shape; later refreshes swap Ready->Ready in place
 
+        // ── the two auth vantages this page reasons from (bridge.AuthState, PlaybackBridge.ProjectAuthState) ──────
+        // CONCLUDED: has the live-catalog attempt had its say? Everything but Connecting — Live, Offline (a resume
+        // that failed against a retained credential), and SignInRequired (nothing will ever be attempted: no stored
+        // credential, or the fake backend, which reports Authenticated anyway). This is HomeFeedReadiness.Classify's
+        // `liveCatalogConcluded`: not "did THIS fetch get a live answer" (that can never tell "not tried yet" apart from
+        // "tried and failed"), but "is there anything still worth waiting for". ProjectAuthState already folds the
+        // login phase against the stored-credential check for precisely this Connecting-vs-Offline call, so it is
+        // reused rather than re-derived inside StoreLibrarySource. Peek() in the helpers: they are read from background
+        // poll continuations, never during Render (Render reads `.Value` once below, to subscribe).
+        // AVAILABLE: is there a live catalog to fail loud against right now? Live only. Charts' Featured-null rule
+        // used to be keyed on CONCLUDED, which made an Offline session throw its fail-loud ErrorState for a browse
+        // that legitimately does not exist offline; the two questions are different and get different helpers.
+        bool LiveCatalogConcluded() => bridge is null || bridge.AuthState.Peek() != ShellAuthState.Connecting;
+        bool LiveCatalogAvailable() => bridge is not null && bridge.AuthState.Peek() == ShellAuthState.Live;
+        bool catalogConcludedNow = bridge is null || bridge.AuthState.Value != ShellAuthState.Connecting;   // subscribe: the flip re-renders
+
         // Charts is chrome, not a home-document module — it rides its OWN resource. Five browseSection reads
-        // (ChartSections.All), one Fold tile each: Featured null throws (fail-loud); later shelves that come back
-        // empty are omitted. No browsePage fallback, no homeSection: see BrowseSectionRoutes.
+        // (ChartSections.All), one Fold tile each: Featured null throws (fail-loud) UNLESS there is no live catalog,
+        // in which case it degrades to an empty deck (see HomeBrowseCards.LoadChartDeckAsync) — an offline session
+        // legitimately has no browse (IBrowseService's own contract for GetCategoriesAsync says the same). Later
+        // shelves that come back empty are omitted. No browsePage fallback, no homeSection: see BrowseSectionRoutes.
+        //
+        // The fetch ARMS the moment the live-catalog attempt concludes — the same vantage the landing feed settles on
+        // — and never before: a pre-GoLive read used to fire on mount, race the still-connecting session, and paint
+        // either a fail-loud ErrorState or a lone "No charts right now" row the instant before GoLive filled it in.
+        // Armed once per mount (monotonic): a later Offline→Connecting→Live reconnect must not flip the resource back
+        // to Pending and re-skeletonize one row inside an already-revealed page. Until armed, the resource re-serves
+        // its own seed (a Fold-shaped shimmer under the page skeleton, not a real read). Whether the deck has
+        // CONCLUDED is one of the two chrome inputs the first reveal waits on (ChromeConcluded below), so the deck
+        // paints WITH the reveal instead of shimmering inside it.
+        if (catalogConcludedNow) _chartsArmed = true;
+        bool chartsArmed = _chartsArmed;
         var browseSvc = svc.Browse;
         var charts = UseResource<IReadOnlyList<HomeSection>>(
-            async ct => await HomeBrowseCards.LoadChartDeckAsync(browseSvc, ct).ConfigureAwait(false),
-            seed: HomeBrowseCards.ChartDeckSeed, deps: DepKey.Empty);
+            async ct => chartsArmed
+                ? await HomeBrowseCards.LoadChartDeckAsync(browseSvc, ct, LiveCatalogAvailable()).ConfigureAwait(false)
+                : HomeBrowseCards.ChartDeckSeed,
+            seed: HomeBrowseCards.ChartDeckSeed, deps: DepKey.From(chartsArmed));
+
+        // The notification timeline (HomeRow.Timeline → HomeTimeline) renders NotificationCenterBridge.Items, which
+        // go-live primes; the row is empty until the what's-new + social feeds land and then appears inside the page.
+        // "Concluded" here is "nothing in flight": Idle (never fetched — offline, the fake backend) counts as concluded
+        // because nothing is coming, Loading is the one state worth a bounded wait.
+        var nc = UseContext(NotificationCenterBridge.Slot);
+        bool ChromeConcluded()
+            => charts.Loadable.State.Peek() != (byte)LoadState.Pending
+            && (nc is null
+                || (nc.WhatsNewState.Peek() != NotificationFeedState.Loading
+                    && nc.SocialState.Peek() != NotificationFeedState.Loading));
 
         var post = UsePost();
         // Home groups have substantially different heights (quick grid / hero / compact grid / shelf / editorial).
@@ -105,35 +147,74 @@ sealed class HomePage : Component
         // so it keeps its own extent table rather than sharing the landing's: one table describing two shapes would
         // reseed on every All<->facet swap and throw away every measured correction belonging to both.
         var facetLayout = UseMemo(static () => new HomeFacetVirtualLayout(), DepKey.Empty);
+
         // The background home-refresh loop, tied to this component's lifetime. Its Reactive.OnCleanup fires on unmount
         // (KeepAlive eviction / a page whose cache entry was evicted) and before each re-run. Without it, each cold
         // remount of Home leaked an orphaned 60s PeriodicTimer loop that COMPOUNDED over a long session. Mirrors the
         // LyricsTicker lifecycle pattern (Features/Player/LyricsView.cs).
         //
-        // The one signal it reads is the cache-published FEED EPOCH (Services.HomeFeedEpoch). A bump re-runs this
-        // effect, which cancels the old loop and starts a new one — i.e. exactly ONE immediate re-read plus a fresh
-        // 60 s cadence, never a poll in render and never a subscription to anything hot. This is what reaches a
-        // KeepAlive-PARKED page: park runs no cleanups, so the effect is still live, re-reads on the bump, and the
-        // page's deferred render replays the fresh feed the instant it is activated. Reading it HERE rather than in
-        // Render is deliberate — an epoch is a refresh trigger, not a rendered value.
-        // Still deliberately NO CollectionsChanged subscription: a like/save emits several collection waves and
-        // re-fetching the whole feed per wave churned the page every time. Library-driven updates that no epoch
-        // describes (e.g. the post-sign-in playlist-header hydration) land on the next 60s tick — an accepted trade.
+        // The two signals it reads are the cache-published FEED EPOCH (Services.HomeFeedEpoch) and bridge.AuthState. A
+        // bump — OR an auth-state flip — re-runs this effect, which cancels the old loop and starts a new one, i.e. one
+        // immediate re-read plus a fresh 60 s cadence, never a poll in render and never a subscription to anything hot.
+        // This is what reaches a KeepAlive-PARKED page: park runs no cleanups, so the effect is still live, re-reads on
+        // the bump, and the page's deferred render replays the fresh feed the instant it is activated. Reading epoch
+        // HERE rather than in Render is deliberate — it is a refresh trigger, not a rendered value.
+        //
+        // AuthState is the fix for the "Home never leaves the skeleton" hang: go-live publishes no epoch bump for the
+        // session's OPENING read (LiveHomeCache in SpotifyOnlineCatalog.cs deliberately withholds the bump on the very
+        // first post-login identity — "a bump nobody needed"), so without tracking AuthState too a withheld Placeholder
+        // answer could sit until the next ordinary 60 s tick happened to land after go-live — sometimes effectively
+        // never, if that tick's own read raced ahead of the session. Reading `.Value` here makes the flip itself the
+        // trigger: the loop restarts and re-reads the instant the session goes live, without waiting on the clock.
+        //
+        // The vantage is captured at the loop's START, not re-read per answer: a loop started while Connecting can
+        // only ever have read the resident shelves (its online catalog was still the offline stub), so its answers are
+        // provisional however late they land — a read that was in flight across the flip must not be mistaken for the
+        // settled feed just because the flip beat its continuation. The flip restarts the loop, and THAT loop's read
+        // is the one that settles the page.
         var feedEpoch = svc.HomeFeedEpoch;
         Context.UseSignalEffect(() =>
         {
             int epoch = feedEpoch.Value;
+            bool concludedAtStart = bridge is null || bridge.AuthState.Value != ShellAuthState.Connecting;   // tracked
             var cts = new CancellationTokenSource();
-            StartHomeRefreshLoop(svc, home, post, epoch, (e, feed) => ApplyFeed(svc, home, e, feed), cts.Token);
+            StartHomeRefreshLoop(svc, home, post, epoch,
+                (e, feed) => ApplyFeed(svc, home, e, feed, concludedAtStart, ChromeConcluded), cts.Token);
             Reactive.OnCleanup(() => { cts.Cancel(); cts.Dispose(); });
         });
+
+        // The HARD FALLBACK: Home must never sit on the skeleton indefinitely, no matter what upstream timing bug
+        // might withhold every ordinary read. 8 s after MOUNT (DepKey.Empty — armed once, not on every epoch/auth
+        // re-run) — if the region is still Pending — force-publish whatever feed the refresh loop has most recently
+        // seen (even a withheld Placeholder), or HomeFeed.Empty if nothing has landed at all yet. `home` is captured
+        // by reference in the loadable, and UseTimeout always invokes the LATEST render's closure, so this reads
+        // current state at fire time regardless of how many renders happened in between.
+        UseTimeout(() => ForceReleaseIfStillPending(svc, home, ChromeConcluded), (float)HomeFeedReadiness.ForceReleaseMs, DepKey.Empty);
+
+        // ── the FIRST reveal waits for the chrome (HomeRevealGate) ──────────────────────────────────────────────
+        // A settled feed that landed before the Charts deck / the notification feeds concluded is HELD (the skeleton
+        // stays up) and published from here — the instant the last of them concludes (this effect tracks their
+        // signals), or when the cap elapses (the timeout, re-armed on every hold via _heldVersion), whichever is
+        // first. Both funnel through the one gate, which is idempotent, so a chrome flip and the cap firing in the
+        // same tick cannot double-publish. After the reveal neither path does anything: HomeRevealGate.Tick returns
+        // null once revealed, and every later publish is a Ready→Ready swap straight from ApplyFeed.
+        int heldVersion = _heldVersion.Value;   // subscribe: a hold re-renders, which re-arms the cap below
+        Context.UseSignalEffect(() =>
+        {
+            _ = charts.Loadable.State.Value;
+            if (nc is not null) { _ = nc.WhatsNewState.Value; _ = nc.SocialState.Value; }
+            _ = _heldVersion.Value;
+            PublishHeld(home, ChromeConcluded, force: false);
+        });
+        UseTimeout(() => PublishHeld(home, ChromeConcluded, force: false),
+            (float)HomeFeedReadiness.ChromeSettleMs, DepKey.From(heldVersion));
 
         // ── the shell MATERIAL: Home's three-wash composition (ShellMaterial / ShellMaterialLayer) ────────────────
         // Home publishes the WASH arm (Tint: null); detail pages publish the flat tint arm. The SEED and the loaded feed
         // go through this ONE path: the seed's cards carry no accent and no artwork, so it resolves to an empty wash and
         // the shell keeps its bare deterministic ground while Home loads — no placeholder colour, ever.
-        _ = AppearancePrefs.Epoch.Value;   // the Settings toggle applies LIVE (the DisableColorWashes idiom)
-        bool colorWashesDisabled = svc.Settings.Get(WaveeSettings.DisableColorWashes);
+        _ = AppearancePrefs.Epoch.Value;   // the Settings toggle applies LIVE (the ColorWashesEnabled idiom)
+        bool colorWashesDisabled = !svc.Settings.Get(WaveeSettings.ColorWashesEnabled);
         var feedNow = home.Value.Value;    // subscribe → re-publish when the feed lands, and on every refresh swap
         var washCards = HomeWashSource.Sources(feedNow);
         // LATE GRADING: watch only the (at most three) selected artworks that are still waiting on the plane, so a
@@ -175,9 +256,9 @@ sealed class HomePage : Component
                 // daylist's revision has advanced it publishes the epoch, and the ordinary refresh effect below does
                 // the read. One mechanism, one call, and none of it on a cadence or in a render.
                 int at = feedEpoch.Peek();
-                if (at != _appliedFeedEpoch)
+                if (at != _gate.AppliedEpoch)
                     _ = RefreshHomeOnce(svc, post, failIfInitial: false, at,
-                        (e, feed) => ApplyFeed(svc, home, e, feed), home, default);
+                        (e, feed) => ApplyFeed(svc, home, e, feed, LiveCatalogConcluded(), ChromeConcluded), home, default);
                 else if (svc.HomeFeedRevalidate is { } revalidate)
                     _ = revalidate(default);
             },
@@ -748,6 +829,22 @@ sealed class HomePage : Component
 
         // Swap one viewport for another. There is deliberately no outer ScrollView around VirtualHome: doing that would
         // measure the virtual list at its complete content extent and silently realize every group again.
+        //
+        // `isEmpty`/`onEmpty` IS back (HomeFeedReadiness fix): both VirtualHome and VirtualFacet ALWAYS render the
+        // Tail row (`tail`, above — the Concert Hub + Browse editorial destinations) unconditionally, so a 0-group
+        // feed painted through VirtualHome directly is not a blank page — it is Timeline's inline notification rows,
+        // Charts, and Tail with nothing else, which reads as broken chrome rather than as "nothing here yet". That
+        // shape used to reach `home` in TWO cases: a genuinely empty account, and the pre-GoLive placeholder (0
+        // groups because the live session had not landed). Removing isEmpty/onEmpty fixed the second case by
+        // accident and broke the first — it let a truly empty account render the same chrome-only soup this row's
+        // predecessor comment was written to avoid.
+        //
+        // ApplyFeed (above) now owns the actual fix: a 0-group UNFACETED feed only ever reaches `home` as Ready once
+        // HomeFeedReadiness.Classify says Empty (the live-catalog attempt has concluded) — the pre-GoLive Placeholder
+        // case is withheld and `home` stays Pending (skeleton) instead. So by the time this predicate can see
+        // `Groups.Count == 0`, it is never the placeholder — it is a real answer — and the page state below is
+        // finally safe to show without misfiring on every cold launch. `onFailed` is untouched — a genuine load
+        // failure is not "empty" and still needs its own explicit state.
         return Skel.Region(
             home,
             group: HomeSkeleton.Group,
@@ -755,31 +852,93 @@ sealed class HomePage : Component
             // VirtualHome is a Grow=1 fill-list. Easing the region's height 0 → feed clips the first shelf of covers
             // into a strip while the pane still fills (empty mica under the shear). Search's facet body is the same.
             smoothResize: false,
-            isEmpty: feed => feed.Groups.Count == 0,
+            // Facet-agnostic guard: a facet is the server's own ordered document (VirtualFacet renders whatever it
+            // says, including empty), so this only ever fires for the unfiltered landing.
+            isEmpty: feed => feed.Facet.Length == 0 && feed.Groups.Count == 0,
             onEmpty: () => StateHome(EmptyState.Default()),
             onFailed: () => StateHome(ErrorState.Build(home.Error)),
             // A facet renders the server's ORDERED SECTIONS, not the authored landing rhythm — see VirtualFacet.
             content: feed => feed.Facet.Length == 0 ? VirtualHome(feed) : VirtualFacet(feed));
     }
 
-    // The feed epoch this page's rendered feed was read at. Instance state, like _facetCts: two mounted HomePages
-    // (tabs) each track what THEY have consumed. -1 until the first read lands, so a fresh mount never skips one.
-    int _appliedFeedEpoch = -1;
+    // The reveal state machine (pure, HomeFeedReadiness.cs): which read settles the page, when the FIRST reveal may
+    // fire, and that nothing after it ever reveals again. Instance state, like _facetCts: two mounted HomePages (tabs)
+    // each track what THEY have consumed. It also carries the applied epoch (-1 until the first read lands, so a fresh
+    // mount never skips one) and the last read SEEN — withheld or not — for the 8 s hard fallback.
+    readonly HomeRevealGate<HomeFeed> _gate = new();
 
-    /// <summary>Publish a read's feed, MONOTONICALLY IN THE EPOCH rather than in arrival order. A read superseded
-    /// mid-flight must not land on top of a newer one — but the read that PRODUCED a bump (the cache publishes the
-    /// epoch from inside the very read that observed the rollover) is itself the freshest answer, so gating on the
-    /// loop's cancellation instead would throw away exactly the feed the bump exists to deliver.
-    /// <para>The second gate is the FACET. The 60 s poll reads whatever facet was current when it left; a chip tapped
-    /// while it was in flight makes that answer a different document, and painting it would repaint Home as "All"
-    /// under a lit "Music" tab. A dropped answer leaves the epoch UNADVANCED — nothing was applied, so a later
-    /// reactivation must still be free to re-read it.</para></summary>
-    void ApplyFeed(Services svc, Loadable<HomeFeed> home, int epoch, HomeFeed feed)
+    // Bumped whenever the gate HOLDS a settled feed for the chrome rows: Render subscribes, so the hold re-arms the
+    // ChromeSettleMs cap timer against the moment this feed settled rather than against mount.
+    readonly Signal<int> _heldVersion = new(0);
+
+    // Charts' resource arms (monotonically, per mount) the first time Render sees the live-catalog attempt concluded.
+    bool _chartsArmed;
+
+    // The gate's clock. Wall-clock-independent ticks: only differences matter (the chrome cap), never a date.
+    static double NowMs() => Environment.TickCount64;
+
+    /// <summary>Publish a read's feed through the reveal gate. Its rules, in order:
+    /// <para>The FACET: the 60 s poll reads whatever facet was current when it left; a chip tapped while it was in
+    /// flight makes that answer a different document, and painting it would repaint Home as "All" under a lit "Music"
+    /// tab. A dropped answer leaves the epoch UNADVANCED — nothing was applied, so a later reactivation must still be
+    /// free to re-read it.</para>
+    /// <para>The EPOCH, monotonic rather than arrival-ordered: a read superseded mid-flight must not land on top of a
+    /// newer one — but the read that PRODUCED a bump (the cache publishes the epoch from inside the very read that
+    /// observed the rollover) is itself the freshest answer, so gating on the loop's cancellation instead would throw
+    /// away exactly the feed the bump exists to deliver.</para>
+    /// <para>READINESS (<see cref="HomeFeedReadiness"/>), for the UNFACETED landing only: a read from a vantage where
+    /// the live-catalog attempt had not concluded — whatever it holds, including the resident library shelves — is
+    /// withheld as <see cref="HomeFeedState.Placeholder"/>: <c>home</c> stays Pending and the skeleton stays up. A
+    /// withheld read leaves the applied epoch UNCHANGED, so the AuthState-triggered re-read for the SAME epoch is still
+    /// free to land. Publishing the shelves early is the whole "why does Home open like this" recording: cached grid
+    /// revealed, then the live feed replaced it 1.5 s later and every row jumped. A faceted read is the server's own
+    /// document and can only be tapped on a revealed page, so it always passes.</para>
+    /// <para>The CHROME, for the first reveal only: a settled feed is HELD until the Charts deck and the notification
+    /// feeds have concluded (or <see cref="HomeFeedReadiness.ChromeSettleMs"/> elapses), so those rows paint WITH the
+    /// reveal — never a lone "No charts right now" or a timeline popping into a page already on screen. The hold is
+    /// released from <see cref="PublishHeld"/>. Once revealed, every later publish is a Ready→Ready swap in place:
+    /// the engine reveals only on the Pending→Ready edge, so a poll, an epoch bump or a facet can never replay the
+    /// stagger or re-skeletonize a row.</para>
+    /// <para><paramref name="force"/> is the 8 s hard-fallback escape hatch (<see cref="ForceReleaseIfStillPending"/>):
+    /// it publishes a Placeholder as-is and skips the chrome hold — the epoch and facet gates still apply, so a forced
+    /// publish can never regress behind a real answer that already landed.</para></summary>
+    void ApplyFeed(Services svc, Loadable<HomeFeed> home, int epoch, HomeFeed feed, bool liveCatalogConcluded,
+        Func<bool> chromeConcluded, bool force = false)
     {
-        if (epoch < _appliedFeedEpoch) return;
         if (!FacetMatches(svc, feed)) return;
-        _appliedFeedEpoch = epoch;
-        home.SetReady(feed);
+        var verdict = _gate.Offer(epoch, feed, feed.Groups.Count, faceted: feed.Facet.Length > 0, liveCatalogConcluded,
+            force, alreadyResolved: home.State.Peek() != (byte)LoadState.Pending, chromeConcluded(), NowMs());
+        switch (verdict)
+        {
+            case HomeRevealVerdict.Reveal:
+            case HomeRevealVerdict.Swap:
+                home.SetReady(feed);
+                break;
+            case HomeRevealVerdict.Held:
+                _heldVersion.Value++;   // re-arm the cap against THIS settle; the chrome effect does the rest
+                break;
+        }
+    }
+
+    /// <summary>Release a held first reveal if the chrome has concluded or the cap elapsed — called from the chrome
+    /// signal effect and the cap timeout; a no-op whenever nothing is held or the page is already revealed.</summary>
+    void PublishHeld(Loadable<HomeFeed> home, Func<bool> chromeConcluded, bool force)
+    {
+        if (_gate.Tick(chromeConcluded(), NowMs(), force) is { } feed) home.SetReady(feed);
+    }
+
+    /// <summary>The hard fallback (HomePage's mount-time <c>UseTimeout</c>, 8 s): Home must never sit on the skeleton
+    /// indefinitely no matter what upstream timing withheld every ordinary read (see the comment on the refresh
+    /// effect). If the region is still Pending 8 s after mount, force through the best UNFACETED feed this page has
+    /// actually seen — a held feed still waiting on a slow chart read, else the last read even if it was withheld (a
+    /// real device with cached shelves virtually always has SOMETHING by then) — or <see cref="HomeFeed.Empty"/> if
+    /// literally nothing has landed yet. A facet in progress is left alone: it is the server's own document and the
+    /// gate never held it in the first place.</summary>
+    void ForceReleaseIfStillPending(Services svc, Loadable<HomeFeed> home, Func<bool> chromeConcluded)
+    {
+        if (home.State.Peek() != (byte)LoadState.Pending) return;   // already resolved (Ready/Failed) — nothing to force
+        var (epoch, feed) = _gate.ForceRelease();
+        ApplyFeed(svc, home, epoch, feed ?? HomeFeed.Empty, liveCatalogConcluded: true, chromeConcluded, force: true);
     }
 
     static void StartHomeRefreshLoop(Services svc, Loadable<HomeFeed> home, Action<Action> post, int epoch,

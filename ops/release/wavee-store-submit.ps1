@@ -700,7 +700,10 @@ function Invoke-Draft {
     # 'msstore publish' clones a new pending submission from the last published one and deletes any existing
     # pending draft first - which is why the no-pending-submission gate ran, and why nothing before this line may
     # write to the Store.
-    Invoke-MsStore -Arguments @('publish', $upload, '-id', $ProductId, '--noCommit', '--uploadTimeout', "$UploadTimeoutSeconds", '-v') | Out-Null
+    # Cap the wrapper slightly above msstore's own blob timeout so a wedged child cannot sit
+    # forever the way the 0.2.5 run did (sequential stdout/stderr ReadToEnd deadlock).
+    Invoke-MsStore -Arguments @('publish', $upload, '-id', $ProductId, '--noCommit', '--uploadTimeout', "$UploadTimeoutSeconds", '-v') `
+        -TimeoutSeconds ($UploadTimeoutSeconds + 120) | Out-Null
 
     $st = Get-CurrentSubmissionState
     if (-not $st.SubmissionId) { throw "msstore publish succeeded but 'submission status' reports no submission id; inspect with -Status before retrying" }

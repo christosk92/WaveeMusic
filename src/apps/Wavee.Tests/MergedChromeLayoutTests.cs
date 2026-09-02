@@ -18,7 +18,7 @@ public class MergedChromeLayoutTests
     public void FixedBudget_AlwaysReservesTheHeaderThemeToggle()
     {
         float essential = MergedChromeLayout.FixedBudget(
-            name: false, friends: false, forward: false, back: false, newTab: false, trailing: false);
+            name: false, actionsInRow: false, forward: false, back: false, newTab: false, trailing: false);
         Assert.Equal(
             ShellResponsiveLayout.ChromeBarLeadW
             + ShellResponsiveLayout.ChromeThemeToggleW
@@ -26,6 +26,22 @@ public class MergedChromeLayoutTests
             + ShellResponsiveLayout.ChromeMinDragStripW
             + ShellResponsiveLayout.ChromeCaptionClusterW,
             essential);
+    }
+
+    [Fact]
+    public void FixedBudget_ActionsInRowReservesFourNavButtonsNotZero()
+    {
+        float without = MergedChromeLayout.FixedBudget(
+            name: false, actionsInRow: false, forward: false, back: false, newTab: false, trailing: true);
+        float with = MergedChromeLayout.FixedBudget(
+            name: false, actionsInRow: true, forward: false, back: false, newTab: false, trailing: true);
+        Assert.Equal(0f, with - without - 4f * ShellResponsiveLayout.ChromeNavButtonW);
+
+        var narrow = MergedChromeLayout.Resolve(ShellResponsiveLayout.ChromeActionsEnterW - 1f, 500f);
+        var wide = MergedChromeLayout.Resolve(ShellResponsiveLayout.ChromeActionsEnterW, 500f);
+        Assert.False(narrow.ActionsInRow);
+        Assert.True(wide.ActionsInRow);
+        Assert.Equal(narrow.FixedBudgetFor() + 4f * ShellResponsiveLayout.ChromeNavButtonW, wide.FixedBudgetFor());
     }
 
     [Theory]
@@ -139,7 +155,7 @@ public class MergedChromeLayoutTests
         for (float width = 300f; width <= 2400f; width += 7f)
         {
             var layout = MergedChromeLayout.Resolve(width, 500f);
-            Assert.NotEqual(layout.FriendsInRow, layout.FriendsInMenu);
+            Assert.NotEqual(layout.ActionsInRow, layout.ActionsInMenu);
         }
     }
 

@@ -64,10 +64,6 @@ public sealed class WaveeLog : IWaveeLog
     public string? BasePath => _basePath;
     public long Version { get { lock (_ringGate) return _version; } }
 
-    /// <summary>True when the corresponding env override is set — the runtime level UI disables its box then.</summary>
-    public static bool EnvMinLevelSet => EnvLevel("WAVEE_LOG_LEVEL") is not null;
-    public static bool EnvFileMinLevelSet => EnvLevel("WAVEE_LOG_FILE_LEVEL") is not null;
-
     public WaveeLog(int ringCapacity = DefaultRingCapacity)
     {
         _ring = new WaveeLogEntry[Math.Max(1, ringCapacity)];
@@ -76,7 +72,9 @@ public sealed class WaveeLog : IWaveeLog
     public bool IsEnabled(WaveeLogLevel level) => level >= MinLevel;
 
     /// <summary>Set the file path and optional dev echo sink. The legacy name is retained for existing callers.
-    /// Level precedence is env &gt; explicit arg (settings) &gt; default — the env vars now always win.</summary>
+    /// Level precedence is the explicit arg (settings, via <see cref="LogCapturePolicy"/>) &gt; default — there is
+    /// no env-var override (CLAUDE.md forbids behaviour switches via environment variables; Settings › Logs is the
+    /// one place a user or developer changes what gets captured).</summary>
     public void Configure(string? crashLogPath = null, Action<string>? echo = null,
         WaveeLogLevel? minLevel = null, WaveeLogLevel? fileMinLevel = null, long? maxFileBytes = null,
         int? retainedFiles = null, int? ringCapacity = null, bool dailyRolling = false)
@@ -88,13 +86,12 @@ public sealed class WaveeLog : IWaveeLog
         _basePath = crashLogPath;
         _dailyRolling = dailyRolling;
         _echo = echo;
-        MinLevel = EnvLevel("WAVEE_LOG_LEVEL") ?? minLevel ?? WaveeLogLevel.Info;
-        FileMinLevel = EnvLevel("WAVEE_LOG_FILE_LEVEL") ?? fileMinLevel ?? WaveeLogLevel.Info;
+        MinLevel = minLevel ?? WaveeLogLevel.Info;
+        FileMinLevel = fileMinLevel ?? WaveeLogLevel.Info;
         _maxFileBytes = maxFileBytes.GetValueOrDefault(DefaultMaxFileBytes);
         _retainedFiles = Math.Max(1, retainedFiles.GetValueOrDefault(DefaultRetainedFiles));
 
-        int? ringReq = EnvInt("WAVEE_LOG_RING") ?? ringCapacity;
-        if (ringReq is int rc) ReallocRing(rc);
+        if (ringCapacity is int rc) ReallocRing(rc);
 
         if (crashLogPath is not null)
         {
@@ -442,17 +439,4 @@ public sealed class WaveeLog : IWaveeLog
         }
     }
 
-    static WaveeLogLevel? EnvLevel(string name)
-    {
-        var raw = Environment.GetEnvironmentVariable(name);
-        if (string.IsNullOrWhiteSpace(raw)) return null;
-        return Enum.TryParse<WaveeLogLevel>(raw.Trim(), ignoreCase: true, out var level) ? level : null;
-    }
-
-    static int? EnvInt(string name)
-    {
-        var raw = Environment.GetEnvironmentVariable(name);
-        if (string.IsNullOrWhiteSpace(raw)) return null;
-        return int.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) && v > 0 ? v : null;
-    }
 }

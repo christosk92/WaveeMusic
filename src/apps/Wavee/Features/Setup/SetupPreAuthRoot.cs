@@ -32,7 +32,17 @@ sealed class SetupPreAuthRoot : Component
 
     public override Element Render()
     {
+        // Fire-and-forget: warms all three Lottie heroes off the UI thread before the wizard's first page ever
+        // mounts one, so WaveeLottie.For's first real call is never the one paying the parse/compile cost.
+        UseEffect(() => { _ = WaveeLottie.Warm(); }, DepKey.Empty);
+
         var titleBar = TitleBar.Create(new TitleBarOptions { ShowCaptionButtons = true });
+
+        // Every entry point — FirstRun, Reauth, TermsRearm — opens the wizard immediately through the one-post
+        // auto-open below. There is no pre-dialog "Welcome to Wavee · Start setup" splash any more: the dialog IS
+        // the first thing a cold install shows (its Terms page carries the welcome copy), so nothing sits under the
+        // plate to leak through it.
+        Element mica = Embed.Comp(() => new SetupPreAuthOpener(_session, _settings));
 
         var body = new BoxEl
         {
@@ -42,11 +52,7 @@ sealed class SetupPreAuthRoot : Component
                 titleBar,
                 // The transparent Mica body: paints nothing itself, so the window's live DWM Mica material (Program.cs)
                 // reads straight through underneath the wizard dialog.
-                new BoxEl
-                {
-                    Grow = 1f, Fill = ColorF.Transparent,
-                    Children = [Embed.Comp(() => new SetupPreAuthOpener(_session, _settings))],
-                },
+                new BoxEl { Grow = 1f, Fill = ColorF.Transparent, Children = [mica] },
             ],
         };
         return OverlayHost.Create(body);

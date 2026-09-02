@@ -1,6 +1,4 @@
 using System;
-using System.Globalization;
-using System.Text;
 
 namespace Wavee;
 
@@ -13,41 +11,48 @@ namespace Wavee;
 /// call sites at this class so the two bodies can never drift apart.</para></summary>
 static class PlaybackDsp
 {
-    /// <summary>Push the persisted equalizer + crossfade settings to the live DSP, when one is attached. No-op
-    /// offline / on the fake backend (no <see cref="Services.LiveHost"/>, or its audio host doesn't implement
-    /// <c>IAudioDspControl</c>) — exactly like the shipped Settings tab's writer.</summary>
+    /// <summary>Push the persisted equalizer + crossfade settings to EVERY live DSP the app currently owns — the real
+    /// backend's <see cref="Services.LiveHost"/> AND the pre-login/logged-out local host
+    /// (<see cref="Services.LocalAudioDsp"/>, local files/radio/modules). The two are mutually exclusive in practice
+    /// (go-live disposes the local one), but pushing to both unconditionally means this call site never needs to know
+    /// which mode the app is in — whichever host is actually alive picks it up. No-op offline / on the fake backend
+    /// (neither host attached, or an audio host doesn't implement <c>IAudioDspControl</c>) — exactly like the shipped
+    /// Settings tab's writer.</summary>
     public static void Push(Services? svc)
     {
-        if (svc?.LiveHost?.Connect.Audio?.Host is not Wavee.Backend.IAudioDspControl dsp) return;
+        if (svc is null) return;
         var settings = svc.Settings;
+        if (svc.LiveHost?.Connect.Audio?.Host is Wavee.Backend.IAudioDspControl liveDsp) PushTo(liveDsp, settings);
+        if (svc.LocalAudioDsp is { } localDsp) PushTo(localDsp, settings);
+    }
+
+    static void PushTo(Wavee.Backend.IAudioDspControl dsp, IAppSettings settings)
+    {
         dsp.SetEqualizer(settings.Get(WaveeSettings.EqualizerEnabled), ReadEqGains(settings));
         dsp.SetCrossfade(settings.Get(WaveeSettings.CrossfadeEnabled),
             Math.Clamp(settings.Get(WaveeSettings.CrossfadeMs), 0, 12_000));
     }
 
-    /// <summary>The persisted 10-band gain vector, clamped to +/-12 dB. Shared with the Settings tab's
-    /// equalizer UI so the wizard and Settings can never disagree about how gains are parsed.</summary>
-    public static float[] ReadEqGains(IAppSettings? settings)
+    /// <summary>Seed a freshly-constructed DSP host with the persisted equalizer + crossfade settings before it ever
+    /// opens a session — shared by <see cref="Wavee.SpotifyLive.Audio.AudioPlaybackStack"/> (the live host) and
+    /// <see cref="Services"/>'s pre-login local host construction, so the two can never parse/clamp differently.
+    /// Also migrates a persisted crossfade value beyond the current 12 s clamp (older builds exposed up to 30 s)
+    /// back into settings once, so UI, parent and child all report the same effective duration.</summary>
+    public static void SeedFromSettings(Wavee.Backend.IAudioDspControl dsp, IAppSettings settings)
     {
-        var gains = new float[10];
-        string raw = settings?.Get(WaveeSettings.EqualizerGains) ?? WaveeSettings.EqualizerGains.Default;
-        var parts = raw.Split(',', StringSplitOptions.TrimEntries);
-        for (int i = 0; i < gains.Length && i < parts.Length; i++)
-            if (float.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float v))
-                gains[i] = Math.Clamp(v, -12f, 12f);
-        return gains;
+        int storedCrossfadeMs = settings.Get(WaveeSettings.CrossfadeMs);
+        int crossfadeMs = Math.Clamp(storedCrossfadeMs, 0, 12_000);
+        if (storedCrossfadeMs != crossfadeMs) settings.Set(WaveeSettings.CrossfadeMs, crossfadeMs);
+        dsp.SetEqualizer(settings.Get(WaveeSettings.EqualizerEnabled), ReadEqGains(settings));
+        dsp.SetCrossfade(settings.Get(WaveeSettings.CrossfadeEnabled), crossfadeMs);
     }
 
-    /// <summary>Serialize a ten-band gain vector in the same invariant form consumed by <see cref="ReadEqGains"/>.</summary>
-    public static string SerializeEqGains(float[] gains)
-    {
-        var sb = new StringBuilder();
-        for (int i = 0; i < 10; i++)
-        {
-            if (i > 0) sb.Append(',');
-            float gain = i < gains.Length ? Math.Clamp(gains[i], -12f, 12f) : 0f;
-            sb.Append(gain.ToString("0.#", CultureInfo.InvariantCulture));
-        }
-        return sb.ToString();
-    }
+    /// <summary>The persisted 10-band gain vector, clamped to +/-12 dB. Shared with the Settings tab's equalizer UI
+    /// so the wizard and Settings can never disagree about how gains are parsed. Forwards to
+    /// <see cref="EqualizerSettings.ReadGains"/> (the dependency-free, unit-tested home for the actual parse/clamp).</summary>
+    public static float[] ReadEqGains(IAppSettings? settings) => EqualizerSettings.ReadGains(settings);
+
+    /// <summary>Serialize a ten-band gain vector in the same invariant form consumed by <see cref="ReadEqGains"/>.
+    /// Forwards to <see cref="EqualizerSettings.SerializeGains"/>.</summary>
+    public static string SerializeEqGains(float[] gains) => EqualizerSettings.SerializeGains(gains);
 }

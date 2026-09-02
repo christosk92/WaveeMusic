@@ -57,8 +57,11 @@ sealed class MergedChromeRow
     {
         var l = _layout.Value;
         int epoch = _tabsEpoch();
-        int auth = (int)(Bridge?.Auth.Value ?? AuthStatus.LoggedOut);
-        int flags = (l.ShowName ? 1 : 0) | (l.ShowFriends ? 2 : 0) | (l.ShowForward ? 4 : 0)
+        // ShellAuthState, NOT the raw AuthStatus: the chip below renders off the SHELL state (a silent resume
+        // running behind the cache-first shell is Connecting, and AuthStatus stays LoggedOut for its whole
+        // duration), so the memo key has to move on the same value the chip does.
+        int auth = (int)(Bridge?.AuthState.Value ?? ShellAuthState.SignInRequired);
+        int flags = (l.ShowName ? 1 : 0) | (l.ShowActions ? 2 : 0) | (l.ShowForward ? 4 : 0)
                   | (l.SearchMode == MergedSearchMode.Icon ? 8 : 0) | (l.ShowBack ? 16 : 0)
                   | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0);
         return HashCode.Combine(flags, (int)l.SearchWidth, epoch, auth);
@@ -110,33 +113,28 @@ sealed class MergedChromeRow
         };
     }
 
-    Element ThemeToggle() => ToolTip.Wrap(new BoxEl
-    {
-        Key = "chrome-theme-toggle",
-        Width = ShellResponsiveLayout.ChromeThemeToggleW,
-        Height = Spacing.XXXL,
-        Shrink = 0f,
-        AlignItems = FlexAlign.Center,
-        Justify = FlexJustify.Center,
-        Corners = Radii.ControlAll,
-        Role = AutomationRole.Button,
-        Cursor = CursorId.Hand,
-        Focusable = true,
-        OnClick = _toggleTheme,
-        Children = [Icon(Theme.Dark ? Icons.Sun : Icons.Moon, Spacing.L, Tok.TextSecondary)],
-    }.Interactive(Interaction.Subtle),
+    // A real island button now (ShellToolbar.BarNavStyle + BarNavMargin), not the old hand-rolled 32-DIP box — the
+    // same 40x44 geometry as every other caption-leading/trailing affordance (ChromeThemeToggleW tracks the change).
+    Element ThemeToggle() => ToolTip.Wrap(
+        IconButton.Create(Theme.Dark ? Icons.Sun : Icons.Moon, _toggleTheme, ShellToolbar.BarNavStyle)
+            with { Key = "chrome-theme-toggle", Margin = ShellToolbar.BarNavMargin },
         Theme.Dark ? Loc.Get(Strings.Shell.LightTheme) : Loc.Get(Strings.Shell.DarkTheme));
 
     public Element Trailing()
     {
         var l = _layout.Value;
         if (!l.ShowTrailing) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-        var kids = new List<Element>(3) { ProfileChip() };
-        if (l.FriendsInRow)
-            kids.Add(IconButton.Create(Icons.Friends, ToggleFriends, ShellToolbar.BarNavStyle)
-                with { Margin = ShellToolbar.BarNavMargin });
-        if (OverflowItems(l).Count > 0)
-            kids.Add(Embed.Comp(() => new OverflowMenu(this, _layout)));
+        var kids = new List<Element>(5) { ProfileChip() };
+        // The ONE "actions in row" stage (MergedChromeLayout.ActionsInRow): bell, friends, pin and settings enter
+        // together, no "…" any more. Below it they fold into the profile menu instead of vanishing (ProfileMenu's
+        // Notifications/Friends rows) — pin alone simply drops (the tab/page context menu still offers it).
+        if (l.ActionsInRow)
+        {
+            kids.Add(Embed.Comp(() => new NotificationBellButton()));
+            kids.Add(NavButton(Icons.Friends, ToggleFriends, Loc.Get(Strings.Shell.Friends)));
+            if (PinButton() is { } pin) kids.Add(pin);
+            kids.Add(NavButton(Icons.Settings, () => _go("settings", null), Loc.Get(Strings.Auth.Settings)));
+        }
         return new BoxEl
         {
             Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
@@ -144,36 +142,50 @@ sealed class MergedChromeRow
         };
     }
 
+    // The shared 40x44 island-button shape (ShellToolbar.BarNavStyle + BarNavMargin) every trailing action button
+    // uses, tooltipped like the theme toggle and the search icon.
+    static Element NavButton(string glyph, Action onClick, string tooltip) => ToolTip.Wrap(
+        IconButton.Create(glyph, onClick, ShellToolbar.BarNavStyle) with { Margin = ShellToolbar.BarNavMargin },
+        tooltip);
+
+    // The direct pin/unpin button for whatever destination is on screen — same row PinActions.RowForDestination
+    // already hands the tab context menu (WaveeShell.TabMenu) and the retired "…" overflow, so the toast/undo
+    // behaviour is identical; only the affordance moved. Null when the destination isn't pinnable or there is no
+    // sidebar pin store (ActionServices.Sidebar absent).
+    Element? PinButton()
+    {
+        if (Acts is not { } acts || acts.CurrentDestination?.Invoke() is not { } destination) return null;
+        if (PinActions.RowForDestination(acts, in destination) is not { Invoke: { } invoke } row) return null;
+        return NavButton(row.Icon.Glyph ?? Icons.Pin, invoke, row.Label);
+    }
+
     internal void ToggleFriends() => Ui?.Toggle(RailMode.Friends);
 
+    // The chip reads ShellAuthState, not the raw AuthStatus. Under the cache-first shell (WaveeApp.needsSignIn) a
+    // returning user's shell mounts while the SILENT resume runs behind it — and that resume drives LiveSessionHost
+    // directly, never ISpotifySession.ConnectAsync, so AuthStatus sits on LoggedOut for its whole duration. Reading it
+    // here put an actionable "Sign in" button on screen during every launch, and pressing it called ConnectAsync on the
+    // SwitchableSession's PRE-go-live inner — the FakeSpotifySession — signing the user in as "Wavee Listener" over a
+    // real Spotify resume that was already in flight. ShellAuthState is the fold that knows the difference
+    // (PlaybackBridge.ProjectAuthState), and Bridge.SignIn is the ONE verb that starts a real one.
     Element ProfileChip()
     {
         var b = Bridge;
-        var auth = b?.Auth.Value ?? AuthStatus.LoggedOut;
-        if (auth == AuthStatus.Authenticated)
+        var auth = b?.AuthState.Value ?? ShellAuthState.SignInRequired;
+        if (auth == ShellAuthState.Live)
             return Embed.Comp(() => new ProfileMenu(b!, _layout, _toggleTheme, ToggleFriends));
-        if (auth == AuthStatus.Authenticating)
+        if (auth == ShellAuthState.Connecting)
             return new BoxEl
             {
                 Height = 32f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
                 Children = [Caption(Loc.Get(Strings.Shell.Connecting)).Secondary()],
             };
-        return Button.Accent(Loc.Get(Strings.Shell.SignIn), () => { _ = b?.Session.ConnectAsync(); });
-    }
-
-    internal List<MenuFlyoutItem> OverflowItems(MergedChromeLayout l)
-    {
-        var items = new List<MenuFlyoutItem>(2);
-        if (!l.ShowForward)
-            items.Add(new MenuFlyoutItem(Loc.Get(Strings.Nav.Forward), Icons.Forward,
-                Enabled: _canForward.Value, Invoke: _forward));
-        if (Acts is { } acts && acts.CurrentDestination?.Invoke() is { } destination
-            && PinActions.RowForDestination(acts, in destination) is { } pagePin)
-        {
-            if (items.Count > 0 && !items[^1].IsSeparator) items.Add(MenuFlyoutItem.Separator);
-            items.Add(pagePin);
-        }
-        return items;
+        // Offline = a credential is still on disk but the resume failed (a network drop, not a rejection), so the verb
+        // is "try again", not "sign in" — the account is not in question. SignInRequired is unreachable from the shell
+        // on the real backend (the wizard is the whole window there), but the fake/demo backend does reach it.
+        return Button.Accent(
+            Loc.Get(auth == ShellAuthState.Offline ? Strings.Shell.Reconnect : Strings.Shell.SignIn),
+            () => { if (b?.SignIn is { } signIn) signIn(); else _ = b?.Session.ConnectAsync(); });
     }
 }
 
@@ -291,16 +303,11 @@ sealed class MergedSearchFlyoutButton : Component
         UseEffect(() => (Action)(() => Close()), DepKey.Empty);
 
         void Toggle() { if (handle.Value is { IsOpen: true }) Close(); else Open(); }
-        return ToolTip.Wrap(new BoxEl
-        {
-            Key = "chrome-search-button",
-            Width = ShellResponsiveLayout.ChromeSearchIconW, Height = 32f, Shrink = 0f,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Corners = Radii.ControlAll,
-            Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-            OnRealized = h => anchor.Value = h,
-            OnClick = Toggle,
-            Children = [Icon(Icons.Search, 16f, Tok.TextSecondary)],
-        }.Interactive(Interaction.Subtle), Loc.Get(Strings.Nav.Search));
+        // Same ShellToolbar.BarNavStyle + BarNavMargin geometry as the theme toggle beside it (ChromeSearchIconW
+        // tracks the change), not the old hand-rolled 32-DIP box.
+        return ToolTip.Wrap(
+            IconButton.Create(Icons.Search, Toggle, ShellToolbar.BarNavStyle)
+                with { Key = "chrome-search-button", Margin = ShellToolbar.BarNavMargin, OnRealized = h => anchor.Value = h },
+            Loc.Get(Strings.Nav.Search));
     }
 }

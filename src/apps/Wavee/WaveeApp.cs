@@ -50,7 +50,7 @@ sealed class WaveeApp : Component
                 if (_services.Settings.Get(WaveeSettings.ThemeMode) != 0) return;
                 int oldEpoch = Tok.Epoch;
                 var kind = FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark;
-                Tok.Use(WaveeTheme.ResolvePalette(_services.Settings.Get(WaveeSettings.PaletteId)), kind);
+                Tok.Use(WaveeTheme.ResolvePalette(), kind);
                 if (FluentApp.SystemAccentRamp() is { } ramp) Tok.SetAccent(in ramp);
                 else if (FluentApp.SystemAccent() is { } a) Tok.SetAccent(a);
                 // Windows can broadcast ImmersiveColorSet without an effective palette/accent change. Requesting a
@@ -68,6 +68,7 @@ sealed class WaveeApp : Component
         var governorTimer = UseRef<System.Threading.Timer?>(null);   // rooted here so the periodic MemoryGovernor poll isn't GC-collected (the app root never unmounts)
         var volumeSaveTimer = UseRef<System.Threading.Timer?>(null); // remember-volume: debounced persist of the slider value
         var zoomSaveTimer = UseRef<System.Threading.Timer?>(null);   // app zoom: debounced persist of FluentApp.Zoom (chords/wheel never write the store themselves)
+        var resumeInFlight = UseRef(false);   // one silent resume at a time (launch kick + the chip's Reconnect share it)
 
         // ── Simultaneous live login (device code + browser race) ─────────────────────────────────────────────────────
         // The takeover runs BOTH methods at once: RestartCode polls the device code (the two-pane's QR + pairing code), and
@@ -162,20 +163,40 @@ sealed class WaveeApp : Component
         // needsSignIn flips true on the next render and the wizard's own sign-in page takes over cleanly; a mere
         // network failure leaves the credential in place, which PlaybackBridge.ProjectAuthState folds to Offline
         // (shell stays up, nothing further to do here).
-        void SilentResume() => _ = System.Threading.Tasks.Task.Run(async () =>
+        //
+        // Re-entrancy guarded, because this is no longer only the launch kick: it is also what the shell's chip invokes
+        // (PlaybackBridge.SignIn, below) when a resume failed and left the shell Offline. Two concurrent
+        // LiveSessionHost.StartAsync calls would race two go-live stacks onto one Services. The flag is UI-thread-only
+        // (set before the Task, cleared through `post`), so no interlock is needed.
+        void SilentResume()
         {
-            try
+            if (resumeInFlight.Value) return;
+            resumeInFlight.Value = true;
+            // The chip's Reconnect starts from Offline/Failed; say "connecting" straight away so the press has an
+            // immediate answer instead of leaving the failed phase — and so the chip itself swaps to "Connecting...".
+            bridge.ReportLogin(new LoginSnapshot(LoginPhase.SilentResume));
+            _ = System.Threading.Tasks.Task.Run(async () =>
             {
-                await Wavee.SpotifyLive.LiveSessionHost.StartAsync(_services, new WaveeLogger(_services.Log, "connect"),
-                    System.Threading.CancellationToken.None, bridge.Progress(post), uiPost: post,
-                    interactive: false, useBrowser: false).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _services.Log.Event(WaveeLogLevel.Warning, "connect", "resume.silent.failed", "Silent resume failed", ex: ex);
-                post(() => bridge.ReportLogin(new LoginSnapshot(LoginPhase.Failed, Error: Loc.Get(Strings.Auth.GenericError))));
-            }
-        });
+                try
+                {
+                    await Wavee.SpotifyLive.LiveSessionHost.StartAsync(_services, new WaveeLogger(_services.Log, "connect"),
+                        System.Threading.CancellationToken.None, bridge.Progress(post), uiPost: post,
+                        interactive: false, useBrowser: false).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _services.Log.Event(WaveeLogLevel.Warning, "connect", "resume.silent.failed", "Silent resume failed", ex: ex);
+                    post(() => bridge.ReportLogin(new LoginSnapshot(LoginPhase.Failed, Error: Loc.Get(Strings.Auth.GenericError))));
+                }
+                finally { post(() => resumeInFlight.Value = false); }
+            });
+        }
+
+        // THE sign-in/reconnect verb the shell chip presses. Assigned every render (a plain property, not a signal):
+        // the real backend gets the silent resume; the fake/demo backend keeps its stub connect. Without this the chip
+        // called ISpotifySession.ConnectAsync, which on the real backend reaches the SwitchableSession's pre-go-live
+        // inner — the FakeSpotifySession — and authenticates the demo account over a real session.
+        bridge.SignIn = Services.UseRealBackend ? SilentResume : FakeSignIn;
 
         Context.UseEffect(() =>
         {
@@ -326,15 +347,18 @@ sealed class WaveeApp : Component
         if (needsSignIn)
         {
             // The wizard is Wavee's ONE sign-in surface. There is deliberately no second standalone login takeover:
-            // shipping both meant the same action looked different in two places, and "Not now" dropped the user from
+            // shipping both meant the same action looked different in two places, and "Quit" dropped the user from
             // the wizard into the other one — the exact duplication this design exists to remove.
-            //   • setup never completed  ⇒ FirstRun, all seven steps from Welcome.
+            //   • setup never completed  ⇒ FirstRun, Welcome (+terms) → Sign in → Local playback.
             //   • setup completed, signed out (a logout, or a revoked token) ⇒ Reauth, straight to the SignIn page.
-            //     Re-walking terms/appearance/sidebar for someone who already chose them would be nonsense.
+            //     Re-walking Welcome/terms for someone who already accepted them would be nonsense. A COMPLETED,
+            //     still-SIGNED-IN install re-armed for new terms (SetupGating.NeedsTermsRearm) never reaches this
+            //     branch at all — needsSignIn is false for it, so SetupChrome builds that TermsRearm session
+            //     post-auth instead (Features/Setup/SetupChrome.cs).
             bool completed = SetupGating.IsCompleted(_services.Settings);
             setupSession = SetupSession.Current ??= completed
-                ? new SetupSession(SetupSession.EntryPoint.Reauth, alreadyAuthenticated: false, SetupPage.SignIn)
-                : new SetupSession(SetupSession.EntryPoint.FirstRun, alreadyAuthenticated: false);
+                ? new SetupSession(SetupEntryPoint.Reauth, alreadyAuthenticated: false, SetupPage.SignIn)
+                : new SetupSession(SetupEntryPoint.FirstRun, alreadyAuthenticated: false);
             // Publish this run's real intents into the session's auto-properties so they are non-null wherever it is
             // mounted (pre-auth here, or post-auth in SetupChrome after SignIn completes — same instance, carried via
             // SetupSession.Current). Re-assigning every render is harmless: plain fields, not signals.
@@ -344,7 +368,7 @@ sealed class WaveeApp : Component
             setupSession.RestartCode = Services.UseRealBackend ? RestartCode : SeedDemoChallenge;
             setupSession.CancelSignIn = CancelSignIn;
             setupSession.QuitApp = CloseApp;
-            // "Not me" on the Is-this-you confirmation: the same sign-out the profile menu uses (credential wiped, gate
+            // "Not me" / "Not you? Switch account": the same sign-out the profile menu uses (credential wiped, gate
             // flips to LoggedOut, the wizard re-mints a pairing code). Fake backend: Switchable.LogoutAsync flips its stub.
             setupSession.SwitchAccount = () => _ = _services.LogoutAsync();
         }

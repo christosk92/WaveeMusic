@@ -228,4 +228,75 @@ public class WaveeLogSessionsTests
         }
         finally { try { Directory.Delete(dir, recursive: true); } catch { } }
     }
+
+    [Fact]
+    public void ListPastSessions_DiscoversDailyRolledFiles_FromBasePath()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "wavee-log-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // Daily rolling (WaveeMusic scheme): the LIVE file for "today" IS a dated wavee-yyyyMMdd.log — the
+            // undated wavee.log passed as `liveFilePath` below never exists once daily rolling has migrated it
+            // away (WaveeLog.MigrateLegacyBaseFile). Discovery must still find every dated file — past days AND
+            // today's own — off the BASE name alone (WaveeLog.BasePath, not FilePath — see DiagnosticsPanel's/
+            // LogsPanel's RefreshSessions doc comment).
+            WriteLog(dir, "wavee-20260901.log",
+                "seq=1 tid=2 t=1000 sid=aaaaaaaa pid=101 I [app] startup - Wavee starting",
+                "seq=2 tid=2 t=2000 sid=aaaaaaaa pid=101 I [connect] hello-a");
+            // A size-roll WITHIN day 2 (noon) starts session B...
+            WriteLog(dir, "wavee-20260902-120000.log",
+                "seq=1 tid=2 t=3000 sid=bbbbbbbb pid=202 I [app] startup - Wavee starting",
+                "seq=2 tid=2 t=4000 sid=bbbbbbbb pid=202 I [connect] hello-b1");
+            // ...and today's dated file continues B, then opens the CURRENT run (excluded as "this process").
+            WriteLog(dir, "wavee-20260902.log",
+                "seq=3 tid=2 t=5000 sid=bbbbbbbb pid=202 I [connect] hello-b2",
+                $"seq=1 tid=2 t=6000 sid={WaveeLog.SessionId} pid=303 I [app] startup - Wavee starting");
+            string live = Path.Combine(dir, "wavee.log");   // deliberately never written — daily rolling owns the dated names only
+
+            var sessions = WaveeLogSessions.ListPastSessions(live, currentPid: 303);
+
+            Assert.Equal(2, sessions.Count);
+            var b = sessions[0];   // newest first
+            var a = sessions[1];
+            Assert.Equal("bbbbbbbb", b.SessionId);
+            Assert.Equal(3, b.EntryCount);   // spans the size-roll file + today's dated file
+            Assert.Equal("aaaaaaaa", a.SessionId);
+            Assert.Equal(2, a.EntryCount);
+
+            var bEntries = WaveeLogSessions.LoadSession(b);
+            Assert.Equal(3, bEntries.Length);
+            Assert.Equal("hello-b1", bEntries[1].Message);
+            Assert.Equal("hello-b2", bEntries[2].Message);
+        }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
+    }
+
+    [Fact]
+    public void ListPastSessions_DailyFileOrdering_SizeRollSortsBeforeItsDay()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "wavee-log-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // Pins WaveeLogSessions.cs's ordinal file sort: '-' (0x2D) < '.' (0x2E), so a same-day SIZE-roll
+            // ("wavee-20260902-120000.log") sorts BEFORE that day's own dated file ("wavee-20260902.log") — the
+            // order they were actually written in. A comparer that got this backwards would still find ONE
+            // session (same sid, no boundary between the two lines) but would load its lines in the WRONG order.
+            WriteLog(dir, "wavee-20260902-120000.log",
+                "seq=1 tid=2 t=1000 sid=eeeeeeee pid=9 I [app] startup - Wavee starting - first");
+            WriteLog(dir, "wavee-20260902.log",
+                "seq=2 tid=2 t=2000 sid=eeeeeeee pid=9 I [connect] second");
+            string live = Path.Combine(dir, "wavee.log");
+
+            var s = Assert.Single(WaveeLogSessions.ListPastSessions(live, currentPid: -1));
+            Assert.Equal(2, s.EntryCount);
+
+            var entries = WaveeLogSessions.LoadSession(s);
+            Assert.Equal(2, entries.Length);
+            Assert.Contains("first", entries[0].Message);
+            Assert.Equal("second", entries[1].Message);
+        }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
+    }
 }

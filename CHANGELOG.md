@@ -13,10 +13,96 @@ versions separately under `v*` and is not tracked in this file.)
 ### Added
 
 - **Report a problem from inside Wavee.** Settings › About has "Report a problem…" and "Suggest a feature…", the
-  Diagnostics tab lists recent crash reports with a Report button, and after a crash the next launch offers to file
+  About tab lists recent crash reports with a Report button, and after a crash the next launch offers to file
   it. Wavee opens the matching GitHub form with the version, install source, architecture and Windows build filled
   in, and copies a redacted report (personal paths, account details, secrets and addresses removed; track names
-  kept) to the clipboard and to a `wavee-report-<date>.txt` file beside the logs for you to paste.
+  kept) to the clipboard and to a `wavee-report-<date>.txt` file beside the logs for you to paste. The "closed
+  unexpectedly" prompt is offered once per run that left no report or dump behind — a process stopped from the IDE
+  or Task Manager on every run no longer re-asks after every "Not now" — and "Don't ask again after a crash" now
+  silences that evidence-free prompt entirely (a real crash report or dump still surfaces as a quiet toast).
+- **A real Logs tab.** Settings › Logs is a full-height log viewer: a command bar (refresh, copy, export, open the
+  log folder, clear; newest-first, group repeats, and a Verbose switch that captures Debug/Trace for the running
+  session), a search box with level and category filters, rows that expand on a single click to show their fields
+  and exception, and a session picker that actually lists your previous runs. (#55)
+
+### Changed
+
+- **Setup is three screens** — welcome & terms, sign in, local playback — instead of seven. The appearance,
+  sidebar, sound and notification tour pages are gone; those choices live in Settings with the same defaults the
+  wizard used to pick, and "Run setup again" is gone with them. Signing in continues straight to the local playback
+  step without an "Is this you?" stop. (#53)
+- **Settings is regrouped** into General · Appearance · Playback · Notifications · Storage · Logs · About, and every
+  row now carries its own icon instead of repeating its section's. "Disable marquee text" / "Disable color washes"
+  are now the on-switches "Marquee text" / "Color washes". (#54)
+- **The title bar's "…" menu is gone.** Pin to sidebar, Settings, notifications and Friends are direct buttons in
+  the top-right cluster (the notification badge moved from your avatar to a bell), all on the same geometry as the
+  theme toggle. (#58)
+- **Setup heroes are real animations.** The welcome, sign-in and local-playback pages play the Lottie scenes Rise
+  Media Player's setup uses, recoloured to your accent and played the same way (first half once, then hold). (#53)
+- **Setup looks like a WinUI dialog.** A 762×490 plate, the Lottie beside a title and plain text with settings
+  cards, a progress bar and an Accept/Continue footer — no more hero cards, chips or captions. (#53)
+- **Setup opens straight away.** The "Welcome to Wavee · Start setup" splash before the dialog is gone; a first run
+  shows the terms page immediately. The sign-in primary is the standard accent button (the Spotify-green one was too
+  harsh in dark mode), the local-playback step says "Checking…" on its button while the long status lives on the
+  page, and the sign-in page fits the dialog: a smaller QR, one-line card text, and "Wavee needs Spotify Premium ·
+  Sign up" on one row. Any setup page that still overflows shows the scrollbar rail. (#53)
+
+### Removed
+
+- The palette picker (Settings and the profile menu), the Mica / Mica Alt choice, "Limit page color to the hero"
+  and "Track page layout": Wavee always uses the neutral palette, Mica, the automatic page layout and full-page
+  tone. (#54)
+- The `WAVEE_LOG_LEVEL` / `WAVEE_LOG_FILE_LEVEL` / `WAVEE_LOG_RING` environment overrides — use Settings › Logs. (#55)
+
+### Fixed
+
+- Setup showed the raw Spotify account id instead of your display name on the account card and the final page. (#51)
+- The "Local playback needs a one-time setup" toast and banner no longer pop up on top of the setup wizard, whose
+  own local-playback step is that prompt. (#52)
+- Report a problem: scrolling the form no longer paints a dark band over the fields under the title. (#56)
+- **Dialog text that vanished after scrolling.** In "Report a problem" (and any dialog with a long body), scrolling
+  the body down could blank the last checkbox's label and the "Report on GitHub" / "Not now" labels while their
+  buttons stayed: the renderer's per-frame text budget filled up on the report preview and silently dropped every
+  glyph after it. The budget now grows to what the frame needs and the frame repaints whole. (#56)
+- **Text from the previous screen showing through the setup dialog.** Page text underneath an opaque dialog could
+  be painted over it after a partial repaint; the renderer now keeps paint order whenever a fill covers earlier
+  text. (#53)
+- Search: clicking an artist link on the top-result card (or in any result row's subtitle) navigated *and* played the
+  song; a link click is now only the link. The top-result card also gained the right-click menu, a "…" button and
+  drag-to-playlist that every other result already had. (#57)
+- The pop-out video window now fits the video to the window and keeps the transport bar visible at any size,
+  instead of pushing it below the fold until the window was stretched. (#59)
+- Audio quality now applies to every track, not only ones Wavee had never seen before: the chosen bitrate was
+  cached per track for the whole session. The bitrate Wavee picked is now in the log at Info level. (#60)
+- Equalizer changes (on/off, preset, dragging a band) apply immediately to the playing track instead of on the next
+  track, and the equalizer now also applies to local files, radio and module playback. (#60)
+- The title bar said "Sign in" while you were already signed in (the shell mounts before the silent resume
+  finishes), and pressing it signed you in as the demo account on top of the real resume. The chip now follows the
+  shell's real auth state — Connecting… / Reconnect / Sign in — and Sign in runs the real resume. (#61)
+- A track restored paused at launch showed the buffering bar sweeping forever, and its elapsed/remaining readout
+  could show a position past the track's own length (e.g. "35:32 / −0:00" on a 2:54 song) — the position clock now
+  clamps to `[0, duration]` on every read, paused or playing, instead of only while playing. (#62)
+- The profile menu showed your Spotify account id instead of your name when the profile arrived before go-live. (#63)
+- Crash reports are written again. The report writer could not read the live log (a sharing violation, swallowed
+  silently), so the report was lost and the next launch only knew about the Windows dump; the second handler no longer
+  overwrites the first, a failed write is logged, and a crash whose report failed still prompts on the next launch. The
+  crash prompt itself now says "Reading the last crash report…" while it reads, stacks its title over its message,
+  and shows a taller preview; the redactor no longer rewrites "Wavee" or a GitHub handle inside URLs when they merely
+  contain a device or display name. (#64)
+- Home could show only the notification feed, a failed Charts card and Concerts/Browse — no shelves, no "nothing
+  here yet" either — for a moment right after launch, and the same empty read could also flash a stray "Nothing
+  here yet" card over a perfectly normal account. Home now waits for a real feed (or a confirmed-empty one, once
+  the live session has actually had its say) before it paints anything — and could stay waiting forever on some
+  launches, because the wait only re-checked on a feed-cache bump and the session going live published none of its
+  own; Home now also re-reads the instant sign-in actually completes, and force-releases whatever feed it has after
+  8 s no matter what, so the skeleton can never hang indefinitely. (#53)
+- **Home opened in three jolts**: the cached "Jump back in" grid and library sections appeared while Wavee was still
+  connecting, a lone "No charts right now" row painted under them, the new-releases timeline popped in once the session
+  went live, and a second later the live feed replaced everything — chips and the hero appeared, the grid dropped
+  350 px and every row remounted. Home now keeps its loading shimmer until the session has had its say (live, or
+  confirmed offline) and the Charts deck and notification feeds have landed too (capped at 1.5 s), then reveals the
+  settled page once; later refreshes swap in place and never re-run the reveal or re-skeletonize a row. Offline, the
+  cached shelves still reveal once from cache; the Charts deck no longer shows a failed card offline. (#53)
 
 ## [0.2.5] - 2026-09-01
 

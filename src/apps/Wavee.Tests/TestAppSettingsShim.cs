@@ -28,10 +28,20 @@ static class WaveeSettings
     public static readonly SettingKey<bool> DeveloperMode = new("diag.developerMode", false);
     public static readonly SettingKey<bool> FpsOverlay = new("diag.fpsOverlay", false);
     public static readonly SettingKey<bool> DealerArchiveEnabled = new("diag.dealerArchive", false);
+    // Settings › Logs (LogCapturePolicy) — MIRRORS src/apps/Wavee/Platform/AppSettings.cs VERBATIM, same rule as the
+    // sidebar keys below: LogCapturePolicyTests assert against these exact names and the -1 = build-default meaning.
+    public static readonly SettingKey<int> LogMinLevel = new("diagnostics.log.minLevel", -1);
+    public static readonly SettingKey<int> LogFileMinLevel = new("diagnostics.log.fileMinLevel", -1);
     public static readonly SettingKey<int> TermsAcceptedVersion = new("setup.terms.acceptedVersion", 0);
     public static readonly SettingKey<bool> PrivateSession = new("session.private", false);
     public static readonly SettingKey<string> LastAccount = new("session.lastAccount", "");
     public static readonly SettingKey<bool> NormalizationEnabled = new("playback.normalization", true);
+    // ── equalizer / crossfade (App\EqualizerSettings.cs, App\PlaybackDsp.cs) — MIRRORS src/apps/Wavee/Platform/AppSettings.cs
+    // VERBATIM, same rule as the sidebar keys below: EqualizerSettingsTests assert against these exact names/defaults.
+    public static readonly SettingKey<bool> EqualizerEnabled = new("playback.eq.enabled", false);
+    public static readonly SettingKey<string> EqualizerGains = new("playback.eq.gains", "0,0,0,0,0,0,0,0,0,0");
+    public static readonly SettingKey<bool> CrossfadeEnabled = new("playback.crossfade.enabled", false);
+    public static readonly SettingKey<int> CrossfadeMs = new("playback.crossfade.ms", 5000);
     public static readonly SettingKey<bool> StartOnLogin = new("app.startOnLogin", false);
     public static readonly SettingKey<string> LastRunVersion = new("app.lastRunVersion", "");
     public static readonly SettingKey<long> UpdateLastCheckedMs = new("app.update.lastCheckedMs", 0L);
@@ -47,6 +57,7 @@ static class WaveeSettings
     public static readonly SettingKey<string> PendingCrashReport = new("crash.pendingReport", "");
     public static readonly SettingKey<bool> CrashPromptOptOut = new("crash.promptOptOut", false);
     public static readonly SettingKey<string> RunMarker = new("app.runMarker", "");
+    public static readonly SettingKey<bool> UncleanExitOffered = new("crash.uncleanExitOffered", false);
     public static readonly SettingKey<string> LastSeenCrashDumpPath = new("diagnostics.crash.lastDumpPath", "");
     public static readonly SettingKey<long> LastSeenCrashDumpTicksUtc = new("diagnostics.crash.lastDumpTicksUtc", 0L);
 

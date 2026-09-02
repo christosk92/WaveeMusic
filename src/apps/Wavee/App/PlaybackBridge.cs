@@ -238,6 +238,13 @@ public sealed class PlaybackBridge
         new(Services.UseRealBackend && Wavee.SpotifyLive.SpotifyLiveLogin.HasStoredCredential()
             ? ShellAuthState.Connecting : ShellAuthState.SignInRequired);
 
+    /// <summary>THE verb behind the shell's sign-in / reconnect chip. The composition root (<c>WaveeApp</c>) assigns it:
+    /// on the real backend it starts a NON-interactive <c>LiveSessionHost</c> resume (the same one the cache-first shell
+    /// kicks at launch, re-entrancy guarded); on the fake/demo backend it connects the stub session. Never
+    /// <c>Session.ConnectAsync()</c> from a view: before <c>Services.GoLive</c> the switchable session's inner is still
+    /// the <c>FakeSpotifySession</c>, so that call signs a real user in as the demo account.</summary>
+    public Action? SignIn { get; set; }
+
     /// <summary>Fold the raw <see cref="Auth"/> status with the current <see cref="Login"/> phase into
     /// <see cref="ShellAuthState"/>. <see cref="AuthStatus.Authenticated"/> always wins outright (Live) — it is the one
     /// fact <c>svc.GoLive</c>'s session swap publishes, and nothing about the login phase can contradict it. Below that,

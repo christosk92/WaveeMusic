@@ -131,7 +131,7 @@ sealed class ImmersiveLyricsSurface : Component
         });
 
         // The appearance epoch is what makes the Settings toggle apply LIVE to an already-open surface (the
-        // DisableColorWashes / DisableMarquee idiom): the writer bumps it, this re-renders, the interval re-gates.
+        // ColorWashesEnabled / MarqueeEnabled idiom): the writer bumps it, this re-renders, the interval re-gates.
         _ = AppearancePrefs.Epoch.Value;
         bool animated = svc?.Settings.Get(WaveeSettings.LyricsAnimatedBackdrop) ?? true;
         // Reduced motion is a VALUE the PAL republishes on WM_SETTINGCHANGE — read where it is consumed, exactly like

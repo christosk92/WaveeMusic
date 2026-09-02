@@ -288,9 +288,18 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
 
     long Pos()
     {
-        if (!_isPlaying || _isBuffering || _isPrebuffering) return _posMs;
         long dur = EffectiveDurationLocked();   // a live broadcast has no ceiling to clamp the playhead against
-        return Math.Clamp(_posMs + (long)((_now() - _posAnchorWall) * _speed), 0, dur <= 0 ? long.MaxValue : dur);
+        long cap = dur <= 0 ? long.MaxValue : dur;
+        // The paused/buffering branch used to return _posMs RAW — no clamp at all, not even the [0, duration] one the
+        // playing branch below already had. _posMs is folded from several places (a remote cluster snapshot aged
+        // forward from ITS OWN timestamp, a host signal, a restored launch snapshot) and none of them is guaranteed to
+        // land inside [0, duration] — a stale/corrupt upstream value (e.g. a launch-recovery snapshot written under a
+        // momentarily-unknown duration, so an earlier session's own clamp here had nothing to clamp AGAINST) then
+        // reached the player bar verbatim: a 2:54 track paused at "35:32 / −0:00". Clamping on EVERY read, playing or
+        // not, means the bar can never show a position outside the track's own length regardless of how _posMs got
+        // corrupted upstream.
+        if (!_isPlaying || _isBuffering || _isPrebuffering) return Math.Clamp(_posMs, 0, cap);
+        return Math.Clamp(_posMs + (long)((_now() - _posAnchorWall) * _speed), 0, cap);
     }
 
     // Clamp a content playback rate to Spotify's spoken-word range; invalid/zero ⇒ normal speed.
@@ -623,6 +632,14 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
                         if (DescribesAnotherTrack(e.Track, _track)) break;
                         _canSkipPrev = snap.History.Length > 0 || snap.ContextCursor > 0;   // same derivation (recovery publishes Paused)
                         _isPlaying = false; _speed = 1.0; _posMs = e.AtMs; _posAnchorWall = _now();
+                        // …and the transient flags with it. Paused/Ended/BecameInactive all mean "nothing is waiting on
+                        // audio here", and NOTHING else can clear them on this path: the flags reach us from the CLUSTER
+                        // fold (`_isBuffering = c.IsBuffering`), and the cluster that seeds launch recovery is our own
+                        // last publish from a previous run — which can perfectly well have been written mid-load. With no
+                        // local host running there is no Playing/Ended edge coming to retire it, so a stale is_buffering
+                        // latched true for the whole session: the player bar's top edge swept forever over a track that
+                        // was merely paused at its restored position. (SessionRecovery publishes exactly this event.)
+                        _isBuffering = false; _isPrebuffering = false; _lastPubBuffering = false;
                         break;
                     case EvKind.Seeked:
                         // AtMs is the PRE-seek playhead (Gabo's segment-close reads it for exactly that reason —

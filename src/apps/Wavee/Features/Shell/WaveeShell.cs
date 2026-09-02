@@ -898,7 +898,12 @@ sealed class WaveeShell : Component
                         TabsElasticLane = true,            // tabs absorb the overrun; the omnibar keeps its allocated width
                         Trailing = chrome.Trailing,
                         CaptionLeading = chrome.CaptionLeading,
-                        ContentVersion = chrome.ContentVersion,
+                        // The row's own version covers its layout/auth terms; the shell folds in the ROUTE and the pin
+                        // store's version so the trailing island's direct Pin/Unpin button (MergedChromeRow.PinButton,
+                        // resolved from ActionServices.CurrentDestination at render) follows a navigation and a
+                        // pin/unpin instead of showing the previous page's state until something else re-rendered.
+                        ContentVersion = () => HashCode.Combine(chrome.ContentVersion(), _route.Value.Name, _route.Value.Arg,
+                                                                _sidebar.PinsVersion.Value),
                     };
                     // Hand the island the bar's LIVE centre-column measurement (the merged-mode mirror of ContentAvail)
                     // so an expanding field can clamp itself without the bar re-rendering.
@@ -1280,9 +1285,10 @@ sealed class WaveeShell : Component
                 if (s.Payload is FileDropData { Count: > 0 } files) LocalFileActions.PlayDropped(_actions, files.Paths);
             });
         // The shell BACKDROP — the material stack the whole authenticated shell sits on, bottom-up:
-        //   1. LIVE MICA — the DWM window material itself (Program.cs asks for it: CustomFrame + MicaAlt). This box
-        //      paints NOTHING, so the backdrop reads straight through every paint-site omission in the chrome (the
-        //      title-bar drag bands, the sidebar band, the player dock).
+        //   1. LIVE MICA — the DWM window material itself (Program.cs asks for it: CustomFrame, always base Mica —
+        //      the Mica Alt row is gone, Workstream B). This box paints NOTHING, so the backdrop reads straight
+        //      through every paint-site omission in the chrome (the title-bar drag bands, the sidebar band, the
+        //      player dock).
         //   2. MATERIAL — ShellMaterialLayer, driven by the page-published signal: a flat tint (detail/artist pages
         //      publish their art colour at A=0.14) or Home's three clipped radial washes. A LOW-ALPHA scrim between
         //      Mica and the chrome, so the window material carries the album/artist hue instead of replacing it.
@@ -2071,7 +2077,7 @@ sealed class WaveeShell : Component
     void ToggleTheme()
     {
         var next = Theme.Dark ? ThemeKind.Light : ThemeKind.Dark;
-        Tok.Use(WaveeTheme.ResolvePalette(_settings.Get(WaveeSettings.PaletteId)), next);
+        Tok.Use(WaveeTheme.ResolvePalette(), next);
         _settings.Set(WaveeSettings.ThemeMode, next == ThemeKind.Dark ? 2 : 1);
         _requestTheme?.Invoke(250f);
     }

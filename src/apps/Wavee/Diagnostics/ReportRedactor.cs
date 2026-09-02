@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Wavee;
@@ -139,6 +140,38 @@ public static partial class ReportRedactor
     /// <summary>Ordinal, case-insensitive literal replace. Skipped under 3 characters — a two- or one-letter user
     /// name (not unusual for a short Windows account name) would otherwise erase that string wherever it appears in
     /// prose, not just as an identity.</summary>
+    /// <summary>Replace a literal name WORD-WISE, case-insensitively. Plain <c>Replace</c> matched substrings, which
+    /// turned a report into nonsense the moment a name was a common token: a Connect device called "Wavee" redacted
+    /// every "Wavee" in the report ("&lt;device&gt; 0.2.5-dev"), and a display name that is a prefix of a GitHub handle
+    /// rewrote the feed URL ("&lt;display-name&gt;k92/&lt;device&gt;Music"). A hit now needs a non-alphanumeric character
+    /// (or the string edge) on both sides, and the app's own name is never a secret. Manual scan rather than a
+    /// runtime-built Regex: the file's contract is that every pattern is a <see cref="GeneratedRegex"/>.</summary>
     static string Literal(string s, string? value, string placeholder)
-        => value is { Length: >= 3 } v ? s.Replace(v, placeholder, StringComparison.OrdinalIgnoreCase) : s;
+    {
+        if (value is not { Length: >= 3 } v || string.Equals(v, "Wavee", StringComparison.OrdinalIgnoreCase)) return s;
+        int from = 0;
+        StringBuilder? sb = null;
+        while (true)
+        {
+            int i = s.IndexOf(v, from, StringComparison.OrdinalIgnoreCase);
+            if (i < 0) break;
+            int end = i + v.Length;
+            bool boundedLeft = i == 0 || !char.IsLetterOrDigit(s[i - 1]);
+            bool boundedRight = end == s.Length || !char.IsLetterOrDigit(s[end]);
+            if (boundedLeft && boundedRight)
+            {
+                sb ??= new StringBuilder(s.Length);
+                sb.Append(s, from, i - from).Append(placeholder);
+                from = end;
+            }
+            else
+            {
+                sb?.Append(s, from, end - from);
+                from = end;
+            }
+        }
+        if (sb is null) return s;
+        sb.Append(s, from, s.Length - from);
+        return sb.ToString();
+    }
 }
