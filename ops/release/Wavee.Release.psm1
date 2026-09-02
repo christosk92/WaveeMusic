@@ -586,8 +586,25 @@ function Get-ChangelogEntryRefs {
     $prs = @()
     $bullets = 0
     $unref = 0
+    # A bullet is its `- ` line PLUS every indented continuation line after it (the CHANGELOG wraps at ~118 columns,
+    # so the trailing ref usually sits on the LAST line of a bullet, not the first). Join the fragments with a space
+    # exactly like ChangelogParser.cs does, then apply the trailing-group rule to the joined text.
+    $joined = New-Object System.Collections.Generic.List[string]
+    $current = $null
     foreach ($line in ($m.Groups['body'].Value -split "\r?\n")) {
-        if ($line -notmatch '^- ') { continue }
+        if ($line -match '^- ') {
+            if ($null -ne $current) { $joined.Add($current) }
+            $current = $line.TrimEnd()
+        }
+        elseif ($null -ne $current -and $line -match '^\s+\S') { $current = $current + ' ' + $line.Trim() }
+        else {
+            if ($null -ne $current) { $joined.Add($current) }
+            $current = $null
+        }
+    }
+    if ($null -ne $current) { $joined.Add($current) }
+
+    foreach ($line in $joined) {
         $bullets++
         $g = [regex]::Match($line, '\s\((?<refs>(?:[#!]\d+(?:,\s*)?)+)\)\s*$')
         if (-not $g.Success) { $unref++; continue }

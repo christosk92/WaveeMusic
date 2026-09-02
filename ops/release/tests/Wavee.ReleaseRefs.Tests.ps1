@@ -128,6 +128,8 @@ Describe 'Get-ChangelogEntryRefs' {
 - store: fix submission bug (#48, !52)
 - chore: tidy comments
 - docs: mention issue (#412) mid-sentence, not a ref
+- **A wrapped bullet.** The CHANGELOG wraps at ~118 columns, so the trailing group lands on the
+  continuation line; a mid-sentence (#413) on the way is still not a ref. (#77)
 
 ## [0.2.5] - 2026-08-30
 - audio: adaptive read-ahead (#99)
@@ -154,9 +156,15 @@ Describe 'Get-ChangelogEntryRefs' {
         $r.Prs -contains 52 | Should Be $true
     }
 
-    It 'counts Bullets and Unreferenced' {
+    It 'reads the trailing group of a WRAPPED bullet from its continuation line - parity with ChangelogParser.cs FlushBullet' {
         $r = Get-ChangelogEntryRefs -Changelog $script:Changelog -Semver '0.2.6'
-        $r.Bullets | Should Be 4
+        $r.Issues -contains 77 | Should Be $true
+        $r.Issues -contains 413 | Should Be $false
+    }
+
+    It 'counts Bullets and Unreferenced (a wrapped bullet is ONE bullet)' {
+        $r = Get-ChangelogEntryRefs -Changelog $script:Changelog -Semver '0.2.6'
+        $r.Bullets | Should Be 5
         $r.Unreferenced | Should Be 2
     }
 
