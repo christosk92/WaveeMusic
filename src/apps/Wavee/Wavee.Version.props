@@ -6,6 +6,6 @@
     <WaveeCodename>Breaker</WaveeCodename>
     <!-- NEVER hand-edited. Monotonic release counter (max 65535) bumped + committed by ops/release/wavee-release.ps1.
          MSIX Identity/@Version = M.m.p.WaveeBuild - the ONLY thing Windows and AppUpdateVersion.IsNewer compare. -->
-    <WaveeBuild>6</WaveeBuild>
+    <WaveeBuild>7</WaveeBuild>
   </PropertyGroup>
 </Project>
