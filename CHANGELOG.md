@@ -8,6 +8,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.7] - unreleased
+
+### Changed
+
+- **The Library V3 sidebar is rebuilt around one left edge.** Home is fixed chrome above "Your Library" instead of
+  a "Shortcuts" section inside the filtered list, so filters and search never hide it and the rail keeps its tile.
+  The search field is inline when the pane has room — transparent, borderless, beside the full "Recents" pill — and
+  collapses to a magnifier on a narrow pane that morphs open in place, clears on one Escape, closes on a second or
+  on an empty blur, and is never remembered across launches. Filter pills sit on a bordered control surface, keep
+  their width when selected, use contrast-picked ink on the accent, and picking a kind slides in a round ✕ that
+  clears everything; a qualifier fuses into the shared segmented pill with an opaque segment and an ✕. Every row of
+  every design now shares one art column: glyph rows get a real art-wide column, the tree's reserved chevron cell is
+  gone (the folder chevron moved to the trailing edge), a pinned folder sits flush with its siblings, the
+  multi-select lane no longer pushes rootlist rows right, and the header glyph, magnifier and first chip line up with
+  the rows' art. (#71)
+- **The artist page's album drawer is compact, instant and unmistakable.** 32-DIP rows under a 40-DIP header (was 44
+  under 56), two track columns on wide windows so a whole album fits without scrolling, a "Show all" row past 12 / 24
+  tracks, a caret pointing at the cover you clicked and that cover in the drawer's header, and the clicked row always
+  scrolled to the same spot under the tabs with one 200 ms open — no more skeleton flash for an album you already
+  opened, no more previous album's tracks under the new cover, no more drawer hopping between rows while the page
+  scrolls after it, no more section-wide reflow on every click. (#77)
+
+### Fixed
+
+- The Library V3 search box no longer cross-fades between two controls, swallows Escape, stays open forever or
+  reopens after a relaunch: it is one control that morphs in place, Escape clears then closes, an empty blur closes,
+  the ✕ clears, and typing is debounced so a keystroke no longer rebuilds the whole library projection. (#69)
+- Library V3 filter pills: the fused "Playlists │ By you" segment is legible again (an opaque segment instead of a
+  translucent card on the accent), selected ink follows the live accent's contrast, the label no longer shifts when a
+  pill is selected, resting pills have a visible border, the trailing glyph is an ✕ because tapping clears, and a
+  leading ✕ clears every filter at once. (#70)
+- The sidebar's "Recents" sort follows what you played, not what you clicked: opening a playlist no longer moves it
+  to the top, playing one (here or on another device) does, and never-played items keep their added-date order
+  below. (#72)
+- Sidebar rows share one left edge in every design: glyph rows, pinned covers, playlist covers, folders and the V3
+  chrome all start on the same art column, and a rootlist with a folder no longer indents the whole list. (#73)
+- **Switching the output device (or its sample rate) mid-track no longer breaks the next track.** The gapless hand-off
+  used to be scheduled from the old device's clock, so the next song started up to minutes late while the bar counted
+  past the end, the time readout flicked between two values, and the pre-decoded next song played slow and flat at the
+  old rate. The join now follows the live session clock, a pre-decoded song is re-prepared for the new rate, and the
+  readout is clamped on every path. (#65)
+- Row size now scales the cover art with the row: Cozy rows get 40-DIP art and Comfortable rows 48-DIP, instead of a
+  32-DIP square floating in a 64-DIP row; the Settings › Appearance density preview follows. Dragging the Row size
+  slider no longer bounces between levels (the toolbar button relabelled itself mid-drag and dragged its flyout
+  sideways under the pointer), and the thumb tip says Compact / Default / Cozy / Comfortable instead of 0–3. (#66)
+- The setup sign-in page no longer cuts off its last line: the page body now really scrolls (and shows its rail) when
+  it overflows, the QR code respects its 80-DIP box instead of growing to 111, and the scan card's text fits one
+  line. (#67)
+- "Report a problem…" could open with Question selected; the requested kind now travels with the request and is part
+  of the form's identity, and every open is logged. (#68)
+- Selecting an artist (or album/podcast) in Your Library no longer throws the list back to the top and then scrolls
+  it back: the navigator keeps its scroll position across every refresh, and a refresh that changes nothing no longer
+  rebuilds the list at all. (#74)
+- "Recents" in Your Library › Artists / Albums / Podcasts — and in an artist's discography column — now means
+  recently *played*: what you listened to most recently comes first (including plays from other devices, via your
+  listening history), everything you have not played keeps its old order below. "Recently added" now really is
+  newest-added first (it listed the oldest first), and the direction chevron works for every sort. (#75)
+- **The album page's "About this release" tiles no longer re-arrange themselves as details arrive.** The block is a
+  fixed two-column grid from its first paint — Songs · Length over a full-width release date — the date refines in
+  place from year to full date, the label joins the notes below instead of becoming a fourth tile, nothing slides or
+  overlaps, and a long date or label can no longer run past its tile (it wraps or ellipsizes inside it). The same
+  stat tile now serves the module page, the pre-release countdown and the track facts strip. (#76)
+
 ## [0.2.6] - 2026-09-02
 
 ### Added
