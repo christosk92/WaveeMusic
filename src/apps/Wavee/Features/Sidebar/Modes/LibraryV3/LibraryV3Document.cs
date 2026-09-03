@@ -40,6 +40,13 @@ static class LibraryV3Document
     public const string LikedRouteKey = "liked";
     public const string LikedItemId = "v3.liked.item";
 
+    /// <summary>Does V3's CHROME carry the fixed library destinations? It does: <c>LibraryV3NavBand</c> renders Liked
+    /// Songs / Albums / Artists / Podcasts / Local files as one always-present strip (#85 H4). This document therefore
+    /// stops emitting its own <c>v3.liked</c> row, which would be the same destination twice, two rows apart.
+    /// <para>A named constant rather than deleted code: the section, its id and its geometry are still the right answer
+    /// the moment the strip is turned off or moved, and the branch below documents exactly what the strip took over.</para></summary>
+    public static readonly bool ChromeCarriesDestinations = true;
+
     /// <summary>Build the ephemeral document for one V3 view state.</summary>
     /// <param name="topBar">W3 — the shell's shortcut band (<c>SidebarPreferences.TopBar</c>), the ONE global list
     /// Classic/Curated still materialise as a document section (<c>SidebarShortcutsSection</c>). V3 does NOT: its own
@@ -74,7 +81,13 @@ static class LibraryV3Document
         //     to remove. It is NOT dropped unconditionally — a user who removed Liked from the band still gets V3's own
         //     row, which is the §3.0 obligation. (An ENTITY item whose uri maps onto Liked does not count: different
         //     art, different menu, and SidebarShortcutsSection.ContainsRoute owns that distinction.)
-        if (state.LikedVisible && !SidebarShortcutsSection.ContainsRoute(topBar, LikedRouteKey))
+        // ...and it is now dropped ALWAYS, because the chrome's destination strip (LibraryV3NavBand) carries Liked
+        // Songs unconditionally alongside Albums / Artists / Podcasts / Local files (#85 H4). The rule above is
+        // unchanged in spirit — one destination, one row — the band it defers to simply stopped being optional. Kept
+        // as a guarded branch rather than deleted so the section, its id and its geometry survive for the moment a
+        // future design turns the strip off.
+        if (!ChromeCarriesDestinations &&
+            state.LikedVisible && !SidebarShortcutsSection.ContainsRoute(topBar, LikedRouteKey))
             sections.Add(new SidebarSectionSpec(LikedId, SidebarSectionKind.StaticLinks,
                 Title: null, TitleLocKey: null,
                 Hidden: false, Collapsed: false,
@@ -252,6 +265,8 @@ static class LibraryV3Document
 /// <param name="HasPins">Whether any pin SURVIVED the active lens (the projection's pin band is non-empty).</param>
 /// <param name="LikedPinned">Whether Liked Songs is itself pinned — it is then rendered as pin #n, never twice.</param>
 /// <param name="QualifiersAvailable">Whether the data evidences ≥2 provenance classes (locked decision 10).</param>
+/// <param name="DragInFlight">Issue #85 (H1) — a Wavee resource drag is live ANYWHERE right now (the mode root's own
+/// <c>UseDragState()</c> read, folded in here rather than read from this pure struct — see <c>PinsBandVisible</c>).</param>
 readonly record struct LibraryV3DocState(
     int Filter = (int)SidebarV3Filter.All,
     int Qualifier = (int)SidebarV3Qualifier.Any,
@@ -263,16 +278,23 @@ readonly record struct LibraryV3DocState(
     string? DrillFolderId = null,
     bool HasPins = false,
     bool LikedPinned = false,
-    bool QualifiersAvailable = false)
+    bool QualifiersAvailable = false,
+    bool DragInFlight = false)
 {
     /// <summary>At a drilled-in level the pane shows exactly one folder's direct children — no pin band, no shortcut.</summary>
     public bool Drilled => DrillFolderId is { Length: > 0 };
 
-    /// <summary>The pin band renders whenever pins survived the lens and the pane is at the library root with no query.
-    /// <para>A SEARCH deliberately dissolves it: search results are one flat relevance list (the projection still leads with
-    /// the matching pins, so they are not lost — they are simply not a separate band), which is also what makes "the list is
-    /// empty" mean "no results" and nothing else.</para></summary>
-    public bool PinsBandVisible => HasPins && !Drilled && !Searching;
+    /// <summary>The pin band renders whenever pins survived the lens and the pane is at the library root with no query
+    /// — OR (issue #85, H1) while a drag is live anywhere: with zero pins the band used to disappear ENTIRELY, which
+    /// made pinning by drag impossible on a fresh install (the only other path in was a row's context menu). The band
+    /// stays hidden at rest with no pins so V3's chrome budget is unchanged; it exists only for the duration of a
+    /// drag, which is exactly what makes the drop target affordable. <see cref="SidebarPinDropZone"/> itself already
+    /// downgrades to its quiet resting look for a drag that cannot actually be pinned (a track), so rendering the
+    /// section for ANY live resource drag — not only a pin-eligible one — is enough; the zone decides the rest.
+    /// <para>A SEARCH deliberately dissolves it regardless: search results are one flat relevance list (the
+    /// projection still leads with the matching pins, so they are not lost — they are simply not a separate band),
+    /// which is also what makes "the list is empty" mean "no results" and nothing else.</para></summary>
+    public bool PinsBandVisible => (HasPins || DragInFlight) && !Drilled && !Searching;
 
     /// <summary>§3.0 obligation 2's exact scope: the unfiltered library and the Playlists lens (where Spotify lists it
     /// too), never while searching (a route row is not a search result), never when it is already a pin, never inside a

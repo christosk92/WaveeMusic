@@ -30,6 +30,12 @@ sealed class ProfileMenu : Component
     const float MenuWidth = 304f;
     /// <summary>The chip's plain avatar diameter (the unread badge lives on the trailing bell now, not here).</summary>
     const float AvatarSize = 24f;
+    /// <summary>Issue #88: <c>ShellResponsiveLayout.ChromeProfileNameW</c> (90) budgets the chip's 8-DIP gap +
+    /// this caption + the named form's extra 6 DIP of right padding — but the caption itself carried no
+    /// <c>MaxWidth</c>, so a long display name pushed the chip (and everything left of it) past what the budget had
+    /// actually reserved, making the constant nominal rather than real. Capping the caption at the remainder
+    /// (90 − 8 − 6) makes it a real reservation.</summary>
+    const float NameCapW = ShellResponsiveLayout.ChromeProfileNameW - 8f - 6f;
 
     readonly PlaybackBridge _b;
     // The LADDER as a signal, not frozen bools: a ComponentEl never re-runs its factory, so a plain `bool showName`
@@ -168,7 +174,16 @@ sealed class ProfileMenu : Component
             Padding = new Edges4(4f, 0f, showName ? 10f : 4f, 0f), Corners = CornerRadius4.All(Radii.Control),
             Role = AutomationRole.Button, Focusable = true,
             OnClick = OpenMenu, OnRealized = h => anchor.Value = h,
-            Children = showName ? new Element[] { pic, Caption(name).Primary() } : new Element[] { pic },
+            Children = showName
+                ? new Element[]
+                {
+                    pic,
+                    Caption(name).Primary() with
+                    {
+                        MaxWidth = NameCapW, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    },
+                }
+                : new Element[] { pic },
         }.Interactive(Interaction.Subtle);
     }
 

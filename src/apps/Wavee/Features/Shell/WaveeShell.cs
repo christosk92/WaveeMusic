@@ -1155,12 +1155,25 @@ sealed class WaveeShell : Component
                         [
                             // The strip is entirely on the content side of the seam to avoid covering the sidebar's
                             // 12-DIP scrollbar lane; Splitter's root Grow=1 fills this definite-height column.
+                            // Issue #84 — NavPaneMinW dropped 240 → 180. Left at their engine defaults, FadeStart would
+                            // fall to the new Min (180, no resist band left at all) and ForcePush would default to
+                            // FadeDistance (44), collapsing at 136 — the pane would stop resisting well before the
+                            // floor and only snap to the rail deep past it. Pinning FadeStart at the OLD floor (240)
+                            // keeps the same dim-and-resist feel through 240 → 180 that shipped before this issue;
+                            // ForcePush = 64 moves the collapse point to 240 − 64 = 176, just below the new 180 floor
+                            // (the old geometry collapsed 44 DIP below its 240 floor — this keeps a matching feel
+                            // scaled to the shorter 60-DIP resist span); ReExpand = 190 keeps the same ~14-DIP
+                            // hysteresis band above the collapse point the old 196/210 pair had.
                             Splitter.Create(_sidebarWidth, CommitSidebarDrag, new()
                             {
                                 Min = ShellResponsiveLayout.NavPaneMinW,
                                 Max = ShellResponsiveLayout.NavPaneMaxW,
                                 ShowIndicator = false,
                                 CompactWidth = ShellResponsiveLayout.CompactRailW,
+                                FadeStart = 240f,
+                                FadeDistance = 64f,
+                                ForcePush = 64f,
+                                ReExpand = 190f,
                             }, collapsed: _sidebarCompact, fade: _sidebarFade, dragging: _sidebarDragging),
                         ],
                     },

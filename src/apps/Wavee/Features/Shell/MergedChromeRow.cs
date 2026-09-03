@@ -67,23 +67,41 @@ sealed class MergedChromeRow
         return HashCode.Combine(flags, (int)l.SearchWidth, epoch, auth);
     }
 
+    // Issue #88: the tabs island used to HUG (Shrink=1, MinWidth=0), so its width tracked the tab strip's own
+    // measured content — a title swinging inside TabStrip's Min/MaxTabWidth (or a tab count change) shoved the
+    // centred search box by up to half the swing, with no animation to soften the jump. It now takes a RESERVED,
+    // quantised Width (MergedChromeLayout.LeadClusterW, the same "reserve instead of hug" move PlayerBar's left
+    // cluster already makes for the far more variable track title — PlayerBar.cs:342-354) plus whatever the nav
+    // buttons in this cluster cost, so the box's own size no longer depends on the CURRENT tab title at all. Any
+    // slack between the reservation and the strip's actual content is dead Client-hit-test space inside the island
+    // (the same trade PlayerBar's left cluster makes) — accepted so the search box holds still. ClipToBounds +
+    // the strip's own ScrollEl absorb the rare case where the reservation undershoots (TabStrip.cs:641-658).
+    static readonly LayoutTransition TabLaneMotion = new(
+        TransitionChannels.Bounds, TransitionDynamics.Tween(Motion.ControlFast, Easing.FluentPopOpen));
+
     public Element Tabs()
     {
         var l = _layout.Value;
         var kids = new List<Element>(3);
+        float navW = 0f;
         if (l.ShowBack)
+        {
             kids.Add(Embed.Comp(() => new NavHistoryButton(
                 Icons.Back, _back, _canBack, _backHistory, _go, ShellToolbar.BarNavStyle)));
+            navW += ShellResponsiveLayout.ChromeNavButtonW;
+        }
         if (l.ShowForward)
+        {
             kids.Add(Embed.Comp(() => new NavHistoryButton(
                 Icons.Forward, _forward, _canForward, _forwardHistory, _go, ShellToolbar.BarNavStyle)));
+            navW += ShellResponsiveLayout.ChromeNavButtonW;
+        }
         kids.Add(_tabStrip());
         return new BoxEl
         {
-            // HUGS (the TitleBar island contract — its rect is reported wholesale as Client, so slack in here is dead
-            // drag space). Shrink=1 + MinWidth=0 is what lets the strip's scroll lane give way instead.
+            Key = "chrome-tabs-lane", Animate = TabLaneMotion,
             Direction = 0, AlignItems = FlexAlign.Center, Height = TitleBar.ExpandedHeight,
-            Shrink = 1f, MinWidth = 0f, Children = kids.ToArray(),
+            Width = navW + l.LeadClusterW, Shrink = 0f, ClipToBounds = true, Children = kids.ToArray(),
         };
     }
 
@@ -132,7 +150,7 @@ sealed class MergedChromeRow
         {
             kids.Add(Embed.Comp(() => new NotificationBellButton()));
             kids.Add(NavButton(Icons.Friends, ToggleFriends, Loc.Get(Strings.Shell.Friends)));
-            if (PinButton() is { } pin) kids.Add(pin);
+            kids.Add(PinButton());
             kids.Add(NavButton(Icons.Settings, () => _go("settings", null), Loc.Get(Strings.Auth.Settings)));
         }
         return new BoxEl
@@ -150,14 +168,26 @@ sealed class MergedChromeRow
 
     // The direct pin/unpin button for whatever destination is on screen — same row PinActions.RowForDestination
     // already hands the tab context menu (WaveeShell.TabMenu) and the retired "…" overflow, so the toast/undo
-    // behaviour is identical; only the affordance moved. Null when the destination isn't pinnable or there is no
-    // sidebar pin store (ActionServices.Sidebar absent).
-    Element? PinButton()
+    // behaviour is identical; only the affordance moved. Issue #88: MergedChromeLayout.FixedBudget already reserves
+    // this button's 44 DIP unconditionally (every destination pays for all four trailing actions at once, so a
+    // page that gains/loses a pin row never reflows the rest of the trailing island) — but this method used to
+    // return null for an unpinnable destination, so the ELEMENT TREE disagreed with the budget and the trailing
+    // island's actual width still changed on every navigation. An invisible, non-hit-testable placeholder the same
+    // 44 DIP wide keeps the tree honest with the budget it was already charged for.
+    Element PinButton()
     {
-        if (Acts is not { } acts || acts.CurrentDestination?.Invoke() is not { } destination) return null;
-        if (PinActions.RowForDestination(acts, in destination) is not { Invoke: { } invoke } row) return null;
+        if (Acts is not { } acts || acts.CurrentDestination?.Invoke() is not { } destination
+            || PinActions.RowForDestination(acts, in destination) is not { Invoke: { } invoke } row)
+            return PinPlaceholder();
         return NavButton(row.Icon.Glyph ?? Icons.Pin, invoke, row.Label);
     }
+
+    static Element PinPlaceholder() => new BoxEl
+    {
+        Key = "chrome-pin-placeholder",
+        Width = ShellResponsiveLayout.ChromeNavButtonW, Height = TitleBar.ExpandedHeight,
+        Shrink = 0f, HitTestVisible = false, Opacity = 0f,
+    };
 
     internal void ToggleFriends() => Ui?.Toggle(RailMode.Friends);
 

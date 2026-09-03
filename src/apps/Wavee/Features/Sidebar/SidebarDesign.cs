@@ -57,8 +57,8 @@ public static class SidebarDesignInfo
     };
 
     /// <summary>The responsive nav-pane width tiers per design (locked decision 14). All three sets sit INSIDE the global
-    /// <c>ShellResponsiveLayout.NavPaneMinW/MaxW</c> clamp (240/460) — the grip and the tier ladder still clamp through
-    /// that one owner, and no per-design literal pair may be reintroduced anywhere else.</summary>
+    /// <c>ShellResponsiveLayout.NavPaneMinW/MaxW</c> clamp (180/460, issue #84) — the grip and the tier ladder still
+    /// clamp through that one owner, and no per-design literal pair may be reintroduced anywhere else.</summary>
     public static (float Narrow, float Mid, float Wide) Tiers(SidebarDesign d) => d switch
     {
         SidebarDesign.LibraryV3 => (300f, 340f, 380f),

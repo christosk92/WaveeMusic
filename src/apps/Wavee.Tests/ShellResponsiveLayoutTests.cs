@@ -107,13 +107,28 @@ public class ShellResponsiveLayoutTests
     [Fact]
     public void NavPaneClampBounds_ContainEveryDefaultTier()
     {
-        Assert.Equal(240f, ShellResponsiveLayout.NavPaneMinW);
+        // Issue #84: the floor dropped 240 → 180 so the sidebar can go genuinely narrow.
+        Assert.Equal(180f, ShellResponsiveLayout.NavPaneMinW);
         Assert.Equal(460f, ShellResponsiveLayout.NavPaneMaxW);
         Assert.InRange(ShellResponsiveLayout.NavPaneNarrowW, ShellResponsiveLayout.NavPaneMinW, ShellResponsiveLayout.NavPaneMaxW);
         Assert.InRange(ShellResponsiveLayout.NavPaneMidW, ShellResponsiveLayout.NavPaneMinW, ShellResponsiveLayout.NavPaneMaxW);
         Assert.InRange(ShellResponsiveLayout.NavPaneWideW, ShellResponsiveLayout.NavPaneMinW, ShellResponsiveLayout.NavPaneMaxW);
-        // The narrow-drawer floor and the pane floor are the same 240 seam.
-        Assert.Equal(ShellResponsiveLayout.NavPaneMinW, ShellResponsiveLayout.DrawerMinW);
+        // Every design's own tier triple (Classic 240/280/320 · Library V3 300/340/380 · Curated 280/320/360) still
+        // sits inside the one clamp pair, even though none of them reach down to the new 180 floor themselves — the
+        // floor exists for a DRAGGED width, not for a tier default.
+        foreach (var d in SidebarDesignInfo.All)
+        {
+            var (narrow, mid, wide) = SidebarDesignInfo.Tiers(d);
+            Assert.InRange(narrow, ShellResponsiveLayout.NavPaneMinW, ShellResponsiveLayout.NavPaneMaxW);
+            Assert.InRange(mid, ShellResponsiveLayout.NavPaneMinW, ShellResponsiveLayout.NavPaneMaxW);
+            Assert.InRange(wide, ShellResponsiveLayout.NavPaneMinW, ShellResponsiveLayout.NavPaneMaxW);
+        }
+        // DrawerMinW is DELIBERATELY its own 240 constant, not `= NavPaneMinW` — the narrow-shell drawer never used the
+        // pane's OWN dragged-width floor, it happened to share the same number. Now that the pane floor is 180, the
+        // drawer keeps its own wider 240 floor (a drawer overlay reads as cramped narrower than a docked pane would,
+        // since it has no adjacent content column to lean on) rather than silently following the pane down.
+        Assert.Equal(240f, ShellResponsiveLayout.DrawerMinW);
+        Assert.NotEqual(ShellResponsiveLayout.NavPaneMinW, ShellResponsiveLayout.DrawerMinW);
     }
 
     [Fact]

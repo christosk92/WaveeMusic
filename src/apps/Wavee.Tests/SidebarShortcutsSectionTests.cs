@@ -232,30 +232,33 @@ public class SidebarShortcutsSectionTests
     /// exists to remove. It is NOT dropped unconditionally: a user who removed Liked from their shortcuts still gets
     /// V3's own row, which is the §3.0 obligation.</summary>
     [Fact]
-    public void LibraryV3_DropsItsOwnLikedRowOnlyWhenTheBandAlreadyCarriesThatRoute()
+    public void LibraryV3_NoLongerEmitsItsOwnLikedRow_TheChromeStripOwnsEveryDestination()
     {
         var state = new LibraryV3DocState();                 // LikedVisible: not pinned, not searching, not drilled
         Assert.True(state.LikedVisible);
+
+        // This used to be conditional on the band: v3.liked was dropped only when the shortcut band already carried
+        // the "liked" ROUTE. The condition is gone because the thing it deferred to stopped being optional —
+        // LibraryV3NavBand now draws Liked Songs, Albums, Artists, Podcasts and Local files as one always-present
+        // strip (#85 H4). So the row is absent with the band, without it, and with no band at all.
+        Assert.True(LibraryV3Document.ChromeCarriesDestinations);
 
         var withLiked = LibraryV3Document.Build(in state,
             new[] { Route("home", "itm_home"), Route(LibraryV3Document.LikedRouteKey, "itm_liked") });
         Assert.Null(withLiked.Find(LibraryV3Document.LikedId));
 
         var withoutLiked = LibraryV3Document.Build(in state, new[] { Route("home", "itm_home") });
-        Assert.NotNull(withoutLiked.Find(LibraryV3Document.LikedId));
+        Assert.Null(withoutLiked.Find(LibraryV3Document.LikedId));
 
-        // No band at all ⇒ the row is kept, which is the pre-Phase-1 behaviour unchanged.
-        Assert.NotNull(LibraryV3Document.Build(in state).Find(LibraryV3Document.LikedId));
+        Assert.Null(LibraryV3Document.Build(in state).Find(LibraryV3Document.LikedId));
 
-        // An ENTITY shortcut to the same songs is a different row, so V3's route row survives beside it.
-        var entityShortcut = LibraryV3Document.Build(in state,
-            new[] { Entity(SidebarPinId.LikedSongsUri, "itm_ent") });
-        Assert.NotNull(entityShortcut.Find(LibraryV3Document.LikedId));
-
-        // A HIDDEN liked shortcut renders nothing, so it must not suppress V3's row either.
-        var hidden = LibraryV3Document.Build(in state,
-            new[] { Route(LibraryV3Document.LikedRouteKey, "itm_liked", hidden: true) });
-        Assert.NotNull(hidden.Find(LibraryV3Document.LikedId));
+        // ContainsRoute itself is untouched — it is still the one owner of "is this destination already a shortcut",
+        // and Classic/Curated still ask it. Only V3's use of it went away.
+        Assert.True(SidebarShortcutsSection.ContainsRoute(
+            new[] { Route(LibraryV3Document.LikedRouteKey, "itm_liked") }, LibraryV3Document.LikedRouteKey));
+        Assert.False(SidebarShortcutsSection.ContainsRoute(
+            new[] { Route(LibraryV3Document.LikedRouteKey, "itm_liked", hidden: true) },
+            LibraryV3Document.LikedRouteKey));
     }
 
     // ── sentinel-id dispatch routing ─────────────────────────────────────────────────────────────────────────────────

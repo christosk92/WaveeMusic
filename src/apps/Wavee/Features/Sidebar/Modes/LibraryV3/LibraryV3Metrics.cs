@@ -33,6 +33,18 @@ static class LibraryV3Metrics
     /// section, so it does not have to match the 44 content row: fastspotify/Spotify nav rows are 40, and that is the
     /// number Spotify's own "Your Library" uses for Home.</summary>
     public const float NavRowHeight = 40f;
+    /// <summary>The library-destination WORD RAIL (#85 H4): five words between Home and the "Your Library" rule.
+    /// 30 is 13.5px type plus its 2-DIP accent underline and the breathing room either side — deliberately shorter
+    /// than a row (NavRowHeight 40), because it is a band of type, not a list. Replaced a 52-DIP tile strip whose
+    /// labels dropped below ~270 DIP of pane, leaving five ambiguous glyphs.</summary>
+    public const float DestinationRailH = 30f;
+    /// <summary>Word type size and the gap between words. 13.5 sits under the 15px header title and above the 12.5px
+    /// filter chips, which is what keeps all three legible as separate ranks.</summary>
+    public const float DestinationWordSize = 13.5f, DestinationWordGap = 14f;
+    /// <summary>The right-edge fade the clipped last word peeks through — Zune's "words cut off at the edge of the
+    /// screen", and the affordance that says the rail scrolls. Labels NEVER drop: at the 180-DIP pane floor the rail
+    /// scrolls instead, because a word that has been abbreviated to a glyph is the thing this design exists to avoid.</summary>
+    public const float DestinationRailFade = 20f;
 
     /// <summary>Gap between grid cells — the same <c>Spacing.S</c> the pane's grid strip lays out with, restated here so the
     /// derived column count and the strip that renders it cannot disagree.</summary>

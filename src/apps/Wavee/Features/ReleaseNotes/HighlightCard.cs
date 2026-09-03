@@ -130,6 +130,17 @@ static class HighlightCard
         catch { return null; }   // a malformed src is a missing poster, never a crash on a notes page
     }
 
+    // Issue #89 (L3): the pill used to fill Tok.FillSolidBase — EXACTLY the viewer plate's own fill
+    // (HighlightViewer.cs's Plate) — inside a square ClipToBounds band inside the plate's rounded (r8) ClipToBounds.
+    // Rounded clip is tier-2 (RoundRect-pipeline only; images clip by scissor), so wherever the poster does not paint
+    // (the reveal fade, a Cover-fit edge), the plate's own fill shows through and — being the identical colour —
+    // reads as an uncomposited black square rather than as "the plate behind the pill". Tok.FillSolidTertiary is a
+    // deliberately LIGHTER opaque rung (dark theme ~#2D2D2D against the plate's #202020, matching the prototype's
+    // #2b2b2b almost exactly) so the pill can never be mistaken for whatever is behind it, plus the prototype's own
+    // `0 1px 4px rgba(0,0,0,.4)` shadow to read as a floating chip rather than a flat patch. Radii.Pill (16) also
+    // exceeded half this pill's ~20-DIP height — a live hazard for every non-RoundRect consumer that takes the raw
+    // radius (PushClipRounded, PushOpacityLayer, EraseRoundRect, EmitBorderRing, DrawImage) — so this now takes an
+    // explicit Height and Radii.Full (999, clamped to half the box at record time) instead.
     internal static Element KindPill(string? kind, bool store)
     {
         string label = Loc.Get(store ? Strings.WhatsNew.Kind.Store : kind switch
@@ -140,8 +151,10 @@ static class HighlightCard
         });
         return new BoxEl
         {
-            Shrink = 0f, Padding = new Edges4(8f, 2f, 8f, 2f), Corners = CornerRadius4.All(Radii.Pill),
-            Fill = store ? Tok.AccentDefault : Tok.FillSolidBase,
+            Shrink = 0f, Height = 20f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Padding = new Edges4(8f, 0f, 8f, 0f), Corners = CornerRadius4.All(Radii.Full),
+            Fill = store ? Tok.AccentDefault : Tok.FillSolidTertiary,
+            Shadow = new ShadowSpec(Blur: 4f, OffsetY: 1f, OffsetX: 0f, Color: ColorF.FromRgba(0, 0, 0, 0x66)),
             Children = [ new TextEl(label)
                 { Size = 11f, Weight = 600, Color = store ? Tok.TextOnAccentPrimary : Tok.TextPrimary } ],
         };

@@ -109,4 +109,20 @@ public class ArtistHeroLayoutTests
 
     // The tier-driven "drop Follow" policy is gone with the capsule bar it protected — the context band's actions are
     // words that always fit, and the PIVOT is what yields under width pressure (ContextBandLayoutTests).
+
+    /// <summary>D81: the pre-fix stacked totals (Compact 644, Narrow 628) ran 1.6-1.9x MediumHeight (384) — "half
+    /// again larger" than the horizontal tiers either side of them. The cut (2-line name on every tier, one
+    /// horizontal meta row at Compact, End-justified identity slack) brings both down to ~450-480. This pins them to
+    /// a generous band around Medium so a future re-inflation of either constant — the exact defect this item
+    /// fixed — fails here instead of only being noticed by eye.</summary>
+    [Fact]
+    public void StackedTotals_StayRoughlyInLineWithMediumHeightInsteadOfHalfAgainLarger()
+    {
+        Assert.InRange(ArtistHeroLayout.CompactHeight,
+            ArtistHeroLayout.MediumHeight, ArtistHeroLayout.MediumHeight * 1.25f);
+        // Narrow legitimately runs a little ahead of Compact — it alone keeps the two-row action stack — so it gets
+        // a slightly wider band, still nowhere near the old "half again larger" totals.
+        Assert.InRange(ArtistHeroLayout.NarrowHeight,
+            ArtistHeroLayout.MediumHeight, ArtistHeroLayout.MediumHeight * 1.35f);
+    }
 }

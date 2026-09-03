@@ -9,7 +9,7 @@ namespace Wavee.Tests;
 /// are testable at all.</summary>
 public class SidebarModeStateTests
 {
-    const float Min = ShellResponsiveLayout.NavPaneMinW;   // 240
+    const float Min = ShellResponsiveLayout.NavPaneMinW;   // 180 (issue #84: lowered from 240)
     const float Max = ShellResponsiveLayout.NavPaneMaxW;   // 460
 
     // ── tier tables (locked decision 14) ─────────────────────────────────────────────────────────────────────────────

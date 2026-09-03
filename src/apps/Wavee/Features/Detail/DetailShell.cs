@@ -588,7 +588,7 @@ sealed class DetailShell : Component
         // anything shorter gets Title (28/36) — the same two rungs Ui.Title / Ui.TitleLarge publish. 900px is the
         // breakpoint the old ramp's own comment already treated as "the big end".
         float titleSize = winH >= 900f ? 40f : 28f;
-        float titleLineHeight = titleSize >= 40f ? 52f : 36f;
+        float titleLineHeight = DetailVerticalLayout.TitleLineHeightFor(titleSize);
         int descLines = winH < 760f ? 3 : 6;
         var row = new BoxEl
         {

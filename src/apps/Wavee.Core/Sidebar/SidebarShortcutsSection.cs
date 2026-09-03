@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Wavee.Core.Sidebar;
@@ -89,6 +90,20 @@ public static class SidebarShortcutsSection
     ///
     /// <para>Library V3 uses it to drop its own <c>v3.liked</c> section when Liked Songs is already a shortcut —
     /// otherwise the pane would show the identical destination twice, two rows apart.</para></summary>
+    /// <summary>The five fixed library destinations, in the order they are presented. The ONE owner of that list, so
+    /// the top-bar seed, the Classic dedupe and Library V3's destination strip cannot disagree about what counts as a
+    /// "library destination" — a set that drifted is how the same row ends up rendered twice.</summary>
+    public static readonly string[] LibraryDestinations = ["liked", "albums", "artists", "podcasts", "local"];
+
+    /// <summary>Is this route one of <see cref="LibraryDestinations"/>?</summary>
+    public static bool IsLibraryDestination(string? routeKey)
+    {
+        if (string.IsNullOrEmpty(routeKey)) return false;
+        for (int i = 0; i < LibraryDestinations.Length; i++)
+            if (string.Equals(LibraryDestinations[i], routeKey, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
     public static bool ContainsRoute(IReadOnlyList<SidebarItemSpec>? topBar, string routeKey)
     {
         if (topBar is null || string.IsNullOrEmpty(routeKey)) return false;

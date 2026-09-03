@@ -1441,7 +1441,7 @@ internal static class WaveeNavProbe
             ClickLeg('b');
         }
 
-        // (d) sidebar-grip drag sweep — synthesize a pointer drag across ~40 steps (out to 460 and back to 240). This
+        // (d) sidebar-grip drag sweep — synthesize a pointer drag across ~40 steps over the REAL clamp band. This
         // exercises the suppressed path (SnapStructuralToLayout): with Reveal transitions the drag must still track 1:1.
         if (WaveeShell.ProbeSidebarDragBegin is not null && WaveeShell.ProbeSidebarDragWidth is not null && WaveeShell.ProbeSidebarDragEnd is not null)
         {
@@ -1450,7 +1450,10 @@ internal static class WaveeNavProbe
             for (int i = 0; i < 40 && !window.IsClosed; i++)
             {
                 float t = i / 39f;
-                float w = 240f + (460f - 240f) * (0.5f - 0.5f * MathF.Cos(t * MathF.PI * 2f));   // ease out to max and back
+                // Read the clamp rather than restating it: the floor moved 240 -> 180 (#84) and a hardcoded sweep
+                // would silently stop exercising the narrowest 60 DIP of the band it exists to test.
+                const float lo = ShellResponsiveLayout.NavPaneMinW, hi = ShellResponsiveLayout.NavPaneMaxW;
+                float w = lo + (hi - lo) * (0.5f - 0.5f * MathF.Cos(t * MathF.PI * 2f));   // ease out to max and back
                 WaveeShell.ProbeSidebarDragWidth!(w);
                 Measure(sbDrag, "drag");
             }

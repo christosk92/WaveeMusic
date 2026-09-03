@@ -260,13 +260,18 @@ public sealed class AlbumHydration : IKindHydration
         if (album is null) return false;
 
         // getAlbum PINS limit=50 (PathfinderEnvelopeFetch.AlbumAsync:28) — its tracklist is a WINDOW onto the release,
-        // not necessarily the whole thing. A resident tracklist that is already AT LEAST as long (a prior Full fetch, a
-        // TrackV4 disc-row read, or a deeper earlier getAlbum) must not be replaced by this shorter one: unlike a
-        // regular field, RebuildTracklists cannot heal a list that has already been truncated — there is nothing left
-        // to re-join it from once the rows themselves are gone. Read the resident album BEFORE any of the upserts
-        // below, so "resident" means "what was here before this fetch landed", not this fetch's own writes.
+        // not necessarily the whole thing. A LONGER resident tracklist (a prior Full fetch, a TrackV4 disc-row read, or
+        // a deeper earlier getAlbum) must not be replaced by this shorter one: unlike a regular field, RebuildTracklists
+        // cannot heal a list that has already been truncated — there is nothing left to re-join it from once the rows
+        // themselves are gone. Read the resident album BEFORE any of the upserts below, so "resident" means "what was
+        // here before this fetch landed", not this fetch's own writes.
+        //
+        // The tie is decided on QUALITY, not just length (#90). This used to be a bare `r.Count >= e.Count`, so an
+        // AlbumV4-seeded list of gid-only rows TIED the named list that arrived and won it — the album kept 31 blank
+        // rows, sealed at its rung, and every later open short-circuited before the repair or the thin-row tripwire
+        // could run. HydrationLevels.ResidentTracklistWins owns the whole rule so the gate and the tests cannot drift.
         var resident = _store.GetAlbum(uri);
-        bool adoptTracks = !(resident?.Tracks is { Count: > 0 } r && album.Tracks is { Count: > 0 } e && r.Count >= e.Count);
+        bool adoptTracks = !HydrationLevels.ResidentTracklistWins(resident?.Tracks, album.Tracks);
 
         if (album.ArtistsDetailed is { Count: > 0 } detailed)
             for (int i = 0; i < detailed.Count; i++) _store.UpsertArtist(detailed[i]);

@@ -41,16 +41,27 @@ static class DetailSkeleton
         Func<float, Element>? previewArt = null)
     {
         float bw = DetailVerticalLayout.BucketW(colW);
-        float pad = DetailVerticalLayout.HeroPadFor(bw);
-        float gap = DetailVerticalLayout.HeroGapFor(bw);
+        float pad = DetailVerticalLayout.HeroPadFor(bw, rowFlow);
+        float gap = DetailVerticalLayout.HeroGapFor(bw, rowFlow);
         float art = DetailVerticalLayout.ArtworkFor(bw, rowFlow);
         float contentW = DetailVerticalLayout.ContentWidthFor(bw, rowFlow);
-        float titleLine = DetailVerticalLayout.TitleLineHeightFor(DetailVerticalLayout.TitleSizeFor(bw));
+        // The PESSIMISTIC type plan — title: null — the same one DetailVerticalLayout.HeroBandHeight's pre-measure
+        // overload builds internally: the skeleton has no text to shape, so it reserves the tallest single-line
+        // title any real title at this width could plausibly need (a one-line title sized to the fluid cap), never a
+        // guessed representative string. Building it explicitly here (rather than just calling the plan-less
+        // HeroBandHeight overload below) is what lets the shimmer's OWN title bar mirror the plan's line count/height
+        // and lets the identity gap mirror DetailVerticalHero's IdentityGapFor — "the shimmer matches the hero
+        // block-for-block" needs the same plan on both sides, not just the same total height.
+        var titlePlan = DetailVerticalLayout.TitleTypeFor(bw, rowFlow, title: null, eyebrow, attribution, meta, pulse);
+        float identityGap = DetailVerticalLayout.IdentityGapFor(bw, rowFlow, titlePlan,
+            eyebrow, attribution, meta, description, pulse);
 
-        // The identity column, block for block, in DetailVerticalHero's order.
+        // The identity column, block for block, in DetailVerticalHero's order. The LAST block above the action row is
+        // the same "fill block" the live hero grows — mirrored here so the loading band and the loaded band never
+        // disagree about where the row arm's surplus goes (issue #78).
         var blocks = new List<Element>(7);
         if (eyebrow) blocks.Add(Bar(Fraction(contentW, 0.32f), DetailVerticalLayout.EyebrowRowHeight));
-        blocks.Add(TitleBlock(contentW, titleLine));
+        blocks.Add(TitleBlock(titlePlan));
         blocks.Add(new BoxEl
         {
             // Surfaces.AccentRule: a 20×2 mark with a 2-DIP top margin, left-aligned under the title.
@@ -61,14 +72,16 @@ static class DetailSkeleton
         if (attribution) blocks.Add(Bar(Fraction(contentW, 0.4f), DetailVerticalLayout.AttributionRowHeight));
         if (meta) blocks.Add(Bar(Fraction(contentW, 0.62f), DetailVerticalLayout.MetaRowHeight));
         if (pulse) blocks.Add(Bar(Fraction(contentW, 0.35f), DetailVerticalLayout.PulseRowHeight));
+        if (blocks.Count > 0 && blocks[^1] is BoxEl fillBlock) blocks[^1] = fillBlock with { Grow = 1f };
         blocks.Add(ActionRow());
         if (description) blocks.Add(DescriptionBlock(contentW, DetailVerticalLayout.DescriptionMaxLines(rowFlow)));
 
         Element identity = new BoxEl
         {
-            Direction = 1, Gap = DetailVerticalLayout.IdentityGap, AlignItems = FlexAlign.Stretch,
+            Direction = 1, Gap = identityGap, AlignItems = FlexAlign.Stretch,
             Width = rowFlow ? float.NaN : contentW,
             Grow = rowFlow ? 1f : 0f, Basis = rowFlow ? 0f : float.NaN, MinWidth = 0f,
+            MinHeight = DetailVerticalLayout.IdentityMinHeightFor(bw, rowFlow),
             Children = blocks.ToArray(),
         };
 
@@ -78,11 +91,14 @@ static class DetailSkeleton
             Corners = CornerRadius4.All(Radii.Card),
         };
 
+        // AlignItems = Start in BOTH arms — matching the live hero exactly (DetailVerticalHero.cs). The row arm used
+        // to bottom-align (FlexAlign.End) here while the live hero used Start, so the shimmer laid its cover against a
+        // different baseline than the thing it reserves for.
         Element hero = new BoxEl
         {
             Direction = rowFlow ? (byte)0 : (byte)1,
             Gap = gap,
-            AlignItems = rowFlow ? FlexAlign.End : FlexAlign.Start,
+            AlignItems = FlexAlign.Start,
             Children = [artwork, identity],
         };
 
@@ -93,7 +109,7 @@ static class DetailSkeleton
             // The pure sum of everything above — a floor, never a cap, so a wrapped action row or a taller run can
             // still grow the band. It is the SAME number the loaded hero's collapse binds use before its first
             // measure, which is what makes "the skeleton reserved what the hero needs" a testable statement.
-            MinHeight = DetailVerticalLayout.HeroBandHeight(colW, rowFlow, eyebrow, attribution, meta, description, pulse),
+            MinHeight = DetailVerticalLayout.HeroBandHeight(colW, rowFlow, titlePlan, eyebrow, attribution, meta, description, pulse),
             Children =
             [
                 new BoxEl
@@ -113,12 +129,15 @@ static class DetailSkeleton
         };
     }
 
-    // The hero title reserves its full wrap cap: a one-line title that becomes two is exactly the shove this reserves
-    // against. Zero gap between the lines — the run's own line height is the spacing.
-    static Element TitleBlock(float contentW, float lineHeight) => new BoxEl
+    // The hero title reserves exactly the PLAN's own line count and line height (a pessimistic one-line plan for a
+    // null title — see the plan's construction above) rather than a flat two-line cap: a plan that changes shape when
+    // the real title lands is exactly the shove this file exists to prevent, so the shimmer has to commit to the same
+    // line count the live hero would commit to for a title this width could plausibly show. Zero gap between the
+    // lines — the run's own line height is the spacing.
+    static Element TitleBlock(DetailVerticalLayout.TitleTypePlan plan) => new BoxEl
     {
         Direction = 1, Gap = 0f,
-        Children = BuildLines(contentW, lineHeight, DetailVerticalLayout.TitleMaxLines, 0.68f),
+        Children = BuildLines(plan.WrapWidth, plan.LineHeight, plan.Lines, 0.68f),
     };
 
     static Element DescriptionBlock(float contentW, int lines) => new BoxEl
@@ -155,22 +174,35 @@ static class DetailSkeleton
         Corners = Radii.ControlAll,
     };
 
-    // The list command bar under the hero: a group of pills at control height.
+    // The list command bar under the hero: the SAME padded surface box DetailTracks.CommandBarSurface reserves
+    // (DetailVerticalLayout.ToolbarRowHeight, 44 — the box the band's arithmetic charges), with a group of pills at
+    // control height (ToolbarPillHeight, 32 — what CommandBarSurface's own pills draw at) inset by its
+    // ToolbarSurfacePadX/Y. Both sides read the same four constants, so the reserved band and the drawn shimmer can
+    // never disagree about the toolbar's height again (issue #78/#79/#80 skeleton parity pass).
     static Element ToolbarRow() => new BoxEl
     {
-        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+        Direction = 1,
         Height = DetailVerticalLayout.ToolbarRowHeight,
+        Padding = new Edges4(DetailVerticalLayout.ToolbarSurfacePadX, DetailVerticalLayout.ToolbarSurfacePadY,
+            DetailVerticalLayout.ToolbarSurfacePadX, DetailVerticalLayout.ToolbarSurfacePadY),
         Children =
         [
-            Pill(72f), Pill(88f), Pill(64f),
-            new BoxEl { Grow = 1f, Height = 1f },
-            Pill(DetailTrackCommandBarLayout.SearchPreferred),
+            new BoxEl
+            {
+                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Grow = 1f, MinWidth = 0f,
+                Children =
+                [
+                    Pill(72f), Pill(88f), Pill(64f),
+                    new BoxEl { Grow = 1f, Height = 1f },
+                    Pill(DetailTrackCommandBarLayout.SearchPreferred),
+                ],
+            },
         ],
     };
 
     static Element Pill(float w) => new BoxEl
     {
-        Width = w, Height = DetailVerticalLayout.ToolbarRowHeight, Shrink = 0f,
+        Width = w, Height = DetailVerticalLayout.ToolbarPillHeight, Shrink = 0f,
         Corners = Radii.ControlAll,
     };
 

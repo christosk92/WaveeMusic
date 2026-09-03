@@ -44,6 +44,20 @@ sealed class LibraryV3Chrome : Component
     public override Element Render()
     {
         var prefs = UseContext(SidebarPreferences.Slot);
+
+        // Issue #85 (H1) — the ONE UseDragState() subscription that feeds the empty pin band's drop-zone visibility
+        // (LibraryV3DocState.DragInFlight). A LAYOUT EFFECT, not the render body: it writes a signal, and a signal
+        // written during render is the one thing the reactive core will not tolerate. Keyed on the active EDGE, so it
+        // fires exactly once per drag begin/end rather than once per pointer move.
+        var dragState = UseDragState();
+        // A Wavee resource drag specifically (not an OS file drag onto the window) — the section that appears is a
+        // PIN drop zone, and only a resource payload can ever be pin-eligible. SidebarPinDropZone itself already
+        // downgrades to its quiet resting look for a payload that CAN'T be pinned (e.g. a track), so no further
+        // narrowing is needed here.
+        bool dragActive = dragState.Active
+            && string.Equals(dragState.Kind, WaveeDragKinds.Resource, StringComparison.Ordinal);
+        UseLayoutEffect(() => _session.DragInFlight.SetIfChanged(dragActive), dragActive ? 1 : 0);
+
         // The state read SUBSCRIBES this component to every V3 signal the pane's document is a function of, so the
         // breadcrumb, the banner and the empty state can never disagree with the rows below them.
         var state = _session.ReadState();

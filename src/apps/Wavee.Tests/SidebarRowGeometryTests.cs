@@ -225,4 +225,56 @@ public sealed class SidebarRowGeometryTests
     [InlineData(-1, -1, 0)]
     public void DirectionOf_IsSignedOnlyWhenBothRowsAreOnThePlan(int from, int to, int expected)
         => Assert.Equal(expected, SidebarRowGeometry.DirectionOf(from, to));
+
+    // ── grid strip fallback (issue #84) ──────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GridFallbackColumns_HonoursThePlannerAtAWidePane()
+    {
+        // 240 available, 3 planner columns, 8-DIP gap: edge = (240 - 16) / 3 = 74.67 — comfortably above the 40 floor.
+        Assert.Equal(3, SidebarRowGeometry.GridFallbackColumns(3, 240f, 8f, 40f));
+    }
+
+    [Fact]
+    public void GridFallbackColumns_DropsToFewerColumnsRatherThanShrinkingCellsBelowTheFloor()
+    {
+        // The narrow-pane case the plan calls out: at the new 180-DIP floor (164 DIP available after the 16-DIP pane
+        // inset), 4 planner columns would give (164 - 24) / 4 = 35 — under the 40-DIP floor — so the strip falls back
+        // to 3: (164 - 16) / 3 ≈ 49.3, which clears it.
+        Assert.Equal(3, SidebarRowGeometry.GridFallbackColumns(4, 164f, 8f, 40f));
+        // A 2-column section never needed the fallback in the first place — the planner's own ceiling already fits.
+        Assert.Equal(2, SidebarRowGeometry.GridFallbackColumns(2, 164f, 8f, 40f));
+    }
+
+    [Fact]
+    public void GridFallbackColumns_NeverExceedsThePlannersColumnCount()
+    {
+        // A very wide pane must not invent MORE columns than the planner asked for — the planner is the ceiling.
+        Assert.Equal(4, SidebarRowGeometry.GridFallbackColumns(4, 2000f, 8f, 40f));
+    }
+
+    [Fact]
+    public void GridFallbackColumns_FloorsAtOneColumn()
+    {
+        // Even one column's edge can go under the floor at an extreme width — the fallback never returns less than 1
+        // (the row degrades to the narrowest possible strip rather than throwing or returning zero).
+        Assert.Equal(1, SidebarRowGeometry.GridFallbackColumns(4, 10f, 8f, 40f));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0)]
+    [InlineData(-3)]
+    public void GridFallbackColumns_TreatsANonPositivePlannedCountAsOne(int planned)
+        => Assert.Equal(1, SidebarRowGeometry.GridFallbackColumns(planned, 2000f, 8f, 40f));
+
+    // ── pin glyph (issue #85, H1) ─────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(true, false, true)]    // a pinned, non-track entry draws the glyph
+    [InlineData(false, false, false)]  // not pinned: nothing to show
+    [InlineData(true, true, false)]    // a track is never pinnable (locked decision 4) even if IsPinned is somehow set
+    [InlineData(false, true, false)]
+    public void ShowsPinGlyph_IsPinnedAndNeverATrack(bool isPinned, bool isTrack, bool expected)
+        => Assert.Equal(expected, SidebarRowGeometry.ShowsPinGlyph(isPinned, isTrack));
 }

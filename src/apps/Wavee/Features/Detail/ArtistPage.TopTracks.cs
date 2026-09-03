@@ -82,15 +82,19 @@ sealed partial class ArtistPage : Component
         if (pinned is { } pick)
         {
             string target = RichText.RouteForUri(pick.TargetUri) ?? ("album:" + pick.TargetUri);
-            return Section(Loc.Get(Strings.Artist.ArtistPick),
-                MediaCard.ArtistPick(pick, artistName, artistImage, artistBackground,
+            // NO section header (#87). The card keeps its slot — the rail column beside Top tracks when there is room,
+            // the stacked band below them when there is not — it just loses the "Artist pick" heading above it. The
+            // card already says what it is: the artist's own face, their name, and an "Artist pick" caption right
+            // under it. The heading was the same words a second time, one row up, eating a 28-DIP line plus the
+            // section's 12-DIP gap out of a column that is competing for height with the whole Top-tracks list.
+            return MediaCard.ArtistPick(pick, artistName, artistImage, artistBackground,
                     onClick: () => go(target, pick.Title),
                     onPlay: () => play(pick.TargetUri),
                     accent: accent,
                     horizontal: !wide,
                     // A pinned item can point at any entity, so the kind comes from the uri — the same discrimination
                     // `target` above used, so the drag payload can never disagree with the click's destination.
-                    drag: CardDrag(WaveeDragKindMap.OfUri(pick.TargetUri), pick.TargetUri, pick.Title, pick.Cover)))
+                    drag: CardDrag(WaveeDragKindMap.OfUri(pick.TargetUri), pick.TargetUri, pick.Title, pick.Cover))
                 with { Key = "featured:pick:" + (wide ? "rail" : "band") };
         }
         if (upcoming is { IsUpcoming: true } next)

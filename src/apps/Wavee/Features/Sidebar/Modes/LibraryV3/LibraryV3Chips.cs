@@ -193,8 +193,16 @@ sealed class LibraryV3Chips : Component
             V3ChipKind.Fused => FusedPill(nodes, slot, qualifier, focusable, () => Apply(prefs, slot)),
             V3ChipKind.Option => Pill(nodes, slot, LibraryV3Labels.Qualifier(slot.Code), fontSize: 12f, focusable,
                                        OptionMotion, () => Apply(prefs, slot)),
+            // Issue #85 (H4) — a PLAIN tap still only writes the filter (Apply); a DOUBLE-CLICK on a facet that has
+            // an actual page (Albums/Artists/Podcasts — Playlists' Route is null) navigates instead, the same
+            // "double click always activates plainly" convention the tree rows use
+            // (SidebarEntityRow.OnPointerReleased). Keyboard Space/Enter (Rove, below) always filters — the
+            // destinations stay reachable from the top bar for a keyboard-only user.
             _ => Pill(nodes, slot, LibraryV3Labels.Filter(slot.Code), fontSize: 13f, focusable, FacetMotion,
-                      () => Apply(prefs, slot)),
+                      () => Apply(prefs, slot),
+                      onNavigate: slot.Route is { Length: > 0 } r
+                          ? () => _session.Go(r, LibraryV3Labels.Filter(slot.Code))
+                          : null),
         };
 
     static Element Rail(List<Element> chips, ScrollController controller, Action<KeyEventArgs> onKey)
@@ -255,7 +263,7 @@ sealed class LibraryV3Chips : Component
     /// <c>BrushTransitionMs</c> — so <paramref name="animate"/> only ever carries the FLIP, never a size change.
     /// </summary>
     static Element Pill(Dictionary<string, NodeHandle> nodes, V3ChipSlot slot, string label, float fontSize,
-                        bool focusable, LayoutTransition animate, Action onClick)
+                        bool focusable, LayoutTransition animate, Action onClick, Action? onNavigate = null)
     {
         // Caption, not Body: the rail's pills read at 13/12 pt, under Body's 14 pt reading size, and Caption is
         // already the alias tuned for sub-Body chrome text — Body would need an explicit Wrap/MaxLines override
@@ -280,7 +288,14 @@ sealed class LibraryV3Chips : Component
             BrushTransitionMs = WaveeMotion.Fast,
             Role = AutomationRole.RadioButton, Cursor = CursorId.Hand,
             Focusable = focusable, FocusVisualMargin = new Edges4(2f, 2f, 2f, 2f),
-            OnClick = onClick,
+            // A route-bearing chip trades OnClick for OnPointerReleased so a double-click can be told apart from a
+            // plain tap (args.ClickCount) — every other chip keeps the plain OnClick it always had.
+            OnClick = onNavigate is null ? onClick : null,
+            OnPointerReleased = onNavigate is null ? null : args =>
+            {
+                if (args.ClickCount >= 2) onNavigate();
+                else onClick();
+            },
             OnRealized = h => nodes[slot.Key] = h,
             Children = [text],
         };

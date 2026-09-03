@@ -422,6 +422,9 @@ sealed class SidebarPaneSlot : Component
             Leading = LeadingArt(section, in snapshot, item),
             Glyph = section.Opts.Artwork ? null : SidebarPaneText.Glyph(item, SidebarPaneText.EntryGlyph(snapshot.Kind)),
             Trailing = TrailingBadge(section, in snapshot),
+            // H1 (#85) — SidebarProjection.PinsFirst stamps IsPinned on every entry it floats, in every sort mode,
+            // but nothing rendered it. ShowsPinGlyph is the pure (and therefore unit-tested) half of this decision.
+            Pinned = SidebarRowGeometry.ShowsPinGlyph(snapshot.IsPinned, track),
             Playing = playing,
             PlayingAnimated = animated,
             Track = track,
@@ -889,16 +892,28 @@ sealed class SidebarPaneSlot : Component
     /// "≤240 DIP falls back to two columns") silently disagreed with <c>SidebarRowPlanner.EmitProjected</c>, which had
     /// already sliced the entries into GridColumns-wide strips: a 4-item section at 3 columns plans strips of 3 and 1, and
     /// re-wrapping the first at 2 columns made one strip two lines tall and the next one — a ragged grid whose ROW RHYTHM
-    /// changed with the pane width. It was also unreachable in the useful case: the pane clamps at
-    /// <c>ShellResponsiveLayout.NavPaneMinW</c> = 240, where even 4 columns still yields 50-DIP cells. One owner of the
-    /// column count, so the planned extent and the rendered strip agree at every width.</para></summary>
+    /// changed with the pane width. That held while the pane clamped at
+    /// <c>ShellResponsiveLayout.NavPaneMinW</c> = 240, where even 4 columns still yielded 50-DIP cells.
+    ///
+    /// <para>Issue #84 lowered the floor to 180, where 4 (even 2) planner columns would shrink cells below the 40-DIP
+    /// floor. Re-deriving the column count here is still wrong for the reason above, so instead this WRAPS fewer of the
+    /// planner's cells per visual row: once <c>cols</c> planner columns can no longer each get ≥40 DIP at the current
+    /// pane width, only the first <c>fitCols</c> cells of THIS strip render on one line and the remainder wrap onto
+    /// their own line(s) at the SAME 40-DIP floor — the strip gets taller, never its cells narrower. Every strip in a
+    /// section still wraps identically because they all read the same live pane width, so the row rhythm stays uniform
+    /// within a pane width even though it now varies with the pane's own live size.</para></summary>
     Element GridStrip(SidebarSectionSpec section, in SidebarRow row, string sel)
     {
         float pane = _o.ExpandedWidth.Value;       // subscribe → the CELL EDGE re-flows with the pane (the count does not)
         int cols = Math.Clamp(section.Opts.GridColumns, 2, 4);
         const float gap = Spacing.S;
+        float avail = pane - SidebarPaneMetrics.PaneInsetH;
+        // The planner's own column count, clamped DOWN only far enough to keep every cell at/above the 40-DIP floor —
+        // never re-derived from width (see the note above), only capped by it. Pure arithmetic lives in the
+        // engine-free SidebarRowGeometry so it is unit-testable without a source-text test.
+        int fitCols = SidebarRowGeometry.GridFallbackColumns(cols, avail, gap, SidebarCover.S40);
         float edge = MathF.Min(SidebarPaneMetrics.GridCellMax,
-            MathF.Max(SidebarCover.S40, (pane - SidebarPaneMetrics.PaneInsetH - gap * (cols - 1)) / cols));
+            MathF.Max(SidebarCover.S40, (avail - gap * (fitCols - 1)) / fitCols));
 
         var entries = _o.Plan.Entries;
         int start = row.EntryIndex;

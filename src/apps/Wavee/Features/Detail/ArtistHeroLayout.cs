@@ -34,16 +34,20 @@ public static class ArtistHeroLayout
     // Stacked (Compact/Narrow) photo band: the photograph is a FIELD at the top of the hero and the identity column
     // sits BELOW it on the page surface — copy never floats over the picture on these tiers, so there is no overlay
     // veil to size.
-    public const float CompactPhotoHeight = 300f;
-    public const float NarrowPhotoHeight = 240f;
+    public const float CompactPhotoHeight = 200f;
+    public const float NarrowPhotoHeight = 176f;
 
-    // The stacked identity band has a declared WORST-CASE anatomy and its fixed hero must actually reserve it:
-    // verified caption (16) + compact title (3 × 40) + bio (2 × 20) + three vertical meta rows (3 × 20 + 2 × 4)
-    // + the four 8-DIP inter-block gaps + 12/20 vertical padding + actions. Compact actions are one 36-DIP row;
-    // Narrow owns two such rows plus their 8-DIP gap. The former 240/276 identity remainders only fit a short artist
-    // and clipped Maroon 5's Play pill at the hero boundary once rank + listeners + followers were present.
-    public const float CompactExpandedIdentityHeight = 344f;
-    public const float NarrowExpandedIdentityHeight = 388f;
+    // The stacked identity band has a declared WORST-CASE anatomy and its fixed hero must actually reserve it. The
+    // former 344/388 were inflated for a THREE-line stacked title and a vertically-STACKED meta row (rank + listeners
+    // + followers each on their own line) — together good for 80 DIP more than the copy now needs. The name is capped
+    // at 2 lines on every tier (D81 #1) and Compact's meta returned to one horizontal row (D81 #2), so the budget here
+    // is: verified caption (16) + 2-line compact title (2 × 40) + bio (2 × 20) + meta (one 20-DIP row at Compact,
+    // three 20 + 2×4 stacked rows at Narrow, which is why Narrow still needs an equivalent 40-DIP bigger identity
+    // area than a straight line count would suggest) + the inter-block gaps + 12/20 vertical padding + actions.
+    // Compact actions are one 36-DIP row; Narrow owns two such rows plus their 8-DIP gap — that is the whole reason
+    // Narrow's identity band still runs ahead of Compact's after the cut.
+    public const float CompactExpandedIdentityHeight = 252f;
+    public const float NarrowExpandedIdentityHeight = 300f;
     public const float CompactHeight = CompactPhotoHeight + CompactExpandedIdentityHeight;
     public const float NarrowHeight = NarrowPhotoHeight + NarrowExpandedIdentityHeight;
 

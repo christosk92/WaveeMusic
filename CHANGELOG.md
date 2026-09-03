@@ -8,6 +8,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.8] - unreleased
+
+### Fixed
+
+- Album pages no longer sit on blank rows with a nonsense running time ("31 songs · 6 min") until something else
+  happens to repair them. `getAlbum`'s named tracklist was being discarded by an adoption gate that compared row
+  COUNTS only, so a resident list of gid-only AlbumV4 rows tied the named list that arrived and won — the album
+  then sealed at its rung and every later open short-circuited before the repair or the thin-row tripwire could
+  run. Equal length is now decided on quality: the resident list only wins a tie when it is no thinner than what
+  landed. (#90)
+- The detail hero no longer leaves a band of dead space under the action row. The identity column is pinned to the
+  cover's edge and the slack is spread across its own gaps instead of pooling in one hole, so the actions and the
+  blurb under them land on the cover's baseline while the cover's top stays on the title's. (#78)
+- The hero title is sized from the space AND the title itself instead of a six-step ladder keyed on width alone: a
+  short name grows to fill the height the cover sets, a long one takes a second line rather than ellipsizing, and
+  the authored line height no longer fights the face's natural line box (which the engine was silently using
+  anyway, discarding every paired value above 20). (#79)
+- The narrow detail hero puts the cover beside the copy from 424 DIP instead of 540, so a ~470-DIP page stops
+  wasting ~157 DIP to the right of a 280-DIP cover and stops pushing the first track ~280 DIP down the page. (#80)
+- The artist hero is 452 DIP at Compact and 476 at Narrow, down from 644 and 628 — the name caps at two lines, the
+  stats go back on one row, and the copy sits at the bottom of its band instead of floating centred in it, so Top
+  tracks is no longer entirely below the fold. (#81)
+- Clicking a Mixview neighbour re-centres the graph and moves the surrounding pane with it. The ring was rebuilt
+  from data captured at mount — `Responsive.Of` freezes its build closure — so the click wrote a signal nothing
+  read. (#83)
+- The top bar's search box holds still when the tab title changes width. The merged row centres between its two
+  clusters rather than in the window, so a 90-DIP tab swing moved the box by up to 45; the tab lane now reserves a
+  quantised width, the pin button keeps its slot when it declines, and the profile name is capped. (#88)
+- The What's New viewer dims the whole window again and shows its caption. The overlay root shrink-wrapped to the
+  plate, so the veil covered only the plate's own box, and the caption's scroll viewport measured zero tall and
+  was clipped away entirely. (#89)
+- Overlay veils no longer tint under the cursor and flash on press. A full-bleed dismiss surface carries an
+  `OnClick`, so the recorder interpolated it toward an unset hover brush — the engine's own scrim pins both, and
+  Wavee's did not. (#91)
+
+### Changed
+
+- Library V3 can reach Liked Songs, Albums, Artists, Podcasts and Local files. They were absent from the design
+  entirely. They arrive as a row of words under Home — not five stacked rows and not icon-only tiles, both of
+  which were tried and rejected: labels stay visible at every pane width, the active word carries the count and a
+  2-DIP accent underline, and the rail scrolls with the last word peeking past a fade. The collapsed 56-DIP rail
+  carries them too. Pinned rows now show a pin marker, the "+" accepts drops, and a refusal to reorder under a
+  sorted lens offers to switch to Custom order. (#85)
+- The sidebar resizes down to 180 DIP instead of stopping at 240: grid strips shed a column rather than shrink
+  their cells, section titles ellipsize instead of pushing, and the splitter still resists and dims from 240 down
+  before it snaps to the rail. (#84)
+- "Your top artists" fills the width it is given — the avatar ramp is solved from the measured width instead of
+  three hard-coded sizes — and the surface is tightened throughout. Artists are reachable from it at last, by
+  context menu or double-click, from both the podium and the Mixview graph. (#82)
+- The Concerts and Browse cards on Home have artwork: a procedurally drawn, endlessly drifting panel per card
+  rather than an empty grey rectangle, on looping animation tracks at co-prime durations under the 30 Hz ambient
+  cap, and reduced motion swaps the keyframes rather than branching. (#86)
+- The artist pick loses its "Artist pick" heading and keeps its column beside Top tracks — the card already says
+  what it is. (#87)
+
 ## [0.2.7] - 2026-09-03
 
 ### Changed

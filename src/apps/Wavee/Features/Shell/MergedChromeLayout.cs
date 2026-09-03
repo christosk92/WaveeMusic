@@ -18,7 +18,16 @@ public readonly record struct MergedChromeLayout(
     bool ShowNewTab,
     bool ShowTrailing,
     MergedSearchMode SearchMode,
-    float SearchWidth)
+    float SearchWidth,
+    // The tabs island's RESERVED width (nav buttons excluded — MergedChromeRow.Tabs adds those on top). Issue #88:
+    // the box used to hug the tab strip's own measured content, so a title swinging inside TabStrip's
+    // MinTabWidth/MaxTabWidth (or a tab count change) shoved the centred search box by up to half the swing. This is
+    // a QUANTISED, content-independent stand-in for that hug — sized off ComfortableTabExtent, clamped to whatever
+    // the row can actually spare, and held across resolves with a WIDEN-IMMEDIATELY / NARROW-AFTER-
+    // ChromePromotionHysteresisW shape: the OPPOSITE polarity from the boolean stages below (which promote late,
+    // demote at once), because here it is GROWTH that must never clip a longer title and SHRINKING that must not be
+    // allowed to reclaim space only to hand it straight back on the next frame.
+    float LeadClusterW)
 {
     /// <summary>Bell · Friends · Pin · Settings are in the trailing row together (>= <see
     /// cref="ShellResponsiveLayout.ChromeActionsEnterW"/>).</summary>
@@ -44,7 +53,7 @@ public readonly record struct MergedChromeLayout(
         width = MathF.Max(0f, width);
         naturalTabExtent = MathF.Max(ShellResponsiveLayout.ChromeTabViewportMinW, naturalTabExtent);
         var candidate = StageFor(width, naturalTabExtent);
-        if (previous is not { } old) return Compose(width, in candidate);
+        if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, null);
 
         var reserved = StageFor(
             MathF.Max(0f, width - ShellResponsiveLayout.ChromePromotionHysteresisW), naturalTabExtent);
@@ -56,7 +65,7 @@ public readonly record struct MergedChromeLayout(
             candidate.NewTab && (old.ShowNewTab || reserved.NewTab),
             candidate.Trailing && (old.ShowTrailing || reserved.Trailing),
             candidate.Field && (old.SearchMode == MergedSearchMode.Field || reserved.Field));
-        return Compose(width, in held);
+        return Compose(width, naturalTabExtent, in held, old.LeadClusterW);
     }
 
     public float FixedBudgetFor()
@@ -135,10 +144,43 @@ public readonly record struct MergedChromeLayout(
         return new Stage(name, actionsInRow, forward, back, newTab, trailing, field);
     }
 
-    static MergedChromeLayout Compose(float width, in Stage stage)
-        => new(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing,
-            stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon,
-            stage.Field ? PreferredSearchWidth(width) : ShellResponsiveLayout.ChromeSearchIconW);
+    static MergedChromeLayout Compose(float width, float naturalTabExtent, in Stage stage, float? previousLeadClusterW)
+    {
+        float searchWidth = stage.Field ? PreferredSearchWidth(width) : ShellResponsiveLayout.ChromeSearchIconW;
+        return new(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing,
+            stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth,
+            LeadClusterFor(width, naturalTabExtent, in stage, searchWidth, previousLeadClusterW));
+    }
+
+    /// <summary>The tab lane's reserved width (see the record field doc). Bounded by what the row can spare once the
+    /// resolved fixed budget and search allotment are taken out — the same <see cref="FixedBudget"/> the boolean
+    /// stages already pay, so this can never over-reserve and starve the row — and then held against
+    /// <paramref name="previousLeadClusterW"/> with the widen-now/narrow-later shape.</summary>
+    static float LeadClusterFor(float width, float naturalTabExtent, in Stage stage, float searchWidth,
+        float? previousLeadClusterW)
+    {
+        float budget = FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing);
+        float available = MathF.Max(ShellResponsiveLayout.ChromeTabViewportMinW, width - budget - searchWidth);
+        float desired = MathF.Max(ShellResponsiveLayout.ChromeTabViewportMinW,
+            MathF.Min(ComfortableTabExtent(naturalTabExtent), available));
+        float candidate = QuantiseDown(desired);
+        float held = HeldLeadCluster(candidate, previousLeadClusterW);
+        // A structural shrink of `available` (a window resize, or a stage losing a fixed island) always wins over the
+        // hold — the hold exists to smooth CONTENT jitter at a fixed width, never to overflow the row.
+        return MathF.Max(ShellResponsiveLayout.ChromeTabViewportMinW, MathF.Min(held, available));
+    }
+
+    /// <summary>WIDEN-IMMEDIATELY / NARROW-AFTER-<see cref="ShellResponsiveLayout.ChromePromotionHysteresisW"/>: a
+    /// longer tab title must never clip (so growth is never delayed), but a shorter one must not be allowed to yank
+    /// the reservation back only to need it again next frame — the opposite polarity from <see cref="Resolve"/>'s
+    /// boolean stages (which promote late, demote at once) because those hide overflow by NOT showing something yet,
+    /// while this hides jitter by NOT giving space back yet.</summary>
+    static float HeldLeadCluster(float candidate, float? previous)
+    {
+        if (previous is not { } prev) return candidate;
+        if (candidate >= prev) return candidate;
+        return prev - candidate >= ShellResponsiveLayout.ChromePromotionHysteresisW ? candidate : prev;
+    }
 
     static float QuantiseDown(float value)
         => MathF.Floor(value / ShellResponsiveLayout.ChromeWidthQuantumW)

@@ -2002,9 +2002,10 @@ sealed class TrackList : Component
         return new BoxEl
         {
             Direction = 1,
-            Height = 44f,
+            Height = DetailVerticalLayout.ToolbarRowHeight,
             MinWidth = 0f,
-            Padding = new Edges4(6f, 5f, 6f, 5f),
+            Padding = new Edges4(DetailVerticalLayout.ToolbarSurfacePadX, DetailVerticalLayout.ToolbarSurfacePadY,
+                DetailVerticalLayout.ToolbarSurfacePadX, DetailVerticalLayout.ToolbarSurfacePadY),
             ClipToBounds = true,
             Children =
             [

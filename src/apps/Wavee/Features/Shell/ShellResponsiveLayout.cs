@@ -70,9 +70,13 @@ public static class ShellResponsiveLayout
     /// <summary>What <c>ShowName</c> ADDS to that chip: the 8-DIP gap + the display-name caption + the extra 6 DIP of
     /// right padding the named form carries. A nominal for a nominal name — the drag gutters absorb the error.</summary>
     public const float ChromeProfileNameW = 90f;
-    /// <summary>Wavee's minimum grabbable seam before its caption-adjacent search icon. The stock TitleBar retains a
-    /// 48-DIP strip; this merged row explicitly lets that elastic strip yield to the app chrome down to Spacing.XS.</summary>
-    public const float ChromeMinDragStripW = 4f;
+    /// <summary>Wavee's minimum grabbable seam before its caption-adjacent search icon. This used to read 4 and claim
+    /// the strip yields to <c>Spacing.XS</c> — it does not: <c>TitleBar</c> PINS it at 48 under merged mode
+    /// (<c>MinDragStrip</c>, and the band is emitted <c>Grow=0, Shrink=0</c> even with <c>TabsElasticLane</c>). The
+    /// budget was therefore under-reserving by 44 DIP, biasing every threshold computed against
+    /// <see cref="MergedChromeLayout.FixedBudget"/> optimistic — the search field appeared to fit 44 DIP sooner than
+    /// the row could actually give it. 48 is what the engine reserves. (#88)</summary>
+    public const float ChromeMinDragStripW = 48f;
     /// <summary>The caption cluster: 3 × <c>CaptionButton.Width</c> (46).</summary>
     public const float ChromeCaptionClusterW = 138f;
     /// <summary>The permanent theme toggle immediately before the native caption buttons — now a real
@@ -111,7 +115,10 @@ public static class ShellResponsiveLayout
     // ── nav-pane (sidebar) width ─────────────────────────────────────────────────────────────────────────────────────
     // The single clamp bounds for the expanded pane. Every writer (the seam drag, the probe seam, the responsive default)
     // must clamp through these — a second literal pair is how the drag and the probe drifted apart.
-    public const float NavPaneMinW = 240f, NavPaneMaxW = 460f;
+    // Issue #84: lowered from 240 to 180 (user's choice) so the sidebar can go genuinely narrow. NavPaneMaxW is
+    // unchanged. Everything that assumed 240 as the floor (the grid strip's column fallback, the splitter's fade
+    // start) was updated alongside this constant — see ShellResponsiveLayoutTests and SidebarPaneSlot.GridStrip.
+    public const float NavPaneMinW = 180f, NavPaneMaxW = 460f;
 
     // ── right rail (lyrics / queue / now-playing) ────────────────────────────────────────────────────────────────────
     // One clamp for every writer (the left-seam splitter, the settings seed, CanFitRail). A second literal pair is how

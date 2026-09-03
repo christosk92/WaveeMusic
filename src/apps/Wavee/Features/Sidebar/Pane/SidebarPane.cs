@@ -2401,8 +2401,15 @@ sealed class SidebarPane : Component
     void RefuseDrop(SidebarDropRefusal refusal, string why)
     {
         Acts?.Svc?.Log.Warn("sidebar", "rootlist drop refused at commit: " + refusal + " (" + why + ")");
-        if (RefusalSentence(refusal) is { Length: > 0 } sentence)
-            Toast.Show(sentence, new ToastOptions { Severity = InfoBarSeverity.Informational });
+        if (RefusalSentence(refusal) is not { Length: > 0 } sentence) return;
+        var options = new ToastOptions { Severity = InfoBarSeverity.Informational };
+        // Issue #85 (H3) — "clear sorting to reorder" is the one refusal a mode can actually FIX from here: the
+        // config's action switches to whatever state makes a positional reorder legal again (V3's Playlists lens +
+        // Custom sort). Every other refusal stays a plain explanation — there is no one action that resolves "into
+        // itself" or "already there".
+        if (refusal == SidebarDropRefusal.SortedList && Config.SortedListRefusalAction is { } fix)
+            options = options with { ActionLabel = Loc.Get(SidebarPaneLoc.SortCustom), OnAction = fix };
+        Toast.Show(sentence, options);
     }
 
     /// <summary>The entry behind one plan row, or false for a chrome row.</summary>
@@ -2747,9 +2754,15 @@ sealed class SidebarPane : Component
     /// The create half is no longer awaited: it is the synchronous seam, so the deposit starts in the same gesture.
     /// The confirmation spends its action on OPEN, not Undo: a brand-new playlist needs a name, and inline rename lives on
     /// its page.</para></summary>
-    internal void CreatePlaylistFromDrag(object? payload)
+    internal void CreatePlaylistFromDrag(object? payload) => CreatePlaylistFromDragPayload(Acts, payload, Navigate);
+
+    /// <summary>The static half of <see cref="CreatePlaylistFromDrag"/> — issue #85 (H2) reuses it verbatim for
+    /// Library V3's own header/rail "+" (<see cref="LibraryV3Session.HeaderCreateDropSpec"/>), which is a SEPARATE
+    /// component instance from the pane and therefore cannot reach this method's instance state (<c>Acts</c>,
+    /// <c>Navigate</c>) — but must do exactly the same thing, so there is still only ONE create-from-drag flow.</summary>
+    internal static void CreatePlaylistFromDragPayload(ActionServices? acts, object? payload, Action<string, string?> navigate)
     {
-        if (Acts is not { } acts || acts.Library is null) return;
+        if (acts is not { Library: not null }) return;
         if (WaveeResourceDrag.Unwrap(payload) is not { CanCopyTracks: true }) return;
         // The ONE create path: numbered name, optimistic row in the store before this returns, CreateFailed observed.
         if (PlaylistCreateFlow.Create(acts, default, navigate: false, out string name) is not { } created) return;
@@ -2770,7 +2783,7 @@ sealed class SidebarPane : Component
                 {
                     Severity = InfoBarSeverity.Success,
                     ActionLabel = Loc.Get(Strings.Detail.GoToPlaylist),
-                    OnAction = () => Navigate("pl:" + uri, name),
+                    OnAction = () => navigate("pl:" + uri, name),
                 });
             });
         }

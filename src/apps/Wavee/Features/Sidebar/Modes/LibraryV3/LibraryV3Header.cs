@@ -85,8 +85,13 @@ sealed class LibraryV3Header : Component
                 Size = 15f, Weight = 600, Color = Tok.TextPrimary,
                 Grow = 1f, Basis = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             },
+            // H2 (#85) — the same drop spec Classic's section-header "+" gets: a rootlist selection files into a new
+            // top-level folder, a track set becomes a new playlist. V3 never sets SidebarPaneConfig.HeaderCreate (it
+            // renders no section headers at all), so this button needed its own copy of that spec.
             Embed.Comp(() => new SidebarCreateButton(
-                _session.CreatePlaylist, menu: CreateMenu, box: 28f, glyph: 14f)),
+                _session.CreatePlaylist, menu: CreateMenu,
+                drop: _session.HeaderCreateDropSpec(), dropActive: () => _session.HeaderCreateDropActive.Value,
+                box: 28f, glyph: 14f)),
             // W5 — IconButton.Create gives the overflow button its focus ring, Space/Enter activation and
             // AutomationRole for free; the hand-rolled BoxEl this used to be had none of those.
             ToolTip.Wrap(

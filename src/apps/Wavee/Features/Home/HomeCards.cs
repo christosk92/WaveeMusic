@@ -989,7 +989,7 @@ static class HomeCards
     /// engine does not reproduce bottom-alignment under wrap, and the result was a staircase of labels. Reserving the
     /// slot makes the alignment structural instead of depending on the container.</para></summary>
     public static Element RankedAvatar(RelatedArtist a, int rank, bool selected, float artSize, float slotHeight,
-                                       Action onSelect)
+                                       Action onSelect, MenuAttach? menu = null)
     {
         float w = MathF.Max(artSize + Spacing.S, 60f);
         return new BoxEl
@@ -1062,8 +1062,19 @@ static class HomeCards
                     MaxWidth = w, MinWidth = 0f,
                 },
             ],
-        }.Interactive(Interaction.Subtle);
+        }.WithMenu(menu).Interactive(Interaction.Subtle);
     }
+
+    /// <summary>The standard "Go to artist" row (#83's nav route: right-click on a Mixview pod/node, since left-click is
+    /// the surface's own select/re-hub gesture). A single-item menu rather than the full <see cref="Menus.Card"/>
+    /// vocabulary (Play/Follow/Share): those actions already exist elsewhere on Home, and the one thing this surface
+    /// cannot otherwise reach is the artist page itself.</summary>
+    internal static MenuAttach? GoToArtistMenu(IOverlayService? overlay, Action<string, string?>? go, string uri, string name)
+        => overlay is null ? null : new MenuAttach(overlay, () => new ContextMenuModel(
+        [
+            new MenuFlyoutItem(Loc.Get(Strings.Detail.GoToArtist), ActionIcons.Resolve(ActionIcons.Artist),
+                                go is not null, () => go?.Invoke("artist:" + uri, name)),
+        ]));
 
     /// <summary>Play counts and listener counts run to nine figures; the full number is noise at caption size. Culture-aware
     /// on the truncated value, so a Dutch build reads its own decimal separator.</summary>

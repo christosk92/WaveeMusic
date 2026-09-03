@@ -50,12 +50,21 @@ sealed class LibraryV3NavBand : Component
         // re-render on every keystroke of a library search it does not draw.
         _ = prefs.LayoutVersion.Value;
         var items = prefs.TopBar;
-        if (items.Count == 0) return new BoxEl();   // the user emptied it on purpose — same rule as `Renders`
+        // NOTE: no early-out on an empty band. The user can empty the shortcut band on purpose, but the
+        // destination strip below is not part of it and must still render.
 
         string route = _session.Route.Value.Name;
         var registry = UseContext(WaveeExtensionRegistry.Slot) ?? _session.Acts?.Extensions;
 
-        var kids = new List<Element>(items.Count + 1);
+        var kids = new List<Element>(items.Count + 2);
+
+        // The five fixed library destinations are NOT top-bar items and never were: they are app destinations, the same
+        // five Classic renders in its own "Your Library" section. V3 draws them here as ONE compact strip, always,
+        // independent of whatever the user has put in the shortcut band. Five full-width rows spent ~200 DIP above the
+        // fold and read as library CONTENT rather than as places to go — V3 exists to put the library first.
+        // (docs/plans/wavee/library-v3-destinations-v2-mica.html, option A.)
+        kids.Add(DestinationRail(route));
+
         for (int i = 0; i < items.Count; i++)
         {
             var item = items[i];
@@ -101,6 +110,110 @@ sealed class LibraryV3NavBand : Component
     // ── the four tile shapes (mirrors SidebarPaneSlot.RouteRow/ActionRow/TrackItemRow and the Entity arm of
     //    EntryRow — the pane's per-row vocabulary — minus everything a plan row needs and a chrome band does not:
     //    no drag source, no drop target, no context menu, no reorder, no multi-select) ─────────────────────────────
+
+    /// <summary>The library destinations as ONE row of tiles — glyph, count, short label — instead of one full-width
+    /// row each. Each tile grows equally, so the strip always spans the content lane exactly and never leaves a ragged
+    /// gap on the right. Below <see cref="LibraryV3Metrics.DestinationLabelW"/> per tile the labels drop and the strip
+    /// becomes five glyphs, which is what keeps it usable at the 180-DIP pane floor.</summary>
+    /// <summary>The library destinations as a row of WORDS — no boxes, no icon-only tiles. 13.5px type on a 30-DIP
+    /// band, a 2-DIP accent underline under the active one, the count on the active word only, and a horizontal scroll
+    /// whose clipped last word peeks past a fade.
+    ///
+    /// <para>This replaced a strip of five equal icon tiles, and the research is one-sided about why. Nielsen Norman:
+    /// "Icon labels should be visible at all times, without any interaction from the user" — only a handful of glyphs
+    /// (home, print, search) have near-universal recognition, and Albums-vs-Artists-vs-Podcasts is exactly the
+    /// ambiguous case. The tiles dropped their labels below ~270 DIP of pane, i.e. at the default width, leaving five
+    /// bare glyphs. A sweep for prior art found NO shipped desktop music app that puts an icon-tile strip for library
+    /// destinations in a persistent sidebar. And Microsoft's own NavigationView guidance recommends TOP navigation
+    /// for precisely this shape — "5 or fewer top-level categories", "show all navigation options on screen", "icons
+    /// cannot clearly describe your categories".</para>
+    ///
+    /// <para>Words are also what makes this read as Zune rather than as a toolbar: Metro grew out of Zune's habit of
+    /// large type "used as a primary navigation element, with words being cut off at the edge of the screen" — which
+    /// is what the peeking scroll below is. It also cannot be confused with the filter chips two rows down: different
+    /// size, different weight, no pill, and on the other side of the rule.</para></summary>
+    Element DestinationRail(string route)
+    {
+        var store = UseContext(LibraryStore.Slot);
+        var keys = SidebarShortcutsSection.LibraryDestinations;
+
+        var words = new Element[keys.Length];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            string key = keys[i];
+            var dest = ShellNav.Dest(key);
+            bool on = string.Equals(route, key, StringComparison.Ordinal);
+
+            var line = new List<Element>(2)
+            {
+                new TextEl(dest.Title)
+                {
+                    Size = LibraryV3Metrics.DestinationWordSize,
+                    Weight = on ? (ushort)600 : (ushort)400,
+                    Color = on ? Tok.TextPrimary : Tok.TextSecondary,
+                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                },
+            };
+            // The count rides the ACTIVE word only. Five permanent counts is the "different types of InfoBadge in one
+            // NavigationView" mismatch MS warns against — four of these are countable and Local files is not.
+            if (on && DestinationCount(store, key) is { } n) line.Add(SidebarCounts.Number(n));
+
+            words[i] = new BoxEl
+            {
+                Key = "v3-dest:" + key,
+                Direction = 1, Shrink = 0f, Gap = 2f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Height = LibraryV3Metrics.DestinationRailH,
+                Padding = new Edges4(2f, 0f, 2f, 0f),
+                Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button,
+                OnClick = () => _session.Go(key, null),
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, Gap = 5f, AlignItems = FlexAlign.Center, Grow = 1f,
+                        Children = [.. line],
+                    },
+                    // The 2-DIP accent underline — the one selected-state marker, always present so the word never
+                    // shifts when it becomes active.
+                    new BoxEl
+                    {
+                        Height = 2f, Corners = CornerRadius4.All(1f),
+                        Fill = on ? Tok.AccentDefault : ColorF.Transparent,
+                    },
+                ],
+            };
+        }
+
+        return new BoxEl
+        {
+            Key = "v3-dest-rail",
+            Height = LibraryV3Metrics.DestinationRailH, Shrink = 0f,
+            Margin = new Edges4(0f, 0f, 0f, 2f),
+            ClipToBounds = true,
+            EdgeFade = new EdgeFadeSpec(EdgeMask.Right, LibraryV3Metrics.DestinationRailFade),
+            Children =
+            [
+                Ui.ScrollView(new BoxEl
+                {
+                    Direction = 0, Gap = LibraryV3Metrics.DestinationWordGap, AlignItems = FlexAlign.Center,
+                    Children = words,
+                }, horizontal: true) with { ContentSized = true, Grow = 1f },
+            ],
+        };
+    }
+
+    /// <summary>The destination's library count, or null when it has none (Local files) or the stats are not ready.
+    /// Mirrors <c>SidebarPaneSlot.CountBadge</c>'s mapping — the stats are already warmed by LibraryV3Sidebar.</summary>
+    static int? DestinationCount(LibraryStore? store, string routeKey)
+    {
+        int index = routeKey switch { "albums" => 0, "artists" => 1, "liked" => 2, "podcasts" => 3, _ => -1 };
+        if (index < 0 || store is null) return null;
+        var stats = store.Stats;
+        if ((Wavee.Backend.LoadState)stats.State.Value != Wavee.Backend.LoadState.Ready ||
+            stats.Value.Value is not { } s) return null;
+        return index switch { 0 => s.Albums, 1 => s.Artists, 2 => s.LikedSongs, _ => s.Podcasts };
+    }
 
     Element RouteRow(SidebarItemSpec item, string route)
     {

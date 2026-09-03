@@ -24,8 +24,6 @@ public static class HighlightViewerLayout
     /// <summary>Pager (36) + text block (≤ 260) + 64 vertical margin the image must leave below itself.</summary>
     public const float ReservedBelowImage = 360f;
     public const float PlateMarginY = 64f;
-    /// <summary>A slide with no poster gets a tinted band, not a 540 DIP void. The chrome still fits: 12 + 36 + 12.</summary>
-    public const float NoPosterBandHeight = 120f;
     public const float PosterAspect = 16f / 9f;
     public const float ChromeCircle = 36f;
     public const float ChromeInset = 12f;
@@ -42,8 +40,12 @@ public static class HighlightViewerLayout
         return MathF.Round(w);
     }
 
-    public static float ImageHeight(float plateWidth, bool hasPoster)
-        => hasPoster ? MathF.Round(plateWidth / PosterAspect) : NoPosterBandHeight;
+    /// <summary>The 16:9 band height, from the plate's OWN width — always, poster or not. L4 (issue #89): a
+    /// no-poster slide used to get a flat 120 DIP band regardless of plate width; the prototype keeps the same
+    /// <c>w·9/16</c> rule either way (a tinted band, not a smaller one), which is also just this formula with
+    /// <paramref name="hasPoster"/> dropped — kept as a parameter for the call-site's own poster-presence branch on
+    /// the band's FILL, not its height.</summary>
+    public static float ImageHeight(float plateWidth, bool hasPoster) => MathF.Round(plateWidth / PosterAspect);
 
     public static float PlateMaxHeight(float vpH) => vpH - PlateMarginY;
 

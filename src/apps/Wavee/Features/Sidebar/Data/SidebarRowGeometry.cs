@@ -289,6 +289,33 @@ static class SidebarRowGeometry
         return count > 0;
     }
 
+    /// <summary>H1 (#85) — whether a row draws the trailing pin glyph: the entry survived
+    /// <c>SidebarProjection.PinsFirst</c>'s stamp AND is not a track (a track is never pinnable — locked decision 4).
+    /// <c>SidebarPaneSlot.EntryRow</c> sets <c>SidebarRowSpec.Pinned</c> from exactly this, so the decision is pinned
+    /// here where a test can reach it instead of only inside the engine-bound row builder.</summary>
+    public static bool ShowsPinGlyph(bool isPinned, bool isTrack) => isPinned && !isTrack;
+
+    // ── grid strip fallback (issue #84) ──────────────────────────────────────────────────────────────────────────────
+    // The planner owns the column COUNT (see SidebarPaneSlot.GridStrip's doc comment: re-deriving it from width there
+    // disagreed with how SidebarRowPlanner.EmitProjected had already sliced the entries into GridColumns-wide strips).
+    // What changed at the 180-DIP floor (down from 240) is that the planner's column count can no longer be honoured
+    // without shrinking cells under the 40-DIP art floor — so the SLOT clamps the column count DOWN, purely as a
+    // function of the width it has to render into, and wraps the strip to more lines instead.
+
+    /// <summary>The largest column count in <c>[1, plannedCols]</c> whose cells still clear <paramref name="minCell"/>
+    /// at <paramref name="availableWidth"/> — the grid strip's narrow-pane fallback. Never exceeds
+    /// <paramref name="plannedCols"/> (the planner still owns the ceiling) and never returns less than 1.</summary>
+    public static int GridFallbackColumns(int plannedCols, float availableWidth, float gap, float minCell)
+    {
+        int cols = plannedCols < 1 ? 1 : plannedCols;
+        for (int c = cols; c > 1; c--)
+        {
+            float edge = (availableWidth - gap * (c - 1)) / c;
+            if (edge >= minCell) return c;
+        }
+        return 1;
+    }
+
     /// <summary>Resolve the contiguous BODY owned by one planned section header. A different section at the same or a
     /// shallower depth is a structural sibling and terminates the band even when that sibling is a divider or has no
     /// header of its own. Deeper rows belong to a nested CustomGroup subtree and stay inside the parent disclosure.</summary>

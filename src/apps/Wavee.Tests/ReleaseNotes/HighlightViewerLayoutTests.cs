@@ -25,20 +25,25 @@ public class HighlightViewerLayoutTests
         Assert.Equal(240f, HighlightViewerLayout.ImageHeight(427f, hasPoster: true));
     }
 
+    // L4 (issue #89): a no-poster slide used to get a flat 120-DIP band; the prototype keeps the SAME w·9/16 rule
+    // either way (a tinted band, not a smaller one) — so ImageHeight must now agree for both poster states at every
+    // plate width, not just report a poster-derived value.
     [Theory]
     [InlineData(960f)]
     [InlineData(427f)]
     [InlineData(320f)]
-    public void ImageHeight_IsTheFixedNoPosterBand_RegardlessOfWidth(float plateWidth)
-        => Assert.Equal(HighlightViewerLayout.NoPosterBandHeight,
+    public void ImageHeight_IsTheSame16By9BandWithOrWithoutAPoster(float plateWidth)
+        => Assert.Equal(
+            HighlightViewerLayout.ImageHeight(plateWidth, hasPoster: true),
             HighlightViewerLayout.ImageHeight(plateWidth, hasPoster: false));
 
-    /// <summary>The chevron chrome (a 36 DIP circle inset 12 DIP from each edge) must fit inside the tinted band a
-    /// poster-less slide falls back to, or the "always rendered at a fixed position" chrome would overflow it.</summary>
+    /// <summary>The chevron chrome (a 36 DIP circle inset 12 DIP from each edge) must fit inside the band at the
+    /// SMALLEST plate width the ladder ever produces (<see cref="HighlightViewerLayout.PlateMinWidth"/>), poster or
+    /// not — the "always rendered at a fixed position" chrome would overflow a band that shrank below it.</summary>
     [Fact]
-    public void Chrome_FitsInsideTheNoPosterBand()
+    public void Chrome_FitsInsideTheSmallestBand()
         => Assert.True(HighlightViewerLayout.ChromeInset * 2f + HighlightViewerLayout.ChromeCircle
-                        <= HighlightViewerLayout.NoPosterBandHeight);
+                        <= HighlightViewerLayout.ImageHeight(HighlightViewerLayout.PlateMinWidth, hasPoster: false));
 
     // ── Step: clamped, no wrap ───────────────────────────────────────────────────────────────────────────────────
 

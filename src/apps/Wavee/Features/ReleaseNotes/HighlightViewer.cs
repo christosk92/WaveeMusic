@@ -91,14 +91,20 @@ sealed class HighlightViewerView : Component
         bool video = HighlightCard.IsVideo(h);
         string id = SlideId(item, index);
 
-        // §B.1: W = clamp(320, min(960, vpW-96, (vpH-360)*16/9)); the band is W*9/16 (a flat 120 with no poster to
-        // derive from), and the plate never exceeds vpH-64 — past that the TEXT scrolls, the image never does.
+        // §B.1: W = clamp(320, min(960, vpW-96, (vpH-360)*16/9)); the band is W*9/16 whether or not a poster exists
+        // (L4, issue #89), and the plate never exceeds vpH-64 — past that the TEXT scrolls, the image never does.
         float w = VL.PlateWidth(vp.Width, vp.Height);
         float imgH = VL.ImageHeight(w, item.Poster is { Length: > 0 });
         float maxH = VL.PlateMaxHeight(vp.Height);
 
         return new BoxEl
         {
+            // Issue #89 (L1): the host chain hugs (OverlayHost.PositionedModal → FlyoutSurface.Render for
+            // PopupChrome.Modal is AlignSelf=Center with no Grow), so without an explicit size THIS root shrink-wraps
+            // to the plate — the authored full-window veil below then covers only the plate's own box, and
+            // ScrimVisual=false (HighlightViewer.Open) suppressed the chrome's own smoke on top of that, so nothing
+            // dimmed the page at all. Width/Height = the viewport, exactly the ArtistGalleryLightbox.cs:121 precedent.
+            Width = vp.Width, Height = vp.Height,
             Grow = 1f, ZStack = true,
             Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,   // centers the plate; the veil below overrides both axes to fill instead
             Focusable = true, OnKeyDown = OnKeys,
@@ -109,7 +115,14 @@ sealed class HighlightViewerView : Component
                     AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
                     // The ONLY light-dismiss surface: the plate paints OVER this in z-order, so a click anywhere on
                     // the plate never reaches this handler — no HitTestPassThrough gymnastics needed.
-                    Fill = Veil, OnClick = Close,
+                    //
+                    // Hover/pressed are PINNED to the resting fill, exactly the way the engine's own light-dismiss
+                    // layer pins them (OverlayHost's scrim sets HoverFill = PressedFill = scrimFill). A BoxEl that
+                    // carries an OnClick is a control as far as the recorder is concerned, and it interpolates the
+                    // resting brush toward the hover/pressed brush by the eased HoverT/PressT — so leaving them unset
+                    // let a full-bleed dismiss surface visibly tint under the cursor and flash on press, as if the
+                    // dimmed page behind the dialog were itself a giant button.
+                    Fill = Veil, HoverFill = Veil, PressedFill = Veil, OnClick = Close,
                 },
                 Plate(item, h, id, w, maxH, imgH, index, count, store, video),
             ],
@@ -171,6 +184,14 @@ sealed class HighlightViewerView : Component
             Direction = 1, Width = w, MaxHeight = maxH,
             Fill = Tok.FillSolidBase, Corners = CornerRadius4.All(Radii.Overlay),
             BorderWidth = 1f, BorderColor = Tok.StrokeSurfaceDefault, ClipToBounds = true,
+            // L4: the prototype's plate shadow (0 40px 90px rgba(0,0,0,.6)). The modal host wrapper
+            // (FlyoutSurface.Render, PopupChrome.Modal) still carries its own ClipToBounds=true, but — since L1 now
+            // gives THIS component's root an explicit Width/Height = the viewport — that wrapper hugs to the ROOT
+            // (viewport-sized), not to the plate any more, so the plate's halo is bounded by the window edges rather
+            // than by the plate's own box. That is the opposite of the known ContentDialog case
+            // (winui-parity-sweep.md:786), where the modal wrapper hugs the dialog card directly and clips its
+            // shadow — needs a live check near a window edge where PlateMarginY (64) is nearly exhausted.
+            Shadow = new ShadowSpec(Blur: 90f, OffsetY: 40f, OffsetX: 0f, Color: ColorF.FromRgba(0, 0, 0, 0x99)),
             Children = children.ToArray(),
         };
     }
@@ -270,6 +291,11 @@ sealed class HighlightViewerView : Component
         BrushTransitionMs = WaveeMotion.Faster,
         Opacity = enabled ? 1f : 0.3f,
         Transition = MotionTok.ControlFaster,          // the dim is an 83ms EASE, not a pop
+        // L4 (issue #89): the prototype scales these on hover/press (1.08 / .94) — WatchPill beside them already
+        // carries the same WaveeMotion.ScaleStandard tier; the chevrons/close simply never picked it up. HoverIf/
+        // PressIf collapse to 1f (no scale) for a dead end-of-list button, same as its dim/hit-test/cursor split.
+        HoverScale = WaveeMotion.ScaleStandard.HoverIf(enabled),
+        PressScale = WaveeMotion.ScaleStandard.PressIf(enabled),
         HitTestVisible = enabled, Focusable = enabled, TabStop = enabled ? null : false,
         Role = AutomationRole.Button, Cursor = enabled ? CursorId.Hand : default,
         OnClick = enabled ? onClick : null,
@@ -297,12 +323,45 @@ sealed class HighlightViewerView : Component
 
     /// <summary>The dots. Three of them ARE the position, so there is no "2 of 3" caption — but the count still has to
     /// be sayable, so it is the row's tooltip rather than a second visible copy of the same fact.</summary>
-    Element PagerRow(int count, int index) => ToolTip.Wrap(new BoxEl
+    // The prototype's pager is not WinUI's: a row of 6-DIP dots where the SELECTED one stretches into a 14-DIP capsule
+    // and brightens to TextPrimary (prototype .vpager, 6x6 r3 rgba(255,255,255,.32) -> width 14 + #f4f4f4). PipsPager
+    // draws fixed-size glyph pips and can only morph their FONT SIZE, so the stretch is not a prop it exposes — the row
+    // is hand-rolled instead. The width change rides a Size/Width LayoutTransition (the FilterToken idiom) so the
+    // capsule grows rather than jumping, which is the whole read: the strip shows WHERE you are, not just how many.
+    const float PipDot = 6f, PipSelected = 14f, PipGap = 8f;
+
+    Element PagerRow(int count, int index)
     {
-        Height = 24f, Margin = new Edges4(0f, 12f, 0f, 0f),
-        Direction = 0, Justify = FlexJustify.Center,
-        Children = [PipsPager.Create(count, _pip, onChange: i => Go(VL.StepTo(_index.Peek(), i, count)))],
-    }, Strings.WhatsNew.Viewer.Position(index + 1, count));
+        var pips = new Element[count];
+        for (int i = 0; i < count; i++)
+        {
+            int target = i;
+            bool on = i == index;
+            pips[i] = new BoxEl
+            {
+                Key = "pip:" + target,
+                Animate = new LayoutTransition(
+                    TransitionChannels.Position | TransitionChannels.Size,
+                    TransitionDynamics.Tween(120f, Easing.SmoothOut),
+                    Size: SizeMode.Reflow, Axes: SizeAxes.Width),
+                Width = on ? PipSelected : PipDot, Height = PipDot, Shrink = 0f,
+                Corners = CornerRadius4.All(Radii.Full),
+                Fill = on ? Tok.TextPrimary : ColorF.FromRgba(255, 255, 255, 82),
+                HoverFill = on ? Tok.TextPrimary : ColorF.FromRgba(255, 255, 255, 140),
+                Cursor = CursorId.Hand,
+                Focusable = true,
+                Role = AutomationRole.Button,
+                OnClick = () => Go(VL.StepTo(_index.Peek(), target, count)),
+            };
+        }
+
+        return ToolTip.Wrap(new BoxEl
+        {
+            Height = 24f, Margin = new Edges4(0f, 12f, 0f, 0f),
+            Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Gap = PipGap,
+            Children = pips,
+        }, Strings.WhatsNew.Viewer.Position(index + 1, count));
+    }
 
     /// <summary>The keyed text half of the slide: title, the full body (never the card's clipped-and-faded slot),
     /// and — mutually exclusive, design §B.5 — the store CTA or the "Try it" deep link.</summary>
@@ -343,8 +402,27 @@ sealed class HighlightViewerView : Component
                 // reach the ScrollView, not just at the keyed wrapper around it.
                 // Top padding drops to 8 when the pager already sits above it — its own 12 DIP margin plus 24 height
                 // is most of the breathing room the full 16 would otherwise add a second time.
+                //
+                // L2 (issue #89): ScrollEl.ContentSized defaults false and Ui.ScrollView did not set it, so
+                // FlexLayout.MeasureViewport's D1 fallback (which needs ItemCount > 0 && FlexGrow == 0) never
+                // engaged — the cross-axis hug filled width only, height stayed NaN and was zeroed, and the plate
+                // (Width + MaxHeight, no Height) then reported its desired height as band + pager + 0, with nothing
+                // for Grow=1 to distribute into. ContentSized = true is the ContentDialog.cs:308 precedent
+                // (`new ScrollEl { Content, ContentSized = true, MaxHeight = ... }`, the same "definite MaxHeight,
+                // no Height" shape this plate has) — the cheaper of the two fixes offered: it lets the ScrollView
+                // report its ACTUAL content height as its base size (so the plate's own auto height now correctly
+                // sums band + pager + text, clamped at MaxHeight, with the pre-existing Grow=1/Shrink=1/MinHeight=0
+                // trio taking over once content exceeds the cap — the same "ContentSized + Shrink" trick
+                // TabStrip.cs:643 documents), rather than adding a second arithmetic path in HighlightViewerLayout
+                // that would have to re-derive a text measurement the engine's shaper already owns. Traded away:
+                // the prototype's 250ms height-GROW animation (there is no explicit Height left to animate) — a
+                // live-only difference, not a correctness one.
                 ScrollView(new BoxEl { Direction = 1, MaxWidth = 720f, AlignSelf = FlexAlign.Start, Children = content.ToArray() })
-                    with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Padding = new Edges4(24f, hasPager ? 8f : 16f, 24f, 24f) },
+                    with
+                    {
+                        Grow = 1f, Shrink = 1f, MinHeight = 0f, ContentSized = true,
+                        Padding = new Edges4(24f, hasPager ? 8f : 16f, 24f, 24f),
+                    },
             ],
         };
     }

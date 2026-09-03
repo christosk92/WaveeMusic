@@ -198,4 +198,62 @@ public sealed class LibraryV3ChipStripTests
         var fused = LibraryV3ChipStrip.Slots(Playlists, ByYou, qualifiersAvailable: true);
         Assert.Equal(1, LibraryV3ChipStrip.FocusIndex(fused, "v3f" + Playlists));
     }
+
+    // ── Route (issue #85, H4 approach 3) ─────────────────────────────────────────────────────────────────────────────
+    // Exactly Albums/Artists/Podcasts have an actual library page; Playlists has no "all playlists" destination, so
+    // its chip — loose OR fused — never carries one, same as Clear and every Option slot.
+
+    [Theory]
+    [InlineData(Albums, "albums")]
+    [InlineData(Artists, "artists")]
+    [InlineData(Podcasts, "podcasts")]
+    [InlineData(Playlists, null)]
+    public void RouteFor_IsPopulatedForExactlyTheThreeKindsWithAPage(int filter, string? expected)
+        => Assert.Equal(expected, LibraryV3ChipStrip.RouteFor(filter));
+
+    [Fact]
+    public void IdleFacets_CarryTheirRoute_ExceptPlaylists()
+    {
+        var slots = LibraryV3ChipStrip.Slots(All, Any, qualifiersAvailable: true);
+        foreach (var s in slots)
+            Assert.Equal(LibraryV3ChipStrip.RouteFor(s.Code), s.Route);
+        Assert.Null(slots[0].Route);   // Playlists is always index 0 in the idle order
+    }
+
+    [Fact]
+    public void SelectedFacetSlot_StillCarriesItsRoute()
+    {
+        var facet = LibraryV3ChipStrip.Slots(Podcasts, Any, qualifiersAvailable: false)[1];
+        Assert.Equal("podcasts", facet.Route);
+    }
+
+    [Fact]
+    public void ClearAndOptionSlots_NeverCarryARoute()
+    {
+        var slots = LibraryV3ChipStrip.Slots(Playlists, Any, qualifiersAvailable: true);
+        Assert.Equal(V3ChipKind.Clear, slots[0].Kind);
+        Assert.Null(slots[0].Route);
+        foreach (var s in slots)
+            if (s.Kind == V3ChipKind.Option) Assert.Null(s.Route);
+    }
+
+    [Fact]
+    public void FusedPlaylistsSlot_HasNoRoute_PlaylistsNeverHasOne()
+    {
+        var fused = LibraryV3ChipStrip.Slots(Playlists, ByYou, qualifiersAvailable: true)[1];
+        Assert.Equal(V3ChipKind.Fused, fused.Kind);
+        Assert.Null(fused.Route);
+    }
+
+    [Fact]
+    public void ATap_OnlyEverWritesTheFilterOrQualifier_RouteIsASeparateSecondaryField()
+    {
+        // The contract H4 decided: Route is data a RENDERER may act on with a secondary gesture (Library V3 chose a
+        // double-click) — it must never change what SelectFilter/SelectQualifier themselves write for a plain tap.
+        var albums = LibraryV3ChipStrip.Slots(All, Any, qualifiersAvailable: false)[2];
+        Assert.Equal(Albums, albums.Code);
+        Assert.Equal("albums", albums.Route);
+        Assert.Equal(Albums, albums.SelectFilter);   // a tap still only selects the Albums filter
+        Assert.Equal(Any, albums.SelectQualifier);
+    }
 }

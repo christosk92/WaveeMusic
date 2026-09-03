@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wavee — Library V3 destinations, take 2</title>
+<style>
+  :root {
+    --lab-bg: #0e1014;
+    --lab-panel: rgba(27, 30, 37, .82);
+    --lab-stroke: rgba(255, 255, 255, .09);
+    --lab-text: #f5f6f8;
+    --lab-muted: #9da4b0;
+
+    --solid-base: #202020;
+    --fill-ctrl: rgba(255,255,255,.055);
+    --fill-ctrl-hover: rgba(255,255,255,.10);
+    --stroke-card: rgba(255,255,255,.09);
+    --stroke-divider: rgba(255,255,255,.07);
+    --text-1: #f4f4f4;
+    --text-2: #b6b6b6;
+    --text-3: #8a8a8a;
+    --accent: #4cc2ff;
+    --accent-text: #6fcbff;
+    --on-accent: #001b28;
+
+    --r-ctrl: 5px;
+    --r-pill: 999px;
+    --row-h: 40px;
+    --row-h-sub: 44px;
+
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--lab-text); font-size: 14px; line-height: 1.5;
+    padding: 32px 28px 72px;
+    background:
+      radial-gradient(1100px 640px at 10% -10%, rgba(76,194,255,.10), transparent 60%),
+      radial-gradient(900px 600px at 95% 2%, rgba(255,120,190,.08), transparent 62%),
+      var(--lab-bg);
+  }
+  h1 { font-family: "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+       font-size: 27px; font-weight: 600; letter-spacing: -.02em; margin: 0 0 6px; }
+  .lede { color: var(--lab-muted); max-width: 80ch; margin: 0 0 8px; }
+  .kill { color:#ff9d9d; max-width: 80ch; margin: 0 0 26px; font-size: 13px; }
+  code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  .opt { background: var(--lab-panel); border: 1px solid var(--lab-stroke); border-radius: 12px;
+         padding: 18px; backdrop-filter: blur(24px) saturate(140%); }
+  h2 { font-size: 14.5px; font-weight: 600; margin: 0 0 3px; }
+  .sub { font-size: 12px; color: var(--lab-muted); margin: 0 0 14px; }
+  .note { color: var(--lab-muted); font-size: 12.5px; margin: 12px 0 0; max-width: 33ch; }
+  .note b { color: var(--lab-text); font-weight: 600; }
+  .cost { display:inline-block; font-size:10.5px; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
+          padding:2px 7px; border-radius:var(--r-pill); background:rgba(126,226,168,.15); color:#7ee2a8; margin-left:6px; }
+  .cost.mid { background:rgba(255,212,121,.15); color:#ffd479; }
+
+  .pane { width: 300px; background: var(--solid-base); border: 1px solid var(--stroke-card);
+          border-radius: 10px; padding: 8px; display: flex; flex-direction: column; overflow: hidden; }
+  .rule { height:1px; background: var(--stroke-divider); margin: 7px 2px; }
+
+  .r { display:flex; align-items:center; gap:10px; height:var(--row-h); padding:0 8px 0 4px;
+       border-radius:var(--r-ctrl); position:relative; }
+  .r:hover { background: var(--fill-ctrl); }
+  .r .g { width:20px; text-align:center; color:var(--text-2); font-size:15px; flex:none; }
+  .r .t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .r .art { width:32px; height:32px; border-radius:4px; flex:none; background:linear-gradient(135deg,#3a4150,#232833); }
+  .r .two { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; }
+  .r .two i { font-style:normal; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .r .two s { text-decoration:none; color:var(--text-3); font-size:12px; }
+  .r.sub { height:var(--row-h-sub); }
+
+  .hdr { display:flex; align-items:center; gap:4px; height:36px; padding:0 4px; }
+  .hdr .ttl { font-size:15px; font-weight:600; letter-spacing:-.01em; flex:1; min-width:0;
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hdr .ico { width:28px; height:28px; display:grid; place-items:center; border-radius:4px;
+              color:var(--text-2); font-size:14px; flex:none; }
+  .hdr .ico:hover { background:var(--fill-ctrl); color:var(--text-1); }
+  .hdr .caret { font-size:11px; color:var(--text-3); margin-left:2px; }
+
+  .chips { display:flex; gap:6px; padding:4px 2px 8px; }
+  .chip { font-size:12.5px; padding:5px 11px; border-radius:var(--r-pill); background:var(--fill-ctrl);
+          white-space:nowrap; flex:none; display:inline-flex; align-items:center; gap:5px; }
+  .chip.on { background:var(--accent); color:var(--on-accent); font-weight:600; }
+  .chip.dest { background:transparent; border:1px solid var(--stroke-card); color:var(--text-2); }
+  .chip.dest .g { font-size:12px; }
+  .sep { width:1px; align-self:stretch; background:var(--stroke-divider); margin:4px 3px; flex:none; }
+
+  /* A — icon tile strip */
+  .tiles { display:flex; gap:5px; padding:2px 2px 6px; }
+  .tile { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:2px;
+          padding:9px 2px 7px; border-radius:7px; background:var(--fill-ctrl); position:relative; }
+  .tile:hover { background:var(--fill-ctrl-hover); }
+  .tile .g { font-size:15px; color:var(--text-1); line-height:1; }
+  .tile .l { font-size:10px; color:var(--text-3); }
+  .tile .b { position:absolute; top:4px; right:5px; font-size:9px; color:var(--text-3); }
+  .tile.on { background:rgba(76,194,255,.16); }
+  .tile.on .g, .tile.on .l { color:var(--accent-text); }
+
+  /* B — header picker menu */
+  .menu { position:relative; }
+  .flyout { margin-top:4px; background:#2b2b2b; border:1px solid var(--stroke-card); border-radius:8px;
+            padding:4px; box-shadow:0 12px 32px rgba(0,0,0,.55); }
+  .mi { display:flex; align-items:center; gap:10px; height:34px; padding:0 10px; border-radius:4px; font-size:13.5px; }
+  .mi:hover { background:var(--fill-ctrl-hover); }
+  .mi .g { width:18px; text-align:center; color:var(--text-2); }
+  .mi .n { margin-left:auto; color:var(--text-3); font-size:11.5px; }
+  .mi.hd { height:26px; font-size:11px; color:var(--text-3); font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+
+  /* D — split rail */
+  .railwrap { display:flex; gap:8px; }
+  .minirail { width:44px; flex:none; background:rgba(255,255,255,.03); border-radius:8px;
+              padding:5px 0; display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .mr { width:34px; height:34px; display:grid; place-items:center; border-radius:6px; color:var(--text-2); font-size:15px; position:relative; }
+  .mr:hover { background:var(--fill-ctrl-hover); color:var(--text-1); }
+  .mr.on { background:rgba(76,194,255,.16); color:var(--accent-text); }
+  .mr .b { position:absolute; bottom:1px; right:2px; font-size:8px; color:var(--text-3); }
+
+  table.cmp { border-collapse:collapse; margin-top:34px; width:100%; max-width:1020px; font-size:13px; }
+  table.cmp th, table.cmp td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--stroke-divider); vertical-align:top; }
+  table.cmp th { color:var(--lab-muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+</style>
+</head>
+<body>
+
+<h1>Library V3 destinations — take 2</h1>
+<p class="lede">
+  Reaching <b>Liked Songs, Albums, Artists, Podcasts and Local files</b> from the Library&nbsp;V3 pane
+  (issue&nbsp;#85&nbsp;H4). Counts are already warm (<code>LibraryStats</code>); routes already registered
+  (<code>ShellRoutes</code>). The question is purely what it should look like.
+</p>
+<p class="kill">
+  ✗ <b>What shipped and was rejected:</b> seeding the shared top bar so the band renders five ordinary
+  full-width rows above "Your Library". It reads as Classic bolted onto V3, spends ~200&nbsp;DIP above the
+  fold, and pushes the actual library below it. None of the four below do that.
+</p>
+
+<div class="row">
+
+  <!-- A -->
+  <div class="opt">
+    <h2>A · Icon tile strip <span class="cost">~52 DIP</span></h2>
+    <p class="sub">Five square tiles on one row, counts as superscripts.</p>
+    <div class="pane">
+      <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      <div class="tiles">
+        <div class="tile on"><span class="g">♥</span><span class="b">307</span><span class="l">Liked</span></div>
+        <div class="tile"><span class="g">◎</span><span class="b">18</span><span class="l">Albums</span></div>
+        <div class="tile"><span class="g">☺</span><span class="b">16</span><span class="l">Artists</span></div>
+        <div class="tile"><span class="g">◈</span><span class="b">6</span><span class="l">Shows</span></div>
+        <div class="tile"><span class="g">▤</span><span class="l">Local</span></div>
+      </div>
+      <div class="rule"></div>
+      <div class="hdr"><span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span></div>
+      <div class="chips"><span class="chip on">Playlists</span><span class="chip">Podcasts</span><span class="chip">Albums</span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>MISS U Radio</i><s>50 songs</s></span></div>
+    </div>
+    <p class="note">One row instead of five. Reads as a <b>destination bar</b>, not as library content, so it
+      never competes with the playlists below it. Below ~200&nbsp;DIP the labels drop and it becomes five
+      glyphs.</p>
+  </div>
+
+  <!-- B -->
+  <div class="opt">
+    <h2>B · "Your Library" becomes a picker <span class="cost">0 DIP</span></h2>
+    <p class="sub">The header title is the button. Nothing is spent until it is opened.</p>
+    <div class="pane">
+      <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      <div class="rule"></div>
+      <div class="hdr menu"><span class="ico">▽</span>
+        <span class="ttl">Your Library <span class="caret">▾</span></span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span></div>
+      <div class="flyout">
+        <div class="mi hd">Go to</div>
+        <div class="mi"><span class="g">♥</span>Liked Songs<span class="n">307</span></div>
+        <div class="mi"><span class="g">◎</span>Albums<span class="n">18</span></div>
+        <div class="mi"><span class="g">☺</span>Artists<span class="n">16</span></div>
+        <div class="mi"><span class="g">◈</span>Podcasts<span class="n">6</span></div>
+        <div class="mi"><span class="g">▤</span>Local files</div>
+      </div>
+      <div class="chips" style="margin-top:6px"><span class="chip on">Playlists</span><span class="chip">Albums</span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+    </div>
+    <p class="note">Costs <b>nothing</b> at rest — the strongest argument for it. The caret is the only new
+      pixel. Weakness: a destination you cannot see is a destination you forget, and it needs the header
+      title to become a control (it currently is not).</p>
+  </div>
+
+  <!-- C -->
+  <div class="opt">
+    <h2>C · Destinations lead the chip rail <span class="cost">0 DIP</span></h2>
+    <p class="sub">A navigating group before the filtering group, split by a divider.</p>
+    <div class="pane">
+      <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      <div class="rule"></div>
+      <div class="hdr"><span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span></div>
+      <div class="chips">
+        <span class="chip dest"><span class="g">♥</span>307</span>
+        <span class="chip dest"><span class="g">◎</span>18</span>
+        <span class="chip dest"><span class="g">☺</span>16</span>
+        <span class="sep"></span>
+        <span class="chip on">Playlists</span><span class="chip">Albums</span>
+      </div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>MISS U Radio</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Dalkom Cafe</i><s>50 songs</s></span></div>
+    </div>
+    <p class="note">Reuses a rail that already exists and already scrolls — <b>zero new vertical space</b>.
+      But it puts two different verbs (go / filter) in one strip, which is exactly the confusion the outlined
+      style has to carry alone. Local files has no sensible chip.</p>
+  </div>
+
+  <!-- D -->
+  <div class="opt">
+    <h2>D · A mini rail down the edge <span class="cost mid">44 DIP wide</span></h2>
+    <p class="sub">Destinations become a vertical gutter; the list keeps its full height.</p>
+    <div class="pane">
+      <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      <div class="rule"></div>
+      <div class="railwrap">
+        <div class="minirail">
+          <div class="mr on"><span>♥</span><span class="b">307</span></div>
+          <div class="mr"><span>◎</span><span class="b">18</span></div>
+          <div class="mr"><span>☺</span><span class="b">16</span></div>
+          <div class="mr"><span>◈</span><span class="b">6</span></div>
+          <div class="mr"><span>▤</span></div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div class="hdr" style="padding-left:0"><span class="ttl">Your Library</span>
+            <span class="ico">＋</span><span class="ico">‹</span></div>
+          <div class="chips"><span class="chip on">Playlists</span><span class="chip">Albums</span></div>
+          <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederl…</i><s>70 songs</s></span></div>
+          <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+          <div class="r sub"><span class="art"></span><span class="two"><i>MISS U Radio</i><s>50 songs</s></span></div>
+          <div class="r sub"><span class="art"></span><span class="two"><i>Dalkom Cafe</i><s>50 songs</s></span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Spends <b>width</b> instead of height, so the playlist list keeps every row. Genuinely
+      different, and it echoes the app's own 56-DIP collapsed rail. Costs 44 of the pane's width though —
+      painful at the new 180-DIP floor, so it would have to fold into A or B when narrow.</p>
+  </div>
+
+</div>
+
+<table class="cmp">
+  <tr><th>Option</th><th>Vertical cost</th><th>Discoverable at rest</th><th>Holds at 180 DIP</th><th>Read</th></tr>
+  <tr><td><b>A</b> icon tiles</td><td>~52 DIP, one row</td><td>Yes — all five visible</td><td>Yes, labels drop</td>
+      <td>The safe pick: visible, compact, obviously a destination bar rather than content.</td></tr>
+  <tr><td><b>B</b> header picker</td><td>0</td><td>No — hidden behind a caret</td><td>Yes</td>
+      <td>Cheapest and cleanest; the discoverability cost is real.</td></tr>
+  <tr><td><b>C</b> chip rail</td><td>0</td><td>Partly — scrolls out of view</td><td>Scrolls</td>
+      <td>Free, but mixes "go" and "filter" in one strip.</td></tr>
+  <tr><td><b>D</b> mini rail</td><td>0 (44 DIP wide)</td><td>Yes</td><td>No — must fold</td>
+      <td>Most distinctive; the width is the problem.</td></tr>
+</table>
+
+<p class="note" style="max-width:80ch;margin-top:22px">
+  <b>Recommendation: A, with B's picker as the narrow-pane fallback.</b> A keeps all five visible for one
+  row of height and cannot be mistaken for library content — which was the whole failure of the shipped
+  version. Below the width where five labelled tiles fit, the strip collapses into the header caret from B
+  rather than wrapping into a second row.
+</p>
+
+</body>
+</html>

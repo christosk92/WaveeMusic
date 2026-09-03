@@ -73,12 +73,10 @@ static class DetailVerticalHero
         // (title/description) don't churn a remount on every sub-pixel resize frame.
         float viewportW = availW > 0f ? availW : DetailVerticalLayout.FallbackW;
         float bw = DetailVerticalLayout.BucketW(viewportW);
-        float heroPad = DetailVerticalLayout.HeroPadFor(bw);
-        float heroGap = DetailVerticalLayout.HeroGapFor(bw);
+        float heroPad = DetailVerticalLayout.HeroPadFor(bw, rowFlow);
+        float heroGap = DetailVerticalLayout.HeroGapFor(bw, rowFlow);
         float artSize = DetailVerticalLayout.ArtworkFor(bw, rowFlow);
         float contentW = DetailVerticalLayout.ContentWidthFor(bw, rowFlow);
-        float titleSize = DetailVerticalLayout.TitleSizeFor(bw);
-        float titleLineHeight = DetailVerticalLayout.TitleLineHeightFor(titleSize);
         int descLines = DetailVerticalLayout.DescriptionMaxLines(rowFlow);
         // Unmeasured (widthMeasured false — availW is a page-width ESTIMATE, not a real bounds callback yet): 256, the
         // SAME bucket the grid tiles / DetailRail hero use, so the very first frame is a cache hit instead of a guess
@@ -160,30 +158,56 @@ static class DetailVerticalHero
         }
 
         // The eyebrow STRING and RUN both come from DetailRail (EyebrowText / EyebrowRun) — the rail, the narrow
-        // header and this hero must never word or style the same release two ways across a layout cross.
+        // header and this hero must never word or style the same release two ways across a layout cross. Computed
+        // BEFORE the type plan below: its presence is one of the plan's four chrome flags.
         string eyebrow = DetailRail.EyebrowText(m, cfg);
+
+        // The other three chrome flags/elements, likewise built up front — once, so the boolean the PLAN reasons
+        // about (does this row exist) and the element the TREE actually mounts can never disagree, the way a second,
+        // independently-evaluated condition could drift from this one after an edit.
+        Element? attributionEl = Attribution(m, h, contentW, full);
+        bool hasMeta = m.MetaLine is { Length: > 0 };
+        Element? pulseEl = DetailRail.DaylistCard(m, h, compact: false);
+
+        // ── the title TYPE PLAN ────────────────────────────────────────────────────────────────────────────────
+        // Replaces the old four-rung width ladder (TitleSizeFor/TitleLineHeightFor/TitleMinSizeFor, all deleted):
+        // those rungs were paired with authored line heights (96/104, 72/80, 56/64, 40/52) that the engine's line
+        // stacking silently discarded in favour of Segoe UI Variable's own, taller natural line box — so only the
+        // bottom rung (20/28) ever actually took effect, and the reservation for every rung above it under-counted
+        // by tens of DIP. The plan below is a measured algorithm instead of a lookup: it spends the cover's own
+        // HEIGHT as the title's budget (DetailVerticalLayout.TitleHeightBudgetFor) — which is what actually closes
+        // the empty band under a short title, since no title is short enough to need less than one line, and no
+        // point size can sanely "fill the width" of a two-letter word — and hands the engine's real auto-fit binary
+        // search (armed by MinSize < Size, a definite Width, MaxLines > 0) a wide enough window to correct the
+        // estimate against the real shaped run.
+        var titlePlan = DetailVerticalLayout.TitleTypeFor(bw, rowFlow, m.Title,
+            eyebrow: eyebrow.Length > 0, attribution: attributionEl is not null, meta: hasMeta, pulse: pulseEl is not null);
+
         Add("hero-eyebrow", eyebrow.Length > 0 ? DetailRail.EyebrowRun(eyebrow) : null, late: true);
 
-        // The title is a RUNG of the type ramp in the DISPLAY face — the face is what keeps a page hero from reading
-        // as a UI label, and the ramp is what keeps every album's hero opening at the same typographic weight. No
-        // CharSpacing override: the alias publishes the tracking with the size and the line height.
+        // The title is sized by the PLAN, not a rung — the face is what keeps a page hero from reading as a UI
+        // label, and the plan is what keeps a short album title from opening on a mostly-empty cover. LineHeight is
+        // explicitly CLEARED to NaN rather than left at WaveeType.DetailHero's inherited Ui.Title 36f: the plan's
+        // own LineHeight is already the natural line box for its Size (DetailVerticalLayout.NaturalLineRatio), so
+        // authoring anything here would just be a second discarded pair.
         Element title = editable
-            ? PlaylistInlineEdit.Title(full, contentW, titleSize, displayFace: true, lineHeight: titleLineHeight)
+            ? PlaylistInlineEdit.Title(full, titlePlan.WrapWidth, titlePlan.Size, displayFace: true, lineHeight: float.NaN)
             : WaveeType.DetailHero(m.Title) with
             {
-                Size = titleSize, MinSize = 18f, Weight = 600, LineHeight = titleLineHeight,
-                Width = contentW, MaxWidth = contentW,
-                Wrap = TextWrap.WrapWholeWords, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
-                Color = Tok.TextPrimary,
+                Size = titlePlan.Size, MinSize = titlePlan.MinSize, Weight = 600,
+                LineHeight = float.NaN,
+                Width = titlePlan.WrapWidth, MaxWidth = titlePlan.WrapWidth,
+                Wrap = TextWrap.WrapWholeWords, MaxLines = titlePlan.Lines,
+                Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary,
             };
         Add("hero-title", title);
 
         // The app's section ornament, same recipe as every artist-page header: a 20×2 accent rule UNDER the title.
         Add("hero-rule", Surfaces.AccentRule(h.Accent));
 
-        Add("hero-attribution", Attribution(m, h, contentW, full), late: true);
+        Add("hero-attribution", attributionEl, late: true);
 
-        if (m.MetaLine is { Length: > 0 })
+        if (hasMeta)
             Add("hero-meta", WaveeType.TrackMeta(m.MetaLine) with
             {
                 MaxWidth = contentW, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
@@ -191,11 +215,18 @@ static class DetailVerticalHero
 
         // Daylist rollover countdown — hero scale, between the meta line and the action row (the Home hero's slot).
         // Null-safe: Add skips it for every non-daylist model, exactly like the optional blocks above.
-        Add("hero-pulse", DetailRail.DaylistCard(m, h, compact: false), late: true);
+        Add("hero-pulse", pulseEl, late: true);
 
         // Chart-playlist "N new entries · <date>" caption — same slot shape as the daylist pulse above, null off every
         // non-chart model.
         Add("hero-chart", DetailRail.ChartCaption(m), late: true);
+
+        // The LAST metadata block above the action row is the "fill block" (issue #78): it takes Grow = 1 so that, in
+        // row flow, any surplus the identity's MinHeight (below) opens up lands HERE — between the metadata and the
+        // actions — rather than as dead space under the action row. In stacked flow the identity is never taller than
+        // its own natural size, so this Grow does nothing; it costs nothing to leave armed in both arms.
+        if (infoKids.Count > 0 && infoKids[^1] is BoxEl fillBlock)
+            infoKids[^1] = fillBlock with { Grow = 1f };
 
         // ── the action row ─────────────────────────────────────────────────────────────────────────────────────
         // The accent Play capsule LEADS (the same WaveeCta.Play builder and the same artwork accent the two-column
@@ -243,24 +274,48 @@ static class DetailVerticalHero
         // DetailVerticalLayout.ItemRole's Footer). The two-column/rail arm still renders it in the rail, unchanged and
         // for the same reason: there the cards sit BESIDE the tracks, so they cost the tracks no vertical space.
 
+        // The identity column's gap: DetailVerticalLayout.IdentityGapFor rather than the flat Spacing.XS constant.
+        // In row flow, once the column's MinHeight (below) pins it to the cover's own edge, any surplus a short
+        // title+chrome combination leaves over is now spread evenly across every inter-block gap (up to
+        // IdentityGapMax) instead of landing entirely on the LAST metadata block's Grow = 1 fill below — the type
+        // plan itself already claims most of that surplus as extra title height, so what is left to redistribute is
+        // small enough that spreading it reads as a deliberately set page rather than one oversized gap. Stacked
+        // flow has no such surplus to spread and gets the resting IdentityGap back unchanged.
+        float identityGap = DetailVerticalLayout.IdentityGapFor(bw, rowFlow, titlePlan,
+            eyebrow: eyebrow.Length > 0, attribution: attributionEl is not null, meta: hasMeta,
+            description: description is not null, pulse: pulseEl is not null);
+
         // AlignItems = Stretch (plus an explicit width in stacked flow) is load-bearing, not tidiness: the action row
         // is a WRAPPING flex row, and a wrap needs a DEFINITE width to wrap against. Left to its intrinsic size it
         // measures as one unwrapped line and simply overflows the column at phone widths.
         Element identity = new BoxEl
         {
-            Direction = 1, Gap = Spacing.XS, AlignItems = FlexAlign.Stretch,
+            Direction = 1, Gap = identityGap, AlignItems = FlexAlign.Stretch,
             Width = rowFlow ? float.NaN : contentW,
             Grow = rowFlow ? 1f : 0f, Basis = rowFlow ? 0f : float.NaN, MinWidth = 0f,
+            MinHeight = DetailVerticalLayout.IdentityMinHeightFor(bw, rowFlow),
             Children = infoKids.ToArray(),
         };
 
         // Stacked ↔ row is the SAME two children in the same order — only the axis changes, so the reflow animates as
-        // one gesture instead of tearing the subtree down. Cross alignment is Start in BOTH arms: the row arm used to
-        // bottom-align the pair (cover edge on the action row's baseline), which reads well only while the identity
-        // column is about as tall as the art — and it is not: it carries the description (and, until the facts bento
-        // moved to the page footer, three analytics cards under it), so on a wide hero page the 240-DIP cover sank
-        // hundreds of DIP below the title to the band's bottom-left corner and read as a detached, misplaced square.
-        // The cover belongs beside the title, and Start keeps it there whatever the column below grows to.
+        // one gesture instead of tearing the subtree down. Cross alignment is Start in BOTH arms.
+        //
+        // The row arm used to bottom-align the pair (cover edge on the action row's baseline), which reads well only
+        // while the identity column is about as tall as the art — and it is not: it carries the description (and,
+        // until the facts bento moved to the page footer, three analytics cards under it), so on a wide hero page the
+        // 240-DIP cover sank hundreds of DIP below the title to the band's bottom-left corner and read as a detached,
+        // misplaced square. Start fixed that half of the problem — the cover stays beside the title whatever the
+        // column below grows to — but left the MIRROR case unhandled: when the identity is SHORTER than the art (a
+        // bare title + action row, no attribution/meta/description), Start pins the action row to the identity's own
+        // top-aligned bottom, opening a band of dead space under it, level with the cover's own empty lower half
+        // (issue #78). Both are the SAME bug — the row arm had no rule for the difference between its two column
+        // heights — and the fix gives the difference to neither edge: `identity` above carries a MinHeight equal to
+        // the artwork edge in row flow (DetailVerticalLayout.IdentityMinHeightFor), and the LAST metadata block above
+        // the action row takes Grow = 1 (see the fill-block comment above), so any surplus opens as an INTERIOR gap
+        // between the metadata and the actions — the actions and the description under them land on the cover's
+        // bottom edge, while the cover's top still sits on the title's top, which is what Start was defending all
+        // along. This changes no height: identity already lays out at max(natural, art), and the row's cross size —
+        // max(art, identity) — is exactly what DetailVerticalLayout.HeroBandHeight already computes.
         Element hero = new BoxEl
         {
             Direction = rowFlow ? (byte)0 : (byte)1,

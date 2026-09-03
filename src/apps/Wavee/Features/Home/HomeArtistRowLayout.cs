@@ -1,3 +1,5 @@
+using System;
+
 namespace Wavee.Features.Home;
 
 /// <summary>Home artist-row Mixview width tier — Wide (side-by-side, full hex ring) vs Spine (stacked, vertical
@@ -35,4 +37,57 @@ public static class HomeArtistRowLayout
         int dipped = NominalTierFor(w - TierHysteresisDip);
         return dipped < prev ? dipped : prev;
     }
+
+    // ── E — the top-artist podium ramp (#82) ────────────────────────────────────────────────────────────────────────
+    // `size = i===0 ? 76 : i<3 ? 60 : 46` — the prototype's own rank-encodes-scale ramp, at scale 1. The podium used
+    // to render this verbatim regardless of measured width, which is what left ~400 DIP dead on a wide card (ten
+    // artists' intrinsic footprint is 702 DIP against a ≥900 DIP card). ArtSize below multiplies it by a
+    // measured-width SCALE so the strip stretches to fill instead of packing left.
+    public static float BaseArtSize(int i) => i == 0 ? 76f : i < 3 ? 60f : 46f;
+
+    /// <summary>Never SHRINK the ramp below the prototype's own sizing — only grow it to fill spare width.</summary>
+    public const float MinArtScale = 1f;
+    /// <summary>A strip of two or three top artists on a very wide card must not turn into portrait-sized avatars.</summary>
+    public const float MaxArtScale = 1.6f;
+
+    /// <summary>The scale that stretches the podium to fill the width a caller already fitted <paramref name="count"/>
+    /// equal columns into (<c>FillRowVirtualLayout.Fit</c>'s own arithmetic, forced to exactly <paramref name="count"/>
+    /// columns via <c>perPageOverride</c> — the engine-touching half of this fix, done by the caller so this class
+    /// stays BCL-only). <paramref name="fittedColumnWidth"/> is that per-column result.
+    /// <para>The scale is solved against the ramp's OWN AVERAGE box width — mean over <see cref="BaseArtSize"/>(0..
+    /// <paramref name="count"/>) plus <paramref name="podChrome"/> (the per-pod width the art size itself does not
+    /// cover) — not the rank-1 pod alone: rank-1 sits ABOVE the ramp's average (76 vs. an ~60-DIP mean for ten
+    /// artists), so comparing a uniform-column fit against it alone under-scales every time. Scaling the whole ramp by
+    /// <c>fittedColumnWidth / average</c> is exact: the SCALED ramp's total footprint then equals
+    /// <paramref name="count"/> × <paramref name="fittedColumnWidth"/> — the same total width Fit already solved
+    /// for.</para></summary>
+    public static float RampScaleFor(float fittedColumnWidth, int count, float podChrome)
+    {
+        if (count <= 0 || fittedColumnWidth <= 0f) return MinArtScale;
+        float sumDefault = 0f;
+        for (int i = 0; i < count; i++) sumDefault += BaseArtSize(i) + podChrome;
+        float avgDefault = sumDefault / count;
+        if (avgDefault <= 0f) return MinArtScale;
+        float scale = fittedColumnWidth / avgDefault;
+        return Math.Clamp(scale, MinArtScale, MaxArtScale);
+    }
+
+    public static float ArtSize(int i, float scale) => BaseArtSize(i) * scale;
+
+    /// <summary>This row's OWN module-bottom gap — deliberately NOT <c>HomeModuleLayout.Gap</c>, which is shared by
+    /// every other Home row (a change there would compact every module, not just this one). 40/32 → 32/24, the same
+    /// 1080-DIP tier boundary the shared helper uses.</summary>
+    public static float ModuleGap(float width) => width >= 1080f ? 32f : 24f;
+
+    // ── F — pod / Mixview-node double-click-to-navigate (#83) ───────────────────────────────────────────────────────
+    // The engine's DoubleTap gesture is reserved but not yet routed (UseGesture.cs), and OnClick carries no click
+    // count — so double-click is detected by hand: the same uri clicked twice inside the window counts as a double.
+    public const long DoubleClickWindowMs = 400;
+
+    /// <summary>Whether a click on <paramref name="uri"/> at <paramref name="nowTick"/> (an <c>Environment.TickCount64</c>
+    /// reading) completes a double-click against the PREVIOUS click recorded at (<paramref name="lastUri"/>,
+    /// <paramref name="lastTick"/>). A negative gap (a caller passing ticks out of order) never reads as a double.</summary>
+    public static bool IsDoubleClick(string uri, string? lastUri, long lastTick, long nowTick)
+        => uri.Length > 0 && string.Equals(uri, lastUri, StringComparison.Ordinal)
+           && nowTick >= lastTick && nowTick - lastTick <= DoubleClickWindowMs;
 }

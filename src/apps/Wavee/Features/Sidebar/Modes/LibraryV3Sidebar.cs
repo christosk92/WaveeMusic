@@ -154,6 +154,7 @@ sealed class LibraryV3Sidebar : Component
             RailHead = BuildRailHead,
             IsReorderableSection = IsSectionReorderable,
             TreeSortedNonCustom = TreeSortedNonCustom,
+            SortedListRefusalAction = session.SwitchToCustomSortForReorder,
             ClampReorderSlot = ClampReorderSlot,
             CommitReorder = CommitPaneReorder,
             ActivateFolder = session.ActivateFolder,
@@ -346,8 +347,12 @@ sealed class LibraryV3Sidebar : Component
             [
                 SidebarRailItem.Icon("v3-rail-expand", Icons.List, false, session.Expand,
                                      Loc.Get(Strings.Sidebar.V3.Expand)),
+                // H2 (#85) — the rail's "+" is the same affordance as the header's; give it the same drop spec so a
+                // collapsed pane accepts exactly what the expanded header does.
                 Embed.Comp(() => new SidebarCreateButton(
-                    session.CreatePlaylist, menu: CreateMenu, box: SidebarRailItem.Box, glyph: 16f)),
+                    session.CreatePlaylist, menu: CreateMenu,
+                    drop: session.HeaderCreateDropSpec(), dropActive: () => session.HeaderCreateDropActive.Value,
+                    box: SidebarRailItem.Box, glyph: 16f)),
             ],
         };
     }
@@ -364,11 +369,25 @@ sealed class LibraryV3Sidebar : Component
     {
         if (_prefs is not { } prefs) return null;
         var items = prefs.TopBar;
-        if (items.Count == 0) return null;
 
         string route = _route.Peek().Name;
         var registry = _session?.Acts?.Extensions;
-        var kids = new List<Element>(items.Count);
+        var kids = new List<Element>(items.Count + SidebarShortcutsSection.LibraryDestinations.Length);
+
+        // The five library destinations, as rail tiles. The expanded pane draws them as a word rail in the chrome
+        // (LibraryV3NavBand) — which means they belong to no document section, so SidebarRowPlanner.BuildRail has
+        // nothing to draw them from and a COLLAPSED V3 pane showed none of them at all. A rail is icon-only by
+        // construction, so the tooltip carries the name; that is the one place a glyph without a visible label is the
+        // right answer, because the whole rail is that trade.
+        var keys = SidebarShortcutsSection.LibraryDestinations;
+        for (int i = 0; i < keys.Length; i++)
+        {
+            var dest = ShellNav.Dest(keys[i]);
+            string key = keys[i];
+            kids.Add(SidebarRailItem.Icon(key, dest.Glyph,
+                string.Equals(route, key, StringComparison.Ordinal), () => _go(key, null), dest.Title));
+        }
+
         for (int i = 0; i < items.Count; i++)
         {
             var item = items[i];

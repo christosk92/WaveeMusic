@@ -96,7 +96,16 @@ static class SidebarSectionHeader
         int count = 2 + (action is null ? 0 : 1) + (collapsible ? 1 : 0);
         var kids = new Element[count];
         int k = 0;
-        kids[k++] = new TextEl(title) { Size = 12f, Weight = 600, Color = Tok.TextSecondary };
+        // Narrow-pane fix (issue #84): with no Shrink/MinWidth/Trim, a long title + a trailing action + the chevron
+        // PUSHED past the header's bounds instead of ellipsizing — the one row family that overflowed while every
+        // entity row already truncates cleanly (SidebarEntityRow.cs:390-404). Shrink = 1f is required, not optional:
+        // the trailing spacer below is a zero-basis Grow=1 box, so it contributes nothing to the shrink distribution
+        // once the row overflows — the title is the only child that can give width back.
+        kids[k++] = new TextEl(title)
+        {
+            Size = 12f, Weight = 600, Color = Tok.TextSecondary,
+            Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+        };
         kids[k++] = new BoxEl { Grow = 1f };
         if (action is { } a) kids[k++] = a;
         if (collapsible) kids[k++] = chevron ?? Icon(open ? Icons.ChevronUp : Icons.ChevronDown, 10f, Tok.TextTertiary);

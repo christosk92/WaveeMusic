@@ -26,9 +26,10 @@ public sealed class LibraryV3DocumentTests
         string? drill = null,
         bool hasPins = false,
         bool likedPinned = false,
-        int columns = 2)
+        int columns = 2,
+        bool dragInFlight = false)
         => new((int)filter, (int)qualifier, (int)sort, descending, (int)view, columns, searching, drill,
-               hasPins, likedPinned, qualifiersAvailable);
+               hasPins, likedPinned, qualifiersAvailable, dragInFlight);
 
     static SidebarSectionSpec? Find(SidebarCustomLayout doc, string id) => doc.Find(id);
 
@@ -169,22 +170,25 @@ public sealed class LibraryV3DocumentTests
     [Fact]
     public void ThePinBand_LeadsTheDocument_AndTheShortcutFollowsIt()
     {
-        // §3.0's order: pins → Liked Songs → the library.
+        // The order is now pins → the library. Liked Songs left the DOCUMENT when the chrome's destination strip
+        // took over every fixed destination (#85 H4, LibraryV3NavBand): one destination, one row.
         var doc = LibraryV3Document.Build(State(hasPins: true));
-        Assert.Equal(new[] { LibraryV3Document.PinsId, LibraryV3Document.LikedId, LibraryV3Document.LibraryId },
-            IdsOf(doc));
+        Assert.Equal(new[] { LibraryV3Document.PinsId, LibraryV3Document.LibraryId }, IdsOf(doc));
     }
 
     [Theory]
-    [InlineData(SidebarV3Filter.All, true)]
-    [InlineData(SidebarV3Filter.Playlists, true)]
-    [InlineData(SidebarV3Filter.Albums, false)]
-    [InlineData(SidebarV3Filter.Artists, false)]
-    [InlineData(SidebarV3Filter.Podcasts, false)]
-    public void TheLikedShortcut_IsScopedToTheLensesWhereItIsTruthful(SidebarV3Filter filter, bool present)
+    [InlineData(SidebarV3Filter.All)]
+    [InlineData(SidebarV3Filter.Playlists)]
+    [InlineData(SidebarV3Filter.Albums)]
+    [InlineData(SidebarV3Filter.Artists)]
+    [InlineData(SidebarV3Filter.Podcasts)]
+    public void TheLikedShortcut_NeverRidesTheDocument_TheChromeStripCarriesIt(SidebarV3Filter filter)
     {
-        var doc = LibraryV3Document.Build(State(filter));
-        Assert.Equal(present, Find(doc, LibraryV3Document.LikedId) is not null);
+        // It used to be a list row scoped to the lenses where a saved-songs shortcut reads truthfully. It is now in
+        // the chrome instead (LibraryV3NavBand's destination strip), which is ALWAYS present and therefore truthful
+        // under every lens — so the document emits it under none of them.
+        Assert.Null(Find(LibraryV3Document.Build(State(filter)), LibraryV3Document.LikedId));
+        Assert.True(LibraryV3Document.ChromeCarriesDestinations);
     }
 
     [Fact]
@@ -195,29 +199,74 @@ public sealed class LibraryV3DocumentTests
     }
 
     [Fact]
-    public void TheLikedShortcut_IsAGlyphRouteRow_AtAContentRowHeight()
+    public void EveryFixedDestination_IsOwnedByTheOneSharedList()
     {
-        // W7 — a glyph row must be 44 tall with a 32-wide glyph column so its label lands where every content row's
-        // label lands: HeightFor(Cozy, subtitle) = 44, ArtFor(Cozy) = 32. Fixed for every V3 view now (no more
-        // Compact/Comfortable split): Liked Songs is always exactly one row.
-        var liked = Find(LibraryV3Document.Build(State()), LibraryV3Document.LikedId);
-        Assert.NotNull(liked);
-        Assert.Equal(SidebarSectionKind.StaticLinks, liked!.Kind);
-        Assert.Equal(SidebarPresentation.List, liked.Opts.Presentation);
-        Assert.False(liked.Opts.Artwork);
-        Assert.True(liked.Opts.Subtitles);
-        Assert.Equal(SidebarDensity.Cozy, liked.Opts.Density);
-        Assert.Equal(44f, SidebarRowGeometry.HeightFor(liked.Opts));
+        // The strip, the Classic section and anything else that needs "which routes are fixed library destinations"
+        // read SidebarShortcutsSection.LibraryDestinations. A second copy is how the same row gets rendered twice.
+        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "local" },
+            SidebarShortcutsSection.LibraryDestinations);
+        foreach (var key in SidebarShortcutsSection.LibraryDestinations)
+            Assert.True(SidebarShortcutsSection.IsLibraryDestination(key));
+        Assert.False(SidebarShortcutsSection.IsLibraryDestination("home"));
+        Assert.False(SidebarShortcutsSection.IsLibraryDestination(null));
+    }
 
-        // The view code no longer changes the shape — CompactList gets the same Cozy/44 row as List.
-        Assert.Equal(SidebarDensity.Cozy,
-            Find(LibraryV3Document.Build(State(view: SidebarV3View.CompactList)), LibraryV3Document.LikedId)!
-                .Opts.Density);
+    [Fact]
+    public void PinsBand_StaysHiddenAtRest_WithNoPinsAndNoDrag()
+        => Assert.Null(Find(LibraryV3Document.Build(State(hasPins: false, dragInFlight: false)),
+                             LibraryV3Document.PinsId));
 
-        var item = Assert.Single(liked.ItemList);
+    [Fact]
+    public void PinsBand_AppearsWithZeroPins_WhileADragIsLive()
+    {
+        // The plan's exact defect: with zero pins the band used to disappear ENTIRELY, so a first pin could never be
+        // made by drag (the only other path in is a row's context menu). The band's own drop-zone card
+        // (SidebarPinDropZone) is what makes the empty band useful — this only asserts the SECTION exists so that
+        // card gets a chance to mount.
+        var doc = LibraryV3Document.Build(State(hasPins: false, dragInFlight: true));
+        Assert.NotNull(Find(doc, LibraryV3Document.PinsId));
+    }
+
+    [Fact]
+    public void PinsBand_StaysDissolvedByASearch_EvenMidDrag()
+    {
+        // A search flattening the tree is a stronger rule than "a drag is live" — the pin band never reappears while
+        // searching, whatever else is going on.
+        var doc = LibraryV3Document.Build(State(hasPins: false, dragInFlight: true, searching: true));
+        Assert.Null(Find(doc, LibraryV3Document.PinsId));
+    }
+
+    [Fact]
+    public void PinsBand_StaysAbsentAtADrilledLevel_EvenMidDrag()
+    {
+        var doc = LibraryV3Document.Build(State(hasPins: false, dragInFlight: true, drill: "folder-1"));
+        Assert.Null(Find(doc, LibraryV3Document.PinsId));
+    }
+
+    // ── H4 (#85) — the missing library destinations, reachable through the seeded top bar ─────────────────────────────
+
+    [Fact]
+    public void DefaultTopBar_StaysTheHomeShortcutAlone()
+    {
+        // The five destinations were briefly seeded here. They are not any more: this is the ONE global band shared by
+        // all three designs, so seeding it duplicated Classic's own "Your Library" section, saturated the reducer's
+        // 6-item cap on a fresh install, and needed a migration for every persisted band. V3 renders the destinations
+        // from its own chrome instead, which is also what let them become a compact strip rather than five rows.
+        var item = Assert.Single(SidebarCustomLayout.DefaultTopBar);
         Assert.Equal(SidebarItemTarget.Route, item.Target);
-        Assert.Equal(LibraryV3Document.LikedRouteKey, item.Key);
-        Assert.True(SidebarIconNames.IsAllowed(item.IconOverride));
+        Assert.Equal("home", item.Key);
+    }
+
+    [Fact]
+    public void TheDestinationStrip_MakesEveryFixedRouteReachable_OnADefaultInstall()
+    {
+        // The point of H4: a default V3 install can reach all five without customizing anything. They are not in the
+        // document and not in the top bar — the chrome owns them — so this asserts the contract the chrome renders
+        // against, and that the document does not also emit one of them.
+        Assert.True(LibraryV3Document.ChromeCarriesDestinations);
+        Assert.Contains(LibraryV3Document.LikedRouteKey, SidebarShortcutsSection.LibraryDestinations);
+        Assert.Null(Find(LibraryV3Document.Build(State(), SidebarCustomLayout.DefaultTopBar),
+                         LibraryV3Document.LikedId));
     }
 
     [Fact]

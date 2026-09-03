@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wavee — Library V3: reaching the library destinations</title>
+<style>
+  :root {
+    --lab-bg: #0e1014;
+    --lab-panel: rgba(27, 30, 37, .82);
+    --lab-stroke: rgba(255, 255, 255, .09);
+    --lab-text: #f5f6f8;
+    --lab-muted: #9da4b0;
+
+    /* Wavee dark tokens, as the prototype reads them */
+    --solid-base: #202020;        /* Tok.FillSolidBase */
+    --solid-tertiary: #282828;    /* Tok.FillSolidTertiary */
+    --fill-ctrl: rgba(255,255,255,.06);
+    --fill-ctrl-hover: rgba(255,255,255,.09);
+    --stroke-card: rgba(255, 255, 255, .09);
+    --stroke-divider: rgba(255, 255, 255, .07);
+    --text-1: #f4f4f4;            /* Tok.TextPrimary */
+    --text-2: #b6b6b6;            /* Tok.TextSecondary */
+    --text-3: #8a8a8a;            /* Tok.TextTertiary */
+    --accent: #4cc2ff;            /* Tok.AccentDefault */
+    --accent-text: #6fcbff;       /* Tok.AccentTextPrimary */
+    --on-accent: #001b28;
+
+    --r-ctrl: 4px;
+    --r-pill: 999px;
+
+    /* SidebarRowGeometry */
+    --pane-edge: 8px;             /* PaneEdge */
+    --row-h: 40px;                /* HeightFor, Cozy */
+    --row-h-sub: 44px;            /* Cozy with subtitle */
+    --header-h: 28px;             /* HeaderHeight */
+
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0; color: var(--lab-text);
+    background:
+      radial-gradient(1200px 700px at 12% -8%, rgba(76,194,255,.10), transparent 60%),
+      radial-gradient(900px 600px at 92% 4%, rgba(160,110,255,.10), transparent 62%),
+      var(--lab-bg);
+    padding: 32px 28px 64px;
+    font-size: 14px; line-height: 1.5;
+  }
+  h1 { font-family: "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+       font-size: 26px; font-weight: 600; letter-spacing: -.02em; margin: 0 0 6px; }
+  .lede { color: var(--lab-muted); max-width: 78ch; margin: 0 0 28px; }
+  .lede code, .note code, table.cmp code {
+    background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
+  .verdict { font-size: 12.5px; margin: 0 0 14px; }
+  .verdict.yes { color: #7ee2a8; }
+  .verdict.no  { color: #ff9d9d; }
+  .verdict.mix { color: #ffd479; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; }
+  .opt { background: var(--lab-panel); border: 1px solid var(--lab-stroke);
+         border-radius: 12px; padding: 18px; backdrop-filter: blur(24px) saturate(140%); }
+  .note { color: var(--lab-muted); font-size: 12.5px; margin: 12px 0 0; max-width: 34ch; }
+  .note b { color: var(--lab-text); font-weight: 600; }
+
+  /* ── the pane ─────────────────────────────────────────────── */
+  .pane {
+    width: 300px; background: var(--solid-base);
+    border: 1px solid var(--stroke-card); border-radius: 10px;
+    padding: var(--pane-edge); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .pane.narrow { width: 180px; }
+
+  .navband { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; }
+  .rule { height: 1px; background: var(--stroke-divider); margin: 6px 2px; }
+
+  .r { display: flex; align-items: center; gap: 10px; height: var(--row-h);
+       padding: 0 8px 0 4px; border-radius: var(--r-ctrl); position: relative; }
+  .r:hover { background: var(--fill-ctrl); }
+  .r .g { width: 20px; flex: none; text-align: center; color: var(--text-2); font-size: 15px; }
+  .r .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          color: var(--text-1); }
+  .r .n { color: var(--text-3); font-size: 12px; flex: none; }
+  .r .pin { color: var(--accent-text); font-size: 11px; flex: none; }
+  .r .art { width: 32px; height: 32px; border-radius: 4px; flex: none;
+            background: linear-gradient(135deg,#3a4150,#232833); }
+  .r .art.circ { border-radius: 50%; }
+  .r .two { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+  .r .two i { font-style: normal; color: var(--text-1);
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .r .two s { text-decoration: none; color: var(--text-3); font-size: 12px;
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .r.sub { height: var(--row-h-sub); }
+
+  .hdr { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px; }
+  .hdr .ttl { font-size: 15px; font-weight: 600; letter-spacing: -.01em; flex: 1;
+              min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hdr .ico { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 4px;
+              color: var(--text-2); font-size: 14px; flex: none; }
+  .hdr .ico:hover { background: var(--fill-ctrl); color: var(--text-1); }
+  .hdr .ico.drop { outline: 1.5px dashed var(--accent); outline-offset: -2px; color: var(--accent-text); }
+
+  .tools { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px; }
+  .tools .sq { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 4px;
+               color: var(--text-2); font-size: 13px; flex: none; }
+  .tools .sort { margin-left: auto; display: flex; align-items: center; gap: 5px;
+                 font-size: 12.5px; color: var(--text-2); padding: 0 6px; }
+
+  .chips { display: flex; gap: 6px; padding: 4px 2px 8px; overflow: hidden; }
+  .chip { font-size: 12.5px; padding: 5px 11px; border-radius: var(--r-pill);
+          background: var(--fill-ctrl); color: var(--text-1); white-space: nowrap; flex: none;
+          display: inline-flex; align-items: center; gap: 5px; }
+  .chip.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .chip .go { font-size: 10px; opacity: .62; }
+
+  /* destination band (option A) */
+  .dests { display: flex; gap: 4px; padding: 2px 2px 8px; }
+  .dest { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center;
+          gap: 3px; padding: 8px 2px 6px; border-radius: 6px; background: var(--fill-ctrl); }
+  .dest:hover { background: var(--fill-ctrl-hover); }
+  .dest .g { font-size: 14px; color: var(--text-1); }
+  .dest .l { font-size: 10.5px; color: var(--text-3); }
+  .dest .c { font-size: 10px; color: var(--text-2); font-weight: 600; }
+
+  .flag { display:inline-block; font-size: 10.5px; font-weight: 600; letter-spacing:.03em;
+          text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-pill);
+          background: rgba(76,194,255,.16); color: var(--accent-text); margin-left: 8px;
+          vertical-align: 3px; }
+
+  table.cmp { border-collapse: collapse; margin-top: 34px; width: 100%; max-width: 1000px; font-size: 13px; }
+  table.cmp th, table.cmp td { text-align: left; padding: 9px 12px;
+                               border-bottom: 1px solid var(--stroke-divider); vertical-align: top; }
+  table.cmp th { color: var(--lab-muted); font-weight: 600; font-size: 12px;
+                 text-transform: uppercase; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+
+<h1>Library V3 — reaching the library destinations</h1>
+<p class="lede">
+  <code>SidebarSectionKind.CollectionShortcuts</code> — the section carrying <b>Liked&nbsp;Songs, Albums,
+  Artists, Podcasts and Local&nbsp;files</b> with count badges — is absent from
+  <code>LibraryV3Document.Build</code> entirely. Only Liked survives, as a conditional one-item
+  <code>StaticLinks</code> section, and the chips filter rather than navigate. The counts are already warm
+  (<code>EnsureStats()</code> is called by <code>LibraryV3Sidebar</code>) and the routes are already
+  registered (<code>ShellRoutes.cs:31-35</code>) — nothing renders them. Three candidate shapes below; the
+  bottom row also shows the pin marker (#85 H1) and the pane at its new 180&nbsp;DIP floor (#84).
+</p>
+
+<div class="row">
+
+  <!-- OPTION A -->
+  <div class="opt">
+    <h2>A · Destination band in the nav band <span class="flag">recommended</span></h2>
+    <p class="verdict yes">✓ All five reachable · uses a band V3 already draws · survives every lens and drill state</p>
+    <div class="pane">
+      <div class="navband">
+        <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      </div>
+      <div class="dests">
+        <div class="dest"><span class="g">♥</span><span class="c">307</span><span class="l">Liked</span></div>
+        <div class="dest"><span class="g">◎</span><span class="c">18</span><span class="l">Albums</span></div>
+        <div class="dest"><span class="g">☺</span><span class="c">16</span><span class="l">Artists</span></div>
+        <div class="dest"><span class="g">◈</span><span class="c">6</span><span class="l">Shows</span></div>
+        <div class="dest"><span class="g">▤</span><span class="c">&nbsp;</span><span class="l">Local</span></div>
+      </div>
+      <div class="rule"></div>
+      <div class="hdr">
+        <span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span>
+      </div>
+      <div class="tools">
+        <span class="sq">⌕</span><span class="sort">⇅ Recents ⌄</span><span class="sq">☰</span>
+      </div>
+      <div class="chips">
+        <span class="chip on">Playlists</span><span class="chip">Podcasts</span><span class="chip">Albums</span>
+      </div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>MISS U Radio</i><s>50 songs</s></span></div>
+    </div>
+    <p class="note">Seeds <b><code>SidebarCustomLayout.DefaultTopBar</code></b> (today: Home only) with the
+      five destinations, rendered by the existing <code>LibraryV3NavBand</code>. Counts come free from
+      <code>LibraryStats</code>. Needs a one-time migration that leaves an already-customised top bar alone.</p>
+  </div>
+
+  <!-- OPTION B -->
+  <div class="opt">
+    <h2>B · Chips gain a route affordance</h2>
+    <p class="verdict mix">~ Covers only Albums / Artists / Podcasts — Playlists has no page; Liked and Local have no chip</p>
+    <div class="pane">
+      <div class="navband">
+        <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      </div>
+      <div class="rule"></div>
+      <div class="hdr">
+        <span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span>
+      </div>
+      <div class="tools">
+        <span class="sq">⌕</span><span class="sort">⇅ Recents ⌄</span><span class="sq">☰</span>
+      </div>
+      <div class="chips">
+        <span class="chip on">Playlists</span>
+        <span class="chip">Albums <span class="go">›</span></span>
+        <span class="chip">Artists <span class="go">›</span></span>
+      </div>
+      <div class="r"><span class="g">♥</span><span class="t">Liked Songs</span><span class="n">307</span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>MISS U Radio</i><s>50 songs</s></span></div>
+    </div>
+    <p class="note">A <code>string? Route</code> on <code>V3ChipSlot</code>, populated for the three that
+      have pages, with one branch in <code>LibraryV3Chips.Apply</code>. The chevron marks a chip that can
+      navigate; a <b>plain tap still filters</b>. Cheap and additive — but it cannot cover all five, so it
+      is a complement, not a solution.</p>
+  </div>
+
+  <!-- OPTION C -->
+  <div class="opt">
+    <h2>C · A Classic-shaped shortcuts section</h2>
+    <p class="verdict no">✗ Reintroduces the stacked row list V3 exists to get away from — five rows before any content</p>
+    <div class="pane">
+      <div class="navband">
+        <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      </div>
+      <div class="rule"></div>
+      <div class="r"><span class="g">◎</span><span class="t">Albums</span><span class="n">18</span></div>
+      <div class="r"><span class="g">☺</span><span class="t">Artists</span><span class="n">16</span></div>
+      <div class="r"><span class="g">♥</span><span class="t">Liked Songs</span><span class="n">307</span></div>
+      <div class="r"><span class="g">◈</span><span class="t">Podcasts</span><span class="n">6</span></div>
+      <div class="r"><span class="g">▤</span><span class="t">Local files</span></div>
+      <div class="rule"></div>
+      <div class="hdr">
+        <span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span>
+      </div>
+      <div class="chips">
+        <span class="chip on">Playlists</span><span class="chip">Podcasts</span><span class="chip">Albums</span>
+      </div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+    </div>
+    <p class="note">Ten lines in <code>LibraryV3Document.Build</code> and it works — but it spends
+      <b>~200&nbsp;DIP</b> above the fold on chrome and makes V3 look like Classic with extra steps.
+      Recorded for completeness; not the pick.</p>
+  </div>
+
+</div>
+
+<div class="row" style="margin-top:34px">
+
+  <div class="opt">
+    <h2>Pinned state <span class="flag">#85 H1</span></h2>
+    <p class="verdict yes">✓ A per-row marker, not a section header — survives a pin filtered into the middle of a lens</p>
+    <div class="pane">
+      <div class="hdr"><span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico drop">＋</span><span class="ico">···</span><span class="ico">‹</span></div>
+      <div class="chips"><span class="chip on">Playlists</span><span class="chip">Albums</span></div>
+      <div class="r sub"><span class="art circ"></span><span class="two"><i>Michael Jackson</i><s>Artist</s></span><span class="pin">📌</span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Liked Songs</i><s>307 songs</s></span><span class="pin">📌</span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+    </div>
+    <p class="note"><code>SidebarProjection</code> already stamps <code>IsPinned</code> and floats pins first
+      in <b>every</b> sort — no renderer reads it. The glyph goes in the trailing cluster beside the count
+      badge. The dashed <b>＋</b> is #85 H2: Classic&#39;s <code>HeaderCreate</code> drop target, which V3
+      never wired.</p>
+  </div>
+
+  <div class="opt">
+    <h2>The pane at 180 DIP <span class="flag">#84</span></h2>
+    <p class="verdict yes">✓ Rows ellipsize · grid sheds a column · header title trims</p>
+    <div class="pane narrow">
+      <div class="navband"><div class="r"><span class="g">⌂</span><span class="t">Home</span></div></div>
+      <div class="rule"></div>
+      <div class="hdr"><span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">‹</span></div>
+      <div class="tools"><span class="sq">⌕</span><span class="sort">⇅ ⌄</span><span class="sq">☰</span></div>
+      <div class="chips"><span class="chip on">Playlists</span><span class="chip">Albums</span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>You&#39;ll Be In My Heart — From &quot;Tar…</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>High School Musical 1, 2, 3 Soun…</i><s>32 songs</s></span></div>
+    </div>
+    <p class="note">Floor drops <b>240 → 180</b>. Two content floors must follow:
+      <code>SidebarPaneSlot</code>&#39;s grid must shed columns rather than shrink cells past 40, and
+      <code>SidebarSectionHeader</code>&#39;s title needs <code>MinWidth&nbsp;0</code> +
+      <code>CharacterEllipsis</code> — today it has neither and <b>pushes</b> instead of trimming. The sort
+      pill goes icon-only below 280, which V3 already handles.</p>
+  </div>
+
+</div>
+
+<table class="cmp">
+  <tr><th>Shape</th><th>Reaches</th><th>Cost</th><th>Verdict</th></tr>
+  <tr>
+    <td><b>A</b> — destination band</td>
+    <td>All five, always</td>
+    <td><code>DefaultTopBar</code> seed + a migration that respects a customised bar</td>
+    <td>The pick. Uses a band V3 already draws and a stats source already warmed.</td>
+  </tr>
+  <tr>
+    <td><b>B</b> — routing chips</td>
+    <td>Albums · Artists · Podcasts</td>
+    <td><code>string? Route</code> on <code>V3ChipSlot</code>, one branch in <code>Apply</code></td>
+    <td>Ship <b>with</b> A. Playlists has no page; Liked and Local have no chip, so it cannot stand alone.</td>
+  </tr>
+  <tr>
+    <td><b>C</b> — shortcuts section</td>
+    <td>All five</td>
+    <td>~10 lines</td>
+    <td>Rejected — ~200 DIP of chrome above the fold, and it undoes V3&#39;s flat-list identity.</td>
+  </tr>
+</table>
+
+</body>
+</html>

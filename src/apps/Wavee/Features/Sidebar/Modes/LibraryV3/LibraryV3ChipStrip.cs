@@ -19,9 +19,14 @@ public enum V3ChipKind : byte { Clear, Facet, Fused, Option }
 /// <para><see cref="Key"/> is the node key the renderer must use. A <see cref="V3ChipKind.Facet"/> slot and the
 /// <see cref="V3ChipKind.Fused"/> slot of the SAME code share it ("v3f{code}") — that shared identity is the whole
 /// loose-pill ⇄ fused-pill morph; a distinct key per shape would unmount one and mount the other with nothing left
-/// to reflow from.</para></summary>
+/// to reflow from.</para>
+/// <para><see cref="Route"/> — issue #85 (H4, approach 3): the destination page this chip's KIND has, or null when
+/// it has none. A plain tap always writes <see cref="SelectFilter"/>/<see cref="SelectQualifier"/> (that is the
+/// chips' one job); a non-null route is only a SECONDARY affordance the renderer may offer (Library V3 chose a
+/// double-click — see <c>LibraryV3Chips.Pill</c>). Playlists has no "all playlists" page, so its Facet/Fused slots
+/// carry a null route like Clear/Option always do.</para></summary>
 public readonly record struct V3ChipSlot(
-    V3ChipKind Kind, int Code, bool Selected, string Key, int SelectFilter, int SelectQualifier);
+    V3ChipKind Kind, int Code, bool Selected, string Key, int SelectFilter, int SelectQualifier, string? Route = null);
 
 /// <summary>The Library V3 filter rail's layout, as a pure function of (persisted filter, persisted qualifier,
 /// whether the data evidences ≥2 qualifier flavors). Engine-free — System plus the two persisted-code enums in
@@ -69,7 +74,10 @@ public static class LibraryV3ChipStrip
         if (owns && qualifier != Any)
         {
             // Fused: tapping the compound pill is ONE step back (drop the qualifier), not all the way to All.
-            slots.Add(new V3ChipSlot(V3ChipKind.Fused, filter, true, "v3f" + filter, filter, Any));
+            // Route is always null here in practice — only Playlists can fuse a qualifier, and Playlists has no
+            // route (RouteFor) — but it is threaded through anyway so a future fuseable facet is not silently
+            // dropped from the route contract.
+            slots.Add(new V3ChipSlot(V3ChipKind.Fused, filter, true, "v3f" + filter, filter, Any, RouteFor(filter)));
         }
         else
         {
@@ -98,5 +106,16 @@ public static class LibraryV3ChipStrip
     /// one thing is active (no leading ✕ needed until there is something the ✕ could also clear a sub-filter off
     /// of).</summary>
     static V3ChipSlot Facet(int f, bool selected)
-        => new(V3ChipKind.Facet, f, selected, "v3f" + f, selected ? All : f, Any);
+        => new(V3ChipKind.Facet, f, selected, "v3f" + f, selected ? All : f, Any, RouteFor(f));
+
+    /// <summary>Issue #85 (H4) — the chip's "open this as a page" destination. Only Albums/Artists/Podcasts have an
+    /// actual library page (<c>ShellRoutes</c>); Playlists has no "all playlists" destination, so its chip stays
+    /// filter-only, exactly like Clear and every Option slot.</summary>
+    public static string? RouteFor(int filter) => filter switch
+    {
+        (int)SidebarV3Filter.Albums => "albums",
+        (int)SidebarV3Filter.Artists => "artists",
+        (int)SidebarV3Filter.Podcasts => "podcasts",
+        _ => null,
+    };
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using FluentGpu.Controls;
+using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 
@@ -39,6 +40,15 @@ sealed class LibraryV3Session
     public LibraryBridge? Library;
     /// <summary>The ambient action bag — the ONE create path (<c>PlaylistCreateFlow</c>) and the folder verbs read it.</summary>
     public ActionServices? Acts;
+
+    /// <summary>Issue #85 (H1) — written by <c>LibraryV3Chrome</c>'s own <c>UseDragState()</c>-driven effect (a hook
+    /// call, so it cannot happen inside <see cref="ReadState"/>, which runs as a plain delegate call from
+    /// <c>SidebarPane</c>'s render, not from a component of its own). A SIGNAL, not a plain field: reading it inside
+    /// <see cref="ReadState"/> is what lets <c>SidebarPane</c> (which invokes <c>ReadState</c> through
+    /// <c>SidebarPaneConfig.Document</c>/<c>ModeEpoch</c>) re-render the instant a drag begins or ends, rather than
+    /// only the next time something else changes. Folds into <see cref="LibraryV3DocState.DragInFlight"/> so the
+    /// empty pin band's drop zone can exist for the duration of a drag even with zero pins.</summary>
+    public Signal<bool> DragInFlight { get; } = new(false);
 
     /// <summary>The built content ORDER (re-grouped / drilled). Owned here because both the mode root (which builds it while
     /// shaping the planner input) and the chrome (which asks whether it is empty) need the same instance.</summary>
@@ -104,7 +114,8 @@ sealed class LibraryV3Session
             DrillActive ? CurrentFolderId : null,
             prefs.Entries.PinCount > 0,
             prefs.IsPinned(LibraryV3Document.LikedRouteKey),
-            prefs.Entries.QualifiersAvailable);
+            prefs.Entries.QualifiersAvailable,
+            DragInFlight.Value);
     }
 
     // ── drill-in navigation (Revision 2's folder amendment) ───────────────────────────────────────────────────────────
@@ -219,6 +230,57 @@ sealed class LibraryV3Session
     {
         if (Acts is not { } acts) return;
         PlaylistCreateFlow.Create(acts, default, navigate: true);
+    }
+
+    // ── H2 (#85) — the "+" as a drop target ──────────────────────────────────────────────────────────────────────────
+    // Classic sets SidebarPaneConfig.HeaderCreate = true, which makes the shared pane's OWN section-header "+" a drop
+    // destination (SidebarPane.HeaderCreateDropSpec). V3 leaves HeaderCreate false — it renders no section headers at
+    // all (§3.2.7) — and builds its "+" itself (LibraryV3Header/BuildRailFooter's SidebarCreateButton), so it needs
+    // its own copy of the SAME spec rather than reaching into a pane instance it has no reference to. Same two
+    // outcomes as Classic's: a rootlist selection files into a new top-level folder; a track set becomes a new
+    // playlist (CreatePlaylistFromDragPayload — the ONE create-from-drag flow, shared verbatim with the pane's own
+    // header "+" via SidebarPane.CreatePlaylistFromDragPayload).
+
+    /// <summary>Bound cue for the "+" button's drop-active plate, mirroring <c>SidebarPane.HeaderCreateDropActive</c>.</summary>
+    public Signal<bool> HeaderCreateDropActive { get; } = new(false);
+
+    /// <summary>The SAME spec Classic's header "+" gets (<c>SidebarPane.HeaderCreateDropSpec</c>), rebuilt here because
+    /// V3's "+" is a separate component instance with its own <see cref="Acts"/> and <see cref="Go"/>.</summary>
+    public DropTargetSpec HeaderCreateDropSpec()
+    {
+        static bool Filing(WaveeResourceDragPayload p)
+            => p.RootlistItem && p.Kind is WaveeResourceKind.Playlist or WaveeResourceKind.Folder;
+        static bool FromTracks(WaveeResourceDragPayload p) => p.CanCopyTracks && !p.RootlistItem;
+
+        return Drop.Target<WaveeResourceDragPayload>(WaveeDragKinds.Resource,
+            accepts: static p => Filing(p) || FromTracks(p),
+            transparent: static p => !Filing(p) && !FromTracks(p),
+            caption: static p => Filing(p)
+                ? Strings.Drag.NewFolderFromThis(p.RootlistCount)
+                : Loc.Get(Strings.Drag.NewPlaylistFromThis),
+            onEnter: (_, _) => HeaderCreateDropActive.Value = true,
+            onOver: (_, _) => HeaderCreateDropActive.Value = true,
+            onLeave: _ => HeaderCreateDropActive.Value = false,
+            onDrop: (p, s) =>
+            {
+                HeaderCreateDropActive.Value = false;
+                if (Acts is not { } acts) return;
+                if (Filing(p)) FolderActions.NewFolderWith(acts, null, WaveeResourceDrop.RootRefs(p));
+                else if (FromTracks(p)) SidebarPane.CreatePlaylistFromDragPayload(acts, s.Payload, Go);
+            },
+            visualPolicy: DropTargetVisualPolicy.Spotlight,
+            spotlightWhen: static s => WaveeResourceDrag.Unwrap(s.Payload) is not { RootlistItem: true });
+    }
+
+    /// <summary>H3 (#85) — the actionable half of the "clear sorting to reorder" drop refusal
+    /// (<c>SidebarPaneConfig.SortedListRefusalAction</c>): switches to the ONE state that makes a positional
+    /// reorder legal again — <c>SidebarPreferences.CanReorderV3</c> requires BOTH the Playlists lens AND the
+    /// Custom sort, so this sets both rather than leaving the user to find the second one themselves.</summary>
+    public void SwitchToCustomSortForReorder()
+    {
+        if (Prefs is not { } prefs) return;
+        prefs.SetV3Filter((int)SidebarV3Filter.Playlists);
+        prefs.SetV3Sort((int)SidebarV3Sort.Custom, prefs.V3Desc.Peek());
     }
 
     /// <summary>Clear filter + qualifier + search in one gesture (the overflow menu's "Clear filters").</summary>

@@ -426,9 +426,14 @@ public sealed record SidebarCustomLayout(
 {
     public static readonly SidebarCustomLayout Empty = new(SidebarTemplates.Blank, Array.Empty<SidebarSectionSpec>());
 
-    /// <summary>The built-in top-bar band: the Home route shortcut, which is exactly what the shell hard-coded before the
-    /// band became customizable. A FIXED item id (never minted) so the band is stable across reads — a fresh id per call
-    /// would break remove-by-id, the per-tile menu keys and every equality check.</summary>
+    /// <summary>The built-in top-bar band: Home — exactly what the shell hard-coded before the band became
+    /// customizable. FIXED item id (never minted) so the band is stable across reads.
+    /// <para>The five fixed library destinations are deliberately NOT seeded here. They were, briefly (#85 H4), but
+    /// this is the ONE global band shared by all three designs: seeding it gave Classic a duplicate of its own "Your
+    /// Library" section, saturated <c>SidebarLayoutReducer.MaxTopBarItems</c> on a fresh install, and needed a
+    /// migration for every already-persisted band. Library V3 renders those destinations from
+    /// <c>SidebarShortcutsSection.LibraryDestinations</c> as its own compact strip instead — they are fixed app
+    /// destinations, not a user's shortcut choices.</para></summary>
     public static readonly IReadOnlyList<SidebarItemSpec> DefaultTopBar = new SidebarItemSpec[]
     {
         new(SidebarIds.TopBarHomeItem, SidebarItemTarget.Route, "home", IconOverride: "Home"),
@@ -719,6 +724,15 @@ public static class SidebarIds
 
     /// <summary>The stable id of the built-in default top-bar Home shortcut (<see cref="SidebarCustomLayout.DefaultTopBar"/>).</summary>
     public const string TopBarHomeItem = ItemPrefix + "00000001";
+
+    // Issue #85 (H4) — the five library-destination shortcuts DefaultTopBar seeds alongside Home. Fixed ids, never
+    // minted, for the same reason TopBarHomeItem is: a fresh id per call would break remove-by-id, the per-tile menu
+    // keys and every equality check (including SidebarTopBarMigration's "is this still exactly the default" test).
+    public const string TopBarLikedItem = ItemPrefix + "00000002";
+    public const string TopBarAlbumsItem = ItemPrefix + "00000003";
+    public const string TopBarArtistsItem = ItemPrefix + "00000004";
+    public const string TopBarPodcastsItem = ItemPrefix + "00000005";
+    public const string TopBarLocalItem = ItemPrefix + "00000006";
 
     public static bool IsTopBar(string? sectionId)
         => string.Equals(sectionId, TopBarSection, StringComparison.Ordinal);

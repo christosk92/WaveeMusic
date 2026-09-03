@@ -397,6 +397,7 @@ sealed class HomePage : Component
         // tail of the feed instead of living permanently below every Spotify module.
         Element concerts = ConcertUi.WideEditorialDestination(
             artwork: null,
+            style: EditorialArtStyle.Concert,
             eyebrow: Loc.Get(Strings.Concerts.LiveMusic),
             title: Loc.Get(Strings.Concerts.HomeTitle),
             subtitle: Loc.Get(Strings.Concerts.HomeSubtitle),
@@ -408,6 +409,7 @@ sealed class HomePage : Component
         // full-width destinations closing the feed, rather than one and an abrupt end.
         Element browse = ConcertUi.WideEditorialDestination(
             artwork: null,
+            style: EditorialArtStyle.Browse,
             eyebrow: Loc.Get(Strings.Browse.Eyebrow),
             title: Loc.Get(Strings.Browse.HomeTitle),
             subtitle: Loc.Get(Strings.Browse.HomeSubtitle),

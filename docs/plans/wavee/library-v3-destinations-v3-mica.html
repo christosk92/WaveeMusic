@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wavee — Library V3 destinations, take 3 (researched)</title>
+<style>
+  :root {
+    --lab-bg: #0e1014;
+    --lab-panel: rgba(27, 30, 37, .82);
+    --lab-stroke: rgba(255, 255, 255, .09);
+    --lab-text: #f5f6f8;
+    --lab-muted: #9da4b0;
+
+    /* Wavee dark tokens, as the prototype reads them */
+    --solid-base: #202020;        /* Tok.FillSolidBase */
+    --solid-tertiary: #282828;    /* Tok.FillSolidTertiary */
+    --fill-ctrl: rgba(255,255,255,.055);      /* Tok.FillControlDefault */
+    --fill-ctrl-hover: rgba(255,255,255,.10); /* Tok.FillControlSecondary */
+    --stroke-card: rgba(255,255,255,.09);     /* Tok.StrokeCard */
+    --stroke-divider: rgba(255,255,255,.07);  /* Tok.StrokeDivider */
+    --text-1: #f4f4f4;            /* Tok.TextPrimary */
+    --text-2: #b6b6b6;            /* Tok.TextSecondary */
+    --text-3: #8a8a8a;            /* Tok.TextTertiary */
+    --accent: #4cc2ff;            /* Tok.AccentDefault */
+    --accent-text: #6fcbff;       /* Tok.AccentTextPrimary */
+    --accent-subtle: rgba(76,194,255,.16);    /* Tok.AccentSubtle */
+    --on-accent: #001b28;
+
+    --r-ctrl: 5px;
+    --r-pill: 999px;
+
+    /* SidebarRowGeometry / LibraryV3Metrics */
+    --pane-edge: 8px;             /* SidebarRowGeometry.PaneEdge */
+    --row-h: 40px;                /* LibraryV3Metrics.NavRowHeight */
+    --row-h-sub: 44px;            /* SidebarRowMetrics.HeightFor(Cozy, subtitle) */
+    --row-h-cmp: 32px;            /* SidebarRowMetrics.HeightFor(Compact) */
+    --header-h: 44px;             /* LibraryV3Metrics.HeaderHeight */
+    --tool-h: 36px;               /* LibraryV3Metrics.ToolbarHeight */
+    --chip-h: 40px;               /* LibraryV3Metrics.ChipRailHeight */
+
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0; color: var(--lab-text); font-size: 14px; line-height: 1.5;
+    padding: 32px 28px 80px;
+    background:
+      radial-gradient(1200px 700px at 10% -8%, rgba(76,194,255,.10), transparent 60%),
+      radial-gradient(900px 620px at 94% 2%, rgba(160,110,255,.10), transparent 62%),
+      var(--lab-bg);
+  }
+  h1 { font-family: "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+       font-size: 27px; font-weight: 600; letter-spacing: -.02em; margin: 0 0 6px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 3px; letter-spacing: -.01em; }
+  h3 { font-family: "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+       font-size: 18px; font-weight: 600; margin: 42px 0 12px; letter-spacing: -.015em; }
+  .lede { color: var(--lab-muted); max-width: 92ch; margin: 0 0 10px; }
+  .kill { color:#ff9d9d; max-width: 92ch; margin: 0 0 8px; font-size: 13px; }
+  .warn { color:#ffd479; max-width: 92ch; margin: 0 0 24px; font-size: 13px; }
+  code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  a { color: var(--accent-text); text-decoration: none; border-bottom: 1px solid rgba(111,203,255,.28); }
+  a:hover { border-bottom-color: var(--accent-text); }
+
+  .sub { font-size: 12px; color: var(--lab-muted); margin: 0 0 14px; max-width: 40ch; }
+  .verdict { font-size: 12.5px; margin: 0 0 12px; max-width: 40ch; }
+  .verdict.yes { color: #7ee2a8; }
+  .verdict.no  { color: #ff9d9d; }
+  .verdict.mix { color: #ffd479; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  .opt { background: var(--lab-panel); border: 1px solid var(--lab-stroke); border-radius: 12px;
+         padding: 18px; backdrop-filter: blur(24px) saturate(140%); }
+  .note { color: var(--lab-muted); font-size: 12.5px; margin: 12px 0 0; max-width: 40ch; }
+  .note b { color: var(--lab-text); font-weight: 600; }
+  .note.like { color:#a9dfc1; }
+  .note.like b  { color: #7ee2a8; }
+  .note.hate { color:#e6b8b8; }
+  .note.hate b  { color: #ff9d9d; }
+  .flag { display:inline-block; font-size:10.5px; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
+          padding:2px 7px; border-radius:var(--r-pill); background:var(--accent-subtle); color:var(--accent-text);
+          margin-left:8px; vertical-align:3px; }
+  .flag.g { background:rgba(126,226,168,.15); color:#7ee2a8; }
+  .flag.y { background:rgba(255,212,121,.15); color:#ffd479; }
+
+  /* ── the pane ─────────────────────────────────────────────── */
+  .pane {
+    width: 300px; background: var(--solid-base);
+    border: 1px solid var(--stroke-card); border-radius: 10px;
+    padding: var(--pane-edge); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .pane.narrow { width: 180px; }
+  .rule { height:1px; background: var(--stroke-divider); margin: 7px 6px; }
+  .rule.tight { margin: 4px 6px; }
+
+  .r { display:flex; align-items:center; gap:10px; height:var(--row-h); padding:0 8px 0 4px;
+       border-radius:var(--r-ctrl); position:relative; }
+  .r:hover { background: var(--fill-ctrl); }
+  .r .g { width:20px; text-align:center; color:var(--text-2); font-size:15px; flex:none; }
+  .r .t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-1); }
+  .r .n { color:var(--text-3); font-size:11.5px; flex:none; font-variant-numeric: tabular-nums; }
+  .r .art { width:32px; height:32px; border-radius:4px; flex:none;
+            background:linear-gradient(135deg,#3a4150,#232833); }
+  .r .art.circ { border-radius:50%; }
+  .r .art.liked { background:linear-gradient(135deg,#5b3ec8,#c4a6ff); }
+  .r .two { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; }
+  .r .two i { font-style:normal; color:var(--text-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .r .two s { text-decoration:none; color:var(--text-3); font-size:12px;
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .r.sub { height:var(--row-h-sub); }
+  .r.cmp { height:var(--row-h-cmp); }
+  .r.on { background: var(--accent-subtle); }
+  .r.on .t, .r.on .g { color: var(--accent-text); }
+  .r.on::before { content:""; position:absolute; left:-2px; top:9px; bottom:9px; width:3px;
+                  border-radius:2px; background:var(--accent); }
+
+  .hdr { display:flex; align-items:center; gap:4px; height:var(--header-h); padding:0 4px; }
+  .hdr .ttl { font-size:15px; font-weight:600; letter-spacing:-.01em; flex:1; min-width:0;
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-1); }
+  .hdr .ico { width:28px; height:28px; display:grid; place-items:center; border-radius:4px;
+              color:var(--text-2); font-size:14px; flex:none; }
+  .hdr .ico:hover { background:var(--fill-ctrl); color:var(--text-1); }
+
+  .tools { display:flex; align-items:center; gap:4px; height:var(--tool-h); padding:0 4px; }
+  .tools .sq { width:28px; height:28px; display:grid; place-items:center; border-radius:4px;
+               color:var(--text-2); font-size:13px; flex:none; }
+  .tools .fld { flex:1; min-width:0; height:28px; border-radius:var(--r-ctrl); background:var(--fill-ctrl);
+                display:flex; align-items:center; gap:6px; padding:0 8px; color:var(--text-3); font-size:12.5px; }
+  .tools .sort { display:flex; align-items:center; gap:5px; font-size:12.5px; color:var(--text-2); padding:0 6px;
+                 white-space:nowrap; }
+
+  /* the EXISTING filter rail — filled pills, 12.5px, inside a 40 band */
+  .chips { display:flex; gap:6px; align-items:center; height:var(--chip-h); padding:0 2px; overflow:hidden; }
+  .chip { font-size:12.5px; padding:5px 11px; border-radius:var(--r-pill); background:var(--fill-ctrl);
+          color:var(--text-1); white-space:nowrap; flex:none; display:inline-flex; align-items:center; gap:5px; }
+  .chip.on { background:var(--accent); color:var(--on-accent); font-weight:600; }
+
+  /* ── P1: the WORD RAIL (WinUI top-nav strip, Zune vocabulary) ── */
+  .wrail { position:relative; display:flex; align-items:flex-end; gap:15px; height:30px;
+           padding:0 6px; overflow:hidden; }
+  .wrail::after { content:""; position:absolute; right:0; top:0; bottom:0; width:26px; pointer-events:none;
+                  background:linear-gradient(90deg, rgba(32,32,32,0), var(--solid-base) 78%); }
+  .w { position:relative; display:inline-flex; align-items:baseline; gap:5px; flex:none;
+       padding-bottom:7px; color:var(--text-2); font-size:13.5px; white-space:nowrap; }
+  .w:hover { color:var(--text-1); }
+  .w .n { font-size:10.5px; color:var(--text-3); font-variant-numeric:tabular-nums; }
+  .w.on { color:var(--text-1); font-weight:600; }
+  .w.on .n { color:var(--text-2); }
+  .w.on::after { content:""; position:absolute; left:0; right:0; bottom:1px; height:2px;
+                 border-radius:1px; background:var(--accent); }
+  .footbar { margin-top:auto; padding-top:4px; }
+
+  /* ── P2: the PIVOT TITLE ──────────────────────────────────── */
+  .pivot { position:relative; flex:1; min-width:0; display:flex; align-items:flex-end; gap:13px;
+           height:var(--header-h); overflow:hidden; }
+  .pivot::after { content:""; position:absolute; right:0; top:0; bottom:0; width:22px; pointer-events:none;
+                  background:linear-gradient(90deg, rgba(32,32,32,0), var(--solid-base) 80%); }
+  .pv { position:relative; flex:none; padding-bottom:11px; white-space:nowrap;
+        font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+        font-size:16px; letter-spacing:-.015em; color:var(--text-3); }
+  .pv:hover { color:var(--text-2); }
+  .pv.on { color:var(--text-1); font-weight:600; }
+  .pv.on::after { content:""; position:absolute; left:0; right:0; bottom:5px; height:2px;
+                  border-radius:1px; background:var(--accent); }
+  .pv .n { font-size:10.5px; color:var(--text-3); margin-left:5px; vertical-align:2px;
+           font-variant-numeric:tabular-nums; }
+
+  /* ── P3: the QUICK ACCESS band ────────────────────────────── */
+  .qahdr { display:flex; align-items:center; gap:6px; height:26px; padding:0 6px; }
+  .qahdr .lbl { font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+                color:var(--text-3); }
+  .qahdr .cv { font-size:10px; color:var(--text-3); margin-left:auto; }
+
+  /* ── the 56-DIP collapsed rail ────────────────────────────── */
+  .rail { width:56px; background:var(--solid-base); border:1px solid var(--stroke-card); border-radius:10px;
+          padding:6px 0; display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .rt { width:40px; height:40px; display:grid; place-items:center; border-radius:6px;
+        color:var(--text-2); font-size:16px; position:relative; background:transparent; }
+  .rt:hover { background:var(--fill-ctrl-hover); color:var(--text-1); }
+  .rt.on { background:var(--accent-subtle); color:var(--accent-text); }
+  .rt.on::before { content:""; position:absolute; left:-5px; top:11px; bottom:11px; width:3px;
+                   border-radius:2px; background:var(--accent); }
+  .rt.art { background:linear-gradient(135deg,#3a4150,#232833); }
+  .rt.art.liked { background:linear-gradient(135deg,#5b3ec8,#c4a6ff); }
+  .rt.art.circ { border-radius:50%; }
+  .rt .b { position:absolute; top:1px; right:1px; font-size:8.5px; color:var(--text-3); }
+  .rdiv { width:24px; height:1px; background:var(--stroke-divider); margin:2px 0; }
+  .rspace { flex:1; min-height:26px; }
+
+  .stack { display:flex; gap:16px; align-items:flex-start; margin-top:16px; }
+  .cap { font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--text-3);
+         margin:0 0 6px; }
+
+  /* ── evidence ─────────────────────────────────────────────── */
+  .ev { background:var(--lab-panel); border:1px solid var(--lab-stroke); border-radius:12px; padding:18px 22px;
+        backdrop-filter:blur(24px) saturate(140%); max-width:1140px; }
+  .ev ul { margin:0; padding-left:18px; }
+  .ev li { margin:0 0 10px; font-size:13px; color:var(--lab-muted); }
+  .ev li b { color:var(--lab-text); font-weight:600; }
+  .ev q { color:var(--text-1); font-style:italic; }
+  .ev .src { font-size:11.5px; }
+  .evcols { display:flex; flex-wrap:wrap; gap:26px; }
+  .evcol { flex:1 1 440px; min-width:340px; }
+  .evcol h4 { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-text);
+              margin:0 0 10px; font-weight:600; }
+
+  table.cmp { border-collapse:collapse; margin-top:18px; width:100%; max-width:1140px; font-size:13px; }
+  table.cmp th, table.cmp td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--stroke-divider);
+                               vertical-align:top; }
+  table.cmp th { color:var(--lab-muted); font-weight:600; font-size:12px; text-transform:uppercase;
+                 letter-spacing:.04em; }
+  table.cmp td { color:var(--lab-muted); }
+  table.cmp td b { color:var(--lab-text); }
+  .rec { background:rgba(126,226,168,.07); border:1px solid rgba(126,226,168,.22); border-radius:12px;
+         padding:18px 22px; margin-top:28px; max-width:1140px; font-size:13.5px; color:var(--lab-muted); }
+  .rec b { color:#7ee2a8; }
+  .rec p { margin:0 0 10px; }
+  .rec p:last-child { margin:0; }
+</style>
+</head>
+<body>
+
+<h1>Library V3 destinations — take 3, from the research</h1>
+<p class="lede">
+  Reaching <b>Liked&nbsp;Songs, Albums, Artists, Podcasts and Local&nbsp;files</b> from the Library&nbsp;V3 pane
+  (issue&nbsp;#85&nbsp;H4). Counts are warm (<code>LibraryStats</code>), routes are registered
+  (<code>ShellRoutes</code>), the pane resizes 180–460&nbsp;DIP and collapses to a 56-DIP rail. The question is only
+  what it should look like — and this take answers it from what shipped apps do and what their users actually say,
+  not from taste. Evidence first, then three shapes.
+</p>
+<p class="kill">
+  ✗ <b>Rejected (take&nbsp;1, shipped):</b> five full-width rows above “Your Library”. ~200&nbsp;DIP of chrome,
+  reads as Classic bolted onto V3, pushes the library below the fold.
+</p>
+<p class="kill">
+  ✗ <b>Currently implemented (take&nbsp;2, option&nbsp;A):</b> five equal 52-DIP icon tiles whose 10&nbsp;px labels
+  <b>drop entirely below ~270&nbsp;DIP of pane</b> (<code>LibraryV3Metrics.DestinationLabelW</code>). The research
+  is unkind to it on three counts: icon-only navigation is the best-documented navigation failure mode there is; no
+  shipped desktop music app puts a tile strip inside a persistent sidebar; and five equal tiles assert that
+  Liked&nbsp;Songs and Local&nbsp;files matter equally, which no usage pattern supports and which Microsoft’s own
+  navigation guidance explicitly argues against.
+</p>
+<p class="warn">
+  ⚠ <b>Two bugs the research trip turned up in passing.</b> (1) Liked&nbsp;Songs renders <b>twice</b> in the
+  expanded pane today — as a destination tile (<code>LibraryV3NavBand.DestinationStrip</code>, unconditional) and as
+  a list row (<code>LibraryV3Document</code>’s <code>v3.liked</code>, suppressed only when Liked is in the
+  <i>top bar</i>, which the tile strip is not). (2) The 56-DIP rail shows <b>none</b> of the five —
+  <code>LibraryV3Sidebar.BuildRailHead</code> draws <code>prefs.TopBar</code> only. All three proposals fix both.
+</p>
+
+<h3>What the research says</h3>
+<div class="ev">
+<div class="evcols">
+  <div class="evcol">
+    <h4>What users complain about</h4>
+    <ul>
+      <li><b>“Cluttered sidebar” is the literal phrase.</b> On Spotify’s 2023 “Your Library” sidebar: the library is
+        <q>squished uncomfortably to a cluttered sidebar</q>, and
+        <q>this UI is so cluttered yet it’s designed in such a way that you’re only looking at one thing at a
+        time</q>.
+        <span class="src"><a href="https://community.spotify.com/t5/Your-Library/Desktop-New-Your-Library-sidebar/td-p/5571384">community.spotify.com/…/5571384</a> ·
+        <a href="https://community.spotify.com/t5/Your-Library/What-s-up-with-this-new-desktop-UI/td-p/5525566">…/5525566 (16+ pages)</a></span></li>
+      <li><b>Chrome that eats the pane is what people hate most</b> — not the number of destinations:
+        <q>Why should I give up half of my desktop size to have an overview of my albums and artists? I think it’s a
+        huge downgrade and makes my browsing experience much worse.</q>
+        <span class="src"><a href="https://www.windowslatest.com/2023/04/29/spotifys-new-design-for-windows-11-is-here-but-users-arent-happy/">windowslatest.com</a></span></li>
+      <li><b>Losing the dedicated Albums/Artists entries is the loudest single loss.</b> An entire thread titled
+        “<i>‘Your Library’ redesign, where are my artists / albums?</i>”, including
+        <q>The library redesign is the main reason why I switched to Apple Music.</q>
+        <span class="src"><a href="https://community.spotify.com/t5/Android/quot-Your-Library-quot-redesign-where-are-my-artists-albums/td-p/4676709">community.spotify.com/…/4676709</a> ·
+        <a href="https://www.hypebot.com/hypebot/2019/06/spotify-users-angry-over-update.html">hypebot</a> ·
+        <a href="https://www.inverse.com/science/56923-spotify-update-backlash-recently-played-alphabetical-scrolling">inverse</a></span></li>
+      <li><b>The filter system itself is named as the regression.</b> On HN: the UX
+        <q>got particularly bad when they introduced the filter-system</q>; and
+        <q>When I open Spotify, I usually know what I want to listen to. I strongly suspect the redesign is going to
+        make it so that it takes me more time to get there.</q>
+        <span class="src"><a href="https://news.ycombinator.com/item?id=35122439">news.ycombinator.com/item?id=35122439</a></span></li>
+      <li><b>People want a filter to behave like a place.</b> “Pin a filter type to make it the default” has been an
+        open request for years — the clearest evidence that the filter/destination distinction is a burden users
+        would rather not carry.
+        <span class="src"><a href="https://community.spotify.com/t5/Live-Ideas/Mobile-Your-Library-Pin-a-filter-type-to-make-it-the-default/idi-p/5198188">community.spotify.com/…/5198188</a></span></li>
+      <li><b>Click cost gets counted out loud:</b> <q>It takes 7 clicks in the app to get to them</q> (their own
+        playlists).
+        <span class="src"><a href="https://community.spotify.com/t5/Live-Ideas/Desktop-UI-Redesign/idi-p/7456630">community.spotify.com/…/7456630</a></span></li>
+      <li><b>Hiding nav behind a disclosure is the one arrangement with universal backlash.</b> iTunes 11/12 hid the
+        Library + Playlists sidebar by default: “less intuitive” (Macworld), “Apple’s worst software ever” (Mac
+        Observer), “Apple’s quiet war on the sidebar” (Alphr). This retires take-2’s option&nbsp;B (destinations
+        behind a header caret) for good.
+        <span class="src"><a href="https://www.macworld.com/article/224411/itunes-12-introduces-new-look-less-intuitive-interface.html">macworld</a> ·
+        <a href="https://www.macobserver.com/tmo/review/apples-itunes-12-is-apples-worst-software-ever-should-be-withdrawn/page3">macobserver</a> ·
+        <a href="https://www.alphr.com/itunes-12-sidebar/">alphr</a></span></li>
+      <li><b>Moving library nav out of the sidebar is remembered as “broke muscle memory”.</b> Plex reverted to
+        sidebar navigation after more than a year of complaints, and its pin mechanism has its own
+        “<i>FIX the sidebar Library pins pleeeeeeease!</i>” thread.
+        <span class="src"><a href="https://www.howtogeek.com/plex-brings-back-sidebar-navigation-after-users-refuse-to-let-it-go/">howtogeek</a> ·
+        <a href="https://forums.plex.tv/t/fix-the-sidebar-library-pins-pleeeeeeease/543375">forums.plex.tv</a> ·
+        <a href="https://www.xda-developers.com/plexs-classic-app-is-better-than-its-modern-redesign-so-i-went-back/">xda</a></span></li>
+      <li><b>Icon-only navigation is the best-documented failure mode in the field.</b> NN/g:
+        <q>Due to the absence of a standard usage for most icons, text labels are necessary to communicate the
+        meaning and reduce ambiguity</q>; <q>Icon labels should be visible at all times, without any interaction
+        from the user</q>; <q>Don’t rely on hover to reveal text labels: not only does it increase the interaction
+        cost, but it also fails to translate well on touch devices</q>. Only home, print and the search magnifier
+        have <q>mostly universal recognition</q> — “albums”, “artists”, “shows”, “local files” do not.
+        <span class="src"><a href="https://www.nngroup.com/articles/icon-usability/">nngroup.com/articles/icon-usability</a></span></li>
+      <li><b>Users are more sensitive to churn than to the arrangement chosen.</b> YouTube Music’s library and
+        playlist redesign drew an “uproar” with users asking for a way back.
+        <span class="src"><a href="https://www.androidpolice.com/youtube-music-playlists-app-desktop-redesign/">androidpolice</a></span></li>
+      <li><b>Power users mourn density, not decoration.</b> Apple Music’s loss of the iTunes Column Browser:
+        <q>With thousands of albums scrolling through pretty pictures or an endless song list is not practical.</q>
+        <span class="src"><a href="https://developer.apple.com/forums/thread/117308">developer.apple.com/forums/thread/117308</a></span></li>
+    </ul>
+  </div>
+  <div class="evcol">
+    <h4>What the guidance and the good examples do</h4>
+    <ul>
+      <li><b>Microsoft’s answer to this exact question is a horizontal, text-labelled strip.</b> WinUI
+        <code>NavigationView</code>: <q>We recommend top navigation when: You have 5 or fewer top-level navigation
+        categories that are equally important … You need to show all navigation options on screen. You want more
+        space for your app content. Icons cannot clearly describe your app’s navigation categories.</q> All four
+        clauses describe this case: five destinations, all visible, the library needs the height, and
+        albums-vs-artists-vs-shows is not an icon story.
+        <span class="src"><a href="https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/navigationview">learn.microsoft.com/…/navigationview</a></span></li>
+      <li><b>Unequal treatment is explicitly endorsed.</b> Navigation basics: <q>Simplicity: Fewer navigation items
+        simplify decision making for users. Providing easy access to important destinations and hiding less
+        important items will help users get where they want, faster.</q> Five equal tiles is the opposite of that
+        sentence.
+        <span class="src"><a href="https://learn.microsoft.com/en-us/windows/apps/design/basics/navigation-basics">learn.microsoft.com/…/navigation-basics</a></span></li>
+      <li><b>There is a sanctioned home for secondary destinations: the end of the pane.</b>
+        <q>You can use FooterMenuItems to place navigation items at the end of the navigation pane, contrasted with
+        the MenuItems property which places items at the start of the pane … Only Navigation items should be placed
+        in FooterMenuItems</q>. Windows 11’s own Media Player parks its pane-level affordance at the bottom of the
+        nav bar.
+        <span class="src"><a href="https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/navigationview">learn.microsoft.com/…/navigationview</a> ·
+        <a href="https://www.thurrott.com/books/windows-11-field-guide/digital-media/338474/media-player-2">thurrott</a></span></li>
+      <li><b>Counts belong on nav items as numerals — and must not be mixed shapes.</b>
+        <q>We recommend that you not use different types of InfoBadges in one NavigationView</q>. Four destinations
+        with a count plate and one (Local files) without is precisely that mismatch, so the count has to read as an
+        inline numeral rather than a badge.
+        <span class="src"><a href="https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/info-badge">learn.microsoft.com/…/info-badge</a></span></li>
+      <li><b>Zune did word-nav, not icon-nav.</b> Metro grew out of Zune and Media Center with
+        <q>more focus on clean typography and less on UI chrome</q> (“content before chrome”); Zune used
+        <q>large, bold and sans-serif fonts (mainly Segoe) … text often used as a primary navigation element and
+        words being cut off at the edge of the screen to create a sense of movement</q>. Its Collection screen was
+        praised for exactly what V3 wants: <q>Rather than them being separate section as in WMP, you can see
+        Artists, Albums and individual songs all at once.</q>
+        <span class="src"><a href="https://en.wikipedia.org/wiki/Metro_(design_language)">wikipedia: Metro</a> ·
+        <a href="https://davidvkimball.com/posts/zunes-design-language-and-how-it-evolved-into-windows-phone/">davidvkimball</a> ·
+        <a href="https://cloudywithachanceoflicensing.com/2009/10/27/zune-4-0-desktop-software/">cloudywithachanceoflicensing</a></span></li>
+      <li><b>Zune’s home was Pins · New · History</b> plus Smart&nbsp;DJ — a tiny, typographic fixed set, and a pin
+        idiom Wavee already ships.
+        <span class="src"><a href="http://www.gearlive.com/news/article/q309-zune-4.0-the-complete-feature-list-rundown/">gearlive</a> ·
+        <a href="https://www.gsmarena.com/zune_software-review-539p2.php">gsmarena</a></span></li>
+      <li><b>Metro’s own split between its two horizontal patterns maps onto navigate-vs-filter.</b> A
+        <b>pivot</b> is for <q>more efficient, focused, and habitual usage</q>, to <q>apply data filters, change app
+        views, and display related content</q> over one dataset (≤7 items, the next header greyed out and peeking in
+        from the edge); a <b>panorama</b> is for browsing distinct destinations. The greyed, clipped peek is the
+        canonical way a horizontal strip says “there is more here”.
+        <span class="src"><a href="https://timheuer.com/blog/windows-phone-panorama-versus-pivot-ux-guidelines/">timheuer</a> ·
+        <a href="https://jeffwilcox.blog/2011/03/metro-design-guide-v1/">jeffwilcox: Metro design guide v1</a></span></li>
+      <li><b>The most durable, least-criticised idiom is a small fixed block the user can edit.</b> Apple Music’s
+        “Library” section ships ~5 rows (Recently Added, Artists, Albums, Songs) and keeps the other five behind
+        <i>Edit</i> → check/uncheck → drag to reorder. Wavee already owns that machinery (the sidebar customizer).
+        <span class="src"><a href="https://support.apple.com/guide/music/customize-the-music-window-mus0cec331d6/mac">support.apple.com</a> ·
+        <a href="https://www.macrumors.com/how-to/customize-your-apple-music-library/">macrumors</a></span></li>
+      <li><b>The second durable idiom is pin-to-top-of-the-same-list.</b> Explorer’s Quick access above the tree has
+        shipped for a decade with no backlash; Spotify’s 4 pins, Deezer’s new Quick Access and Plex’s pins are the
+        same move. The fixed set becomes permanently-sorted-first members of the one list rather than separate
+        chrome.
+        <span class="src"><a href="https://www.digitalcitizen.life/how-view-pin-unpin-items-quick-access-section-file-explorer-windows-10/">digitalcitizen</a> ·
+        <a href="https://alternativeto.net/news/2025/11/deezer-launches-quick-access-to-pin-favorites-on-home-tab/">alternativeto</a></span></li>
+      <li><b>The third is to move the fixed set out of the pane into a tab row in the content area</b> — the new
+        Windows 11 Media Player (Songs / Albums / Artists / Genres above the content) and Tidal (“My Collection”
+        opens its own tab row). Not available here: the ask is reachability <i>from the pane</i>.
+        <span class="src"><a href="https://geekchamp.com/how-to-use-the-new-media-player-app-in-windows-11/">geekchamp</a> ·
+        <a href="https://support.tidal.com/hc/en-us/articles/115005840629-Favorite-Tracks-Albums-Artists-and-Playlists-Using-the-Desktop-App">tidal support</a></span></li>
+      <li><b>Chunking beats a longer flat scan.</b> Hick’s law: reaction time grows with log₂(n) of the choices, and
+        the standard mitigation is grouping — “twenty items in four groups of five is cognitively cheaper than a
+        flat list of twenty”. One visually distinct destination band is one decision, not five.
+        <span class="src"><a href="https://dovetail.com/ux/hicks-law/">dovetail</a> ·
+        <a href="https://www.nngroup.com/videos/hicks-law-long-menus/">nngroup (Hick’s law)</a></span></li>
+      <li><b>Research gap, reported honestly:</b> no shipped <i>desktop</i> music app was found that puts a
+        horizontal icon/tile strip for library destinations inside a persistent sidebar. Tile grids exist
+        (Symfonium, Poweramp) but only as configurable <i>home-screen dashboards</i>; Slack’s icon rail is the
+        closest precedent and it needed a second pane to work. The currently-implemented strip is therefore a
+        departure from precedent, not an established idiom.
+        <span class="src"><a href="https://docs.symfonium.app/wiki/other/symfonium-configurable-interface/">docs.symfonium.app</a> ·
+        <a href="https://slack.com/blog/productivity/neatly-organize-your-work-life-with-custom-sidebar-sections-in-slack">slack.com/blog</a></span></li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<h3>Proposal 1 — the word rail <span class="flag g">recommended</span></h3>
+<p class="lede" style="margin-bottom:18px">
+  A WinUI <b>top-nav strip</b> in Zune’s vocabulary: five words, no boxes, no fills, no pills — 13.5&nbsp;px type on
+  a 30-DIP band between Home and the “Your Library” rule, with a 2-DIP accent underline under the destination you
+  are on and the next word clipped by a fade at the right edge. It is the one shape Microsoft’s own guidance names
+  for “5 or fewer categories, all visible, and icons can’t describe them”, and the one Zune actually used.
+</p>
+<div class="row">
+
+  <div class="opt">
+    <h2>The pane at 300 DIP</h2>
+    <p class="sub">Chrome above the first playlist: 40 + 30 + 9 + 44 + 36 + 40 = <b>199 DIP</b> — but the
+      <code>v3.liked</code> list row goes away with it, so the list gains 44 back. Net vs today: <b>−66 DIP</b>.</p>
+    <div class="pane">
+      <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      <div class="wrail">
+        <span class="w on">Liked <span class="n">307</span></span>
+        <span class="w">Albums</span>
+        <span class="w">Artists</span>
+        <span class="w">Podcasts</span>
+        <span class="w">Local</span>
+      </div>
+      <div class="rule"></div>
+      <div class="hdr">
+        <span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span>
+      </div>
+      <div class="tools">
+        <span class="sq">⌕</span><span class="fld">Search library</span><span class="sort">⇅ Recents ⌄</span>
+      </div>
+      <div class="chips">
+        <span class="chip on">Playlists</span><span class="chip">Podcasts</span><span class="chip">Albums</span>
+      </div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>MISS U Radio</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art circ"></span><span class="two"><i>Michael Jackson</i><s>Artist</s></span></div>
+    </div>
+    <p class="note"><b>Grammar.</b> Two horizontal strips, deliberately opposite: the destinations are
+      <b>naked type with an underline</b> above the rule; the filters are <b>filled 12.5 px pills</b> below the
+      header. Different size, different weight, different shape, different side of the divider — nothing about a
+      word row reads as a pill. <b>Counts:</b> only the <i>active</i> word carries its number, per
+      <code>InfoBadge</code>’s “don’t mix badge types in one nav set” (Local files has no count, so no shape can be
+      universal). One numeral on screen keeps the band calm.</p>
+  </div>
+
+  <div class="opt">
+    <h2>180 DIP and the 56-DIP rail</h2>
+    <p class="sub">The band never sheds its labels — it scrolls, with the Metro peek: the next word clipped and
+      faded, which is <i>exactly</i> Zune’s “words cut off at the edge of the screen”.</p>
+    <div class="stack" style="margin-top:0">
+      <div>
+        <p class="cap">Pane · 180 DIP floor</p>
+        <div class="pane narrow">
+          <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+          <div class="wrail">
+            <span class="w on">Liked <span class="n">307</span></span>
+            <span class="w">Albums</span>
+            <span class="w">Artists</span>
+          </div>
+          <div class="rule"></div>
+          <div class="hdr"><span class="ico">▽</span><span class="ttl">Your Library</span>
+            <span class="ico">···</span><span class="ico">‹</span></div>
+          <div class="tools"><span class="sq">⌕</span><span class="fld">Search</span><span class="sort">⇅⌄</span></div>
+          <div class="chips"><span class="chip on">Playlists</span><span class="chip">Albums</span></div>
+          <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandst…</i><s>70 songs</s></span></div>
+          <div class="r sub"><span class="art"></span><span class="two"><i>You&#39;ll Be In My H…</i><s>50 songs</s></span></div>
+          <div class="r sub"><span class="art"></span><span class="two"><i>High School Musi…</i><s>32 songs</s></span></div>
+        </div>
+      </div>
+      <div>
+        <p class="cap">Rail · 56</p>
+        <div class="rail">
+          <div class="rt on">♥<span class="b">307</span></div>
+          <div class="rt">◎<span class="b">18</span></div>
+          <div class="rt">☺<span class="b">16</span></div>
+          <div class="rt">◈<span class="b">6</span></div>
+          <div class="rt">▤</div>
+          <div class="rdiv"></div>
+          <div class="rt">⌂</div>
+          <div class="rdiv"></div>
+          <div class="rt art"></div>
+          <div class="rt art"></div>
+          <div class="rt art circ"></div>
+          <div class="rspace"></div>
+          <div class="rdiv"></div>
+          <div class="rt">▤</div>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Rail.</b> The five become the leading tiles of <code>RailHead</code> above the existing
+      divider — the delegate is already wired, it just draws <code>TopBar</code> today. Icon-only here is the one
+      place NN/g’s objection does not bite: a 56-DIP rail is a state the user explicitly collapsed into, every tile
+      has a tooltip, and the labelled form is one click away.</p>
+  </div>
+
+  <div class="opt">
+    <h2>Verdict</h2>
+    <p class="verdict yes">✓ Every label always visible · 30 DIP · nothing hidden behind a caret · no precedent
+      problem</p>
+    <p class="note like"><b>What the research says they’ll like.</b> The five names are legible at every pane width,
+      which is the single thing NN/g is most emphatic about. It is the arrangement Microsoft names verbatim for this
+      case (5 or fewer, all on screen, more space for content, icons can’t describe the categories). It costs 30 DIP
+      rather than 200, which answers the loudest complaint in the corpus (<q>why should I give up half of my desktop
+      size</q>). And it looks like Wavee’s stated ancestor: Zune navigated by words, not glyphs.</p>
+    <p class="note hate"><b>What they’ll complain about.</b> (1) <b>Two horizontal strips</b> in one pane — someone
+      will read the word row as “more filters” at first glance; the underline, the size step and the rule between
+      them are the only defence, and they have to be drawn crisply. (2) <b>Local files gets clipped</b> at the
+      narrow end, so it is peek-and-scroll rather than always visible. (3) <b>No count except the active one</b> —
+      a user who liked seeing “18 albums” at a glance loses it (the numbers are on the pages, and hover restores
+      them). (4) A word rail is <b>not skimmable by icon</b>, so returning users lose the shape-recognition that
+      tiles would have given them.</p>
+    <p class="note"><b>Build.</b> Replace <code>LibraryV3NavBand.DestinationStrip</code> with
+      <code>DestinationRail</code>: a <code>ScrollView</code> (horizontal, no bar) of five text buttons, selection =
+      a 2-DIP accent rectangle at the band’s bottom edge, roving focus with ←/→ exactly like
+      <code>LibraryV3ChipStrip</code>’s. <code>LibraryV3Metrics</code>: <code>DestinationTileH/CompactH/LabelW</code>
+      → one <code>DestinationRailH = 30f</code>. Delete the <code>v3.liked</code> section from
+      <code>LibraryV3Document</code> (the rail owns Liked now, which also fixes the double-render) and drop the
+      chips’ double-click-to-navigate affordance (<code>V3ChipSlot.Route</code>) — with a visible destination for
+      each, a hidden gesture is redundant.<br><br>
+      <b>Free variant — the footer arm.</b> The same control mounted at the <i>bottom</i> of the pane instead
+      (WinUI’s <code>FooterMenuItems</code> convention: “navigation items at the end of the navigation pane”). Cost
+      above the fold: <b>zero</b> — the library starts directly under the header. Needs one new
+      <code>SidebarPaneConfig.Foot</code> delegate mirroring <code>Head</code>, plus
+      <code>RailFooter</code> (already exists) for the collapsed form. Shown below.</p>
+  </div>
+
+  <div class="opt">
+    <h2>The footer arm <span class="flag y">variant</span></h2>
+    <p class="sub">Identical control, mounted at the pane’s end. Above-the-fold cost: <b>0 DIP</b>. Always visible,
+      never scrolls away.</p>
+    <div class="pane" style="height:432px">
+      <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      <div class="rule"></div>
+      <div class="hdr">
+        <span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span>
+      </div>
+      <div class="tools">
+        <span class="sq">⌕</span><span class="fld">Search library</span><span class="sort">⇅ Recents ⌄</span>
+      </div>
+      <div class="chips">
+        <span class="chip on">Playlists</span><span class="chip">Podcasts</span><span class="chip">Albums</span>
+      </div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>MISS U Radio</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art circ"></span><span class="two"><i>Michael Jackson</i><s>Artist</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Dalkom Cafe</i><s>50 songs</s></span></div>
+      <div class="footbar">
+        <div class="rule tight"></div>
+        <div class="wrail">
+          <span class="w on">Liked <span class="n">307</span></span>
+          <span class="w">Albums</span>
+          <span class="w">Artists</span>
+          <span class="w">Podcasts</span>
+          <span class="w">Local</span>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Why it might be the better arm.</b> It removes the last trace of the original complaint —
+      nothing at all sits between the header and the first playlist — and it is the only option here with explicit
+      first-party sanction for <i>where</i> it goes. <b>Why it might not:</b> a strip at the pane’s bottom edge sits
+      directly above the now-playing bar, so the window’s bottom-left corner gets busy; and “at the bottom” is
+      measurably less discoverable than “at the top” for a first-run user who has never scrolled the pane.</p>
+  </div>
+
+</div>
+
+<h3>Proposal 2 — the pivot title</h3>
+<p class="lede" style="margin-bottom:18px">
+  <b>Zero new chrome.</b> The static “Your Library” title is already 44 DIP of the biggest type in the pane; make it
+  the destination switch. <code>Library · Albums · Artists · Podcasts · Local</code> at 16&nbsp;px display type, the
+  active word bright and underlined, the next word greyed and peeking past the fade — the literal Metro pivot.
+  Picking a word both <b>navigates</b> the content area and <b>scopes</b> the pane’s list, which collapses the two
+  verbs into one: the big type says <i>where you are</i>, the small pills say <i>what you are looking at</i>.
+  Liked Songs stays what it already is — the first row of the list (<code>v3.liked</code>), art tile and all —
+  because it is a playlist, not a category.
+</p>
+<div class="row">
+
+  <div class="opt">
+    <h2>The pane at 300 DIP</h2>
+    <p class="sub">Chrome: 40 + 9 + 44 + 36 = <b>129 DIP</b>, and the chip band only appears when the active lens
+      actually has sub-filters — so most of the time it is 129, not 169.</p>
+    <div class="pane">
+      <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      <div class="rule"></div>
+      <div class="hdr">
+        <span class="ico">▽</span>
+        <span class="pivot">
+          <span class="pv on">Library</span>
+          <span class="pv">Albums <span class="n">18</span></span>
+          <span class="pv">Artists <span class="n">16</span></span>
+          <span class="pv">Podcasts</span>
+        </span>
+        <span class="ico">＋</span><span class="ico">···</span>
+      </div>
+      <div class="tools">
+        <span class="sq">⌕</span><span class="fld">Search library</span><span class="sort">⇅ Recents ⌄</span>
+      </div>
+      <div class="r sub"><span class="art liked"></span><span class="two"><i>Liked Songs</i><s>307 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>MISS U Radio</i><s>50 songs</s></span></div>
+      <div class="r sub"><span class="art circ"></span><span class="two"><i>Michael Jackson</i><s>Artist</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Dalkom Cafe</i><s>50 songs</s></span></div>
+    </div>
+    <p class="note"><b>What the chip rail becomes.</b> Albums / Artists / Podcasts leave it — they are pivot words
+      now — so the rail carries only genuine sub-filters (By&nbsp;you · By&nbsp;Spotify · Mixed under Library,
+      nothing under the others) and <b>hides entirely when there are none</b>. That is a 40-DIP band reclaimed most
+      of the time and the redundancy gone: today Albums exists twice, once as a chip and once as a destination.</p>
+  </div>
+
+  <div class="opt">
+    <h2>Albums selected · 180 DIP · rail</h2>
+    <p class="sub">On a destination the pane becomes that destination’s contents — which is already exactly what the
+      Albums chip does today, so the behaviour is not new, only its label is.</p>
+    <div class="pane">
+      <div class="hdr">
+        <span class="ico">▽</span>
+        <span class="pivot">
+          <span class="pv">Library</span>
+          <span class="pv on">Albums <span class="n">18</span></span>
+          <span class="pv">Artists</span>
+        </span>
+        <span class="ico">···</span>
+      </div>
+      <div class="tools">
+        <span class="sq">⌕</span><span class="fld">Search albums</span><span class="sort">⇅ Added ⌄</span>
+      </div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Thriller</i><s>Michael Jackson</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Random Access Memories</i><s>Daft Punk</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>In Rainbows</i><s>Radiohead</s></span></div>
+    </div>
+    <div class="stack">
+      <div>
+        <p class="cap">Pane · 180 DIP</p>
+        <div class="pane narrow">
+          <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+          <div class="rule"></div>
+          <div class="hdr">
+            <span class="pivot">
+              <span class="pv on">Library</span>
+              <span class="pv">Albums</span>
+            </span>
+            <span class="ico">···</span>
+          </div>
+          <div class="tools"><span class="sq">⌕</span><span class="fld">Search</span><span class="sort">⇅⌄</span></div>
+          <div class="r sub"><span class="art liked"></span><span class="two"><i>Liked Songs</i><s>307 songs</s></span></div>
+          <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandst…</i><s>70 songs</s></span></div>
+          <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+        </div>
+      </div>
+      <div>
+        <p class="cap">Rail · 56</p>
+        <div class="rail">
+          <div class="rt">⌂</div>
+          <div class="rdiv"></div>
+          <div class="rt art liked"></div>
+          <div class="rt on">◎<span class="b">18</span></div>
+          <div class="rt">☺<span class="b">16</span></div>
+          <div class="rt">◈<span class="b">6</span></div>
+          <div class="rt">▤</div>
+          <div class="rdiv"></div>
+          <div class="rt art"></div>
+          <div class="rt art"></div>
+          <div class="rspace"></div>
+          <div class="rdiv"></div>
+          <div class="rt">▤</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <h2>Verdict</h2>
+    <p class="verdict mix">~ Cheapest in pixels, boldest in behaviour, biggest in build cost</p>
+    <p class="note like"><b>What they’ll like.</b> It is the only option that <i>removes</i> controls instead of
+      adding one: the pane loses a chip band most of the time and gains nothing. It answers the loudest structural
+      complaint in the corpus head-on — “pin a filter type to make it the default”, i.e. people want a filter to be
+      a place — by making it literally one thing. The biggest type in the pane always says where you are, which is
+      Metro’s typographic hierarchy done properly. And 129 DIP of chrome is less than V3 spends today <i>without</i>
+      any destinations at all.</p>
+    <p class="note hate"><b>What they’ll complain about.</b> (1) <b>Only ~3 words fit at 300 DIP and ~1.5 at 180</b>,
+      because the header also carries ▽ ＋ ⋯ ‹ — so the pivot is genuinely a scroller, and “Local” is always past the
+      fade. (2) A <b>title that scrolls</b> is unusual; some users will not realise the words are tappable until they
+      hover. (3) <b>Local files scopes badly</b> — local tracks are not library entries, so “the pane shows this
+      destination’s contents” is a promise that arm cannot fully keep. (4) The <b>churn risk</b> the research is
+      most consistent about: users forgive an arrangement, they do not forgive relearning one. This changes the
+      meaning of the pane’s title <i>and</i> the meaning of a chip tap in one release.</p>
+    <p class="note"><b>Build.</b> The real cost. <code>LibraryV3Header</code>’s title becomes a horizontal
+      <code>ScrollView</code> pivot; <code>LibraryV3ChipStrip.Facets</code> shrinks to the qualifier grammar and
+      <code>LibraryV3Chrome</code> must drop the chip band when <code>Slots()</code> is empty (a 40-DIP band that
+      appears and disappears needs a layout transition); <code>SidebarV3Filter</code> and the persisted code become
+      a <i>destination</i> rather than a filter, i.e. a migration; the ＋ folds into ⋯ below ~260 DIP to give the
+      pivot room. Two to three days, not two hours.</p>
+  </div>
+
+</div>
+
+<h3>Proposal 3 — quick access, inside the list</h3>
+<p class="lede" style="margin-bottom:18px">
+  The <b>most precedent-backed</b> shape, and the most boring: the five destinations stop being chrome and become
+  the <i>first band of the list</i> — Explorer’s Quick&nbsp;access above the tree, Spotify’s pins, Deezer’s Quick
+  Access, Apple Music’s Library section. Compact 32-DIP rows under one small uppercase header, above the pin band,
+  <b>filter-aware</b> (the Albums lens keeps Albums, drops Podcasts), <b>scrollable away</b>, and
+  <b>editable</b> in the customizer exactly as Apple Music’s <i>Edit</i> does. Chrome above the list: unchanged.
+</p>
+<div class="row">
+
+  <div class="opt">
+    <h2>The pane at 300 DIP</h2>
+    <p class="sub">0 DIP of new chrome. The band is content: 26 + 5×32 = 186 DIP of <i>list</i>, which scrolls,
+      filters and can be turned off — none of which the rejected version could do.</p>
+    <div class="pane">
+      <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+      <div class="rule"></div>
+      <div class="hdr">
+        <span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span>
+      </div>
+      <div class="tools">
+        <span class="sq">⌕</span><span class="fld">Search library</span><span class="sort">⇅ Recents ⌄</span>
+      </div>
+      <div class="chips">
+        <span class="chip on">Playlists</span><span class="chip">Podcasts</span><span class="chip">Albums</span>
+      </div>
+      <div class="qahdr"><span class="lbl">Library</span><span class="cv">Edit ⌄</span></div>
+      <div class="r cmp on"><span class="g">♥</span><span class="t">Liked Songs</span><span class="n">307</span></div>
+      <div class="r cmp"><span class="g">◎</span><span class="t">Albums</span><span class="n">18</span></div>
+      <div class="r cmp"><span class="g">☺</span><span class="t">Artists</span><span class="n">16</span></div>
+      <div class="r cmp"><span class="g">◈</span><span class="t">Podcasts</span><span class="n">6</span></div>
+      <div class="r cmp"><span class="g">▤</span><span class="t">Local files</span></div>
+      <div class="rule tight"></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>90&#39;s Nederlandstalig</i><s>70 songs</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Daily Mix 1</i><s>50 songs</s></span></div>
+    </div>
+    <p class="note"><b>Why this is not take&nbsp;1 again.</b> Take 1 put five <b>Cozy 40-DIP nav rows</b> in the
+      fixed chrome band, above the header, where nothing could scroll them, filter them or remove them. These are
+      <b>Compact 32-DIP list rows</b> below the chrome, inside the one virtualized list: they scroll away on the
+      first flick, they respond to the lens, and the customizer can hide any of them. Same five names, opposite
+      structural properties — and the header <i>above</i> them, not below.</p>
+  </div>
+
+  <div class="opt">
+    <h2>Filtered · 180 DIP · rail</h2>
+    <p class="sub">Under the Albums lens the band keeps only what the lens can mean — the behaviour the
+      “filter that doesn’t stick” complaints are actually asking for.</p>
+    <div class="pane">
+      <div class="hdr">
+        <span class="ico">▽</span><span class="ttl">Your Library</span>
+        <span class="ico">＋</span><span class="ico">···</span><span class="ico">‹</span>
+      </div>
+      <div class="chips">
+        <span class="chip">✕</span><span class="chip on">Albums</span>
+      </div>
+      <div class="qahdr"><span class="lbl">Library</span></div>
+      <div class="r cmp"><span class="g">◎</span><span class="t">Albums</span><span class="n">18</span></div>
+      <div class="rule tight"></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>Thriller</i><s>Michael Jackson</s></span></div>
+      <div class="r sub"><span class="art"></span><span class="two"><i>In Rainbows</i><s>Radiohead</s></span></div>
+    </div>
+    <div class="stack">
+      <div>
+        <p class="cap">Pane · 180 DIP</p>
+        <div class="pane narrow">
+          <div class="r"><span class="g">⌂</span><span class="t">Home</span></div>
+          <div class="rule"></div>
+          <div class="hdr"><span class="ico">▽</span><span class="ttl">Your Library</span>
+            <span class="ico">···</span><span class="ico">‹</span></div>
+          <div class="tools"><span class="sq">⌕</span><span class="fld">Search</span><span class="sort">⇅⌄</span></div>
+          <div class="chips"><span class="chip on">Playlists</span><span class="chip">Albums</span></div>
+          <div class="qahdr"><span class="lbl">Library</span></div>
+          <div class="r cmp"><span class="g">♥</span><span class="t">Liked Songs</span><span class="n">307</span></div>
+          <div class="r cmp"><span class="g">◎</span><span class="t">Albums</span><span class="n">18</span></div>
+          <div class="r cmp"><span class="g">☺</span><span class="t">Artists</span><span class="n">16</span></div>
+          <div class="r cmp"><span class="g">◈</span><span class="t">Podcasts</span><span class="n">6</span></div>
+          <div class="r cmp"><span class="g">▤</span><span class="t">Local files</span></div>
+        </div>
+      </div>
+      <div>
+        <p class="cap">Rail · 56</p>
+        <div class="rail">
+          <div class="rt">⌂</div>
+          <div class="rdiv"></div>
+          <div class="rt on">♥<span class="b">307</span></div>
+          <div class="rt">◎<span class="b">18</span></div>
+          <div class="rt">☺<span class="b">16</span></div>
+          <div class="rt">◈<span class="b">6</span></div>
+          <div class="rt">▤</div>
+          <div class="rdiv"></div>
+          <div class="rt art"></div>
+          <div class="rt art circ"></div>
+          <div class="rspace"></div>
+          <div class="rdiv"></div>
+          <div class="rt">▤</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">At 180 the rows just ellipsize — nothing sheds a label, nothing scrolls sideways, no peek to
+      learn. It is the only one of the three that is <b>completely unremarkable</b> at the narrow floor, which is
+      an argument in its favour.</p>
+  </div>
+
+  <div class="opt">
+    <h2>Verdict</h2>
+    <p class="verdict mix">~ The safest shape on record and the one closest in appearance to what was rejected</p>
+    <p class="note like"><b>What they’ll like.</b> It is the arrangement with the longest unbroken track record —
+      Explorer has shipped Quick access above a variable tree for a decade with no redesign backlash, and Apple
+      Music’s editable Library section is the least-criticised music-app sidebar in the corpus. Labels are always
+      full, counts are always visible, and it is the only option where the destinations obey the filter, which is
+      what the “make my filter stick” requests keep asking for. Hick’s-law-correct too: one labelled group, one
+      decision.</p>
+    <p class="note hate"><b>What they’ll complain about.</b> (1) It <b>looks like five stacked rows</b>, which is the
+      thing already rejected once — the differences (Compact 32 not Cozy 40, below the header not above it, scrolls,
+      filters, hideable) are real but they are structural, and the first impression is visual. (2) It <b>pushes the
+      first playlist to ~315 DIP</b> on a cold pane, even though a flick fixes it — and “I have to scroll past
+      chrome to reach my playlists” is a documented complaint verbatim. (3) A second header (“Library” under
+      “Your Library”) is <b>two headers in one pane</b>, which V3 removed on purpose (§3.2.7 renders no section
+      headers).</p>
+    <p class="note"><b>Build.</b> The cheapest of the three by far — it is the section V3 never mounted.
+      <code>LibraryV3Document.Build</code> gains one <code>SidebarSectionKind.CollectionShortcuts</code> section
+      (Compact density, count badges, a per-lens membership predicate) ahead of the pin band, and
+      <code>DestinationStrip</code> is deleted from the nav band. Roughly the ten lines take-1 was, plus the lens
+      predicate and the customizer’s hide/reorder — with the header the section already knows how to draw.</p>
+  </div>
+
+</div>
+
+<h3>Side by side</h3>
+<table class="cmp">
+  <tr>
+    <th style="width:15%">Shape</th><th>Above-fold cost</th><th>Labels at 180</th><th>Distinct from chips</th>
+    <th>Precedent</th><th>Build</th><th>Verdict</th>
+  </tr>
+  <tr>
+    <td><b>1 · word rail</b><br><span style="font-size:11.5px">(top arm)</span></td>
+    <td><b>30 DIP</b>, and −44 when the duplicated <code>v3.liked</code> row goes → <b>net −66 vs today</b></td>
+    <td><b>Always full words.</b> Scrolls with a faded peek; nothing is ever glyph-only</td>
+    <td><b>Strongly.</b> Naked 13.5 px type + underline, above the rule, vs filled 12.5 px pills below the header</td>
+    <td>WinUI top nav for ≤5 destinations, verbatim; Zune’s own word navigation</td>
+    <td><b>Small.</b> One component swapped, three metrics collapsed to one, one document section deleted</td>
+    <td><b>The pick.</b> Cheap in pixels, cheap to build, no research argument against it except “two strips”</td>
+  </tr>
+  <tr>
+    <td><b>1f · word rail</b><br><span style="font-size:11.5px">(footer arm)</span></td>
+    <td><b>0 DIP.</b> The list starts directly under the header</td>
+    <td>Same</td>
+    <td>Same, and further away from the chips than the top arm</td>
+    <td>WinUI <code>FooterMenuItems</code> — “navigation items at the end of the pane”</td>
+    <td>Small + one new <code>SidebarPaneConfig.Foot</code> delegate</td>
+    <td>Ship whichever the eye prefers; the code is the same component</td>
+  </tr>
+  <tr>
+    <td><b>2 · pivot title</b></td>
+    <td><b>0 DIP</b>, and the chip band disappears most of the time → <b>129 DIP total chrome</b></td>
+    <td>~1.5 words visible; a genuine scroller</td>
+    <td><b>Total</b> — there is only one horizontal strip left</td>
+    <td>Metro pivot; the “make a filter a place” request answered literally</td>
+    <td><b>Large.</b> Header, chip grammar, persisted filter code + migration</td>
+    <td>The most elegant and the most disruptive. A follow-up, not a first move</td>
+  </tr>
+  <tr>
+    <td><b>3 · quick access</b></td>
+    <td>0 DIP of chrome; 186 DIP of <i>list</i> that scrolls, filters and can be hidden</td>
+    <td>Full labels, full counts, no peek to learn</td>
+    <td><b>Yes</b> — it is list content, not a strip at all</td>
+    <td>The strongest: Explorer Quick access, Apple Music’s editable Library section, Spotify/Deezer pins</td>
+    <td><b>Smallest.</b> One document section + a lens predicate</td>
+    <td>The safe fallback. Best precedent, worst first impression given what was already rejected</td>
+  </tr>
+  <tr>
+    <td style="opacity:.62"><b>× tiles</b><br><span style="font-size:11.5px">(implemented)</span></td>
+    <td style="opacity:.62">52 DIP, plus a duplicated 44-DIP Liked row = 96</td>
+    <td style="opacity:.62"><b>Labels drop below ~270 DIP</b> → five bare glyphs</td>
+    <td style="opacity:.62">Weak — five filled, rounded, equal-width boxes in a row</td>
+    <td style="opacity:.62"><b>None found</b> in any shipped desktop music app’s persistent sidebar</td>
+    <td style="opacity:.62">Already done</td>
+    <td style="opacity:.62">The label-dropping is the disqualifier; NN/g is unambiguous</td>
+  </tr>
+</table>
+
+<div class="rec">
+  <p><b>Recommendation: proposal 1, the word rail — top arm — and treat the footer arm as a one-line
+  A/B.</b></p>
+  <p>It is the only shape here that no strand of the research argues against. Microsoft’s guidance names this exact
+  configuration for this exact problem (“5 or fewer top-level categories … show all navigation options on screen …
+  more space for your app content … icons cannot clearly describe your categories”). NN/g’s one non-negotiable —
+  labels visible at all times, never behind hover — is satisfied at every pane width, which the implemented tile
+  strip provably is not. It costs 30 DIP where take 1 cost 200, which is the complaint users voice most often and
+  most vividly. And it is the shape Wavee’s own ancestor used: Zune navigated by <i>words</i>, in Segoe, clipped at
+  the edge to say there was more — the same peek this rail uses at 180 DIP.</p>
+  <p>It is also the cheapest change with the largest cleanup attached: swapping the tile strip for a word rail lets
+  the duplicated <code>v3.liked</code> row go, gives the 56-DIP rail its missing destinations through a delegate
+  that already exists, and retires the chips’ undiscoverable double-click-to-navigate gesture. Net motion in the
+  pane is <b>66 DIP back to the library</b>.</p>
+  <p><b>If the word rail reads as “more filters” in the running app</b> — the one risk the mock cannot settle — the
+  fallback is proposal 3, not the tiles: it is the arrangement with the longest record of not annoying anyone, and
+  it is a smaller diff than what is in the tree today. <b>Proposal 2 is the destination</b>, not the next commit:
+  merging the destination switch into the pane’s title is the most coherent end state and the one that finally makes
+  “filter” and “place” the same word, but it changes the meaning of the header and of a chip tap simultaneously, and
+  the research is clearest of all on this: users forgive an arrangement, they do not forgive relearning one.</p>
+</div>
+
+
+</body>
+</html>

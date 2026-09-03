@@ -87,6 +87,7 @@ struct SidebarRowSpec
         Leading = null;
         Glyph = null;
         DisclosureChevron = null;
+        Pinned = false;
         Trailing = null;
         Playing = false;
         PlayingAnimated = false;
@@ -174,6 +175,14 @@ struct SidebarRowSpec
     /// TRAILING cluster instead — the FIRST element there, ahead of the now-playing equalizer and <see cref="Trailing"/>.
     /// Build it with <c>SidebarChevron.Disclosure(open)</c> (the rotating glyph), not a hand-rolled swap.</summary>
     public Element? DisclosureChevron;
+
+    /// <summary>Issue #85 (H1) — this row is a PINNED library entry (<c>SidebarLibraryEntry.IsPinned</c>). Renders a
+    /// quiet 12-DIP pin glyph in the trailing cluster, beside the count badge — a per-row marker rather than a
+    /// section header, so it keeps working when a pin is filtered into the middle of a lens (Library V3 renders no
+    /// section headers at all — see <c>LibraryV3Document.cs</c> — and the pinned band itself, <c>v3.pins</c>, floats
+    /// pins to the top of every sort mode but has never actually MARKED the rows it floats). Never true for a
+    /// <see cref="Track"/> row (a track cannot be pinned).</summary>
+    public bool Pinned;
 
     /// <summary>Trailing content (a count badge, a "new" dot, a state glyph). Placed before the overflow affordance.</summary>
     public Element? Trailing;
@@ -418,13 +427,17 @@ static class SidebarEntityRow
         // loose flex children) so the overflow padding below applies once, to the whole cluster.
         Element? trailingCluster = null;
         {
-            int trailingCount = (spec.DisclosureChevron is null ? 0 : 1) + (spec.Playing ? 1 : 0) + (spec.Trailing is null ? 0 : 1);
+            int trailingCount = (spec.DisclosureChevron is null ? 0 : 1) + (spec.Playing ? 1 : 0)
+                              + (spec.Pinned ? 1 : 0) + (spec.Trailing is null ? 0 : 1);
             if (trailingCount > 0)
             {
                 var parts = new Element[trailingCount];
                 int t = 0;
                 if (spec.DisclosureChevron is { } chevron) parts[t++] = chevron;
                 if (spec.Playing) parts[t++] = WaveeEqualizer.Of(spec.PlayingAnimated, Tok.AccentDefault, 12f);
+                // H1 (#85) — the pin marker sits right beside the count badge (SidebarPaneSlot.TrailingBadge / the
+                // library-shortcut count), ahead of whichever one this row also carries.
+                if (spec.Pinned) parts[t++] = Icon(Icons.Pin, 12f, Tok.TextTertiary);
                 if (spec.Trailing is { } trailingContent) parts[t++] = trailingContent;
                 trailingCluster = new BoxEl
                 {

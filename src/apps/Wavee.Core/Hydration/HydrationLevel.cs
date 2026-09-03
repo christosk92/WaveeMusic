@@ -156,6 +156,36 @@ public static class HydrationLevels
     /// <summary>A denormalized ref that points somewhere real but carries no name — the ref-closure's fetch trigger.</summary>
     public static bool RefNeedsName(in AlbumRef r) => r.Uri.Length > 0 && r.Name.Length == 0;
 
+    /// <summary>How many rows of <paramref name="tracks"/> are still <see cref="TrackUnnamed"/>.</summary>
+    public static int UnnamedCount(IReadOnlyList<Track>? tracks)
+    {
+        if (tracks is null) return 0;
+        int n = 0;
+        for (int i = 0; i < tracks.Count; i++) if (TrackUnnamed(tracks[i])) n++;
+        return n;
+    }
+
+    /// <summary>Does a RESIDENT tracklist beat an INCOMING one, i.e. must the incoming list be withheld?
+    ///
+    /// <para>The question exists because <c>getAlbum</c> pins <c>limit=50</c>: its tracklist is a WINDOW onto the
+    /// release, not necessarily the whole thing, and a resident list that is already longer (a prior Full fetch, a
+    /// TrackV4 disc-row read, a deeper earlier getAlbum) must not be replaced by a shorter one — unlike a regular
+    /// field, a truncated list cannot be healed by re-joining, because the rows themselves are gone.</para>
+    ///
+    /// <para>The trap this closes (#90): that guard used to be <c>r.Count &gt;= e.Count</c>, i.e. COUNT ONLY. AlbumV4
+    /// seeds an album with gid-only disc rows, so a resident list of 31 BLANK rows tied an incoming list of 31 NAMED
+    /// rows and won — the named list was withheld, the blank rows survived, and the album sealed at its rung with
+    /// every later open short-circuiting before the repair or the thin-row tripwire could run. The page then showed
+    /// "31 songs · 6 min" over blank titles until something else (playback resolving the context off the track plane)
+    /// happened to re-project it. Equal length is now decided on QUALITY: the resident list only wins a tie when it is
+    /// no thinner than what arrived.</para></summary>
+    public static bool ResidentTracklistWins(IReadOnlyList<Track>? resident, IReadOnlyList<Track>? incoming)
+    {
+        if (resident is not { Count: > 0 } r || incoming is not { Count: > 0 } e) return false;
+        if (r.Count != e.Count) return r.Count > e.Count;
+        return UnnamedCount(r) <= UnnamedCount(e);
+    }
+
     static bool ArtistsNeedNames(Track t)
     {
         for (int i = 0; i < t.Artists.Count; i++)

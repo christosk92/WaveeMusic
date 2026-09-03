@@ -55,7 +55,7 @@ sealed partial class ArtistPage : Component
             {
                 Color = Tok.TextPrimary,
                 Wrap = TextWrap.Wrap,
-                MaxLines = metrics.Stacked ? 3 : 2,
+                MaxLines = 2,
                 MinWidth = 0f,
             };
 
@@ -85,7 +85,9 @@ sealed partial class ArtistPage : Component
                     new BoxEl
                     {
                         Direction = 1, Gap = Spacing.S, MinWidth = 0f,
-                        Children = [verified, name, bio, HeroMeta(a, metrics.Stacked)],
+                        // Meta stays a single horizontal row at Compact (Direction=0 below) — only Narrow keeps the
+                        // stacked column, because Narrow is where the horizontal row would itself wrap.
+                        Children = [verified, name, bio, HeroMeta(a, metrics.Tier == ArtistHeroTier.Narrow)],
                     },
                     HeroActions(a, uri, play, shuffle, radio, metrics.Tier),
                 ],
@@ -140,8 +142,10 @@ sealed partial class ArtistPage : Component
                     media,
                     new BoxEl
                     {
+                        // End, not Center: any residual slack in the fixed identity band now sits UNDER the copy,
+                        // against the photo's bottom, instead of splitting above and below it as dead air.
                         Grow = 1f, MinHeight = 0f, Direction = 1,
-                        Justify = FlexJustify.Center, AlignItems = FlexAlign.Start,
+                        Justify = FlexJustify.End, AlignItems = FlexAlign.Start,
                         Padding = new Edges4(metrics.Gutter, Spacing.M, metrics.Gutter, Spacing.XL),
                         Children = [Identity()],
                     },

@@ -297,4 +297,47 @@ public class HydrationLevelsTests
         Assert.True(HydrationLevel.Open < HydrationLevel.Rich);
         Assert.True(HydrationLevel.Rich < HydrationLevel.Full);
     }
+
+    // ── ResidentTracklistWins — the album adoption gate (#90) ────────────────────────────────────────────────────────
+
+    static IReadOnlyList<Track> Rows(int n, bool named)
+    {
+        var a = new Track[n];
+        for (int i = 0; i < n; i++) a[i] = named ? AlbumRow(i) : AlbumRow(i, $"spotify:track:t{i}");
+        return a;
+    }
+
+    [Fact]
+    public void ResidentTracklist_LosesToAnEqualLengthListThatIsBetterNamed()
+        => Assert.False(HydrationLevels.ResidentTracklistWins(Rows(31, named: false), Rows(31, named: true)));
+
+    [Fact]
+    public void ResidentTracklist_KeepsWinningWhenItIsLonger()
+        => Assert.True(HydrationLevels.ResidentTracklistWins(Rows(50, named: true), Rows(31, named: true)));
+
+    /// <summary>The truncation guard is about LENGTH, so a longer resident list wins even while it is the thin one —
+    /// a shorter window cannot heal rows it does not carry.</summary>
+    [Fact]
+    public void ResidentTracklist_LongerButThinner_StillWins()
+        => Assert.True(HydrationLevels.ResidentTracklistWins(Rows(50, named: false), Rows(31, named: true)));
+
+    [Fact]
+    public void ResidentTracklist_EqualLengthAndEquallyNamed_KeepsTheResident()
+        => Assert.True(HydrationLevels.ResidentTracklistWins(Rows(31, named: true), Rows(31, named: true)));
+
+    [Fact]
+    public void ResidentTracklist_NeverWinsWhenEitherSideIsEmpty()
+    {
+        Assert.False(HydrationLevels.ResidentTracklistWins(null, Rows(31, named: true)));
+        Assert.False(HydrationLevels.ResidentTracklistWins(Rows(31, named: true), null));
+        Assert.False(HydrationLevels.ResidentTracklistWins(Array.Empty<Track>(), Rows(31, named: true)));
+    }
+
+    [Fact]
+    public void UnnamedCount_CountsOnlyThinRows()
+    {
+        Assert.Equal(0, HydrationLevels.UnnamedCount(Rows(5, named: true)));
+        Assert.Equal(5, HydrationLevels.UnnamedCount(Rows(5, named: false)));
+        Assert.Equal(0, HydrationLevels.UnnamedCount(null));
+    }
 }

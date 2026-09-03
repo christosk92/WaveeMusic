@@ -7,6 +7,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Render;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Core;
@@ -694,6 +695,9 @@ public static class ConcertUi
         ],
     }.Interactive(Interaction.Subtle);
 
+    // `style` trails the original parameter list with a default (rather than sitting next to `artwork`, where it
+    // reads best) so MediaCard.WideEditorialDestination's existing POSITIONAL pass-through — 7 args, none named —
+    // keeps binding to the same 7 params unchanged. Both real callers (HomePage.cs) pass it by name regardless.
     public static Element WideEditorialDestination(
         Image? artwork,
         string eyebrow,
@@ -701,13 +705,15 @@ public static class ConcertUi
         string subtitle,
         string actionLabel,
         Action onClick,
-        float fallbackWidth = 1000f) =>
+        float fallbackWidth = 1000f,
+        EditorialArtStyle style = EditorialArtStyle.Concert) =>
         Responsive.Of(width => BuildWideEditorial(
-            artwork, eyebrow, title, subtitle, actionLabel, onClick,
+            artwork, style, eyebrow, title, subtitle, actionLabel, onClick,
             width > 0f ? width : fallbackWidth), fallback: fallbackWidth);
 
     static Element BuildWideEditorial(
         Image? artwork,
+        EditorialArtStyle style,
         string eyebrow,
         string title,
         string subtitle,
@@ -718,13 +724,23 @@ public static class ConcertUi
         var metrics = ConcertLayout.WideEditorial(width);
         float artWidth = metrics.ArtworkWidth(width);
         float copyWidth = MathF.Max(180f, width - artWidth + MathF.Min(96f, artWidth * 0.42f));
+        // #86: both call sites (HomePage.cs) always pass artwork: null today, so this else arm is what actually
+        // ships — a flat Tok.FillCardSecondary rectangle, an empty panel. EditorialArt fills it with procedurally
+        // composed, ambient-animated art instead; a Component (not a static factory) because the ambient loops need
+        // OnRealized handles and mount-once state (LikedCoverArt.cs is the template). Geometry is frozen at THIS
+        // mount from artWidth/metrics.Height and baked into the Key, so a card resize remounts rather than keeping
+        // stale geometry.
         Element art = artwork?.Url is { Length: > 0 } url
             ? new ImageEl
             {
                 Source = url, Width = artWidth, Height = metrics.Height, Fit = ImageFit.Cover,
                 Placeholder = Tok.FillCardSecondary,
             }
-            : new BoxEl { Width = artWidth, Height = metrics.Height, Fill = Tok.FillCardSecondary };
+            : Embed.Comp(() => new EditorialArt(artWidth, metrics.Height, style)) with
+            {
+                Key = "editorial-art:" + style + ":" + artWidth.ToString("F0", CultureInfo.InvariantCulture)
+                    + "x" + metrics.Height.ToString("F0", CultureInfo.InvariantCulture),
+            };
 
         return new BoxEl
         {
@@ -808,6 +824,224 @@ public static class ConcertUi
         return extra is { Length: > 0 } e && !string.Equals(e, city, StringComparison.OrdinalIgnoreCase)
             ? city + ", " + e
             : city;
+    }
+}
+
+/// <summary>The two <see cref="ConcertUi.WideEditorialDestination"/> call sites' procedural-art treatments (#86) — a
+/// small enum PARAMETER, not a string sniff on the element <c>Key</c>.</summary>
+public enum EditorialArtStyle : byte
+{
+    /// <summary>Warm radial ground + a drifting light + two stage-light arc sweeps on stroke-trim loops.</summary>
+    Concert,
+    /// <summary>Cool gradient ground + rounded category tiles on co-prime <c>TranslateY</c> wobble loops.</summary>
+    Browse,
+}
+
+/// <summary>The procedural animated art that fills <see cref="ConcertUi.WideEditorialDestination"/>'s art slot when
+/// there is no real artwork (both Home call sites pass <c>artwork: null</c> today, so this is what actually ships).
+///
+/// <para>Copies <c>LikedCoverArt</c>/<c>LikedCoverTreatments</c>'s template exactly: geometry is FROZEN at mount from
+/// the constructor's <c>width</c>/<c>height</c> (never re-measured — the caller bakes both into the element <c>Key</c>,
+/// so a card resize remounts this component rather than keeping stale geometry); ambient
+/// loop nodes are INSTANCE FIELDS with instance-field sinks, allocated once for the component's life, not hooks;
+/// reduced motion swaps the keyframe ARRAY (<see cref="EditorialArtMotion.SeedLoops"/>), never an <c>if</c> branch.
+/// </para>
+///
+/// <para>Both treatments' ground uses <c>SplitEditorialHero</c>'s own theme-aware near-black base fill
+/// (<c>ColorF.FromRgba(0x1B,0x1B,0x1D)</c> in dark, <c>Tok.FillCardSecondary</c> in light) rather than a flat
+/// <c>Tok.FillCardSecondary</c> rectangle — so even the base ground, before any gradient or motion layers on top,
+/// already reads as an intentional editorial surface rather than an empty placeholder.</para></summary>
+sealed class EditorialArt : Component
+{
+    readonly float _width, _height;
+    readonly EditorialArtStyle _style;
+
+    // Ambient-loop nodes as INSTANCE FIELDS, not hooks (LikedCoverArt's rule) — four sinks allocated once per
+    // component; Concert uses the first three (ground drift + two arc sweeps), Browse uses all four (one per tile,
+    // with the fourth spare for a future tile).
+    NodeHandle _loopA, _loopB, _loopC, _loopD;
+    readonly Action<NodeHandle> _sinkA, _sinkB, _sinkC, _sinkD;
+
+    // Frozen at mount (component-props-contract.md): the two arc PathDatas (Concert) or the tile rects (Browse),
+    // built once from the ctor's own width/height via the BCL-only ConcertLayout.EditorialArtGeometry, never rebuilt
+    // per render or per frame.
+    readonly PathData? _arcOuter, _arcInner;
+    readonly BrowseTile[]? _tiles;
+
+    public EditorialArt(float width, float height, EditorialArtStyle style)
+    {
+        _width = width; _height = height; _style = style;
+        _sinkA = h => _loopA = h;
+        _sinkB = h => _loopB = h;
+        _sinkC = h => _loopC = h;
+        _sinkD = h => _loopD = h;
+
+        if (style == EditorialArtStyle.Concert)
+        {
+            _arcOuter = PathDataParser.Parse(EditorialArtGeometry.ConcertArcOuter(width, height).ToPathData(),
+                PathContentEpoch.Mint(), FillRule.NonZero);
+            _arcInner = PathDataParser.Parse(EditorialArtGeometry.ConcertArcInner(width, height).ToPathData(),
+                PathContentEpoch.Mint(), FillRule.NonZero);
+        }
+        else
+        {
+            _tiles = EditorialArtGeometry.BrowseTiles(width, height);
+        }
+    }
+
+    public override Element Render()
+    {
+        // Wired here (not OnRealized directly) because the handles are only valid AFTER realize and the liveness
+        // check needs a scene — the exact LikedCoverArt precedent. DepKey.Empty: geometry/style never change under
+        // this instance (a change remounts via the caller's Key instead), so this seeds exactly once.
+        UseLayoutEffect(() =>
+        {
+            if (Context.Anim is not { } anim || Context.Scene is not { } scene) return;
+            NodeHandle Live(NodeHandle h) => !h.IsNull && scene.IsLive(h) ? h : default;
+            EditorialArtMotion.SeedLoops(_style, anim, Live(_loopA), Live(_loopB), Live(_loopC), Live(_loopD));
+        }, DepKey.Empty);
+
+        return _style == EditorialArtStyle.Concert ? BuildConcert() : BuildBrowse();
+    }
+
+    // Warm radial ground + a drifting light (the ground layer itself glides — there is no scalar AnimChannel for a
+    // Point2, so an animated BoxEl.RadialGradientCenter would need its own per-frame Signal driver; the proven
+    // TranslateY-keyframe mechanism LikedCoverTreatments.Wall already uses is the lower-risk choice) + two stage-light
+    // arc sweeps on stroke-trim loops, swept in OPPOSITE directions so the pair reads as beams crossing.
+    Element BuildConcert()
+    {
+        bool dark = Tok.Theme == ThemeKind.Dark;
+        ColorF baseFill = dark ? ColorF.FromRgba(0x1B, 0x1B, 0x1D) : Tok.FillCardSecondary;
+        ColorF warm = WaveePalette.ToColor(0xFFFF8A3D);
+
+        return new BoxEl
+        {
+            Width = _width, Height = _height, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+            Children =
+            [
+                new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = baseFill },
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                    Gradient = new GradientSpec(GradientShape.Radial, 0f,
+                    [
+                        new GradientStop(0f, warm with { A = dark ? 0.34f : 0.20f }),
+                        new GradientStop(0.55f, warm with { A = dark ? 0.10f : 0.06f }),
+                        new GradientStop(1f, warm with { A = 0f }),
+                    ])
+                    { RadialCenter = new Point2(0.5f, 0.66f), RadialRadius = new Point2(0.85f, 0.85f) },
+                    OnRealized = _sinkA,
+                },
+                // Width/Height match the pane exactly, with no Offset/Margin, because the arc's own points
+                // (EditorialArtGeometry.ConcertArcOuter/Inner) are already computed in full-pane-local DIP — the
+                // same convention MixGraphRing's PolylineStrokeEl connectors use for their ZStack.
+                _arcOuter is { } outer ? new PathEl
+                {
+                    Width = _width, Height = _height,
+                    Geometry = outer, StrokeColor = warm with { A = dark ? 0.55f : 0.40f },
+                    Stroke = new StrokeStyle(2.5f, LineCap.Round),
+                    TrimStart = 0f, TrimEnd = 1f, OnRealized = _sinkB,
+                } : new BoxEl(),
+                _arcInner is { } inner ? new PathEl
+                {
+                    Width = _width, Height = _height,
+                    Geometry = inner, StrokeColor = warm with { A = dark ? 0.40f : 0.28f },
+                    Stroke = new StrokeStyle(2f, LineCap.Round),
+                    TrimStart = 0f, TrimEnd = 1f, OnRealized = _sinkC,
+                } : new BoxEl(),
+            ],
+        };
+    }
+
+    // Cool gradient ground + 3 rounded tiles on co-prime TranslateY loops with an additive wobble — a shifting
+    // category mosaic. Fixed relative geometry (EditorialArtGeometry.BrowseTiles), not randomized, so a resize's
+    // remount always produces the same layout for the same box.
+    Element BuildBrowse()
+    {
+        bool dark = Tok.Theme == ThemeKind.Dark;
+        ColorF baseFill = dark ? ColorF.FromRgba(0x1B, 0x1B, 0x1D) : Tok.FillCardSecondary;
+        ColorF cool = WaveePalette.ToColor(0xFF6C8CFF);
+
+        var layers = new List<Element>(5)
+        {
+            new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = baseFill },
+            new BoxEl
+            {
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                Gradient = LinearGradient(135f,
+                    new GradientStop(0f, cool with { A = dark ? 0.10f : 0.06f }),
+                    new GradientStop(1f, cool with { A = dark ? 0.28f : 0.16f })),
+            },
+        };
+
+        if (_tiles is { } tiles)
+        {
+            Action<NodeHandle>[] sinks = [_sinkA, _sinkB, _sinkC, _sinkD];
+            for (int i = 0; i < tiles.Length && i < sinks.Length; i++)
+            {
+                var t = tiles[i];
+                layers.Add(new BoxEl
+                {
+                    Width = t.Width, Height = t.Height, Shrink = 0f,
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                    Margin = new Edges4(t.X, t.Y, 0f, 0f),
+                    Corners = CornerRadius4.All(Radii.Control),
+                    Fill = cool with { A = dark ? 0.22f : 0.14f },
+                    BorderWidth = 1f, BorderColor = cool with { A = dark ? 0.34f : 0.24f },
+                    OnRealized = sinks[i],
+                });
+            }
+        }
+
+        return new BoxEl
+        {
+            Width = _width, Height = _height, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+            Children = [.. layers],
+        };
+    }
+}
+
+/// <summary>Seeds <see cref="EditorialArt"/>'s ambient loops onto their realized nodes — centralised here so the
+/// durations and the reduced-motion value choice live beside each other, the same shape
+/// <c>LikedCoverTreatments.SeedLoops</c> uses. Every duration is a DISTINCT, largely co-prime figure so the composite
+/// of independently-looping tracks never visibly repeats.</summary>
+static class EditorialArtMotion
+{
+    const float ConcertGroundLoopMs = 19_000f;    // the drifting-light ground — coprime with both arcs below
+    const float ConcertArcOuterLoopMs = 9_000f;   // the outer stroke-trim sweep
+    const float ConcertArcInnerLoopMs = 7_000f;   // the inner counter-sweep — coprime with the outer's 9s
+    const float BrowseTileLoopMsA = 11_000f;
+    const float BrowseTileLoopMsB = 13_000f;
+    const float BrowseTileLoopMsC = 17_000f;
+
+    const float GroundDriftDip = 10f;
+    const float TileWobbleDip = 6f;
+
+    /// <summary>Reduced motion as a VALUE, not a branch (LikedCoverTreatments' rule): every loop below is still
+    /// declared and still quiesces under a parked page — its amplitude is simply zero, so nothing about the
+    /// authored tree changes when the OS setting flips.</summary>
+    static readonly Keyframe[] s_still = [new(0f, 0f), new(1f, 0f)];
+    static readonly Keyframe[] s_groundDrift = [new(0f, -GroundDriftDip), new(0.5f, GroundDriftDip), new(1f, -GroundDriftDip)];
+    static readonly Keyframe[] s_tileWobble = [new(0f, 0f), new(0.5f, TileWobbleDip), new(1f, 0f)];
+    // A stroke-trim "draw-on" pulse: hidden → fully drawn → hidden, rather than a one-shot reveal, since this is an
+    // AMBIENT loop with no user action to reveal FOR.
+    static readonly Keyframe[] s_arcSweep = [new(0f, 0f), new(0.5f, 1f), new(1f, 0f)];
+
+    public static void SeedLoops(EditorialArtStyle style, AnimEngine anim, NodeHandle a, NodeHandle b, NodeHandle c, NodeHandle d)
+    {
+        bool still = Motion.ReducedMotion;
+        if (style == EditorialArtStyle.Concert)
+        {
+            if (!a.IsNull) anim.Keyframes(a, AnimChannel.TranslateY, still ? s_still : s_groundDrift, ConcertGroundLoopMs, loop: true);
+            if (!b.IsNull) anim.Keyframes(b, AnimChannel.StrokeTrimEnd, still ? s_still : s_arcSweep, ConcertArcOuterLoopMs, loop: true);
+            if (!c.IsNull) anim.Keyframes(c, AnimChannel.StrokeTrimEnd, still ? s_still : s_arcSweep, ConcertArcInnerLoopMs, loop: true);
+        }
+        else
+        {
+            if (!a.IsNull) anim.Keyframes(a, AnimChannel.TranslateY, still ? s_still : s_tileWobble, BrowseTileLoopMsA, loop: true, composite: CompositeOp.Add);
+            if (!b.IsNull) anim.Keyframes(b, AnimChannel.TranslateY, still ? s_still : s_tileWobble, BrowseTileLoopMsB, loop: true, composite: CompositeOp.Add);
+            if (!c.IsNull) anim.Keyframes(c, AnimChannel.TranslateY, still ? s_still : s_tileWobble, BrowseTileLoopMsC, loop: true, composite: CompositeOp.Add);
+        }
     }
 }
 

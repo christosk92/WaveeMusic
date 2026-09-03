@@ -179,4 +179,75 @@ public class MergedChromeLayoutTests
         Assert.Equal(ShellResponsiveLayout.ChromeTabComfortMaxW,
             MergedChromeLayout.ComfortableTabExtent(4000f));
     }
+
+    // ── Issue #88: the search box must hold still while a tab's title changes width ────────────────────────────────
+
+    /// <summary>The tabs island's reserved width must not track the tab strip's natural extent one-for-one: sweeping
+    /// the "current tab title" width at a FIXED window width (no `previous`, so no hysteresis smoothing is in play)
+    /// must only move <see cref="MergedChromeLayout.LeadClusterW"/> in whole <see
+    /// cref="ShellResponsiveLayout.ChromeWidthQuantumW"/> steps — never by a fraction of one, and it must plateau
+    /// once the comfortable extent exceeds what the row can spare, rather than keep growing with the title.</summary>
+    [Fact]
+    public void LeadClusterW_OnlyMovesAtQuantumBoundariesAcrossATabExtentSweep()
+    {
+        const float width = 1400f;
+        float? previous = null;
+        for (float extent = ShellResponsiveLayout.ChromeTabViewportMinW; extent <= 2000f; extent += 1f)
+        {
+            float current = MergedChromeLayout.Resolve(width, extent).LeadClusterW;
+            if (previous is { } last && current != last)
+                Assert.True(MathF.Abs(current - last) >= ShellResponsiveLayout.ChromeWidthQuantumW - 0.001f,
+                    $"LeadClusterW moved by {current - last} at extent {extent}, smaller than one quantum.");
+            previous = current;
+        }
+    }
+
+    /// <summary>The centre-stability invariant itself: two DIFFERENT tab-title widths that both resolve to the same
+    /// boolean stage (so the fixed budget and search allotment are identical) must reserve the SAME lead-cluster
+    /// width once each is resolved fresh (no `previous` to smooth over anything) — a short "Pony" tab and a long
+    /// "Rex Orange County" tab must not shove the centred search box.</summary>
+    [Fact]
+    public void LeadClusterW_IsUnaffectedByTitleWidthWithinTheSameComfortBand()
+    {
+        const float width = 1400f;
+        // Both extents quantise (× 0.78, rounded up to 10) to the SAME ComfortableTabExtent, so — with no `previous`
+        // to hold anything — the resolved LeadClusterW must be identical: the box no longer hugs the raw extent.
+        var shortTitle = MergedChromeLayout.Resolve(width, 300f);
+        var longTitle = MergedChromeLayout.Resolve(width, 305f);
+        Assert.Equal(MergedChromeLayout.ComfortableTabExtent(300f), MergedChromeLayout.ComfortableTabExtent(305f));
+        Assert.Equal(shortTitle.LeadClusterW, longTitle.LeadClusterW);
+    }
+
+    /// <summary>A GROWING extent (a longer title swapped in) must widen the reservation immediately — never delayed
+    /// by the hysteresis reserve — so a longer tab title is never clipped for even one resolve.</summary>
+    [Fact]
+    public void LeadClusterW_WidensImmediatelyWhenTheExtentGrows()
+    {
+        const float width = 1400f;
+        var narrow = MergedChromeLayout.Resolve(width, 300f);
+        var wider = MergedChromeLayout.Resolve(width, 900f, narrow);
+        Assert.True(wider.LeadClusterW > narrow.LeadClusterW);
+    }
+
+    /// <summary>A SHRINKING extent must NOT immediately give the space back — only once the drop clears the shared
+    /// <see cref="ShellResponsiveLayout.ChromePromotionHysteresisW"/> reserve — so a tab briefly renaming through a
+    /// shorter string and back does not read as the search box twitching.</summary>
+    [Fact]
+    public void LeadClusterW_HoldsThroughASmallShrinkThenReleasesPastTheHysteresis()
+    {
+        // A wide window keeps the reservation clamped by ComfortableTabExtent rather than by leftover row space, so
+        // the numbers below isolate the extent → LeadClusterW relationship cleanly (comfort(900)=710, comfort(880)=
+        // 690 — a 20-DIP drop, under the 40-DIP hysteresis reserve; comfort(300)=240 — a 470-DIP drop, well past it).
+        const float width = 2000f;
+        var wide = MergedChromeLayout.Resolve(width, 900f);
+        float wideLead = wide.LeadClusterW;
+
+        // A small drop (comfortably inside the hysteresis reserve) must hold at the previous width.
+        var slightlyNarrower = MergedChromeLayout.Resolve(width, 880f, wide);
+        Assert.Equal(wideLead, slightlyNarrower.LeadClusterW);
+
+        // A large drop must eventually release, once it clears the hysteresis band.
+        var muchNarrower = MergedChromeLayout.Resolve(width, 300f, wide);
+        Assert.True(muchNarrower.LeadClusterW < wideLead);
+    }
 }

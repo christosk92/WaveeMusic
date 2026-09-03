@@ -151,6 +151,11 @@
          trailing-section rule is what stops the drop gap painting over that section's header.
          PlaylistInsertionGeometryTests; the engine-side gate is VerticalSlice `sortable.gap`. -->
     <Compile Include="$(EngineRoot)src\FluentGpu.Controls\SortableMath.cs" />
+    <!-- The Splitter's pure drag/detent/fade arithmetic (System only, exactly like its sibling above). Issue #84
+         re-points the sidebar's FadeStart/ForcePush/ReExpand detents around the new 180-DIP floor
+         (WaveeShell.cs), and this had NO xUnit coverage before — only the engine's in-app ControlsSuite exercised
+         it. SplitterMathTests. -->
+    <Compile Include="$(EngineRoot)src\FluentGpu.Controls\SplitterMath.cs" />
     <Compile Include="..\Wavee\Features\Shell\ShellResponsiveLayout.cs" />
     <!-- the merged chrome row's PURE priority ladder (System only, exactly like its sibling above) — MergedChromeLayoutTests -->
     <Compile Include="..\Wavee\Features\Shell\MergedChromeLayout.cs" />

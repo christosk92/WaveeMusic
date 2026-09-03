@@ -39,7 +39,7 @@ public class DetailSkeletonGeometryTests
             foreach (bool rowFlow in new[] { false, true })
             {
                 float band = DetailVerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, true);
-                float floor = DetailVerticalLayout.HeroPadFor(w)
+                float floor = DetailVerticalLayout.HeroPadFor(w, rowFlow)
                             + DetailVerticalLayout.ArtworkFor(w, rowFlow)
                             + DetailVerticalLayout.HeroBottomPad
                             + DetailVerticalLayout.ExpandedToolbarTopPad
@@ -60,10 +60,14 @@ public class DetailSkeletonGeometryTests
     [InlineData(1200f, true)]
     public void HeroBand_IsExactlyTheCompositionItDeclares(float w, bool rowFlow)
     {
-        float identity = DetailVerticalLayout.IdentityHeightFor(w, rowFlow, true, true, true, true);
+        // The PESSIMISTIC (title: null) plan — the same one HeroBandHeight(colW, rowFlow, eyebrow, attribution, meta,
+        // description, pulse)'s pre-measure overload builds internally — so this hand-rolled sum stays byte-for-byte
+        // what that overload (called below) actually computes.
+        var plan = DetailVerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, true, true);
+        float identity = DetailVerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true, true);
         float art = DetailVerticalLayout.ArtworkFor(w, rowFlow);
-        float hero = rowFlow ? MathF.Max(art, identity) : art + DetailVerticalLayout.HeroGapFor(w) + identity;
-        float expected = DetailVerticalLayout.HeroPadFor(w) + hero + DetailVerticalLayout.HeroBottomPad
+        float hero = rowFlow ? MathF.Max(art, identity) : art + DetailVerticalLayout.HeroGapFor(w, rowFlow) + identity;
+        float expected = DetailVerticalLayout.HeroPadFor(w, rowFlow) + hero + DetailVerticalLayout.HeroBottomPad
                        + DetailVerticalLayout.ExpandedToolbarTopPad
                        + DetailVerticalLayout.ToolbarRowHeight
                        + DetailVerticalLayout.ExpandedToolbarBottomPad;
@@ -77,27 +81,46 @@ public class DetailSkeletonGeometryTests
     [InlineData(400f, false)]
     public void IdentityHeight_ChargesOnlyForTheBlocksTheHeroEmits(float w, bool rowFlow)
     {
-        float bare = DetailVerticalLayout.IdentityHeightFor(w, rowFlow, false, false, false, false);
+        // A PESSIMISTIC (title: null) plan per flag combination — TitleHeightBudgetFor's own chrome sum changes with
+        // eyebrow/attribution/meta/pulse, so the plan built for a combination is not always identical to the "bare"
+        // plan even though (verified below, and in DetailVerticalLayoutTests) the SIZE the null-title plan resolves
+        // to does not actually move as a result at any width/flow this ladder produces — the fluid cap or the (huge,
+        // starved) width-fit term is what is actually binding, not the height budget, for an absent title. Building a
+        // fresh plan per call — rather than reusing "bare" everywhere — is what keeps this test honest about that
+        // rather than assuming it.
+        var barePlan = DetailVerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false);
+        float bare = DetailVerticalLayout.IdentityHeightFor(barePlan, rowFlow, false, false, false, false);
         Assert.Equal(
-            DetailVerticalLayout.TitleLineHeightFor(DetailVerticalLayout.TitleSizeFor(w)) * DetailVerticalLayout.TitleMaxLines
+            barePlan.BlockHeight
             + DetailVerticalLayout.AccentRuleRowHeight
             + DetailVerticalLayout.ActionRowHeight
             + 2f * DetailVerticalLayout.IdentityGap,
             bare);
 
+        var eyebrowPlan = DetailVerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, false, false);
         Assert.Equal(bare + DetailVerticalLayout.EyebrowRowHeight + DetailVerticalLayout.IdentityGap,
-            DetailVerticalLayout.IdentityHeightFor(w, rowFlow, true, false, false, false));
+            DetailVerticalLayout.IdentityHeightFor(eyebrowPlan, rowFlow, true, false, false, false));
+
+        var attributionPlan = DetailVerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, true, false);
         Assert.Equal(bare + DetailVerticalLayout.AttributionRowHeight + DetailVerticalLayout.IdentityGap,
-            DetailVerticalLayout.IdentityHeightFor(w, rowFlow, false, true, false, false));
+            DetailVerticalLayout.IdentityHeightFor(attributionPlan, rowFlow, false, true, false, false));
+
+        var metaPlan = DetailVerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, true);
         Assert.Equal(bare + DetailVerticalLayout.MetaRowHeight + DetailVerticalLayout.IdentityGap,
-            DetailVerticalLayout.IdentityHeightFor(w, rowFlow, false, false, true, false));
+            DetailVerticalLayout.IdentityHeightFor(metaPlan, rowFlow, false, false, true, false));
+
+        // Description never moves the plan — TitleHeightBudgetFor always calls IdentityChrome with description: false
+        // (see that method's doc: the description is a tail deliberately excluded from the title's height budget) —
+        // so it reuses barePlan rather than a plan built with a description flag that does not exist on that method.
         Assert.Equal(
             bare + DetailVerticalLayout.DescriptionMaxLines(rowFlow) * DetailVerticalLayout.DescriptionLineHeight
                  + DetailVerticalLayout.IdentityGap,
-            DetailVerticalLayout.IdentityHeightFor(w, rowFlow, false, false, false, true));
+            DetailVerticalLayout.IdentityHeightFor(barePlan, rowFlow, false, false, false, true));
+
         // The daylist flip-countdown row costs exactly its row plus one gap, like every other optional block.
+        var pulsePlan = DetailVerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false, pulse: true);
         Assert.Equal(bare + DetailVerticalLayout.PulseRowHeight + DetailVerticalLayout.IdentityGap,
-            DetailVerticalLayout.IdentityHeightFor(w, rowFlow, false, false, false, false, pulse: true));
+            DetailVerticalLayout.IdentityHeightFor(pulsePlan, rowFlow, false, false, false, false, pulse: true));
     }
 
     /// <summary>An album (eyebrow + billed artists + meta, no blurb) and a playlist (owner + meta + description) both
@@ -132,5 +155,78 @@ public class DetailSkeletonGeometryTests
         Assert.Equal(
             DetailVerticalLayout.HeroBandHeight(DetailVerticalLayout.FallbackW, rowFlow, true, true, true, true),
             DetailVerticalLayout.HeroBandHeight(0f, rowFlow, true, true, true, true));
+    }
+
+    // ── issue #78: the identity fill block redistributes slack WITHOUT growing the band ─────────────────────────────
+
+    /// <summary>The load-bearing claim of issue #78's fix: a bare identity (title + rule + action row only — no
+    /// attribution/meta/description) is SHORTER than the artwork beside it at a real row-flow width. The row arm's
+    /// MinHeight (<see cref="DetailVerticalLayout.IdentityMinHeightFor"/>) closes that gap by making the identity
+    /// column occupy exactly <c>max(natural, art)</c> — which is byte-for-byte what
+    /// <see cref="DetailVerticalLayout.HeroBandHeight"/> already computes for the row's cross size, so the fix adds NO
+    /// height to the band. The surplus it opens is redistributed INSIDE the identity column, by the last block's
+    /// Grow = 1 (<c>DetailVerticalHero.Build</c>'s fill-block), which this pure-arithmetic file cannot see — the DSL
+    /// element tree lives outside it — but whose non-effect on the band this test pins.</summary>
+    [Fact]
+    public void IdentityFill_RedistributesInsideTheColumnAndAddsNothingToTheBand()
+    {
+        const float w = 424f;
+        const bool rowFlow = true;
+        float art = DetailVerticalLayout.ArtworkFor(w, rowFlow);
+        var plan = DetailVerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false);
+        float identity = DetailVerticalLayout.IdentityHeightFor(plan, rowFlow, false, false, false, false);
+        Assert.True(identity < art, $"fixture assumption broken: identity {identity} is not shorter than art {art}");
+
+        float minH = DetailVerticalLayout.IdentityMinHeightFor(w, rowFlow);
+        Assert.Equal(art, minH);
+
+        // The occupied height once MinHeight applies is max(identity, minH) = art — exactly what HeroBandHeight's own
+        // max(art, identity) already resolves to, so the band is unchanged by the fix.
+        float occupied = MathF.Max(identity, minH);
+        Assert.Equal(art, occupied);
+
+        float band = DetailVerticalLayout.HeroBandHeight(w, rowFlow, false, false, false, false);
+        float expectedBand = DetailVerticalLayout.HeroPadFor(w, rowFlow) + occupied + DetailVerticalLayout.HeroBottomPad
+                            + DetailVerticalLayout.ExpandedToolbarTopPad + DetailVerticalLayout.ToolbarRowHeight
+                            + DetailVerticalLayout.ExpandedToolbarBottomPad;
+        Assert.Equal(expectedBand, band);
+
+        // Stacked flow has no cross-axis mismatch to close (the artwork sits ABOVE the identity, not beside it), so
+        // its MinHeight is always 0 and can never inflate the stacked band.
+        Assert.Equal(0f, DetailVerticalLayout.IdentityMinHeightFor(w, rowFlow: false));
+        for (float sw = LadderMin; sw <= LadderMax; sw += 1f)
+            Assert.Equal(0f, DetailVerticalLayout.IdentityMinHeightFor(sw, rowFlow: false));
+    }
+
+    // ── issue #78/#79/#80's skeleton/live parity item (D): the toolbar reservation ───────────────────────────────────
+
+    /// <summary>The band charges the real <c>CommandBarSurface</c> BOX (44 DIP), never the pill row it draws inside
+    /// (32 DIP) — the exact 12-DIP under-reserve the old flat <c>ToolbarRowHeight = 32</c> constant shipped. Swapping
+    /// one constant for the other in the same formula must change the band by exactly their difference, at every
+    /// width and flow — the structural guarantee that replaces the comment <c>DetailTracks.CommandBarSurface</c> used
+    /// to rely on.</summary>
+    [Fact]
+    public void HeroBand_ReservesTheCommandBarSurfaceNotItsPills()
+    {
+        Assert.Equal(44f, DetailVerticalLayout.ToolbarRowHeight);
+        Assert.Equal(32f, DetailVerticalLayout.ToolbarPillHeight);
+        Assert.True(DetailVerticalLayout.ToolbarPillHeight < DetailVerticalLayout.ToolbarRowHeight);
+
+        for (float w = LadderMin; w <= LadderMax; w += 1f)
+            foreach (bool rowFlow in new[] { false, true })
+            {
+                float art = DetailVerticalLayout.ArtworkFor(w, rowFlow);
+                var plan = DetailVerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, true, true);
+                float identity = DetailVerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true, true);
+                float hero = rowFlow
+                    ? MathF.Max(art, identity)
+                    : art + DetailVerticalLayout.HeroGapFor(w, rowFlow) + identity;
+                float pillOnlyBand = DetailVerticalLayout.HeroPadFor(w, rowFlow) + hero + DetailVerticalLayout.HeroBottomPad
+                                    + DetailVerticalLayout.ExpandedToolbarTopPad + DetailVerticalLayout.ToolbarPillHeight
+                                    + DetailVerticalLayout.ExpandedToolbarBottomPad;
+                float band = DetailVerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, true);
+                Assert.Equal(DetailVerticalLayout.ToolbarRowHeight - DetailVerticalLayout.ToolbarPillHeight,
+                    band - pillOnlyBand);
+            }
     }
 }

@@ -155,6 +155,15 @@ sealed record SidebarPaneConfig
     /// <para>A live probe, never a value: the pane's config freezes at mount and V3's sort changes under it.</para></summary>
     public Func<bool>? TreeSortedNonCustom { get; init; }
 
+    /// <summary>Issue #85 (H3) — the actionable half of the "clear sorting to reorder" refusal
+    /// (<see cref="TreeSortedNonCustom"/>'s <c>drag.clearSortingToReorder</c> sentence): switches the mode to
+    /// whatever state makes a positional reorder legal again. Null ⇒ the refusal toast carries no action (Classic
+    /// and Curated never refuse this way in the first place — they have no <see cref="TreeSortedNonCustom"/> of
+    /// their own). V3 supplies <c>LibraryV3Session.SwitchToCustomSortForReorder</c> (Playlists lens + Custom sort).
+    /// A delegate, never invoked from inside the drag itself — it only fires from <c>RefuseDrop</c>'s toast, after
+    /// the gesture is already over.</summary>
+    public Action? SortedListRefusalAction { get; init; }
+
     /// <summary>Constrain a LIVE reorder gesture's reachable slots: <c>(section kind, from slot, requested slot)</c> ⇒
     /// the slot the gesture may actually reach. Null ⇒ every slot in the band is reachable (Classic, Curated, and V3's
     /// pin band).
