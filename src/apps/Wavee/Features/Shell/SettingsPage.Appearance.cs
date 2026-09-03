@@ -38,6 +38,12 @@ sealed partial class SettingsPage
     /// hook order.</summary>
     float _zoomLive = 1f;
 
+    /// <summary>The live DIP viewport (<c>Viewport.Size</c>), captured the same way as <see cref="_zoomLive"/> and for
+    /// the same reason: the Zoom row's Auto item needs <c>baseDip = _viewportLive * _zoomLive</c> (ZoomAutoPolicy's
+    /// base-extent recovery — see its own type doc) to show the CURRENT resolved percentage, not whatever the window
+    /// size was when this tab last rebuilt.</summary>
+    Size2 _viewportLive;
+
     static string[] DensityLabels() =>
     [
         Loc.Get(Strings.Settings.Choice.Compact),
@@ -69,6 +75,17 @@ sealed partial class SettingsPage
         return labels;
     }
 
+    // The Auto head item's label carries the LIVE resolved percentage (the JetBrains "Zoom IDE" affordance —
+    // large-display-scaling.md §3.2), so unlike ZoomLabels above this is rebuilt per render off autoSuggested — one
+    // small array, on a settings page, is not the churn ZoomLabels' comment is guarding against.
+    static string[] BuildZoomComboLabels(int autoPercent)
+    {
+        var labels = new string[ZoomLabels.Length + 1];
+        labels[0] = Strings.Settings.Appearance.ZoomAuto(autoPercent);
+        Array.Copy(ZoomLabels, 0, labels, 1, ZoomLabels.Length);
+        return labels;
+    }
+
     // The lyrics SECOND line. Ordered to match WaveeSettings.LyricsSecondaryLine (0 none · 1 translation · 2
     // romanization) so the SelectorBar index IS the stored value — the ThemeMode/RowDensity convention.
     static string[] LyricsSecondaryLabels() =>
@@ -97,12 +114,26 @@ sealed partial class SettingsPage
         int trackListStyle = Math.Clamp(settings?.Get(WaveeSettings.TrackRowStyle) ?? 0, 0, TrackListStyleLabels().Length - 1);
         int pageLayout = Math.Clamp(settings?.Get(WaveeSettings.DetailPageLayout) ?? 0, 0, PageLayoutLabels().Length - 1);
         int lyricsSecondary = Math.Clamp(settings?.Get(WaveeSettings.LyricsSecondaryLine) ?? 0, 0, LyricsSecondaryLabels().Length - 1);
+        // The zoom picker's mode: Auto/Dense show as the ONE head item ("Auto"); only Manual shows a ladder rung
+        // selected. Clamp tolerates a value this build doesn't define (the int-enum convention).
+        var zoomMode = (ZoomAutoMode)Math.Clamp(settings?.Get(WaveeSettings.ZoomMode) ?? (int)ZoomAutoMode.Auto, 0, 2);
+        bool zoomManual = zoomMode == ZoomAutoMode.Manual;
+        // baseDip: the window's DIP extent AT ZOOM 1, recovered from the live (already-zoomed) viewport without a new
+        // engine seam — see ZoomAutoPolicy's own type doc for the full contract (baseDip = viewportDip * zoom;
+        // Viewport.Zoom read here is the engine's sanctioned display-only use — a POLICY INPUT, never a coordinate
+        // conversion). _viewportLive/_zoomLive are both captured unconditionally in Render (see their own docs).
+        float baseW = _viewportLive.Width * _zoomLive, baseH = _viewportLive.Height * _zoomLive;
+        float autoSuggested = ZoomAutoPolicy.Suggest(baseW, baseH, ZoomAutoMode.Auto);
         // The LIVE zoom, not the stored key: the chords/wheel change the factor ahead of the debounced persist, and the
         // row must show what the window is doing right now. Read off _zoomLive (Viewport.Zoom, subscribed in Render)
         // rather than FluentApp.Zoom — that is a plain static, so reading it here subscribed to nothing and the row
         // showed whatever it read at mount. Snap → IndexOf is exact (Snap returns a Steps element); Max is
-        // belt-and-suspenders for an engine value the ladder somehow doesn't contain.
-        int zoomIndex = Math.Max(0, Array.IndexOf(ZoomLadder.Steps, ZoomLadder.Snap(_zoomLive)));
+        // belt-and-suspenders for an engine value the ladder somehow doesn't contain. Index 0 is the Auto head item —
+        // see BuildZoomComboLabels — so every ladder-step index shifts up by one.
+        int zoomIndex = zoomManual
+            ? 1 + Math.Max(0, Array.IndexOf(ZoomLadder.Steps, ZoomLadder.Snap(_zoomLive)))
+            : 0;
+        string[] zoomComboLabels = BuildZoomComboLabels(ZoomLadder.Percent(autoSuggested));
 
         void SetTheme(int mode)
         {
@@ -115,11 +146,24 @@ sealed partial class SettingsPage
         // inverted: apply live, then write): FluentApp.SetZoom re-derives the effective window scale at once, and the
         // picker writes the setting IMMEDIATELY rather than waiting for WaveeApp's debounced zoom-save timer — a
         // deliberate pick from a deliberate control, unlike the chords/wheel where the debounce exists to absorb a
-        // spin of repeats.
+        // spin of repeats. Index 0 (Auto) sets mode = Auto and applies THIS render's already-computed autoSuggested
+        // immediately, the same "deliberate pick" way; any other index is a manual ladder rung and sets mode = Manual
+        // — the SidebarPreferences.WidthUserSet idiom: a deliberate act overrides the policy.
         void SetZoom(int i)
         {
-            if (settings is null || (uint)i >= (uint)ZoomLadder.Steps.Length) return;
-            float z = ZoomLadder.Steps[i];
+            if (settings is null) return;
+            if (i <= 0)
+            {
+                settings.Set(WaveeSettings.ZoomMode, (int)ZoomAutoMode.Auto);
+                FluentApp.SetZoom(autoSuggested);
+                settings.Set(WaveeSettings.ZoomLevel, autoSuggested);
+                Bump();
+                return;
+            }
+            int stepIndex = i - 1;
+            if ((uint)stepIndex >= (uint)ZoomLadder.Steps.Length) return;
+            float z = ZoomLadder.Steps[stepIndex];
+            settings.Set(WaveeSettings.ZoomMode, (int)ZoomAutoMode.Manual);
             FluentApp.SetZoom(z);   // live, no restart
             settings.Set(WaveeSettings.ZoomLevel, z);
             Bump();
@@ -163,10 +207,11 @@ sealed partial class SettingsPage
             SettingsRow(Loc.Get(Strings.Settings.Appearance.Theme), Loc.Get(Strings.Settings.Appearance.ThemeSub),
                 SelectorBar.Create(ThemeLabels(), new Signal<int>(themeMode), onChange: SetTheme),
                 SettingsGlyphs.Row(SettingsTab.Appearance, "theme")),
-            // A ComboBox, not a SelectorBar: twelve ladder steps would be twelve segments wide. Same chords as a
-            // browser (Ctrl+± / Ctrl+0 / Ctrl+wheel) — the row is the discoverable face of the same ladder.
+            // A ComboBox, not a SelectorBar: thirteen items (Auto + twelve ladder steps) would be thirteen segments
+            // wide. Same chords as a browser (Ctrl+± / Ctrl+0 / Ctrl+wheel) — the row is the discoverable face of the
+            // same ladder, now headed by the display-derived Auto item (large-display-scaling.md §3.2).
             SettingsRow(Loc.Get(Strings.Settings.Appearance.Zoom), Loc.Get(Strings.Settings.Appearance.ZoomSub),
-                ComboBox.Create(ZoomLabels, new Signal<int>(zoomIndex), width: 140f, isEnabled: settings is not null,
+                ComboBox.Create(zoomComboLabels, new Signal<int>(zoomIndex), width: 160f, isEnabled: settings is not null,
                     onChange: SetZoom), SettingsGlyphs.Row(SettingsTab.Appearance, "zoom")),
             // Two FLAT on-switches — no "Visual effects" expander, no "N disabled" tag. Both read ENABLED-key/default-
             // true settings now (MarqueeEnabled/ColorWashesEnabled), so AppearanceToggle's Get/!Get shape is naturally

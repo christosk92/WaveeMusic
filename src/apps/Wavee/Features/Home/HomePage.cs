@@ -1619,7 +1619,13 @@ sealed class HomeQuickImageProbe : Component
 
     public override Element Render()
     {
-        var binding = UseImage(_url, (int)MediaCard.QuickW, (int)MediaCard.QuickH);
+        // §C0 (large-display-scaling.md): route the decode budget through the ambient device scale (OS DPI x zoom)
+        // rather than the bare QuickW/QuickH DIP literals — the Equalizer.cs precedent for reading Viewport.Scale to
+        // size a device-pixel quantity.
+        float scale = UseContext(Viewport.Scale);
+        int decodeW = ImageDecodeScale.For(MediaCard.QuickW, scale);
+        int decodeH = ImageDecodeScale.For(MediaCard.QuickH, scale);
+        var binding = UseImage(_url, decodeW, decodeH);
         HomeImageDiagnostics.LogState(_uri, _title, _section, _index, _url, binding);
         return new BoxEl { Width = 0f, Height = 0f };
     }

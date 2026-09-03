@@ -62,6 +62,13 @@ sealed class WaveeShell : Component
     // subtree (ActionServicesOverlayBinder). Context, not ctor args — the component-props-freeze contract.
     readonly ActionServices _actions = new();
 
+    // ── large-display auto-zoom (large-display-scaling.md §3.2) ────────────────────────────────────────────────────
+    // The zoom THIS policy last applied, and whether it has applied one yet — see the effect built in Render() for
+    // why: it is how the effect tells "the base extent changed" apart from "a manual chord/wheel/palette zoom moved
+    // the live value away from Auto's own last pick" without ZoomStep needing a settings reference of its own.
+    float _lastAutoZoom;
+    bool _lastAutoZoomSeeded;
+
     // ── The shell-wide "drop a file to play it" target (P4) ──────────────────────────────────────────────────────────
     // Allocated ONCE (the PlaylistInlineEdit precedent: a per-render spec would churn the scene's drop-target column) and
     // hung on the full-bleed `tinted` layer, which is an ancestor of the whole chrome column. The engine hands a drop to
@@ -570,6 +577,59 @@ sealed class WaveeShell : Component
             _actions.Svc?.RegisterSidebarSources(registry);
             _actions.Extensions = registry;
         }
+
+        // ── large-display auto-zoom (docs/plans/wavee/large-display-scaling.md §3.2) ───────────────────────────────
+        // baseDip: the window's DIP extent AT ZOOM 1 — recovered from the live viewport without a new engine seam.
+        // viewportDip = clientPx / (osDpiScale * zoom), so baseDip = viewportDip * zoom. Viewport.Zoom is documented
+        // as display-only, never for coordinate conversion — reading it here to derive a POLICY INPUT (what zoom to
+        // suggest) is exactly that sanctioned display-only use, not a coordinate conversion (ZoomAutoPolicy's own
+        // type doc carries the same note). vpSig is already subscribed above for the narrow-shell/nav-pane bands.
+        var zoomSig = UseContextSignal(Viewport.Zoom);
+        // Debounced to RESIZE-SETTLE, not per-WM_SIZE: a zoom change is a full relayout + glyph re-raster, and
+        // driving it from every resize frame would thrash both. 500ms matches the engine's own resize-settle
+        // precedent (FluentGpu.Controls.AnnotatedScrollBar.SizeLayoutDebounceMs) rather than inventing a new figure.
+        const float ZoomAutoDebounceMs = 500f;
+        var baseDipDebounced = UseDebouncedValue(() =>
+        {
+            var vp = vpSig.Value;
+            float z = zoomSig.Value;
+            return new Size2(vp.Width * z, vp.Height * z);
+        }, ZoomAutoDebounceMs);
+        UseSignalEffect(() =>
+        {
+            // Read BOTH signals FIRST and unconditionally — the nav-pane default-width effect above carries the
+            // same rule for the identical reason: an early return before touching a signal drops it from this
+            // effect's tracked set, and it would never fire again once the mode flips back from Manual to Auto.
+            var zoomBaseDip = baseDipDebounced.Value;
+            float liveZoom = zoomSig.Value;
+            var zoomSettings = _actions.Svc?.Settings;
+            if (zoomSettings is null) return;
+            var zoomMode = (ZoomAutoMode)Math.Clamp(zoomSettings.Get(WaveeSettings.ZoomMode), 0, 2);
+            if (zoomMode == ZoomAutoMode.Manual) return;   // a deliberate pick/Ctrl+± opted OUT of this policy
+            if (zoomBaseDip.Width <= 0f || zoomBaseDip.Height <= 0f) return;
+            float suggested = ZoomAutoPolicy.Suggest(zoomBaseDip.Width, zoomBaseDip.Height, zoomMode);
+            // No-op guard, not a reliance: baseDip is zoom-invariant BY CONSTRUCTION (baseDip = viewportDip * zoom
+            // cancels zoom out algebraically — ZoomAutoPolicyTests.Suggest_IsIdempotent... pins this), so a
+            // re-entrant fire from our OWN SetZoom below must compute the identical suggestion. This comparison is
+            // what actually stops the loop if that invariant is ever wrong, rather than trusting the algebra alone.
+            if (MathF.Abs(suggested - liveZoom) <= 0.004f) { _lastAutoZoom = liveZoom; _lastAutoZoomSeeded = true; return; }
+            // liveZoom disagrees with what THIS base extent suggests. Two reasons that happens: (a) the base extent
+            // just moved (a resize/monitor hop) and this is the very first tick to notice — apply the new suggestion,
+            // below; (b) something ELSE moved the zoom away from what we last applied while still in Auto — Ctrl+±,
+            // the wheel and the command palette all land on this class's own static ZoomStep (below), a bare verb
+            // with no IAppSettings reference (used from static contexts with no shell instance in hand — the chord
+            // boxes and WaveeCommands' static table dispatch), so it cannot flip the mode itself. Detect that case
+            // HERE instead: if the live zoom no longer matches what we last set, a manual actor moved it — respect
+            // that (fall back to Manual) rather than clobbering it next tick.
+            if (_lastAutoZoomSeeded && MathF.Abs(liveZoom - _lastAutoZoom) > 0.004f)
+            {
+                zoomSettings.Set(WaveeSettings.ZoomMode, (int)ZoomAutoMode.Manual);
+                return;
+            }
+            FluentApp.SetZoom(suggested);   // live, no restart — WaveeApp's existing debounced zoom-save timer persists it
+            _lastAutoZoom = suggested;
+            _lastAutoZoomSeeded = true;
+        });
 
         // Deep-link drain: Pending is a monotonic ticket (same shape as _searchFocusRequest). Read .Value so this
         // auto-tracked effect re-runs; the first tick also drains verbs posted before the shell mounted.

@@ -86,6 +86,10 @@ static class Program
         // fresh-install probe so the two features can never disagree about whether this install is fresh. Settings
         // writes only; the wizard itself is shown later by the shell once it has painted, gated on SetupPending.
         SetupBootstrap.Run(settings);
+        // Zoom-mode migration (App/ZoomAutoPolicy.cs, large-display-scaling.md §3.2): same ordering rule — MUST run
+        // before anything reads appearance.zoom.mode (the Zoom seed a few lines below reads appearance.zoom itself,
+        // unaffected either way, but the shell's first render already needs the migrated mode). Settings writes only.
+        ZoomAutoPolicy.MigrateMode(settings);
         // Developer mode (App/DeveloperMode.cs) is a process-wide latch read by the diagnostic surfaces. Load it here,
         // before anything can ask, so a single settings read decides it for the whole launch.
         DeveloperMode.Load(settings);

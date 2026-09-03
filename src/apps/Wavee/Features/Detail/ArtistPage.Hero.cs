@@ -315,8 +315,15 @@ sealed class HeroArt : Component
             int decodeH = Math.Max(1, (int)MathF.Round(decodeW * (height / width)));
             decode.Value = (decodeW, decodeH);
         }
-        int dw = decode.Value.Item1 > 0 ? decode.Value.Item1 : (int)width;
-        int dh = decode.Value.Item2 > 0 ? decode.Value.Item2 : Math.Max(1, (int)height);
+        int baseDw = decode.Value.Item1 > 0 ? decode.Value.Item1 : (int)width;
+        int baseDh = decode.Value.Item2 > 0 ? decode.Value.Item2 : Math.Max(1, (int)height);
+        // §C0 (large-display-scaling.md): route the decode budget through the ambient device scale, recomputed every
+        // render (cheap) OUTSIDE the decode.Value memo above — that memo exists to survive a plain window RESIZE
+        // without redecoding, but a ZOOM change (Viewport.Scale) must still reach both the state-probe UseImage below
+        // and the real Ui.Image at the bottom of this method, which share dw/dh so they can never fork.
+        float scale = UseContext(Viewport.Scale);
+        int dw = ImageDecodeScale.For(baseDw, scale);
+        int dh = ImageDecodeScale.For(baseDh, scale);
         float aspect = (float)dw / dh;
 
         var settled = UseRef(false);

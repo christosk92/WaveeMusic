@@ -104,6 +104,16 @@ static class WaveeSettings
     // build with a different ladder) must never seed a non-ladder scale — off-rung zooms alias glyph-raster buckets,
     // which is the whole reason the ladder is discrete. Written back (debounced) by WaveeApp's zoom-save timer.
     public static readonly SettingKey<float> ZoomLevel = new("appearance.zoom", 1f);
+    // The zoom picker's mode (ZoomAutoMode: 0 Auto · 1 Manual · 2 Dense — large-display-scaling.md §3.2). DEFAULT
+    // Auto is fresh-install-only in effect: ZoomAutoPolicy.MigrateMode (run once from Program.cs, ZoomModeBootstrapVersion
+    // below) pins an UPGRADE that already has a non-1.0 ZoomLevel stored to Manual, so a user who already picked 125%
+    // is never silently overridden. Auto/Dense re-derive ZoomLevel from the display (WaveeShell, debounced to
+    // resize-settle); Manual leaves ZoomLevel exactly as the Ctrl+±/picker ladder set it.
+    public static readonly SettingKey<int> ZoomMode = new("appearance.zoom.mode", (int)ZoomAutoMode.Auto);
+    // Monotonic "has ZoomAutoPolicy.MigrateMode run" guard — the SidebarBootstrapVersion/SetupBootstrapVersion
+    // precedent, for the identical reason: IAppSettings has no key-exists probe, so this is what lets a factory-reset
+    // settings store (every key back at its default) re-arm the migration instead of silently skipping it forever.
+    public static readonly SettingKey<int> ZoomModeBootstrapVersion = new("appearance.zoom.mode.bootstrap.version", 0);
     // The immersive lyrics surface's slowly-drifting blurred-cover backdrop. TRUE (the default) = the baked-blur cover
     // wanders on two incommensurate sinusoids; FALSE = the same cover, held perfectly still (and no ticker at all).
     // Deliberately a SETTING, not an env var — the ColorWashesEnabled precedent: it is a taste/comfort choice a

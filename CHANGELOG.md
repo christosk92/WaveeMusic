@@ -39,6 +39,8 @@ versions separately under `v*` and is not tracked in this file.)
 - The What's New viewer dims the whole window again and shows its caption. The overlay root shrink-wrapped to the
   plate, so the veil covered only the plate's own box, and the caption's scroll viewport measured zero tall and
   was clipped away entirely. (#89)
+- The player bar's indeterminate seek sweep spans the bar. It was a hard 2400-DIP literal, so on a 3440-DIP
+  ultrawide it stopped 1040 DIP short. (#94)
 - Settings' Zoom row no longer shows a stale percentage. The chords, the Ctrl+wheel hook and the palette all change
   the live zoom without touching the settings store, and nothing subscribed to the engine's own change event — so
   zooming with the page open left the picker reading whatever it read at mount, with the app visibly at 200 % over a
@@ -49,6 +51,14 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Wavee sizes itself to the display.** The zoom is no longer a monitor-blind number seeded at 100 %: on a large
+  screen it derives its own default from the window's DIP extent, so a 3440-DIP ultrawide opens at 150 % instead of
+  spending twice the design width on the same fixed constants. It takes the smaller of the two axis ratios, so it can
+  never buy size by giving up structure, and it snaps to the 100/125/150/175/200 % plateaus where Windows' 4-epx rule
+  lands on whole pixels. A manual pick or a Ctrl+± still wins and pins the mode to Manual, and an install that already
+  had a zoom set keeps it. (#94)
+- Album art decodes at the size it is painted. The decode budgets were raw DIP literals, so at 150 % zoom every cover
+  was decoded at two-thirds of the resolution it was drawn at. (#94)
 - Library V3 can reach Liked Songs, Albums, Artists, Podcasts and Local files. They were absent from the design
   entirely. They arrive as a row of words under Home — not five stacked rows and not icon-only tiles, both of
   which were tried and rejected: labels stay visible at every pane width, the active word carries the count and a

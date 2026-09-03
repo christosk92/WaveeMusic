@@ -319,6 +319,9 @@
     <Compile Include="..\Wavee\Actions\Extensibility\WaveeActionTargeting.cs" />
     <Compile Include="..\Wavee\Actions\Extensibility\PinRowRule.cs" />
     <Compile Include="..\Wavee\Features\Shell\PlayerBarResponsiveLayout.cs" />
+    <!-- the auto-zoom policy (System only) — large-display-scaling.md §3.2 — ZoomAutoPolicyTests drives the REAL
+         Suggest()/MigrateMode() decisions against the worked table instead of a copy of them. -->
+    <Compile Include="..\Wavee\App\ZoomAutoPolicy.cs" />
     <!-- progressive-reveal ramp progression (BCL only) — DetailRevealRampTests -->
     <Compile Include="..\Wavee\Features\Detail\DetailRevealRamp.cs" />
     <Compile Include="..\Wavee\Features\Detail\PlaylistTuneMenuModel.cs" />

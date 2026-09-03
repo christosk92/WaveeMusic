@@ -12,6 +12,37 @@ using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
+/// <summary>Routes a DIP decode-budget edge through the ambient device scale (<c>Viewport.Scale</c> = OS DPI × app
+/// zoom) — large-display-scaling.md §C0, the blocker for shipping the auto-zoom (Layer A): a DIP-sized decode target
+/// left unscaled decodes at 1/scale the resolution the cover is actually painted at the moment the effective scale
+/// exceeds 1, and every zoom step past 100% (never mind the auto policy) makes it worse.
+/// <c>WaveeEqualizer.EqHost.Render</c> (<c>Components/Equalizer.cs</c> — <c>UseContext(Viewport.Scale)</c> sizing a
+/// device-pixel quantity) is the precedent this follows.</summary>
+public static class ImageDecodeScale
+{
+    /// <summary>A device-pixel ceiling so an extreme zoom+DPI stack (a 250% zoom on a 4K panel) never turns a
+    /// DIP-small thumbnail into a multi-megapixel decode request.</summary>
+    public const int Ceiling = 2048;
+
+    /// <summary>Round UP to this device-pixel grid. A zoom change is a rare, deliberate, LADDER-STEPPED event
+    /// (<c>ZoomLadder</c>/<c>ZoomAutoPolicy</c> are both discrete), but the ambient scale is still a float — rounding
+    /// to a coarse bucket keeps the decode cache keyed on a handful of stable sizes instead of thrashing on float
+    /// noise or a fractional-pixel difference between two renders of the same nominal zoom.</summary>
+    const int BucketPx = 8;
+
+    /// <summary>The scaled, bucketed, ceiling-clamped device-pixel decode edge for a DIP quantity. Returns 0 for a
+    /// non-positive/non-finite <paramref name="dipEdge"/> (nothing to decode); a non-finite/non-positive
+    /// <paramref name="scale"/> falls back to 1x (unscaled) rather than propagating a corrupt ambient read.</summary>
+    public static int For(float dipEdge, float scale)
+    {
+        if (!float.IsFinite(dipEdge) || dipEdge <= 0f) return 0;
+        if (!float.IsFinite(scale) || scale <= 0f) scale = 1f;
+        float px = dipEdge * scale;
+        int bucketed = (int)(MathF.Ceiling(px / BucketPx) * BucketPx);
+        return Math.Clamp(bucketed, BucketPx, Ceiling);
+    }
+}
+
 // Surface helpers. The shell is live Mica with a FLUSH content region over it — the stock Win11 recipe: the
 // LayerFillColorDefault smoke, one rounded corner facing the nav pane, a 1px left+top stroke, and NO shadow (it is not
 // a floating card, and it never was an opaque canvas). Over that sits a SUBTLE, edge-transparent accent band tint —
@@ -182,8 +213,11 @@ public static class Surfaces
     /// <summary>Artwork slot: a neutral <see cref="Shimmer"/> tile under the async image (which cross-fades in over it
     /// once decoded). <paramref name="morphKey"/> tags the image as a connected-animation (Hero) participant so it flies
     /// to/from the like-tagged Home card. The tile shares ONE decode handle with the image (matched W×H, any aspect).</summary>
+    /// <param name="scale">The ambient device scale (<c>Viewport.Scale</c> = OS DPI × zoom) to route the decode
+    /// budget through (§C0). Default 1f reproduces every existing caller's exact numbers — this is opt-in until a
+    /// caller passes its live scale; see <see cref="ImageDecodeScale"/>.</param>
     public static Element Artwork(Image? image, int seed, float width, float height, float corners, string? morphKey = null,
-                                  int decodePx = 0, float saturation = 1f, bool preferLargest = false)
+                                  int decodePx = 0, float saturation = 1f, bool preferLargest = false, float scale = 1f)
     {
         if (image?.MosaicTiles is { Count: > 0 } tiles)
         {
@@ -196,16 +230,34 @@ public static class Surfaces
         // slot instead. A connected-animation dest (the detail cover) passes the SAME decodePx as the Home card (256) so it
         // resolves to the SAME cached texture — the Hero fly hands off pixel-identically with NO fresh decode (killing the
         // cold first-visit cover-decode spike). The shimmer shares the chosen decode handle (matched W×H), so no fork.
-        int dw = decodePx > 0 ? decodePx : (int)width, dh = decodePx > 0 ? decodePx : (int)height;
+        //
+        // §C0: a caller that passes its live ambient scale routes through the aspect+decodePx ImageEl overload even
+        // in the decodePx==0 case, because the engine ties a FIXED-Width/Height ImageEl's decode 1:1 to its laid-out
+        // DIP size (Reconciler.ImageDecodeTarget has no scale of its own) — there is no way to decode LARGER than the
+        // display box through that overload. scale==1f (every caller that hasn't opted in) takes the untouched
+        // original branch below, byte-for-byte.
+        bool scaleRequested = scale > 0f && MathF.Abs(scale - 1f) > 0.01f;
+        bool useScaledDecode = decodePx > 0 || scaleRequested;
+        // Only an ACTUAL non-1 scale routes through ImageDecodeScale's bucket/ceiling — an unscaled decodePx>0 caller
+        // (every one of them today) must see its EXACT literal unchanged, not silently rounded up to an 8px grid.
+        int scaledDecodePx = scaleRequested
+            ? ImageDecodeScale.For(decodePx > 0 ? decodePx : MathF.Max(width, height), scale)
+            : decodePx;
+        int dw = useScaledDecode ? scaledDecodePx : (int)width;
+        int dh = useScaledDecode ? scaledDecodePx : (int)height;
         // Shared-layout art owns its placeholder. Culling only the tagged ImageEl must not leave a separate shimmer
         // sibling painting the old large slot behind the flying overlay.
         // Un-tagged art keeps its transparent placeholder because the Shimmer tile below already fills the slot (and
         // carries the tint). A morph participant owns its own placeholder — resolve that one directly, since it has no
         // shimmer sibling to inherit from.
         ColorF placeholder = morphKey is null ? ColorF.Transparent : PlaceholderFor(url);
+        // The decodePx>0 branch has always cover-fit a SQUARE decode (aspect 1f) into a possibly-non-square slot; the
+        // new scale-only branch (decodePx==0, scaleRequested) preserves the slot's REAL aspect instead, since nothing
+        // asked for a square crop there — it is standing in for "decode at display size", just at a bigger edge.
+        float aspect = decodePx > 0 ? 1f : width / MathF.Max(1f, height);
         Element img = url is null ? new BoxEl()
-            : decodePx > 0
-                ? Ui.Image(url, ImageFit.Cover, 1f, decodePx, corners, placeholder, image!.BlurHash) with { MorphId = morphKey, Saturation = saturation }
+            : useScaledDecode
+                ? Ui.Image(url, ImageFit.Cover, aspect, scaledDecodePx, corners, placeholder, image!.BlurHash) with { MorphId = morphKey, Saturation = saturation }
                 : Ui.Image(url, width, height, corners, placeholder, image!.BlurHash) with { MorphId = morphKey, Saturation = saturation };
         return new BoxEl
         {

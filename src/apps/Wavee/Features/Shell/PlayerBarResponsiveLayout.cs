@@ -1,3 +1,5 @@
+using System;
+
 namespace Wavee;
 
 /// <summary>The identity-first player-dock pressure tiers, ordered from the 300-DIP floor to the full desktop bar.</summary>
@@ -87,10 +89,10 @@ internal readonly record struct PlayerBarLayout(
     float TopEdgeWidth)
 {
     public static PlayerBarLayout Initial(float width)
-        => ForTier(PlayerBarResponsiveLayout.Nominal(width));
+        => ForTier(PlayerBarResponsiveLayout.Nominal(width), width);
 
     public static PlayerBarLayout Resolve(float width, in PlayerBarLayout current, bool initialized)
-        => ForTier(PlayerBarResponsiveLayout.Resolve(width, current.Tier, initialized));
+        => ForTier(PlayerBarResponsiveLayout.Resolve(width, current.Tier, initialized), width);
 
     /// <summary>The WinUI hit-target floors every tier honours. <see cref="MinButtonBox"/>/<see cref="MinButtonGlyph"/>
     /// are the standard icon-button rung — <see cref="WaveeSize.ControlH"/>, which is by construction the same value as
@@ -105,7 +107,17 @@ internal readonly record struct PlayerBarLayout(
     public const float PrimaryBoxRoomy = 40f;
     public const float PrimaryGlyphRoomy = 20f;
 
-    public static PlayerBarLayout ForTier(PlayerBarTier tier)
+    /// <summary>The indeterminate seek sweep's nominal track width (<see cref="PlayerBar"/>'s
+    /// <c>ProgressBar.Indeterminate(L.TopEdgeWidth)</c>). Used to be a hard 2400f literal — correct for the windows
+    /// this ladder was authored against, but on a 3440-DIP ultrawide (or wider) the sweep stopped 1040+ DIP short of
+    /// the bar itself. Deriving it from the bar's OWN measured <paramref name="width"/> (floored at the old 2400
+    /// nominal, so nothing narrower than that regresses) makes the sweep span the real bar at any width, including
+    /// zoom-derived ones §3.2 can now produce.</summary>
+    const float TopEdgeWidthFloor = 2400f;
+
+    /// <param name="width">The bar's measured width in DIP; 0 (the width-unaware test callers below) keeps the
+    /// pre-fix 2400f behavior via the floor.</param>
+    public static PlayerBarLayout ForTier(PlayerBarTier tier, float width = 0f)
     {
         bool full = tier == PlayerBarTier.Full;
         bool wide = tier >= PlayerBarTier.Wide;
@@ -154,6 +166,6 @@ internal readonly record struct PlayerBarLayout(
             LeftGap: medium ? 8f : compact ? 6f : 4f,
             SeekGap: medium ? 6f : compact ? 5f : 4f,
             RightGap: medium ? 2f : compact ? 1f : 0f,
-            TopEdgeWidth: 2400f);
+            TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width));
     }
 }

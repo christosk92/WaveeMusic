@@ -155,6 +155,31 @@ public class PlayerBarResponsiveLayoutTests
             $"the Minimal row leaves the SeekBar only {300f - fixedWidth} DIP");
     }
 
+    /// <summary>The indeterminate seek sweep must span the ACTUAL bar, not stop short of a wide window. A hard 2400f
+    /// literal was correct for the windows this ladder was authored against but left the sweep 1040+ DIP short of a
+    /// 3440-DIP ultrawide bar. TopEdgeWidth now floors at the old nominal (so nothing narrower regresses) and grows
+    /// past it 1:1 with the measured bar width.</summary>
+    [Theory]
+    [InlineData(300f, 2400f)]      // narrower than the floor — unchanged pre-fix behavior
+    [InlineData(2400f, 2400f)]     // exactly the floor
+    [InlineData(3440f, 3440f)]     // the ultrawide case the plan calls out by name
+    [InlineData(5120f, 5120f)]     // wider still — no re-introduced ceiling
+    public void TopEdgeWidth_TracksTheMeasuredBarWidth_FlooredAtTheOldNominal(float width, float expected)
+    {
+        Assert.Equal(expected, PlayerBarLayout.Initial(width).TopEdgeWidth);
+        Assert.Equal(expected, PlayerBarLayout.Resolve(width, PlayerBarLayout.Initial(width), initialized: true).TopEdgeWidth);
+    }
+
+    /// <summary>A width-unaware caller (ForTier(tier), as every other test in this file uses) must keep the pre-fix
+    /// 2400f value — the floor default preserves that shape rather than silently forking behavior for callers that
+    /// never learn about the width parameter.</summary>
+    [Fact]
+    public void ForTier_WithoutAWidth_KeepsTheOldTopEdgeWidthNominal()
+    {
+        foreach (PlayerBarTier tier in Enum.GetValues<PlayerBarTier>())
+            Assert.Equal(2400f, PlayerBarLayout.ForTier(tier).TopEdgeWidth);
+    }
+
     [Fact]
     public void Full_ExposesEveryDesktopPlayerCommand()
     {

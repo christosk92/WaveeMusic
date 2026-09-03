@@ -817,6 +817,7 @@
       "colorWashesSub": "Tint the shell and page surfaces from artwork",
       "zoom": "Zoom",
       "zoomSub": "Scale the whole app, like Ctrl + and Ctrl − in a browser",
+      "zoomAuto": "Auto ({percent}%)",
       "zoomIn": "Zoom in",
       "zoomOut": "Zoom out",
       "zoomReset": "Reset zoom",

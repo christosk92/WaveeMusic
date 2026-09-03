@@ -120,6 +120,10 @@ sealed class PlayerBarContent : Component
         var videoAnchor = UseRef<NodeHandle>(default);           // the split video button container → the surface-picker MenuFlyout anchor
         var videoMenu = UseRef<OverlayHandle?>(null);            // the open video surface-picker flyout (null = closed)
         var titleHover = UseSignal(false);           // hover the now-playing text → BOTH lines scroll together (synced); idle = static + edge fade
+        // §C0 (large-display-scaling.md): the identity artwork's decode budget, routed through the ambient device
+        // scale so the player bar's cover doesn't visibly soften the moment the auto-zoom (or a manual pick) takes
+        // the effective scale past 1x — the Equalizer.cs precedent for reading Viewport.Scale.
+        float artScale = UseContext(Viewport.Scale);
         var L = _layout.Value;                       // coarse breakpoint signal; does NOT change for every resize pixel
         _ = AppearancePrefs.Epoch.Value;
         bool marqueeDisabled = !(svc?.Settings.Get(WaveeSettings.MarqueeEnabled) ?? true);
@@ -327,7 +331,7 @@ sealed class PlayerBarContent : Component
                 OnClick = contextNav ? NavContext : null,   // album art → the playback context
                 Role = contextNav ? AutomationRole.Hyperlink : AutomationRole.None,
                 Focusable = contextNav,
-                Children = [Surfaces.Artwork(track?.Image, SeedOf(track), artSize, artSize, 6f)]
+                Children = [Surfaces.Artwork(track?.Image, SeedOf(track), artSize, artSize, 6f, scale: artScale)]
             });
         leftKids.Add(metaCol);
         if (showLike)

@@ -80,6 +80,9 @@ sealed partial class SettingsPage : Component
         // The engine documents this channel as display-only for exactly this case — never for coordinate conversion,
         // which keeps using Viewport.Scale (= OS DPI scale x Zoom).
         _zoomLive = UseContext(Viewport.Zoom);
+        // The Zoom row's Auto item needs the live BASE dip extent (see _viewportLive's doc) — same unconditional-read
+        // rule as _zoomLive above.
+        _viewportLive = UseContext(Viewport.Size);
         _nav = UseContext(HistoryStore.NavCtx);
         _nc = UseContext(NotificationCenterBridge.Slot);
         _voPost = post;
