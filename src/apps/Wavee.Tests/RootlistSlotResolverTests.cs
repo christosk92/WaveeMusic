@@ -176,9 +176,9 @@ public class RootlistSlotResolverTests
     }
 
     [Theory]
-    [InlineData(25f, 0)]     // TreeContentX(0) — where a depth-0 row starts drawing
-    [InlineData(37f, 1)]     // TreeContentX(1)
-    [InlineData(49f, 2)]     // TreeContentX(2): the row's own depth
+    [InlineData(13f, 0)]     // TreeContentX(0) — where a depth-0 row starts drawing
+    [InlineData(25f, 1)]     // TreeContentX(1)
+    [InlineData(37f, 2)]     // TreeContentX(2): the row's own depth
     [InlineData(999f, 2)]    // past the ladder: clamped to Max
     [InlineData(-50f, 0)]    // before the row: clamped to Min
     public void DepthPick_ReadsTheTreeContentLadderFromPointerX(float x, int expected)
@@ -198,8 +198,8 @@ public class RootlistSlotResolverTests
     public void DepthPick_TheOutdentBandIsReachable(int depth)
     {
         // THE NUMERIC CHECK BEHIND F3. Parked on the row's own content origin the pick is that depth; half a step plus
-        // 5 DIP to the LEFT of it — a deliberate slide, still inside the row — it is one shallower. depth 1: 37 → 26.
-        // depth 2: 49 → 38.
+        // 5 DIP to the LEFT of it — a deliberate slide, still inside the row — it is one shallower. depth 1: 31 → 20.
+        // depth 2: 43 → 32.
         var f = Leaf(depth: depth, nextDepth: 0);
         float here = SidebarRowGeometry.TreeContentX(depth);
         float outdent = here - SidebarRowGeometry.TreeGuideStep / 2f - 5f;
@@ -212,12 +212,12 @@ public class RootlistSlotResolverTests
     {
         var f = Leaf(depth: 2, nextDepth: 0);
         var previous = new SidebarDropSlot(3, SidebarDropKind.After, 1, SidebarDropRefusal.None);
-        // The 1→2 boundary sits at TreeContentX(1) + 0.5·TreeGuideStep = 43. Inside 4 DIP of it the previous holds…
-        Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 44f, 44f, in f, in previous).Depth);
+        // The 1→2 boundary sits at TreeContentX(1) + 0.5·TreeGuideStep = 31. Inside 4 DIP of it the previous holds…
+        Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 32f, 44f, in f, in previous).Depth);
         // …and past it the pick commits.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 49f, 44f, in f, in previous).Depth);
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 37f, 44f, in f, in previous).Depth);
         // With no previous slot there is nothing to hold: the raw pick wins.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 44f, 44f, in f, SidebarDropSlot.None).Depth);
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 32f, 44f, in f, SidebarDropSlot.None).Depth);
     }
 
     [Fact]

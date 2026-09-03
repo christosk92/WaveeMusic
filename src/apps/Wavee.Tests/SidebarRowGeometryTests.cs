@@ -21,25 +21,27 @@ public sealed class SidebarRowGeometryTests
     // ── 0. THE TREE-CONTENT ORIGIN (the caret's x) ────────────────────────────────────────────────
     //
     // A tree row is NOT laid out on `IndentFor(depth)`. `SidebarEntityRow.TreeLeading` pads the row once at
-    // IndentFor(0) and then spends real cells — the 3-DIP selection gutter, one 12-DIP connector cell per level, and a
-    // fixed 16-DIP disclosure cell — before the art. The insertion caret used to be translated by IndentFor(depth) and
-    // `PickDepth` read the same ladder backwards, so the line painted ~19 DIP left of what it meant and the depth-0
-    // band needed x < 12 (F2/F3). One origin now, and these are the numbers.
+    // IndentFor(0) and then spends real cells — the 3-DIP selection gutter and one 12-DIP connector cell per level —
+    // before the art, with no reserved disclosure cell any more (W7 moved the folder's chevron to the row's TRAILING
+    // cluster, so a tree row's content starts exactly where a depth-0 StandardLeading row's does). The insertion caret
+    // used to be translated by IndentFor(depth) and `PickDepth` read the same ladder backwards, so the line painted
+    // ~19 DIP left of what it meant and the depth-0 band needed x < 12 (F2/F3). One origin now, and these are the
+    // numbers — DELIBERATELY 6 DIP left of the pre-W7 ladder (25/37/49/…) now that the chevron cell is gone.
 
     [Theory]
-    [InlineData(0, 25f)]     // 6 padding + 3 gutter + 0 guides + 16 chevron cell
-    [InlineData(1, 37f)]
-    [InlineData(2, 49f)]
-    [InlineData(4, 73f)]
-    [InlineData(9, 73f)]     // past MaxIndentDepth the ladder stops marching right, exactly like IndentFor
-    [InlineData(-3, 25f)]
+    [InlineData(0, 13f)]     // 4 padding + 3 gutter + 6 gap — identical to StandardLeading at depth 0
+    [InlineData(1, 25f)]
+    [InlineData(2, 37f)]
+    [InlineData(4, 61f)]
+    [InlineData(9, 61f)]     // past MaxIndentDepth the ladder stops marching right, exactly like IndentFor
+    [InlineData(-3, 13f)]
     public void TreeContentX_IsTheSumOfTheRowsOwnLeadingCells(int depth, float expected)
     {
         Assert.Equal(expected, SidebarRowGeometry.TreeContentX(depth), 3);
         // …and it IS a sum of the named constants, not a literal that happens to match.
         int clamped = Math.Clamp(depth, 0, SidebarRowGeometry.MaxIndentDepth);
-        Assert.Equal(SidebarRowGeometry.IndentFor(0) + SidebarRowGeometry.SelGutterWidth
-                     + clamped * SidebarRowGeometry.TreeGuideStep + SidebarRowGeometry.TreeChevronCell,
+        Assert.Equal(SidebarRowGeometry.IndentFor(0) + SidebarRowGeometry.LeadingLaneWidth
+                     + clamped * SidebarRowGeometry.TreeGuideStep,
                      SidebarRowGeometry.TreeContentX(depth), 3);
     }
 
@@ -53,14 +55,50 @@ public sealed class SidebarRowGeometryTests
         Assert.Equal(SidebarRowGeometry.IndentStep, SidebarRowGeometry.TreeGuideStep);
     }
 
+    // ── 0b. THE ONE LEADING LANE (the art/glyph column's x, and the label that follows it) ──────────────────────────────
+    //
+    // W7's whole point: one art column, one label x, for every row SHAPE (art / bare glyph / tree) at a given density,
+    // and for the fixed chrome bands mounted above the list too (SidebarPaneMetrics.LeadInset, not source-included
+    // here, is asserted equal to this same sum by SidebarPaneInvariantTests).
+
+    [Fact]
+    public void ArtX_AtDepthZero_Is21_TheContentLanePlusTheLeadingLane()
+    {
+        // SidebarPaneMetrics.LeadInset is engine-bound (not source-included by Wavee.Tests) — this is the identity it
+        // is pinned to. ContentLane (14) is PaneEdge + IndentFor(0); LeadingLaneWidth (13) is SelGutter + LeadingGap.
+        Assert.Equal(21f, SidebarRowGeometry.ArtX(0));
+        Assert.Equal(SidebarRowGeometry.ContentLane + SidebarRowGeometry.LeadingLaneWidth, SidebarRowGeometry.ArtX(0));
+    }
+
+    [Theory]
+    [InlineData(SidebarDensity.Compact, 20f)]
+    [InlineData(SidebarDensity.Cozy, 32f)]
+    [InlineData(SidebarDensity.Comfortable, 40f)]
+    public void ArtFor_IsTheThreeCanonicalArtSizes(SidebarDensity density, float expected)
+        => Assert.Equal(expected, SidebarRowGeometry.ArtFor(density));
+
+    [Theory]
+    [InlineData(SidebarDensity.Compact, 47f)]     // 21 + 20 + 6
+    [InlineData(SidebarDensity.Cozy, 59f)]        // 21 + 32 + 6
+    [InlineData(SidebarDensity.Comfortable, 67f)] // 21 + 40 + 6
+    public void GlyphRowAndArtRow_AtOneDensity_ShareOneLabelX(SidebarDensity density, float expectedLabelX)
+    {
+        // SidebarEntityRow.Create builds an ArtFor(density)-wide leading column for BOTH the bare-glyph arm (the icon
+        // now centres inside it) and the art arm, with the SAME LeadingGap before the text either way — the
+        // bareGlyph ⇒ gap 12 / no-art-column special case this pins the absence of. One formula, one label x, whether
+        // the row shows a glyph (Home, Liked) or cover art (a playlist) at the same density.
+        float labelX = SidebarRowGeometry.ArtX(0) + SidebarRowGeometry.ArtFor(density) + SidebarRowGeometry.LeadingGap;
+        Assert.Equal(expectedLabelX, labelX);
+    }
+
     // ── 1. the height ladder ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(SidebarDensity.Compact, false, 32f)]
     [InlineData(SidebarDensity.Compact, true, 32f)]     // Compact suppresses subtitles outright — no second line, no growth
     [InlineData(SidebarDensity.Cozy, false, 40f)]
-    [InlineData(SidebarDensity.Cozy, true, 44f)]        // = Classic's entity row
-    [InlineData(SidebarDensity.Comfortable, false, 44f)]// = Classic's glyph/shortcut row
+    [InlineData(SidebarDensity.Cozy, true, 44f)]        // = Classic's entity row, AND (since W7) its glyph/shortcut row
+    [InlineData(SidebarDensity.Comfortable, false, 44f)]// also 44 — but a 40-DIP art column, no longer used for Shortcuts/Links
     [InlineData(SidebarDensity.Comfortable, true, 48f)]
     public void HeightFor_IsTheThreeCanonicalHeightsPlusComfortable(SidebarDensity d, bool sub, float expected)
         => Assert.Equal(expected, SidebarRowGeometry.HeightFor(d, sub));
@@ -74,12 +112,12 @@ public sealed class SidebarRowGeometryTests
     // construction; the file says so, and there is no second copy of the arithmetic left to drift.)
 
     [Theory]
-    [InlineData(-1, 6f)]
-    [InlineData(0, 6f)]
-    [InlineData(1, 18f)]
-    [InlineData(4, 54f)]
-    [InlineData(9, 54f)]   // clamped at four levels
-    public void IndentFor_IsSixPlusTwelvePerLevelClampedAtFour(int depth, float expected)
+    [InlineData(-1, 4f)]
+    [InlineData(0, 4f)]
+    [InlineData(1, 16f)]
+    [InlineData(4, 52f)]
+    [InlineData(9, 52f)]   // clamped at four levels
+    public void IndentFor_IsFourPlusTwelvePerLevelClampedAtFour(int depth, float expected)
         => Assert.Equal(expected, SidebarRowGeometry.IndentFor(depth));
 
     // ── 2. Classic ⇄ Curated shortcut-row parity (the reported defect) ────────────────────────────────────────────────

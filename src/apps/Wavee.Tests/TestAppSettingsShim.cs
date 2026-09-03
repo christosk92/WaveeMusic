@@ -103,7 +103,8 @@ static class SidebarKeys
     public static readonly SettingKey<bool> V3Desc = new("sidebar.v3.desc", false);
     public static readonly SettingKey<int> V3View = new("sidebar.v3.view", 1);
     public static readonly SettingKey<int> V3GridSize = new("sidebar.v3.size", 1);
-    public static readonly SettingKey<bool> V3SearchOpen = new("sidebar.v3.search.open", false);
+    // V3SearchOpen mirror removed (W1): the setting itself is gone from AppSettings.cs — the search host's open flag
+    // lives on LibraryV3Session.SearchOpen (ephemeral), never IAppSettings.
 
     public static readonly SettingKey<string> CuratedTemplateId = new("sidebar.curated.template", "wavee.curated.default");
     public static readonly SettingKey<bool> CuratedRailLabels = new("sidebar.curated.rail.labels", false);

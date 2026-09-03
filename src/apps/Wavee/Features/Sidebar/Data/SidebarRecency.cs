@@ -6,9 +6,12 @@ namespace Wavee;
 // Route-key → last-visited ticks, built from HistoryStore (F.7.6). Engine-free (System only), source-included by
 // src/apps/Wavee.Tests.
 //
-// SEMANTICS, stated plainly for the surface authors: HistoryStore logs NAVIGATION, so "Recents" means recently OPENED —
-// not recently played and not recently added. That is exactly what Spotify's own library "Recents" sort means, so the
-// label is honest; a surface must NOT relabel it "Recently played".
+// SEMANTICS, stated plainly for the surface authors: HistoryStore logs NAVIGATION, so this recency feeds ONLY the
+// "recently opened" FEED (SidebarSourceMap.Visited — a JumpBackIn-style shelf of places you navigated to). It is NOT
+// what the sidebar's "Recents" SORT uses: that reads SidebarLibraryEntry.LastPlayedMs (PlayLogStore.Recency) via
+// SidebarSort.Recents, so clicking a row to open it does not reorder the list — only playing something does. A surface
+// must not relabel THIS feed "Recently played", and must not sort a list by LastVisitedTicksUtc expecting it to mean
+// "recently played" either — the two recency facts are deliberately separate inputs with separate consumers.
 
 /// <summary>One navigation observation: the route key that was opened and when (UTC ticks). The route key is the entry /
 /// pin id (F.5.4), so the recency join is an identity lookup — no prefix stripping, no per-row parsing.</summary>

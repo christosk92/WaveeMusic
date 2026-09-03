@@ -22,9 +22,11 @@ namespace Wavee;
 // entry ("API Console", header-less). The Display options are chosen so the ONE shared height ladder
 // (`SidebarRowMetrics.HeightFor`) reproduces Classic's 44-DIP rows exactly:
 //   • Pinned / Playlists → Cozy + Subtitles ⇒ 44 with 32-DIP artwork (Classic's pinned + playlist rows).
-//   • Your Library / DevTools → glyph rows with NO subtitle, so Cozy would be 40. Comfortable + Subtitles:false is 44 —
-//     the same number Classic's `LibRow`/`LocalRow`/`DevToolsRow` hard-coded. (Artwork:false keeps them 16-DIP glyph rows,
-//     so Comfortable's larger ART size is never reached.)
+//   • Your Library / DevTools → glyph rows on `SidebarDisplayOptions.Shortcuts`/`Links`, Cozy + Subtitles:true ⇒ 44 —
+//     the same number Classic's `LibRow`/`LocalRow`/`DevToolsRow` hard-coded, reached the SAME way the artwork rows
+//     reach it instead of via a Comfortable override (W7): Comfortable's art column is 40 DIP, 8 DIP wider than Cozy's
+//     32, so a Comfortable glyph row's label used to land to the right of a Cozy playlist row's even though both rows
+//     were 44 tall. `Artwork:false` keeps them 16-DIP glyph rows regardless of which density supplies the column.
 // A section's height is deliberately its SUBTITLE INTENT, not per row, because a Reorderable's slot pitch and the
 // virtualizing host's extent both assume one height per section (see SidebarPaneMetrics.RowHeight).
 //
@@ -82,9 +84,10 @@ public static class SidebarBuiltInDocuments
             new SidebarSectionSpec(LibraryId, SidebarSectionKind.CollectionShortcuts,
                 Title: null, TitleLocKey: "sidebar.yourLibrary",
                 Hidden: false, Collapsed: !libraryOpen,
-                // Comfortable + no subtitle ⇒ 44, Classic's landed shortcut-row height. CountBadges on (the quiet
-                // SidebarCounts number now, never the accent pill).
-                Display: SidebarDisplayOptions.Shortcuts with { Density = SidebarDensity.Comfortable },
+                // W7: the Shortcuts preset alone (Cozy + Subtitles:true) is 44 — Classic's landed shortcut-row height —
+                // with the SAME 32-DIP art column every other content row uses; no density override needed any more.
+                // CountBadges on (the quiet SidebarCounts number now, never the accent pill).
+                Display: SidebarDisplayOptions.Shortcuts,
                 Items:
                 [
                     Route(LibraryId + ":albums", "albums", "Album"),
@@ -121,11 +124,9 @@ public static class SidebarBuiltInDocuments
                 // serialises display options as a DIFF against it, so a user who never touched this option simply
                 // picks up the new default, and one who did keeps their override.
                 // `Links`, the StaticLinks preset (defect 8) — value-identical to the old
-                // `Shortcuts with { CountBadges = false }` spelled here, minus the restatement.
-                Display: SidebarDisplayOptions.Links with
-                {
-                    Density = SidebarDensity.Comfortable, ShowInRail = false,
-                },
+                // `Shortcuts with { CountBadges = false }` spelled here, minus the restatement. No density override
+                // (W7): Links is already Cozy + Subtitles:true ⇒ 44 with the shared 32-DIP art column.
+                Display: SidebarDisplayOptions.Links with { ShowInRail = false },
                 Items: [Route(ToolsId + ":devtools", DevToolsRoute, "Code")]));
         }
 

@@ -846,7 +846,7 @@ public sealed class SidebarRowPlannerTests
     {
         const int N = 10_000;
         var lib = new SidebarLibraryEntry[N];
-        for (int i = 0; i < N; i++) lib[i] = Playlist(i.ToString(), "Mix " + i, visited: N - i, order: i);
+        for (int i = 0; i < N; i++) lib[i] = Playlist(i.ToString(), "Mix " + i, order: i) with { LastPlayedMs = N - i };   // Recents = PLAYED: entry 0 is the newest play
 
         var input = new SidebarProjectionInput { Library = lib };
         var doc = Doc(Sec("e", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default));

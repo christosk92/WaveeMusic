@@ -88,6 +88,9 @@ static class WaveeSettings
     // TraitPolicy), because gating the fetch on this setting permanently starved lists opened while it was off — 185
     // has no retry surface. App-wide, like RowDensity and TempoColumn.
     public static readonly SettingKey<bool> PlaysColumn = new("detail.playsColumn", false);
+    // Track-detail page layout: 0 Automatic (metadata rail on wide windows, the hero on narrow) · 1 Hero (the hero
+    // composition at every width — the rail is never composed for track pages; podcasts keep the automatic layout).
+    public static readonly SettingKey<int> DetailPageLayout = new("detail.page.layout", 0);
     // Marquee text (title/lyrics rows that overflow their box). TRUE (the default) = scroll the overflow; FALSE =
     // truncate with an ellipsis instead. Renamed from the negative DisableMarquee (no migration — pre-1.0, cosmetic):
     // Settings now presents this as a plain ON switch rather than a "disable" row.
@@ -381,7 +384,8 @@ static class SidebarKeys
     public static readonly SettingKey<bool> V3Desc = new("sidebar.v3.desc", false);
     public static readonly SettingKey<int> V3View = new("sidebar.v3.view", 1);            // SidebarV3View (List)
     public static readonly SettingKey<int> V3GridSize = new("sidebar.v3.size", 1);        // 0 S · 1 M · 2 L
-    public static readonly SettingKey<bool> V3SearchOpen = new("sidebar.v3.search.open", false);
+    // V3SearchOpen was here (sidebar.v3.search.open) — deleted (W1): the search host's open flag moved to
+    // LibraryV3Session.SearchOpen (ephemeral), which is what stopped a relaunch from reopening a stale field.
 
     // ── Curated ──
     public static readonly SettingKey<string> CuratedTemplateId = new("sidebar.curated.template", "wavee.curated.default");

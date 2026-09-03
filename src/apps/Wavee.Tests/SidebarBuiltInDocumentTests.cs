@@ -9,8 +9,10 @@ namespace Wavee.Tests;
 // exactly like Classic" is a pixel contract that must not be re-litigated by a future template edit.
 //
 // Why density and not heights: the shared ladder lives in SidebarRowMetrics (engine-bound, so not source-includable here).
-// These tests pin the INPUT to that ladder — Cozy+Subtitles for the artwork bands (⇒ 44 with 32-DIP art) and
-// Comfortable+no-subtitle for the glyph bands (⇒ 44). A change to either silently changes Classic's row height.
+// These tests pin the INPUT to that ladder — Cozy+Subtitles for BOTH the artwork bands (⇒ 44 with 32-DIP art) and the
+// glyph bands (⇒ 44 with the SAME 32-DIP art column, W7 — Comfortable used to reach 44 too, but through a 40-DIP
+// column that misaligned every glyph row's label against the content rows beside it). A change to either silently
+// changes Classic's row height or its label alignment.
 public sealed class SidebarBuiltInDocumentTests
 {
     /// <summary>The document a NORMAL user gets: every section open, developer mode OFF (so no Tools section).</summary>
@@ -120,12 +122,14 @@ public sealed class SidebarBuiltInDocumentTests
     {
         var doc = ClassicDev();   // the Tools band only exists in developer mode, and its density is pinned below
 
-        // Glyph bands: Comfortable + no subtitle ⇒ HeightFor == 44 (Cozy would be 40 and would shrink Classic's rows).
+        // Glyph bands: Cozy + Subtitles:true ⇒ HeightFor == 44 (W7). NOT Comfortable + no subtitle any more — that
+        // reached the same 44 but through a 40-DIP art column, 8 DIP wider than every Cozy content row's 32, which is
+        // exactly the label misalignment W7 closes. Artwork stays false either way (these are 16-DIP glyph rows).
         foreach (string id in new[] { SidebarBuiltInDocuments.LibraryId, SidebarBuiltInDocuments.ToolsId })
         {
             var s = Section(doc, id);
-            Assert.Equal(SidebarDensity.Comfortable, s.Opts.Density);
-            Assert.False(s.Opts.Subtitles);
+            Assert.Equal(SidebarDensity.Cozy, s.Opts.Density);
+            Assert.True(s.Opts.Subtitles);
             Assert.False(s.Opts.Artwork);
         }
 

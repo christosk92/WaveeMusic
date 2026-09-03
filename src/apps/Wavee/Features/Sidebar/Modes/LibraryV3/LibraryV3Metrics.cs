@@ -29,6 +29,11 @@ static class LibraryV3Metrics
     /// <summary>The drill-in breadcrumb band (narrow/drawer only — Revision 2's folder amendment).</summary>
     public const float BreadcrumbHeight = 32f;
 
+    /// <summary>W3 — the nav band's row height. It is CHROME above the header (<c>LibraryV3NavBand</c>), not a list
+    /// section, so it does not have to match the 44 content row: fastspotify/Spotify nav rows are 40, and that is the
+    /// number Spotify's own "Your Library" uses for Home.</summary>
+    public const float NavRowHeight = 40f;
+
     /// <summary>Gap between grid cells — the same <c>Spacing.S</c> the pane's grid strip lays out with, restated here so the
     /// derived column count and the strip that renders it cannot disagree.</summary>
     public const float GridGap = 8f;

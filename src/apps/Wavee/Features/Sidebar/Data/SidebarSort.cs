@@ -88,17 +88,26 @@ public static class SidebarSort
 
     // ── the comparators ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Recents: last-VISITED descending. Never-visited entries sink to the bottom AS A BLOCK, ordered by
-    /// SortStamp desc then Name. The visited/never-visited partition is applied before (and is never affected by)
-    /// <paramref name="desc"/>, so a never-visited item can never float above a visited one; `desc` reverses the two
-    /// blocks independently.</summary>
+    /// <summary>Recents: recently PLAYED (<c>PlayLogStore.Recency</c> — <see cref="SidebarLibraryEntry.LastPlayedMs"/>),
+    /// NOT recently opened. A played-block-first, never-played-block-second partition: everything with a play stamps
+    /// leads, newest play first; everything that was never played sinks to the bottom AS A BLOCK, ordered by SortStamp
+    /// desc (the "recently added" key) then Name. The block split is applied BEFORE (and is never affected by)
+    /// <paramref name="desc"/> — a never-played item can never float above a played one just because the direction
+    /// flipped — while `desc` reverses the ordering WITHIN each block independently.
+    ///
+    /// <para>Clicking a row to open it no longer moves it (<see cref="SidebarLibraryEntry.LastVisitedTicksUtc"/>, which
+    /// tracks navigation, feeds only the "recently opened" feed — see <c>SidebarRecency</c>). HONEST LIMIT: a playlist
+    /// or show is stamped only when playback actually STARTED FROM that context (<c>PlayRecency.Stamp(in
+    /// PlayLogEntry)</c>, <c>App/PlayRecency.cs:38-46</c>) — an episode played from the queue or a Home shelf does not
+    /// stamp its show. Albums and artists are stamped regardless of how playback started (the billed artists + album
+    /// of whatever track played), so they are covered unconditionally.</para></summary>
     public static int Recents(in SidebarLibraryEntry a, in SidebarLibraryEntry b, bool desc)
     {
-        bool av = a.LastVisitedTicksUtc > 0, bv = b.LastVisitedTicksUtc > 0;
-        if (av != bv) return av ? -1 : 1;
+        bool ap = a.LastPlayedMs > 0, bp = b.LastPlayedMs > 0;
+        if (ap != bp) return ap ? -1 : 1;
 
-        int c = av
-            ? b.LastVisitedTicksUtc.CompareTo(a.LastVisitedTicksUtc)
+        int c = ap
+            ? b.LastPlayedMs.CompareTo(a.LastPlayedMs)
             : b.SortStamp.CompareTo(a.SortStamp);
         if (c == 0) c = NameComparer.Compare(a.Name, b.Name);
         if (c == 0) c = string.CompareOrdinal(a.Id, b.Id);

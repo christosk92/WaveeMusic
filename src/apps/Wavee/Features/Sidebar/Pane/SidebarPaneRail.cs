@@ -36,6 +36,16 @@ static class SidebarPaneRail
         var rows = plan.Rows;
         var kids = new List<Element>(rows.Count + 4);
 
+        // W3 — a mode whose nav band left the document entirely (Library V3's fixed chrome band, `LibraryV3NavBand`)
+        // has no section here for `ShowInRail` to draw tiles from, so it hands the rail its OWN tiles through this one
+        // config delegate instead. Prepended, ahead of the plan's tiles, with the same divider shape the pending/footer
+        // sections below use to separate bands.
+        if (owner.Config.RailHead?.Invoke() is { } head)
+        {
+            kids.Add(head);
+            kids.Add(SidebarRailItem.Divider());
+        }
+
         for (int i = 0; i < rows.Count; i++)
         {
             var row = rows[i];
@@ -64,11 +74,15 @@ static class SidebarPaneRail
             kids.Add(SidebarLayoutMenu.Button(prefs, owner.Navigate, box: SidebarRailItem.Box));
         }
 
-        // PHASE 1 — the shortcut band's rail form used to be PREPENDED here from `Config.RailHead`, a second hand-written
-        // tile path beside the loop above. It is gone: the band is now the document's first section
-        // (`SidebarShortcutsSection`), so `SidebarRowPlanner.BuildRail` emits its tiles from `ShowInRail` in document
-        // order like every other section's, and the divider under them comes from the plan's own divider collapse rules.
-        // One owner for rail CONTENT, which is what locked decision 7 always said.
+        // PHASE 1 — for Classic and Curated the shortcut band's rail form is NOT hand-written here: the band is the
+        // document's first section (`SidebarShortcutsSection`), so `SidebarRowPlanner.BuildRail` emits its tiles from
+        // `ShowInRail` in document order like every other section's, and the divider under them comes from the plan's
+        // own divider collapse rules. One owner for rail CONTENT there, which is what locked decision 7 always said.
+        //
+        // W3 — `Config.RailHead` (handled above, before this loop) is the one deliberate exception: Library V3's nav
+        // band is chrome, not a section, so it has nothing for `BuildRail` to draw from ShowInRail. Re-adding the seam
+        // for that one mode does not reopen decision 7 — the rail's CONTENT is still one document's worth of tiles, V3's
+        // document simply is not where that particular band lives any more.
 
         return new BoxEl
         {

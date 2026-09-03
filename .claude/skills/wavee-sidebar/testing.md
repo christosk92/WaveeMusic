@@ -38,7 +38,7 @@ only test invocation checked in is the whole-suite form in the `wavee` skill and
 
 ---
 
-## The test inventory (26 files, 27 classes, ~600 methods)
+## The test inventory (29 files, 30 classes, ~640 methods)
 
 All under `src/apps/Wavee.Tests/`.
 
@@ -64,8 +64,9 @@ All under `src/apps/Wavee.Tests/`.
 
 | File | Class | ~Methods | Covers |
 |---|---|---|---|
-| `SidebarProjectionTests.cs` | `SidebarProjectionTests` | 31 | Per-kind field derivation, flavor mask + chip visibility, `SortStamp`/first-seen fallback, folder recursion, diacritics-insensitive search, recency, pins-first partition. |
-| `SidebarSortTests.cs` | `SidebarSortTests` | 15 | The five comparators: totality, never-visited block under Recents, empty creators last, Custom stable append + ignores `desc`. |
+| `SidebarProjectionTests.cs` | `SidebarProjectionTests` | 31 | Per-kind field derivation, flavor mask + chip visibility, `SortStamp`/first-seen fallback, folder recursion, diacritics-insensitive search, recency, pins-first partition. `Build` stamps `LastPlayedMs` from the `lastPlayed` map by uri (0 when absent) — the input `SidebarSort.Recents` reads. |
+| `SidebarSortTests.cs` | `SidebarSortTests` | 15 | The five comparators: totality, **played**-block-first under Recents (by `LastPlayedMs`, not `LastVisitedTicksUtc` — a visit no longer reorders), never-played block sunk by `SortStamp`, empty creators last, Custom stable append + ignores `desc`. |
+| `SidebarRowGeometryTests.cs` | `SidebarRowGeometryTests` | 16 | The engine-free row-geometry ladder (`SidebarRowGeometry`): Classic⇄Curated shortcut-row height parity; the pure plan geometry (`ContentYOf`, `IndexOfRoute`, `DirectionOf`); and W7's ONE leading lane — `ArtX(0) == 21` (`ContentLane` 12 + `LeadingLaneWidth` 9), `TreeContentX` = 13/25/37/49/61 (clamped at depth 4), `IndentFor` = 4 + 12/level (clamped at depth 4), and that a bare-glyph row and an art row at the same density share one label x (no more `bareGlyph ⇒ gap 12` special case). |
 | `SidebarProjectionBinderTests.cs` | `SidebarProjectionBinderTests` (+ nested `StubSource : SidebarDataSourceBase`) | 44 | The binder's **pure** half: the rebuild trigger fold, the Entries driver, M1 contribution resolution. Copy `StubSource` for a new source's tests. |
 | `SidebarDataSourceTests.cs` | `SidebarDataSourceTests` (+ nested `StubSource`) | 25 | Opaque-config readers, the contribution-id scheme, registry/host resolution (missing/disabled/live), service-health translation, domain→entry mappers. |
 | `SidebarRowPlannerTests.cs` | `SidebarRowPlannerTests` | 33 | The pane render contract: the row **sequence** per section kind, degraded states, a 10 000-entry realization. |
@@ -78,9 +79,11 @@ All under `src/apps/Wavee.Tests/`.
 | File | Class | ~Methods | Covers |
 |---|---|---|---|
 | `SidebarBuiltInDocumentTests.cs` | `SidebarBuiltInDocumentTests` | 7 | Classic as a **locked** built-in document: its IA and the Cozy+Subtitles density intent behind the 44-DIP rows. |
-| `LibraryV3DocumentTests.cs` | `LibraryV3DocumentTests` + `LibraryV3ViewTests` | 23 + 15 | V3 as a synthesized ephemeral document (view state → sections + query + display) and the content **order** (tree re-grouping, drill slice, materialized custom order). |
+| `LibraryV3DocumentTests.cs` | `LibraryV3DocumentTests` + `LibraryV3ViewTests` | 23 + 15 | V3 as a synthesized ephemeral document (view state → sections + query + display) and the content **order** (tree re-grouping, drill slice, materialized custom order). No shortcut section is ever prepended (W3 — the nav band left the document); the Liked-row dedupe against a `topBar` carrying its own `liked` route item still holds. |
+| `LibraryV3ChipStripTests.cs` | `LibraryV3ChipStripTests` | 13 | The pure filter-rail slot model (`LibraryV3ChipStrip.Slots`/`FocusIndex`, W2): idle = four unselected facets, no ✕; filtered = Clear + the one selected facet (+ its three qualifier options, Playlists only, only when the data evidences them); fused = Clear + one `Fused` slot sharing the loose facet's key (the morph); what each slot kind writes back on a tap; `FocusIndex` surviving a loose⇄fused relayout because the key is shared. |
+| `LibraryV3SearchRulesTests.cs` | `LibraryV3SearchRulesTests` | 10 | The pure search-host model (`LibraryV3SearchRules`, W1): the Escape ladder (clear-then-close), blur-closes-only-when-empty, `OpenWidth`'s arithmetic and floor, and `Resolve`'s three shapes (inline / narrow-button / narrow-open) across the `InlineWidth` (300) and `SortIconOnlyWidth` (280) thresholds. |
 | `SidebarPaneInvariantTests.cs` | `SidebarPaneInvariantTests` | 13 | `SidebarPaneFrameSnapshot` (a settled rendered pane width is exactly 56 or a valid expanded width) (the former source-scan drift guards were removed on 2026-08-22 — tests never read source; the rules below are documented here and covered by behaviour where a pure seam exists): the context menu hangs off a childless shield and not the pane root; every fixed chrome band expresses its inset through the one named content lane rather than the retired literal; and both `Reorderable` wrap sites in `SidebarPaneSlot` fill their slot. A source scan skips (not fails) on a binary-only run. |
-| `SidebarNavBandTests.cs` | `SidebarNavBandTests` | 19 | `SidebarNavBandModel` — the shortcut band's pure SHAPING rules (item target → tile shape, tile → the route key a selection mark reads, document order, the truncation bound). Named for the MODEL: the `SidebarNavBand` component it was written against is gone, and the model has no production caller left. Its materialisation into a section lives in `SidebarShortcutsSectionTests`. |
+| `SidebarNavBandTests.cs` | `SidebarNavBandTests` | 19 | `SidebarNavBandModel` — the shortcut band's pure SHAPING rules (item target → tile shape, tile → the route key a selection mark reads, document order, the truncation bound). Named for the MODEL: the `SidebarNavBand` component it was written against is gone, but the model itself has a caller again (W3) — `Modes/LibraryV3/LibraryV3NavBand.cs` calls `RouteKeyOf`/`SelectsRoute` for its hand-placed entity tiles. Classic/Curated's materialisation of the band into a section lives in `SidebarShortcutsSectionTests`. |
 | `SidebarModeStateTests.cs` | `SidebarModeStateTests` | 15 | Per-mode remembered state + per-design width tiers: `SidebarPaneState` snapshot/restore/latch behind `SwitchDesign`, `SidebarDesignInfo`, `ShellResponsiveLayout`, over `MemoryAppSettings`. |
 | `SidebarPinStoreTests.cs` | `SidebarPinStoreTests` | 19 | The shared pin store + `SidebarPinId` mapping (rides `VirtualCollectionSignalShim` for `Signal<int>`). |
 | `SidebarDesignGatingTests.cs` | `SidebarDesignGatingTests` | 19 | The one-time chooser gate + closing marker, the three preview cards' values, the "Customize sidebar" affordance rule. |

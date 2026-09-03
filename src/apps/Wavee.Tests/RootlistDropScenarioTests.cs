@@ -240,7 +240,7 @@ public class RootlistDropScenarioTests
         // THE OUTDENT, and the one gesture the shifted origin made unreachable: with `IndentFor` the depth-0 band
         // needed x < 12; on the row's real content ladder it is x < 31, a deliberate slide the hand can make.
         int row = tree.IndexOf(Entry(tree, "updated playlist name"));
-        var slot = Decide(tree, markers, "LoL", row, t: 0.98f, x: 26f, out var target);
+        var slot = Decide(tree, markers, "LoL", row, t: 0.98f, x: 14f, out var target);
         Assert.Equal((SidebarDropKind.After, 0), (slot.Kind, slot.Depth));
         // Expressed against the FOLDER, not against the child — that is what puts it past root's end marker.
         Assert.Equal(new RootlistItemRef(Root, IsFolder: true), target.Ref);
@@ -271,7 +271,7 @@ public class RootlistDropScenarioTests
         Assert.Equal(new RootlistItemRef(Pl("nine"), false), stayTarget.Ref);
         Assert.Equal(NamedName, stayTarget.DestinationName);
 
-        var climb = Decide(tree, markers, "HSM", row, t: 0.98f, x: 38f, out var climbTarget);
+        var climb = Decide(tree, markers, "HSM", row, t: 0.98f, x: 26f, out var climbTarget);
         Assert.Equal((SidebarDropKind.After, 1), (climb.Kind, climb.Depth));
         Assert.Equal(new RootlistItemRef(Named, IsFolder: true), climbTarget.Ref);
         Assert.Equal(RootName, climbTarget.DestinationName);      // out of "named", into "root"
@@ -304,7 +304,7 @@ public class RootlistDropScenarioTests
 
         int row = tree.IndexOf(Entry(tree, "#9"));
         Assert.Equal((0, 2), RootlistSlotResolver.DepthRange(Facts(tree, row)));
-        var slot = Decide(tree, markers, "LoL", row, t: 0.98f, x: 26f, out var target);
+        var slot = Decide(tree, markers, "LoL", row, t: 0.98f, x: 14f, out var target);
         Assert.Equal((SidebarDropKind.After, 0), (slot.Kind, slot.Depth));
         Assert.Equal(new RootlistItemRef(Root, IsFolder: true), target.Ref);
         Assert.Equal("", target.DestinationName);                 // "Moved to Your Library"

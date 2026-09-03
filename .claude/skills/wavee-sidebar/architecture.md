@@ -42,9 +42,11 @@ Its surface is deliberately **FLAT** (not grouped — `prefs.V3Filter`, never `p
   `CommitWidthDrag`, `SetCollapsed`, `SetResponsiveWidth`, `ResetWidth`, `SetViewportWidth`
 - Classic sections: `ClassicPinnedOpen`, `ClassicLibraryOpen`, `ClassicPlaylistsOpen`,
   `SetClassicSection(ClassicSection, bool open)`
-- V3 view state: `V3Filter`, `V3Qualifier`, `V3Sort`, `V3Desc`, `V3View`, `V3GridSize`, `V3SearchOpen`,
-  `V3Search` + `SetV3Filter/Qualifier/View/GridSize/Sort/SearchOpen`; local custom order via `CanReorderV3`,
-  `V3CustomOrder`, `V3OrderVersion`, `V3RankOf(id)`, `SetV3CustomOrder(orderedIds)`
+- V3 view state: `V3Filter`, `V3Qualifier`, `V3Sort`, `V3Desc`, `V3View`, `V3GridSize`, `V3Search` +
+  `SetV3Filter/Qualifier/View/GridSize/Sort`; local custom order via `CanReorderV3`, `V3CustomOrder`,
+  `V3OrderVersion`, `V3RankOf(id)`, `SetV3CustomOrder(orderedIds)`. **`V3SearchOpen` is GONE** (W1) —
+  the search-open flag is session-only (`LibraryV3Session.SearchOpen`), never `IAppSettings`; `V3Search`
+  (the text) stays here but is likewise never persisted.
 - folders: `IsFolderExpanded`, `ExpandedFolders`, `FolderVersion`, `SetFolderExpanded`, `ToggleFolder`
 - pins (shared across all three designs): `Pins` (`SidebarPinStore`), `PinsVersion`, `IsPinned`, `Pin`,
   `Unpin`, `InsertPin`, `MovePin`, `TouchPin`
@@ -172,7 +174,7 @@ source that raises `Changed` mid-rebuild only marks the binder dirty.
 | `SidebarPaneRail.cs` | The 56-DIP rail. Content is *data* (`ShowInRail` sections, per `BuildRail`), not code, so Classic's rail and Curated's rail cannot drift. Not virtualized — the planner caps it at 40 tiles. |
 | `SidebarPaneText.cs` | The pure display rules: `TitleOf`, per-kind `SubtitleOf`, item lookup, icon fallbacks, the "never render a blank row" degradations. |
 | `SidebarPaneInlineControls.cs` | An `EntityList` section's inline kind-chips + sort/view trigger, rendered as header chrome. Every edit rewrites *that section's persisted spec* through `SetQuery`/`SetDisplayOption`, so it is undoable and survives a restart. Suppressed when `ReadOnly`. |
-| `SidebarPaneMetrics.cs` | `PanePad (8,8,8,12)`, `PaneInsetH 16`, `RowInset`, `SectionGap`, `HeaderBodyGap 2`, `EmptyHintHeight 32`, `GridCellMax 160`, `RowHeight(section)`, `ArtSize(section)`, `CardHeight`/`CardCover`. |
+| `SidebarPaneMetrics.cs` | `PanePad (8,8,8,12)`, `PaneInsetH 16`, `RowInset`, `BandInset` (a fixed chrome band's inset = `ContentLane`/`ContentLaneEnd`), `LeadInset`/`LeadBandInset` (21 — `ContentLane` + the row's `LeadingLaneWidth`, where a chrome band's LEADING visual must sit so it shares the rows' art column), `SectionGap`, `HeaderBodyGap 2`, `EmptyHintHeight 32`, `GridCellMax 160`, `RowHeight(section)`, `ArtSize(section)`, `CardHeight`/`CardCover`. |
 | `SidebarPaneConfig.cs` | The seam (below) + `SidebarPaneReorder` + `SidebarPaneReorderCommit.Default`. |
 | `SidebarBuiltInDocuments.cs` | Classic as a locked document. |
 
@@ -202,10 +204,11 @@ source that raises `Changed` mid-rebuild only marks the binder dirty.
 | `SetSectionCollapsed` | `Action<string,bool>?` | Where collapse state lives. Null ⇒ non-collapsible headers. |
 | `ReadOnly` | `bool` | Suppresses inline `EntityList` controls, the missing-entity "Remove" verb and the empty-pane customize CTA; `Dispatch` becomes a no-op. |
 | `SearchHead` | `bool` | Render the pane-owned library-only search box (only when the document actually contains a visible `EntityList`). |
-| `Head` | `Func<Element?>?` | Arbitrary mode chrome above the scroll surface (V3's header/toolbar/chips/breadcrumb). Rendered before `SearchHead`. |
+| `Head` | `Func<Element?>?` | Arbitrary mode chrome above the scroll surface. V3's `LibraryV3Chrome` mounts, in order: the nav band (`LibraryV3NavBand`) · header · toolbar (search + sort/view) · the filter-chip rail · a rule (`Divider`) · the drill-in breadcrumb (only while drilled) · a retry banner or one of the actionable empty states. Rendered before `SearchHead`. |
 | `ShowLayoutMenu` | `bool` (default true) | Hang the quick layout menu off the pane's **first** section header. |
 | `RailLayoutMenu` | `bool` (default true) | Put it at the bottom of the rail too. |
 | `RailFooter` | `Func<Element?>?` | An extra rail affordance after the planned tiles (Classic's create-playlist "+"). |
+| `RailHead` | `Func<Element?>?` | **Back (W3), for exactly one mode.** Chrome tiles PREPENDED to the 56-DIP rail, ahead of the plan's own tiles (a divider follows). Null for Classic/Curated, whose Shortcuts band is still an ordinary document section and whose tiles therefore arrive through the plan's `ShowInRail` rows. Library V3 supplies one (`Modes/LibraryV3Sidebar.BuildRailHead`) because its own nav band left the document entirely and became fixed chrome (`LibraryV3NavBand`) — it has no section left for `SidebarRowPlanner.BuildRail` to draw a Home tile from. Read inside `SidebarPaneRail`'s render (never the plan's `DepKey`), so a TopBar edit that moves no section still repaints the rail; because of that, `SidebarPane`'s rail memo folds `Prefs.LayoutVersion.Value` into its own `DepKey` whenever `RailHead` is non-null. |
 | `ActivateFolder` | `Action<string,string>?` | What activating a folder disclosure row does. Null ⇒ toggle the shared folder-expansion state. Replaces both the row's click **and** the expand/collapse verb in its context menu, so the two can never disagree. |
 | `IsReorderableSection` | `Func<SidebarSectionKind,bool>?` | Default: `Pinned`/`StaticLinks`/`CustomGroup` — never `PlaylistTree` (V3's local custom order opts in). Folder CRUD is no longer locked (the old "locked decision 9" is **lifted**: see `FolderActions`), but the rootlist is written only through `WaveeResourceDrop.MoveRootlist` and `FolderActions`, never through a reorder band. |
 | `TreeSortedNonCustom` | `Func<bool>?` | Null ⇒ false (Classic/Curated always show rootlist order). True ⇒ the drop resolver refuses `Before`/`After`/`EndOfList` with `drag.clearSortingToReorder` while `Into` stays legal. A live probe, never a value. See *Rootlist drag & drop* below. |
@@ -216,12 +219,19 @@ source that raises `Changed` mid-rebuild only marks the binder dirty.
 | `OnCreatePlaylist` | `Action?` | The plain-click half of the header/rail "+" and the first row of its flyout. Null ⇒ the header "+" is not offered at all, rather than offered dead. |
 | `Edit` | `Func<SidebarEditState?>?` | **PHASE 2 / Decision B.** Non-null *return* ⇒ the pane is the CUSTOMIZE CANVAS: it plans through `SidebarRowPlanner.BuildEdit` (one `SectionCard` per top-level section + the one expanded section's real body) instead of `Build`. A delegate, never a snapshot — the session changes several times a minute while the config is frozen at mount. Only `CuratedSidebar` supplies one; the renderer still learns nothing about `Design`. |
 
-There is **no** `NavBand` / `RailHead` member and there never should be again: Phase 1 materialises the shortcut band
-as an ordinary `StaticLinks` section (`SidebarShortcutsSection.Prepend`) at the head of every design's document, so the
-planner, the slot, the rail's `ShowInRail` pass, the reorder band and the selection indicator all serve it with no
-band-specific code. That also removed the documented **selection hack**: a band tile for `"home"` plus a plan row for
-`"home"` were two registrations under one route key, which forced the band to opt out of the pane's route-keyed
-selection transaction. With one row, the problem ceases to exist.
+There is still **no** `NavBand` member, and for Classic and Curated that stays true forever: Phase 1 materialises
+their shortcut band as an ordinary `StaticLinks` section (`SidebarShortcutsSection.Prepend`) at the head of the
+document, so the planner, the slot, the rail's `ShowInRail` pass, the reorder band and the selection indicator all
+serve it with no band-specific code. That also removed the documented **selection hack**: a band tile for `"home"`
+plus a plan row for `"home"` were two registrations under one route key, which forced the band to opt out of the
+pane's route-keyed selection transaction. With one row, the problem ceases to exist.
+
+**`RailHead` is back (W3), and it is the one deliberate exception.** Library V3's own nav band left the document
+entirely — it renders as fixed CHROME above the header (`Modes/LibraryV3/LibraryV3NavBand.cs`, mounted through
+`Head`, never scrolls, never filters/searches with the list) — so it has no section left for `BuildRail` to draw a
+Home tile from. `RailHead` is the one config delegate that hands the rail its own tiles directly; see the member
+table above and [pitfalls.md](pitfalls.md) for why the rail memo now folds `LayoutVersion` when it is set. Classic
+and Curated pass `RailHead = null` and are unaffected.
 
 `SidebarPaneReorder(Section, FromSlot, ToSlot, SlotCount, KeyAt)` carries everything a commit could need and
 nothing about the widget: the renderer knows the geometry, only the mode knows where the order *lives*.
@@ -264,12 +274,22 @@ playback is the `|||` glyph and is never an input to it (`RowSelectsRoute` is ro
 ### Shared primitives (`Features/Sidebar/Shared/`)
 
 `SidebarEntityRow` (+ **`SidebarRowMetrics`** — the ONE height/art/indent ladder: `ClassicHeight 44`,
-`HeightFor(density, hasSubtitle)` = 32/40|44/44|48, `ArtFor` = 20/32/40, `IndentFor(depth)` = 6 + depth×12 capped
-at 4) · `SidebarCounts` (**the one quiet badge**: 11f tertiary right-aligned number + a 20×12 shimmer plate while
-pending — `InfoBadge.Count` is gone) · `SidebarChevron` · `SidebarCover` (`S20…S64`, `Radius`, `ForEntry`,
-`ForPin`, `Art`, `Glyph`, and the bucketed decode ladder) · `SidebarSectionHeader` · `SidebarPinDropZone`
-(`RestHeight 56` / `ActiveHeight 72`) · `SidebarRailItem` (`Box 40`, `ArtEdge 36`) · `SidebarSkeletons` ·
-`SidebarSelectionPill` (see the deletion candidates in [pitfalls.md](pitfalls.md)).
+`HeightFor(density, hasSubtitle)` = 32/40|44/44|48, `ArtFor` = 20/32/40, `IndentFor(depth)` = 4 + depth×12 capped
+at 4 levels) · `SidebarCounts` (**the one quiet badge**: 11f tertiary right-aligned number + a 20×12 shimmer plate
+while pending — `InfoBadge.Count` is gone) · `SidebarChevron` · `SidebarCover` (`S20…S64`, `Radius`, `ForEntry`,
+`Art`, `Glyph`, and the bucketed decode ladder — `ForPin` is **deleted**, W7: it was a second art-sizing entry
+point with zero call sites) · `SidebarSectionHeader` · `SidebarPinDropZone` (`RestHeight 56` / `ActiveHeight 72`) ·
+`SidebarRailItem` (`Box 40`, `ArtEdge 36`) · `SidebarSkeletons` · `SidebarSelectionPill` (see the deletion
+candidates in [pitfalls.md](pitfalls.md)).
+
+**W7 — the one leading lane.** `Data/SidebarRowGeometry` also owns `LeadingGap` (6, the gutter → leading-visual
+gap shared by every row shape), `LeadingLaneWidth` (9 = `SelGutterWidth` + `LeadingGap`) and `ArtX(depth)` (21 at
+depth 0 = `ContentLane` + `LeadingLaneWidth`) — the ONE art/glyph column x for art rows, bare-glyph rows (Home,
+Liked) and tree rows alike, and the same x every fixed chrome band above the list shares via
+`SidebarPaneMetrics.LeadInset`. A folder row's disclosure chevron moved OUT of the leading cluster (there is no
+reserved chevron cell any more — `TreeContentX(depth)` = `IndentFor(0) + LeadingLaneWidth + depth·TreeGuideStep` =
+13/25/37/49/61) and INTO the row's TRAILING cluster instead, as `SidebarRowSpec.DisclosureChevron` (the first
+trailing element, ahead of the now-playing equalizer and `Trailing`).
 
 ### Rootlist drag & drop — one resolver, one published slot, one commit
 
@@ -404,15 +424,18 @@ properties delegate to them, so there is one rule) and the pure geometry.
   `LineY` = 0 for Before/EndOfList, `h − LineThickness` for After. **The line's indent IS the resolved depth** — that
   is the whole depth cue.
 
-  **`TreeContentX(depth)` is THE tree-content origin** (`SidebarRowGeometry`, engine-free): `IndentFor(0) 6 +
-  SelGutterWidth 3 + depth·TreeGuideStep 12 + TreeChevronCell 16` → **25, 37, 49, 61, 73** (clamped at
-  `MaxIndentDepth`). `SidebarEntityRow.TreeLeading` **consumes those same three constants**, so the row's art, the
-  caret and `PickDepth` cannot disagree. It replaced `IndentFor(depth)` (6 + 12·d), which is the row's OUTER padding
-  ladder and sits ~19 DIP to the left: the caret painted roughly one whole level off, and the depth-0 band needed
-  x < 12 — unreachable in practice, so every outdent silently became "into the folder". On the real ladder the 1→0
-  band is x < 31 (hysteresis 4 DIP), a deliberate slide the hand can make. Pinned by `SidebarRowGeometryTests`
-  (`TreeContentX_*`, `TreeLeading_AndTheCaret_SpendTheSameConstants`) and `RootlistSlotResolverTests`
-  (`DepthPick_TheOutdentBandIsReachable`).
+  **`TreeContentX(depth)` is THE tree-content origin** (`SidebarRowGeometry`, engine-free): `IndentFor(0) 4 +
+  LeadingLaneWidth 9 + depth·TreeGuideStep 12` → **13, 25, 37, 49, 61** (clamped at `MaxIndentDepth`).
+  `SidebarEntityRow.TreeLeading` **consumes those same constants**, so the row's art, the caret and `PickDepth`
+  cannot disagree. There is no reserved disclosure cell in the formula at all any more (W7 moved the folder's
+  chevron to the row's TRAILING cluster — see the "one leading lane" note above); the formula and its five numbers
+  shifted down by 12 the moment that cell was removed. It replaced `IndentFor(depth)` (4 + 12·d), which is the
+  row's OUTER padding ladder and used to sit ~19 DIP to the left before the chevron-cell fix: the caret painted
+  roughly one whole level off, and the depth-0 band needed x < 12 — unreachable in practice, so every outdent
+  silently became "into the folder". Pinned by `SidebarRowGeometryTests` (`TreeContentX_*`) and
+  `RootlistSlotResolverTests` (`DepthPick_TheOutdentBandIsReachable`, `DepthPick_HoldsThePreviousDepthInsideTheHysteresisBand`)
+  — the hysteresis boundary numbers in those tests move with `TreeContentX`, so read them there rather than restating
+  a boundary x here.
 - **Plate** — `SidebarPaneSlot.DropPlate()`: an always-mounted, `HitTestVisible = false` BoxEl placed **first** in the
   row's ZStack (`ZStack(plate, row, pill, line)`) — *under* the row, so text, artwork and the `|||` glyph are never
   tinted and the row's own hover/selected fills composite over it. Accent 0.18 α + a 1-DIP accent border, corner 4:
@@ -659,8 +682,15 @@ pane width, never chosen.
 Its `SidebarPaneConfig`: `ScrollKeyPrefix = "sidebar.v3"`, `ReadOnly = true`, `SearchHead = false`,
 `ShowLayoutMenu = false` (V3 embeds those rows in its own overflow menu), `Head = ChromeHead`,
 `SetSectionCollapsed = null`, `ActivateFolder = session.ActivateFolder`, plus `IsReorderableSection` /
-`CommitReorder` for the local custom order and a `RailFooter`. `OnCustomize` is never set — its document is
-ephemeral, so there is nothing to customize.
+`CommitReorder` for the local custom order and a `RailFooter`. **`RailHead` is set** (`BuildRailHead`) — W3's nav
+band left the document entirely, so the rail needs its own copy of the same tiles; see the `RailHead` entry in the
+member table above. `OnCustomize` is never set — its document is ephemeral, so there is nothing to customize.
+
+`ChromeHead` mounts `LibraryV3Chrome`, which stacks, in order: `LibraryV3NavBand` (fixed chrome, W3 — `prefs.TopBar`
+rendered directly, never a document section, never touched by search/filter/drill) · `LibraryV3Header` ·
+`LibraryV3Toolbar` (search host + sort/view trigger) · `LibraryV3Chips` (the filter rail) · a `Divider` at the
+content lane · the drill-in breadcrumb (only while `state.Drilled`) · a retry banner or one of §3.2.10's three
+actionable empty states.
 
 `ShapeInput` sets `Pins`, clears `ExpandedFolders`, sets `SuppressTreeCreateRow = true`, and swaps
 `session.View.Rows` into either `PlaylistTree` (grouped) or `Library` (flat) — **two windows over the one

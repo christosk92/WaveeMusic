@@ -174,10 +174,13 @@ sealed class V3SortViewPanel : Component
                     Color = active ? Tok.AccentTextPrimary : Tok.TextPrimary,
                     Grow = 1f, Basis = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
+                // W5 — accent is a BUDGET (WaveeTokens.cs), spent on the thing the user must notice; the direction
+                // chevron and the check are CHROME (they restate what the label + row position already say), so they
+                // stay neutral ink even on the active row. The label alone keeps AccentTextPrimary below.
                 active && directional
-                    ? Icon(desc ? Icons.ChevronUp : Icons.ChevronDown, 11f, Tok.AccentTextPrimary)
+                    ? Icon(desc ? Icons.ChevronUp : Icons.ChevronDown, 11f, Tok.TextSecondary)
                     : new BoxEl(),
-                active ? Icon(Icons.Check, 12f, Tok.AccentTextPrimary) : new BoxEl { Width = 12f },
+                active ? Icon(Icons.Check, 12f, Tok.TextPrimary) : new BoxEl { Width = 12f },
             ],
         }.Interactive(Interaction.Subtle);
     }
@@ -208,7 +211,9 @@ sealed class V3SortViewPanel : Component
                 BrushTransitionMs = WaveeMotion.Fast,
                 Role = AutomationRole.RadioButton, Cursor = CursorId.Hand, Focusable = true,
                 OnClick = () => prefs.SetV3View(idx),
-                Children = [Icon(defs[i].Glyph, defs[i].Size, on ? Tok.TextOnAccentPrimary : Tok.TextSecondary)],
+                // W5 — Tok.OnAccent is the CONTRAST-PICKED ink (readable against the live OS accent, however pale);
+                // TextOnAccentPrimary is a fixed theme value that can go invisible against a light accent.
+                Children = [Icon(defs[i].Glyph, defs[i].Size, on ? Tok.OnAccent : Tok.TextSecondary)],
             };
             // An icon-only cell has no visible label, so its accessible name is its tooltip (the app-wide convention).
             cells[i] = ToolTip.Wrap(cell, defs[i].Label);

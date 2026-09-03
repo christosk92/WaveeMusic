@@ -45,7 +45,7 @@ the renderer takes nothing else.
 | document | `SidebarBuiltInDocuments.Classic(pinnedOpen, libraryOpen, playlistsOpen)` | `LibraryV3Document.Build(in LibraryV3DocState)` | `SidebarPreferences.Layout` |
 | persisted? | no (three collapse flags only) | no | yes, `sidebar-layout.json` |
 | user-editable? | no | no (its chrome owns the state) | yes, in the customizer |
-| chrome | none beyond the pane | header band, toolbar, chip rails, breadcrumb (through `Config.Head`) | none beyond the pane |
+| chrome | none beyond the pane | nav band, header band, toolbar, chip rails, breadcrumb (through `Config.Head`) | none beyond the pane |
 | mode component | `Features/Sidebar/WaveeSidebar.cs` | `Modes/LibraryV3Sidebar.cs` | `Modes/CuratedSidebar.cs` |
 
 Switching applies live with no restart. `Features/Sidebar/SidebarHost.cs` reads `SidebarPreferences.Design` and
@@ -57,19 +57,19 @@ narrow overlay drawer.
 in the same document). App routes, playlists, albums, artists, shows and playlist folders are pinnable; tracks are
 not.
 
-### The Shortcuts section is shared across all three designs too
+### The Shortcuts band is shared across all three designs — but Library V3 renders it as chrome, not a section
 
 The document also carries **one global shortcut band** — `SidebarCustomLayout.TopBar`, whose wire member still spells
 the name it had when it lived in a shell toolbar. It is the app's primary navigation: Home lives there, and it is the
-only Home the built-in Classic document, the Curated default template and Library V3's synthesized document have.
+only Home the built-in Classic document, the Curated default template and Library V3's own chrome have.
 
-It is **materialised as an ordinary section**, not rendered by a bespoke component:
+For **Classic and Curated** it is **materialised as an ordinary section**, not rendered by a bespoke component:
 `SidebarShortcutsSection.Prepend(document, topBar)` puts a `StaticLinks` section titled **Shortcuts** at the head of the
 document each design hands the renderer, carrying the sentinel id `SidebarIds.TopBarSection`. Consequences worth
 knowing:
 
 - The planner, the row slot, the 56-DIP rail (`ShowInRail`), the reorder band and the selection indicator all serve it
-  with **no** band-specific code, and Library V3 gains built-in navigation it never had.
+  with **no** band-specific code.
 - The band is a RENDER-PATH projection only. The persisted document never contains the sentinel section — the reducer
   has no arm for it, and every section-scoped command aimed at it is an `UnknownSection` rejection. Its **items** are
   fully editable.
@@ -82,6 +82,16 @@ knowing:
   strings became "Shortcuts".
 - An **empty** band contributes no section at all: emptying it is a legitimate choice, and `Prepend` then returns the
   document unchanged.
+
+**Library V3 is the one exception.** Its own "Your Library" nav band (Home, and whatever else `TopBar` holds) sits
+ABOVE the header as fixed CHROME (`Modes/LibraryV3/LibraryV3NavBand.cs`, mounted through `SidebarPaneConfig.Head`) —
+never scrolls, never filtered or searched with the list, and is **not** a section of `LibraryV3Document.Build`'s
+synthesized document at all. It reads `prefs.TopBar` directly and mutates it through the same
+`SidebarItemCommands`/sentinel path as Classic and Curated. The one place the two paths still meet: a user who put
+Liked Songs in the band does not also get V3's own `v3.liked` row (`SidebarShortcutsSection.ContainsRoute` checked
+against the live `topBar`). Because the band left V3's document, the 56-DIP rail also has no `ShowInRail` section to
+draw a Home tile from, so V3 is the one mode that supplies `SidebarPaneConfig.RailHead` — see
+`.claude/skills/wavee-sidebar/architecture.md` for the seam.
 
 ### What `SidebarPaneConfig` may and may not carry
 

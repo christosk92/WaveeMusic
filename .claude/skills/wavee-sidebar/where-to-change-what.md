@@ -80,11 +80,20 @@ Everything visual is in one place now. **Do not** add a metric to a mode compone
 | collapse/expand or reorder motion | `Pane/SidebarPane.cs` — `Choreograph`, `Displacement`, `RowPlacement`, `_dispVersion` |
 | EntityEmbed card ladder | `SidebarPaneMetrics.{CardHeight, CardCover}` |
 | V3 chrome band heights | `Modes/LibraryV3/LibraryV3Metrics.cs` (chrome only — never row metrics) |
+| the V3 search host (morph shape, Escape ladder, blur-close, open width) | The component: `Modes/LibraryV3/LibraryV3Search.cs`. The pure DECISIONS (engine-free, unit-tested): `Modes/LibraryV3/LibraryV3SearchRules.cs` — `Resolve` (inline vs narrow-button vs narrow-open, and when the sort pill drops to icon-only), `OnEscape` (clear-then-close), `ClosesOnBlur`, `OpenWidth`. The toolbar (`LibraryV3Toolbar`, same file as the header) reads the same `Resolve` call the host does, so the pill and the field can never disagree about which of them owns the row. |
+| the filter-chip rail's slots / order / what a tap writes | The pure slot model (engine-free, unit-tested): `Modes/LibraryV3/LibraryV3ChipStrip.cs` — `V3ChipSlot`, `Slots(filter, qualifier, qualifiersAvailable)`, `FocusIndex` (roving focus survives relayout by KEY, not index). The pixels/motion: `Modes/LibraryV3/LibraryV3Chips.cs`. The fused pill (`[✓ Playlists │ By you ✕]`) is `ConcertUi.SegmentedPill(key, SegmentedPillStyle.Sidebar, …)` — a register in `Components/ConcertUi.cs`, never hand-rolled a second time. |
+| the V3 nav band (Home above the header, never in the list) | `Modes/LibraryV3/LibraryV3NavBand.cs` — fixed CHROME, the first child `LibraryV3Chrome` mounts; reads `prefs.TopBar` directly and is NOT a document section for V3 (contrast Classic/Curated, which still `SidebarShortcutsSection.Prepend` it — see `LibraryV3Document.cs`'s Liked-dedupe obligation). Row height: `LibraryV3Metrics.NavRowHeight` (40). Its copy of the same tiles for the 56-DIP rail is `Pane/SidebarPaneConfig.RailHead` (supplied by `Modes/LibraryV3Sidebar.BuildRailHead`, drawn first by `Pane/SidebarPaneRail.Build`). |
+| the chrome's leading inset (where the header glyph / search host / first chip / nav-band glyph all sit) | `Pane/SidebarPaneMetrics.LeadInset` / `LeadBandInset` — `ContentLane` (12) + the row's own `LeadingLaneWidth` (9) = 21, the same x every row's art/glyph column starts at. Every fixed chrome band above the list pads to this, never to `BandInset` (which is for full-width rules/dividers only). |
+| the row's leading lane (gutter → art/glyph column) | `Data/SidebarRowGeometry.LeadingGap` (6) / `LeadingLaneWidth` (9 = `SelGutterWidth` + `LeadingGap`) / `ArtX(depth)` (21 at depth 0). ONE lane for art rows, bare-glyph rows AND tree rows (W7) — a glyph row's leading box IS the art column now, so its label lands where an art row's does at the same density. |
+| the folder disclosure chevron | It is `SidebarRowSpec.DisclosureChevron` — the FIRST element of the row's TRAILING cluster (`Shared/SidebarEntityRow.Create`), not a reserved leading cell any more. Built with `SidebarChevron.Disclosure(open)`; wired at `Pane/SidebarPaneSlot.FolderRow`. |
+| the "Recents" sort | `Data/SidebarSort.Recents` — played-block-first (by `SidebarLibraryEntry.LastPlayedMs`, newest first), never-played block second (by `SortStamp` desc). `LastPlayedMs` is stamped by `Data/SidebarProjection.Build`'s `lastPlayed` map, sourced from `PlayLogStore.Recency` via `SidebarProjectionBinder.Rebuild`. `LastVisitedTicksUtc`/`Data/SidebarRecency` feeds only the "recently opened" FEED — never this sort; clicking a row no longer reorders it. |
 
 Tests: `SidebarPaneInvariantTests` (settled pane width is 56 or a valid expanded width),
 `SidebarBuiltInDocumentTests` (Classic's IA + the density intent behind the 44-DIP rows), `SidebarRowPlannerTests`
-/ `SidebarRailPlannerTests` (row + tile sequences). Extent expectations in those tests may be updated
-**deliberately**; semantics must never be loosened.
+/ `SidebarRailPlannerTests` (row + tile sequences), `LibraryV3ChipStripTests` / `LibraryV3SearchRulesTests` (the two
+pure V3 chrome models above), `SidebarRowGeometryTests` (the leading-lane ladder — `ArtX(0) == 21`,
+`TreeContentX` = 13/25/37/49/61, `IndentFor` = 4 + 12/level), `SidebarSortTests` (Recents = played, not visited).
+Extent expectations in those tests may be updated **deliberately**; semantics must never be loosened.
 
 ---
 
@@ -170,9 +179,13 @@ re-introduce a width below which the preview disappears (the whole point was to 
 
 Editing the **Shortcuts** section's items is not a special case at the call site — it is
 `SidebarItemCommands.Add/Move/Remove` (Wavee.Core), which routes the sentinel id `SidebarIds.TopBarSection` to
-`AddTopBarItem`/`MoveTopBarItem`/`RemoveTopBarItem`. Never hand-write that branch again; there is no
-`Shared/SidebarNavBand.cs` and no `SidebarPaneConfig.NavBand`/`RailHead` to wire either. (`Shared/SidebarNavBandModel.cs`
-survives as the band's pure SHAPING model + its tests, and has **no** production caller.)
+`AddTopBarItem`/`MoveTopBarItem`/`RemoveTopBarItem`. Never hand-write that branch again; there is still no
+`Shared/SidebarNavBand.cs` component and no `SidebarPaneConfig.NavBand`. `RailHead` is back (W3), but only for ONE
+mode: Library V3's own nav band left the document as a section entirely and became fixed chrome
+(`Modes/LibraryV3/LibraryV3NavBand.cs`), so it hands the 56-DIP rail its own tiles through `SidebarPaneConfig.RailHead`
+instead. Classic and Curated still render Shortcuts as an ordinary `StaticLinks` section and leave `RailHead` null.
+(`Shared/SidebarNavBandModel.cs`'s `RouteKeyOf`/`SelectsRoute` are no longer caller-less either — `LibraryV3NavBand`
+reuses them for its hand-placed entity tiles; `SidebarNavBandTests` still drives the model directly.)
 
 ---
 

@@ -220,15 +220,25 @@ static class SidebarPaneLoc
 /// which is internal to the control library, so this is the app-side equivalent rather than a duplicate of its rules.</summary>
 static class SidebarPaneIcon
 {
-    public static Element? Leading(string? iconOverride, IconRef icon, bool enabled)
+    /// <param name="art">The section's art edge (<c>SidebarPaneMetrics.ArtSize</c>). The 16-DIP mark is CENTRED in an
+    /// art-wide column — the same column a cover or a bare glyph row occupies (W7) — so an action row's label lands at
+    /// the same x as every other row's in that section instead of 14 DIP to the left of it.</param>
+    public static Element? Leading(string? iconOverride, IconRef icon, bool enabled, float art)
     {
         var color = enabled ? Tok.TextSecondary : Tok.TextTertiary;
+        Element mark;
         // An authored icon override is the user's explicit choice and beats the descriptor's own mark.
         if (iconOverride is { Length: > 0 } name && SidebarIcons.IsAllowed(name))
-            return Icon(SidebarIcons.Glyph(name, Icons.MusicNote), 16f, color);
-        if (icon.ThemedName is { Length: > 0 } themed && ThemedIconRegistry.Has(themed))
-            return ThemedIcon.Create(themed, 16f);
-        if (icon.Glyph is { Length: > 0 } glyph) return Icon(glyph, 16f, color, icon.Font);
-        return Icon(Icons.MusicNote, 16f, color);
+            mark = Icon(SidebarIcons.Glyph(name, Icons.MusicNote), 16f, color);
+        else if (icon.ThemedName is { Length: > 0 } themed && ThemedIconRegistry.Has(themed))
+            mark = ThemedIcon.Create(themed, 16f);
+        else if (icon.Glyph is { Length: > 0 } glyph) mark = Icon(glyph, 16f, color, icon.Font);
+        else mark = Icon(Icons.MusicNote, 16f, color);
+        return new BoxEl
+        {
+            Width = art, Height = art, Shrink = 0f,
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Children = [mark],
+        };
     }
 }

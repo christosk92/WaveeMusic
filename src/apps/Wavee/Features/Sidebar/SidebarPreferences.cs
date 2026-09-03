@@ -93,7 +93,6 @@ public sealed class SidebarPreferences
         V3Desc = new Signal<bool>(settings.Get(SidebarKeys.V3Desc));
         V3View = new Signal<int>(settings.Get(SidebarKeys.V3View));
         V3GridSize = new Signal<int>(settings.Get(SidebarKeys.V3GridSize));
-        V3SearchOpen = new Signal<bool>(settings.Get(SidebarKeys.V3SearchOpen));
         V3Search = new Signal<string>("");                          // SESSION-ONLY, never persisted, cleared on switch
 
         Pins = new SidebarPinStore();
@@ -173,8 +172,9 @@ public sealed class SidebarPreferences
     }
 
     /// <summary>Write the design's view-state signals back to its own keys. Classic: the three section flags · V3: the
-    /// filter/qualifier/sort/desc/view/size/searchOpen septet · Curated: the template id (the layout document itself is
-    /// already autosaved per command). <c>V3Search</c> is session-only and is never written.</summary>
+    /// filter/qualifier/sort/desc/view/size sextet · Curated: the template id (the layout document itself is already
+    /// autosaved per command). <c>V3Search</c> is session-only and is never written; the search OPEN flag lives on
+    /// <c>LibraryV3Session.SearchOpen</c> (ephemeral, W1) and was never a setting to begin with.</summary>
     void FlushBagOf(SidebarDesign design)
     {
         switch (design)
@@ -191,7 +191,6 @@ public sealed class SidebarPreferences
                 _settings.Set(SidebarKeys.V3Desc, V3Desc.Peek());
                 _settings.Set(SidebarKeys.V3View, V3View.Peek());
                 _settings.Set(SidebarKeys.V3GridSize, V3GridSize.Peek());
-                _settings.Set(SidebarKeys.V3SearchOpen, V3SearchOpen.Peek());
                 break;
             case SidebarDesign.Curated:
                 _settings.Set(SidebarKeys.CuratedTemplateId, _layout.TemplateId);
@@ -217,7 +216,6 @@ public sealed class SidebarPreferences
                 V3Desc.SetIfChanged(_settings.Get(SidebarKeys.V3Desc));
                 V3View.SetIfChanged(_settings.Get(SidebarKeys.V3View));
                 V3GridSize.SetIfChanged(_settings.Get(SidebarKeys.V3GridSize));
-                V3SearchOpen.SetIfChanged(_settings.Get(SidebarKeys.V3SearchOpen));
                 break;
         }
         V3Search.SetIfChanged("");
@@ -314,10 +312,12 @@ public sealed class SidebarPreferences
     public Signal<bool> V3Desc { get; }
     public Signal<int> V3View { get; }
     public Signal<int> V3GridSize { get; }
-    public Signal<bool> V3SearchOpen { get; }
 
     /// <summary>The library-only search text. SESSION-ONLY: never persisted, never restored, cleared on every design
-    /// switch (the <c>LibraryStateKeys</c> precedent — filter text starts empty each launch).</summary>
+    /// switch (the <c>LibraryStateKeys</c> precedent — filter text starts empty each launch). The OPEN/closed flag for
+    /// the search HOST is not here at all — it lives on <c>LibraryV3Session.SearchOpen</c> (W1): unlike this text, it
+    /// was a persisted setting before, and a relaunch reopening a stale, unfocused field was exactly the bug that
+    /// moving it off <see cref="SidebarPreferences"/> fixed.</summary>
     public Signal<string> V3Search { get; }
 
     public void SetV3Filter(int v) { V3Filter.SetIfChanged(v); _settings.Set(SidebarKeys.V3Filter, v); }
@@ -335,13 +335,6 @@ public sealed class SidebarPreferences
         if (sort == (int)SidebarV3Sort.Custom) return;
         V3Desc.SetIfChanged(desc);
         _settings.Set(SidebarKeys.V3Desc, desc);
-    }
-
-    public void SetV3SearchOpen(bool open)
-    {
-        V3SearchOpen.SetIfChanged(open);
-        _settings.Set(SidebarKeys.V3SearchOpen, open);
-        if (!open) V3Search.SetIfChanged("");
     }
 
     // ── the local V3 custom order (a view overlay; explicit resource drops may also mutate the rootlist) ──

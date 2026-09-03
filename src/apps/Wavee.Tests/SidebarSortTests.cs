@@ -7,16 +7,18 @@ namespace Wavee.Tests;
 // The five sidebar sort comparators (F.7.7), driven against the REAL SidebarSort (source-included, engine-free).
 // The properties that matter here are the ones a list view exposes as flicker or as a lie:
 //   * every comparator is a TOTAL order (List<T>.Sort is unstable),
-//   * never-visited entries sink as a BLOCK under Recents and never float above a visited one when reversed,
+//   * never-PLAYED entries sink as a BLOCK under Recents and never float above a played one when reversed,
+//   * a VISIT (LastVisitedTicksUtc, navigation) never reorders Recents — only a PLAY (LastPlayedMs) does,
 //   * empty creators stay last under Creator in both directions,
 //   * Custom appends unknown ids stably and ignores `desc`.
 public class SidebarSortTests
 {
     static SidebarLibraryEntry Pl(string id, string name, string creator = "Owner",
-                                  long sortStamp = 0, long visited = 0, int order = 0) =>
+                                  long sortStamp = 0, long visited = 0, int order = 0, long played = 0) =>
         new("pl:spotify:playlist:" + id, SidebarEntryKind.Playlist, "spotify:playlist:" + id, name, creator,
             null, null, ChildCount: 0, AddedAtMs: 0, SortStamp: sortStamp, LastVisitedTicksUtc: visited,
-            SourceOrder: order, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+            SourceOrder: order, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { LastPlayedMs = played };
 
     static SidebarLibraryEntry Artist(string id, string name, int order = 0) =>
         new("artist:spotify:artist:" + id, SidebarEntryKind.Artist, "spotify:artist:" + id, name, "",
@@ -38,27 +40,27 @@ public class SidebarSortTests
     }
 
     [Fact]
-    public void Recents_OrdersByLastVisitedDescending()
+    public void Recents_OrdersByLastPlayedDescending()
     {
         var list = new List<SidebarLibraryEntry>
         {
-            Pl("a", "Alpha", visited: 100),
-            Pl("b", "Bravo", visited: 300),
-            Pl("c", "Charlie", visited: 200),
+            Pl("a", "Alpha", played: 100),
+            Pl("b", "Bravo", played: 300),
+            Pl("c", "Charlie", played: 200),
         };
         Assert.Equal(new[] { "Bravo", "Charlie", "Alpha" }, Names(Sorted(list, SidebarV3Sort.Recents)));
     }
 
     [Fact]
-    public void Recents_NeverVisitedSinkAsABlock_OrderedBySortStampThenName()
+    public void Recents_NeverPlayedSinkAsABlock_OrderedBySortStampThenName()
     {
         var list = new List<SidebarLibraryEntry>
         {
             Pl("n1", "NeverOld", sortStamp: 10),
-            Pl("v1", "Visited", visited: 5),
+            Pl("v1", "Played", played: 5),
             Pl("n2", "NeverNew", sortStamp: 99),
         };
-        Assert.Equal(new[] { "Visited", "NeverNew", "NeverOld" }, Names(Sorted(list, SidebarV3Sort.Recents)));
+        Assert.Equal(new[] { "Played", "NeverNew", "NeverOld" }, Names(Sorted(list, SidebarV3Sort.Recents)));
     }
 
     [Fact]
@@ -66,13 +68,31 @@ public class SidebarSortTests
     {
         var list = new List<SidebarLibraryEntry>
         {
-            Pl("v1", "V1", visited: 100),
-            Pl("v2", "V2", visited: 200),
+            Pl("v1", "V1", played: 100),
+            Pl("v2", "V2", played: 200),
             Pl("n1", "N1", sortStamp: 10),
             Pl("n2", "N2", sortStamp: 20),
         };
-        // Visited block reverses (oldest first) but STAYS ahead of the never-visited block, which also reverses.
+        // Played block reverses (oldest first) but STAYS ahead of the never-played block, which also reverses.
         Assert.Equal(new[] { "V1", "V2", "N1", "N2" }, Names(Sorted(list, SidebarV3Sort.Recents, desc: true)));
+    }
+
+    /// <summary>Opening a row (a click ⇒ a navigation ⇒ LastVisitedTicksUtc moves) must NOT reorder "Recents" —
+    /// only playing something does. This is the sidebar defect this workstream fixes: clicking a playlist used to
+    /// move it under "Recents" via HistoryStore's LastVisitedTicksUtc; the comparator no longer reads that field
+    /// at all.</summary>
+    [Fact]
+    public void Recents_AVisitDoesNotReorder()
+    {
+        var a = Pl("a", "Alpha", played: 200, visited: 10);
+        var b = Pl("b", "Bravo", played: 100, visited: 20);
+        var list = new List<SidebarLibraryEntry> { a, b };
+        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list, SidebarV3Sort.Recents)));
+
+        // Bump the LOWER-played entry's LastVisitedTicksUtc far past the higher-played one's — order must not change.
+        var bVisitedAgain = b with { LastVisitedTicksUtc = 999_999 };
+        var list2 = new List<SidebarLibraryEntry> { a, bVisitedAgain };
+        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list2, SidebarV3Sort.Recents)));
     }
 
     [Fact]

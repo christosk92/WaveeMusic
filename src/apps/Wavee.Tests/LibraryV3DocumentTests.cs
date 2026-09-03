@@ -197,15 +197,20 @@ public sealed class LibraryV3DocumentTests
     [Fact]
     public void TheLikedShortcut_IsAGlyphRouteRow_AtAContentRowHeight()
     {
+        // W7 — a glyph row must be 44 tall with a 32-wide glyph column so its label lands where every content row's
+        // label lands: HeightFor(Cozy, subtitle) = 44, ArtFor(Cozy) = 32. Fixed for every V3 view now (no more
+        // Compact/Comfortable split): Liked Songs is always exactly one row.
         var liked = Find(LibraryV3Document.Build(State()), LibraryV3Document.LikedId);
         Assert.NotNull(liked);
         Assert.Equal(SidebarSectionKind.StaticLinks, liked!.Kind);
         Assert.Equal(SidebarPresentation.List, liked.Opts.Presentation);
         Assert.False(liked.Opts.Artwork);
-        Assert.False(liked.Opts.Subtitles);
-        // Comfortable + no subtitle = 44 = the Cozy+subtitle content row; Compact = 32 = the compact content row.
-        Assert.Equal(SidebarDensity.Comfortable, liked.Opts.Density);
-        Assert.Equal(SidebarDensity.Compact,
+        Assert.True(liked.Opts.Subtitles);
+        Assert.Equal(SidebarDensity.Cozy, liked.Opts.Density);
+        Assert.Equal(44f, SidebarRowGeometry.HeightFor(liked.Opts));
+
+        // The view code no longer changes the shape — CompactList gets the same Cozy/44 row as List.
+        Assert.Equal(SidebarDensity.Cozy,
             Find(LibraryV3Document.Build(State(view: SidebarV3View.CompactList)), LibraryV3Document.LikedId)!
                 .Opts.Density);
 
@@ -213,6 +218,17 @@ public sealed class LibraryV3DocumentTests
         Assert.Equal(SidebarItemTarget.Route, item.Target);
         Assert.Equal(LibraryV3Document.LikedRouteKey, item.Key);
         Assert.True(SidebarIconNames.IsAllowed(item.IconOverride));
+    }
+
+    [Fact]
+    public void Build_NeverEmitsTheTopBarSentinelSection()
+    {
+        // W3 — the nav band is chrome above the header (`LibraryV3NavBand`), not a document section: this document
+        // must never carry `SidebarIds.TopBarSection`, regardless of the topBar handed in (Classic/Curated still
+        // materialise it through `SidebarShortcutsSection.Prepend`, which this document never calls).
+        var topBar = new[] { new SidebarItemSpec("itm_home", SidebarItemTarget.Route, "home") };
+        var doc = LibraryV3Document.Build(State(hasPins: true), topBar);
+        foreach (var s in doc.Sections) Assert.NotEqual(SidebarIds.TopBarSection, s.Id);
     }
 
     // ── the query mirror ──────────────────────────────────────────────────────────────────────────────────────────────

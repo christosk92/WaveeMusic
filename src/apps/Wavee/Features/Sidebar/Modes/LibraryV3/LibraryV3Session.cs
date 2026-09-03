@@ -55,6 +55,24 @@ sealed class LibraryV3Session
     /// than one per frame.</summary>
     public Signal<bool> NarrowFolders { get; } = new(false);
 
+    /// <summary>W1 — whether the search host is expanded. EPHEMERAL, like everything else in this class: it used to be
+    /// <c>prefs.V3SearchOpen</c> (a persisted setting, <c>AppSettings.cs</c>), which is what made a relaunch reopen the
+    /// field with stale focus and no query. A session field is the honest scope — "did the user open search THIS
+    /// session" is not something worth surviving a restart.</summary>
+    public Signal<bool> SearchOpen { get; } = new(false);
+
+    /// <summary>Open the search host. Never closes it itself — <see cref="CloseSearch"/> is the only writer of false,
+    /// so the two are never confused at a call site.</summary>
+    public void OpenSearch() => SearchOpen.SetIfChanged(true);
+
+    /// <summary>Close the host AND clear the query in one step: a closed field showing leftover text next time it opens
+    /// would look like a bug, and Spotify's own collapse always empties the box.</summary>
+    public void CloseSearch()
+    {
+        SearchOpen.SetIfChanged(false);
+        Prefs?.V3Search.SetIfChanged("");
+    }
+
     /// <summary>
     /// THE V3 VIEW STATE, in one value — the input the ephemeral document and the chrome are both a function of.
     ///

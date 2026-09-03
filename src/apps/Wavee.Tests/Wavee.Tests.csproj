@@ -101,12 +101,19 @@
     <Compile Include="$(EngineRoot)src\FluentGpu.Controls\ToastCoalescing.cs" />
     <!-- the pure (FluentGpu-free) QR encoder, source-included so QrTests can round-trip-decode its output -->
     <Compile Include="..\Wavee\Features\Auth\Qr.cs" />
+    <!-- the pure (FluentGpu-free) QR plate/cell arithmetic split out of the QrGrid component — QrGridTests, and
+         SetupLayout.QrPlateBudget (below) depends on it too. -->
+    <Compile Include="..\Wavee\Features\Auth\QrPlate.cs" />
     <!-- the pure keyed tracklist diff (Wavee.Core + BCL only) behind the §4.6 choreography — MembershipDiffTests -->
     <Compile Include="..\Wavee\Components\MembershipDiff.cs" />
     <!-- detail layout breakpoint hysteresis (Wavee.Core + BCL only) — DetailLayoutBreakpointTests -->
     <Compile Include="..\Wavee\Features\Detail\DetailLayoutBreakpoints.cs" />
     <!-- which detail surfaces get a resizable rail, at which mode, with which default/clamp (BCL + WaveeSize) — DetailRailPolicyTests -->
     <Compile Include="..\Wavee\Features\Detail\DetailRailPolicy.cs" />
+    <!-- the report dialog's Segmented-index ↔ ReportKind round trip (Wavee namespace + BCL only), lifted out of
+         ReportDialogBody's private KindIndex/IndexToKind switches — ReportKindIndexTests pins it against production
+         code instead of a copy of the switch. -->
+    <Compile Include="..\Wavee\Features\Feedback\ReportKindIndex.cs" />
     <!-- the track list's Loading | Empty | NoMatch | Rows decision (BCL only) — PlaylistListStateTests -->
     <Compile Include="..\Wavee\Features\Detail\PlaylistListState.cs" />
     <!-- home artist-row Mixview width tier + hysteresis (BCL only) — HomeArtistRowLayoutTests -->
@@ -174,6 +181,10 @@
          transitively) plus FluentGpu.Controls.Route, satisfied by the ShellNavDestTests shim — ContentHost itself is
          engine- and page-bound and is deliberately NOT included. ContentHostPageTransitionTests. -->
     <Compile Include="..\Wavee\Features\Shell\PageNavMotion.cs" />
+    <!-- The highlight viewer's slide recipe: a directional Enter over a direction-free Exit (the engine seeds an
+         orphan's exit from the spec it mounted with). Engine Foundation types only, like PageNavMotion above, so it
+         source-includes cleanly — HighlightViewerMotionTests. -->
+    <Compile Include="..\Wavee\Features\ReleaseNotes\HighlightViewerMotion.cs" />
     <!-- Home's landing projection is engine-free: tests pin one authored module per kind while the source ledger stays
          lossless for the Zune-style section directory. -->
     <Compile Include="..\Wavee\Features\Home\HomeLandingProjection.cs" />
@@ -256,6 +267,12 @@
          grouping rules. The rest of Modes\LibraryV3\ is engine-bound chrome and is deliberately NOT included. -->
     <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3Document.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3View.cs" />
+    <!-- Two more of Modes\LibraryV3\'s PURE halves (the chrome sweep, W1/W2): the filter-rail SLOT model (idle/filtered/
+         fused, what a tap writes, roving-focus fallback) and the search-field ESCAPE/BLUR/width rules. Both are System-only
+         (plus the Data\ entry record / the SidebarDesign.cs enums), so LibraryV3ChipStripTests and LibraryV3SearchRulesTests
+         drive the REAL grammar instead of a renderer copy of it. -->
+    <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3ChipStrip.cs" />
+    <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3SearchRules.cs" />
     <!-- the full-page customizer's PURE model (tier ladder + palette table/filter + outline flattening/drag + the
          display projection + the opaque extension-config rewriter). Engine-free by construction, exactly like Data\
          above, so SidebarCustomizerLayoutTests drive the REAL rules. The rest of Features\Sidebar\Curated\ is
@@ -279,6 +296,9 @@
     <!-- FactoryReset delegates its restart to AppRelaunch, so the wipe tests need it compiled in too. -->
     <Compile Include="..\Wavee\App\AppRelaunch.cs" Link="AppRelaunch.cs" />
     <Compile Include="..\Wavee\App\PlayLogStore.cs" Link="PlayLogStore.cs" />
+    <Compile Include="..\Wavee\App\PlayRecency.cs" Link="PlayRecency.cs" />
+    <Compile Include="..\Wavee\Features\Library\LibraryNavOrder.cs" Link="LibraryNavOrder.cs" />
+    <Compile Include="..\Wavee\Features\Detail\AlbumReleaseFactsRules.cs" Link="AlbumReleaseFactsRules.cs" />
     <Compile Include="..\Wavee\App\SessionSnapshotStore.cs" Link="SessionSnapshotStore.cs" />
     <!-- the teaching-tip service's PURE half: the acknowledged-id set codec + the one gating decision (System + BCL only;
          the engine-bound WaveeTips.cs service that consumes it is deliberately NOT included) — WaveeTipsCoreTests -->
@@ -399,6 +419,10 @@
     <!-- The buffering-bar-on-a-paused-restored-track fix's host-side half: a load nobody asked to hear (no play
          intent) announces no Prebuffering/Buffering signal. Same split-for-testability shape as XrunLogLine above. -->
     <Compile Include="..\Wavee\SpotifyLive\Audio\PlayIntentGate.cs" Link="PlayIntentGate.cs" />
+    <!-- The device-reopen gapless bug's frame-domain arithmetic (issue A): the join frame is expressed relative to the
+         LIVE session clock (never track-absolute), so a mid-track device-format soft reload — a new session at clock 0
+         — cannot schedule the next track minutes in the future. Same split-for-testability shape as XrunLogLine above. -->
+    <Compile Include="..\Wavee\SpotifyLive\Audio\GaplessJoinClock.cs" Link="GaplessJoinClock.cs" />
     <!-- the v9 video-manifest parser (System.Text.Json + FluentGpu.WindowsApi's DashSourceDescriptor) — SpotifyVideoManifestTests
          drive it against a real captured manifest in Fixtures\spotify-video-manifest-v9.json -->
     <Compile Include="..\Wavee\SpotifyLive\SpotifyVideoManifest.cs" Link="SpotifyVideoManifest.cs" />
@@ -433,7 +457,9 @@
     <Compile Include="..\Wavee\Features\Player\QueueMovePlan.cs" />
     <!-- artist hero height response (Wavee.Core + BCL only) — ArtistHeroLayoutTests -->
     <Compile Include="..\Wavee\Features\Detail\ArtistHeroLayout.cs" />
-    <Compile Include="..\Wavee\Features\Detail\AlbumDrawerRows.cs" />
+    <!-- the artist drawer's single verdict — one identity-checked decision (selected vs loaded album, rows, columns,
+         cap/show-all, panel + slot heights), Wavee.Core + BCL only — AlbumDrawerVerdictTests -->
+    <Compile Include="..\Wavee\Features\Detail\AlbumDrawerVerdict.cs" />
     <Compile Include="..\Wavee\Features\Detail\DiscographyEraBands.cs" />
     <!-- the drag-chip resolution rules (Wavee.Core + BCL only; the chip SPEC type is a Controls type, which is exactly
          why the decisions live in this engine-free model) — WaveeDragChipModelTests -->

@@ -78,17 +78,6 @@ static class SidebarCover
     /// built-in Liked NAV row keeps its heart mark and only library-list appearances take the cover.</para></summary>
     public static Element Liked(float size) => LikedSongsArtwork.Dynamic(size, Radius(size, false));
 
-    /// <summary>The art slot for a PIN. A pin carries only a display cache (name + uri), so the live cover/mosaic are
-    /// passed in from the entry projection when it knows the entity and left null when it does not — a pin whose entity
-    /// has not loaded still paints its seeded placeholder tile, never a skeleton (§3.1.7).</summary>
-    public static Element ForPin(SidebarPin pin, Image? cover, IReadOnlyList<string>? mosaicTiles, float size)
-        => pin.Kind switch
-        {
-            SidebarEntryKind.Folder => Folder(size),
-            SidebarEntryKind.AppRoute => RouteGlyph(pin.Id, size),
-            _ => Art(cover, mosaicTiles, pin.Id, size, pin.Kind == SidebarEntryKind.Artist),
-        };
-
     /// <summary>Cover art: the image when there is one, a 2×2 mosaic when the playlist is cover-less but carries ≥4
     /// tiles, else the seeded placeholder tile. <paramref name="seedKey"/> is the entity's stable id/uri (never an index)
     /// so a re-sorted list keeps each row's placeholder tint.</summary>

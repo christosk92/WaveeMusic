@@ -41,18 +41,17 @@ static class LibraryV3Document
     public const string LikedItemId = "v3.liked.item";
 
     /// <summary>Build the ephemeral document for one V3 view state.</summary>
-    /// <param name="topBar">PHASE 1 / Decision A — the shell's shortcut band (<c>SidebarPreferences.TopBar</c>), the
-    /// ONE global list on the Curated document. Non-empty ⇒ it is materialised as the FIRST section, ahead of the pin
-    /// band; this is what finally gives V3 navigation of its own (Decision C is satisfied BY Decision A, not by a
-    /// V3-specific branch). Null/empty ⇒ V3's document is exactly what it was.</param>
+    /// <param name="topBar">W3 — the shell's shortcut band (<c>SidebarPreferences.TopBar</c>), the ONE global list
+    /// Classic/Curated still materialise as a document section (<c>SidebarShortcutsSection</c>). V3 does NOT: its own
+    /// band renders as fixed chrome above the header (<c>LibraryV3NavBand</c>, mounted by <c>LibraryV3Chrome</c>), so
+    /// this document must never carry it — a band that scrolls, filters and searches with the list is exactly the
+    /// "shortcuts always showing / never where you'd expect" complaint W3 exists to remove. The parameter survives for
+    /// exactly ONE rule: a user who put Liked Songs in the band must not also get V3's own <c>v3.liked</c> row two
+    /// places down — see obligation 2 below.</param>
     public static SidebarCustomLayout Build(in LibraryV3DocState state,
         IReadOnlyList<SidebarItemSpec>? topBar = null)
     {
-        var sections = new List<SidebarSectionSpec>(4);
-
-        // 0 — THE SHORTCUT BAND, as an ordinary section. Above the pin band because it is the APP's navigation, not the
-        //     library's; V3's own chrome (header / toolbar / chips) still sits above the whole scroll surface.
-        if (SidebarShortcutsSection.Renders(topBar)) sections.Add(SidebarShortcutsSection.From(topBar));
+        var sections = new List<SidebarSectionSpec>(3);
 
         // 1 — the PIN BAND. The shaped projection already carries the surviving pins as its leading band (pin order,
         //     filter-aware), and the mode component hands exactly that band to the planner as `Pins`; this section renders
@@ -69,23 +68,27 @@ static class LibraryV3Document
         //     the lenses where a saved-songs shortcut is truthful (§3.0 obligation 2). A route row, so it follows the UI
         //     culture through ShellNav rather than freezing a label into the document.
         //
-        //     THE PLAN'S "drop v3.liked only if Liked is already a shortcut" RULE, decided here from the actual band:
-        //     the Shortcuts section three rows up may already carry a `liked` ROUTE item, and two rows to the same
-        //     destination a hand apart is the duplication Decision A exists to remove. It is NOT dropped
-        //     unconditionally — a user who removed Liked from their shortcuts still gets V3's own row, which is the
-        //     §3.0 obligation. (An ENTITY item whose uri maps onto Liked does not count: different art, different menu,
-        //     and SidebarShortcutsSection.ContainsRoute owns that distinction.)
+        //     THE "drop v3.liked only if Liked is already a shortcut" RULE, decided here from the actual band: the nav
+        //     band above the header (W3's chrome, not this document) may already carry a `liked` ROUTE item, and two
+        //     rows to the same destination — one in the chrome, one in the list — is the duplication this rule exists
+        //     to remove. It is NOT dropped unconditionally — a user who removed Liked from the band still gets V3's own
+        //     row, which is the §3.0 obligation. (An ENTITY item whose uri maps onto Liked does not count: different
+        //     art, different menu, and SidebarShortcutsSection.ContainsRoute owns that distinction.)
         if (state.LikedVisible && !SidebarShortcutsSection.ContainsRoute(topBar, LikedRouteKey))
             sections.Add(new SidebarSectionSpec(LikedId, SidebarSectionKind.StaticLinks,
                 Title: null, TitleLocKey: null,
                 Hidden: false, Collapsed: false,
-                // Glyph row, no subtitle: Compact ⇒ 32 and Comfortable ⇒ 44, i.e. exactly the two list-row heights the
-                // content bands use (the ladder trick Classic's document documents).
+                // W7 — a GLYPH row must be 44 tall with a 32-wide glyph column so its label lands at the same x as the
+                // content rows' labels: HeightFor(Cozy, subtitle) = 44, ArtFor(Cozy) = 32. Comfortable would give a
+                // 40-wide column and a 77 label (one lane short of every art row beside it). Subtitles: true is what
+                // SELECTS the 44 height — no subtitle text is actually drawn, because a route row never passes one
+                // (`AllowsDisplayField(StaticLinks, Subtitles)` is false, so the user cannot flip this either way).
+                // Fixed for every V3 view — Liked Songs is always exactly one row, so it no longer tracks the
+                // Compact/Cozy split the CONTENT bands use.
                 Display: new SidebarDisplayOptions(
-                    Density: state.View == (int)SidebarV3View.CompactList
-                        ? SidebarDensity.Compact : SidebarDensity.Comfortable,
+                    Density: SidebarDensity.Cozy,
                     Presentation: SidebarPresentation.List,
-                    Artwork: false, Subtitles: false, CountBadges: false,
+                    Artwork: false, Subtitles: true, CountBadges: false,
                     CollapsedByDefault: false, ShowInRail: true),
                 Items: [new SidebarItemSpec(LikedItemId, SidebarItemTarget.Route, LikedRouteKey,
                                             IconOverride: "Heart")]));

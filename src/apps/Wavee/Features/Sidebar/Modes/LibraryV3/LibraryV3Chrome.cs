@@ -58,8 +58,18 @@ sealed class LibraryV3Chrome : Component
             if (missing) _session.PopFolder();
         }, DepKey.From(missing ? 1 : 0, drillVersion));
 
+        // W1 — a search FLATTENS the tree (Foundation obligation 3), so there is no folder to be "inside" of: leave
+        // any drill-in level the moment a query lands. Moved here (out of LibraryV3Search) because this component
+        // already reads state.Searching for the empty-state priority order below — one effect, one owner, instead of
+        // the search component reaching into drill state it otherwise has no business touching.
+        UseLayoutEffect(() =>
+        {
+            if (state.Searching) _session.ResetDrill();
+        }, DepKey.From(state.Searching ? 1 : 0));
+
         var bands = new List<Element>(7)
         {
+            Embed.Comp(() => new LibraryV3NavBand(_session)) with { Key = "v3-nav" },
             Embed.Comp(() => new LibraryV3Header(_session)) with { Key = "v3-header" },
             Embed.Comp(() => new LibraryV3Toolbar(_session)) with { Key = "v3-toolbar" },
             Embed.Comp(() => new LibraryV3Chips(_session)) with { Key = "v3-chips" },

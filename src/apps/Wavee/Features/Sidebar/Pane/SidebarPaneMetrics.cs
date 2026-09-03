@@ -46,6 +46,15 @@ static class SidebarPaneMetrics
     /// itself. Padding to a bare 8 here (which every V3 band used to do) is exactly the 6-DIP ragged left edge.</summary>
     public static readonly Edges4 BandInset = new(ContentLane, 0f, ContentLaneEnd, 0f);
 
+    /// <summary>The x of a chrome band's LEADING VISUAL (21): the content lane plus the rows' own leading lane
+    /// (<see cref="SidebarRowGeometry.LeadingLaneWidth"/>), i.e. exactly where every row's art/glyph column starts. The
+    /// header's library glyph, the closed search host, the first filter chip and the nav band's glyphs all sit here, so
+    /// the head and the list share ONE left edge. Full-width rules and dividers keep <see cref="BandInset"/>.</summary>
+    public const float LeadInset = ContentLane + SidebarRowGeometry.LeadingLaneWidth;
+
+    /// <summary>The padding of a chrome band whose leading visual must sit on the rows' art column.</summary>
+    public static readonly Edges4 LeadBandInset = new(LeadInset, 0f, ContentLaneEnd, 0f);
+
     /// <summary>R3.1.3 — the vertical air above a section header that is not the pane's first row. Section rhythm used to
     /// be ZERO (the planner emits contiguous rows), so five sections read as one undifferentiated column.</summary>
     public const float SectionGap = SidebarRowGeometry.SectionGap;

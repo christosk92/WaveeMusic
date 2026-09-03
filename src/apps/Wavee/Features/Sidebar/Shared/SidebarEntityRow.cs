@@ -44,13 +44,10 @@ static class SidebarRowMetrics
     public static float HeightFor(SidebarDensity density, bool hasSubtitle)
         => SidebarRowGeometry.HeightFor(density, hasSubtitle);
 
-    /// <summary>Art size by density — the art slot shrinks with the row so the 3-DIP gutter and the text baseline stay put.</summary>
-    public static float ArtFor(SidebarDensity density) => density switch
-    {
-        SidebarDensity.Compact => SidebarCover.S20,
-        SidebarDensity.Comfortable => SidebarCover.S40,
-        _ => SidebarCover.S32,
-    };
+    /// <summary>Art size by density — the art slot shrinks with the row so the 3-DIP gutter and the text baseline stay put.
+    /// Delegates to <see cref="SidebarRowGeometry.ArtFor"/> (the engine-free ladder a test can reach); <see cref="SidebarCover.S20"/>/
+    /// <see cref="SidebarCover.S32"/>/<see cref="SidebarCover.S40"/> are asserted equal to it rather than restated.</summary>
+    public static float ArtFor(SidebarDensity density) => SidebarRowGeometry.ArtFor(density);
 
     /// <inheritdoc cref="SidebarRowGeometry.IndentFor"/>
     public static float IndentFor(int depth) => SidebarRowGeometry.IndentFor(depth);
@@ -89,7 +86,7 @@ struct SidebarRowSpec
         ArtSize = float.NaN;
         Leading = null;
         Glyph = null;
-        LeadingChevron = null;
+        DisclosureChevron = null;
         Trailing = null;
         Playing = false;
         PlayingAnimated = false;
@@ -172,9 +169,11 @@ struct SidebarRowSpec
     /// It tints with selection exactly like Classic's library rows.</summary>
     public string? Glyph;
 
-    /// <summary>A disclosure chevron BEFORE the leading visual (folder rows). Build it as
-    /// <c>Icon(expanded ? Icons.ChevronDown : Icons.ChevronRight, 10f, Tok.TextTertiary)</c>.</summary>
-    public Element? LeadingChevron;
+    /// <summary>A folder row's disclosure chevron. W7 moved it OUT of the leading cluster (it used to sit before the
+    /// leading visual, reserving a fixed cell every tree row paid for even when it was not a folder) and INTO the
+    /// TRAILING cluster instead — the FIRST element there, ahead of the now-playing equalizer and <see cref="Trailing"/>.
+    /// Build it with <c>SidebarChevron.Disclosure(open)</c> (the rotating glyph), not a hand-rolled swap.</summary>
+    public Element? DisclosureChevron;
 
     /// <summary>Trailing content (a count badge, a "new" dot, a state glyph). Placed before the overflow affordance.</summary>
     public Element? Trailing;
@@ -349,7 +348,10 @@ static class SidebarEntityRow
         float height = float.IsNaN(spec.Height) ? SidebarRowMetrics.HeightFor(spec.Density, hasSubtitle) : spec.Height;
         float art = float.IsNaN(spec.ArtSize) ? SidebarRowMetrics.ArtFor(spec.Density) : spec.ArtSize;
         bool bareGlyph = spec.Leading is null && spec.Glyph is { Length: > 0 };
-        float gap = float.IsNaN(spec.Gap) ? (bareGlyph ? 12f : 10f) : spec.Gap;
+        // W7: ONE gap for every row shape (no more bareGlyph ⇒ 12 special case) — SidebarRowGeometry.LeadingGap is the
+        // same 10 StandardLeading and TreeLeading already used, so a glyph row's label lands exactly where an art row's
+        // does at the same density (both now build an ArtFor(density)-wide leading column; see the leading column below).
+        float gap = float.IsNaN(spec.Gap) ? SidebarRowGeometry.LeadingGap : spec.Gap;
         // A copy: an `in` parameter cannot be captured by the bound paint thunk. This is the WHOLE-ROW cue only (the
         // rail folder flyout's rows). A PLAN ROW's `Into` plate is the slot's own `DropPlate()` under the row, because a
         // thunk built here is wired at MOUNT and would answer for the row this slot first mounted with.
@@ -367,9 +369,16 @@ static class SidebarEntityRow
         ColorF hoverFill = !enabled ? ColorF.Transparent : selected ? WaveeColors.SelectedHover : Tok.FillSubtleSecondary;
 
         // ── leading column ──────────────────────────────────────────────────────────────────────────────────────────
+        // W7: the bare-glyph arm gets the SAME ArtFor(density)-wide box the art arm builds below, with its 16-DIP icon
+        // CENTRED inside it — a glyph row's column IS the art column now, not a narrower bare icon, so its label lands
+        // where an art row's label lands at the same density (both add ArtX(0) + ArtFor(density) + LeadingGap).
         Element leading;
         if (spec.Leading is { } given) leading = given;
-        else if (bareGlyph) leading = Icon(spec.Glyph!, 16f, selected ? Tok.TextPrimary : Tok.TextSecondary);
+        else if (bareGlyph) leading = new BoxEl
+        {
+            Width = art, Height = art, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Children = [Icon(spec.Glyph!, 16f, selected ? Tok.TextPrimary : Tok.TextSecondary)],
+        };
         else leading = new BoxEl { Width = art, Height = art, Shrink = 0f };   // keeps the leading column's width stable
         if (spec.Track && spec.Leading is not null)
             leading = TrackArt(leading, art, spec.Density);
@@ -378,7 +387,9 @@ static class SidebarEntityRow
         Element text;
         if (!hasSubtitle && spec.Caption is null)
         {
-            text = Body(spec.Label) with { Grow = 1f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+            // Shrink + MinWidth 0, like the stacked arm below: a Grow-only TextEl keeps its intrinsic width and runs
+            // under the trailing cluster instead of ellipsizing when the pane is narrower than the title.
+            text = Body(spec.Label) with { Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
         }
         else
         {
@@ -400,22 +411,53 @@ static class SidebarEntityRow
         // OVERLAY on top of the row instead, so it costs the text lane ZERO width whether or not the row is hovered:
         // no reserved-vs-revealed toggle, and therefore no reflow/re-trim on hover either.
         bool overflow = ShowsOverflow(in spec);
+        // W7: the folder disclosure chevron moved OUT of the leading cluster and into the TRAILING one — it is the
+        // FIRST trailing element (ahead of the now-playing equalizer, ahead of Trailing's count badge / "+"), because a
+        // folder is never `Playing` and the chevron reads as "this row has children", which belongs beside the other
+        // row-state glyphs rather than mixed into the leading art column. Built as ONE grouped element (not up to three
+        // loose flex children) so the overflow padding below applies once, to the whole cluster.
+        Element? trailingCluster = null;
+        {
+            int trailingCount = (spec.DisclosureChevron is null ? 0 : 1) + (spec.Playing ? 1 : 0) + (spec.Trailing is null ? 0 : 1);
+            if (trailingCount > 0)
+            {
+                var parts = new Element[trailingCount];
+                int t = 0;
+                if (spec.DisclosureChevron is { } chevron) parts[t++] = chevron;
+                if (spec.Playing) parts[t++] = WaveeEqualizer.Of(spec.PlayingAnimated, Tok.AccentDefault, 12f);
+                if (spec.Trailing is { } trailingContent) parts[t++] = trailingContent;
+                trailingCluster = new BoxEl
+                {
+                    Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = gap,
+                    // The hover-revealed "…" is a 26-DIP ZSTACK overlay parked at the row's trailing edge (see
+                    // OverflowButton()); without this reserve a chevron or count badge sits UNDER it on hover. Only
+                    // reserved when the row actually carries the affordance — most rows do not pay for it.
+                    Padding = overflow ? new Edges4(0f, 0f, OverflowWidth, 0f) : default,
+                    Children = parts,
+                };
+            }
+        }
         int count = 2                                                   // leading cluster + text
-                  + (spec.CheckLane is null ? 0 : 1)
-                  + (spec.Playing ? 1 : 0)
-                  + (spec.Trailing is null ? 0 : 1);
+                  + (trailingCluster is null ? 0 : 1);
         var kids = new Element[count];
         int k = 0;
-        // FIRST, ahead of the leading cluster: WinUI's inline multi-select lane slides in from −28 px and pushes the
-        // row's content right. It is `Flow.Show`-gated and bound, so it costs a mounted-but-hidden node and no
-        // re-render when the selection changes.
-        if (spec.CheckLane is { } checkLane) kids[k++] = checkLane;
-        kids[k++] = spec.TreeNode
-            ? TreeLeading(leading, spec.LeadingChevron, spec.TreeDepth, spec.TreeContinuationMask, height)
-            : StandardLeading(leading, spec.LeadingChevron, gap);
+        Element leadingCluster = spec.TreeNode
+            ? TreeLeading(leading, spec.TreeDepth, spec.TreeContinuationMask, height)
+            : StandardLeading(leading, gap);
+        // The multi-select check lane (WinUI's inline lane that slides in from −28 px and pushes the row's content
+        // right) rides INSIDE the leading cluster, in a gapless box — never as a sibling of it in the gapped row. As a
+        // sibling, its `Flow.Show` boundary was still a flex child while HIDDEN, so the row's 10-DIP Gap after it
+        // pushed every rootlist row (the only rows that carry the lane) one gap right of the album/artist rows beside
+        // them. It is bound, so it still costs a mounted-but-hidden node and no re-render when the selection changes.
+        if (spec.CheckLane is { } checkLane)
+            leadingCluster = new BoxEl
+            {
+                Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Children = [checkLane, leadingCluster],
+            };
+        kids[k++] = leadingCluster;
         kids[k++] = text;
-        if (spec.Playing) kids[k++] = WaveeEqualizer.Of(spec.PlayingAnimated, Tok.AccentDefault, 12f);
-        if (spec.Trailing is { } trailing) kids[k++] = trailing;
+        if (trailingCluster is not null) kids[k++] = trailingCluster;
 
         // Without the overflow affordance, the row stays the plain flex row it always was — no extra node, no ZStack
         // measure/arrange cost for the vast majority of non-menu rows (a folder end-cap, a disabled retention row, …).
@@ -511,44 +553,39 @@ static class SidebarEntityRow
     /// moves.</summary>
     public static Element SelGutter() => new BoxEl { Width = SidebarRowGeometry.SelGutterWidth, Shrink = 0f };
 
-    /// <summary>The ordinary row's leading cluster, factored so the selection gutter and optional disclosure do not
-    /// consume the row's text gap as separate flex children.</summary>
-    static Element StandardLeading(Element leading, Element? chevron, float gap)
+    /// <summary>The ordinary row's leading cluster: the selection gutter, then the leading visual, one <paramref name="gap"/>
+    /// apart. No disclosure lane here any more (W7) — a folder's chevron is a TRAILING element now, so this is exactly
+    /// what a depth-0 <see cref="TreeLeading"/> also builds.</summary>
+    static Element StandardLeading(Element leading, float gap) => new BoxEl
     {
-        Element[] children = chevron is null
-            ? [SelGutter(), leading]
-            : [SelGutter(), chevron, leading];
-        return new BoxEl
-        {
-            Direction = 0, Shrink = 0f, Gap = gap, AlignItems = FlexAlign.Center,
-            Children = children,
-        };
-    }
+        Direction = 0, Shrink = 0f, Gap = gap, AlignItems = FlexAlign.Center,
+        Children = [SelGutter(), leading],
+    };
 
-    /// <summary>A tree row uses a fixed disclosure cell at every depth, then visible connector cells. Folder and leaf art
-    /// consequently share one column, while nesting reads as a relationship instead of a widening blank margin.</summary>
-    static Element TreeLeading(Element leading, Element? chevron, int depth, byte continuationMask, float height)
+    /// <summary>A tree row: the selection gutter and depth's worth of connector cells (butted together, no gap between
+    /// them — <see cref="SidebarRowGeometry.TreeContentX"/> is exactly this sum), then ONE <see cref="SidebarRowGeometry.LeadingGap"/>
+    /// before the leading visual — identical to <see cref="StandardLeading"/> at depth 0. W7 removed the fixed 16-DIP
+    /// disclosure cell this used to reserve ahead of the art on EVERY tree row (folder or leaf): a leaf row paid for a
+    /// chevron it never drew the moment its section had any folder in it, and the reserve put every tree row 4 DIP right
+    /// of every other row family. The folder's chevron now lives in the row's TRAILING cluster instead
+    /// (<see cref="SidebarRowSpec.DisclosureChevron"/>, wired in <see cref="Create"/>).</summary>
+    static Element TreeLeading(Element leading, int depth, byte continuationMask, float height)
     {
         int levels = Math.Clamp(depth, 0, 4);
-        var children = new Element[levels > 0 ? 4 : 3];
-        int i = 0;
-        children[i++] = SelGutter();
-        if (levels > 0) children[i++] = TreeGuides(levels, continuationMask, height);
-        children[i++] = new BoxEl
-        {
-            // The fixed disclosure cell. Its width — and the guide cells' and the gutter's — come from
-            // `SidebarRowGeometry`, which is also what `TreeContentX` sums: the caret and `PickDepth` read that sum, so
-            // a literal here would put the insertion line at a depth the row does not draw (F2).
-            Width = SidebarRowGeometry.TreeChevronCell, Height = height, Shrink = 0f,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            HitTestPassThrough = true,
-            Children = chevron is null ? [] : [chevron],
-        };
-        children[i] = leading;
+        // Gutter and guides are ONE unit with no gap between them — SidebarRowGeometry.TreeContentX sums SelGutterWidth
+        // and depth·TreeGuideStep back-to-back, so a gap here would put the caret and PickDepth's ladder one gap short
+        // of what the row actually draws (F2/F3).
+        Element lane = levels > 0
+            ? new BoxEl
+              {
+                  Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
+                  Children = [SelGutter(), TreeGuides(levels, continuationMask, height)],
+              }
+            : SelGutter();
         return new BoxEl
         {
-            Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
-            Children = children,
+            Direction = 0, Shrink = 0f, Gap = SidebarRowGeometry.LeadingGap, AlignItems = FlexAlign.Center,
+            Children = [lane, leading],
         };
     }
 
@@ -602,6 +639,10 @@ static class SidebarEntityRow
     static bool ShowsOverflow(in SidebarRowSpec spec)
         => spec.Overflow && spec.Enabled && spec.MenuOverlay is not null && spec.Menu is not null;
 
+    /// <summary>The hover overlay's box (26 DIP) — shared with the trailing cluster's own reserve in <c>Create</c>, so a
+    /// chevron or a count badge can never sit under it whichever this changes to.</summary>
+    const float OverflowWidth = 26f;
+
     /// <summary>The hover-revealed trailing "…", as a ZSTACK OVERLAY (a sized layer inside the row's outer
     /// <c>ZStack = true</c> — see <c>Create</c>) rather than a flex sibling of the text: <c>JustifySelf = End</c> +
     /// <c>AlignSelf = Center</c> park it flush against the row's own trailing 8-DIP padding, vertically centred,
@@ -614,13 +655,13 @@ static class SidebarEntityRow
     /// button and the right-click open the same menu anchored at the button.</summary>
     static Element OverflowButton() => new BoxEl
     {
-        Width = 26f, Height = 26f, JustifySelf = FlexAlign.End, AlignSelf = FlexAlign.Center,
+        Width = OverflowWidth, Height = OverflowWidth, JustifySelf = FlexAlign.End, AlignSelf = FlexAlign.Center,
         Opacity = 0f, HoverOpacity = 1f,
         Children =
         [
             new BoxEl
             {
-                Width = 26f, Height = 26f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Width = OverflowWidth, Height = OverflowWidth, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Corners = CornerRadius4.All(13f),
                 HoverFill = Tok.FillSubtleTertiary,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand,

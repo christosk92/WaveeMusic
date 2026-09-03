@@ -335,9 +335,11 @@ sealed class SidebarPaneSlot : Component
         // never joins the hot Identity fanout: a change to it bumped this row's epoch, which is what re-rendered us.
         var (playing, animated) = _o.RowPlayState(index);
         float height = SidebarPaneMetrics.RowHeight(section);
-        // TreeLeading's disclosure-lane reserve only earns its keep where a folder actually needs a leaf's art to
-        // align against it (SectionHasFolder); a folder-free PlaylistTree section (V3's common case) renders its
-        // rows through StandardLeading instead, flush with a StaticLinks row like Liked Songs above it.
+        // TreeLeading is IDENTICAL to StandardLeading at depth 0 (W7 removed the reserved disclosure cell it used to
+        // pay for on every row), so the only visible reason to take the tree path at all is the CONNECTOR GUIDES a
+        // deeper row draws — and depth only exists where a folder does. A folder-free PlaylistTree section (V3's
+        // common case) therefore renders its rows through StandardLeading, flush with a StaticLinks row like Liked
+        // Songs above it, exactly as it would through TreeLeading anyway.
         bool treeNode = section.Kind == SidebarSectionKind.PlaylistTree && _o.SectionHasFolder(row.SectionId);
         int treeDepth = treeNode ? entry.Depth : 0;
         int baseDepth = treeNode ? Math.Max(0, row.Depth - treeDepth) : row.Depth;
@@ -454,8 +456,13 @@ sealed class SidebarPaneSlot : Component
         string folderId = entry.FolderId;
         bool expanded = _o.Prefs?.IsFolderExpanded(folderId) ?? true;
         float height = SidebarPaneMetrics.RowHeight(section);
-        int treeDepth = entry.Depth;
-        int baseDepth = Math.Max(0, row.Depth - treeDepth);
+        // W7: the SAME test EntryRow uses — a folder outside a PlaylistTree section (a pinned or recently-played
+        // folder shortcut) is not a tree row at all, so it must not out-indent its non-tree siblings. TreeDepth is the
+        // row's RELATIVE depth (its own tree depth), never the rootlist depth, so a PINNED folder sits flush with its
+        // pinned siblings instead of marching right by its rootlist nesting.
+        bool treeNode = section.Kind == SidebarSectionKind.PlaylistTree;
+        int treeDepth = treeNode ? entry.Depth : 0;
+        int baseDepth = treeNode ? Math.Max(0, row.Depth - treeDepth) : row.Depth;
         var snapshot = entry;
         _ = sel;   // a folder is never the selected ROUTE (it has none)
 
@@ -471,7 +478,7 @@ sealed class SidebarPaneSlot : Component
         bool reordering = _o.TryBandOf(index, out _);
         // F2 — the same Rename verb the folder menu carries, reached from the keyboard (see EntityRow).
         Action? rename = _o.Acts is { } renameActs && !reordering ? Menus.SidebarRenameAction(renameActs, in snapshot) : null;
-        bool rootlistItem = section.Kind == SidebarSectionKind.PlaylistTree && !reordering;
+        bool rootlistItem = treeNode && !reordering;
         // Alt+↑/↓ moves a FOLDER among its siblings exactly as it moves a playlist — the whole subtree travels with it,
         // because the move addresses the folder's own rootlist span (see EntityRow for the rest of the reasoning).
         Action<int>? move = rootlistItem && _o.Acts is { } moveActs
@@ -496,9 +503,9 @@ sealed class SidebarPaneSlot : Component
             Label = entry.Name.Length > 0 ? entry.Name : SidebarPaneText.ShortUri(entry.Id),
             Subtitle = section.Opts.Subtitles ? Strings.Sidebar.V3.ItemCount(entry.ChildCount) : null,
             Depth = baseDepth,
-            TreeNode = true,
+            TreeNode = treeNode,
             TreeDepth = treeDepth,
-            TreeContinuationMask = TreeMaskOf(row.SectionId, index, treeDepth),
+            TreeContinuationMask = treeNode ? TreeMaskOf(row.SectionId, index, treeDepth) : (byte)0,
             Density = section.Opts.Density,
             Height = height,
             ArtSize = SidebarPaneMetrics.ArtSize(section),
@@ -507,7 +514,9 @@ sealed class SidebarPaneSlot : Component
                 : null,
             Glyph = section.Opts.Artwork ? null : (expanded ? Icons.FolderOpen : Icons.Folder),
             // R3.1.7a — the folder disclosure rotates too (ChevronRight → 90°), so headers and folders share one motion.
-            LeadingChevron = SidebarChevron.Disclosure(_folderOpen ??= FolderOpenLive),
+            // W7: moved to the TRAILING cluster (SidebarEntityRow.Create) — the folder mosaic tile stays the leading
+            // visual (Spotify's folder rows have no leading chevron either), and this is now the first trailing element.
+            DisclosureChevron = SidebarChevron.Disclosure(_folderOpen ??= FolderOpenLive),
             Trailing = FolderTrailing(section, in snapshot, folderId, rootlistItem),
             OnClick = activate,
             Overflow = _o.Acts is not null && _o.MenuOverlay is not null,
@@ -689,8 +698,8 @@ sealed class SidebarPaneSlot : Component
             Enabled = enabled,
             Density = section.Opts.Density,
             Height = height,
-            Leading = SidebarPaneIcon.Leading(item.IconOverride, icon, enabled),
-            Gap = 12f,             // keep the bare-glyph rhythm even though the leading slot is authored
+            // Art-wide leading column + the row's own LeadingGap (W7): an action row's label lines up with its siblings'.
+            Leading = SidebarPaneIcon.Leading(item.IconOverride, icon, enabled, SidebarPaneMetrics.ArtSize(section)),
             Overflow = _o.MenuOverlay is not null && LayoutOnlyMenu(section, item, index, item.Key) is not null,
             OnClick = click,
             MenuOverlay = _o.MenuOverlay,
@@ -1361,8 +1370,9 @@ sealed class SidebarPaneSlot : Component
                 _ = _o.SubscribeRowEpoch(i);
                 var slot = _o.DropSlotFor(i);
                 // THE ONE TREE-CONTENT ORIGIN. The caret starts where the row at that depth starts DRAWING —
-                // gutter + connector cells + the disclosure cell — not at `IndentFor(depth)`, which is the row's outer
-                // padding ladder and paints the line roughly one whole level to the left of what it means (F2).
+                // gutter + connector cells (no reserved disclosure cell any more; W7 moved the folder chevron to the
+                // TRAILING cluster) — not at `IndentFor(depth)`, which is the row's outer padding ladder and paints
+                // the line roughly one whole level to the left of what it means (F2).
                 return Affine2D.Translation(SidebarRowGeometry.TreeContentX(slot.Depth),
                                             SidebarDropCue.LineY(slot.Kind, _o.RowExtentOf(i)));
             }),

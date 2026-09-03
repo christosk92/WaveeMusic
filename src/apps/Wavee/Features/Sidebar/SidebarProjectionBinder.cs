@@ -95,6 +95,10 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     ISidebarContributionHost? _host;
     SidebarDataSourceTable? _table;
     HistoryStore? _history;
+    // The pump's debounced V3Search (SidebarBinderPump.Render → UseDebouncedValue), attached once from its attach
+    // effect (never from render — AttachSearch itself does no signal work, it just swaps which signal Read/Rebuild
+    // peek). Null until the pump's first effect runs; Read/Rebuild fall back to prefs.V3Search directly until then.
+    IReadSignal<string>? _effectiveSearch;
     Action? _detachSources;
     SidebarProjectionInput _input;
     SidebarBinderTriggers _lastTriggers;
@@ -162,6 +166,13 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         Invalidate();
         if (_started) Sync();
     }
+
+    /// <summary>Wire the pump's debounced <c>V3Search</c> (90 ms — <c>SidebarBinderPump.SearchDebounceMs</c>) as the
+    /// text <see cref="Read(bool,HistoryStore?,IReadSignal{string}?)"/>'s <c>SearchHash</c> term and <see cref="Rebuild"/>
+    /// both read, so a rebuild fired by an unrelated trigger mid-typing sees the SAME (debounced) text the trigger
+    /// fold saw — never the raw keystroke-by-keystroke preference. Idempotent: called every time the pump's attach
+    /// effect runs (same instance each time unless the pump itself remounts).</summary>
+    internal void AttachSearch(IReadSignal<string> search) => _effectiveSearch = search;
 
     /// <summary>Idempotent start: capture the UI-thread marshaller, warm the cheap library cells, hand the marshaller to
     /// every source that owns async work, subscribe their Changed, and do the first rebuild.</summary>
@@ -336,13 +347,14 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         // 4 — THE projection. Fully flattened (folders AND all their children) because this list is the planner's
         //     `Library` slice, the feeds' join index and the pin resolver: hiding a collapsed folder's playlists here
         //     would hide them from an EntityList section too. Folder COLLAPSE is a V3-list concern, handled in step 6.
+        var lastPlayed = _playLog?.Recency;
         var full = SidebarProjection.Build(_all, SidebarEntryKindMask.All, tree, albums, artists, shows, addedAt,
-                                           recency, firstSeen, includeFolderChildren: true);
+                                           recency, firstSeen, includeFolderChildren: true, lastPlayed: lastPlayed);
 
         // 5 — the tree slice the planner's PlaylistTree section walks: depth-stamped, folders carried as Folder rows.
         SidebarProjection.Build(_tree, SidebarEntryKindMask.PlaylistTree, tree, Array.Empty<Album>(),
                                 Array.Empty<Artist>(), Array.Empty<Show>(), addedAt, recency, firstSeen,
-                                includeFolderChildren: true);
+                                includeFolderChildren: true, lastPlayed: lastPlayed);
 
         _index.Rebuild(_all);
 
@@ -353,7 +365,10 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         var qualifier = v3 ? (SidebarV3Qualifier)prefs.V3Qualifier.Peek() : SidebarV3Qualifier.Any;
         var sort = (SidebarV3Sort)prefs.V3Sort.Peek();
         bool desc = prefs.V3Desc.Peek();
-        string search = v3 ? SidebarSearch.Normalize(prefs.V3Search.Peek()) : "";
+        // Rebuild has no render context, so this PEEKS the debounced signal the pump attached (AttachSearch) instead
+        // of prefs.V3Search directly — the same text the trigger fold in Read(...) subscribed to, so a rebuild fired
+        // by another trigger mid-typing can never run ahead of the debounced tick.
+        string search = v3 ? SidebarSearch.Normalize((_effectiveSearch ?? (IReadSignal<string>)prefs.V3Search).Peek()) : "";
         bool searching = search.Length > 0;
         bool qualifiers = SidebarProjection.QualifiersAvailable(full.FlavorMask);
 
@@ -362,7 +377,8 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                                                addedAt, recency, firstSeen,
                                                // Searching FLATTENS the tree; otherwise a folder is opaque until expanded.
                                                includeFolderChildren: searching,
-                                               isFolderExpanded: searching ? null : _isFolderExpanded);
+                                               isFolderExpanded: searching ? null : _isFolderExpanded,
+                                               lastPlayed: lastPlayed);
 
         ResolvePins(prefs);
         var query = new SidebarV3Query(filter, qualifier, sort, desc, search, qualifiers);
@@ -744,28 +760,44 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     /// <para><paramref name="history"/> is the pump's CONTEXT history store, which it has one render EARLIER than the
     /// binder does (the attach happens in the pump's effect). Subscribing through it means the very first render already
     /// depends on <c>HistoryStore.Version</c> — otherwise a navigation would never re-render the pump and the recents feed
-    /// would sit stale until some other trigger moved.</para></summary>
-    internal long SubscribeAndFold(HistoryStore? history = null)
+    /// would sit stale until some other trigger moved.</para>
+    ///
+    /// <para><paramref name="search"/> is the pump's debounced <c>V3Search</c> signal, one render EARLIER than
+    /// <see cref="_effectiveSearch"/> (the attach also happens in the pump's effect) — exactly the <paramref
+    /// name="history"/> pattern, so the very first render's fold already reads the debounced text instead of every
+    /// keystroke.</para></summary>
+    internal long SubscribeAndFold(HistoryStore? history = null, IReadSignal<string>? search = null)
     {
-        var triggers = Read(subscribe: true, history ?? _history);
+        var triggers = Read(subscribe: true, history ?? _history, search);
 #if DEBUG || FLUENTGPU_DIAG
         if (s_binderDiag) ObservePump(triggers);
 #endif
         return triggers.Fold();
     }
 
-    SidebarBinderTriggers Read(bool subscribe) => Read(subscribe, _history);
+    SidebarBinderTriggers Read(bool subscribe) => Read(subscribe, _history, null);
 
-    SidebarBinderTriggers Read(bool subscribe, HistoryStore? history)
+    SidebarBinderTriggers Read(bool subscribe, HistoryStore? history, IReadSignal<string>? search = null)
     {
         var prefs = _prefs;
         int libraryEpoch = Epoch(subscribe);
         long playback = PlaybackEpoch(subscribe);
+        // The debounced signal the pump attached (or was just handed for this very call, pre-attach) — never the raw
+        // prefs.V3Search directly once a debounced signal exists, so this trigger's SearchHash and Rebuild's own peek
+        // of the same field can never disagree about what text a rebuild is for.
+        var effSearch = search ?? _effectiveSearch;
+        string? searchText = effSearch is not null
+            ? (subscribe ? effSearch.Value : effSearch.Peek())
+            : (subscribe ? prefs.V3Search.Value : prefs.V3Search.Peek());
 
         return new SidebarBinderTriggers(
             LibraryEpoch: libraryEpoch,
             PinsVersion: Ver(prefs.PinsVersion, subscribe),
             HistoryVersion: history is null ? 0 : Ver(history.Version, subscribe),
+            // Also re-SORTS: PlayLogStore.Version bumps on Append AND MergeRecency, and SidebarProjection.Build now
+            // stamps LastPlayedMs from PlayLogStore.Recency, so a play here or synced from another device both
+            // rebuilds AND re-sorts "Recents" — a navigation (HistoryVersion, above) still rebuilds the VISITED feed
+            // but no longer moves the played-based sort.
             PlayLogRevision: _playLog is null ? 0 : Ver(_playLog.Version, subscribe),
             LayoutVersion: Ver(prefs.LayoutVersion, subscribe),
             FolderVersion: Ver(prefs.FolderVersion, subscribe),
@@ -775,8 +807,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 (int)(subscribe ? prefs.Design.Value : prefs.Design.Peek()),
                 Ver(prefs.V3Filter, subscribe), Ver(prefs.V3Qualifier, subscribe), Ver(prefs.V3Sort, subscribe),
                 subscribe ? prefs.V3Desc.Value : prefs.V3Desc.Peek()),
-            SearchHash: (subscribe ? prefs.V3Search.Value : prefs.V3Search.Peek())
-                        ?.GetHashCode(StringComparison.Ordinal) ?? 0,
+            SearchHash: searchText?.GetHashCode(StringComparison.Ordinal) ?? 0,
             SourceEpoch: Ver(_sourceEpoch, subscribe),
             PlaybackEpoch: playback);
     }
@@ -898,6 +929,11 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     /// a rebuild can never write a signal mid-render.</summary>
     sealed class SidebarBinderPump : Component
     {
+        // WHY 90 ms: a keystroke used to run the whole 11-step Rebuild synchronously — every character typed into V3
+        // search re-walked the entire library. 90 ms is under the perceptual threshold (it does not read as lag) and
+        // lets a burst of typing coalesce into one rebuild instead of one per keystroke.
+        const float SearchDebounceMs = 90f;
+
         readonly SidebarProjectionBinder _binder;
         public SidebarBinderPump(SidebarProjectionBinder binder) => _binder = binder;
 
@@ -907,11 +943,16 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
             // the binder gets it. Keyed on the INSTANCE: mount this below the shell's provide and the visited feed lights
             // up the moment the provide resolves; mount it above and everything else still works, visited stays empty.
             var history = UseContext(HistoryStore.Slot);
-            long fold = _binder.SubscribeAndFold(history);   // reads = subscriptions; no work, no writes
+            // The debounced query text. Threaded into SubscribeAndFold (below) so the very FIRST render's trigger fold
+            // already reads this signal instead of prefs.V3Search directly — mirrors how `history` is handed in one
+            // render before AttachHistory runs.
+            var search = UseDebouncedValue(_binder._prefs.V3Search, SearchDebounceMs);
+            long fold = _binder.SubscribeAndFold(history, search);   // reads = subscriptions; no work, no writes
             var post = UsePost();
             UseEffect(() =>
             {
                 _binder.AttachHistory(history);
+                _binder.AttachSearch(search);
                 _binder.Start(post);
             }, DepKey.FromRef(history));
             UseEffect(_binder._syncAction, DepKey.From(fold));

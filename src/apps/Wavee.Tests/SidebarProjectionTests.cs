@@ -46,11 +46,13 @@ public class SidebarProjectionTests
         SidebarRecency? recency = null,
         SidebarFirstSeen? firstSeen = null,
         bool flatten = true,
-        Func<string, bool>? expanded = null)
+        Func<string, bool>? expanded = null,
+        IReadOnlyDictionary<string, long>? lastPlayed = null)
     {
         var into = new List<SidebarLibraryEntry>();
         var r = SidebarProjection.Build(into, kinds, tree ?? NoTree, albums ?? NoAlbums, artists ?? NoArtists,
-                                       shows ?? NoShows, addedAt, recency, firstSeen ?? Seen(), flatten, expanded);
+                                       shows ?? NoShows, addedAt, recency, firstSeen ?? Seen(), flatten, expanded,
+                                       lastPlayed);
         return (into, r);
     }
 
@@ -449,6 +451,42 @@ public class SidebarProjectionTests
         Assert.Equal(40L, recency.LastVisitedTicks("pl:x"));
         Assert.Equal(10L, recency.LastVisitedTicks("home"));
         Assert.Same(SidebarRecency.Empty, SidebarRecency.Build(Array.Empty<SidebarVisit>()));
+    }
+
+    // ── played-based recency (F.7.5's "Recents" = played) ────────────────────────────────────────────────────────────
+    [Fact]
+    public void Build_StampsLastPlayedMs_FromTheMapByUri_AndZeroWhenAbsent()
+    {
+        var tree = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "Played")), new PlaylistLeaf(Pl("p2", "Never")) };
+        var albums = new[] { Al("a1", "PlayedAlbum", "X") };
+        var artists = new[] { Ar("r1", "PlayedArtist") };
+        var shows = new[] { Sh("s1", "PlayedShow", "Pub") };
+        var lastPlayed = new Dictionary<string, long>(StringComparer.Ordinal)
+        {
+            ["spotify:playlist:p1"] = 555L,
+            ["spotify:album:a1"] = 777L,
+            ["spotify:artist:r1"] = 888L,
+            ["spotify:show:s1"] = 999L,
+        };
+
+        var (rows, _) = Build(SidebarEntryKindMask.All, tree, albums, artists, shows, lastPlayed: lastPlayed);
+
+        var byName = new Dictionary<string, SidebarLibraryEntry>(StringComparer.Ordinal);
+        foreach (var e in rows) byName[e.Name] = e;
+
+        Assert.Equal(555L, byName["Played"].LastPlayedMs);
+        Assert.Equal(0L, byName["Never"].LastPlayedMs);               // absent from the map ⇒ never played
+        Assert.Equal(777L, byName["PlayedAlbum"].LastPlayedMs);
+        Assert.Equal(888L, byName["PlayedArtist"].LastPlayedMs);
+        Assert.Equal(999L, byName["PlayedShow"].LastPlayedMs);
+    }
+
+    [Fact]
+    public void Build_WithNoLastPlayedMap_EveryRowStaysZero()
+    {
+        var tree = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "P1")) };
+        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, tree, lastPlayed: null);
+        Assert.Equal(0L, Assert.Single(rows).LastPlayedMs);
     }
 
     // ── search (F.7.8) ────────────────────────────────────────────────────────────────────────────────────────────────

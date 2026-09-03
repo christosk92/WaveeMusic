@@ -74,12 +74,32 @@ sealed record SidebarPaneConfig
     /// before <see cref="SearchHead"/>. Invoked in the pane's render.</summary>
     public Func<Element?>? Head { get; init; }
 
-    // PHASE 1 / Decision A — `NavBand` and `RailHead` are GONE. The shortcut band used to reach the renderer as two
-    // delegates all three modes set identically, which is the shape of a seam that should never have existed: the band
-    // is CONTENT, so it is now the first SECTION of the document each mode returns from `Document`
+    // PHASE 1 / Decision A — `NavBand` is GONE for Classic and Curated. The shortcut band used to reach the renderer as
+    // two delegates all three modes set identically, which is the shape of a seam that should never have existed: for
+    // those two designs the band is CONTENT, so it is the first SECTION of the document `Document` returns
     // (`SidebarShortcutsSection`). The expanded pane plans it like any other StaticLinks section, the 56-DIP rail draws
     // it from `ShowInRail` through `SidebarRowPlanner.BuildRail`, and the selection indicator is the pane's ordinary
-    // route-keyed transaction — which also retires the documented opt-out the band needed while it was chrome.
+    // route-keyed transaction.
+    //
+    // W3 — `RailHead` IS BACK, for exactly one mode. Library V3's nav band left the document entirely (it is fixed
+    // CHROME above the header, `LibraryV3NavBand`, mounted through `Head` below) — so it has no section for
+    // `SidebarRowPlanner.BuildRail` to draw tiles from any more. A collapsed V3 pane still needs a Home tile, and the
+    // renderer must not learn what a "band that isn't a section" is (rule 1), so the one thing a mode whose nav band is
+    // chrome needs is a place to hand the RAIL its own tiles. This is that seam, back as a config delegate — never a
+    // `Design` branch — read inside the RAIL's render (never the plan's), so a TopBar edit that does not move any
+    // section still repaints the rail.
+
+    /// <summary>Chrome tiles PREPENDED to the 56-DIP rail, ahead of the plan's own tiles (a divider follows). Null ⇒
+    /// nothing — every mode whose nav band is still a document section (Classic, Curated) leaves this null, because
+    /// their band's tiles already arrive through the plan's `ShowInRail` rows. Only a mode whose band left the document
+    /// (Library V3's nav band, W3) supplies one.
+    ///
+    /// <para>Invoked inside <see cref="SidebarPaneRail"/>'s render — not the plan's <c>DepKey</c> — so reading a signal
+    /// here subscribes the RAIL specifically. Because the tiles it returns are no longer part of any plan, the pane's
+    /// rail-memo <c>DepKey</c> must fold in the same signal this delegate reads (<c>SidebarPane.cs</c>'s rail memo does
+    /// this only when <see cref="RailHead"/> is non-null) — otherwise a TopBar edit would repaint everything except the
+    /// one place this delegate draws.</para></summary>
+    public Func<Element?>? RailHead { get; init; }
 
     /// <summary>PHASE 2 / DECISION B — THE CANVAS SEAM. Non-null delegate returning a non-null state ⇒ this pane renders
     /// as the CUSTOMIZE CANVAS: every section collapses to one uniform-height card (grip · kind glyph · title · count ·

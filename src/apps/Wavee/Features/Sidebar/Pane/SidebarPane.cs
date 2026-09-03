@@ -545,9 +545,17 @@ sealed class SidebarPane : Component
         //     Reading it here is also the subscription that re-renders this pane on a culture switch.
         //
         // PHASE 1 removed a fourth dep, `(LayoutVersion, TopBar.Count)`. It existed because `Config.RailHead` drew the
-        // shortcut band from a PLAIN property outside the rail plan. The band is now the document's first SECTION, so a
-        // shortcut edit bumps `LayoutVersion`, which is in `PlanDep`, which re-plans, which moves `planVersion` — the
-        // dep that was already here. Re-adding a band dep would be the same artifact keyed twice.
+        // shortcut band from a PLAIN property outside the rail plan. For Classic/Curated the band is the document's
+        // first SECTION, so a shortcut edit bumps `LayoutVersion`, which is in `PlanDep`, which re-plans, which moves
+        // `planVersion` — the dep that was already here. Re-adding a band dep for THOSE two modes would be the same
+        // artifact keyed twice.
+        //
+        // W3 brings the dep back, but ONLY for a mode that supplies `RailHead` again (Library V3's nav band, which left
+        // the document entirely — its tiles are no longer part of any plan, so `planVersion` no longer moves when the
+        // band is edited). Read as a plain VALUE, never behind an `if` inside the dep list itself, so the read — and
+        // therefore the subscription — happens unconditionally; a mode with no `RailHead` folds in the constant 0,
+        // which is exactly PHASE 1's dep set, byte for byte.
+        int railHeadEpoch = Config.RailHead is null ? 0 : (Prefs?.LayoutVersion.Value ?? 0);
         Element compactRail = UseMemo(
             () => _inDrawer
                 ? (Element)new BoxEl { Height = 0f, Shrink = 0f }
@@ -556,11 +564,14 @@ sealed class SidebarPane : Component
                     Grow = 1f, AutoEdgeFade = true, SuppressScrollBar = true,
                 },
             DepKey.Combine(
-                DepKey.From(planVersion, Tok.Epoch, Localization.CultureEpoch.Value,
-                            // …and the binder's PRESENCE, which the "no driver yet ⇒ shimmer the whole rail" fallback
-                            // reads directly. A binder arriving after the first frame need not move any of the versions
-                            // above (they all start at 0), and the rail must not stay on skeletons if it does.
-                            (_inDrawer ? 1 : 0) | (Prefs?.Binder is null ? 0 : 2)),
+                DepKey.Combine(
+                    DepKey.From(planVersion, Tok.Epoch, Localization.CultureEpoch.Value,
+                                // …and the binder's PRESENCE, which the "no driver yet ⇒ shimmer the whole rail"
+                                // fallback reads directly. A binder arriving after the first frame need not move any
+                                // of the versions above (they all start at 0), and the rail must not stay on
+                                // skeletons if it does.
+                                (_inDrawer ? 1 : 0) | (Prefs?.Binder is null ? 0 : 2)),
+                    DepKey.From(railHeadEpoch)),
                 SelectedRoutePeek));
 
         var children = new List<Element>(3) { expanded };

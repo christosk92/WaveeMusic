@@ -271,12 +271,21 @@ public sealed record SidebarDisplayOptions(
 {
     public static readonly SidebarDisplayOptions Default = new();
 
-    /// <summary>Icon-only rows for <see cref="SidebarSectionKind.CollectionShortcuts"/>: no artwork, no subtitle, and
-    /// the quiet count badge ON — a fixed collection destination (liked / albums / artists / podcasts) is exactly the
-    /// row for which a count exists, and <c>AllowsDisplayField(CollectionShortcuts, CountBadges)</c> lets the user turn
-    /// it off.</summary>
+    /// <summary>Icon-only rows for <see cref="SidebarSectionKind.CollectionShortcuts"/>: no artwork, and the quiet count
+    /// badge ON — a fixed collection destination (liked / albums / artists / podcasts) is exactly the row for which a
+    /// count exists, and <c>AllowsDisplayField(CollectionShortcuts, CountBadges)</c> lets the user turn it off.
+    ///
+    /// <para><b>W7 — why Cozy + Subtitles:true, not Comfortable + no subtitle.</b> Both reach the same 44-DIP row
+    /// (<c>HeightFor(Cozy, true) == HeightFor(Comfortable, false) == 44</c>), but they disagree on the ART COLUMN:
+    /// Comfortable's is 40 DIP, Cozy's is 32 — the same 32 every OTHER content row in the pane uses. A glyph band built
+    /// on Comfortable therefore landed its label 8 DIP to the right of a Cozy playlist row's, which is the alignment
+    /// defect this preset exists to close. <c>Subtitles:true</c> costs nothing visually — neither
+    /// <see cref="SidebarSectionKind.CollectionShortcuts"/> nor <see cref="SidebarSectionKind.StaticLinks"/> exposes the
+    /// field (<c>AllowsDisplayField</c> says false for both) and a route item never supplies a subtitle string in the
+    /// first place — but it is what makes the ONE shared height ladder land on 44 the same way a genuinely-subtitled art
+    /// row does, instead of by a different (Comfortable) route that also drags the art column with it.</para></summary>
     public static readonly SidebarDisplayOptions Shortcuts =
-        new(Density: SidebarDensity.Cozy, Artwork: false, Subtitles: false, CountBadges: true);
+        new(Density: SidebarDensity.Cozy, Artwork: false, Subtitles: true, CountBadges: true);
 
     /// <summary>The same icon-only rows for <see cref="SidebarSectionKind.StaticLinks"/> — with counts OFF.
     ///

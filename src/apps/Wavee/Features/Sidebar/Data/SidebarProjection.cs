@@ -39,6 +39,10 @@ public static class SidebarProjection
     /// <param name="isFolderExpanded">Optional per-folder override consulted only when
     /// <paramref name="includeFolderChildren"/> is false: an EXPANDED folder's children are emitted directly after it.
     /// Null ⇒ every folder is collapsed.</param>
+    /// <param name="lastPlayed">uri → last-played unix ms (<c>PlayLogStore.Recency</c>). Stamped onto
+    /// <see cref="SidebarLibraryEntry.LastPlayedMs"/> for Playlist/Album/Artist/Show rows by their <c>Uri</c>; folders
+    /// and routes have no uri and stay 0. Null ⇒ every row stays 0 (the played-based <see cref="SidebarSort.Recents"/>
+    /// then degrades to its never-played block for everything, which is the honest reading with no play log wired).</param>
     public static SidebarProjectionResult Build(
         List<SidebarLibraryEntry> into,
         SidebarEntryKindMask kinds,
@@ -50,7 +54,8 @@ public static class SidebarProjection
         SidebarRecency? recency,
         SidebarFirstSeen? firstSeen,
         bool includeFolderChildren,
-        Func<string, bool>? isFolderExpanded = null)
+        Func<string, bool>? isFolderExpanded = null,
+        IReadOnlyDictionary<string, long>? lastPlayed = null)
     {
         into.Clear();
         var rec = recency ?? SidebarRecency.Empty;
@@ -59,13 +64,15 @@ public static class SidebarProjection
         int stampsBefore = seen.NewStamps;
         byte flavorMask = 0;
 
+        var played0 = lastPlayed;
+
         bool wantPlaylists = (kinds & SidebarEntryKindMask.Playlist) != 0;
         bool wantFolders = (kinds & SidebarEntryKindMask.Folder) != 0;
         if ((wantPlaylists || wantFolders) && playlistTree.Count > 0)
         {
             int order = 0;
             Walk(playlistTree, into, "", "", 0, ref order, ref flavorMask,
-                 wantPlaylists, wantFolders, includeFolderChildren, isFolderExpanded, added0, rec, seen);
+                 wantPlaylists, wantFolders, includeFolderChildren, isFolderExpanded, added0, rec, seen, played0);
         }
 
         if ((kinds & SidebarEntryKindMask.Album) != 0)
@@ -83,6 +90,7 @@ public static class SidebarProjection
                 {
                     FolderId = "", FolderName = "",
                     FirstArtistName = al.Artists is { Count: > 0 } ? al.Artists[0].Name : "",
+                    LastPlayedMs = LastPlayed(played0, al.Uri),
                 });
             }
 
@@ -98,7 +106,7 @@ public static class SidebarProjection
                     SortStamp: added > 0 ? added : seen.Stamp(id),
                     LastVisitedTicksUtc: rec.LastVisitedTicks(id),
                     SourceOrder: i, Depth: 0, Circular: true, Flavor: SidebarPlaylistFlavor.None)
-                { FolderId = "", FolderName = "", FirstArtistName = "" });
+                { FolderId = "", FolderName = "", FirstArtistName = "", LastPlayedMs = LastPlayed(played0, ar.Uri) });
             }
 
         if ((kinds & SidebarEntryKindMask.Show) != 0)
@@ -113,7 +121,7 @@ public static class SidebarProjection
                     SortStamp: added > 0 ? added : seen.Stamp(id),
                     LastVisitedTicksUtc: rec.LastVisitedTicks(id),
                     SourceOrder: i, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
-                { FolderId = "", FolderName = "", FirstArtistName = "" });
+                { FolderId = "", FolderName = "", FirstArtistName = "", LastPlayedMs = LastPlayed(played0, sh.Uri) });
             }
 
         return new SidebarProjectionResult(into.Count, flavorMask, seen.NewStamps - stampsBefore);
@@ -126,7 +134,8 @@ public static class SidebarProjection
                      string folderId, string folderName, int depth, ref int order, ref byte flavorMask,
                      bool wantPlaylists, bool wantFolders, bool includeFolderChildren,
                      Func<string, bool>? isFolderExpanded,
-                     IReadOnlyDictionary<string, long> addedAt, SidebarRecency recency, SidebarFirstSeen firstSeen)
+                     IReadOnlyDictionary<string, long> addedAt, SidebarRecency recency, SidebarFirstSeen firstSeen,
+                     IReadOnlyDictionary<string, long>? lastPlayed)
     {
         if (depth > SidebarTree.MaxDepth) return;
         for (int i = 0; i < nodes.Count; i++)
@@ -153,6 +162,7 @@ public static class SidebarProjection
                         FolderId = folderId, FolderName = folderName,
                         ParentFolderId = folderId, ParentFolderName = folderName,
                         IsOwner = p.IsOwner, CanEdit = p.CanEdit, FirstArtistName = "",
+                        LastPlayedMs = LastPlayed(lastPlayed, p.Uri),
                     });
                     break;
                 }
@@ -174,13 +184,15 @@ public static class SidebarProjection
                             // the only thing "Move out of {folder}" can be built from.
                             ParentFolderId = folderId, ParentFolderName = folderName,
                             FirstArtistName = "",
+                            // A folder has no uri (LastPlayedMs stays 0) — it is never itself a played context.
                         });
                     }
 
                     bool descend = includeFolderChildren || !wantFolders || (isFolderExpanded?.Invoke(f.Id) ?? false);
                     if (descend)
                         Walk(f.Items, into, f.Id, f.Name ?? "", depth + 1, ref order, ref flavorMask,
-                             wantPlaylists, wantFolders, includeFolderChildren, isFolderExpanded, addedAt, recency, firstSeen);
+                             wantPlaylists, wantFolders, includeFolderChildren, isFolderExpanded, addedAt, recency,
+                             firstSeen, lastPlayed);
                     break;
                 }
             }
@@ -251,6 +263,11 @@ public static class SidebarProjection
 
     static long Added(IReadOnlyDictionary<string, long> addedAt, string? uri) =>
         uri is { Length: > 0 } && addedAt.Count > 0 && addedAt.TryGetValue(uri, out long ms) && ms > 0 ? ms : 0L;
+
+    // SidebarLibraryEntry.LastPlayedMs (F.7.5's played-based Recents): a uri lookup against PlayLogStore.Recency, 0
+    // when the map is absent or the uri was never played. Mirrors Added's null/empty-map guard shape.
+    static long LastPlayed(IReadOnlyDictionary<string, long>? lastPlayed, string? uri) =>
+        uri is { Length: > 0 } && lastPlayed is { Count: > 0 } lp && lp.TryGetValue(uri, out long ms) ? ms : 0L;
 
     static int DirectChildCount(IReadOnlyList<PlaylistNode> items) => items.Count;
 

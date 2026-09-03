@@ -113,6 +113,26 @@ slot's own always-mounted `DropPlate()` under the row. Rule: every `Prop.Of(` in
 `InsertionLine`/`DropPlate` reads `_scope.Index.Value`, and the entity row keeps its fills static and owns no tree
 drop cue (the source-scan tests that used to pin this were removed on 2026-08-22; tests never read source).
 
+### V3's search-open flag is session-only — it is not a `SidebarKeys` setting
+
+`LibraryV3Session.SearchOpen : Signal<bool>` is ephemeral, created fresh per mode mount. It is **not**
+`prefs.V3SearchOpen`, `AppSettings.SidebarKeys`, or anything else `IAppSettings` persists — that persisted flag
+existed once (`SidebarKeys.V3SearchOpen`) and was deleted specifically because it made a relaunch reopen the search
+field with a stale, empty caret. The query TEXT (`prefs.V3Search`) is likewise session-only — it lives on
+`SidebarPreferences` as a plain `Signal<string>`, never written to `IAppSettings` or the JSON layout document, and
+is cleared on `CloseSearch()`/`ClearAllFilters()`. Do not reach for `AppSettings.cs`/`SidebarKeys` when wiring a new
+V3 chrome toggle that should reset on relaunch — a `LibraryV3Session` field is the pattern.
+
+### `SidebarSort.Recents` reads PLAYS, not visits — `HistoryStore` feeds a different feed entirely
+
+`SidebarSort.Recents` sorts on `SidebarLibraryEntry.LastPlayedMs`, stamped from `PlayLogStore.Recency` (local plays
++ server history) by `SidebarProjection.Build`'s `lastPlayed` parameter. `SidebarRecency`/`LastVisitedTicksUtc` —
+built from `HistoryStore`, the NAVIGATION log — feeds only the "recently opened" FEED
+(`SidebarSourceMap.Visited`, a JumpBackIn-style shelf). Clicking a row to open it therefore no longer reorders the
+sidebar's "Recents" sort; only playing something does. Do not relabel the visited feed "recently played", and do
+not sort a list by `LastVisitedTicksUtc` expecting played semantics — the two recency facts have deliberately
+separate inputs and separate consumers (`SidebarRecency.cs`'s own file-header comment states this in full).
+
 ### A bound row is a frozen child — `SubscribeRowEpoch(index)` is load-bearing
 
 Re-planning in `SidebarPane` does **not** re-render a realized slot. Each realized slot reads
@@ -153,6 +173,7 @@ bool to a POD input, make **false the landed behaviour**.
 | `Segmented` paints a plate **and** a pill | Two indicators for one value. Suppress the pill through the control's public `Segmented.PartSelectionPill` seam — the landed `SegmentedNoPill` template at `Curated/SidebarCustomizerControls.cs:287-295` styles it to `Transparent` + `Width = 0` (no engine edit, and the 3-DIP slot stays put so suppressing it costs no relayout). `SelectorBar` is **banned** in the property panel. |
 | `IconRef.Font` must be forwarded, or you get tofu | An `IconRef` may name the app-local `WaveeIcons` face (`wavee.playNext` U+E900, `wavee.addToQueue` U+E901). Reading only `.Glyph` resolves those codepoints against Segoe Fluent and renders □. Pass the family through: `Icon(icon.Glyph ?? Icons.More, 14f, …, icon.Font)` (`Curated/SidebarItemPickers.cs:453-463`; also `Pane/SidebarPaneText.cs:207`). |
 | artwork needs an explicit `decodePx` | Without the hint an image decodes at its **layout** size with no DPI multiply — visibly blurry on any >1× display. `Shared/SidebarCover.cs:81-85` is the **single** owner of the bucketed ladder (`size <= 32 → 64`, `<= 64 → 128`, else `256`), which also makes the 36-DIP rail tile and the 32-DIP row share one cache entry. `SidebarPaneRail.cs` has no `decodePx` of its own — it delegates to `SidebarCover.Art`. Do not add a second ladder. |
+| a private-use glyph codepoint MUST be a `\uXXXX` escape, never a literal character | `Modes/LibraryV3/LibraryV3Header.cs`'s header glyph is meant to be U+E71C (Segoe MDL2 "Filter"/library mark), and its own comment already says so ("as an ESCAPE, never a literal ... was silently dropped once already"). **As of this audit the literal in the file is still corrupted**: the `Icon(` call's glyph argument is the three-character sequence `i-circumflex` + `oe` + `oe` (U+00EE, U+0153, U+0153 — verified byte-for-byte), which is U+E71C's UTF-8 bytes (`EE 9C 9C`) mis-decoded as Windows-1252 — exactly the failure the comment warns about, and apparently not yet fixed. A private-use character is invisible in most editors/terminals, so a diff or grep pass can carry a mangled one through unnoticed; the durable fix is the literal escape text `\uE71C`, never a pasted glyph, with the font named explicitly (`Icon`'s `family` param — reading only the codepoint against the wrong face is the OTHER way this renders as tofu). This is a `.cs` file, so a docs-only pass cannot correct it — flag it for a code fix. |
 
 ---
 
@@ -191,6 +212,27 @@ of pushing the row past the pane). `Pane/SidebarPaneSlot.cs` is now the ONLY own
 more, in the customizer outline's "FILL THE COLUMN (round-3 defect 1)" and as an explicit `Width` on the top-bar strip;
 Phase 3 deleted both files. If you go looking for those precedents, that is why they are gone.) Pinned by
 `SidebarPaneInvariantTests.ReorderBandRows_FillTheSlot`, which asserts both sites.
+
+### A zero-size flex child still collects the row's `Gap`
+
+Setting `Width = 0f`/`Height = 0f` on a flex child hides its paint, but it is still a flex PARTICIPANT — the row's
+own `Gap` still lands after it, so a hidden sibling pushes every visible child one gap to the right. Two shipped
+instances, one mechanism:
+
+- **The multi-select check lane**, when it rode as a flex SIBLING of the row's leading cluster inside the gapped
+  row: `Flow.Show`'s hidden state still counted, so the row's 10-DIP `Gap` after it pushed every rootlist row (the
+  only rows that carry the lane) one gap right of the album/artist rows beside them. Fixed by folding the lane
+  INSIDE the leading cluster, in its own gapless wrapper box (`Shared/SidebarEntityRow.Create`'s
+  `spec.CheckLane` handling).
+- **The chip rail's a11y group label** (`Modes/LibraryV3/LibraryV3Chips.GroupLabel`), when it rode as a flex sibling
+  of the chips inside the rail's gapped row: even at `Width = 0f, Height = 0f` it still collected the rail's 6-DIP
+  `Gap`, pushing the first chip 6 DIP off the rows' art column. Fixed by mounting the label OUTSIDE the gapped chip
+  row entirely (`LibraryV3Chips.Rail`'s two-child `BoxEl` — the label, then a separate gapped box holding only the
+  chips).
+
+**The rule.** A node that must add nothing to a gapped row's layout — a bound-but-hidden lane, a zero-size a11y
+label — goes either inside a gapless wrapper folded into one visible sibling, or entirely outside the gapped
+container. Zero size on the node itself is not enough.
 
 ### `SidebarProjectionInput` ALIASES the binder's buffers
 
@@ -325,6 +367,7 @@ Verified reference counts across all of `src/apps`, including the tests.
 | loc `sidebar.createPlaylist` | **Retired** — gone from all three locales. Every call site uses the sibling `sidebar.createPlaylistTooltip` (the plain-click "+") or `sidebar.createTooltip` (the "+ with a flyout"). |
 | loc `sidebar.createFolder` | Already **gone** from all three source locales (it survives only in stale `bin/` output). |
 | loc `sidebar.customizer.{outline, preview, previewExpanded, previewRail, previewDrawer, previewHint, addFirst, startFromTemplate, liftHint, visibleCount, topBar, topBarGlobal, topBarEmpty, curatedLayout, curatedInactive}` | **Retired** — gone from all three locales. They labelled the outline / preview columns and the standalone "Top bar" card, all deleted in Phase 3. `sidebar.customizer.empty`/`emptySub` are **KEPT**: they are live through `SidebarPaneLoc.PaneEmpty`. |
-| `Shared/SidebarNavBandModel.cs` | **0 production references** since Phase 1 (the band renders as an ordinary section). Retained deliberately: its `KindOf`/`RouteKeyOf`/`SelectsRoute`/`Shape` are the band's pure shaping rules and `SidebarNavBandTests` drives them. Its own file header still describes a `SidebarNavBand` component that no longer exists. |
+| `Shared/SidebarNavBandModel.cs` | **NOT a deletion candidate any more.** W3 gave it a production caller back: `Modes/LibraryV3/LibraryV3NavBand.cs` calls `RouteKeyOf`/`SelectsRoute` for its hand-placed entity tiles (Library V3's nav band left the document as a section entirely and became fixed chrome — see the `SidebarPaneConfig.RailHead` entry below). `KindOf`/`Shape` still have none. `SidebarNavBandTests` drives the model directly either way. Its own file header still describes a `SidebarNavBand` *component* that no longer exists — that part is accurate. |
+| `SidebarPaneConfig.RailHead` | **NOT deleted — re-added (W3), for exactly one mode.** Phase 1 had removed it on the theory that the Shortcuts band would always be an ordinary document section; that stays true for Classic/Curated, which still pass `RailHead = null` and get their rail tiles from `ShowInRail`. Library V3 is the one exception: its nav band left the document (`LibraryV3NavBand.cs` is fixed chrome, not a section), so it has no section for the rail to draw from and supplies `RailHead` instead (`Modes/LibraryV3Sidebar.BuildRailHead`). `Pane/SidebarPaneRail.Build` prepends `Config.RailHead?.Invoke()` ahead of the plan's own tiles (a divider follows), and — because those tiles are no longer part of any plan — `SidebarPane`'s rail memo folds `Prefs.LayoutVersion.Value` into its own `DepKey` whenever `Config.RailHead` is non-null, so a TopBar edit still repaints the rail even though it moves no section. |
 | `AppActions.All` | Declared at `Actions/AppAction.cs:96-108` with **zero** code references anywhere — every mention is a doc comment. Dead-but-retained. Do not add the first reference; the registry is the path. |
 | loc `player.play` / `player.pause` in `nl`/`ko` | Dead override keys — not present in en-US and referenced nowhere. |

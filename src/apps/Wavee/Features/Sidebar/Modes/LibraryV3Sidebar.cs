@@ -126,10 +126,11 @@ sealed class LibraryV3Sidebar : Component
             Document = BuildDocument,
             Input = ShapeInput,
             ModeEpoch = ReadModeEpoch,
-            // V3's OWN sections are all title-less (§3.2.7), so they plan no header row and there is nothing to collapse.
-            // Phase 1's Shortcuts section is titled and therefore does plan one — deliberately, it is the app's
-            // navigation and needs a name — but it stays non-collapsible here for the same reason as everywhere else:
-            // the band is materialised from `TopBar` and has no persisted Collapsed bit to write.
+            // V3's OWN sections are all title-less (§3.2.7), so they plan no header row and there is nothing to
+            // collapse. (Classic/Curated's materialised Shortcuts section IS titled and plans one — it stays
+            // non-collapsible there for a different reason: it is materialised from `TopBar` and has no persisted
+            // Collapsed bit to write. That section does not exist in V3's document at all — see `LibraryV3Document`
+            // and `LibraryV3NavBand`, W3.)
             SetSectionCollapsed = null,
             // The document is ephemeral and the CHROME owns every piece of its state: no inline section controls, no
             // document commands (a Dispatch here would edit the CURATED document), no customize CTA.
@@ -138,15 +139,19 @@ sealed class LibraryV3Sidebar : Component
             // binder folds in — the pane's pinned search head would be a second, competing query.
             SearchHead = false,
             Head = ChromeHead,
-            // PHASE 1 — the shortcut band is no longer a config delegate at all: it is the FIRST SECTION of the document
-            // BuildDocument returns (Decision A). The renderer therefore needs no `NavBand`/`RailHead` seam, the 56-DIP
-            // rail form rides the planner's existing `ShowInRail`, and V3 finally has a navigation section of its own.
+            // W3 — the nav band left BuildDocument entirely: it is fixed chrome above the header now
+            // (`LibraryV3NavBand`, the first child `ChromeHead` mounts through `LibraryV3Chrome`), never a document
+            // section. That is why `RailHead` below is supplied again for this one mode — see its own doc comment.
             // §3.2.3 keeps the design switch in V3's own overflow menu (it embeds SidebarLayoutMenu.Rows as a sub-menu), so
             // the pane must not hang a second layout button off a header. The RAIL keeps its copy: a collapsed pane has no
             // overflow menu to reach.
             ShowLayoutMenu = false,
             RailLayoutMenu = true,
             RailFooter = BuildRailFooter,
+            // W3 — the nav band left the document entirely (it is fixed chrome above the header now,
+            // `LibraryV3Chrome` → `LibraryV3NavBand`), so it has no section for the plan's `ShowInRail` to draw rail
+            // tiles from any more. This supplies the rail its own copy of those tiles directly from the same list.
+            RailHead = BuildRailHead,
             IsReorderableSection = IsSectionReorderable,
             TreeSortedNonCustom = TreeSortedNonCustom,
             ClampReorderSlot = ClampReorderSlot,
@@ -345,6 +350,96 @@ sealed class LibraryV3Sidebar : Component
                     session.CreatePlaylist, menu: CreateMenu, box: SidebarRailItem.Box, glyph: 16f)),
             ],
         };
+    }
+
+    // ── the nav band's OWN rail tiles (W3) ───────────────────────────────────────────────────────────────────────────
+
+    /// <summary>W3's <c>SidebarPaneConfig.RailHead</c>: the nav band's tiles, drawn a second way for the 56-DIP rail.
+    /// The band itself is chrome (<c>LibraryV3NavBand</c>, mounted above the header) and left the document — and
+    /// therefore the plan — entirely, so <c>SidebarRowPlanner.BuildRail</c> has no <c>ShowInRail</c> section to read
+    /// these tiles from any more; this reads the SAME list (<c>SidebarPreferences.TopBar</c>) directly. Reuses
+    /// <c>SidebarNavBandModel</c>'s pure rules (kind, route resolution, selection) so the two forms of one tile cannot
+    /// disagree, exactly as <c>LibraryV3NavBand</c> does for the expanded band.</summary>
+    Element? BuildRailHead()
+    {
+        if (_prefs is not { } prefs) return null;
+        var items = prefs.TopBar;
+        if (items.Count == 0) return null;
+
+        string route = _route.Peek().Name;
+        var registry = _session?.Acts?.Extensions;
+        var kids = new List<Element>(items.Count);
+        for (int i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            if (item is null || item.Hidden) continue;
+            Element? tile = item.Target switch
+            {
+                SidebarItemTarget.Action => RailActionTile(item, registry),
+                SidebarItemTarget.Track => RailEntityTile(item, route, track: true),
+                SidebarItemTarget.Entity => RailEntityTile(item, route, track: false),
+                _ => RailRouteTile(item, route),
+            };
+            if (tile is not null) kids.Add(tile);
+        }
+        if (kids.Count == 0) return null;
+
+        return new BoxEl
+        {
+            Key = "v3-rail-head",
+            Direction = 1, Gap = 6f, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Children = [.. kids],
+        };
+    }
+
+    Element RailRouteTile(SidebarItemSpec item, string route)
+    {
+        var dest = ShellNav.Dest(item.Key);
+        string label = item.LabelOverride is { Length: > 0 } alias ? alias : dest.Title;
+        return SidebarRailItem.Icon(item.Key, SidebarIcons.For(item, dest.Glyph),
+            string.Equals(route, item.Key, StringComparison.Ordinal), () => _go(item.Key, null), label);
+    }
+
+    /// <summary>Resolved ONLY through the extension registry (never <c>AppActions.All</c>, rule 7). A binding the
+    /// registry cannot resolve at all is omitted — a 56-DIP tile has no room for the reason text the expanded band's
+    /// tooltip carries.</summary>
+    Element? RailActionTile(SidebarItemSpec item, WaveeExtensionRegistry? registry)
+    {
+        if (item.Action is not { } bound || registry is null) return null;
+        if (!registry.TryGetAction(bound, out var descriptor)) return null;
+
+        string label = item.LabelOverride is { Length: > 0 } alias ? alias : descriptor.Label();
+        string glyph = SidebarIcons.For(item, descriptor.Icon().Glyph is { Length: > 0 } g ? g : Icons.MusicNote);
+        Action? click = null;
+        if (_session?.Acts is { } services && registry.Resolve(services, bound).Available)
+            click = () => registry.Execute(services, in bound);
+        return SidebarRailItem.Icon(item.Id, glyph, false, click, label);
+    }
+
+    /// <summary>A hand-placed playlist/album/artist/show/track: an ART tile (<see cref="SidebarRailItem.Art"/>), same
+    /// as a projected pin. A track PLAYS; everything else navigates through the pin scheme's own uri → route mapping
+    /// (<see cref="SidebarNavBandModel.RouteKeyOf"/>), never a second one.</summary>
+    Element? RailEntityTile(SidebarItemSpec item, string route, bool track)
+    {
+        string uri = item.Key;
+        if (uri.Length == 0) return null;
+        string label = item.LabelOverride is { Length: > 0 } alias ? alias
+            : item.FallbackTitle is { Length: > 0 } cached ? cached
+            : SidebarPaneText.ShortUri(uri);
+        var art = SidebarCover.Art(SidebarPaneText.FallbackImage(item), null, uri, SidebarRailItem.ArtEdge,
+                                   circular: item.EntityKind == SidebarEntityKind.Artist);
+        bool selected = !track && SidebarNavBandModel.SelectsRoute(item, route);
+        Action? click = track
+            ? () => PlayRailTrack(uri)
+            : SidebarNavBandModel.RouteKeyOf(item) is { Length: > 0 } r ? () => _go(r, label) : null;
+        return SidebarRailItem.Art(item.Id, art, selected, click, label);
+    }
+
+    void PlayRailTrack(string uri)
+    {
+        var player = _session?.Acts?.Svc?.Player;
+        if (player is null) return;
+        _ = player.PlayTrackAsync(uri);
     }
 
     /// <summary>The rail "+"'s flyout — the same two verbs the header's "+" carries, so a collapsed V3 pane can create

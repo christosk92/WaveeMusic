@@ -211,21 +211,20 @@ public class SidebarShortcutsSectionTests
 
     // ── document 2: Library V3 ───────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Decision C is satisfied BY Decision A, not by a V3-specific branch: V3's navigation is the same
-    /// materialised section, placed ahead of the pin band because it is the APP's navigation and not the library's.</summary>
+    /// <summary>W3 (library-v3-chrome plan): V3's navigation is FIXED CHROME above "Your Library" (<c>LibraryV3NavBand</c>),
+    /// never a section of the scrolling document — so it can never be filtered, searched or drilled away. The document
+    /// therefore leads with the pin band whether or not a band exists; only Classic/Curated still <c>Prepend</c>.</summary>
     [Fact]
-    public void LibraryV3_PutsShortcutsAheadOfThePinBand()
+    public void LibraryV3_NeverCarriesTheShortcutBandAsASection()
     {
         var state = new LibraryV3DocState(HasPins: true);
         var doc = LibraryV3Document.Build(in state, SidebarCustomLayout.DefaultTopBar);
-
-        Assert.Equal(SidebarIds.TopBarSection, doc.Sections[0].Id);
-        Assert.Equal(LibraryV3Document.PinsId, doc.Sections[1].Id);
-
-        // …and with no band, V3's document is exactly what it was.
         var bare = LibraryV3Document.Build(in state);
+
+        Assert.DoesNotContain(doc.Sections, s => s.Id == SidebarIds.TopBarSection);
+        Assert.Equal(LibraryV3Document.PinsId, doc.Sections[0].Id);
         Assert.Equal(LibraryV3Document.PinsId, bare.Sections[0].Id);
-        Assert.Equal(doc.Sections.Count - 1, bare.Sections.Count);
+        Assert.Equal(bare.Sections.Count, doc.Sections.Count);
     }
 
     /// <summary>THE DROP RULE, both directions. V3's own <c>v3.liked</c> row is dropped exactly when the band already

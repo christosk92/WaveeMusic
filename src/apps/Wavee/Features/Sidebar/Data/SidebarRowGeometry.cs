@@ -32,25 +32,26 @@ static class SidebarRowGeometry
     /// part of <see cref="ContentLane"/> rather than padding to this number on its own.</summary>
     public const float PaneEdge = 8f;
 
-    /// <summary>A row's OWN leading padding at depth 0 (6) — the base term of <see cref="IndentFor"/>.</summary>
-    public const float RowInsetLeft = 6f;
+    /// <summary>A row's OWN leading padding at depth 0 (4) — the base term of <see cref="IndentFor"/>.</summary>
+    public const float RowInsetLeft = 4f;
 
     /// <summary>A row's OWN trailing padding (8) — the right-hand half of <c>SidebarPaneMetrics.RowInset</c>.</summary>
     public const float RowInsetRight = 8f;
 
-    /// <summary>THE CONTENT LANE (14): the single x at which pane content begins — a row's selection gutter, a section
+    /// <summary>THE CONTENT LANE (12): the single x at which pane content begins — a row's selection gutter, a section
     /// header's title, a chrome band's first glyph, a divider's hairline. Rows reach it as
     /// <see cref="PaneEdge"/> + <see cref="IndentFor"/>(0); a fixed band above the list pads to it directly.</summary>
     public const float ContentLane = PaneEdge + RowInsetLeft;
 
-    /// <summary>The lane's TRAILING twin (16): <see cref="PaneEdge"/> + <see cref="RowInsetRight"/>. It is 2 DIP wider
-    /// than <see cref="ContentLane"/> because the landed row padding is asymmetric (6 leading / 8 trailing) — carried
+    /// <summary>The lane's TRAILING twin (16): <see cref="PaneEdge"/> + <see cref="RowInsetRight"/>. It is 4 DIP wider
+    /// than <see cref="ContentLane"/> because the landed row padding is asymmetric (4 leading / 8 trailing) — carried
     /// forward as-is, not re-derived, so nothing shifts horizontally while the lane is being named.</summary>
     public const float ContentLaneEnd = PaneEdge + RowInsetRight;
 
     /// <summary>Row height by density. Compact suppresses subtitles outright (no room for a second line), so the three
-    /// canonical heights are 32 (compact) / 40 (cozy) / 44 (cozy with subtitle); Comfortable adds 4 DIP on top of the
-    /// cozy pair (44 without a subtitle — Classic's shortcut row — and 48 with one).</summary>
+    /// canonical heights are 32 (compact) / 40 (cozy) / 44 (cozy with subtitle — Classic's entity row AND, since W7,
+    /// its glyph/shortcut row too); Comfortable adds 4 DIP on top of the cozy pair (44 without a subtitle, 48 with
+    /// one) — no longer used for a glyph band, whose 40-DIP art column would misalign its label against a Cozy row's.</summary>
     public static float HeightFor(SidebarDensity density, bool hasSubtitle) => density switch
     {
         SidebarDensity.Compact => 32f,
@@ -75,31 +76,68 @@ static class SidebarRowGeometry
 
     // ── THE ONE TREE-CONTENT ORIGIN ──────────────────────────────────────────────────────────────────────────────────
     // A TREE row is not laid out on `IndentFor(depth)`: `SidebarEntityRow.TreeLeading` pads the row ONCE at IndentFor(0)
-    // and then spends real cells — the selection gutter, one connector cell per level, and a fixed disclosure cell —
-    // before the row's art begins. The caret used to be translated by `IndentFor(depth)` and `PickDepth` used to read
-    // the same ladder BACKWARDS, so the line painted roughly one whole level left of what it meant and the outdent band
-    // (x < 12) was practically unreachable with a pointer (F2/F3). The three constants below are the layout's own, they
-    // live HERE because this file is the engine-free one a test can reach, and `TreeLeading` now CONSUMES them — so the
-    // rendered row, the caret and the depth pick cannot disagree by construction.
+    // and then spends real cells — the selection gutter and one connector cell per level — before the row's art begins.
+    // There is NO reserved disclosure cell here (W7): a folder used to insert a fixed 16-DIP chevron cell ahead of its
+    // art on every tree row (leaf rows included, so their art would still line up with a sibling folder's), which put
+    // tree rows 4 DIP right of every other row family the moment a section had ANY folder in it (F7). The folder's
+    // disclosure chevron now lives in the row's TRAILING cluster instead (`SidebarEntityRow.Create`, beside the
+    // now-playing equalizer and the count badge), so `TreeLeading` is IDENTICAL to `StandardLeading` at depth 0 and a
+    // tree section's art column never moves depending on whether it happens to contain a folder.
+    // The caret used to be translated by `IndentFor(depth)` and `PickDepth` used to read the same ladder BACKWARDS, so
+    // the line painted roughly one whole level left of what it meant and the outdent band (x < 12) was practically
+    // unreachable with a pointer (F2/F3). The constants below are the layout's own, they live HERE because this file is
+    // the engine-free one a test can reach, and `TreeLeading` now CONSUMES them — so the rendered row, the caret and the
+    // depth pick cannot disagree by construction.
 
     /// <summary>The 3-DIP selection-accent reserve every row leads with (<c>SidebarEntityRow.SelGutter</c>).</summary>
     public const float SelGutterWidth = 3f;
+
+    // ── THE ONE LEADING LANE ─────────────────────────────────────────────────────────────────────────────────────────
+    // Three row shapes used to compute their own distance from the row padding to the leading visual: StandardLeading
+    // spent gutter 3 + gap 10, the bare-glyph arm spent gutter 3 + gap 12 (and drew a 16-DIP icon instead of an art-wide
+    // column), and TreeLeading spent gutter 3 + a 16-DIP chevron cell with no gap — so one pane showed art at 27, glyphs
+    // at 29 and tree rows at 33, while the FIXED CHROME above the list sat at the content lane (14) with nothing aligning
+    // to it. Naming the lane ONCE here is what makes "the art column" a fact every shape and every band consumes.
+
+    /// <summary>The gap between the selection gutter and the leading visual (6) — the SAME for art rows, glyph rows and
+    /// tree rows.</summary>
+    public const float LeadingGap = 6f;
+
+    /// <summary>The span from a row's <see cref="IndentFor"/> padding to its leading visual (9 = gutter + gap). The art
+    /// column of every row shape starts at <c>IndentFor(depth) + LeadingLaneWidth</c>, and a chrome band above the list
+    /// puts its first glyph at <c>ContentLane + LeadingLaneWidth</c> (<c>SidebarPaneMetrics.LeadInset</c>).</summary>
+    public const float LeadingLaneWidth = SelGutterWidth + LeadingGap;
+
+    /// <summary>The pane-relative x of a row's art/glyph column at <paramref name="depth"/> (21 at depth 0).</summary>
+    public static float ArtX(int depth) => PaneEdge + IndentFor(depth) + LeadingLaneWidth;
+
+    /// <summary>Art/glyph size by density (20 / 32 / 40) — the engine-free half of <c>SidebarRowMetrics.ArtFor</c>
+    /// (which needs <c>SidebarCover</c>'s sizes and is therefore not source-included by Wavee.Tests). It delegates
+    /// HERE, so <c>SidebarCover.S20</c>/<c>S32</c>/<c>S40</c> and this ladder cannot drift apart, and a test can pin the
+    /// number the bare-glyph arm and the art arm both use for their (now shared) leading column width.</summary>
+    public static float ArtFor(SidebarDensity density) => density switch
+    {
+        SidebarDensity.Compact => 20f,
+        SidebarDensity.Comfortable => 40f,
+        _ => 32f,
+    };
 
     /// <summary>One tree connector cell (12 — the engine's <c>Spacing.M</c>). Equal to <see cref="IndentStep"/> by
     /// design: a tree level and an indent level are the same step, drawn two different ways.</summary>
     public const float TreeGuideStep = IndentStep;
 
-    /// <summary>The fixed disclosure cell every tree row reserves at EVERY depth (16 — the engine's <c>Spacing.L</c>),
-    /// so folder and leaf art share one column.</summary>
-    public const float TreeChevronCell = 16f;
-
     /// <summary>THE x at which a tree row's CONTENT (its art, and therefore the caret that means "insert at this depth")
-    /// begins: <c>IndentFor(0) + SelGutter + depth·TreeGuideStep + TreeChevronCell</c> — 25, 37, 49, … Row-relative,
-    /// like the pointer x the resolver reads.</summary>
+    /// begins: <c>IndentFor(0) + LeadingLaneWidth + depth·TreeGuideStep</c> — 19, 31, 43, … Row-relative, like the
+    /// pointer x the resolver reads.
+    /// <para>Kept as the ORIGINAL spelling (<c>IndentFor(0) + …</c>, not <c>IndentFor(depth)</c>): the two happen to be
+    /// equal only while <see cref="IndentStep"/> == <see cref="TreeGuideStep"/>, and the caret must not break silently
+    /// if they ever diverge. There is no reserved disclosure cell any more — W7 moved the folder's chevron to the
+    /// TRAILING cluster (<c>SidebarEntityRow.Create</c>), so a tree row's content starts exactly where
+    /// <c>SidebarEntityRow.StandardLeading</c> would put it at the same depth: gutter, guides, then the leading gap.</para></summary>
     public static float TreeContentX(int depth)
     {
         int d = depth < 0 ? 0 : depth > MaxIndentDepth ? MaxIndentDepth : depth;
-        return IndentFor(0) + SelGutterWidth + d * TreeGuideStep + TreeChevronCell;
+        return IndentFor(0) + LeadingLaneWidth + d * TreeGuideStep;
     }
 
     /// <summary>Left padding for a nesting depth: <see cref="RowInsetLeft"/> base + <see cref="IndentStep"/> per level,

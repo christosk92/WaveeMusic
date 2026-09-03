@@ -240,7 +240,8 @@ public static class RootlistSlotResolver
         if (!float.IsFinite(xInRow)) return max;
 
         // THE LADDER IS THE ROW'S OWN (F2/F3). `TreeContentX(d)` is where a tree row at depth d actually starts drawing
-        // — gutter + connector cells + the fixed disclosure cell — so travelling one cell left is exactly one outdent.
+        // — the row's leading lane (gutter + gap) plus one connector cell per level — so travelling one cell left is
+        // exactly one outdent. (There is no reserved disclosure cell any more: the folder chevron is trailing, W7.)
         // Reading `IndentFor` here instead put every boundary ~19 DIP too far left, which made depth 0 unreachable and
         // turned "move out of this folder" into "move INTO it".
         float steps = (xInRow - SidebarRowGeometry.TreeContentX(0)) / SidebarRowGeometry.TreeGuideStep;

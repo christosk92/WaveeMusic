@@ -110,7 +110,7 @@ public class SidebarDropCueTests
     {
         const float content = 300f;
         // THE TREE-CONTENT ORIGIN, not the outer indent ladder: the caret starts where the row at that depth starts
-        // DRAWING (gutter + connector cells + the disclosure cell), which is the whole of the F2 fix.
+        // DRAWING (gutter + connector cells — no reserved disclosure cell any more, W7), which is the whole of the F2 fix.
         float expected = content - SidebarRowGeometry.TreeContentX(depth) - SidebarRowGeometry.RowInsetRight;
         Assert.Equal(expected, SidebarDropCue.LineWidth(content, depth), 3);
         // A deeper caret is strictly shorter — that IS the depth cue.

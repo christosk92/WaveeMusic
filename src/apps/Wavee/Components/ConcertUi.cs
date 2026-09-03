@@ -937,4 +937,17 @@ public sealed record SegmentedPillStyle(
         // not open a chooser — a chevron would promise a menu that never comes.
         TrailingGlyph: Icons.Cancel,
         BorderWidth: 1f, BorderColor: Tok.StrokeControlDefault);
+
+    /// <summary>The sidebar register: the Accent capsule at the rail's 28-DIP scale (Library V3's filter chips). The
+    /// segment is <c>FillControlSolid</c> — opaque in both themes, the <c>FillCardDefault</c>-on-accent mistake
+    /// documented above — and the on-accent ink is <c>Tok.OnAccent</c> (contrast-picked for the LIVE accent, not the
+    /// theme-keyed <c>TextOnAccentPrimary</c>). The trailing glyph is an X, not a chevron: tapping the fused pill
+    /// CLEARS the qualifier (one step back to the loose facet) — no menu ever opens, so a chevron would promise a
+    /// picker that never comes.</summary>
+    public static SegmentedPillStyle Sidebar => new(
+        Height: 28f, SegmentHeight: 22f, Padding: new Edges4(3f, 3f, 9f, 3f), SegmentPadding: new Edges4(8f, 0f, 8f, 0f),
+        Gap: 6f, SegmentGap: 4f, TextSize: 12f, CheckSize: 10f, TrailingSize: 9f,
+        Fill: Tok.AccentDefault, HoverFill: Tok.AccentSecondary, PressedFill: Tok.AccentTertiary,
+        SegmentFill: Tok.FillControlSolid, SegmentShadow: Elevation.Card, SegmentInk: Tok.AccentTextPrimary,
+        ValueInk: Tok.OnAccent, TrailingInk: Tok.OnAccent, TrailingGlyph: Icons.Cancel);
 }

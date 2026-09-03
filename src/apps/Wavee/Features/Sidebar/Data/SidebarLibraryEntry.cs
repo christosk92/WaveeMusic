@@ -126,6 +126,12 @@ public readonly record struct SidebarLibraryEntry(
     /// guessed by a surface (the pin store is the only authority).</summary>
     public bool IsPinned { get; init; }
 
+    /// <summary>uri → last-played unix ms from <c>PlayLogStore.Recency</c> (local plays + the server listening
+    /// history), stamped by <see cref="SidebarProjection.Build"/> for Playlist/Album/Artist/Show rows. 0 = never
+    /// played. This is what <see cref="SidebarSort.Recents"/> sorts on — NOT <see cref="LastVisitedTicksUtc"/>, which
+    /// is navigation recency and feeds only the "recently opened" feed.</summary>
+    public long LastPlayedMs { get; init; }
+
     // Field-backed so a default(SidebarLibraryEntry) (a scratch-list slot) still reads "" rather than null — these are
     // display strings a row concatenates without a null check.
     readonly string? _folderId;
