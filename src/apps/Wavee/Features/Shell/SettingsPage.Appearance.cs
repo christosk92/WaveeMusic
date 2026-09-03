@@ -32,6 +32,12 @@ sealed partial class SettingsPage
 {
     readonly Signal<int> _density = new(1);
 
+    /// <summary>The live app-zoom factor. Written in <c>SettingsPage.Render</c> from <c>Viewport.Zoom</c> — a Context,
+    /// so the page re-renders when the chords, the Ctrl+wheel hook or the palette change it. It is read there rather
+    /// than here because <see cref="AppearanceTab"/> only runs for one tab, and a hook called conditionally breaks
+    /// hook order.</summary>
+    float _zoomLive = 1f;
+
     static string[] DensityLabels() =>
     [
         Loc.Get(Strings.Settings.Choice.Compact),
@@ -91,10 +97,12 @@ sealed partial class SettingsPage
         int trackListStyle = Math.Clamp(settings?.Get(WaveeSettings.TrackRowStyle) ?? 0, 0, TrackListStyleLabels().Length - 1);
         int pageLayout = Math.Clamp(settings?.Get(WaveeSettings.DetailPageLayout) ?? 0, 0, PageLayoutLabels().Length - 1);
         int lyricsSecondary = Math.Clamp(settings?.Get(WaveeSettings.LyricsSecondaryLine) ?? 0, 0, LyricsSecondaryLabels().Length - 1);
-        // The LIVE zoom, not the stored key: the chords/wheel change FluentApp.Zoom ahead of the debounced persist,
-        // and the row must show what the window is doing right now. Snap → IndexOf is exact (Snap returns a Steps
-        // element); Max is belt-and-suspenders for an engine value the ladder somehow doesn't contain.
-        int zoomIndex = Math.Max(0, Array.IndexOf(ZoomLadder.Steps, ZoomLadder.Snap(FluentApp.Zoom)));
+        // The LIVE zoom, not the stored key: the chords/wheel change the factor ahead of the debounced persist, and the
+        // row must show what the window is doing right now. Read off _zoomLive (Viewport.Zoom, subscribed in Render)
+        // rather than FluentApp.Zoom — that is a plain static, so reading it here subscribed to nothing and the row
+        // showed whatever it read at mount. Snap → IndexOf is exact (Snap returns a Steps element); Max is
+        // belt-and-suspenders for an engine value the ladder somehow doesn't contain.
+        int zoomIndex = Math.Max(0, Array.IndexOf(ZoomLadder.Steps, ZoomLadder.Snap(_zoomLive)));
 
         void SetTheme(int mode)
         {

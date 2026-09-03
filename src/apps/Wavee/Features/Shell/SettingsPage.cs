@@ -70,6 +70,16 @@ sealed partial class SettingsPage : Component
         var post = UsePost();
         var seeded = UseRef(false);
         _overlay = UseContext(Overlay.Service);
+        // The live app-zoom factor, for the Appearance tab's Zoom row. Read HERE, unconditionally, rather than inside
+        // AppearanceTab: that method only runs for one tab, and a hook called conditionally breaks hook ORDER.
+        //
+        // Viewport.Zoom is a Context, so this subscribes. FluentApp.Zoom, which the row used to read, is a plain static
+        // — reading it at render subscribed to nothing, and the chords, the Ctrl+wheel hook and the palette all mutate
+        // it without touching the settings store (WaveeApp persists on a 2s debounce so a held chord does not write per
+        // rung). The row therefore showed whatever it read at mount: the app at 200% over a picker saying 100%.
+        // The engine documents this channel as display-only for exactly this case — never for coordinate conversion,
+        // which keeps using Viewport.Scale (= OS DPI scale x Zoom).
+        _zoomLive = UseContext(Viewport.Zoom);
         _nav = UseContext(HistoryStore.NavCtx);
         _nc = UseContext(NotificationCenterBridge.Slot);
         _voPost = post;
@@ -91,20 +101,6 @@ sealed partial class SettingsPage : Component
 
         _ = _uiEpoch.Value;
         _ = PlayerBarPrefs.Epoch.Value;
-
-        // The Appearance tab's Zoom row shows the LIVE factor (FluentApp.Zoom), which the Ctrl+± chords, the Ctrl+wheel
-        // hook and the command palette all mutate WITHOUT touching the settings store — WaveeApp only persists it on a
-        // 2-second debounce. Nothing here subscribed to that, so zooming while Settings was open left the row reading
-        // whatever it read at mount: the app visibly at 200 % over a picker still saying 100 %. Subscribe to the
-        // engine's own change event and bump the page's epoch, which is the same signal every in-page write already
-        // pokes. Mounted once (DepKey.Empty) and unsubscribed on unmount — a static event holds this component alive
-        // otherwise.
-        UseEffect(() =>
-        {
-            void OnZoom(float _) => Bump();
-            FluentApp.ZoomChanged += OnZoom;
-            return () => FluentApp.ZoomChanged -= OnZoom;
-        }, DepKey.Empty);
 
         // "Manage" on a video-override toast navigates here and bumps this counter; land on the tab that owns the
         // roster AND open its Manage flyout (the roster no longer lives inline, so landing on the tab alone would
