@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wavee Store art — Round 2 · Screenshot 03 (queue and Connect)</title>
+<!--
+  ROUND 2 · MICROSOFT STORE SCREENSHOT SLOT 03.
+  Canvas 2400x1200. Store export: 2560x1440 (set --w/--h and the headless --window-size to match).
+  Real capture: shots/shot-queue.png — cropped with PIL out of assets/readme/promo/queue.jpg (the README promo captures).
+  Real app icon: assets/appicon.png, copied byte-for-byte from src/apps/Wavee/assets/AppIcon/appicon-source.png.
+  Flat ground, one hairline rule, one real drop shadow. No glow, no gradient mesh, no invented artwork.
+  All text sits in the top two-thirds and the left column, per the Store's text-overlay guidance.
+  Render:
+    msedge --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1       --window-size=2400,1200 --screenshot=<ABSOLUTE>.png file:///<ABSOLUTE>.html
+-->
+<style>
+  :root{
+    --w:2400px; --h:1200px;
+    --ground:#F2F1EE;        /* flat warm off-white; a light tile is unmissable on a dark Store page */
+    --ink:#15171B;
+    --ink-2:#5C6067;
+    --rule:#CBC9C4;
+    --accent:#0B57D0;        /* the app icon's blue, flattened */
+    --display:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+    --text:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{width:var(--w);height:var(--h);overflow:hidden;background:var(--ground)}
+  .canvas{position:relative;width:var(--w);height:var(--h);overflow:hidden;background:var(--ground)}
+
+  .edge{position:absolute;inset:0;box-shadow:inset 0 0 0 2px #DCDAD4;z-index:20;pointer-events:none}
+  .col{position:absolute;left:150px;top:158px;width:820px;z-index:4}
+  .idx{display:flex;align-items:center;gap:22px;margin-bottom:36px}
+  .idx .n{font-family:var(--text);font-weight:600;font-size:25px;letter-spacing:2.8px;color:var(--accent)}
+  .idx .bar{height:1px;flex:1;background:var(--rule)}
+  .cap{font-family:var(--display);font-weight:600;font-size:80px;line-height:1.06;white-space:nowrap;
+       letter-spacing:-2.8px;color:var(--ink)}
+  .sub{margin-top:34px;font-family:var(--text);font-weight:400;font-size:37px;line-height:1.4;
+       color:var(--ink-2);max-width:770px}
+
+  .lockup{position:absolute;left:150px;bottom:140px;z-index:4;display:flex;align-items:center;gap:22px}
+  .lockup img{width:74px;height:74px;border-radius:17px;display:block}
+  .lockup .name{font-family:var(--display);font-weight:600;font-size:45px;letter-spacing:-1.3px;color:var(--ink)}
+  .lockup .sep{width:1px;height:38px;background:var(--rule)}
+  .lockup .meta{font-family:var(--text);font-weight:400;font-size:27px;color:var(--ink-2)}
+
+  /* The real capture, bled off the right and bottom edges. */
+  .shot{position:absolute;left:940px;top:268px;width:1660px;z-index:3;
+        border-radius:16px 16px 0 0;overflow:hidden;background:#101010;
+        box-shadow:0 2px 6px rgba(20,22,28,.12), 0 40px 92px rgba(20,22,28,.24);}
+  .shot img{display:block;width:100%;height:auto}
+  .lockup .meta .disc { display:block; font-size:20px; opacity:.62; margin-top:4px; letter-spacing:0; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="col">
+    <div class="idx"><span class="n">03</span><span class="bar"></span></div>
+    <div class="cap">Full playback on your<br>own Premium account</div>
+    <div class="sub">Search, queue and autoplay. Move playback to another device over Spotify Connect.</div>
+  </div>
+
+  <div class="shot"><img src="shots/shot-queue.png" alt="Wavee: queue and Connect"></div>
+
+  <div class="edge"></div>
+  <div class="lockup">
+    <img src="assets/appicon.png" alt="">
+    <div class="name">Wavee</div>
+    <div class="sep"></div>
+    <div class="meta">Windows 11<br><span class="disc">Not affiliated with Spotify AB</span></div>
+  </div>
+</div>
+</body>
+</html>

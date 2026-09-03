@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wavee Store art — Concept 3 “Spectrum” (text-free)</title>
+<!--
+  Wavee — Microsoft Store art, Concept 3 “Spectrum”. TEXT-FREE and UI-FREE on purpose: this is the one
+  variant that satisfies the 16:9 Super hero art rules (“must not include the product's title or other
+  text”, “avoid showing your app's UI”, “no stock photography”).
+  The bar envelope traces the W of the Wavee mark — the spectrum IS the logo, so the art is brand-bearing
+  without a wordmark. Canvas 2400x1200 (2:1); the same file renders 1920x1080 / 3840x2160 by changing
+  --w / --h and re-running the screenshot with a matching --window-size.
+  Set WORDMARK = true in the script for a 2:1 promo variant that carries the mark (NOT for super hero art).
+-->
+<style>
+  :root{
+    --w:2400px; --h:1200px;
+    --cyan:#22E2FF; --blue:#0B6CFF; --indigo:#4B3BE8; --violet:#8A3FE8;
+    --display:"Segoe UI Variable Display","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:var(--w);height:var(--h);overflow:hidden;background:#04081C}
+  .canvas{
+    position:relative;width:var(--w);height:var(--h);overflow:hidden;
+    background:
+      radial-gradient(1700px 900px at 1200px 620px, rgba(11,108,255,.30), transparent 66%),
+      radial-gradient(1100px 800px at 210px 260px, rgba(34,226,255,.16), transparent 62%),
+      radial-gradient(1300px 900px at 2260px 980px, rgba(138,63,232,.34), transparent 62%),
+      linear-gradient(120deg,#04081C 0%,#081035 44%,#140F58 100%);
+  }
+  .edge{position:absolute;inset:0;box-shadow:inset 0 0 0 2px rgba(255,255,255,.10);z-index:20}
+  .grain{position:absolute;inset:0;opacity:.05;z-index:2;
+    background-image:linear-gradient(rgba(255,255,255,.8) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.8) 1px,transparent 1px);
+    background-size:150px 150px;
+    -webkit-mask-image:radial-gradient(1500px 800px at 1200px 580px,#000,transparent 74%);
+            mask-image:radial-gradient(1500px 800px at 1200px 580px,#000,transparent 74%);}
+
+  #field{position:absolute;left:0;top:0;width:var(--w);height:var(--h);z-index:6}
+  .bar{position:absolute;bottom:0;border-radius:999px;transform-origin:50% 100%}
+  .refl{position:absolute;top:0;border-radius:999px;opacity:.20;
+        -webkit-mask-image:linear-gradient(180deg,#000,transparent 88%);
+                mask-image:linear-gradient(180deg,#000,transparent 88%);}
+  .baseline{position:absolute;height:3px;border-radius:3px;z-index:7;
+    background:linear-gradient(90deg,rgba(34,226,255,0),rgba(34,226,255,.55) 12%,rgba(11,108,255,.75) 50%,rgba(138,63,232,.55) 88%,rgba(138,63,232,0));}
+  .glow{position:absolute;z-index:5;
+    background:radial-gradient(closest-side,rgba(30,120,255,.34),transparent 100%);}
+  .mark{position:absolute;left:150px;bottom:118px;z-index:12;display:none;align-items:center;gap:26px}
+  .mark .name{font-family:var(--display);font-weight:600;font-size:78px;letter-spacing:-2.4px;color:#fff}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="grain"></div>
+  <div id="field"></div>
+  <div class="mark" id="mark"><div class="name">wavee</div></div>
+  <div class="edge"></div>
+</div>
+<script>
+(function () {
+  var WORDMARK = false;              // true → show the wordmark (2:1 promo variant, NOT super hero art)
+  // Geometry is derived from --w / --h, so the SAME file renders 1920x1080 or 3840x2160:
+  // change --w/--h in :root and pass a matching --window-size to the headless screenshot.
+  var cs = getComputedStyle(document.documentElement);
+  var W = parseFloat(cs.getPropertyValue('--w')) || 2400;
+  var H = parseFloat(cs.getPropertyValue('--h')) || 1200;
+  var sx = W / 2400, sy = H / 1200;
+  var N = 66;                        // bar count
+  var MARGIN = 118 * sx;             // left/right bleed margin
+  var BASE = 846 * sy;               // baseline y — keeps the bar mass in the top two-thirds
+  var MAXH = 706 * sy;               // tallest bar
+  var field = document.getElementById('field');
+  var span = W - MARGIN * 2, pitch = span / N, bw = pitch * 0.54;
+
+  // Deterministic jitter so the render is reproducible.
+  function rnd(i) { var x = Math.sin(i * 12.9898) * 43758.5453; return x - Math.floor(x); }
+  function mix(a, b, t) { return a.map(function (v, k) { return Math.round(v + (b[k] - v) * t); }); }
+  var STOPS = [[34,226,255],[11,108,255],[75,59,232],[138,63,232]];
+  function ramp(t) {                 // cyan → blue → indigo → violet across x
+    var s = t * (STOPS.length - 1), i = Math.min(STOPS.length - 2, Math.floor(s));
+    var c = mix(STOPS[i], STOPS[i + 1], s - i);
+    return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+  }
+
+  for (var i = 0; i < N; i++) {
+    var t = i / (N - 1);
+    // The envelope IS the mark: peaks at both ends and in the middle, valleys between → a W.
+    var env = 0.5 + 0.5 * Math.cos(2 * Math.PI * 2 * t);
+    var h = (0.16 + 0.84 * env) * MAXH * (0.86 + 0.28 * rnd(i));
+    h = Math.max(26 * sy, Math.min(MAXH, h));
+    var x = MARGIN + i * pitch + (pitch - bw) / 2;
+    var col = ramp(t);
+
+    var b = document.createElement('div');
+    b.className = 'bar';
+    b.style.cssText = 'left:' + x + 'px;width:' + bw + 'px;height:' + h + 'px;bottom:' + (H - BASE) + 'px;' +
+      'background:linear-gradient(180deg,#EAFBFF 0%,' + col + ' 26%,' + col + ' 100%);' +
+      'box-shadow:0 0 ' + (46 * sy) + 'px ' + col.replace('rgb(', 'rgba(').replace(')', ',.55)') +
+      ', 0 0 ' + (120 * sy) + 'px ' + col.replace('rgb(', 'rgba(').replace(')', ',.22)') + ';';
+    field.appendChild(b);
+
+    var r = document.createElement('div');
+    r.className = 'refl';
+    r.style.cssText = 'left:' + x + 'px;width:' + bw + 'px;height:' + (h * 0.34) + 'px;top:' + (BASE + 10 * sy) + 'px;' +
+      'background:linear-gradient(180deg,' + col + ',transparent);';
+    field.appendChild(r);
+  }
+
+  var g = document.createElement('div');
+  g.className = 'glow';
+  g.style.cssText = 'left:' + (MARGIN - 160 * sx) + 'px;top:' + (BASE - MAXH - 140 * sy) + 'px;width:' +
+    (span + 320 * sx) + 'px;height:' + (MAXH + 320 * sy) + 'px;';
+  field.appendChild(g);
+
+  var bl = document.createElement('div');
+  bl.className = 'baseline';
+  bl.style.cssText = 'left:' + (MARGIN - 60 * sx) + 'px;width:' + (span + 120 * sx) + 'px;top:' + BASE + 'px;';
+  document.querySelector('.canvas').appendChild(bl);
+
+  if (WORDMARK) document.getElementById('mark').style.display = 'flex';
+})();
+</script>
+</body>
+</html>

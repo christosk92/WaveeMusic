@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wavee Store art — Concept 1 “Ribbon”</title>
+<!--
+  Wavee — Microsoft Store promotional art, Concept 1 “Ribbon”.
+  Canvas 2400x1200 (2:1). 16:9 SAFE CORE = the centred 2133x1200 box (x 133..2267):
+  everything that must survive a 1920x1080 export lives inside it.
+  Brand colours are sampled from src/apps/Wavee/assets/AppIcon/appicon-source.png.
+  Render: msedge --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1
+          --window-size=2400,1200 --screenshot=concept-1-ribbon.png file:///.../concept-1-ribbon.html
+-->
+<style>
+  :root{
+    --navy-deep:#050A20;
+    --navy:#0A1440;
+    --navy-lift:#141A5E;
+    --violet:#2A1878;
+    --cyan:#22E2FF;
+    --blue:#0B6CFF;
+    --indigo:#4B3BE8;
+    --violet-hot:#8A3FE8;
+    --ink:#FFFFFF;
+    --display:"Segoe UI Variable Display","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:2400px;height:1200px;overflow:hidden;background:var(--navy-deep)}
+  .canvas{
+    position:relative;width:2400px;height:1200px;
+    background:
+      radial-gradient(1500px 1100px at 1780px 300px, rgba(11,108,255,.42), transparent 62%),
+      radial-gradient(1200px 1000px at 2380px 1150px, rgba(138,63,232,.34), transparent 60%),
+      radial-gradient(1400px 1200px at 60px 1180px, rgba(20,26,94,.85), transparent 65%),
+      linear-gradient(118deg,#050A20 0%,#0A1440 46%,#151063 100%);
+    overflow:hidden;
+  }
+  /* Defined inner edge — keeps the tile from dissolving into a dark Store page. */
+  .edge{position:absolute;inset:0;box-shadow:inset 0 0 0 2px rgba(255,255,255,.10);pointer-events:none;z-index:9}
+  /* Very faint Metro grain/grid so the flat field is not dead. */
+  .grid{position:absolute;inset:0;opacity:.055;
+    background-image:linear-gradient(rgba(255,255,255,.9) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.9) 1px,transparent 1px);
+    background-size:120px 120px;
+    -webkit-mask-image:radial-gradient(1600px 900px at 1900px 420px,#000 0%,transparent 72%);
+            mask-image:radial-gradient(1600px 900px at 1900px 420px,#000 0%,transparent 72%);}
+  svg.ribbon{position:absolute;inset:0;width:2400px;height:1200px}
+
+  .type{position:absolute;left:226px;top:250px;width:1180px;z-index:6}
+  .eyebrow{
+    font-family:var(--display);font-weight:600;font-size:30px;letter-spacing:7.5px;
+    text-transform:uppercase;color:#7FE9FF;margin-bottom:38px;white-space:nowrap;
+  }
+  .word{
+    font-family:var(--display);font-weight:300;font-size:340px;line-height:.86;
+    letter-spacing:-17px;color:var(--ink);
+  }
+  .rule{width:210px;height:9px;margin:52px 0 44px;border-radius:9px;
+        background:linear-gradient(90deg,var(--cyan),var(--blue) 55%,var(--violet-hot))}
+  .sub{
+    font-family:var(--display);font-weight:350;font-size:60px;line-height:1.22;
+    letter-spacing:-1.1px;color:rgba(255,255,255,.80);max-width:1090px;
+  }
+  .sub b{font-weight:600;color:#fff}
+  .foot{
+    position:absolute;left:228px;bottom:110px;z-index:6;
+    font-family:var(--display);font-weight:400;font-size:30px;letter-spacing:1.6px;
+    color:rgba(255,255,255,.44);
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="grid"></div>
+
+  <svg class="ribbon" viewBox="0 -70 2400 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="ribbonMain" x1="1240" y1="1000" x2="2500" y2="-40" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#22E2FF"/>
+        <stop offset=".42" stop-color="#0B6CFF"/>
+        <stop offset=".78" stop-color="#4B3BE8"/>
+        <stop offset="1" stop-color="#22E2FF"/>
+      </linearGradient>
+      <linearGradient id="ribbonUnder" x1="1240" y1="200" x2="2520" y2="960" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#7A3FE8"/>
+        <stop offset="1" stop-color="#3B2BC9"/>
+      </linearGradient>
+      <filter id="bloom" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="46"/>
+      </filter>
+      <filter id="softbloom" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="16"/>
+      </filter>
+    </defs>
+
+    <!-- bloom pass -->
+    <path d="M1218,-160 C1312,540 1408,806 1522,806 C1648,806 1764,452 1888,268 C2012,452 2128,806 2254,806 C2368,806 2464,540 2558,-160"
+          stroke="url(#ribbonMain)" stroke-width="150" stroke-linecap="round" stroke-linejoin="round"
+          filter="url(#bloom)" opacity=".55"/>
+    <!-- violet crossing wave, echoing the app icon -->
+    <path d="M1262,120 C1348,742 1436,946 1540,946 C1656,946 1768,626 1882,458 C1996,626 2108,946 2224,946 C2320,946 2402,762 2470,300"
+          stroke="url(#ribbonUnder)" stroke-width="118" stroke-linecap="round" stroke-linejoin="round" opacity=".62"/>
+    <!-- main ribbon -->
+    <path d="M1218,-160 C1312,540 1408,806 1522,806 C1648,806 1764,452 1888,268 C2012,452 2128,806 2254,806 C2368,806 2464,540 2558,-160"
+          stroke="url(#ribbonMain)" stroke-width="132" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- specular highlight along the top of the stroke -->
+    <path d="M1218,-160 C1312,540 1408,806 1522,806 C1648,806 1764,452 1888,268 C2012,452 2128,806 2254,806 C2368,806 2464,540 2558,-160"
+          stroke="#BFF6FF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"
+          opacity=".38" filter="url(#softbloom)" transform="translate(0,-46)"/>
+  </svg>
+
+  <div class="type">
+    <div class="eyebrow">Native&nbsp;&nbsp;·&nbsp;&nbsp;GPU-rendered&nbsp;&nbsp;·&nbsp;&nbsp;30&nbsp;MB</div>
+    <div class="word">wavee</div>
+    <div class="rule"></div>
+    <div class="sub">A music client <b>built for&nbsp;Windows&nbsp;11</b> —<br>not a web app in a box.</div>
+  </div>
+
+  <div class="foot">An independent client for your own Spotify Premium account.</div>
+  <div class="edge"></div>
+</div>
+</body>
+</html>

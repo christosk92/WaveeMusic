@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wavee — large-display scaling</title>
+<style>
+  :root {
+    --lab-bg: #0e1014;
+    --lab-panel: rgba(27, 30, 37, .82);
+    --lab-stroke: rgba(255, 255, 255, .09);
+    --lab-text: #f5f6f8;
+    --lab-muted: #9da4b0;
+
+    /* Wavee dark tokens, as the prototype reads them */
+    --solid-base: #202020;        /* Tok.FillSolidBase */
+    --solid-secondary: #1c1c1c;   /* Tok.FillSolidSecondary */
+    --solid-tertiary: #282828;    /* Tok.FillSolidTertiary */
+    --fill-ctrl: rgba(255,255,255,.055);      /* Tok.FillControlDefault */
+    --fill-ctrl-hover: rgba(255,255,255,.10); /* Tok.FillControlSecondary */
+    --stroke-card: rgba(255,255,255,.09);     /* Tok.StrokeCard */
+    --stroke-divider: rgba(255,255,255,.07);  /* Tok.StrokeDivider */
+    --text-1: #f4f4f4;            /* Tok.TextPrimary */
+    --text-2: #b6b6b6;            /* Tok.TextSecondary */
+    --text-3: #8a8a8a;            /* Tok.TextTertiary */
+    --accent: #4cc2ff;            /* Tok.AccentDefault */
+    --accent-text: #6fcbff;       /* Tok.AccentTextPrimary */
+    --accent-subtle: rgba(76,194,255,.16);    /* Tok.AccentSubtle */
+
+    --r-ctrl: 5px;
+    --r-pill: 999px;
+
+    /* ── the ONE knob. Everything below is authored in DIPs and multiplied by it, exactly the way
+         Win32Window._scale = _rawDpiScale x _zoom multiplies the real app. ─────────────────────── */
+    --z: 1;
+
+    /* WaveeSize (Design/WaveeTokens.cs:51-75) */
+    --bar-h: calc(72px * var(--z));       /* WaveeSize.PlayerBarH */
+    --art-bar: calc(48px * var(--z));     /* WaveeSize.ArtPlayerBar */
+    --thumb32: calc(32px * var(--z));     /* WaveeSize.Thumb32 */
+    --thumb48: calc(48px * var(--z));     /* WaveeSize.Thumb48 */
+    --ctrl-h: calc(32px * var(--z));      /* WaveeSize.ControlH == PlayerBarLayout.MinButtonBox */
+    --primary-box: calc(40px * var(--z)); /* PlayerBarLayout.PrimaryBoxRoomy */
+    --pane-w: calc(320px * var(--z));     /* ShellResponsiveLayout.NavPaneWideW (Classic wide tier) */
+    --pane-edge: calc(8px * var(--z));    /* SidebarRowGeometry.PaneEdge */
+    --nav-row: calc(40px * var(--z));     /* LibraryV3Metrics.NavRowHeight */
+    --page-max: calc(1600px * var(--z));  /* WaveeSize.PageMaxW */
+
+    /* DetailTrackTableRules — Comfortable (density 3), Modern skin */
+    --row-h: calc(64px * var(--z));       /* RowHeightFor(3, false) */
+    --row-art: calc(48px * var(--z));     /* ArtSizeFor(3, false) == Thumb48 */
+    --hdr-h: calc(36px * var(--z));       /* HeaderHeightFor(false) */
+
+    /* Engine type ramp (Dsl/Typography.cs:39-46) */
+    --t-caption: calc(12px * var(--z)); --t-caption-lh: calc(16px * var(--z));
+    --t-body: calc(14px * var(--z));     --t-body-lh: calc(20px * var(--z));
+    --t-subtitle: calc(20px * var(--z)); --t-subtitle-lh: calc(28px * var(--z));
+    --t-title: calc(28px * var(--z));
+
+    /* Spacing.cs */
+    --sp-xs: calc(4px * var(--z));  --sp-s: calc(8px * var(--z));
+    --sp-m: calc(12px * var(--z));  --sp-l: calc(16px * var(--z));
+    --sp-xl: calc(20px * var(--z)); --sp-xxxl: calc(32px * var(--z));
+
+    /* Lyrics (Features/Player/LyricsView.cs:1275-1279) */
+    --ly-size: calc(26px * var(--z));     /* RowFontSize, _large == false (the rail) */
+    --ly-lh: calc(33px * var(--z));       /* RowLineHeight */
+    --ly-pad: calc(22px * var(--z));      /* RowSidePad */
+    --ly-measure: none;                   /* no cap today */
+
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0; color: var(--lab-text); font-size: 14px; line-height: 1.5;
+    padding: 32px 28px 90px;
+    background:
+      radial-gradient(1200px 700px at 10% -8%, rgba(76,194,255,.10), transparent 60%),
+      radial-gradient(900px 620px at 94% 2%, rgba(160,110,255,.10), transparent 62%),
+      var(--lab-bg);
+  }
+  h1 { font-family: "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+       font-size: 27px; font-weight: 600; letter-spacing: -.02em; margin: 0 0 6px; }
+  h3 { font-family: "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+       font-size: 18px; font-weight: 600; margin: 44px 0 6px; letter-spacing: -.015em; }
+  .lede { color: var(--lab-muted); max-width: 94ch; margin: 0 0 8px; }
+  .lede b { color: var(--lab-text); font-weight: 600; }
+  code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  a { color: var(--accent-text); text-decoration: none; border-bottom: 1px solid rgba(111,203,255,.28); }
+  a:hover { border-bottom-color: var(--accent-text); }
+  table.cmp { border-collapse: collapse; margin: 14px 0 0; font-size: 13px; }
+  table.cmp th, table.cmp td { border: 1px solid var(--lab-stroke); padding: 7px 11px; text-align: left; }
+  table.cmp th { background: rgba(255,255,255,.04); font-weight: 600; }
+  table.cmp td.n { font-variant-numeric: tabular-nums; }
+  .good { color: #7ee2a8; } .bad { color: #ff9d9d; } .mid { color: #ffd479; }
+
+  /* ── the option block ─────────────────────────────────────── */
+  .opt { background: var(--lab-panel); border: 1px solid var(--lab-stroke); border-radius: 12px;
+         padding: 16px 16px 18px; backdrop-filter: blur(24px) saturate(140%); margin: 16px 0 0; }
+  .opt > h2 { font-size: 15px; font-weight: 600; margin: 0 0 3px; letter-spacing: -.01em; }
+  .opt > .sub { font-size: 12.5px; color: var(--lab-muted); margin: 0 0 14px; max-width: 100ch; }
+  .flag { display:inline-block; font-size:10.5px; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
+          padding:2px 7px; border-radius:var(--r-pill); background:var(--accent-subtle); color:var(--accent-text);
+          margin-left:8px; vertical-align:2px; }
+  .flag.g { background:rgba(126,226,168,.15); color:#7ee2a8; }
+  .flag.r { background:rgba(255,157,157,.15); color:#ff9d9d; }
+  .note { color: var(--lab-muted); font-size: 12.5px; margin: 13px 0 0; max-width: 108ch; }
+  .note b { color: var(--lab-text); font-weight: 600; }
+  .note.like b { color:#7ee2a8; } .note.hate b { color:#ff9d9d; }
+
+  /* ── the mock window: a fixed 3440-px-wide viewport, scrolled horizontally ── */
+  .win-scroll { overflow-x: auto; overflow-y: hidden; border-radius: 10px;
+                border: 1px solid var(--stroke-card); background: var(--solid-secondary); }
+  .win { width: 3440px; height: 600px; display: flex; flex-direction: column;
+         position: relative; }
+  .win .ruler { position: absolute; inset: 0 0 auto 0; height: 18px; z-index: 4;
+                font-size: 10px; color: var(--text-3); pointer-events: none;
+                background: linear-gradient(180deg, rgba(0,0,0,.45), transparent); }
+  .win .ruler span { position: absolute; top: 3px; transform: translateX(-50%);
+                     font-variant-numeric: tabular-nums; }
+  .win .ruler i { position: absolute; top: 0; width: 1px; height: 18px;
+                  background: rgba(255,255,255,.14); }
+
+  .body { flex: 1; display: flex; min-height: 0; }
+
+  /* sidebar */
+  .pane { width: var(--pane-w); flex: none; background: var(--solid-base);
+          border-right: 1px solid var(--stroke-divider);
+          padding: var(--pane-edge); display: flex; flex-direction: column; gap: calc(2px * var(--z)); }
+  .pane .ph { font-size: var(--t-subtitle); line-height: var(--t-subtitle-lh); font-weight: 600;
+              letter-spacing: -.01em; color: var(--text-1);
+              padding: var(--sp-xs) var(--sp-s) var(--sp-s); }
+  .r { display: flex; align-items: center; gap: var(--sp-s); height: var(--nav-row);
+       padding: 0 var(--sp-s); border-radius: var(--r-ctrl); }
+  .r .g { width: calc(20px * var(--z)); text-align: center; color: var(--text-2);
+          font-size: calc(15px * var(--z)); flex: none; }
+  .r .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          color: var(--text-1); font-size: var(--t-body); line-height: var(--t-body-lh); }
+  .r .art { width: var(--thumb32); height: var(--thumb32); border-radius: calc(4px * var(--z));
+            flex: none; background: linear-gradient(135deg,#3a4150,#232833); }
+  .r.on { background: var(--accent-subtle); }
+  .r.on .t, .r.on .g { color: var(--accent-text); }
+
+  /* content: the track table, capped at PageMaxW and centred (exactly what DetailShell does) */
+  .content { flex: 1; min-width: 0; display: flex; }
+  .col { width: 100%; max-width: var(--page-max); margin: 0 auto;
+         padding: var(--sp-xl) var(--sp-xxxl); min-width: 0; overflow: hidden; }
+  .col .h1 { font-family: "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+             font-size: var(--t-title); font-weight: 600; letter-spacing: -.02em;
+             color: var(--text-1); margin: 0 0 var(--sp-m); }
+  .thead, .trow { display: grid; align-items: center;
+                  grid-template-columns:
+                    calc(28px * var(--z)) minmax(0,1fr) minmax(0,.75fr)
+                    calc(88px * var(--z)) calc(52px * var(--z)) calc(52px * var(--z));
+                  gap: var(--sp-l); padding: 0 var(--sp-s); }
+  .thead { height: var(--hdr-h); border-bottom: 1px solid var(--stroke-divider);
+           font-size: var(--t-caption); line-height: var(--t-caption-lh);
+           color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+  .trow { height: var(--row-h); border-radius: var(--r-ctrl); }
+  .trow:hover { background: var(--fill-ctrl); }
+  .trow .num { color: var(--text-3); font-size: var(--t-caption); font-variant-numeric: tabular-nums; }
+  .trow .id { display: flex; align-items: center; gap: var(--sp-m); min-width: 0; }
+  .trow .id .art { width: var(--row-art); height: var(--row-art); flex: none;
+                   border-radius: calc(4px * var(--z));
+                   background: linear-gradient(135deg,#4a3f6b,#241f33); }
+  .trow .id .two { min-width: 0; display: flex; flex-direction: column; }
+  .trow .id .two b { font-weight: 600; font-size: var(--t-body); line-height: var(--t-body-lh);
+                     color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trow .id .two s { text-decoration: none; font-size: var(--t-caption); line-height: var(--t-caption-lh);
+                     color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trow .sec { font-size: var(--t-body); line-height: var(--t-body-lh); color: var(--text-2);
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trow .dim { font-size: var(--t-caption); color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+  /* lyrics rail */
+  .rail { width: calc(340px * var(--z)); flex: none; background: var(--solid-base);
+          border-left: 1px solid var(--stroke-divider);
+          padding: var(--sp-l) var(--ly-pad); overflow: hidden; }
+  .rail .ly { font-size: var(--ly-size); line-height: var(--ly-lh); font-weight: 350;
+              color: var(--text-3); max-width: var(--ly-measure); }
+  .rail .ly.on { color: var(--text-1); }
+
+  /* player bar */
+  .bar { height: var(--bar-h); flex: none; background: var(--solid-tertiary);
+         border-top: 1px solid var(--stroke-divider);
+         display: flex; align-items: center; gap: var(--sp-m);
+         padding: 0 var(--sp-m); }
+  .bar .left { width: calc(260px * var(--z)); flex: none; display: flex; align-items: center;
+               gap: var(--sp-s); min-width: 0; }
+  .bar .left .art { width: var(--art-bar); height: var(--art-bar); flex: none;
+                    border-radius: calc(4px * var(--z));
+                    background: linear-gradient(135deg,#4a3f6b,#241f33); }
+  .bar .left .two { min-width: 0; display: flex; flex-direction: column; }
+  .bar .left .two b { font-weight: 600; font-size: var(--t-body); line-height: var(--t-body-lh);
+                      color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .left .two s { text-decoration: none; font-size: var(--t-caption); line-height: var(--t-caption-lh);
+                      color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .mid { flex: 1; min-width: 0; display: flex; flex-direction: column;
+              align-items: center; gap: calc(6px * var(--z)); }
+  .bar .tr { display: flex; align-items: center; gap: var(--sp-xs); }
+  .btn { width: var(--ctrl-h); height: var(--ctrl-h); border-radius: var(--r-pill);
+         display: flex; align-items: center; justify-content: center; flex: none;
+         color: var(--text-2); font-size: calc(16px * var(--z)); }
+  .btn.pri { width: var(--primary-box); height: var(--primary-box);
+             background: var(--text-1); color: #101010; font-size: calc(20px * var(--z)); }
+  .seek { display: flex; align-items: center; gap: var(--sp-s); width: 100%;
+          max-width: calc(640px * var(--z)); }
+  .seek .tm { font-size: var(--t-caption); color: var(--text-3); flex: none;
+              font-variant-numeric: tabular-nums; }
+  .seek .tk { flex: 1; height: calc(4px * var(--z)); border-radius: var(--r-pill);
+              background: rgba(255,255,255,.16); position: relative; }
+  .seek .tk::after { content:""; position:absolute; inset:0 62% 0 0; border-radius:var(--r-pill);
+                     background: var(--text-1); }
+  .bar .right { width: calc(240px * var(--z)); flex: none; display: flex; align-items: center;
+                justify-content: flex-end; gap: var(--sp-xs); }
+  .bar .right .vol { width: calc(80px * var(--z)); height: calc(4px * var(--z));
+                     border-radius: var(--r-pill); background: rgba(255,255,255,.16); }
+
+  /* ── the PROPOSED overrides. Only what §3.2-3.4 of the plan actually changes. ── */
+  .win.proposed {
+    --z: 1.5;                       /* ZoomAutoPolicy.Suggest(3440, 1392) -> 1.5 */
+    --ly-size: calc(26px * 1.5);    /* rail rung UNCHANGED — the rail is 510 px, still >= 320 DIP */
+    --ly-measure: calc(var(--ly-size) * 22);   /* NEW: the em measure cap */
+  }
+  .win.proposed .bar .mid .seek { max-width: calc(640px * 1.5); }
+</style>
+
+<h1>Wavee on large displays — current sizing vs. proposed</h1>
+<p class="lede">
+  One mock surface — <b>sidebar (wide tier) · a Comfortable-density track table · lyrics rail · player bar</b>
+  — drawn twice inside the same <b>3440 × 1392 px</b> client area the author's 34″ ultrawide actually reports
+  (<code>\\.\DISPLAY1</code>, OS scale 100 %, so 1 DIP = 1 px). Scroll each window sideways; they are the real
+  width, not a thumbnail. Companion doc:
+  <a href="large-display-scaling.md">large-display-scaling.md</a>.
+</p>
+<p class="lede">
+  Every dimension below is authored as a <b>DIP literal read off the code</b> and multiplied by one CSS
+  variable <code>--z</code>. That is not a prototype shortcut — it is exactly how the shipped app works:
+  <code>Win32Window._scale = _rawDpiScale × _zoom</code>, and the layout tree never sees the scale at all.
+  <b>The only difference between the two windows is <code>--z</code>, plus one new lyrics measure cap.</b>
+</p>
+
+<h3>A · Current — <code>--z: 1</code> (zoom 100 %, the shipped default)</h3>
+<div class="opt">
+  <h2>3440 DIP of window, 1600 DIP of design <span class="flag r">the complaint</span></h2>
+  <p class="sub">
+    Nothing here is a bug. Every constant is doing what it says: a 72-DIP bar, a 320-DIP pane, 14/20 row text,
+    a 26-DIP lyric, and a content column capped at <code>WaveeSize.PageMaxW = 1600</code> and centred. The
+    app just has <b>2.07× the DIP width it was designed for</b>, so all of it reads at half its intended
+    proportion — and the page column is spending ~1500 DIP on empty gutters.
+  </p>
+  <div class="win-scroll">
+    <div class="win current">
+      <div class="ruler">
+        <i style="left:0"></i><span style="left:0">0</span>
+        <i style="left:860px"></i><span style="left:860px">860</span>
+        <i style="left:1720px"></i><span style="left:1720px">1720 px</span>
+        <i style="left:2580px"></i><span style="left:2580px">2580</span>
+        <i style="left:3439px"></i><span style="left:3400px">3440</span>
+      </div>
+      <div class="body">
+        <div class="pane">
+          <div class="ph">Your Library</div>
+          <div class="r on"><div class="g">≡</div><div class="t">Playlists</div></div>
+          <div class="r"><div class="g">♥</div><div class="t">Liked Songs</div></div>
+          <div class="r"><div class="art"></div><div class="t">Late Night Drive</div></div>
+          <div class="r"><div class="art"></div><div class="t">Ambient Works</div></div>
+          <div class="r"><div class="art"></div><div class="t">Bad Bunny Radio</div></div>
+        </div>
+        <div class="content"><div class="col">
+          <div class="h1">Late Night Drive</div>
+          <div class="thead"><div>#</div><div>Title</div><div>Album</div><div>Date added</div><div>Plays</div><div>⏱</div></div>
+          <div class="trow"><div class="num">1</div><div class="id"><div class="art"></div><div class="two"><b>Nightcall</b><s>Kavinsky</s></div></div><div class="sec">OutRun</div><div class="dim">Sep 28, 2024</div><div class="dim">1.85B</div><div class="dim">4:18</div></div>
+          <div class="trow"><div class="num">2</div><div class="id"><div class="art"></div><div class="two"><b>Midnight City</b><s>M83</s></div></div><div class="sec">Hurry Up, We're Dreaming</div><div class="dim">Sep 28, 2024</div><div class="dim">912M</div><div class="dim">4:03</div></div>
+          <div class="trow"><div class="num">3</div><div class="id"><div class="art"></div><div class="two"><b>Instant Crush</b><s>Daft Punk, Julian Casablancas</s></div></div><div class="sec">Random Access Memories</div><div class="dim">Aug 02, 2024</div><div class="dim">1.2B</div><div class="dim">5:37</div></div>
+        </div></div>
+        <div class="rail">
+          <div class="ly">I'm giving you a night call</div>
+          <div class="ly on">to tell you how I feel</div>
+          <div class="ly">I want to drive you through the night</div>
+          <div class="ly">down the hills</div>
+        </div>
+      </div>
+      <div class="bar">
+        <div class="left"><div class="art"></div><div class="two"><b>Nightcall</b><s>Kavinsky</s></div></div>
+        <div class="mid">
+          <div class="tr">
+            <div class="btn">⤨</div><div class="btn">⏮</div>
+            <div class="btn pri">▶</div>
+            <div class="btn">⏭</div><div class="btn">⟳</div>
+          </div>
+          <div class="seek"><div class="tm">1:36</div><div class="tk"></div><div class="tm">4:18</div></div>
+        </div>
+        <div class="right"><div class="btn">♪</div><div class="btn">☰</div><div class="btn">🔊</div><div class="vol"></div><div class="btn">⛶</div></div>
+      </div>
+    </div>
+  </div>
+  <p class="note hate">
+    <b>Read the ruler.</b> The player bar is 72 px on a 3440-px row — <b>2.5 % of the width</b>, against 5.2 %
+    on the author's laptop. The pane is 9 %, against 19 %. The track column ends around 2500 px and the rest
+    is gutter. Nothing <i>reflowed</i> wrong; nothing <i>grew</i>.
+  </p>
+</div>
+
+<h3>B · Proposed — <code>--z: 1.5</code> (Auto zoom, plus a lyrics measure cap)</h3>
+<div class="opt">
+  <h2>ZoomAutoPolicy.Suggest(3440, 1392) → 150 % <span class="flag g">recommended</span></h2>
+  <p class="sub">
+    <code>min(3440 / 1600, 1392 / 900) = min(2.15, 1.55) = 1.55 → 150 %</code>. The design box
+    <b>1600 × 900</b> is not a new number: 1600 is <code>WaveeSize.PageMaxW</code> and 900 is
+    <code>DetailShell</code>'s own tall-hero gate. The <code>min()</code> is what stops the policy buying size
+    by giving up structure — width alone would pick 200 %, whose 1720 × 696 DIP viewport <i>demotes</i> both
+    the nav-pane wide tier (arms at 1800) and the TitleLarge hero rung (arms at 900 tall).
+  </p>
+  <div class="win-scroll">
+    <div class="win proposed">
+      <div class="ruler">
+        <i style="left:0"></i><span style="left:0">0</span>
+        <i style="left:860px"></i><span style="left:860px">860</span>
+        <i style="left:1720px"></i><span style="left:1720px">1720 px</span>
+        <i style="left:2580px"></i><span style="left:2580px">2580</span>
+        <i style="left:3439px"></i><span style="left:3400px">3440</span>
+      </div>
+      <div class="body">
+        <div class="pane">
+          <div class="ph">Your Library</div>
+          <div class="r on"><div class="g">≡</div><div class="t">Playlists</div></div>
+          <div class="r"><div class="g">♥</div><div class="t">Liked Songs</div></div>
+          <div class="r"><div class="art"></div><div class="t">Late Night Drive</div></div>
+          <div class="r"><div class="art"></div><div class="t">Ambient Works</div></div>
+          <div class="r"><div class="art"></div><div class="t">Bad Bunny Radio</div></div>
+        </div>
+        <div class="content"><div class="col">
+          <div class="h1">Late Night Drive</div>
+          <div class="thead"><div>#</div><div>Title</div><div>Album</div><div>Date added</div><div>Plays</div><div>⏱</div></div>
+          <div class="trow"><div class="num">1</div><div class="id"><div class="art"></div><div class="two"><b>Nightcall</b><s>Kavinsky</s></div></div><div class="sec">OutRun</div><div class="dim">Sep 28, 2024</div><div class="dim">1.85B</div><div class="dim">4:18</div></div>
+          <div class="trow"><div class="num">2</div><div class="id"><div class="art"></div><div class="two"><b>Midnight City</b><s>M83</s></div></div><div class="sec">Hurry Up, We're Dreaming</div><div class="dim">Sep 28, 2024</div><div class="dim">912M</div><div class="dim">4:03</div></div>
+          <div class="trow"><div class="num">3</div><div class="id"><div class="art"></div><div class="two"><b>Instant Crush</b><s>Daft Punk, Julian Casablancas</s></div></div><div class="sec">Random Access Memories</div><div class="dim">Aug 02, 2024</div><div class="dim">1.2B</div><div class="dim">5:37</div></div>
+        </div></div>
+        <div class="rail">
+          <div class="ly">I'm giving you a night call</div>
+          <div class="ly on">to tell you how I feel</div>
+          <div class="ly">I want to drive you through the night</div>
+          <div class="ly">down the hills</div>
+        </div>
+      </div>
+      <div class="bar">
+        <div class="left"><div class="art"></div><div class="two"><b>Nightcall</b><s>Kavinsky</s></div></div>
+        <div class="mid">
+          <div class="tr">
+            <div class="btn">⤨</div><div class="btn">⏮</div>
+            <div class="btn pri">▶</div>
+            <div class="btn">⏭</div><div class="btn">⟳</div>
+          </div>
+          <div class="seek"><div class="tm">1:36</div><div class="tk"></div><div class="tm">4:18</div></div>
+        </div>
+        <div class="right"><div class="btn">♪</div><div class="btn">☰</div><div class="btn">🔊</div><div class="vol"></div><div class="btn">⛶</div></div>
+      </div>
+    </div>
+  </div>
+  <p class="note like">
+    <b>Same code, same constants, same reflow logic.</b> The bar is 108 px (7.8 % of height), the pane 480 px,
+    row text 21 px, the primary transport 60 px. The content column is now 2400 of a 2450-px content region
+    — <b>PageMaxW stopped being a cap and became a fit</b>, which is what it was written for. Zero layout
+    literals changed.
+  </p>
+</div>
+
+<h3>What the two windows differ by</h3>
+<table class="cmp">
+  <tr><th>Metric</th><th>Source</th><th class="n">A · 100 %</th><th class="n">B · 150 %</th><th>Note</th></tr>
+  <tr><td>DIP viewport</td><td><code>ClientSizePx / Scale</code></td><td class="n">3440 × 1392</td><td class="n">2293 × 928</td><td>zoom trades width for size</td></tr>
+  <tr><td>Player bar height</td><td><code>WaveeSize.PlayerBarH 72</code></td><td class="n">72 px · 2.5 % of W</td><td class="n">108 px · 3.1 %</td><td>7.8 % of <i>height</i></td></tr>
+  <tr><td>Primary transport</td><td><code>PrimaryBoxRoomy 40</code></td><td class="n">40 px</td><td class="n">60 px</td><td>both clear WCAG 2.5.5 (44) at B</td></tr>
+  <tr><td>Secondary transport</td><td><code>MinButtonBox 32</code></td><td class="n">32 px</td><td class="n">48 px</td><td>both clear WCAG 2.5.8 (24)</td></tr>
+  <tr><td>Nav pane (wide tier)</td><td><code>NavPaneWideW 320</code></td><td class="n">320 px · 9.3 %</td><td class="n">480 px · 14 %</td><td>stock <code>OpenPaneLength</code></td></tr>
+  <tr><td>Track row · art</td><td><code>RowHeightFor(3) 64 / ArtSizeFor 48</code></td><td class="n">64 / 48 px</td><td class="n">96 / 72 px</td><td>Comfortable density, both</td></tr>
+  <tr><td>Row title type</td><td><code>Ui.BodyStrong 14/20</code></td><td class="n">14 px</td><td class="n">21 px</td><td>DIP value unchanged</td></tr>
+  <tr><td>Page column</td><td><code>WaveeSize.PageMaxW 1600</code></td><td class="n">1600 of 2780 px (58 %)</td><td class="n">2400 of 2450 px (98 %)</td><td>the gutters close</td></tr>
+  <tr><td>Lyric line</td><td><code>LyricsView.RowFontSize 26</code></td><td class="n">26 px</td><td class="n">39 px</td><td>rail rung unchanged</td></tr>
+  <tr><td>Lyric measure</td><td>— (none today)</td><td class="bad">uncapped</td><td class="good">≈ 22 em</td><td>the one non-zoom change</td></tr>
+  <tr><td>Layout constants changed</td><td>—</td><td class="n">—</td><td class="good n">0</td><td>zoom is applied below the DIP layer</td></tr>
+</table>
+
+<h3>Rejected: automatic per-surface size tiers</h3>
+<div class="opt">
+  <h2>A width-driven size ladder per surface <span class="flag r">rejected</span></h2>
+  <p class="sub">
+    "At &gt; 2200 DIP make the bar 96, the rows 80, the type 18, the pane 400." It would look like window B —
+    and cost the whole app to get there.
+  </p>
+  <p class="note hate">
+    <b>Blast radius:</b> 799 <code>const float</code> declarations in <code>src/apps/Wavee</code> and ~27 pure
+    layout test files that pin literals, each needing a tier axis. <b>Re-opens a settled bug:</b> a per-tier
+    metric ramp once shipped <i>three of six</i> player-bar tiers with sub-WCAG hit targets — the reason
+    <code>PlayerBarLayout</code>'s metrics are deliberately flat today. <b>Becomes a matrix:</b>
+    density × size-tier × width-tier. With zoom it stays one product,
+    <code>DIP(density, width-tier) × osDpi × zoom</code>. <b>And it structurally cannot work:</b>
+    <code>MergedChromeLayout.FixedBudget</code> is measured against native caption geometry
+    (<code>ChromeCaptionClusterW</code> = 3 × <code>CaptionButton.Width</code>;
+    <code>ChromeMinDragStripW</code> is pinned by <code>TitleBar</code>) — an app-level tier factor cannot move
+    the OS caption buttons. Only the window scale moves both together, and it already does.
+  </p>
+</div>
+
+<h3>Also required — the one thing the recommendation itself breaks</h3>
+<div class="opt">
+  <h2>Image decode budgets don't track the effective scale <span class="flag r">blocker</span></h2>
+  <p class="note hate">
+    <code>UseImage(src, decodePx)</code> takes a <b>caller-chosen</b> budget and Wavee passes DIP-ish literals
+    (<code>Surfaces.cs:403</code>, <code>HomePage.cs:1622</code>, <code>ArtistPage.Hero.cs:327</code>). Nothing
+    multiplies them by <code>Viewport.Scale</code>. Landing Auto zoom at 150 % therefore decodes every cover at
+    <b>1/1.5 the resolution it displays</b> — the art tiles in window B above would be visibly soft in the real
+    app, and the user would correctly blame the new feature. Fix in the same change:
+    <code>UseImage(src, ceil(dipEdge × UseContext(Viewport.Scale)))</code>, capped.
+    <code>Equalizer.cs:63</code> is the existing precedent for reading <code>Viewport.Scale</code> to size a
+    device-pixel resource.
+  </p>
+</div>
+</html>

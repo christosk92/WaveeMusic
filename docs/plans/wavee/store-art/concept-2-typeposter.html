@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wavee Store art — Concept 2 “No browser inside”</title>
+<!--
+  Wavee — Microsoft Store promotional art, Concept 2 “No browser inside” (Zune / Metro type poster).
+  Canvas 2400x1200 (2:1). 16:9 SAFE CORE = the centred 2133x1200 box (x 133..2267).
+  The headline is one line of CSS — swap it for an alternate claim without touching the layout.
+  Alternates that fit the same grid:
+     "no browser inside."   |   "built for Windows.  not ported to it."   |   "one window. no browser."
+-->
+<style>
+  :root{
+    --navy-deep:#04081C;
+    --navy:#0A1440;
+    --cyan:#22E2FF;
+    --blue:#0B6CFF;
+    --indigo:#4B3BE8;
+    --violet-hot:#8A3FE8;
+    --display:"Segoe UI Variable Display","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:2400px;height:1200px;overflow:hidden;background:var(--navy-deep)}
+  .canvas{
+    position:relative;width:2400px;height:1200px;overflow:hidden;
+    background:
+      radial-gradient(1300px 900px at 260px 120px, rgba(11,108,255,.28), transparent 62%),
+      radial-gradient(1500px 1100px at 2260px 1160px, rgba(138,63,232,.40), transparent 62%),
+      linear-gradient(112deg,#04081C 0%,#081035 40%,#120E52 100%);
+  }
+  .edge{position:absolute;inset:0;box-shadow:inset 0 0 0 2px rgba(255,255,255,.10);z-index:20}
+
+  /* Ghost W-ribbon bleeding off the right edge — the mark, used as texture. */
+  svg.ghost{position:absolute;right:-300px;top:-150px;width:1620px;height:1500px;opacity:.42}
+
+
+  .stripe{position:absolute;left:196px;top:222px;width:14px;height:620px;border-radius:14px;z-index:6;
+          background:linear-gradient(180deg,var(--cyan),var(--blue) 48%,var(--violet-hot))}
+
+  .head{position:absolute;left:268px;top:196px;z-index:8;
+    font-family:var(--display);font-weight:300;font-size:262px;line-height:.93;
+    letter-spacing:-13px;color:#fff;}
+  .head .hot{
+    background:linear-gradient(96deg,#5CEBFF 0%,#22A6FF 46%,#8A3FE8 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;font-weight:400;
+  }
+
+  .lockup{position:absolute;left:268px;top:842px;z-index:8;display:flex;align-items:center;gap:30px}
+  .lockup .mark{width:96px;height:96px;border-radius:24px;flex:0 0 auto;
+    background:linear-gradient(150deg,#0F2467,#1C1773);
+    box-shadow:0 0 0 2px rgba(255,255,255,.12) inset;display:flex;align-items:center;justify-content:center}
+  .lockup .name{font-family:var(--display);font-weight:600;font-size:76px;letter-spacing:-2.2px;color:#fff}
+  .lockup .div{width:2px;height:64px;background:rgba(255,255,255,.22)}
+  .lockup .claim{font-family:var(--display);font-weight:350;font-size:44px;letter-spacing:-.4px;
+                 color:rgba(255,255,255,.76)}
+
+  .foot{position:absolute;left:270px;top:1002px;z-index:8;
+    font-family:var(--display);font-weight:400;font-size:30px;letter-spacing:1.6px;color:rgba(255,255,255,.42)}
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <svg class="ghost" viewBox="0 0 1000 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="g2" x1="60" y1="900" x2="960" y2="60" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#22E2FF"/><stop offset=".5" stop-color="#0B6CFF"/><stop offset="1" stop-color="#8A3FE8"/>
+      </linearGradient>
+      <filter id="b2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="26"/></filter>
+    </defs>
+    <path d="M70,40 C150,600 230,790 330,790 C440,790 500,470 500,330 C500,470 560,790 670,790 C770,790 850,600 930,40"
+          stroke="url(#g2)" stroke-width="112" stroke-linecap="round" stroke-linejoin="round" filter="url(#b2)" opacity=".34"/>
+    <path d="M70,40 C150,600 230,790 330,790 C440,790 500,470 500,330 C500,470 560,790 670,790 C770,790 850,600 930,40"
+          stroke="url(#g2)" stroke-width="96" stroke-linecap="round" stroke-linejoin="round" opacity=".62"/>
+  </svg>
+
+  <div class="stripe"></div>
+
+  <div class="head">no browser<br><span class="hot">inside.</span></div>
+
+  <div class="lockup">
+    <div class="mark">
+      <svg width="62" height="52" viewBox="0 0 1000 820" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="g3" x1="60" y1="760" x2="940" y2="40" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#22E2FF"/><stop offset="1" stop-color="#0B6CFF"/></linearGradient></defs>
+        <path d="M80,60 C160,600 240,760 340,760 C450,760 500,470 500,340 C500,470 550,760 660,760 C760,760 840,600 920,60"
+              stroke="url(#g3)" stroke-width="150" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="name">wavee</div>
+    <div class="div"></div>
+    <div class="claim">GPU-rendered. NativeAOT. 30&nbsp;MB.</div>
+  </div>
+
+  <div class="foot">An independent client for your own Spotify Premium account · Windows 11</div>
+
+  <div class="edge"></div>
+</div>
+</body>
+</html>

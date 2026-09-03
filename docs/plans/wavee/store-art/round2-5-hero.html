@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wavee Store art — Round 2 · 16:9 Super hero art (no text, no UI)</title>
+<!--
+  ROUND 2 · 16:9 SUPER HERO ART. Default canvas 1920x1080 — the size Partner Center wants
+  ("The image must be a .png that is either 1920 x 1080 pixels or 3840 x 2160 pixels").
+  Set --w/--h to 3840/2160 (and the headless --window-size to match) for the 4K export;
+  every block is positioned in percentages, so the composition holds at 2400x1200 too.
+
+  Compliance, checked against the Store spec:
+    · no product title and no other text          · no app UI, no device imagery
+    · no stock photography, no people             · key mass out of the bottom third
+    · the focal element sits in the centre so a crop cannot lose it
+  The only artwork is the real app icon (assets/appicon.png, byte-for-byte from
+  src/apps/Wavee/assets/AppIcon/appicon-source.png) over a hand-placed field of flat tiles in the
+  icon's own palette. Flat fills only — no gradients, no glow, no blur.
+-->
+<style>
+  :root{
+    --w:1920px; --h:1080px;
+    --n1:#050D2C;  --n2:#06184F;  --n3:#0A1A55;  --n4:#0F2467;
+    --n5:#12206B;  --v1:#1C1773;  --b1:#0B57D0;  --c1:#01DEFD;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{width:var(--w);height:var(--h);overflow:hidden;background:var(--n2)}
+  .canvas{position:relative;width:var(--w);height:var(--h);overflow:hidden;background:var(--n2)}
+  .t{position:absolute}
+  .edge{position:absolute;inset:0;box-shadow:inset 0 0 0 2px rgba(255,255,255,.08);z-index:20}
+  .icon{position:absolute;z-index:10;display:block;
+        left:50%;top:44%;transform:translate(-50%,-50%);
+        width:30%;height:auto;border-radius:11.5%;
+        box-shadow:0 26px 70px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.4);}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <!-- Column 1 -->
+  <div class="t" style="left:0;top:0;width:12.5%;height:39%;background:var(--n4)"></div>
+  <div class="t" style="left:0;top:39%;width:12.5%;height:27%;background:var(--n2)"></div>
+  <div class="t" style="left:0;top:66%;width:12.5%;height:34%;background:var(--n5)"></div>
+  <!-- Column 2 -->
+  <div class="t" style="left:12.5%;top:0;width:14.6%;height:61%;background:var(--n2)"></div>
+  <div class="t" style="left:12.5%;top:61%;width:14.6%;height:1.7%;background:var(--c1)"></div>
+  <div class="t" style="left:12.5%;top:62.7%;width:14.6%;height:37.3%;background:var(--b1)"></div>
+  <!-- Column 3 -->
+  <div class="t" style="left:27.1%;top:0;width:9.4%;height:22%;background:var(--v1)"></div>
+  <div class="t" style="left:27.1%;top:22%;width:9.4%;height:50%;background:var(--n4)"></div>
+  <div class="t" style="left:27.1%;top:72%;width:9.4%;height:28%;background:var(--n2)"></div>
+  <!-- Column 4 -->
+  <div class="t" style="left:36.5%;top:0;width:16.6%;height:81%;background:var(--n3)"></div>
+  <div class="t" style="left:36.5%;top:81%;width:16.6%;height:19%;background:var(--v1)"></div>
+  <!-- Column 5 -->
+  <div class="t" style="left:53.1%;top:0;width:8.4%;height:26%;background:var(--b1)"></div>
+  <div class="t" style="left:53.1%;top:26%;width:8.4%;height:2.2%;background:var(--c1)"></div>
+  <div class="t" style="left:53.1%;top:28.2%;width:8.4%;height:71.8%;background:var(--n2)"></div>
+  <!-- Column 6 -->
+  <div class="t" style="left:61.5%;top:0;width:13.5%;height:50%;background:var(--n4)"></div>
+  <div class="t" style="left:61.5%;top:50%;width:13.5%;height:50%;background:var(--n5)"></div>
+  <!-- Column 7 -->
+  <div class="t" style="left:75%;top:0;width:13.5%;height:18%;background:var(--n2)"></div>
+  <div class="t" style="left:75%;top:18%;width:13.5%;height:56%;background:var(--v1)"></div>
+  <div class="t" style="left:75%;top:74%;width:13.5%;height:26%;background:var(--n4)"></div>
+  <!-- Column 8 -->
+  <div class="t" style="left:88.5%;top:0;width:11.5%;height:67%;background:var(--n3)"></div>
+  <div class="t" style="left:88.5%;top:67%;width:11.5%;height:33%;background:var(--b1)"></div>
+
+  <img class="icon" src="assets/appicon.png" alt="">
+  <div class="edge"></div>
+</div>
+</body>
+</html>
