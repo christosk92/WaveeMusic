@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -90,6 +91,20 @@ sealed partial class SettingsPage : Component
 
         _ = _uiEpoch.Value;
         _ = PlayerBarPrefs.Epoch.Value;
+
+        // The Appearance tab's Zoom row shows the LIVE factor (FluentApp.Zoom), which the Ctrl+± chords, the Ctrl+wheel
+        // hook and the command palette all mutate WITHOUT touching the settings store — WaveeApp only persists it on a
+        // 2-second debounce. Nothing here subscribed to that, so zooming while Settings was open left the row reading
+        // whatever it read at mount: the app visibly at 200 % over a picker still saying 100 %. Subscribe to the
+        // engine's own change event and bump the page's epoch, which is the same signal every in-page write already
+        // pokes. Mounted once (DepKey.Empty) and unsubscribed on unmount — a static event holds this component alive
+        // otherwise.
+        UseEffect(() =>
+        {
+            void OnZoom(float _) => Bump();
+            FluentApp.ZoomChanged += OnZoom;
+            return () => FluentApp.ZoomChanged -= OnZoom;
+        }, DepKey.Empty);
 
         // "Manage" on a video-override toast navigates here and bumps this counter; land on the tab that owns the
         // roster AND open its Manage flyout (the roster no longer lives inline, so landing on the tab alone would

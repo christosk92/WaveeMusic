@@ -39,6 +39,10 @@ versions separately under `v*` and is not tracked in this file.)
 - The What's New viewer dims the whole window again and shows its caption. The overlay root shrink-wrapped to the
   plate, so the veil covered only the plate's own box, and the caption's scroll viewport measured zero tall and
   was clipped away entirely. (#89)
+- Settings' Zoom row no longer shows a stale percentage. The chords, the Ctrl+wheel hook and the palette all change
+  the live zoom without touching the settings store, and nothing subscribed to the engine's own change event — so
+  zooming with the page open left the picker reading whatever it read at mount, with the app visibly at 200 % over a
+  control still saying 100 %. (#93)
 - Overlay veils no longer tint under the cursor and flash on press. A full-bleed dismiss surface carries an
   `OnClick`, so the recorder interpolated it toward an unset hover brush — the engine's own scrim pins both, and
   Wavee's did not. (#91)
