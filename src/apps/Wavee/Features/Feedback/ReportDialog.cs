@@ -46,12 +46,22 @@ static class ReportDialog
 
         bool isCrash = crash.Mode != CrashPromptMode.None || prefill?.CrashReportPath is { Length: > 0 };
         ReportKind effectiveKind = isCrash ? ReportKind.Crash : kind;
+
+        // Issue D ("Report a problem…" once opened on Question with no caller ever requesting it) was never
+        // reproduced from source alone — this line is the trap for next time: it names the kind that ACTUALLY
+        // arrived at the one place that decides what the dialog shows.
+        WaveeLog.Instance.Info("report",
+            $"report.open kind={kind} effective={effectiveKind} crash={crash.Mode} prefill={prefill is not null}");
+
         var session = new ReportDialogSession();
 
         ContentDialog.Show(overlay, d =>
         {
             d.Title = Loc.Get(Strings.Report.Title);
             d.DialogWidth = DialogWidth;
+            // Keyed by the kind actually shown: component props freeze at mount (component-props-contract.md), so
+            // without this Key a reused body node would keep whatever kind signal it was first seeded with instead
+            // of remounting for effectiveKind — exactly like ReportDialogCard is already keyed by kind below.
             d.Content = Embed.Comp(() => new ReportDialogBody
             {
                 Svc = svc,
@@ -61,7 +71,7 @@ static class ReportDialog
                 Prefill = prefill,
                 Crash = crash,
                 Session = session,
-            });
+            }) with { Key = "report-body:" + (int)effectiveKind };
             d.PrimaryText = isCrash ? Loc.Get(Strings.Report.ReportOnGithub) : Loc.Get(Strings.Report.OpenGithub);
             d.CloseText = isCrash ? Loc.Get(Strings.Report.NotNow) : Loc.Get(Strings.Auth.Cancel);
             d.DefaultButton = ContentDialog.DefaultBtn.Primary;
@@ -95,8 +105,8 @@ sealed class ReportDialogBody : Component
     public override Element Render()
     {
         bool isCrash = Crash.Mode != CrashPromptMode.None || Prefill?.CrashReportPath is { Length: > 0 };
-        var kindIndex = UseSignal(KindIndex(InitialKind));
-        ReportKind kind = isCrash ? ReportKind.Crash : IndexToKind(kindIndex.Value);
+        var kindIndex = UseSignal(ReportKindIndex.IndexOf(InitialKind));
+        ReportKind kind = isCrash ? ReportKind.Crash : ReportKindIndex.KindAt(kindIndex.Value);
 
         var children = new List<Element>(3)
         {
@@ -131,24 +141,6 @@ sealed class ReportDialogBody : Component
             Children = children.ToArray(),
         };
     }
-
-    static int KindIndex(ReportKind kind) => kind switch
-    {
-        ReportKind.Bug => 0,
-        ReportKind.Feature => 1,
-        ReportKind.Question => 2,
-        ReportKind.Idea => 3,
-        _ => 0,
-    };
-
-    static ReportKind IndexToKind(int index) => index switch
-    {
-        0 => ReportKind.Bug,
-        1 => ReportKind.Feature,
-        2 => ReportKind.Question,
-        3 => ReportKind.Idea,
-        _ => ReportKind.Bug,
-    };
 }
 
 /// <summary>The form for ONE fixed <see cref="Kind"/> — remounted whole by <see cref="ReportDialogBody"/> whenever the

@@ -96,13 +96,17 @@ static class WaveePicker
     /// <summary>The one row-density miniature used by Settings and fresh setup. Its proportions come from the real
     /// <see cref="TrackRow"/> geometry, compressed by one scale factor; the two surfaces therefore cannot drift into
     /// different explanations of Compact / Default / Cozy / Comfortable. The bars stay native so they inherit the
-    /// live theme and the card's selected-state ink instead of embedding a screenshot.</summary>
+    /// live theme and the card's selected-state ink instead of embedding a screenshot.
+    ///
+    /// The scale itself (<see cref="DetailTrackTableRules.PreviewScale"/>) and the art edge it compresses
+    /// (<see cref="TrackRow.ArtSizeFor"/>, a bare forward to <see cref="DetailTrackTableRules.ArtSizeFor"/>) both
+    /// live in the pure, engine-free rules class — not as a local here — so the "preview mirrors the real row"
+    /// contract is a tested decision instead of a private constant this picker could drift from unnoticed.</summary>
     public static Element DensityRows(int density, bool on)
     {
-        const float PreviewScale = 0.25f;
         var ink = Ink.For(on);
-        float rowHeight = TrackRow.RowHeightFor(density) * PreviewScale;
-        float artworkEdge = TrackRow.ThumbSize * PreviewScale;
+        float rowHeight = TrackRow.RowHeightFor(density) * DetailTrackTableRules.PreviewScale;
+        float artworkEdge = TrackRow.ArtSizeFor(density) * DetailTrackTableRules.PreviewScale;
 
         Element Bar(float grow, bool strong = false) => new BoxEl
         {

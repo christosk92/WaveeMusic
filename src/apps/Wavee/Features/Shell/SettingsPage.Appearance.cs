@@ -6,6 +6,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Features.Detail;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -22,9 +23,11 @@ namespace Wavee;
 //     each still says what it is set to, and the page fits.
 //
 // GONE from here: the palette picker (Settings + profile menu — Wavee always renders the neutral palette now), Mica
-// Alt (always base Mica), and the "Track page layout" group (Automatic/Hero + "Limit page color to the hero" — detail
-// pages are always Automatic). "Disable marquee text" / "Disable color washes" are inverted to two flat ON switches,
-// "Marquee text" / "Color washes" — no wrapping "Visual effects" expander, no "N disabled" tag: two rows, two answers.
+// Alt (always base Mica), and "Limit page color to the hero" (the tone always covers the full page now). "Track page
+// layout" (Automatic/Hero) is BACK — restored on user request after the regroup shipped without it — but travels
+// alone now: its former "Limit page color to the hero" sibling stays removed for good. "Disable marquee text" /
+// "Disable color washes" are inverted to two flat ON switches, "Marquee text" / "Color washes" — no wrapping "Visual
+// effects" expander, no "N disabled" tag: two rows, two answers.
 sealed partial class SettingsPage
 {
     readonly Signal<int> _density = new(1);
@@ -41,6 +44,12 @@ sealed partial class SettingsPage
     [
         Loc.Get(Strings.Settings.Appearance.TrackListModern),
         Loc.Get(Strings.Settings.Appearance.TrackListClassic),
+    ];
+
+    static string[] PageLayoutLabels() =>
+    [
+        Loc.Get(Strings.Settings.Choice.Automatic),
+        Loc.Get(Strings.Settings.Choice.Hero),
     ];
 
     // The zoom picker's labels, hoisted ONCE — unlike the Loc-backed label builders around it these can never change
@@ -80,6 +89,7 @@ sealed partial class SettingsPage
         int themeMode = settings?.Get(WaveeSettings.ThemeMode) ?? 0;
         int density = Math.Clamp(_density.Value, 0, DensityLabels().Length - 1);
         int trackListStyle = Math.Clamp(settings?.Get(WaveeSettings.TrackRowStyle) ?? 0, 0, TrackListStyleLabels().Length - 1);
+        int pageLayout = Math.Clamp(settings?.Get(WaveeSettings.DetailPageLayout) ?? 0, 0, PageLayoutLabels().Length - 1);
         int lyricsSecondary = Math.Clamp(settings?.Get(WaveeSettings.LyricsSecondaryLine) ?? 0, 0, LyricsSecondaryLabels().Length - 1);
         // The LIVE zoom, not the stored key: the chords/wheel change FluentApp.Zoom ahead of the debounced persist,
         // and the row must show what the window is doing right now. Snap → IndexOf is exact (Snap returns a Steps
@@ -122,6 +132,13 @@ sealed partial class SettingsPage
             Bump();
         }
 
+        void SetPageLayout(int i)
+        {
+            settings?.Set(WaveeSettings.DetailPageLayout, i);
+            DetailHeroPrefs.Bump();   // live-update any mounted (incl. KeepAlive-parked) detail page's rail↔hero choice
+            Bump();
+        }
+
         // Its own writer rather than an AppearanceToggle: the lyrics surfaces re-read this one under LyricsPrefs.Epoch
         // (which the rail/immersive header toggles also bump), not under AppearancePrefs — one setting, one epoch, so a
         // change from either place reaches both mounted surfaces on the same frame.
@@ -158,6 +175,7 @@ sealed partial class SettingsPage
                 Loc.Get(Strings.Settings.Layout.Subtitle)),
             DensityGroup(density, SetDensity, settings),
             TrackListStyleGroup(trackListStyle, SetTrackListStyle),
+            PageLayoutGroup(pageLayout, SetPageLayout),
 
             // The sidebar design. A Component rather than an inline block: the card needs SidebarPreferences and the
             // nav action from CONTEXT, and AppearanceTab runs only while the Appearance tab is selected, so a hook
@@ -250,6 +268,91 @@ sealed partial class SettingsPage
             return WaveePicker.Titled(
                 WaveePicker.Card(on, WaveePicker.Tile, Row(), Row(), Row()) with { Justify = FlexJustify.Center },
                 labels[value], on);
+        }
+
+        return WaveePicker.Strip(labels.Length, selected, Card, set);
+    }
+
+    // ── Lists → Track page layout ─────────────────────────────────────────────────────────────────────────────────────
+    /// <summary>The page-layout picker. Collapsed like its siblings above — the header reports the current answer, and
+    /// the wireframes only have to exist while choosing. Its former sibling row here, "Limit page color to the hero",
+    /// stays removed (the tone always covers the full page now), so this expander carries only the one choice.</summary>
+    Element PageLayoutGroup(int pageLayout, Action<int> setPageLayout)
+        => SettingsExpander.Create(new SettingsExpander.Options
+        {
+            Header = Loc.Get(Strings.Settings.Appearance.PageLayout),
+            Description = Loc.Get(Strings.Settings.Appearance.PageLayoutSub),
+            HeaderIcon = SettingsGlyphs.Row(SettingsTab.Appearance, "pageLayout"),
+            Content = SettingsValueTag(PageLayoutLabels()[pageLayout]),
+            ItemsHeader = SettingsExpanderPanel(PageLayoutCards(pageLayout, setPageLayout)),
+        }) with { Key = "appearance.pagelayout" };
+
+    // Each card is a mini skeleton-bar wireframe of the page SYSTEM it selects — Automatic: a narrow metadata rail
+    // (art + title/meta bars + a pill) BESIDE a column of full-width track rows (the rail-when-wide layout); Hero:
+    // adaptive artwork + identity ABOVE the track rows at every width.
+    static Element PageLayoutCards(int selected, Action<int> set)
+    {
+        var labels = PageLayoutLabels();
+
+        Element Card(int value, bool on)
+        {
+            var ink = WaveePicker.Ink.For(on);
+
+            Element Bar(float w, float h) => new BoxEl { Width = w, Height = h, Corners = CornerRadius4.All(h / 2f), Fill = ink.Faint };
+            Element RowBar() => new BoxEl { Height = 4f, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(2f), Fill = ink.Faint };
+            Element Art(float edge) => new BoxEl { Width = edge, Height = edge, Corners = CornerRadius4.All(4f), Fill = ink.Block, Shrink = 0f };
+            Element Pill() => new BoxEl { Width = 24f, Height = 8f, Corners = CornerRadius4.All(Radii.Control), Fill = ink.Block };
+            Element SmallPill() => new BoxEl { Width = 20f, Height = 8f, Corners = CornerRadius4.All(4f), Fill = ink.Block };
+            Element Pills() => new BoxEl { Direction = 0, Gap = 4f, Children = [Pill(), Pill()] };
+
+            Element sketch = value == DetailVerticalLayout.PageAuto
+                // Automatic: a narrow LEFT rail column (art over title/meta bars + a pill) beside a RIGHT column of
+                // full-width track rows — "side rail beside tracks" on a wide window.
+                ? new BoxEl
+                {
+                    Direction = 0, Gap = 8f, Grow = 1f, AlignItems = FlexAlign.Stretch,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Gap = 4f, Shrink = 0f, Justify = FlexJustify.Center,
+                            Children = [Art(20f), Bar(30f, 6f), Bar(22f, 4f), SmallPill()],
+                        },
+                        new BoxEl
+                        {
+                            Direction = 1, Gap = 5f, Grow = 1f, Justify = FlexJustify.Center,
+                            Children = [RowBar(), RowBar(), RowBar(), RowBar()],
+                        },
+                    ],
+                }
+                // Hero: an immersive artwork field and compact identity above the track rows.
+                : new BoxEl
+                {
+                    Direction = 1, Gap = 5f, Grow = 1f, Justify = FlexJustify.Center,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Gap = 4f, AlignItems = FlexAlign.Stretch,
+                            Children =
+                            [
+                                new BoxEl
+                                {
+                                    Height = 24f, AlignSelf = FlexAlign.Stretch,
+                                    Corners = CornerRadius4.All(4f), Fill = ink.Block,
+                                },
+                                new BoxEl
+                                {
+                                    Direction = 0, Gap = 5f, AlignItems = FlexAlign.Center,
+                                    Children = [Bar(48f, 6f), Bar(28f, 4f), Pills()],
+                                },
+                            ],
+                        },
+                        RowBar(), RowBar(), RowBar(),
+                    ],
+                };
+
+            return WaveePicker.Titled(WaveePicker.Card(on, WaveePicker.Tile, sketch), labels[value], on);
         }
 
         return WaveePicker.Strip(labels.Length, selected, Card, set);

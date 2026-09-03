@@ -19,8 +19,15 @@ namespace Wavee.Tests;
 public class DetailVerticalLayoutTests
 {
     // The ladder every walk below uses: 1-DIP steps through the whole band a detail page can actually be, from an
-    // ultra-narrow snap layout to a maximised window.
+    // ultra-narrow snap layout to a maximised window with the Hero page layout forced on.
     const float LadderMin = 240f, LadderMax = 1400f;
+
+    [Fact]
+    public void PageLayoutConstants_MirrorPersistedSettingValues()
+    {
+        Assert.Equal(0, DetailVerticalLayout.PageAuto);
+        Assert.Equal(1, DetailVerticalLayout.PageHero);
+    }
 
     // ── the ONE breakpoint: stacked ↔ row flow ───────────────────────────────────────────────────────────────────
 

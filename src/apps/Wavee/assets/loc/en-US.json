@@ -181,6 +181,10 @@
       "noTracks": "Nothing here yet",
       "noMatch": "No songs match your filter"
     },
+    "discography": {
+      "$comment": "The artist page's inline album drawer (AlbumDrawerPanel) — capped at AlbumDrawerVerdict.CapPerColumn rows per column; past the cap the last slot links to the full album page instead of growing the drawer.",
+      "showAllTracks": "Show all {n} tracks"
+    },
     "access": {
       "$comment": "Who can reach this playlist, said as the meaning of the CURRENT setting rather than as a label for the switch — the access flyout's public toggle swaps between these two.",
       "publicCaption": "Anyone can find and view",
@@ -826,6 +830,8 @@
       "trackListClassic": "Classic",
       "hideTrackArtwork": "Always hide track artwork",
       "hideTrackArtworkSub": "Remove cover thumbnails from track rows and return the space to titles. Other artwork stays visible.",
+      "pageLayout": "Track page layout",
+      "pageLayoutSub": "Use the side rail automatically, or the artwork Hero at every size",
       "lyricsBackdrop": "Animated lyrics backdrop",
       "lyricsBackdropSub": "Let the blurred cover art drift slowly behind fullscreen lyrics instead of holding still",
       "lyricsSecondary": "Lyrics second line",
@@ -839,6 +845,8 @@
       "default": "Default",
       "cozy": "Cozy",
       "comfortable": "Comfortable",
+      "automatic": "Automatic",
+      "hero": "Hero",
       "off": "Off",
       "translation": "Translation",
       "romanization": "Romanization"
@@ -2027,7 +2035,7 @@
       "title": "Sign in to Spotify",
       "lead": "Sign in with your Spotify® account on the Spotify® website — or scan the code with your phone.",
       "waiting": "Waiting for you to authorize…",
-      "pairLine": "Go to spotify.com/pair and enter {code}",
+      "pairLine": "{code} · spotify.com/pair",
       "browserCardTitle": "Continue in your browser",
       "browserCardSub": "Opens accounts.spotify.com in your default browser.",
       "scanCardTitleNeutral": "Scan the code with your phone",
@@ -2230,6 +2238,7 @@
     "highlights": "Highlights",
     "tryIt": "Try it →",
     "storeCta": "Get it from the Microsoft Store",
+    "readMore": "Read more",
     "showAll": "Show all {count}",
     "asOf": "Issue states as of {date}",
     "releases": "Releases",
@@ -2273,6 +2282,14 @@
       "dontShow": "Don't show this after updates",
       "full": "Full release notes",
       "gotIt": "Got it"
+    },
+    "viewer": {
+      "$comment": "The highlight viewer a card opens: chrome tooltips, the pager's position, the video slide's link.",
+      "close": "Close",
+      "previous": "Previous highlight",
+      "next": "Next highlight",
+      "position": "{index} of {count}",
+      "watch": "Watch the video on GitHub"
     }
   },
   "update": {

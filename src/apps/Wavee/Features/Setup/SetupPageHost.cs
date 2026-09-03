@@ -26,9 +26,15 @@ static class SetupPageHost
     /// wants the 42-DIP back-button spacer reserved beside its header when the icon column has dropped. Terms/SignIn
     /// never show a back button anyway (<see cref="SetupGating.ShowsBack"/>), so this is a no-op for them; it exists
     /// so every page states its own intent explicitly, the same way Rise's XAML does per page.</param>
-    public static Element Frame(SetupPage page, string header, Element body, bool backAutoPadding = true)
-        => Embed.Comp(new SetupPageFrame.Props(page, header, body, backAutoPadding), () => new SetupPageFrame())
-            with { Key = "setup:frame:" + (int)page };
+    public static Element Frame(SetupPage page, string header, Element body, bool backAutoPadding = true) => new BoxEl
+    {
+        // ComponentEl (Embed.Comp's own element) carries no layout columns of its own — the ContentHost.PageFor
+        // recipe (Features/Shell/ContentHost.cs:169-171): wrap it in a box that actually claims the parent's Grow/
+        // Shrink/MinHeight, so the ScrollView this frame builds is bounded by the plate instead of shrink-wrapping
+        // past it. The Key moves to this outer box — it is what KeepAlive's slot identity has to attach to.
+        Key = "setup:frame:" + (int)page, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
+        Children = [Embed.Comp(new SetupPageFrame.Props(page, header, body, backAutoPadding), () => new SetupPageFrame())],
+    };
 }
 
 /// <summary>The live-responsive half of <see cref="SetupPageHost.Frame"/>. The frame receives its slots through

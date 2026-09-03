@@ -144,6 +144,16 @@ public interface IMusicLibrary
     Task<Album> GetAlbumAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
     Task<Artist> GetArtistAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
 
+    /// <summary>Synchronous store peek (no Task, no network): the artist page's inline album drawer seeds its
+    /// UseResource with this on the click frame so a re-opened (or already-warm) album is Ready immediately instead of
+    /// flashing a shimmer for a fetch that would only re-confirm what the store already holds — see
+    /// docs/plans/wavee/artist-album-expander-implementation.md §2 (C3). Returns the resident album only when its
+    /// hydration has reached <see cref="HydrationLevel.Open"/> or better (a browsable tracklist); an Identity-only or
+    /// absent album answers false so the caller falls through to the real fetch. Default: nothing to peek — a source
+    /// with no persistent store (every fake/export/local source) is complete at construction, so it has no "cold vs.
+    /// warm" distinction to report; only <c>StoreLibrarySource</c> (routed here by <c>AggregateCatalog</c>) overrides it.</summary>
+    bool TryPeekAlbum(string uri, out Album? album) { album = null; return false; }
+
     /// <summary>Page an artist's discography facet (the virtualized grid pulls windows as you scroll). Returns the slice
     /// <c>[offset, offset+limit)</c> + the facet total so the grid can reserve full extent before everything has loaded.</summary>
     Task<DiscographyPage> GetDiscographyAsync(string artistUri, DiscographyKind kind, int offset, int limit, CancellationToken ct = default);

@@ -42,6 +42,9 @@ sealed class LibraryPage : Component
     // (WinUI SetCurrentElementIndex → StartBringIntoView). Load-bearing for search select-in-place, where the committed
     // item is usually far outside the viewport the browse list was left at.
     readonly ItemsViewController _navCtl = new();
+    // ScrollMemory identity for the navigator: one per kind, scoped by the KeepAlive slot (so a second tab keeps its own
+    // offset). This is what makes a remount land at the saved row BEFORE the first realized window — the fix for #E.
+    readonly ScrollOptions _navScroll;
     // Search-mode drill-down selection — INDEPENDENT of the browse selection so clearing the query restores browse.
     readonly Signal<string> _sArtist = new("");        // selected matched-artist uri (artists view)
     readonly Signal<string> _sAlbum = new("");         // selected matched-album uri
@@ -61,6 +64,9 @@ sealed class LibraryPage : Component
     // the discography sync fired onDrill, skipping the collapsed discography level entirely. A programmatic sync is a
     // VIEW update, never a preference.
     bool _syncingSel;
+    // NoteNavKey's remembered identity from the PREVIOUS render — null until the first remount-diagnostic effect runs,
+    // so the very first mount never logs a spurious "remount" against nothing.
+    string? _lastOrderKey, _lastFactsKey; int _lastView = -1, _lastSize = -1, _lastCount;
 
     static readonly string[] NoSuggest = Array.Empty<string>();
     // Full-text search is the only debounced read (see Render): a fast typist fires ONE library search, not one per
@@ -90,6 +96,7 @@ sealed class LibraryPage : Component
     public LibraryPage(string kind, IAppSettings? settings = null)
     {
         _kind = kind; _settings = settings;
+        _navScroll = new ScrollOptions { ScrollKey = "lib:nav:" + kind };
         float Gf(SettingKey<float> k) => settings is null ? k.Default : settings.Get(k);
         int Gi(SettingKey<int> k) => settings is null ? k.Default : settings.Get(k);
         bool Gb(SettingKey<bool> k) => settings is null ? k.Default : settings.Get(k);
@@ -109,7 +116,14 @@ sealed class LibraryPage : Component
         _aSize = new(Gi(LibraryStateKeys.AlbumSize(kind)));
     }
 
-    readonly record struct NavItem(Image? Cover, string Title, string Subtitle, string Uri, bool Circular, string RouteKey, int Year);
+    readonly record struct NavItem(Image? Cover, string Title, string Subtitle, string Uri, bool Circular, string RouteKey, int Year)
+    {
+        public LibraryNavFacts Facts => new(Uri, Title, Subtitle, Year, Cover?.Url);
+    }
+
+    // One shape per render: the rows in display order plus the two identities the remount key is built from. Computed
+    // ONCE so the wrapper key, the SyncNav effect key and the remount diagnostic all see the same sequence.
+    readonly record struct NavShape(NavItem[] Items, string OrderKey, string FactsKey);
 
     bool IsArtists => _kind == "artists";
     bool HasCreator => _kind != "artists";    // album → artist, podcast → publisher
@@ -124,7 +138,9 @@ sealed class LibraryPage : Component
         var ui = UseContext(ShellUi.Slot);   // rail state (Task B4): the 3-column artist layout tightens its mid pane when the rail is open
         if (svc is null || store is null) return new BoxEl { Grow = 1f };
         _svcRef = svc;
-        var shown = Filtered(Project(store));
+        _ = svc.PlayLog.Version.Value;                                 // subscribe — a play re-orders "Recents" in place
+        var nav = Shape(Project(store), svc.PlayLog.Recency);
+        var shown = nav.Items;
         // Warm the collection cover art at the kind-matched decode size the moment the list lands, so a first scroll
         // reveals resident textures instead of decoding+uploading on the UI thread mid-scroll (the first-pass jank).
         // Prefetch priority → background workers (visible cards still decode first); idempotent (a re-hit cache entry is a
@@ -137,7 +153,7 @@ sealed class LibraryPage : Component
         // highlighted. Podcasts keep the plain title filter. Cache-only + off-thread; keyed on kind+query so it re-drives
         // per query only. Placed with the other loads below (fixed hook order); the flag/query are computed here.
         string raw = _filter.Value.Trim();   // subscribe — the RAW box text
-        // TWO reads of one box, on purpose. The browse title-filter (`Filtered` above) narrows a list already in memory,
+        // TWO reads of one box, on purpose. The browse title-filter (`Shape` above) narrows a list already in memory,
         // so it must stay INSTANT on the raw text. The full-text search hits the store-backed catalog, so it rides a
         // trailing-edge debounce: one search per pause, not one per keystroke. UNCONDITIONAL and in a fixed position —
         // all three kinds are the same LibraryPage type (see the hook-order note below), so this must never be branched.
@@ -153,7 +169,10 @@ sealed class LibraryPage : Component
         // Keep the ItemsView SelectionModel pointed at the selected item across load/filter/sort/view + auto-select first.
         // Skips while the search results view is up — selection there is driven by result clicks. Includes fullSearch in
         // the key so toggling in/out of search re-syncs the browse selection.
-        UseEffect(() => SyncNav(shown, fullSearch), NavHash(shown) + "|" + _selectedKey.Value + "|" + fullSearch);
+        UseEffect(() => SyncNav(shown, fullSearch), nav.OrderKey + "|" + _selectedKey.Value + "|" + fullSearch);
+        // The remount diagnostic: which part of the navigator's identity changed. This is the line that names root-cause #E
+        // on a real library (a same-set republish must NOT show up here any more).
+        UseEffect(() => NoteNavKey(nav, _view.Value, _size.Value), nav.OrderKey + "|" + nav.FactsKey + "|" + _view.Value + "|" + _size.Value);
         // Persist per-kind page state (column widths persist on drag-end via the grips, NOT here). Keyed on a composite of
         // every persisted signal so it writes only on discrete user actions — never per-frame. Filter is excluded on purpose.
         UseEffect(SaveState, $"{_sort.Value}|{_desc.Value}|{_view.Value}|{_size.Value}|{_selectedKey.Value}|{_albumKey.Value}|{_aSort.Value}|{_aDesc.Value}|{_aView.Value}|{_aSize.Value}");
@@ -201,7 +220,7 @@ sealed class LibraryPage : Component
 
         Element inner;
         if (collapsed)
-            inner = CollapsedLayout(shown, sr, skel, fullSearch, sArtist, sAlbum, svc, bridge, artist, albumTracks, detail);
+            inner = CollapsedLayout(nav, sr, skel, fullSearch, sArtist, sAlbum, svc, bridge, artist, albumTracks, detail);
         else
         {
             Element right = fullSearch
@@ -211,7 +230,7 @@ sealed class LibraryPage : Component
             inner = new BoxEl
             {
                 Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
-                Children = [LeftColumn(shown, sr, skel, fullSearch, sArtist, sAlbum), Grip(_leftW, 240f, 560f, () => _settings?.Set(LibraryStateKeys.LeftW(_kind), _leftW.Peek())), right],
+                Children = [LeftColumn(nav, sr, skel, fullSearch, sArtist, sAlbum), Grip(_leftW, 240f, 560f, () => _settings?.Set(LibraryStateKeys.LeftW(_kind), _leftW.Peek())), right],
             };
         }
 
@@ -233,7 +252,7 @@ sealed class LibraryPage : Component
     void DrillToTracks() { if (_collapsed.Peek()) _depth.Value = 2; }
 
     // ── F2: collapsed single-column drill-in (master ▸ discography/detail ▸ tracks) with breadcrumbs ──
-    Element CollapsedLayout(NavItem[] shown, LibrarySearchResults sr, SearchSkelState skel, bool fullSearch,
+    Element CollapsedLayout(NavShape nav, LibrarySearchResults sr, SearchSkelState skel, bool fullSearch,
         string sArtist, string sAlbum, Services svc, PlaybackBridge? bridge,
         Loadable<Artist> artist, Loadable<DetailModel> albumTracks, Loadable<DetailModel> detail)
     {
@@ -253,7 +272,7 @@ sealed class LibraryPage : Component
         if (depth >= 2) crumbs.Add(level2);
 
         Element body = depth == 0
-            ? new BoxEl { Direction = 1, Grow = 1f, Children = [Toolbar(), fullSearch ? LeftSearchBody(sr, skel, sArtist, sAlbum) : ListBody(shown)] }
+            ? new BoxEl { Direction = 1, Grow = 1f, Children = [Toolbar(), fullSearch ? LeftSearchBody(sr, skel, sArtist, sAlbum) : ListBody(nav)] }
             : depth == 1
                 ? (IsArtists ? CollapsedDiscography(sr, skel, fullSearch, sArtist, sAlbum, artist)
                              : CollapsedDetail(sr, skel, fullSearch, sAlbum, detail, svc, bridge))
@@ -381,21 +400,21 @@ sealed class LibraryPage : Component
 
     static IReadOnlyList<T> Warm<T>(Action ensure, Loadable<IReadOnlyList<T>> cell) { ensure(); return cell.Value.Value; }
 
-    NavItem[] Filtered(NavItem[] items)
+    // The rows in display order plus the two identities the remount key is built from (NavShape), computed ONCE per
+    // render so the wrapper key, the SyncNav effect key and the remount diagnostic all agree on the same sequence. The
+    // ORDER itself is a model decision (LibraryNavOrder), never a UI one: this hands over the source-ordered facts and
+    // the recency map and renders whatever comes back — see root-cause #F (Recents must mean recently PLAYED).
+    NavShape Shape(NavItem[] items, IReadOnlyDictionary<string, long> recency)
     {
-        string q = _filter.Value.Trim(); int sort = _sort.Value; bool desc = _desc.Value;   // subscribe
-        var arr = (q.Length == 0 ? items : items.Where(it => it.Title.Contains(q, StringComparison.OrdinalIgnoreCase))).ToArray();
-        Comparison<NavItem>? cmp = sort switch
-        {
-            2 => (a, b) => string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase),
-            3 => (a, b) => string.Compare(a.Subtitle, b.Subtitle, StringComparison.OrdinalIgnoreCase),
-            4 => (a, b) => a.Year.CompareTo(b.Year),
-            _ => null,
-        };
-        if (cmp is not null) Array.Sort(arr, cmp);
-        else if (sort == 1) Array.Reverse(arr);   // "recently added" ≈ reverse of the cached (recents) order
-        if (desc && cmp is not null) Array.Reverse(arr);
-        return arr;
+        string q = _filter.Value.Trim(); var sort = (LibraryNavSort)_sort.Value; bool desc = _desc.Value;   // subscribe
+        var arr = q.Length == 0 ? items : items.Where(it => it.Title.Contains(q, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var facts = new LibraryNavFacts[arr.Length];
+        for (int i = 0; i < arr.Length; i++) facts[i] = arr[i].Facts;
+        var order = LibraryNavOrder.Order(facts, sort, desc, recency);
+        var sorted = new NavItem[arr.Length];
+        var sortedFacts = new LibraryNavFacts[arr.Length];
+        for (int i = 0; i < order.Length; i++) { sorted[i] = arr[order[i]]; sortedFacts[i] = facts[order[i]]; }
+        return new NavShape(sorted, LibraryNavOrder.OrderKey(sortedFacts), LibraryNavOrder.FactsKey(sortedFacts));
     }
 
     static string Strip(string key, string prefix) => key.StartsWith(prefix, StringComparison.Ordinal) ? key[prefix.Length..] : "";
@@ -415,12 +434,12 @@ sealed class LibraryPage : Component
     }
 
     // ── left navigator ──
-    Element LeftColumn(NavItem[] shown, LibrarySearchResults sr, SearchSkelState skel, bool fullSearch, string sArtist, string sAlbum) => NavPanel with
+    Element LeftColumn(NavShape nav, LibrarySearchResults sr, SearchSkelState skel, bool fullSearch, string sArtist, string sAlbum) => NavPanel with
     {
         Width = _leftW.Value, Shrink = 0f,
         // Searching swaps the browse list for the top-level matches — matched artists (artists view) or matched albums
         // (albums view); the detail columns drill into the selection. Otherwise the normal self-scrolling ItemsView.
-        Children = [Toolbar(title: true), fullSearch ? LeftSearchBody(sr, skel, sArtist, sAlbum) : ListBody(shown)],
+        Children = [Toolbar(title: true), fullSearch ? LeftSearchBody(sr, skel, sArtist, sAlbum) : ListBody(nav)],
     };
 
     /// <summary>The master column's head: the page's big-type TITLE, then the sort/view picker, then the filter box.
@@ -461,8 +480,9 @@ sealed class LibraryPage : Component
     // proper accent-bar / selected-state chrome painted by the item container. Keyed by the displayed set so a
     // filter/sort/view change remounts with the right slots; the SelectionModel is external so selection survives.
     // NavRow/NavCard supply only the CONTENT — the container paints selection.
-    Element ListBody(NavItem[] shown)
+    Element ListBody(NavShape nav)
     {
+        var shown = nav.Items;
         int view = _view.Value; int size = _size.Value;   // subscribe
         // A filtered-to-nothing column IS an empty state (rail scale - these panes floor at 220-300 DIP); an
         // unfiltered empty column is still LOADING, and a big-type "nothing here" would be a lie about it.
@@ -472,24 +492,28 @@ sealed class LibraryPage : Component
                 : new BoxEl { Padding = new Edges4(Spacing.M, Spacing.XL, Spacing.M, Spacing.XL), Children = [Caption("…").Secondary()] };
 
         bool grid = view >= 2; bool compact = view == 0 || view == 2;
-        string key = "nav:" + view + ":" + size + ":" + NavHash(shown);
-
-        if (grid)
-            return new BoxEl
-            {
-                Key = key, Grow = 1f, Direction = 1, Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, 0f),
-                Children = [ItemsView.Create(shown.Length, i => NavCardContent(shown[i], compact),
-                    RepeatLayout.GridFit((compact ? 88f : 116f) + size * (compact ? 16f : 24f), 8f),
-                    new ListOptions { SelectionMode = ItemsSelectionMode.Single, Selection = _navSel, Selector = SelectorVisual.Border, OnChange = () => OnNavSel(shown), Controller = _navCtl, Grow = 1f })],
-            };
-
+        // Remount ONLY when the frozen ItemsView would lie: a different row set/order (the template indexes `shown` by
+        // position), different row facts (a cover/name that landed after mount), or a different view/size (row extent +
+        // template shape). NEVER on selection and never on a same-set republish — the keys are deterministic functions of
+        // the rows (LibraryNavOrder), and _navScroll restores the offset across every remount that does happen.
+        string key = "nav:" + view + ":" + size + ":" + nav.OrderKey + ":" + nav.FactsKey;
+        var options = new ListOptions
+        {
+            SelectionMode = ItemsSelectionMode.Single, Selection = _navSel, Controller = _navCtl, Grow = 1f,
+            // AccentPill IS the ListView chrome the List preset wore (SelectorVisuals.AccentPill); Border is the grid's.
+            Selector = grid ? SelectorVisual.Border : SelectorVisual.AccentPill,
+            OnChange = () => OnNavSel(shown),
+            Scroll = _navScroll,
+        };
+        var layout = grid
+            ? RepeatLayout.GridFit((compact ? 88f : 116f) + size * (compact ? 16f : 24f), 8f)
+            : RepeatLayout.Stack(compact ? 40f : 60f);
+        Func<int, Element> template = grid ? i => NavCardContent(shown[i], compact) : i => NavRowContent(shown[i], compact);
         return new BoxEl
         {
             Key = key, Grow = 1f, Direction = 1,
-            Children = [ItemsView.List(shown.Length, i => NavRowContent(shown[i], compact),
-                selectionMode: ItemsSelectionMode.Single, selection: _navSel,
-                onSelectionIndexChanged: i => OnNavSelIdx(shown, i), controller: _navCtl,
-                itemExtent: compact ? 40f : 60f, grow: 1f)],
+            Padding = grid ? new Edges4(Spacing.S, Spacing.S, Spacing.S, 0f) : new Edges4(0f, 0f, 0f, 0f),
+            Children = [ItemsView.Create(shown.Length, template, layout, options)],
         };
     }
 
@@ -538,6 +562,21 @@ sealed class LibraryPage : Component
         // handler to do it as a side effect (see _syncingSel); the outcome is the same one this always produced.
         if (idx < 0 || key.Length == 0) { idx = 0; Select(shown[0]); }
         if (_navSel.FirstSelectedIndex != idx) SyncSelect(_navSel, idx);
+    }
+
+    // The always-on confirmation of root-cause #E: which part of the navigator's identity changed on this remount
+    // (view/size, a real order change, or a facts-only change — never selection, which is not an input to NavShape).
+    // A real library's first run states which of these actually fires on a click, instead of leaving it inferred.
+    void NoteNavKey(NavShape nav, int view, int size)
+    {
+        if (_lastOrderKey is not null)
+        {
+            string reason = view != _lastView || size != _lastSize ? "view" : nav.OrderKey != _lastOrderKey ? "order" : "facts";
+            WaveeLog.Instance.Info("ui", "library.nav.remount", "Library navigator remounted",
+                WaveeLogField.Of("kind", _kind), WaveeLogField.Of("reason", reason),
+                WaveeLogField.Of("before", _lastCount), WaveeLogField.Of("after", nav.Items.Length));
+        }
+        _lastOrderKey = nav.OrderKey; _lastFactsKey = nav.FactsKey; _lastView = view; _lastSize = size; _lastCount = nav.Items.Length;
     }
 
     // ── search-mode selection (drill-down) ──
@@ -858,8 +897,6 @@ sealed class LibraryPage : Component
         AlbumKind.Compilation => Loc.Get(Strings.Detail.Badge.Compilation),
         _ => Loc.Get(Strings.Detail.Badge.Album),
     };
-
-    static string NavHash(NavItem[] shown) { int h = 17; foreach (var it in shown) h = h * 31 + it.RouteKey.GetHashCode(); return (h & 0x7fffffff).ToString(); }
 
     Element NavRowContent(NavItem it, bool compact)
     {
@@ -1213,6 +1250,8 @@ sealed class LibraryArtistPane : Component
     bool _syncingSel;                            // see SyncSelect: a programmatic re-sync must not re-enter Pick
     ActionServices? _actsRef;                    // cached in Render → the discography items' drag payloads
     static readonly string[] NoSuggest = Array.Empty<string>();
+    // Services can be absent (a context-less test host); an empty map degrades Recents to source order, same as --fake.
+    static readonly IReadOnlyDictionary<string, long> EmptyRecency = new Dictionary<string, long>();
 
     public LibraryArtistPane(Loadable<Artist> artist, Signal<string> albumKey,
         Signal<int> aSort, Signal<bool> aDesc, Signal<int> aView, Signal<int> aSize, Signal<string> aFilter, Action? onDrill = null)
@@ -1222,18 +1261,24 @@ sealed class LibraryArtistPane : Component
     {
         var go = UseContext(HistoryStore.NavCtx);
         _actsRef = UseContext(ActionServices.Slot);
+        var svc = UseContext(Services.Slot);
+        // Fixed hook position, unconditional, ABOVE the early return below (same rule as LibraryPage.Render): a play
+        // re-orders "Recents" in place, and this is the subscription that lets it.
+        _ = svc?.PlayLog.Version.Value;
         var st = (LoadState)_artist.State.Value;   // subscribe
         var a = _artist.Value.Value;               // subscribe
         var albums = a?.TopAlbums ?? Array.Empty<Album>();
-        var shown = FilterSortAlbums(albums, _aFilter.Value, _aSort.Value, _aDesc.Value);   // subscribe (filter/sort/direction)
+        var recency = svc?.PlayLog.Recency ?? EmptyRecency;
+        var (shown, facts) = FilterSortAlbums(albums, _aFilter.Value, _aSort.Value, _aDesc.Value, recency);   // subscribe (filter/sort/direction)
         // Keep the discography selection synced to the chosen release — UNCONDITIONAL hook, BEFORE any early return (else
         // the effect-slot count changes when the artist flips Pending→Ready → an out-of-range hook crash). Driven off the
-        // SHOWN (filtered/sorted) list so the selection index matches the rendered ItemsView.
-        UseEffect(() => SyncDisco(shown), _albumKey.Value + "|" + shown.Length + "|" + (shown.Length > 0 ? shown[0].Uri : ""));
+        // SHOWN (filtered/sorted) list so the selection index matches the rendered ItemsView. Keyed on OrderKey (not
+        // shown.Length + shown[0].Uri) so a same-set republish that reorders nothing does not re-run this either.
+        UseEffect(() => SyncDisco(shown), _albumKey.Value + "|" + LibraryNavOrder.OrderKey(facts));
 
         // The toolbar (album sort/view controls + Filter + "Go to artist") renders even while the artist loads; only the
         // body swaps skeleton→grid/list. So the controls never flash in/out and stay put across a selection change.
-        Element body = (st != LoadState.Ready || a is null || a.Name.Length == 0) ? Skeleton() : Body(shown);
+        Element body = (st != LoadState.Ready || a is null || a.Name.Length == 0) ? Skeleton() : Body(shown, facts, a?.Uri ?? "");
         return new BoxEl
         {
             Direction = 1, Grow = 1f, ClipToBounds = true,
@@ -1290,56 +1335,57 @@ sealed class LibraryArtistPane : Component
         ],
     };
 
-    // Filter (title contains) + sort over the artist's releases. Sort codes mirror the picker: 0 = as returned by the API
-    // (≈ release-date desc), 1 = reversed, 2 = Alphabetical, 4 = Release date (by Year). Direction flips the sorted forms.
-    static Album[] FilterSortAlbums(IReadOnlyList<Album> albums, string filter, int sort, bool desc)
+    // Filter (title contains) + the shared library order over the artist's releases. Source order = the API's
+    // (≈ release-date desc), which is what "Recents" falls back to for releases you have never played.
+    static (Album[] Rows, LibraryNavFacts[] Facts) FilterSortAlbums(IReadOnlyList<Album> albums, string filter, int sort, bool desc,
+                                                                    IReadOnlyDictionary<string, long> recency)
     {
         string q = filter.Trim();
         var arr = (q.Length == 0 ? albums : albums.Where(al => al.Name.Contains(q, StringComparison.OrdinalIgnoreCase))).ToArray();
-        Comparison<Album>? cmp = sort switch
-        {
-            2 => (x, y) => string.Compare(x.Name, y.Name, StringComparison.OrdinalIgnoreCase),
-            4 => (x, y) => x.Year.CompareTo(y.Year),
-            _ => null,
-        };
-        if (cmp is not null) Array.Sort(arr, cmp);
-        else if (sort == 1) Array.Reverse(arr);
-        if (desc && cmp is not null) Array.Reverse(arr);
-        return arr;
+        var facts = new LibraryNavFacts[arr.Length];
+        for (int i = 0; i < arr.Length; i++) facts[i] = new(arr[i].Uri, arr[i].Name, "", arr[i].Year, arr[i].Cover?.Url);
+        var order = LibraryNavOrder.Order(facts, (LibraryNavSort)sort, desc, recency);
+        var rows = new Album[arr.Length]; var sorted = new LibraryNavFacts[arr.Length];
+        for (int i = 0; i < order.Length; i++) { rows[i] = arr[order[i]]; sorted[i] = facts[order[i]]; }
+        return (rows, sorted);
     }
 
     // Grid (view>=2) vs list, grid-size S/M/L — the SAME view-type semantics as the left picker's ListBody. Keyed by
     // view/size/set so a view change remounts with the right slots; the external _discoSel keeps the selection. Picking a
     // release sets _albumKey → 3rd column. size=1 non-compact grid → 124px min width (matches the previous fixed grid).
-    Element Body(IReadOnlyList<Album> albums)
+    Element Body(Album[] albums, LibraryNavFacts[] facts, string artistUri)
     {
-        if (albums.Count == 0)
+        if (albums.Length == 0)
             return _aFilter.Peek().Length > 0
                 ? EmptyState.Compact(Loc.Get(Strings.Library.NoMatch))
                 : new BoxEl { Padding = new Edges4(Spacing.M, Spacing.XL, Spacing.M, Spacing.XL), Children = [Caption("…").Secondary()] };
 
         int view = _aView.Value, size = _aSize.Value;   // subscribe
         bool grid = view >= 2, compact = view == 0 || view == 2;
-        string key = "disco:" + view + ":" + size + ":" + albums.Count + ":" + albums[0].Uri;
-        void Pick(int i) { if (_syncingSel || i < 0 || i >= albums.Count) return; _albumKey.Value = "album:" + albums[i].Uri; _onDrill?.Invoke(); }
+        string key = "disco:" + view + ":" + size + ":" + LibraryNavOrder.OrderKey(facts);
+        void Pick(int i) { if (_syncingSel || i < 0 || i >= albums.Length) return; _albumKey.Value = "album:" + albums[i].Uri; _onDrill?.Invoke(); }
+        // ScrollKey scoped to the artist: switching artists is a legitimate remount (a different discography), so each
+        // one gets its own restored offset rather than inheriting the previous artist's scroll position.
+        var scroll = new ScrollOptions { ScrollKey = "lib:disco:" + artistUri };
 
         if (grid)
             return new BoxEl
             {
                 Key = key, Grow = 1f, Basis = 0f, MinHeight = 0f, Direction = 1, ClipToBounds = true,
                 Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-                Children = [ItemsView.Create(albums.Count, i => DiscoCardContent(albums[i], compact),
+                Children = [ItemsView.Create(albums.Length, i => DiscoCardContent(albums[i], compact),
                     RepeatLayout.GridFit((compact ? 84f : 100f) + size * (compact ? 16f : 24f), 8f),
-                    new ListOptions { SelectionMode = ItemsSelectionMode.Single, Selection = _discoSel, Selector = SelectorVisual.Border, OnChange = () => Pick(_discoSel.FirstSelectedIndex), Controller = _discoCtl, Grow = 1f })],
+                    new ListOptions { SelectionMode = ItemsSelectionMode.Single, Selection = _discoSel, Selector = SelectorVisual.Border, OnChange = () => Pick(_discoSel.FirstSelectedIndex), Controller = _discoCtl, Grow = 1f, Scroll = scroll })],
             };
 
         return new BoxEl
         {
             Key = key, Grow = 1f, Basis = 0f, MinHeight = 0f, Direction = 1,
-            Children = [ItemsView.List(albums.Count, i => DiscoRowContent(albums[i], compact),
-                selectionMode: ItemsSelectionMode.Single, selection: _discoSel,
-                onSelectionIndexChanged: Pick, controller: _discoCtl,
-                itemExtent: compact ? 44f : 60f, grow: 1f)],
+            // AccentPill: the same ListView chrome the ItemsView.List preset wore before this arm moved off it (see
+            // LibraryPage.ListBody) — needed here only because ScrollOptions is otherwise unreachable through the preset.
+            Children = [ItemsView.Create(albums.Length, i => DiscoRowContent(albums[i], compact),
+                RepeatLayout.Stack(compact ? 44f : 60f),
+                new ListOptions { SelectionMode = ItemsSelectionMode.Single, Selection = _discoSel, Selector = SelectorVisual.AccentPill, OnChange = () => Pick(_discoSel.FirstSelectedIndex), Controller = _discoCtl, Grow = 1f, Scroll = scroll })],
         };
     }
 

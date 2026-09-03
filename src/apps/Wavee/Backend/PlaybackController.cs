@@ -3368,6 +3368,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             // track already ended, the Ended fallback advances first and this just previews the following item.
             SchedulePreparedNext("transition-missed");
         }
+        else if (signal.Kind == AudioTransitionKind.Invalidated)
+        {
+            // Device-reopen gapless fix (A2): the host already disposed the prepared slot because it was primed for a
+            // mixer rate the reopened session no longer runs at (see FluentMediaAudioHost.SoftReloadAsync). Mirror the
+            // Missed arm exactly — the same "re-resolve for the same upcoming item" recovery, just a different cause.
+            ClearPreparedToken(signal.Token);
+            _log.Info($"audio transition invalidated token={signal.Token} track={signal.TrackUri} reason={signal.Reason ?? "format-changed"}");
+            SchedulePreparedNext("format-changed");
+        }
         else
             _log.Info($"audio transition completed token={signal.Token} track={signal.TrackUri} fade={signal.EffectiveFadeMs}ms");
     }

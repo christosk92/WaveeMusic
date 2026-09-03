@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using Wavee.Core;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -388,5 +390,135 @@ public class PlayLogStoreTests : IDisposable
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Wavee", "WaveeMusic", "play-log.json");
         Assert.Equal(expected, PlayLogStore.DefaultPath());
+    }
+
+    // ── recency (§F.0): the uri → last-played index PlayLogStore maintains beside the ring ──────────────────────────────
+
+    [Fact]
+    public void Append_RecordsAlbumAndArtists()
+    {
+        var store = Store();
+        Assert.True(store.Append("spotify:track:t1", "spotify:album:a1", Ms(0),
+            albumUri: "spotify:album:a1", artistUris: new[] { "spotify:artist:ar1", "spotify:artist:ar2" }));
+
+        var e = Assert.Single(store.Entries);
+        Assert.Equal("spotify:album:a1", e.AlbumUri);
+        Assert.Equal(new[] { "spotify:artist:ar1", "spotify:artist:ar2" }, e.ArtistUris);
+
+        // An empty/blank facts pair normalizes to null — the writer (PlaybackBridge) need not special-case "no album".
+        Assert.True(store.Append("spotify:track:t2", null, Ms(1), albumUri: "", artistUris: Array.Empty<string>()));
+        var e2 = store.Entries[1];
+        Assert.Null(e2.AlbumUri);
+        Assert.Null(e2.ArtistUris);
+    }
+
+    [Fact]
+    public void Recency_ContainsTrackContextAlbumArtists_AfterAppend()
+    {
+        var store = Store();
+        store.Append("spotify:track:t1", "spotify:playlist:p1", Ms(0),
+            albumUri: "spotify:album:a1", artistUris: new[] { "spotify:artist:ar1", "spotify:artist:ar2" });
+
+        Assert.Equal(Ms(0), store.Recency["spotify:track:t1"]);
+        Assert.Equal(Ms(0), store.Recency["spotify:playlist:p1"]);
+        Assert.Equal(Ms(0), store.Recency["spotify:album:a1"]);
+        Assert.Equal(Ms(0), store.Recency["spotify:artist:ar1"]);
+        Assert.Equal(Ms(0), store.Recency["spotify:artist:ar2"]);
+        Assert.Equal(store.Revision, store.Version.Peek());   // one counter covers the ring AND the recency map
+    }
+
+    [Fact]
+    public void Recency_RoundTripsThroughSidecarFile()
+    {
+        var store = Store();
+        store.Append("spotify:track:t1", "spotify:album:a1", Ms(0),
+            albumUri: "spotify:album:a1", artistUris: new[] { "spotify:artist:ar1" });
+        store.SaveAndWait();
+
+        string recencyPath = Path.Combine(_dir, "play-recency.json");
+        Assert.True(File.Exists(recencyPath));
+        Assert.False(File.Exists(recencyPath + ".tmp"));   // write-then-rename leaves no temp, same as the ring file
+
+        var reopened = Store();
+        Assert.Equal(store.Recency.Count, reopened.Recency.Count);
+        foreach (var kv in store.Recency)
+            Assert.Equal(kv.Value, reopened.Recency[kv.Key]);
+    }
+
+    [Fact]
+    public void Recency_SurvivesRingCap()
+    {
+        var store = Store();
+        store.Append("spotify:track:t0", "spotify:album:a0", Ms(0),
+            albumUri: "spotify:album:a0", artistUris: new[] { "spotify:artist:ar0" });
+        for (int i = 1; i <= 200; i++)   // pushes t0's ROW out of the 200-cap ring; the recency index has its own 4096 cap
+            store.Append("spotify:track:t" + i, "spotify:album:a" + i, Ms(i));
+
+        Assert.DoesNotContain(store.Entries, e => e.TrackUri == "spotify:track:t0");
+        Assert.True(store.Recency.ContainsKey("spotify:artist:ar0"));
+        Assert.Equal(Ms(0), store.Recency["spotify:artist:ar0"]);
+    }
+
+    [Fact]
+    public void LoadFromDisk_RowsWithoutAlbumOrArtists_StillStampTrackAndContext()
+    {
+        // A pre-change (or hand-written) ring row: no "album"/"artists" keys at all.
+        File.WriteAllText(_path,
+            """[{"track":"spotify:track:t1","context":"spotify:album:a1","kind":1,"atMs":1000}]""");
+
+        var store = Store();
+        Assert.Null(store.Entries[0].AlbumUri);
+        Assert.Null(store.Entries[0].ArtistUris);
+        Assert.Equal(2, store.Recency.Count);
+        Assert.Equal(1000, store.Recency["spotify:track:t1"]);
+        Assert.Equal(1000, store.Recency["spotify:album:a1"]);
+    }
+
+    [Fact]
+    public void MergeRecency_NewerBumpsVersion_OlderDoesNot()
+    {
+        var store = Store();
+        store.Append("spotify:track:t1", "spotify:album:a1", Ms(0));
+        int rev = store.Revision;
+
+        Assert.True(store.MergeRecency(new[] { new KeyValuePair<string, long>("spotify:artist:ar1", Ms(5)) }));
+        Assert.Equal(rev + 1, store.Revision);
+        Assert.Equal(Ms(5), store.Recency["spotify:artist:ar1"]);
+        rev = store.Revision;
+
+        Assert.False(store.MergeRecency(new[] { new KeyValuePair<string, long>("spotify:artist:ar1", Ms(1)) }));   // older
+        Assert.Equal(rev, store.Revision);
+        Assert.Equal(Ms(5), store.Recency["spotify:artist:ar1"]);   // unmoved
+    }
+
+    [Fact]
+    public void Clear_DropsRecencyAndSidecar()
+    {
+        var store = Store();
+        store.Append("spotify:track:t1", "spotify:album:a1", Ms(0),
+            albumUri: "spotify:album:a1", artistUris: new[] { "spotify:artist:ar1" });
+        store.SaveAndWait();
+        Assert.NotEmpty(store.Recency);
+
+        store.Clear();
+
+        Assert.Empty(store.Recency);
+        Assert.Empty(store.Entries);
+
+        // Writing the now-empty state back down and reopening is the deterministic way to observe the wipe (the
+        // delete Clear() kicks off runs on the pool) without a sleep.
+        store.SaveAndWait();
+        var reopened = Store();
+        Assert.Empty(reopened.Recency);
+        Assert.Empty(reopened.Entries);
+    }
+
+    [Fact]
+    public void ArtistUris_NullForNoArtists()
+    {
+        Assert.Null(PlayLogStore.ArtistUris(Array.Empty<ArtistRef>()));
+
+        var artists = new[] { new ArtistRef("id1", "spotify:artist:ar1", "Artist One"), new ArtistRef("id2", "spotify:artist:ar2", "Artist Two") };
+        Assert.Equal(new[] { "spotify:artist:ar1", "spotify:artist:ar2" }, PlayLogStore.ArtistUris(artists));
     }
 }

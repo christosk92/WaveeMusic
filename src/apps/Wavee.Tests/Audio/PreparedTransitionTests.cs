@@ -106,6 +106,36 @@ public class PreparedTransitionTests
         Assert.Equal(new[] { "spotify:track:a" }, host.Loaded.ToArray());   // no second load == no session reopen
     }
 
+    [Fact]
+    public async Task Invalidated_ReSchedulesPreparedNext_ForTheSameUpcomingTrack()
+    {
+        // Device-reopen gapless fix (A2): the host tells the controller a prepared slot it already disposed (built for
+        // a mixer rate the reopened session no longer runs at) is gone. The controller must react exactly like a Missed
+        // hand-off — re-resolve a FRESH prepare for the same upcoming item — never leave the boundary unprepared.
+        var host = new PreparedHost();
+        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
+            new FakeContextResolver("spotify:track:a", "spotify:track:b"), "dev");
+
+        await controller.PlayAsync("spotify:playlist:test");
+        await WaitUntilAsync(() => host.Prepared.Count >= 1);
+        var stale = host.Prepared.First();
+        Assert.Equal("spotify:track:b", stale.Start.TrackUri);
+
+        host.EmitTransition(new AudioTransitionSignal(AudioTransitionKind.Invalidated, stale.Token,
+            stale.Start.TrackUri, 0, 0, "format-changed"));
+
+        await WaitUntilAsync(() => host.Prepared.Count >= 2);
+        var fresh = host.Prepared.Last();
+        Assert.Equal("spotify:track:b", fresh.Start.TrackUri);   // re-prepared the SAME upcoming item
+        Assert.NotEqual(stale.Token, fresh.Token);                // under a fresh token — the stale one is provably dead
+
+        // The re-prepared slot still hands off cleanly (proves the controller didn't wedge on the invalidation).
+        host.EmitTransition(new AudioTransitionSignal(AudioTransitionKind.Started, fresh.Token,
+            fresh.Start.TrackUri, 0, 0));
+        await WaitUntilAsync(() => projection.CurrentTrack?.Uri == "spotify:track:b");
+    }
+
     static async Task WaitUntilAsync(Func<bool> predicate)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));

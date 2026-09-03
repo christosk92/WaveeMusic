@@ -591,7 +591,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
                 // The session rebased its clock to the seek target (active-track-relative), so the position base resets too.
                 AbandonPendingJoin(pcm, "seek");
                 _activeStartMs = 0;
-                _activeJoinFrame = pcm.SampleClock + MsToFrames(Math.Max(0, _activeDurMs - ms), pcm.Format.SampleRate);
+                _activeJoinFrame = GaplessJoinClock.JoinFrameFor(pcm.SampleClock, _activeDurMs, ms, pcm.Format.SampleRate);
                 _gaplessArmed = 0;      // re-log the arm snapshot for the new endgame
                 _prepRearmSent = 0;     // a seek into the endgame may need a fresh remaining-ms re-arm nudge
                 _endedHold = 0;
@@ -880,8 +880,10 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
             if (session is PcmAudioSession pcm)
             {
                 _activePrimaryId = pcm.PrimaryVoiceIdValue;
-                // W2: the fresh primary voice starts at mixer frame 0 and is estimated to end at its declared duration.
-                _activeJoinFrame = MsToFrames(bytes.DurationMs, pcm.Format.SampleRate);
+                // W2 / device-reopen fix (A1): express the join frame relative to THIS session's clock, not track-absolute
+                // — a fresh open's clock is 0 so this is normally the same number, but going through GaplessJoinClock keeps
+                // every writer of _activeJoinFrame on the one formula (see SoftReloadAsync, which reopens at a NON-zero clock).
+                _activeJoinFrame = GaplessJoinClock.JoinFrameFor(pcm.SampleClock, bytes.DurationMs, 0, pcm.Format.SampleRate);
                 // Fix 2: re-arm THIS track if a mid-track default-endpoint switch adopts a different sample rate. The engine
                 // raises DeviceFormatChanged off its cold device thread; the handler enqueues a soft reload. Unsubscribed when
                 // this session is disposed (DisposeSessionAsync / the soft reload) so no handler leaks across loads.
@@ -991,6 +993,10 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         // crossfade carries B's identity here — snapshot it and restore after a SUCCESSFUL reopen so URI-dependent signals keep it.
         string savedUri = _activeUri;
         long savedDurMs = _activeDurMs;
+        // A1: OpenSessionAsync (below) unconditionally clears _gaplessArmed as part of every open's reset — capture whether
+        // THIS track's endgame had already armed before that reset, so the post-reopen rearm log below (whose whole point is
+        // "the arm survived a reopen") isn't reading a value the reopen itself just zeroed.
+        bool wasArmed = _gaplessArmed != 0;
 
         // Finding #1: the kept stream is a SINGLE-CURSOR object — its AsStream() returns `this` with one Position — so it
         // CANNOT be shared across two concurrently-live sessions: the new decoder's open seeks the shared cursor (garbling the
@@ -1080,6 +1086,36 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
                 if (savedPos > 0)
                     // Restoring the playhead after a device-format reload is a committed reposition, never a scrub.
                     try { await reopened.SeekAsync(TimeSpan.FromMilliseconds(savedPos), EngineSeekMode.Accurate).ConfigureAwait(false); } catch { }
+
+                // A1: `reopened` is a NEW PcmAudioSession — its SampleClock is 0 (the SeekAsync above rebases only the
+                // engine's POSITION clock, never the sample clock, exactly like Seek() does on the live path). Re-derive
+                // the active-track join frame from THIS session's clock + the restored playhead so CommitGaplessJoin
+                // schedules the hand-off off the LIVE clock instead of the pre-reopen track-absolute estimate (A1: the
+                // 164 s-late advance).
+                if (reopened is PcmAudioSession reopenedPcm)
+                {
+                    int newRate = reopenedPcm.Format.SampleRate;
+                    _activeJoinFrame = GaplessJoinClock.JoinFrameFor(reopenedPcm.SampleClock, savedDurMs, savedPos, newRate);
+                    if (wasArmed)
+                    {
+                        _gaplessXrunsAtArm = SessionXruns();
+                        _log.Info($"[gapless] rearm-after-reopen clock={reopenedPcm.SampleClock} join={_activeJoinFrame} rate={newRate}");
+                    }
+
+                    // A2: a prepared-next slot was decoded/resampled for the OLD mixer rate (IPreparedItem.MixRate, stamped
+                    // at prime time) and cannot be spliced into THIS new session without playing off-pitch (observed: a 48kHz
+                    // prime joined into a 44.1kHz session played ~92% speed). Invalidate it now, up front, rather than let one
+                    // of the splice sites' belt-and-braces checks discover it later — the controller re-prepares against the
+                    // now-live rate the same way it recovers from a Missed hand-off.
+                    if (_prepItem is { } p && !GaplessJoinClock.PrimedSlotMatches(p.MixRate, newRate))
+                    {
+                        string invalidToken = _prepToken ?? "";
+                        string invalidUri = _prepUri;
+                        await DisposePreparedSlotAsync().ConfigureAwait(false);
+                        _transitions.OnNext(new AudioTransitionSignal(AudioTransitionKind.Invalidated, invalidToken, invalidUri, PositionMs, 0, "format-changed"));
+                        _log.Info($"[gapless] prep-invalidated token={invalidToken} primedRate={p.MixRate} sessionRate={newRate}");
+                    }
+                }
                 if (_playIntent) { try { await reopened.PlayAsync().ConfigureAwait(false); StartTicker(); } catch { } }
             }
         }
@@ -1314,8 +1350,17 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
 
     // Commit the overlapping crossfade IN the live session (called from Tick, RT-safe): add B's voice fading in and fade
     // the active voice out over the same window, then re-point the active state at B. Runs exactly once per hand-off.
-    void CommitCrossfade(PcmAudioSession sess, IPreparedItem item, long rawPos)
+    // Returns false (belt and braces, A2) when B was primed for a mixer rate this session no longer runs at — a device
+    // reopen can land between prepare and commit — so a splice that would play B off-pitch never reaches the mixer;
+    // the caller leaves the prepared slot cleared and the ordinary end-of-track load takes over instead.
+    bool CommitCrossfade(PcmAudioSession sess, IPreparedItem item, long rawPos)
     {
+        if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate))
+        {
+            _log.Info($"[gapless] join-abandoned reason=rate-mismatch primed={item.MixRate} session={sess.Format.SampleRate}");
+            _ = DisposePreparedSlotAsync();
+            return false;
+        }
         long id = ++_nextVoiceId;
         long start = sess.SampleClock;
         int fadeFrames = _crossfadeMs * sess.Format.SampleRate / 1000;
@@ -1373,6 +1418,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         _log.Info($"[gapless] commit-crossfade clock={start} fadeFrames={fadeFrames} fadeMs={_crossfadeMs} raw={rawPos} primed=1 body={bodySupplied} xruns={xruns} xrunDelta={xruns - _gaplessXrunsAtArm}");
         _gaplessArmed = 0;
         _gaplessHardCutPending = 0;
+        return true;
     }
 
     // ── W2 phase 1: the 0 ms gapless join. Add B's prepared voice into the LIVE mixer at A's estimated natural-end
@@ -1380,11 +1426,22 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     // faded or truncated, the IAudioClient never stops, and B stays silent until the clock reaches the join. NEVER route
     // 0 ms through CommitCrossfade — GainEnvelope.Fade(…, 0 frames) folds to Constant, which is two voices at unity for
     // the whole tail, not a butt-join. Runs on the Tick/Timer thread; the mixer edits go through the session's SPSC.
-    void CommitGaplessJoin(PcmAudioSession sess, IPreparedItem item)
+    // Returns false (belt and braces, A2) when B was primed for a mixer rate this session no longer runs at — see
+    // CommitCrossfade's twin guard for why the check is repeated at every splice site rather than trusted once.
+    bool CommitGaplessJoin(PcmAudioSession sess, IPreparedItem item)
     {
+        if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate))
+        {
+            _log.Info($"[gapless] join-abandoned reason=rate-mismatch primed={item.MixRate} session={sess.Format.SampleRate}");
+            _ = DisposePreparedSlotAsync();
+            return false;
+        }
         long id = ++_nextVoiceId;
         long clock = sess.SampleClock;
-        long join = Math.Max(_activeJoinFrame, clock);   // never in the past — a late commit degrades to a micro-gap join
+        // A1: bounded by the SAME formula ScheduleJoin uses everywhere else — never in the past (a late commit degrades
+        // to a micro-gap join), and never further out than the active track's OWN remaining time + 100 ms, so a stale
+        // _activeJoinFrame (a reopen that raced this commit) cannot schedule B minutes into the future.
+        long join = GaplessJoinClock.ScheduleJoin(_activeJoinFrame, clock, _activeDurMs - PositionMs, sess.Format.SampleRate);
         float rg = ReplayGain.ScalarLinear(item.Loudness, sess.NormalizationMode, sess.ReferenceLufsValue);
         int bodySupplied = _prepBytes?.ReopenBody is not null ? 1 : 0;
         long durMs;
@@ -1401,6 +1458,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         }
         long xruns = sess.XrunCount;
         _log.Info($"[gapless] commit-join clock={clock} join={join} id={id} body={bodySupplied} durMs={durMs} xruns={xruns} xrunDelta={xruns - _gaplessXrunsAtArm}");
+        return true;
     }
 
     // ── W2 phase 2: the join went live — the write clock crossed B's first frame (the playhead follows within the
@@ -1471,6 +1529,15 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     {
         if (_session is not PcmAudioSession sess) return false;
         if (_prepItem is not { IsReady: true } item || !_prepOverlap || item.AudioVoice is not { } voice) return false;
+        // A2 belt-and-braces: A drained fully before the join committed AND before the reopen's own up-front invalidation
+        // (SoftReloadAsync) ran — the third and last place a stale-rate voice could reach the mixer. Abandon the promote;
+        // the caller's Ended path falls through to the ordinary hard-cut load, never a slowed track.
+        if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate))
+        {
+            _log.Info($"[gapless] join-abandoned reason=rate-mismatch primed={item.MixRate} session={sess.Format.SampleRate}");
+            _ = DisposePreparedSlotAsync();
+            return false;
+        }
 
         string token, uri;
         long durMs;
@@ -1586,8 +1653,10 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         {
             if (fadeMs > 0 && activePos >= _activeDurMs - fadeMs)
             {
-                CommitCrossfade(sess, item, rawPos);
-                pos = PositionMs;   // re-read: now B-relative (≈0 at the hand-off)
+                // A2 belt-and-braces: a rate mismatch aborts the commit (logged + slot disposed inside) — the prepared
+                // slot is simply gone afterward, so the ordinary Ended/hard-cut path takes over exactly as if nothing
+                // had ever primed.
+                if (CommitCrossfade(sess, item, rawPos)) pos = PositionMs;   // re-read: now B-relative (≈0 at the hand-off)
             }
             else if (fadeMs <= 0 && activePos >= _activeDurMs - GaplessCommitLeadMs
                      && Volatile.Read(ref _softReloading) == 0)   // never commit into a session a soft reload may replace
@@ -1635,9 +1704,18 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
                         LiveSessionRules.TickRecoveryKind(_activeIsLive, _liveRecovering)));
                     break;
                 }
-                _signals.OnNext(_lastState == PlaybackState.Playing
-                    ? new AudioHostSignal(AudioHostSignalKind.PositionTick, pos)
-                    : new AudioHostSignal(AudioHostSignalKind.Playing, pos));
+                if (_lastState == PlaybackState.Playing)
+                {
+                    // A3 (clock-flicker fix): a device-format soft reload's own OpenSessionAsync briefly reports
+                    // _activeStartMs=0/_clockStale=false BEFORE the restoring seek lands (the new session opens at
+                    // clock 0, seeks to the saved playhead only after), so a steady-state tick landing in that window
+                    // would carry pos≈0 — the second, wrong, value behind the reported "flicker between two values"
+                    // (A3). Skip the repeat PositionTick while a reload is in flight or the clock is provably stale;
+                    // the one-shot Playing edge below still fires so the UI is never stuck reporting the OLD state.
+                    if (Volatile.Read(ref _softReloading) != 0 || _clockStale) break;
+                    _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.PositionTick, pos));
+                }
+                else _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Playing, pos));
                 break;
             case PlaybackState.Paused:
                 if (_lastState != PlaybackState.Paused) _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Paused, pos));

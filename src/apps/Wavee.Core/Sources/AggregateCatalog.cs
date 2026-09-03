@@ -57,6 +57,17 @@ public sealed class AggregateCatalog : IMusicLibrary, ICollectionEvents
         return new Artist(id, id, "", null);
     }
 
+    // Same owner → fallback routing as GetAlbumAsync, but SYNCHRONOUS end to end (IMusicLibrary.TryPeekAlbum's whole
+    // point is a click-frame answer with no await) — the owning source decides whether it has anything warm to report.
+    public bool TryPeekAlbum(string uri, out Album? album)
+    {
+        foreach (var s in _reg.CatalogSources)
+            if (s.Owns(uri) && s.TryPeekAlbum(uri, out album)) return true;
+        if (Fallback(uri) is { } fb && fb.TryPeekAlbum(uri, out album)) return true;
+        album = null;
+        return false;
+    }
+
     // Same three-step shape as the single-item reads: owner → fallback → empty. The fallback step is what keeps a
     // context nobody owns (a synthetic podcast, an unrecognized uri) playable in the demo backend.
     public IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, CancellationToken ct = default)

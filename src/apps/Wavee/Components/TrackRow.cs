@@ -117,6 +117,12 @@ internal static class TrackRow
     // Track row height by density (0 Compact · 1 Default · 2 Cozy · 3 Comfortable).
     internal static float RowHeightFor(int density) => density switch { 0 => 40f, 2 => 56f, 3 => 64f, _ => RowHeight };
 
+    /// <summary>The row art edge for THIS ladder, by density — forwards to the one decision
+    /// (<see cref="DetailTrackTableRules.ArtSizeFor"/>) so the detail table and every other Modern row agree on the
+    /// same 32/40/48 numbers instead of drifting into a second copy. Modern only: Classic's tighter room is the
+    /// detail table's own call (<c>set.Classic</c>), and no non-detail surface renders Classic rows.</summary>
+    internal static float ArtSizeFor(int density) => DetailTrackTableRules.ArtSizeFor(density, classic: false);
+
     // Tier-scaled horizontal inset + column gap: full at wide tiers, tighter as the pane narrows so the title keeps
     // usable width under pressure. Header AND rows read these SAME helpers (keyed by the set's Tier) so columns stay
     // aligned. Tier 0 returns the unchanged constants, so every non-tiered surface is untouched.
@@ -191,13 +197,18 @@ internal static class TrackRow
     // index-signal-bound (detail BoundRowContent) title. Plain/diffable — no Animate — so a re-render patches cells in place.
     internal static Element Grid(Track t, int displayIndex, in State st, ColumnSet set, TrackSize[] tracks, float rowH,
                                  Element title, bool showTrackArtist, Action<string, string?> go,
+                                 // Defaults to ThumbSize (the fixed 32-DIP art) — every non-detail caller (search,
+                                 // artist Popular, the album drawer, RecentsPage) never passes this and keeps its
+                                 // established look. The detail table is the one caller that threads a density-keyed
+                                 // value (DetailTrackTableRules.ArtSizeFor) so its art actually grows with the row.
+                                 float art = ThumbSize,
                                  Action? onPlay = null, Action? onLike = null, Owner? addedByProfile = null,
                                  bool likePop = false, Element? actionsCell = null,
                                  bool showAlbumInMeta = false, bool showListBadges = false,
                                  Element? expandCell = null, bool moreEnabled = true,
                                  IReadSignal<bool>? hoverPaused = null)
     {
-        float thumb = ThumbSize;   // fixed art size → a stable dedicated art column
+        float thumb = art;   // the row's art column edge — density-keyed for the detail table, fixed elsewhere
 
         var cells = new List<Element>(tracks.Length);
         // Every cell carries a STABLE key. The column set changes at runtime (a breakpoint cross drops Album/Added-by/
@@ -230,7 +241,10 @@ internal static class TrackRow
         // not the artwork (the WaveeMusic RowArtColDef pattern). Then the title + artist subline (subline hidden on
         // single-artist albums/singles/EPs).
         if (set.Thumb)
-            Add(CellKey.Art, CenterCell(Surfaces.Artwork(t.Image, t.Id.GetHashCode() & 0x7fffffff, thumb, thumb, Radii.Control)));
+            // decodePx tracks the DISPLAYED edge (not the fixed ThumbSize default) — a Comfortable-density 48-DIP
+            // thumb must decode at 96px, not the 64px a stale constant would have asked for, or the cover reads soft.
+            Add(CellKey.Art, CenterCell(Surfaces.Artwork(t.Image, t.Id.GetHashCode() & 0x7fffffff, thumb, thumb,
+                                                          Radii.Control, decodePx: (int)(art * 2f))));
         // The video glyph is NOT part of the metadata subline: it lives in the trailing Video/More lane at every tier
         // that keeps one (see set.Video), so a row states "has a video" in exactly ONE place. A subline copy meant the
         // same fact moved lanes across a breakpoint cross — the film icon jumping from the trailing chrome into the
@@ -372,7 +386,7 @@ internal static class TrackRow
                 Children =
                 [
                     Grid(m.Track, m.DisplayIndex, m.St, m.Set, m.Tracks, m.RowH, title, m.ShowTrackArtist, m.Go,
-                         m.OnPlay, m.OnLike, actionsCell: m.ActionsCell, hoverPaused: hovered),
+                         onPlay: m.OnPlay, onLike: m.OnLike, actionsCell: m.ActionsCell, hoverPaused: hovered),
                 ],
             };
         }

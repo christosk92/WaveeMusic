@@ -172,9 +172,15 @@ sealed class SetupPlate : Component
             style: IconButton.DefaultStyle with { Size = SetupLayout.BackButtonSize, GlyphSize = SetupLayout.BackGlyphSize })],
     };
 
+    // Grow+Shrink+MinWidth+MinHeight give the keep-alive a DEFINITE box so ClipToBounds has something to clip
+    // against — the ContentHost.cs:70-76 recipe. Without it, KeepAliveEl carries no layout columns of its own
+    // (Reconciler.cs WriteColumns never runs for it), so it and the ComponentEl chain underneath (SetupPagePlaceholders
+    // → SetupPageHost.Frame → the page's ScrollView) shrink-wrap to CONTENT height instead of being bounded by this
+    // box: the ScrollView's height becomes its content height, nothing scrolls, and the page's last row clips instead
+    // of scrolling into view.
     Element PagesHost() => new BoxEl
     {
-        Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
         Children =
         [
             Flow.KeepAlive(

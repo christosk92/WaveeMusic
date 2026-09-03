@@ -180,6 +180,20 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
         return album;
     }
 
+    /// <summary>Synchronous store peek (C3, docs/plans/wavee/artist-album-expander-implementation.md §2): the SAME
+    /// store read <see cref="GetAlbumAsync"/> makes, but with NO ensure and NO await — reads only what is ALREADY
+    /// resident. Reports "nothing to peek" below <see cref="HydrationLevel.Open"/> (the same gate
+    /// <c>AlbumHydration.LevelOf</c> uses via <see cref="HydrationLevels.Of(Album?)"/>), so a cold or Identity-only
+    /// album still falls through to the real fetch — and its own placeholder, sized off the thin card's TrackCount —
+    /// instead of seeding the drawer with an incomplete tracklist as if it were final.</summary>
+    public bool TryPeekAlbum(string uri, out Album? album)
+    {
+        var candidate = ReJoinTracks(_store.GetAlbum(uri));
+        if (HydrationLevels.Of(candidate) < HydrationLevel.Open) { album = null; return false; }
+        album = candidate;
+        return true;
+    }
+
     static List<string> AlbumTraitUris(Album album)
     {
         var uris = new List<string>((album.Tracks?.Count ?? 0) + 1) { album.Uri };

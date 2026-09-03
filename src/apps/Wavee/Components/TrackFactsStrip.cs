@@ -50,11 +50,6 @@ internal static class TrackFactsStrip
     /// Gap 20 + margin 20 buys 40 across and keeps 20 down.</para></summary>
     const float StatGap = Spacing.XL;
 
-    static readonly LayoutTransition TileReflow = new(
-        TransitionChannels.Position | TransitionChannels.Size,
-        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        SizeMode.Reveal);
-
     /// <summary>Build the strip, or an empty box when the track states nothing at all (a shimmer row, an empty slot).
     ///
     /// <paramref name="go"/> routes the ONE link this strip carries (the album), through the same
@@ -105,14 +100,14 @@ internal static class TrackFactsStrip
         if (prose.Count > 0)
             body.Add(new BoxEl
             {
-                Key = "facts-prose", Enter = DetailRail.FadeUp, Layout = TileReflow,
+                Key = "facts-prose", Enter = DetailRail.FadeUp, Layout = DetailRail.Shove,
                 Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
                 Children = prose.ToArray(),
             });
         if (genres.Count > 0)
             body.Add(new BoxEl
             {
-                Key = "facts-genres", Enter = DetailRail.FadeUp, Layout = TileReflow,
+                Key = "facts-genres", Enter = DetailRail.FadeUp, Layout = DetailRail.Shove,
                 Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
                 Children = genres.ToArray(),
             });
@@ -142,7 +137,7 @@ internal static class TrackFactsStrip
         var split = pending ? default : TrackExpandedFacts.HeroSplit(f);
         return new BoxEl
         {
-            Key = "fact:" + f.Kind, Enter = DetailRail.FadeUp, Layout = TileReflow,
+            Key = "fact:" + f.Kind, Enter = DetailRail.FadeUp, Layout = DetailRail.Shove,
             Direction = 1, Gap = 0f, Shrink = 0f, MinWidth = 0f,
             Margin = new Edges4(0f, 0f, StatGap, 0f),
             Children =

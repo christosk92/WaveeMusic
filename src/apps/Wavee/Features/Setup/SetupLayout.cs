@@ -41,6 +41,12 @@ static class SetupLayout
     // HyperlinkButton = ButtonPadding 5/6 + a 20-px line = 32 — the same lane as Button.MinHeight).
     public const float QrSize = 80f, BodyLineHeight = 20f, CardMinHeight = 68f, CardPadding = 16f, LinkRowHeight = 32f;
 
+    // 33 modules = a v4 QR (the longest pairing URI SpotifyLive ever mints — https://spotify.com/pair/<code>);
+    // QrPlate.PlateFor (Features/Auth/QrPlate.cs — engine-free, pinned by QrGridTests) is the SAME arithmetic
+    // QrGrid.Render draws with, so this budget can never drift from what actually paints (the old bug: this file
+    // charged QrSize=80 while QrGrid painted 111 for the same request).
+    public static readonly float QrPlateBudget = QrPlate.PlateFor(QrSize, 33);
+
     public static float Width(float viewportW) => Math.Clamp(PlateWidth, MinPlateWidth, MathF.Max(MinPlateWidth, viewportW - 2f * ViewportMargin));
     public static float Height(float viewportH) => Math.Clamp(PlateHeight, MinPlateHeight, MathF.Max(MinPlateHeight, viewportH - 2f * ViewportMargin));
 
@@ -66,12 +72,14 @@ static class SetupLayout
         plateH - FooterHeight - SeparatorHeight - 2f * PlatePadding - (HeaderLineHeight - HeaderTopPull + HeaderBottomGap);
 
     /// <summary>The sign-in Idle body's natural height for a lead paragraph of <paramref name="leadLines"/> lines:
-    /// lead · browser card (one-line header + one-line description = the 68 minimum) · scan card (the 80-DIP QR in its
-    /// Content slot + 16 padding top/bottom) · the one-row "needs Premium · Sign up" line, with Rise's 20-DIP stack
-    /// spacing between the four. <see cref="BodyLaneHeight"/> at the reference plate is the budget it must fit.</summary>
+    /// lead · browser card (one-line header + one-line description = the 68 minimum) · scan card (the PAINTED QR
+    /// plate — <see cref="QrPlateBudget"/>, not the requested <see cref="QrSize"/>: a v4 symbol at 80 DIP actually
+    /// paints 82 — in its Content slot + 16 padding top/bottom) · the one-row "needs Premium · Sign up" line, with
+    /// Rise's 20-DIP stack spacing between the four. <see cref="BodyLaneHeight"/> at the reference plate is the
+    /// budget it must fit.</summary>
     public static float SignInIdleBodyHeight(int leadLines) =>
         leadLines * BodyLineHeight + BodySpacing
         + CardMinHeight + BodySpacing
-        + (QrSize + 2f * CardPadding) + BodySpacing
+        + (QrPlateBudget + 2f * CardPadding) + BodySpacing
         + LinkRowHeight;
 }

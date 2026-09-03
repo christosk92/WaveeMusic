@@ -22,6 +22,14 @@ public sealed class FakeSource : ICatalogSource
         => Task.FromResult<Playlist?>(FakeData.Playlist(FakeData.IndexFromUri(uri)));
     public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
         => Task.FromResult<Album?>(FakeData.Album(FakeData.IndexFromUri(uri)));
+    // Complete-at-construction (Hydrator => CompleteEntityHydrator, see the class doc): every fake album is already
+    // fully resident, so the artist page's inline drawer peek always succeeds here too — the demo backend never
+    // shimmers on a re-open any more than the real, warm-store path does.
+    public bool TryPeekAlbum(string uri, out Album? album)
+    {
+        album = FakeData.Album(FakeData.IndexFromUri(uri));
+        return true;
+    }
     public Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
         => Task.FromResult<Artist?>(FakeData.Artist(FakeData.IndexFromUri(uri)));
 

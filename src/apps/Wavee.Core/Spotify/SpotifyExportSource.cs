@@ -35,6 +35,12 @@ public sealed class SpotifyExportSource : ICatalogSource
     }
 
     public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+        => Ok(AlbumFor(uri));
+
+    // Synchronous album-building shared by GetAlbumAsync and TryPeekAlbum below — this source is complete-at-
+    // construction (every read is already a plain in-memory build, Task.FromResult over it), so a "peek" is simply the
+    // same build without the Task wrapper.
+    Album AlbumFor(string uri)
     {
         // A home card → real name/cover + themed synth tracks. No card → FakeData's own album (consistent with the
         // synthetic "Your Albums" collection the Fake source contributes), keyed by the URI so it's deterministic.
@@ -43,11 +49,19 @@ public sealed class SpotifyExportSource : ICatalogSource
         {
             string artistName = card.Subtitle ?? "Various Artists";
             var tracks = SynthAlbumTracks(uri, card.Title, artistName, card.Image);
-            return Ok(new Album(EntityUri.IdOf(uri), uri, card.Title, card.Image, new[] { ArtistRefFor(artistName) },
-                2014 + Hash(uri) % 11, tracks.Count, tracks, AlbumKind.Album));
+            return new Album(EntityUri.IdOf(uri), uri, card.Title, card.Image, new[] { ArtistRefFor(artistName) },
+                2014 + Hash(uri) % 11, tracks.Count, tracks, AlbumKind.Album);
         }
-        return Ok(new Album(EntityUri.IdOf(uri), uri, fake.Name, fake.Cover, fake.Artists, fake.Year,
-            fake.TrackCount, fake.Tracks ?? System.Array.Empty<Track>(), fake.Kind));
+        return new Album(EntityUri.IdOf(uri), uri, fake.Name, fake.Cover, fake.Artists, fake.Year,
+            fake.TrackCount, fake.Tracks ?? System.Array.Empty<Track>(), fake.Kind);
+    }
+
+    // Complete-at-construction, same as FakeSource: a peek always succeeds, so the demo backend's artist-page drawer
+    // never shimmers on a re-open either.
+    public bool TryPeekAlbum(string uri, out Album? album)
+    {
+        album = AlbumFor(uri);
+        return true;
     }
 
     public Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)

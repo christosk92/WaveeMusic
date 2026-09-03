@@ -2188,6 +2188,11 @@ sealed class RecentsPage : Component
         _revision = snapshot.Revision;
         _hasSnapshot = true;
 
+        // Cross-device plays only exist in the server history — the local play-log ring never sees a play made on
+        // another device — so every snapshot feeds the same recency index the library panes' "Recents" sort reads.
+        // Max-merge downstream (PlayRecency.Stamp) means a stale/duplicate snapshot can never regress a newer local stamp.
+        _svc?.PlayLog.MergeRecency(RecentsRecency.Stamps(snapshot.Rows));
+
         // W2.3: the pivot set is now FIXED (All/Music/Podcasts/Artists), so unlike the old wire-derived chip bar there
         // is no "this token no longer exists" case to guard — every selectable token is always one of the four, and
         // PivotTabs itself disables whichever ones this snapshot has zero rows for.
@@ -2401,6 +2406,11 @@ sealed class RecentsPage : Component
         _post(() =>
         {
             for (int i = 0; i < uris.Length; i++) _inflight.Remove(uris[i]);
+            // A recents row only ever carries a track's own uri, never its album/artists — those live on the resident
+            // Track once identity hydration lands, which is exactly what just happened for `uris`. Resolving them here
+            // (never at read time — see RecentsRecency) is what lets a cross-device TRACK play move that track's
+            // artist/album in the library panes too, not just its own row in this page.
+            if (_store is { } st) _svc?.PlayLog.MergeRecency(RecentsRecency.TrackStamps(_shape.Rows, uris, st.GetTrack));
             // The store's own change signal usually beats us here; the bump is what guarantees the realized window
             // re-reads even when the projection wrote nothing new.
             _epoch.Value++;

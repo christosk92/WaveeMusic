@@ -22,21 +22,25 @@ namespace Wavee;
 /// so a crash prompt still appears in the SAME launch once setup is out of the way rather than being lost.</para></summary>
 sealed class ReportChrome(IAppSettings? settings) : Component
 {
+    // The last request Seq this chrome has already opened. A STATIC, not a UseRef(-1) baseline: a UseRef baseline
+    // treats "whatever Seq is current when I first mount" as already-served, which swallows the very first request
+    // that arrives right after a remount (OverlayHost's subtree can remount independently of ReportChrome's own
+    // lifetime). A static instead opens every distinct Seq exactly once, remount or not.
+    static int s_lastOpenedSeq = -1;
+
     public override Element Render()
     {
         var overlay = UseContext(Overlay.Service);
         var svc = UseContext(Services.Slot);
         var hooks = UseContext(InputHooks.Current);
 
-        int req = ReportRequests.Requested.Value;
-        var last = UseRef(-1);
+        var req = ReportRequests.Requested.Value;
         UseEffect(() =>
         {
-            if (last.Value < 0) { last.Value = req; return; }
-            if (req == last.Value) return;
-            last.Value = req;
-            ReportDialog.Open(overlay, svc, hooks, settings, ReportRequests.Kind, ReportRequests.Prefill, default);
-        }, req);
+            if (req is null || req.Seq == s_lastOpenedSeq) return;
+            s_lastOpenedSeq = req.Seq;
+            ReportDialog.Open(overlay, svc, hooks, settings, req.Kind, req.Prefill, default);
+        }, req?.Seq ?? -1);
 
         int wizardEpoch = SetupSession.MarkerEpoch.Value;
         UseEffect(() =>

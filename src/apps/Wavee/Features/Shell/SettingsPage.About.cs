@@ -442,7 +442,7 @@ sealed class AboutUpdatePanel : Component
             {
                 string from = settings.Get(WaveeSettings.ReleaseNotesPreviousVersion);
                 if (from.Length == 0) from = me.Quad;
-                AfterUpdateDialog.Open(overlay, settings, from, me, notes, key => nav?.Invoke(key, null));
+                AfterUpdateDialog.Open(overlay, settings, from, me, notes, nav);
             };
         }
 

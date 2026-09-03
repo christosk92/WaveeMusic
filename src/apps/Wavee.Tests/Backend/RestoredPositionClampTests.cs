@@ -107,4 +107,25 @@ public class RestoredPositionClampTests
 
         Assert.Equal(durationMs, p.PositionMs);
     }
+
+    [Fact]
+    public void HostPositionTick_PastDuration_IsClampedOnTheTicksStream()
+    {
+        // A3: OnHostSignal used to push the host's RAW, unclamped s.PositionMs straight onto PositionTicks (the 200 ms
+        // live tick), while the 1 Hz Tick()/PositionMs readers already went through Pos()'s clamp — two derivations of
+        // "now" disagreeing whenever the raw host value strayed outside [0, duration] (a device-reopen soft reload
+        // landing between a fresh session's clock=0 and its restoring seek is exactly such a moment). The fix routes
+        // the ticks stream through the SAME clamped Pos() every other reader uses.
+        const long durationMs = 174_000;
+        var track = Local("spotify:track:liegt", durationMs);
+        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        p.ApplyLocalSnapshot(Snap(track), new PlaybackEvent(EvKind.Resumed, track, 0));
+
+        long? observed = null;
+        using var sub = p.PositionTicks.Subscribe(Observers.From<long>(v => observed = v));
+
+        p.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.PositionTick, durationMs + 5_000));
+
+        Assert.Equal(durationMs, observed);
+    }
 }

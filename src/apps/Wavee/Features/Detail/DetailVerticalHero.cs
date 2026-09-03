@@ -510,3 +510,11 @@ sealed class DetailHeroMoreButton : Component
         return button.Interactive(Interaction.Subtle);
     }
 }
+
+// Cross-surface page-layout preference epoch: bumped when the Settings → Appearance "Track page layout" row changes,
+// so any mounted (incl. KeepAlive-parked) DetailShell re-resolves rail-vs-hero live. (PlayerBarPrefs pattern.)
+static class DetailHeroPrefs
+{
+    public static readonly Signal<int> Epoch = new(0);
+    public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
+}

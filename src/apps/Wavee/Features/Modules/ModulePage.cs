@@ -525,19 +525,7 @@ sealed class ModulePage : Component
         });
     }
 
-    static Element FactTile(string value, string label, string key) => new BoxEl
-    {
-        Key = "fact:" + key, Enter = DetailRail.FadeUp, Layout = DetailRail.Shove,
-        Direction = 1, Gap = 1f, Grow = 1f, Basis = 0f, MinWidth = 0f,
-        Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
-        Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillCardSecondary,
-        BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-        Children =
-        [
-            new TextEl(value) { Size = 18f, Weight = 800, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            new TextEl(label) { Size = 11f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-        ],
-    };
+    static Element FactTile(string value, string label, string key) => Wavee.Components.StatTile.Create(key, value, label);
 
     // playables — the app's ONE track row (TrackRow.ArtCard) over synthetic module tracks, so a module's episode list
     // behaves like every other list in the app: click plays or toggles, right-click opens the track menu.

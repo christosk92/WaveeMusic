@@ -35,7 +35,6 @@ sealed class TrackList : Component
     const float ColGap = TrackRow.ColGap;           // shared by header + rows (alignment invariant)
     const float PadX = TrackRow.PadX;               // shared horizontal inset (header chrome padding == row grid padding)
     const float RowInset = TrackRow.RowInset;       // rounded row-highlight inset (rows pad PadX−RowInset so columns stay header-aligned)
-    const float ThumbSize = TrackRow.ThumbSize;
     const float ActionsColWidth = TrackLane.Actions;   // trailing "..." overflow column (28px button + breathing room)
     // The FLEXIBLE lanes, as star weights: Title : Artist : Album = 1 : 0.75 : 0.75. Artist and Album are the weaker
     // facts, so neither ever gets more width than the song title, and the group splits the space left by the fixed
@@ -134,7 +133,10 @@ sealed class TrackList : Component
     // which optional columns the model/config actually offer), so a cached entry can never go stale behind a snapshot
     // change. That matters because _rowShape is a lazily-evaluated memo — it can recompute before this component's
     // render body would have had a chance to invalidate a tier-keyed cache.
-    readonly Dictionary<ColumnSet, TrackSize[]> _tracksBySet = new();
+    // Keyed on (ColumnSet, Art): Art is density-derived and NOT part of ColumnSet, so a Cozy→Comfortable density
+    // change (same lane set, same tier) must miss this cache too, or the Thumb column would keep the previous
+    // density's width forever — TrackList itself never remounts on a density change (only its Key'd list children do).
+    readonly Dictionary<(ColumnSet Set, float Art), TrackSize[]> _tracksBySet = new();
     (DetailTrackSort Sort, string Query, TrackFilterState Filters) _viewKey = (new((SortColumn)(-1), false), "\0", TrackFilterState.Default);   // invalid sentinel
     IReadOnlyList<Track>? _viewTrackSet;                       // source-list identity paired with the sort/filter cache key
     IReadOnlySet<string>? _viewSavedSet;                       // only populated by Liked-only; reference change invalidates the cached map
@@ -297,7 +299,10 @@ sealed class TrackList : Component
     // TrackSize[] is the per-tier cached instance, so a re-render that does not cross a breakpoint compares equal and
     // costs nothing. Rows read this instead of taking the shape as a frozen constructor arg — that is what lets a
     // breakpoint cross patch the realized rows IN PLACE instead of remounting the whole virtualized list.
-    readonly record struct RowShape(ColumnSet Set, TrackSize[] Tracks);
+    // Art carries alongside Set/Tracks (rather than being re-derived downstream) because it is keyed on DENSITY, which
+    // ColumnSet does not encode — every consumer of the shape (header/rows/shimmer/drawer indent) must read the SAME
+    // number the width tracks were built from, or the Thumb column and the actual Surfaces.Artwork call disagree.
+    readonly record struct RowShape(ColumnSet Set, TrackSize[] Tracks, float Art);
 
     readonly record struct RowPresentation(
         Track Track, int DisplayIndex, TrackRow.State State,
@@ -377,7 +382,7 @@ sealed class TrackList : Component
     /// while the membership is still unknown, else the empty / no-match message. The Loading arm is a skeleton boundary
     /// keyed on the MODEL's flag, not the page loadable (the header is Ready — only the rows are not), deriving the
     /// same <see cref="RowsShimmer"/> the cold page shows, so the two loading looks are one look.</summary>
-    Element ListPlaceholder(PlaylistRowsState state, ColumnSet set, TrackSize[] tracks, float rowH) => state switch
+    Element ListPlaceholder(PlaylistRowsState state, ColumnSet set, TrackSize[] tracks, float rowH, float art) => state switch
     {
         PlaylistRowsState.Loading => new SkelRegionEl(
             Pending: () => { var m = _full.Value.Value; return PlaylistListState.IsLoading(m.MembershipLoaded, m.Tracks.Count); },
@@ -385,7 +390,7 @@ sealed class TrackList : Component
             // Ready with rows: this element is replaced by the real list in the same flush that flipped the flag; the
             // spacer is what stands there for that flush. Ready with none: the membership landed empty.
             Content: () => _full.Value.Value.Tracks.Count == 0 ? FilterEmpty(noTracks: true) : new BoxEl(),
-            ShimmerSource: () => RowsShimmer(set, tracks, rowH),
+            ShimmerSource: () => RowsShimmer(set, tracks, rowH, art),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false)
             with { Key = "rows:loading" },
         PlaylistRowsState.Empty => FilterEmpty(noTracks: true),
@@ -511,12 +516,13 @@ sealed class TrackList : Component
     // The tier's column tracks (cached): [#, Title*, Album*?, AddedBy?, DateAdded?, ♥?, Duration]. Dropped columns are
     // truly removed (the cells carry stable Keys, so the reconciler removes exactly the departing ones in place), so
     // there is no wasted gap.
-    TrackSize[] TracksFor(in ColumnSet s)
+    TrackSize[] TracksFor(in ColumnSet s, float art)
     {
-        if (_tracksBySet.TryGetValue(s, out var cached)) return cached;
+        var key = (s, art);
+        if (_tracksBySet.TryGetValue(key, out var cached)) return cached;
         var t = new List<TrackSize>(10) { TrackSize.Px(TrackLane.Num) };
         if (s.Heart) t.Add(TrackSize.Px(TrackRow.HeartCol));  // ♥ in the LEFT cluster — between # and the art thumb
-        if (s.Thumb) t.Add(TrackSize.Px(ThumbSize));   // dedicated art column: the Title header aligns over the title text, not the art
+        if (s.Thumb) t.Add(TrackSize.Px(art));   // dedicated art column, density-keyed: the Title header aligns over the title text, not the art
         t.Add(TrackSize.Star(TitleStar));
         if (s.Artist) t.Add(TrackSize.Star(ArtistStar));
         // Album is a SECOND star track at AlbumStar : TitleStar (0.75 : 1), not a fixed 180 DIP lane. Two consequences,
@@ -536,7 +542,7 @@ sealed class TrackList : Component
         if (s.Actions) t.Add(TrackSize.Px(ActionsColWidth));   // trailing "..." when Video is off
         if (s.Expand) t.Add(TrackSize.Px(TrackLane.Expand));   // the expand chevron, last — matches ExpandChevron hit target
         var arr = t.ToArray();
-        _tracksBySet[s] = arr;
+        _tracksBySet[key] = arr;
         return arr;
     }
 
@@ -597,14 +603,14 @@ sealed class TrackList : Component
     /// plus ♥ plus half the art column — three different widths depending on which columns the tier kept — so the
     /// original hard-coded <c>PadX + ThumbSize</c> (52) landed mid-♥-column at every wide tier. It is derived from the
     /// SAME lane table the width tracks are built from, so shrinking a lane moves the rail with it.</summary>
-    static float ArtCentreIndent(in ColumnSet s)
+    static float ArtCentreIndent(in ColumnSet s, float art)
     {
         float gap = TrackRow.ColGapFor(s.Tier);
         float x = TrackRow.PadXFor(s.Tier) - (s.Classic ? 0f : TrackRow.RowInset);   // the grid's own left pad
         x += TrackLane.Num;                                       // the # column
         if (s.Heart) x += gap + TrackRow.HeartCol;
         // Land on the MIDDLE of the art so the rail drops from the centre of the cover, not its edge.
-        return s.Thumb ? x + gap + TrackRow.ThumbSize / 2f : x + gap;
+        return s.Thumb ? x + gap + art / 2f : x + gap;
     }
 
     public override Element Render()
@@ -692,7 +698,11 @@ sealed class TrackList : Component
             // identity lanes cannot pay for. Relief is strictly subtractive, so this can never widen the table.
             var admitted = SetFor(in snap, ClampTier(_tier.Value));
             var set = ApplyRelief(in admitted, ReliefStepFor(in admitted));
-            return new RowShape(set, TracksFor(in set));
+            // Reading Density HERE (not only in Render) is what makes this memo re-run on a density change: a
+            // computed only recomputes from the signals it reads, and TracksFor's Thumb column — and every row's
+            // Surfaces.Artwork call — must follow the SAME density-keyed number the row height ladder already does.
+            float art = DetailTrackTableRules.ArtSizeFor(_h.Density.Value, set.Classic);
+            return new RowShape(set, TracksFor(in set, art), art);
         });
         _rowsSnapshot = rowsSnapshot;
         _rowShape = rowShape;
@@ -774,6 +784,11 @@ sealed class TrackList : Component
         string query = _h.Query.Value;           // subscribe → remount with the filtered set on query change
         var filters = _h.Filters.Value;          // subscribe → update on local advanced-filter changes
         float rowH = DetailTrackTableRules.RowHeightFor(density, set.Classic);
+        // The row's art edge, on the SAME density read above — shape.Art already carries it (computed inside
+        // rowShape, which is where the Thumb column width comes from), so the row/art breathing-room invariant
+        // (row − art ≥ 16, DetailTrackTableRules.ArtSizeFor) holds by construction rather than by two call sites
+        // agreeing to compute the same thing twice.
+        float art = shape.Art;
         var verticalLayout = UseMemo(() => new MeasuredStackVirtualLayout(rowH), rowH);
         // The flat list's layout. Stateful — hoisted so it survives re-renders and keeps its extent table.
         var flatLayout = UseMemo(() => new MeasuredStackVirtualLayout(rowH), rowH);
@@ -905,7 +920,7 @@ sealed class TrackList : Component
                 // header to render either — fall back to the empty-playlist message exactly like a non-recs page does.
                 // A membership that has not landed is not an empty playlist: shimmer, never a header over nothing.
                 if (listState == PlaylistRowsState.Loading || (visible == 0 && (_tracks.Count > 0 || !recsLive)))
-                    return ListPlaceholder(listState, set, tracks, rowH);
+                    return ListPlaceholder(listState, set, tracks, rowH, art);
                 // The bound slots branch on the recycled index (RowOrRecContent): track rows keep the selection skin;
                 // the "Recommended" header + rec rows render their OWN content, so they never join the track multi-select
                 // (exactly like the vertical hero/chrome rows). The out-of-range guards (PlayRow / DisplayTrack / the
@@ -936,7 +951,7 @@ sealed class TrackList : Component
                     });
             }
             return listState != PlaylistRowsState.Rows
-            ? ListPlaceholder(listState, set, tracks, rowH)   // loading, empty playlist, or a filter that matched nothing
+            ? ListPlaceholder(listState, set, tracks, rowH, art)   // loading, empty playlist, or a filter that matched nothing
             // Bound rows (signals-first): each slot mounts ONCE and recycles by an index-signal write. Selection flips a
             // bound pill opacity — no list re-render, no remount, no Enter replay (the flash fix); now-playing/sort
             // re-skin each row's content in place via its own subscriptions. The row maps its display position → track
@@ -1006,8 +1021,8 @@ sealed class TrackList : Component
         // chrome element, then the rows. Reveal behaviour is untouched.
         Element list = Skel.Region(_full,
             () => _verticalHeader && !_cfg.HasTrailing
-                ? VerticalShimmer(set, tracks, sort, labeled, tier, checkInset, contentFilterBar, rowH)
-                : RowsShimmer(set, tracks, rowH),
+                ? VerticalShimmer(set, tracks, sort, labeled, tier, checkInset, contentFilterBar, rowH, art)
+                : RowsShimmer(set, tracks, rowH, art),
             _ => RealList(), reveal: SkelReveal.FadeOnly, smoothResize: false);
 
         // Key the list by density + filter → either REMOUNTS it (a clean slot template with the right row height /
@@ -1803,7 +1818,7 @@ sealed class TrackList : Component
         {
             // The vertical hero owns the toolbar, but the chip bar still belongs to the LIST — it changes what the
             // rows below contain. Without this the Liked content-filter bar was unreachable in the vertical/hero
-            // layout while its fetch still ran.
+            // layout (and with DetailPageLayout=Hero, unreachable at every width) while its fetch still ran.
             var verticalStack = new List<Element>(3);
             if (contentFilterBar is { } verticalChips) verticalStack.Add(verticalChips);
             if (lensHeader is { } verticalLens) verticalStack.Add(verticalLens);
@@ -2490,7 +2505,7 @@ sealed class TrackList : Component
     /// on the same column origin the loaded header will), then the row shimmer. Those three ARE the vertical list's
     /// item sequence, so a loaded page replaces each of them in place instead of appearing above them (D49).</summary>
     Element VerticalShimmer(ColumnSet set, TrackSize[] tracks, DetailTrackSort sort, bool labeled, int tier,
-                            bool checkInset, Element? contentFilterBar, float rowH) => new BoxEl
+                            bool checkInset, Element? contentFilterBar, float rowH, float art) => new BoxEl
     {
         Direction = 1,
         Children =
@@ -2500,7 +2515,7 @@ sealed class TrackList : Component
                 HeroHasEyebrow(), HeroHasAttribution(), HeroHasMeta(), HeroHasDescription(), HeroHasPulse(),
                 previewArt: ImageSource.IsUsable(_model.Cover) ? PreviewHeroArt : null),
             Chrome(set, tracks, sort, labeled, tier, checkInset, contentFilterBar: contentFilterBar),
-            RowsShimmer(set, tracks, rowH),
+            RowsShimmer(set, tracks, rowH, art),
         ],
     };
 
@@ -2520,7 +2535,7 @@ sealed class TrackList : Component
 
     // The shimmer source for the track list: N copies of the REAL Row built with an empty track. The engine derives the
     // grey shimmer bars from this (one source of truth — the row shape can never drift from the real rows).
-    Element RowsShimmer(ColumnSet set, TrackSize[] tracks, float rowH)
+    Element RowsShimmer(ColumnSet set, TrackSize[] tracks, float rowH, float art)
     {
         var rows = new Element[12];
         // Static title (no bound slot index here) — the skeleton deriver only needs the row SHAPE. Plain TextEl (matches
@@ -2528,7 +2543,7 @@ sealed class TrackList : Component
         for (int i = 0; i < rows.Length; i++)
             rows[i] = RowGrid(EmptyTrack, i, isNow: false, isPlaying: false, isBuffering: false, isTop: false,
                               new TextEl(EmptyTrack.Title) { Size = 14f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                              set, tracks, rowH, more: false);
+                              set, tracks, rowH, art, more: false);
         return new BoxEl { Direction = 1, Children = rows };
     }
 
@@ -2718,7 +2733,7 @@ sealed class TrackList : Component
             Element title = st.IsNow && !row.MarqueeDisabled
                 ? _o.BoundTitle(_item)
                 : _o.BoundTitlePlain(_item, st.IsNow);
-            Element grid = _o.RowGrid(t, row.DisplayIndex, st.IsNow, st.IsPlaying, st.IsBuffering, st.IsTop, title, shape.Set, shape.Tracks, _rowH,
+            Element grid = _o.RowGrid(t, row.DisplayIndex, st.IsNow, st.IsPlaying, st.IsBuffering, st.IsTop, title, shape.Set, shape.Tracks, _rowH, shape.Art,
                               onPlay: () => _o.PlayRow(row.DisplayIndex),
                               saved: st.Saved, onLike: t.Uri.Length > 0 ? (Action)(() =>
                               {
@@ -2815,7 +2830,7 @@ sealed class TrackList : Component
                             Children =
                             [
                                 _o.ListPlaceholder(PlaylistListState.For(_o._model.MembershipLoaded, _o._tracks.Count, visible),
-                                                   shape.Set, shape.Tracks, _rowH),
+                                                   shape.Set, shape.Tracks, _rowH, shape.Art),
                             ],
                         }
                         : new BoxEl { Key = "vitem:blank" };
@@ -3247,7 +3262,7 @@ sealed class TrackList : Component
                     OnOpen: (route, arg) => _o._rowsSnapshot?.Peek().Handlers.Go(route, arg),
                     // Minus the rail's own offset inside the gutter, so the RAIL — not the gutter's left edge — is what
                     // lands on the artwork centre.
-                    Indent: Math.Max(0f, ArtCentreIndent(shape.Set) - TrackVersionsPanel.RailOffset),
+                    Indent: Math.Max(0f, ArtCentreIndent(shape.Set, shape.Art) - TrackVersionsPanel.RailOffset),
                     Facts: _o.FactsOptionsFor(track!));
                 drawer = new BoxEl
                 {
@@ -3334,7 +3349,7 @@ sealed class TrackList : Component
     // column set + the navigation handler through; the bound title element (plain vs marquee) is decided by the caller
     // (BoundRowContent), and the skeleton passes a static title. Plain/diffable → a BoundRowContent re-render patches in place.
     Element RowGrid(Track t, int displayIndex, bool isNow, bool isPlaying, bool isBuffering, bool isTop, Element title,
-                    ColumnSet set, TrackSize[] tracks, float rowH, Action? onPlay = null, bool saved = false, Action? onLike = null,
+                    ColumnSet set, TrackSize[] tracks, float rowH, float art, Action? onPlay = null, bool saved = false, Action? onLike = null,
                     bool likePop = false, bool more = true, RowPresentation? presentation = null,
                     IReadSignal<bool>? hoverPaused = null)
     {
@@ -3345,7 +3360,7 @@ sealed class TrackList : Component
         var go = presentation is { } rowGo ? rowGo.Go : snapshot.Handlers.Go;
         Owner? addedBy = presentation is { } rowOwner ? rowOwner.AddedBy : AddedByProfile(snapshot.Model, t);
         return TrackRow.Grid(t, displayIndex, new TrackRow.State(isNow, isPlaying, isBuffering, isTop, saved),
-                         set, tracks, rowH, title, showTrackArtist, go,
+                         set, tracks, rowH, title, showTrackArtist, go, art,
                          onPlay, onLike, addedBy, likePop,
                          // The trailing "…" — ClickRequestsContext opens the row's own context menu anchored at the
                          // button (input-a11y §6.5.1). Disabled for the shimmer rows: a skeleton keeps the identical
@@ -4385,6 +4400,14 @@ sealed class ListButton : Component
         var handle = UseRef<OverlayHandle?>(null);
         var svc = UseContext(Overlay.Service);
         int current = _density.Value;
+        // The label this button showed when its flyout OPENED. The flyout is right-aligned to this button, and the
+        // toolbar flows left→right, so relabelling "Comfortable" → "Cozy" mid-drag narrows the button, moves its right
+        // edge, re-anchors the flyout sideways under the stationary pointer, and the thumb then reads a different
+        // fraction — the value bounced back and forth between levels. While the flyout is open the button keeps the
+        // opening label (the flyout's own caption is the live readout); it catches up the moment the flyout closes.
+        var frozenLabel = UseRef<string?>(null);
+        var closedEpoch = UseSignal(0);
+        _ = closedEpoch.Value;   // subscribe: the close must re-render this button so the frozen label is released
 
         Element Content() => Embed.Comp(() => new DensityPanel(_density, _setDensity));
 
@@ -4392,12 +4415,14 @@ sealed class ListButton : Component
         {
             if (svc is null) return;
             if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+            frozenLabel.Value = Label(_density.Peek());
             handle.Value = svc.Open(() => anchor.Value, Content, FlyoutPlacement.BottomEdgeAlignedRight, ToolFx.RichPopup);
-            handle.Value.ClosedAction = () => handle.Value = null;
+            handle.Value.ClosedAction = () => { handle.Value = null; frozenLabel.Value = null; closedEpoch.Value++; };
         }
+        string label = handle.Value is { IsOpen: true } && frozenLabel.Value is { } frozen ? frozen : Label(current);
         // Never accent — density is a view preference, not an active filter/sort (matches the reasoning in the design).
         return _labeled
-            ? ToolFx.LabeledButton(Icons.RowSize, Label(current), false, Toggle, h => anchor.Value = h,
+            ? ToolFx.LabeledButton(Icons.RowSize, label, false, Toggle, h => anchor.Value = h,
                 Icon(Icons.ChevronDown, 8f, Tok.TextTertiary))
             : ToolFx.Button(Icons.RowSize, false, Toggle, h => anchor.Value = h);
     }
@@ -4434,7 +4459,13 @@ sealed class DensityPanel : Component
                         ],
                     },
                     Slider.Create(dv, v => _setDensity(Math.Clamp((int)MathF.Round(v), 0, 3)),
-                        new Slider.SliderOptions { Min = 0f, Max = 3f, Step = 1f, TickFrequency = 1f },   // Step=1 → snaps to each level
+                        // Step=1 → snaps to each level. The thumb tip names the level (WinUI ThumbToolTipValueConverter)
+                        // instead of showing the raw 0–3 index the slider would print by default.
+                        new Slider.SliderOptions
+                        {
+                            Min = 0f, Max = 3f, Step = 1f, TickFrequency = 1f,
+                            ThumbToolTipValueConverter = v => ListButton.Label(Math.Clamp((int)MathF.Round(v), 0, 3)),
+                        },
                         length: 216f),
                 ],
             });

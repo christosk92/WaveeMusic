@@ -128,6 +128,16 @@ public sealed record DetailModel(
     /// to. Null when unresolved/offline/already out, in which case the heart falls back to saving the album itself.</summary>
     public string? PreReleaseUri { get; init; }
 
+    // ── "About this release" (album path) ───────────────────────────────────────────────────────────────────────────
+    // Init-only, deliberately NOT positional — same reason as Notice above: DetailModel.Empty and every `with`
+    // expression would otherwise need a new positional slot, and exactly one mapper (MapAlbum) writes this.
+
+    /// <summary>The "About this release" facts (Songs/Length/Released tiles + a Label/courtesy/copyright notes column)
+    /// as DATA, computed ONCE by <c>MapAlbum</c> from the raw album fields — see <see cref="AlbumReleaseFactsRules"/>.
+    /// Never re-derived in a Render: <c>AlbumTrailing</c>'s grid composition is therefore FIXED from the first paint,
+    /// and only the strings inside an already-placed tile refine as later hydration rungs (Rich/Full) land.</summary>
+    public AlbumReleaseFacts ReleaseFacts { get; init; } = AlbumReleaseFacts.Empty;
+
     public static readonly DetailModel Empty = new(
         "", null, null, null, null, null, null,
         Array.Empty<ArtistRef>(), null, "", Array.Empty<Track>(), null);

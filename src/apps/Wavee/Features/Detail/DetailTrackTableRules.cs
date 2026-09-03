@@ -25,6 +25,10 @@ internal static class DetailTrackTableRules
     internal const int ClassicArtistFoldTier = 4;
     internal const int ClassicInlineVideoDropTier = 4;
     internal const float ClassicHeaderHeight = 32f;
+    /// <summary>The scale the Settings/setup row-density MINIATURE (<c>WaveePicker.DensityRows</c>) draws its
+    /// wireframe at, against the real row geometry. Lives here — not as a local inside the picker — so the "preview
+    /// mirrors the real row" contract is a pure, tested number instead of a private constant the picker alone knows.</summary>
+    internal const float PreviewScale = 0.25f;
 
     internal static TrackIdentityColumns IdentityColumns(
         bool classic, bool showArtThumb, bool artworkHidden, bool showTrackArtist, int tier)
@@ -43,6 +47,13 @@ internal static class DetailTrackTableRules
         : density switch { 0 => 40f, 2 => 56f, 3 => 64f, _ => 48f };
 
     internal static float HeaderHeightFor(bool classic) => classic ? ClassicHeaderHeight : 36f;
+
+    /// <summary>Art edge per density, on the app thumbnail ladder (WaveeSize.Thumb32/40/48): the row keeps ≥ 8 DIP of
+    /// breathing room above and below (row − art ≥ 16), so Compact 40 → 32 · Default 48 → 32 · Cozy 56 → 40 · Comfortable 64 → 48;
+    /// Classic rows (36/40/44/48) stay on 32 except Comfortable → 40 (48 − 40 = 8 is the classic skin's tighter room).</summary>
+    internal static float ArtSizeFor(int density, bool classic) => classic
+        ? (density == 3 ? WaveeSize.Thumb40 : WaveeSize.Thumb32)
+        : density switch { 2 => WaveeSize.Thumb40, 3 => WaveeSize.Thumb48, _ => WaveeSize.Thumb32 };
 
     /// <summary>Classic folds VIDEO into the Title line (an inline film glyph) and keeps ONE trailing command lane, so
     /// it has no dedicated media lane. It DOES get the disclosure chevron: the expanded row states every fact the

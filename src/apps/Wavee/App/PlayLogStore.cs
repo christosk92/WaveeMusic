@@ -33,8 +33,12 @@ public enum PlayContextKind : byte
 }
 
 /// <summary>One playback start. <c>ContextUri</c> is what the user pressed play ON (album/playlist/artist/show); it is
-/// empty for a bare track play, in which case the sidebar falls back to a Track row.</summary>
-public readonly record struct PlayLogEntry(string TrackUri, string ContextUri, PlayContextKind ContextKind, long PlayedAtMs, string? ContextTitle = null)
+/// empty for a bare track play, in which case the sidebar falls back to a Track row. <c>AlbumUri</c>/<c>ArtistUris</c>
+/// feed <see cref="PlayRecency"/> only (§F.0) — the writer (PlaybackBridge) already holds the played Track and stamps
+/// them here so the recency index never needs a read-time join. Both optional: a row persisted before these fields
+/// existed carries neither, and the fold on load still stamps the track + context from it.</summary>
+public readonly record struct PlayLogEntry(string TrackUri, string ContextUri, PlayContextKind ContextKind, long PlayedAtMs,
+                                            string? ContextTitle = null, string? AlbumUri = null, IReadOnlyList<string>? ArtistUris = null)
 {
     public DateTime PlayedAtUtc => DateTimeOffset.FromUnixTimeMilliseconds(PlayedAtMs).UtcDateTime;
 }
@@ -58,12 +62,15 @@ public sealed class PlayLogStore
 
     readonly List<PlayLogEntry> _entries = new(MaxEntries);
     readonly Signal<int> _revision = new(0);
+    readonly PlayRecency _recency = new();
     readonly IWaveeLog _log;
     string? _path;
+    string? _recencyPath;   // play-recency.json beside play-log.json — derived in Init, never a second Init argument
     Timer? _saveTimer;
     int _savePending;
     int _writeFaulted;
     int _loadFaultLogged;
+    int _recencyLoadFaultLogged;
 
     public PlayLogStore(IWaveeLog? log = null) => _log = log ?? WaveeLog.Instance;
 
@@ -76,18 +83,35 @@ public sealed class PlayLogStore
     /// <summary>Newest LAST (the HistoryStore convention). Live view — do not mutate.</summary>
     public IReadOnlyList<PlayLogEntry> Entries => _entries;
 
+    /// <summary>uri → last-played unix ms (track, context, album, artists) — the library panes' "Recents" fact
+    /// (§F.0). Bumps <see cref="Version"/> with the ring, so one subscription covers both.</summary>
+    public IReadOnlyDictionary<string, long> Recency => _recency.Map;
+
     /// <summary>%LOCALAPPDATA%\Wavee\WaveeMusic\play-log.json — beside history.json and sidebar-layout.json.</summary>
     public static string DefaultPath() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Wavee", "WaveeMusic", "play-log.json");
 
     /// <summary>Call once (before <see cref="LoadFromDisk"/>) with the full file path. Injectable so tests point at a
-    /// temp file (the <c>HistoryStore.Init</c> / <c>FileLocalStore</c> precedent).</summary>
-    public void Init(string playLogFilePath) => _path = playLogFilePath;
+    /// temp file (the <c>HistoryStore.Init</c> / <c>FileLocalStore</c> precedent). The recency sidecar path is derived
+    /// from this one — it is never a second argument, so every caller of the existing API gets it for free.</summary>
+    public void Init(string playLogFilePath)
+    {
+        _path = playLogFilePath;
+        _recencyPath = Path.Combine(Path.GetDirectoryName(playLogFilePath) ?? "", "play-recency.json");
+    }
 
     public void LoadFromDisk()
     {
-        if (_path is null || !File.Exists(_path)) return;
+        // The sidecar first, THEN fold the ring in: the ring is the fresher source for the last 200 plays (it can
+        // carry rows the sidecar predates), and max-merge makes the fold idempotent either way — order only matters
+        // for which write "wins" a tie, and Stamp's `cur >= atMs` already prefers the newer one regardless.
+        LoadRecencyFile();
+        if (_path is null || !File.Exists(_path))
+        {
+            for (int i = 0; i < _entries.Count; i++) _recency.Stamp(_entries[i]);
+            return;
+        }
         try
         {
             var bytes = File.ReadAllBytes(_path);
@@ -97,7 +121,9 @@ public sealed class PlayLogStore
             {
                 var d = dtos[i];
                 if (string.IsNullOrEmpty(d.Track)) continue;                 // a row with no track is unusable
-                _entries.Add(new PlayLogEntry(d.Track!, d.Context ?? "", KindOfByte(d.Kind), d.AtMs, d.Title));
+                _entries.Add(new PlayLogEntry(d.Track!, d.Context ?? "", KindOfByte(d.Kind), d.AtMs, d.Title,
+                    string.IsNullOrEmpty(d.Album) ? null : d.Album,
+                    d.Artists is { Length: > 0 } ? d.Artists : null));
             }
             TrimToCap();
             // No revision bump: no listeners exist yet at startup time (the HistoryStore.LoadFromDisk contract).
@@ -107,12 +133,44 @@ public sealed class PlayLogStore
             _entries.Clear();
             PreserveUnreadableFile(ex);
         }
+        finally
+        {
+            // A pre-change ring (no album/artists yet) still contributes track + context stamps; a fresher sidecar
+            // stamp is untouched by Stamp's max-merge either way. Runs even on a load failure — an empty ring simply
+            // stamps nothing, which is the same as today.
+            for (int i = 0; i < _entries.Count; i++) _recency.Stamp(_entries[i]);
+        }
+    }
+
+    void LoadRecencyFile()
+    {
+        if (_recencyPath is null || !File.Exists(_recencyPath)) return;
+        try
+        {
+            var bytes = File.ReadAllBytes(_recencyPath);
+            var map = JsonSerializer.Deserialize(bytes, PlayLogJsonCtx.Default.DictionaryStringInt64);
+            if (map is null) return;
+            foreach (var kv in map) _recency.Stamp(kv.Key, kv.Value);
+        }
+        catch (Exception ex)
+        {
+            // Mirrors LoadFromDisk's fallback: an unreadable sidecar is moved aside and logged once. It never blocks
+            // startup — the ring fold right after this call rebuilds whatever the sidecar would have contributed.
+            try { File.Move(_recencyPath, _recencyPath + ".corrupt", overwrite: true); } catch (Exception) { }
+            if (Interlocked.Exchange(ref _recencyLoadFaultLogged, 1) == 0)
+                _log.Warn("sidebar", "sidebar.play_log.load_failed",
+                    "Recently played (recency index) could not be loaded; it will be rebuilt from the play log.",
+                    WaveeLogField.Of("file", "recency"),
+                    WaveeLogField.Of("exception_type", ex.GetType().Name));
+        }
     }
 
     /// <summary>Record one playback start. Idempotent at the boundary: a repeat of the SAME (track, context) pair within
-    /// one second is treated as the same play (a push storm at a track edge must not fill the ring). Returns whether the
-    /// append was accepted.</summary>
-    public bool Append(string? trackUri, string? contextUri, long atMs = 0, string? contextTitle = null)
+    /// one second is treated as the same play (a push storm at a track edge must not fill the ring). <paramref
+    /// name="albumUri"/>/<paramref name="artistUris"/> feed <see cref="Recency"/> only (§F.0) — pass what the caller
+    /// already resolved from the played Track, never re-derived here. Returns whether the append was accepted.</summary>
+    public bool Append(string? trackUri, string? contextUri, long atMs = 0, string? contextTitle = null,
+                       string? albumUri = null, IReadOnlyList<string>? artistUris = null)
     {
         if (string.IsNullOrEmpty(trackUri)) return false;
         if (atMs <= 0) atMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -128,11 +186,35 @@ public sealed class PlayLogStore
                 return false;
         }
 
-        _entries.Add(new PlayLogEntry(trackUri!, context, ClassifyContext(context), atMs, title));
+        var entry = new PlayLogEntry(trackUri!, context, ClassifyContext(context), atMs, title,
+            string.IsNullOrEmpty(albumUri) ? null : albumUri, artistUris is { Count: > 0 } ? artistUris : null);
+        _entries.Add(entry);
         TrimToCap();
+        _recency.Stamp(entry);
         _revision.Value++;
         ScheduleSave();
         return true;
+    }
+
+    /// <summary>Fold externally-known plays in (the server recents snapshot, §F.4). Only a NEWER stamp changes
+    /// anything (max-merge — see <see cref="PlayRecency"/>), so a revalidation that returned the same history costs
+    /// no re-render.</summary>
+    public bool MergeRecency(IEnumerable<KeyValuePair<string, long>> stamps)
+    {
+        if (!_recency.Merge(stamps)) return false;
+        _revision.Value++;
+        ScheduleSave();
+        return true;
+    }
+
+    /// <summary>The billed-artist uris of a track as a compact array (null when there are none) — a track boundary
+    /// allocation, not a per-push one.</summary>
+    public static string[]? ArtistUris(IReadOnlyList<ArtistRef> artists)
+    {
+        if (artists.Count == 0) return null;
+        var uris = new string[artists.Count];
+        for (int i = 0; i < uris.Length; i++) uris[i] = artists[i].Uri;
+        return uris;
     }
 
     /// <summary>The sidebar's read API (§C1.8.1): entries collapse to their CONTEXT (album/playlist/artist/show),
@@ -159,15 +241,20 @@ public sealed class PlayLogStore
         return rows;
     }
 
-    /// <summary>Drop everything and delete the file (a "clear history" affordance / a sign-out wipe).</summary>
+    /// <summary>Drop everything — the ring AND the recency index — and delete both files (a "clear history"
+    /// affordance / a sign-out wipe). The two can diverge (MergeRecency can stamp uris the local ring never saw), so
+    /// this checks both rather than gating on the ring alone.</summary>
     public void Clear()
     {
-        if (_entries.Count == 0) return;
+        if (_entries.Count == 0 && _recency.Count == 0) return;
         _entries.Clear();
+        _recency.Clear();
         _revision.Value++;
         Interlocked.Exchange(ref _savePending, 0);
         if (_path is { } p)
             _ = Task.Run(() => DeleteFile(p));
+        if (_recencyPath is { } rp)
+            _ = Task.Run(() => DeleteFile(rp));
     }
 
     /// <summary>Issue any debounced write NOW (a design switch / a deliberate drain point). Does not block on the pool.</summary>
@@ -221,19 +308,23 @@ public sealed class PlayLogStore
     void SaveNow()
     {
         if (_path is null) return;
-        // Snapshot on the CALLER's thread (the HistoryStore.SaveToDisk contract): the pool task then only touches the
-        // snapshot array and the path string, never the live list.
-        var snapshot = Snapshot();
+        // Snapshot BOTH on the CALLER's thread (the HistoryStore.SaveToDisk contract): the pool task then only touches
+        // the snapshot arrays and the path strings, never the live list/map. Two write-then-rename moves, one pool
+        // task — a crash between them is healed by LoadFromDisk's fold (§F.0), so they need not be atomic together.
+        var ringSnapshot = Snapshot();
+        var recencySnapshot = _recency.Snapshot();
         string path = _path;
-        _ = Task.Run(() => WriteFile(path, snapshot));
+        string? recencyPath = _recencyPath;
+        _ = Task.Run(() => WriteFiles(path, ringSnapshot, recencyPath, recencySnapshot));
     }
 
-    /// <summary>Test/shutdown seam: write SYNCHRONOUSLY, so a store reopened on the next line observes the same rows.</summary>
+    /// <summary>Test/shutdown seam: write SYNCHRONOUSLY, so a store reopened on the next line observes the same rows
+    /// AND the same recency map.</summary>
     public void SaveAndWait()
     {
         if (_path is null) return;
         Interlocked.Exchange(ref _savePending, 0);
-        WriteFile(_path, Snapshot());
+        WriteFiles(_path, Snapshot(), _recencyPath, _recency.Snapshot());
     }
 
     PlayLogEntryDto[] Snapshot()
@@ -244,25 +335,29 @@ public sealed class PlayLogStore
         for (int i = 0; i < count; i++)
         {
             var e = _entries[start + i];
-            snapshot[i] = new PlayLogEntryDto(e.TrackUri, e.ContextUri.Length == 0 ? null : e.ContextUri, (byte)e.ContextKind, e.PlayedAtMs, e.ContextTitle);
+            snapshot[i] = new PlayLogEntryDto(e.TrackUri, e.ContextUri.Length == 0 ? null : e.ContextUri, (byte)e.ContextKind, e.PlayedAtMs, e.ContextTitle,
+                e.AlbumUri, e.ArtistUris is null ? null : ToArray(e.ArtistUris));
         }
         return snapshot;
     }
 
-    void WriteFile(string path, PlayLogEntryDto[] snapshot)
+    static string[] ToArray(IReadOnlyList<string> list)
+    {
+        if (list is string[] arr) return arr;
+        var copy = new string[list.Count];
+        for (int i = 0; i < copy.Length; i++) copy[i] = list[i];
+        return copy;
+    }
+
+    /// <summary>Both files, ONE fault flag (<see cref="_writeFaulted"/>): the two share a directory, so the realistic
+    /// failure (disk full, permissions, an unwriteable folder — the shape <c>SaveFailure_...</c> exercises) takes both
+    /// down for the same reason, and a caller retrying every 2 s must see one failed/recovered pair, not two.</summary>
+    void WriteFiles(string path, PlayLogEntryDto[] ringSnapshot, string? recencyPath, KeyValuePair<string, long>[] recencySnapshot)
     {
         try
         {
-            string? dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(snapshot, PlayLogJsonCtx.Default.PlayLogEntryDtoArray);
-            string tmp = path + ".tmp";
-            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                fs.Write(bytes);
-                fs.Flush(flushToDisk: true);
-            }
-            File.Move(tmp, path, overwrite: true);   // write-then-rename: a crash can't leave a half-written file
+            WriteRingFileOrThrow(path, ringSnapshot);
+            if (recencyPath is not null) WriteRecencyFileOrThrow(recencyPath, recencySnapshot);
             if (Interlocked.Exchange(ref _writeFaulted, 0) != 0)
                 _log.Info("sidebar", "sidebar.play_log.save_recovered",
                     "Recently played persistence recovered.");
@@ -273,12 +368,41 @@ public sealed class PlayLogStore
                 _log.Warn("sidebar", "sidebar.play_log.save_failed",
                     "Recently played could not be saved; in-memory history remains available.",
                     WaveeLogField.Of("exception_type", ex.GetType().Name));
-            try
+        }
+    }
+
+    static void WriteRingFileOrThrow(string path, PlayLogEntryDto[] snapshot)
+    {
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(snapshot, PlayLogJsonCtx.Default.PlayLogEntryDtoArray);
+        WriteThenRenameOrThrow(path, bytes);
+    }
+
+    static void WriteRecencyFileOrThrow(string path, KeyValuePair<string, long>[] snapshot)
+    {
+        var map = new Dictionary<string, long>(snapshot.Length, StringComparer.Ordinal);
+        for (int i = 0; i < snapshot.Length; i++) map[snapshot[i].Key] = snapshot[i].Value;
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(map, PlayLogJsonCtx.Default.DictionaryStringInt64);
+        WriteThenRenameOrThrow(path, bytes);
+    }
+
+    static void WriteThenRenameOrThrow(string path, byte[] bytes)
+    {
+        string? dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        string tmp = path + ".tmp";
+        try
+        {
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                string tmp = path + ".tmp";
-                if (File.Exists(tmp)) File.Delete(tmp);
+                fs.Write(bytes);
+                fs.Flush(flushToDisk: true);
             }
-            catch (Exception) { }
+            File.Move(tmp, path, overwrite: true);   // write-then-rename: a crash can't leave a half-written file
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch (Exception) { }
+            throw;
         }
     }
 
@@ -320,8 +444,12 @@ public sealed class PlayLogStore
 
 // AOT-safe source-gen JSON for the persisted play log (the HistoryJsonCtx precedent). Short member names: the file is
 // written at every listening session and 200 rows of verbose keys is pure waste.
-internal readonly record struct PlayLogEntryDto(string Track, string? Context, byte Kind, long AtMs, string? Title = null);
+// Album/Artists are ADDITIVE (§F.0): both default to null, so a pre-change play-log.json still deserializes — there is
+// no migration branch, a row without them simply contributes no album/artist stamp to PlayRecency.
+internal readonly record struct PlayLogEntryDto(string Track, string? Context, byte Kind, long AtMs, string? Title = null,
+                                                 string? Album = null, string[]? Artists = null);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(PlayLogEntryDto[]))]
+[JsonSerializable(typeof(Dictionary<string, long>))]   // the play-recency.json sidecar shape: { "spotify:artist:…": 1788…, … }
 internal sealed partial class PlayLogJsonCtx : JsonSerializerContext { }

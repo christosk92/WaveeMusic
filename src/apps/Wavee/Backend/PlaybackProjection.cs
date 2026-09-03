@@ -1037,6 +1037,7 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     {
         bool structural = s.Kind != AudioHostSignalKind.PositionTick;
         bool stateFlipped;
+        long clampedPos;
         lock (_gate)
         {
             if (s.Kind == AudioHostSignalKind.Ended)
@@ -1069,9 +1070,14 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
             stateFlipped = effPlaying != _lastPubPlaying || effBuffering != _lastPubBuffering;
             _lastPubPlaying = effPlaying;
             _lastPubBuffering = effBuffering;
+            // A2/A3 clock-flicker fix: the host's raw signal position is unclamped (a device-format soft reload can
+            // hand back a fresh session mid-restore, or a stale reload-window tick can carry a torn value) — push the
+            // SAME clamped read every other reader of position uses (Pos(), [0, duration]) onto the ticks stream too,
+            // instead of the raw s.PositionMs. Read under _gate: Pos() assumes the caller already holds it.
+            clampedPos = Pos();
         }
         if (structural || stateFlipped) { FireChanges(); RestartTicker(); }
-        if (!structural) _positionTicks.OnNext(s.PositionMs);
+        if (!structural) _positionTicks.OnNext(clampedPos);
     }
 
     void FireChanges() { if (_disposed) return; _changes.OnNext(this); PropertyChanged?.Invoke(this, AllChanged); }

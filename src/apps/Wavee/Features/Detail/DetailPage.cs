@@ -689,13 +689,19 @@ sealed class DetailPage : Component
         string meta = Strings.Detail.MetaLineYear(
             Strings.Detail.SongCount(a.TrackCount), DetailFormat.TotalTime(DetailFormat.TotalMs(tracks)), a.Year);
         LogVideoSweep("album", a.Uri, tracks);
+        // `now` is read ONCE, here at the mapper boundary — never in a Render — so every release-tense fact this
+        // model carries (UpcomingAt's countdown gate, AlbumReleaseFactsRules' Released/Releases caption) agrees on the
+        // same instant instead of drifting apart across re-renders (the LikedFactsPanel precedent: "`now` is read
+        // ONCE at the panel boundary").
+        var now = DateTimeOffset.UtcNow;
+        var releaseInstant = PreReleaseDerivation.ReleaseInstant(a.ReleaseDate);
         return new DetailModel(
             Title: a.Name, Cover: a.Cover, ContextUri: a.Uri,
             BadgeType: badge, Year: a.Year.ToString(), OwnerName: null, OwnerImage: null,
             Artists: a.Artists, Description: null, MetaLine: meta,
             Tracks: tracks, AboutArtist: null,
             HasVideo: tracks.Any(VideoPresence.HasVideo), ReleaseKind: a.Kind, MoreByArtist: a.MoreByArtist,
-            Label: a.Label, Copyright: a.Copyright, ReleaseDate: FormatReleaseDate(a.ReleaseDate, a.ReleaseDatePrecision), AlbumArtists: a.ArtistsDetailed,
+            Label: a.Label, Copyright: a.Copyright, ReleaseDate: AlbumReleaseFactsRules.FormatReleaseDate(a.ReleaseDate, a.ReleaseDatePrecision), AlbumArtists: a.ArtistsDetailed,
             OtherVersions: a.OtherVersions, CourtesyLine: a.CourtesyLine, ReleaseDatePrecision: a.ReleaseDatePrecision,
             DiscCount: a.DiscCount, ShareUrl: a.ShareUrl, IsPreRelease: a.IsPreRelease, PreReleaseEnd: a.PreReleaseEnd)
         {
@@ -703,26 +709,16 @@ sealed class DetailPage : Component
             // whose disc rows are still gid-only (a failed TrackV4 repair sealed it thin) must say so on the FIRST
             // paint, not only after a store change routes the live pump through WithNotice.
             Notice = PlaylistPageNoticeRules.ForAlbum(tracks),
-            ReleaseInstant = PreReleaseDerivation.ReleaseInstant(a.ReleaseDate),
-            UpcomingAt = PreReleaseDerivation.UpcomingAt(a, DateTimeOffset.UtcNow),
+            ReleaseInstant = releaseInstant,
+            UpcomingAt = PreReleaseDerivation.UpcomingAt(a, now),
             // Only while genuinely ahead of us: a kind-138 link is cached for up to 30 days and must not turn the heart
             // into a "Pre-save" for a record that shipped last week.
             PreReleaseUri = link is { IsUpcoming: true } l ? l.PreReleaseUri : null,
-        };
-    }
-
-    // ISO date + Spotify precision: YEAR → "2014"; MONTH → "November 2014"; DAY → "November 4, 2014".
-    static string? FormatReleaseDate(string? iso, string? precision)
-    {
-        if (string.IsNullOrWhiteSpace(iso)) return null;
-        if (!System.DateTimeOffset.TryParse(iso, System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.AssumeUniversal, out var d)
-            ) return iso;
-        return (precision ?? "").ToUpperInvariant() switch
-        {
-            "YEAR" => d.ToString("yyyy", System.Globalization.CultureInfo.InvariantCulture),
-            "MONTH" => d.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture),
-            _ => d.ToString("MMMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture),
+            // "About this release" as DATA (AlbumReleaseFactsRules): computed ONCE here from the raw album fields, so
+            // AlbumTrailing's grid composition (Songs/Length row + a full-width Released row) never depends on WHICH
+            // hydration rung (Open/Rich/Full) last landed — only the strings inside an already-placed tile refine.
+            ReleaseFacts = AlbumReleaseFactsRules.For(tracks, a.ReleaseDate, a.ReleaseDatePrecision,
+                a.Year > 0 ? a.Year : null, releaseInstant, a.Label, a.CourtesyLine, a.Copyright, now),
         };
     }
 

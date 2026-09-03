@@ -51,6 +51,7 @@ sealed class ReleaseNotesPage(string? versionArg) : Component
     {
         var svc = UseContext(Services.Slot);
         var go = UseContext(HistoryStore.NavCtx);
+        var overlay = UseContext(Overlay.Service);
         var hooks = UseContext(InputHooks.Current);
         var post = UsePost();
 
@@ -92,7 +93,8 @@ sealed class ReleaseNotesPage(string? versionArg) : Component
         var main = new List<Element>(8)
         {
             ReleaseNotesHero.Create(shown[0].Doc, IsLatest(view, shown[0].Doc), OpenUrl, Copy),
-            HighlightStrip.Create(view.MergedHighlights, go),
+            HighlightStrip.Create(view.MergedHighlights,
+                i => HighlightViewer.Open(overlay, view.MergedHighlights, i, go, null)),
         };
 
         for (int i = 0; i < shown.Length; i++)

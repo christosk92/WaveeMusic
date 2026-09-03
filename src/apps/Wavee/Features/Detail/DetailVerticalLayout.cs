@@ -17,13 +17,14 @@ internal enum DetailVerticalItemRole { Hero, Chrome, ExpandableTrack, Footer, Em
 /// <see cref="RowFlowEnterW"/> the artwork stacks above the identity column, at or above it the two sit side by side —
 /// same elements, same order, same ink.</para>
 ///
-/// <para>The page SYSTEM is always Automatic (rail-when-wide, hero-when-narrow) — the "Track page layout" picker that
-/// used to force the hero at every width is gone (Workstream B, "Settings regroup + removals"). <see cref="PageAuto"/>
-/// stays as the one named value the width ladder below resolves to; the hero's own stacked ↔ row flow is always
-/// width-driven regardless.</para></summary>
+/// <para>The persisted page-layout preference is an int (<see cref="PageAuto"/> · <see cref="PageHero"/>) that selects
+/// the page SYSTEM (rail-when-wide vs always-hero); the hero's own stacked ↔ row flow is always width-driven.</para></summary>
 public static class DetailVerticalLayout
 {
+    // WaveeSettings.DetailPageLayout values: Automatic = the responsive rail↔hero behavior; Hero = the vertical hero
+    // system at EVERY width (the metadata rail is never composed for track pages).
     public const int PageAuto = 0;
+    public const int PageHero = 1;
 
     /// <summary>The hero's outer padding, and the tighter one a phone-width column uses. Both are 4-grid.</summary>
     public const float HeroPad = 24f;

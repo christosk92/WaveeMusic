@@ -76,7 +76,7 @@ sealed class LibraryV3Header : Component
                 Margin = new Edges4(0f, 0f, 6f, 0f),
                 // U+E71C (Segoe MDL2 "Filter"/library mark) as an ESCAPE, never a literal: the private-use character is
                 // invisible in every editor and was silently dropped once already when this file was rewritten.
-                Children = [Icon("E71C", 16f, Tok.TextSecondary, "Segoe MDL2 Assets")],
+                Children = [Icon("", 16f, Tok.TextSecondary, "Segoe MDL2 Assets")],
             },
             new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
             {

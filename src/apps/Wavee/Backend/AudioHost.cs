@@ -191,7 +191,12 @@ public readonly record struct AudioPrepareRequest(
     AudioFastStart Start,
     bool AllowOverlap);
 
-public enum AudioTransitionKind { Started, Completed, Missed }
+/// <summary><see cref="Invalidated"/> (device-reopen gapless fix, A2): the prepared-next slot was built for a mixer
+/// rate that no longer matches the live session (a mid-track output-device/format soft reload rebuilt the session at a
+/// new rate) and has already been disposed by the host — the controller must re-run <c>SchedulePreparedNext</c> for the
+/// same upcoming item exactly as it does for <see cref="Missed"/>, this time because the OLD prepare is provably stale
+/// rather than because none ever landed.</summary>
+public enum AudioTransitionKind { Started, Completed, Missed, Invalidated }
 
 /// <summary>Host-to-controller hand-off notification. Tokens make stale async resolves harmless after queue edits.</summary>
 public readonly record struct AudioTransitionSignal(

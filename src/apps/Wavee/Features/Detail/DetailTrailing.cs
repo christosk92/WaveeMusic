@@ -8,6 +8,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Components;
 using Wavee.Core;
 using static FluentGpu.Dsl.Ui;
 
@@ -192,36 +193,69 @@ sealed class AlbumTrailing : Component
         catch { return fallback; }
     }
 
-    // "About this release" — the album facts as a COMPACT bento (Songs / Length / Released / Label tiles, the wrap-grow
-    // grid from the artist Profile facts but denser), with the legal lines (Courtesy / Copyright) as a small footnote.
-    // Always present for an album with tracks (the Songs/Length tiles), hence the Tracks check.
+    // "About this release" — the album facts as a FIXED two-row grid (Songs · Length on row 1, a full-width Released
+    // on row 2 that a bare year already occupies), with the legal lines (Label / Courtesy / Copyright) as a notes
+    // footnote. `m.ReleaseFacts` is DATA computed once by MapAlbum (AlbumReleaseFactsRules) — nothing here decides
+    // what the grid looks like, only whether it (and the OtherVersions dropdown) has anything to show.
     internal static bool HasReleasePanel(DetailModel m) =>
-        m.Tracks.Count > 0 || m.ReleaseDate is { Length: > 0 } || m.Label is { Length: > 0 } || m.Copyright is { Length: > 0 } ||
-        m.CourtesyLine is { Length: > 0 } || m.OtherVersions is { Count: > 0 };
+        !m.ReleaseFacts.IsEmpty || m.OtherVersions is { Count: > 0 };
 
     internal static Element ReleasePanel(DetailModel m, DetailHandlers h, bool outerPadding = true)
     {
         var children = new List<Element>(4);
         if (m.OtherVersions is { Count: > 0 } ov) children.Add(OtherVersionsDropDown(ov, h));
 
-        var tiles = AlbumFactTiles(m);
-        var notes = ReleaseNotes(m);
+        var facts = m.ReleaseFacts;
         // The facts ARRIVE IN WAVES — Songs/Length with the tracks, Released with the full model, Label/©/℗/other
-        // versions with the publishing hydration a moment later — so every piece here is keyed and carries its own
-        // entrance: a new tile fades up (staggered left→right), its siblings FLIP into place, a re-labelled value
-        // cross-swaps (see CompactStatTile), a note fades in. Reduced motion is a VALUE (the stagger reads it; the
-        // fades ride the engine's KeepFade policy), never a branch that changes what is authored.
+        // versions with the publishing hydration a moment later — but the GRID they land in never moves. It used to:
+        // a wrap-grow row of content-sized tiles reflowed itself by ACCIDENT of text measurement (three tiles fit one
+        // line while Released was a bare year, then a full date like "October 9, 2025" no longer fit beside Songs and
+        // Length and wrapped to its own full-width line) — and that reflow raced the value's own TextSwap cross-fade,
+        // so the outgoing "2026" and the incoming "October 9, 2025" briefly sat in two different, overlapping rects at
+        // once. The rows below are authored, not measured: Songs/Length always share row 1, Released always spans row
+        // 2 (a bare year sits in the exact rect the full date will later occupy), and only the TEXT inside a tile
+        // refines — StatTile's own TextSwap, on a box whose size the row already fixed. Label arrives last (the
+        // Full/getAlbum rung) and joins the notes column below instead of a third tile, so it can never reshape the
+        // rows above it. Reduced motion is a VALUE (the stagger reads it; the fades ride the engine's KeepFade
+        // policy), never a branch that changes what is authored.
         float stagger = Motion.ReducedMotion ? 0f : WaveeMotion.MastheadStaggerMs;
-        if (tiles.Length > 0 || notes.Length > 0)
+        if (!facts.IsEmpty)
         {
             var body = new List<Element>(3)
             {
-                WaveeType.Eyebrow("About this release") with { Color = Tok.TextTertiary },
+                WaveeType.Eyebrow(Loc.Get(Strings.Detail.AboutRelease)) with { Color = Tok.TextTertiary },
             };
-            // The bento: a wrap row of compact fact tiles. Wrap-grow (FlexLayout.ArrangeWrap) fills each line edge-to-edge,
-            // so the tiles flow 2×2 in a narrow rail and a single row when wide — no ragged gaps.
-            if (tiles.Length > 0) body.Add(new BoxEl { Key = "release-facts", Direction = 0, Gap = Spacing.S, Wrap = true, Stagger = stagger, Children = tiles });
-            if (notes.Length > 0) body.Add(new BoxEl { Key = "release-notes", Direction = 1, Gap = 3f, Stagger = stagger, Children = notes });
+            if (facts.HasTiles)
+            {
+                body.Add(new BoxEl
+                {
+                    Key = "release-facts", Direction = 1, Gap = Spacing.S, Stagger = stagger,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 0, Gap = Spacing.S,
+                            Children =
+                            [
+                                StatTile.Create("songs", facts.Songs ?? "—", Loc.Get(Strings.Detail.FactSongs)),
+                                StatTile.Create("length", facts.Length ?? "—", Loc.Get(Strings.Detail.FactLength)),
+                            ],
+                        },
+                        // Full width, alone on its own row (no wrapping BoxEl needed: the parent's default
+                        // AlignItems=Stretch already fills it edge-to-edge) — see the comment above for why this rect
+                        // never changes as the date refines from a bare year to a full date.
+                        StatTile.Create("released", facts.Released ?? "—",
+                            Loc.Get(facts.ReleasesInFuture ? Strings.Detail.FactReleases : Strings.Detail.FactReleased),
+                            wrapValue: true),
+                    ],
+                });
+            }
+
+            var notes = new List<Element>(facts.Notes.Count + 1);
+            if (facts.Label is { Length: > 0 } lb) notes.Add(NoteText("note:label", Loc.Get(Strings.Detail.FactLabel) + ": " + lb));
+            for (int i = 0; i < facts.Notes.Count; i++) notes.Add(NoteText("note:" + i, facts.Notes[i]));
+            if (notes.Count > 0) body.Add(new BoxEl { Key = "release-notes", Direction = 1, Gap = 3f, Stagger = stagger, Children = notes.ToArray() });
+
             children.Add(new BoxEl { Key = "release-about", Direction = 1, Gap = Spacing.M, Layout = DetailRail.Shove, Children = body.ToArray() });
         }
 
@@ -238,93 +272,14 @@ sealed class AlbumTrailing : Component
         };
     }
 
-    // Songs / Length / Released / Label — each present-only (a missing fact drops its tile). Songs+Length come from the
-    // track list; Released prefers the formatted date, else the year; Label is the record label.
-    // TODO(loc): the neighbouring literals are hardcoded English throughout this file.
-    static Element[] AlbumFactTiles(DetailModel m)
-    {
-        var stats = new List<(string Value, string Label, string Key)>(4);
-        if (m.Tracks.Count > 0)
-        {
-            // On a PARTLY released album the plain count and the summed length both lie: the count includes tracks that
-            // are not out, and the length silently omits their unknown durations, so "12 songs · 31 min" describes a
-            // record that does not exist yet. Report what is actually out, and measure only that.
-            int outNow = 0;
-            long ms = 0;
-            for (int i = 0; i < m.Tracks.Count; i++)
-            {
-                if (m.Tracks[i].IsNotYetOut()) continue;
-                outNow++;
-                ms += m.Tracks[i].DurationMs;
-            }
-            stats.Add((outNow == m.Tracks.Count
-                ? m.Tracks.Count.ToString()
-                : outNow + " of " + m.Tracks.Count, "Songs", "songs"));
-            if (ms > 0) stats.Add((DetailFormat.TotalTime(ms), "Length", "length"));
-        }
-        string? released = m.ReleaseDate is { Length: > 0 } rd ? rd : m.Year;
-        // The tense comes from the FACT, not from the countdown: a partly-released album has a release date in the past
-        // AND a countdown to its next track in the future at the same time, so gating this on UpcomingAt would relabel
-        // an album that is already partly out as one that has not happened.
-        bool future = m.ReleaseInstant is { } ri && ri > DateTimeOffset.UtcNow;
-        if (released is { Length: > 0 })
-            stats.Add((released, Loc.Get(future ? Strings.Detail.FactReleases : Strings.Detail.FactReleased), "released"));
-        if (m.Label is { Length: > 0 } lb) stats.Add((lb, "Label", "label"));
-        var tiles = new Element[stats.Count];
-        for (int i = 0; i < stats.Count; i++) tiles[i] = CompactStatTile(stats[i].Value, stats[i].Label, stats[i].Key);
-        return tiles;
-    }
-
-    // The legal footnote (Courtesy + Copyright). Copyright joins several notices with '\n'; the text engine now renders a
-    // hard break as a real line break (LineBreaker.IsHardBreak / TextLayoutEngine), so each notice flows onto its own line
-    // with no [] tofu — the newline no longer needs splitting at the app layer.
-    static Element[] ReleaseNotes(DetailModel m)
-    {
-        var notes = new List<Element>(2);
-        if (m.CourtesyLine is { Length: > 0 } courtesy) notes.Add(NoteText("note:courtesy", courtesy));
-        if (m.Copyright is { Length: > 0 } cp) notes.Add(NoteText("note:copyright", cp));
-        return notes.ToArray();
-    }
-
     // Keyed + boxed (Enter/Layout bake on BoxEl only): a note that lands with the publishing hydration fades in under the
-    // tiles instead of popping, and the notes column's Stagger offsets © from ℗.
+    // tiles instead of popping, and the notes column's Stagger offsets one note from the next.
     static Element NoteText(string key, string value) => new BoxEl
     {
         Key = key, Direction = 1, Enter = DetailRail.FadeUp, Layout = DetailRail.Shove,
         Children =
         [
             new TextEl(value) { Size = 11f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 4, Trim = TextTrim.CharacterEllipsis },
-        ],
-    };
-
-    // A compact fact tile (denser than the artist Profile-facts tile: 18px value, tighter padding). Content-width base +
-    // Grow=1 so the wrap-grow row fills; a long Label keeps its own width (base = content) and never clips short tiles.
-    // Arrival motion: the tile is KEYED by its fact (Songs/Length/Released/Label), fades up when it first appears (the
-    // parent row staggers siblings), and takes a Position+Size FLIP so a tile landing later reflows the wrap-grow row
-    // smoothly instead of snapping the others narrower. The VALUE line is the house text-swap (PlaylistInlineEdit's
-    // status pill): the value text sits in a value-keyed box inside a ZStack, so "2025" → "May 2, 2025" rises and blurs
-    // out while the new value enters from below — never an in-place relabel.
-    static readonly LayoutTransition TileReflow = new(
-        TransitionChannels.Position | TransitionChannels.Size,
-        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        SizeMode.Reveal);
-
-    static Element CompactStatTile(string value, string label, string key) => new BoxEl
-    {
-        Key = "fact:" + key, Enter = DetailRail.FadeUp, Layout = TileReflow,
-        Direction = 1, Gap = 1f, Grow = 1f, Basis = 0f, MinWidth = 0f,
-        Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
-        Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillCardSecondary,
-        BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-        Children =
-        [
-            ZStack(new BoxEl
-            {
-                Key = "v:" + value,
-                Animate = MotionRecipes.TextSwap,
-                Children = [new TextEl(value) { Size = 18f, Weight = 800, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
-            }),
-            new TextEl(label) { Size = 11f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
         ],
     };
 
@@ -342,7 +297,7 @@ sealed class AlbumTrailing : Component
             // Lands with the publishing hydration, after the tiles: keyed + fades up like the rest of the panel.
             Key = "release-versions", Enter = DetailRail.FadeUp, Layout = DetailRail.Shove,
             Direction = 0, Padding = new Edges4(0f, 2f, 0f, 2f),
-            Children = [new BoxEl { Grow = 1f, Children = [DropDownButton.Create("Other versions", items, Icons.MusicNote)] }],
+            Children = [new BoxEl { Grow = 1f, Children = [DropDownButton.Create(Loc.Get(Strings.Detail.OtherVersions), items, Icons.MusicNote)] }],
         };
     }
 

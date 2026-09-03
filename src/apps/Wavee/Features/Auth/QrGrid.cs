@@ -26,9 +26,10 @@ sealed class QrGrid : Component
 
         int n = m.GetLength(0);
         const int quiet = 4;                              // ISO/IEC 18004 mandates a 4-module quiet zone
-        int total = n + quiet * 2;
-        int cell = Math.Max(3, (int)(_size / total));     // INTEGER cell → pixel-crisp modules; a sub-pixel cell blurs the grid → no scan
-        float plate = total * cell;
+        // Plate/cell math lives in QrPlate (engine-free, pinned by QrGridTests) so it can be unit-tested directly —
+        // this component only draws the modules it returns.
+        int cell = QrPlate.CellFor(_size, n);
+        float plate = QrPlate.PlateFor(_size, n);
 
         // Each row = a horizontal flex of alternating transparent/dark spans (coalesced runs → a few hundred nodes total,
         // not version²). Light spans are transparent so the white plate shows through.

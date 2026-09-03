@@ -457,8 +457,14 @@ sealed class DetailShell : Component
         // width supports — a stale mode signal would keep the two-column layout at a width where its rail + tracks
         // cannot coexist. Narrower-than-needed is fine; the next Measure widens it.
         if (_measuredW > 0f) { int fit = ModeFor(_measuredW, mode, _modeInitialized); if (fit > mode) mode = fit; }
-        // The page layout is always Automatic now (Workstream B removed the "Track page layout" picker — nobody
-        // should choose between the rail and a forced hero): mode tracks the real width only, via ModeFor above.
+        // Page-layout preference: "Hero" forces the vertical hero SYSTEM at every width for track pages — the
+        // metadata rail is never composed; Automatic keeps the responsive rail↔hero behavior. The override is applied
+        // at render time only (the _mode signal keeps tracking the real width, so flipping the setting back reverts
+        // instantly). Epoch-subscribed → the Settings toggle re-renders any mounted (incl. KeepAlive-parked) page live.
+        _ = DetailHeroPrefs.Epoch.Value;
+        if (_cfg.Content == DetailContent.Tracks
+            && (settings?.Get(WaveeSettings.DetailPageLayout) ?? DetailVerticalLayout.PageAuto) == DetailVerticalLayout.PageHero)
+            mode = Vertical;
         bool verticalTracks = mode == Vertical && _cfg.Content == DetailContent.Tracks;
 
         // The track list (drops columns by breakpoint, owns the now-playing re-skin + an external SelectionModel). Its

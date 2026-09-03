@@ -16,8 +16,14 @@ namespace Wavee;
 /// nothing to desync on the first navigation into either.</para></summary>
 static class SetupPagePlaceholders
 {
-    public static Element For(SetupPage page) =>
-        Embed.Comp(() => new SetupPageCapture(page)) with { Key = "setup:capture:" + (int)page };
+    // Same box-around-Embed.Comp recipe as SetupPageHost.Frame (ContentHost.PageFor, Features/Shell/ContentHost.cs:
+    // 169-171): SetupPageCapture is a ComponentEl with no layout columns of its own, so without this it (and
+    // SetupPageHost.Frame's own box underneath) never claims PagesHost's bounded height.
+    public static Element For(SetupPage page) => new BoxEl
+    {
+        Key = "setup:capture:" + (int)page, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
+        Children = [Embed.Comp(() => new SetupPageCapture(page))],
+    };
 
     static Element BodyFor(SetupPage page) => page switch
     {

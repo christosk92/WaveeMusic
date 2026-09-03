@@ -106,10 +106,10 @@ sealed class PreReleaseCountdown : Component
             Direction = 0, Gap = Spacing.XS, Wrap = true, MinWidth = 0f,
             Children =
             [
-                UnitTile(d.ToString(), Loc.Get(Strings.Detail.PreReleaseUnitDays)),        // natural width — a wait can be 100+ days
-                UnitTile(h.ToString("D2"), Loc.Get(Strings.Detail.PreReleaseUnitHours)),   // clock convention: zero-padded
-                UnitTile(m.ToString("D2"), Loc.Get(Strings.Detail.PreReleaseUnitMinutes)),
-                UnitTile(s.ToString("D2"), Loc.Get(Strings.Detail.PreReleaseUnitSeconds)),
+                UnitTile("days", d.ToString(), Loc.Get(Strings.Detail.PreReleaseUnitDays)),        // natural width — a wait can be 100+ days
+                UnitTile("hours", h.ToString("D2"), Loc.Get(Strings.Detail.PreReleaseUnitHours)),   // clock convention: zero-padded
+                UnitTile("minutes", m.ToString("D2"), Loc.Get(Strings.Detail.PreReleaseUnitMinutes)),
+                UnitTile("seconds", s.ToString("D2"), Loc.Get(Strings.Detail.PreReleaseUnitSeconds)),
             ],
         };
     }
@@ -120,19 +120,8 @@ sealed class PreReleaseCountdown : Component
     internal static (int Days, int Hours, int Minutes, int Seconds) Breakdown(TimeSpan left)
         => (Math.Max(0, left.Days), Math.Max(0, left.Hours), Math.Max(0, left.Minutes), Math.Max(0, left.Seconds));
 
-    // The compact stat tile of the album facts bento (DetailTrailing.CompactStatTile), which sits directly below this
-    // card on the rail — same 18px value / 11px caption recipe so the two blocks read as one column. Ten lines mirrored
-    // rather than shared: that helper is private to its own page and this is styling, not a contract.
-    static Element UnitTile(string value, string label) => new BoxEl
-    {
-        Direction = 1, Gap = 1f, Grow = 1f, Basis = 0f, MinWidth = 0f,
-        Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
-        Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillCardSecondary,
-        BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-        Children =
-        [
-            new TextEl(value) { Size = 18f, Weight = 800, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            new TextEl(label) { Size = 11f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-        ],
-    };
+    // The shared stat tile (Wavee.Components.StatTile) — same 18px value / 11px caption recipe as the album facts
+    // bento directly below this card on the rail, so the two blocks read as one column. Keyed by unit (not by value)
+    // so the second-by-second tick cross-fades the value in place instead of remounting the tile every second.
+    static Element UnitTile(string key, string value, string label) => Wavee.Components.StatTile.Create(key, value, label);
 }

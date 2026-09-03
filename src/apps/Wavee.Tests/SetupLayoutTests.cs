@@ -54,9 +54,10 @@ public class SetupLayoutTests
         => Assert.Equal(325f, SetupLayout.BodyLaneHeight(SetupLayout.PlateHeight));
 
     // The sign-in page must FIT the reference plate with a two-line lead (the 14-px lead wraps once beside the icon
-    // column): 40 + 20 + 68 + 20 + 112 + 20 + 32 = 312 ≤ 325. The old page (96-DIP QR, a two-line browser
-    // description, the Premium note and the sign-up link stacked as two rows) summed to 388 and was cut off with
-    // no scroll affordance. (#53)
+    // column): 40 + 20 + 68 + 20 + 114 + 20 + 32 = 314 ≤ 325, where 114 is QrPlateBudget (82, the v4 symbol as
+    // QrGrid actually PAINTS it at QrSize=80, not the 80 the old, unpinned budget assumed) + 2*CardPadding. The old
+    // page (96-DIP QR, a two-line browser description, the Premium note and the sign-up link stacked as two rows)
+    // summed to 388 and was cut off with no scroll affordance. (#53, #C)
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
@@ -67,4 +68,10 @@ public class SetupLayoutTests
     [Fact]
     public void SignInIdleBody_ThreeLineLeadOverflows_SoTheScrollbarMustShow()
         => Assert.True(SetupLayout.SignInIdleBodyHeight(3) > SetupLayout.BodyLaneHeight(SetupLayout.PlateHeight) - SetupLayout.BodySpacing);
+
+    // Pins QrPlateBudget itself: a v4 (33-module) symbol requested at QrSize=80 actually paints at 82 (QrPlate.PlateFor
+    // — see QrGridTests), never the requested 80 — SignInIdleBodyHeight must charge for the paint, not the ask.
+    [Fact]
+    public void QrPlateBudget_IsTheV4SymbolPaintedAt80Dip()
+        => Assert.Equal(82f, SetupLayout.QrPlateBudget);
 }

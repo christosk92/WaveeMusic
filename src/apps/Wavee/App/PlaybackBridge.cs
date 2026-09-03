@@ -1397,7 +1397,8 @@ public sealed class PlaybackBridge
         // also fires on every pause/volume/heartbeat push, and the store's own 1 s (track, context) idempotence is a
         // second line of defence, not the gate. Null-safe: an unattached log records nothing.
         if (trackBoundary && s.CurrentTrack is { } played)
-            _playLog?.Append(played.Uri, s.ContextUri, contextTitle: JumpListBridge.FromTrack(played, s.ContextUri));
+            _playLog?.Append(played.Uri, s.ContextUri, contextTitle: JumpListBridge.FromTrack(played, s.ContextUri),
+                             albumUri: played.Album.Uri, artistUris: PlayLogStore.ArtistUris(played.Artists));
         // Coarse gate for the now-playing card overlays: true iff any card COULD match (mirrors NowPlayingMatch.RelatesToPlaying,
         // which is false when both context and track are empty). Equality-gated by the setter, so an idle→idle push is free.
         HasActiveContext.Value = !string.IsNullOrEmpty(s.ContextUri) || s.CurrentTrack is not null;

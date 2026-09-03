@@ -36,6 +36,11 @@ public interface ICatalogSource : ISource
     Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
     Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
 
+    /// <summary>Synchronous store peek — the per-source half of <see cref="IMusicLibrary.TryPeekAlbum"/>, which
+    /// <c>AggregateCatalog</c> routes here for the owning source. Default: nothing to peek (a complete-at-construction
+    /// source has no fetch to shortcut); <c>StoreLibrarySource</c> overrides it against its real hydration ladder.</summary>
+    bool TryPeekAlbum(string uri, out Album? album) { album = null; return false; }
+
     /// <summary>Stream a context's tracks in pages (skeleton-then-stream). Yields nothing for a context it doesn't own.</summary>
     IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, CancellationToken ct = default);
 

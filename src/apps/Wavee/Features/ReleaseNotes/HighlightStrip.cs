@@ -18,7 +18,7 @@ static class HighlightStrip
 {
     public const int Max = 3;
 
-    public static Element Create(IReadOnlyList<HighlightItem>? highlights, Action<string, string?>? nav)
+    public static Element Create(IReadOnlyList<HighlightItem>? highlights, Action<int> open)
     {
         if (highlights is null || highlights.Count == 0)
             return new BoxEl { Height = 0f, HitTestVisible = false };
@@ -28,7 +28,8 @@ static class HighlightStrip
         for (int i = 0; i < n; i++)
         {
             var item = highlights[i];
-            cards.Add(HighlightCard.Create(item, nav)
+            int idx = i;   // captured per card — the row's own index, not the closed-over loop variable
+            cards.Add(HighlightCard.Create(item, () => open(idx))
                 with { Key = "hl:" + item.Doc.Version + ":" + (item.Highlight.Id is { Length: > 0 } id ? id : i.ToString()) });
         }
 

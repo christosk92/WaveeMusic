@@ -32,9 +32,9 @@ static class AfterUpdateDialog
 
     /// <summary>Open the plate. <paramref name="fromQuad"/> is the version that ran BEFORE this launch (the raw
     /// <c>app.lastRunVersion</c> value). <paramref name="nav"/> navigates the shell — invoked for "Full release
-    /// notes".</summary>
+    /// notes" and, from inside a card, to open the highlight viewer's own deep-link actions.</summary>
     public static OverlayHandle Open(IOverlayService overlay, IAppSettings? settings, string fromQuad,
-                                     WaveeVersionInfo me, ReleaseNotesStore? store, Action<string> nav)
+                                     WaveeVersionInfo me, ReleaseNotesStore? store, Action<string, string?> nav)
     {
         settings?.Set(WaveeSettings.ReleaseNotesPendingFrom, "");
 
@@ -43,14 +43,15 @@ static class AfterUpdateDialog
 
         handle = overlay.Open(
             static () => NodeHandle.Null,
-            () => Embed.Comp(() => new Plate(fromQuad, me, store, nav, Close)),
+            () => Embed.Comp(() => new Plate(overlay, fromQuad, me, store, nav, Close)),
             FlyoutPlacement.BottomCenter,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.Modal, Chrome: PopupChrome.Modal)
                 { ScrimVisual = true });
         return handle;
     }
 
-    sealed class Plate(string fromQuad, WaveeVersionInfo me, ReleaseNotesStore? store, Action<string> nav, Action close)
+    sealed class Plate(IOverlayService overlay, string fromQuad, WaveeVersionInfo me, ReleaseNotesStore? store,
+                       Action<string, string?> nav, Action close)
         : Component
     {
         /// <summary>The whole plate's payload, published in ONE write when the load finishes: the document (for its
@@ -74,8 +75,12 @@ static class AfterUpdateDialog
             HighlightItem[] highlights = loaded?.Cards ?? [];
             var cards = new List<Element>(highlights.Length);
             for (int i = 0; i < highlights.Length; i++)
-                cards.Add(HighlightCard.Compact(highlights[i])
-                    with { Key = "dlg-hl:" + (highlights[i].Highlight.Id is { Length: > 0 } id ? id : i.ToString()) });
+            {
+                int idx = i;
+                cards.Add(HighlightCard.Compact(highlights[idx],
+                        () => HighlightViewer.Open(overlay, highlights, idx, nav, close))
+                    with { Key = "dlg-hl:" + (highlights[idx].Highlight.Id is { Length: > 0 } id ? id : idx.ToString()) });
+            }
 
             var body = new List<Element>(3)
             {
@@ -83,7 +88,8 @@ static class AfterUpdateDialog
                 // anything, then the welcome line and the release's own tagline.
                 new BoxEl
                 {
-                    Direction = 1, Gap = Spacing.S, Padding = new Edges4(26f, 22f, 26f, 18f),
+                    Direction = 1, Gap = Spacing.S,
+                    Padding = new Edges4(HighlightCardMetrics.PlatePadX, 22f, HighlightCardMetrics.PlatePadX, 18f),
                     Children =
                     [
                         new BoxEl
@@ -106,8 +112,11 @@ static class AfterUpdateDialog
             if (cards.Count > 0)
                 body.Add(new BoxEl
                 {
-                    Direction = 0, Gap = 10f, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
-                    Padding = new Edges4(26f, 6f, 26f, 14f),
+                    // Geometry from HighlightCardMetrics, not literals: the dialog RENDERS from the same numbers the
+                    // 620 DIP plate-cap test asserts, so a padding nudge here fails a test instead of a screenshot.
+                    Direction = 0, Gap = HighlightCardMetrics.CardGap, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
+                    Padding = new Edges4(HighlightCardMetrics.PlatePadX, HighlightCardMetrics.RowPadTop,
+                        HighlightCardMetrics.PlatePadX, HighlightCardMetrics.RowPadBottom),
                     Children = cards.ToArray(),
                 });
 
@@ -121,14 +130,14 @@ static class AfterUpdateDialog
                     CheckBox.Create(Loc.Get(Strings.WhatsNew.Dialog.DontShow), _dontShow,
                         v => settings?.Set(WaveeSettings.ReleaseNotesAutoShow, !v)),
                     Spacer(),
-                    Button.Standard(Loc.Get(Strings.WhatsNew.Dialog.Full), () => { close(); nav("whatsnew"); }),
+                    Button.Standard(Loc.Get(Strings.WhatsNew.Dialog.Full), () => { close(); nav("whatsnew", null); }),
                     Button.Accent(Loc.Get(Strings.WhatsNew.Dialog.GotIt), close),
                 ],
             });
 
             return new BoxEl
             {
-                Width = 720f, Direction = 1, MaxHeight = 620f,
+                Width = HighlightCardMetrics.PlateWidth, Direction = 1, MaxHeight = HighlightCardMetrics.PlateMaxHeight,
                 Corners = CornerRadius4.All(Radii.Overlay), ClipToBounds = true,
                 Fill = Tok.FillSolidBase,
                 Children = body.ToArray(),
@@ -191,8 +200,7 @@ sealed class AfterUpdateChrome(IAppSettings? settings) : Component
             if (SetupGating.IsPending(settings) || SetupSession.Current is not null) return;
             if (AfterUpdateDialog.CrashNoticeThisLaunch) return;
 
-            AfterUpdateDialog.Open(overlay, settings, from, AppVersion.Info, svc?.ReleaseNotes,
-                key => nav?.Invoke(key, null));
+            AfterUpdateDialog.Open(overlay, settings, from, AppVersion.Info, svc?.ReleaseNotes, nav);
         }, wizardEpoch);
 
         return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Shrink = 0f };

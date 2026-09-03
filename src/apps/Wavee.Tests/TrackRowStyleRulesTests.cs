@@ -60,6 +60,60 @@ public sealed class TrackRowStyleRulesTests
         Assert.Equal(32f, DetailTrackTableRules.HeaderHeightFor(classic: true));
     }
 
+    // ── row-size artwork (issue B) ───────────────────────────────────────────────────────────────────────────────────
+    // "Row size → Comfortable" used to make rows 64 DIP tall while the cover stayed pinned to the fixed 32-DIP
+    // TrackRow.ThumbSize — a small square floating in a tall row. ArtSizeFor is the one place that ladder lives; these
+    // three tests pin the ladder itself, the row/art breathing-room invariant it is built to hold, and the Settings
+    // density preview's contract to never show a different art size than the real row does.
+
+    [Theory]
+    [InlineData(0, 40f)]
+    [InlineData(1, 48f)]
+    [InlineData(2, 56f)]
+    [InlineData(3, 64f)]
+    public void Modern_RowHeightLadder(int density, float expected)
+        => Assert.Equal(expected, DetailTrackTableRules.RowHeightFor(density, classic: false));
+
+    /// <summary>The bug this fixes was a CONSTANT art size under a GROWING row. Two invariants pin the fix: the art
+    /// never outgrows the row it sits in (at least 8 DIP of combined breathing room — the row keeps reading as a row,
+    /// not a wall-to-wall thumbnail), and it never shrinks as density rises. Checked against the Modern row ladder for
+    /// BOTH skins, because Classic never actually shows a Thumb column at all (<see cref="DetailTrackTableRules.IdentityColumns"/>
+    /// forces <c>Thumb: false</c> whenever <c>classic</c> is true) — the Modern row is the one real geometry an art
+    /// value is ever measured against.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ArtSizeFor_GrowsMonotonically_AndLeavesBreathingRoom(bool classic)
+    {
+        float prevArt = 0f;
+        for (int density = 0; density <= 3; density++)
+        {
+            float row = DetailTrackTableRules.RowHeightFor(density, classic: false);
+            float art = DetailTrackTableRules.ArtSizeFor(density, classic);
+
+            Assert.True(art is WaveeSize.Thumb32 or WaveeSize.Thumb40 or WaveeSize.Thumb48,
+                $"density {density} classic={classic}: {art} is not on the 32/40/48 thumbnail ladder");
+            Assert.True(art <= row - 8f,
+                $"density {density} classic={classic}: art {art} leaves no breathing room in row {row}");
+            Assert.True(art >= prevArt,
+                $"density {density} classic={classic}: art shrank from {prevArt} to {art} as density rose");
+            prevArt = art;
+        }
+    }
+
+    /// <summary>WaveePicker.DensityRows draws its wireframe's art tile as
+    /// <c>TrackRow.ArtSizeFor(density) * DetailTrackTableRules.PreviewScale</c> — and <c>TrackRow.ArtSizeFor</c> is a
+    /// bare forward to <c>ArtSizeFor(density, classic: false)</c> with no logic of its own, so pinning THIS formula
+    /// pins exactly what the preview paints without mounting the (engine-hosted) picker.</summary>
+    [Theory]
+    [InlineData(0, 8f)]
+    [InlineData(1, 8f)]
+    [InlineData(2, 10f)]
+    [InlineData(3, 12f)]
+    public void Preview_MirrorsTrackRow(int density, float expectedEdge)
+        => Assert.Equal(expectedEdge,
+            DetailTrackTableRules.ArtSizeFor(density, classic: false) * DetailTrackTableRules.PreviewScale);
+
     /// <summary>Classic folds VIDEO into the Title line and keeps one trailing command lane — but it keeps the
     /// disclosure chevron, exactly like Modern. What the drawer opens (the track's facts, then its versions) is a
     /// property of the TRACK, so the affordance cannot be skin-specific.</summary>
