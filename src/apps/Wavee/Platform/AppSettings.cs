@@ -153,6 +153,17 @@ static class WaveeSettings
     public static readonly SettingKey<bool> DetailPlaylistRailCollapsed = new("detail.rail.playlist.collapsed", false);
     public static readonly SettingKey<bool> DetailLikedRailCollapsed = new("detail.rail.liked.collapsed", false);
     public static readonly SettingKey<bool> DetailShowRailCollapsed = new("detail.rail.show.collapsed", false);
+    // "Keep left-rail same size" (Settings › Appearance, Automatic track-page layout only): TRUE makes every
+    // two-column detail surface share ONE resizable rail width + collapse flag instead of the four independent
+    // per-scope pairs above — overrides per surface are ignored, and resizing once on any page applies everywhere.
+    // FALSE (the default) is today's per-scope behaviour, unchanged for every existing user. See
+    // DetailRailPolicy.ScopeFor / DetailShell.RailFor.
+    public static readonly SettingKey<bool> DetailRailUniform = new("detail.rail.uniform", false);
+    // The ONE shared pair DetailRailUniform reads/writes. A NEW pair, deliberately not a reuse of the album keys
+    // above: turning the setting OFF must restore each surface's own remembered width rather than having flattened
+    // them, and turning it ON must not clobber four preferences with one shared write.
+    public static readonly SettingKey<float> DetailUniformRailWidth = new("detail.rail.uniform.width", WaveeSize.RailPlaylist);
+    public static readonly SettingKey<bool> DetailUniformRailCollapsed = new("detail.rail.uniform.collapsed", false);
     // ── Teaching tips (WaveeTips) — ONE key for EVERY tip, ever ───────────────────────────────────────────────────────
     // The set of ACKNOWLEDGED teaching-tip ids, newline-joined (the SavedLibrary precedent — AppDataStore round-trips
     // scalars only). A tip id lands in here the first time the user acknowledges that tip (its ✕, or invoking the thing it

@@ -76,6 +76,8 @@ public static class SettingsCatalog
         new(SettingsTab.Appearance, "Lists", "hideTrackArtwork", "Picture"),
         new(SettingsTab.Appearance, "Lists", "trackListStyle", "ViewList"),
         new(SettingsTab.Appearance, "Lists", "pageLayout", "DockLeft"),
+        new(SettingsTab.Appearance, "Lists", "railUniform", "Pin"),
+        new(SettingsTab.Appearance, "Lists", "railReset", "Delete"),
         new(SettingsTab.Appearance, "Sidebar", "sidebarDesign", "SplitView"),
         new(SettingsTab.Appearance, "Sidebar", "sidebarCustomize", "Edit"),
         new(SettingsTab.Appearance, "Lyrics", "lyricsSecondary", "Globe"),

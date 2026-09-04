@@ -82,6 +82,10 @@ static class WaveeSettings
     public static readonly SettingKey<float> ZoomLevel = new("appearance.zoom", 1f);
     public static readonly SettingKey<int> ZoomMode = new("appearance.zoom.mode", (int)ZoomAutoMode.Auto);
     public static readonly SettingKey<int> ZoomModeBootstrapVersion = new("appearance.zoom.mode.bootstrap.version", 0);
+    // "Keep left-rail same size" — MIRRORS src/apps/Wavee/Platform/AppSettings.cs VERBATIM (same rule as the sidebar
+    // keys above). Only the flag itself is mirrored; the per-scope detail.rail.* width/collapsed pairs are not (this
+    // shim never mirrored those either — DetailRailPolicyTests exercises the pure resolution rule directly).
+    public static readonly SettingKey<bool> DetailRailUniform = new("detail.rail.uniform", false);
 }
 
 // The per-design sidebar keys (F.3.1), mirroring the production SidebarKeys. Depends on SidebarDesignInfo.Slug/Tiers —

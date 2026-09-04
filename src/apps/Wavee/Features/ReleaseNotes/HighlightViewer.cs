@@ -355,8 +355,12 @@ sealed class HighlightViewerView : Component
             };
         }
 
+        // AlignSelf STRETCH is what centres the pips. Justify.Center only centres children within the row's OWN
+        // width, and the row was hugging its content inside the plate's column — so the strip sat at the plate's
+        // leading edge instead of under the middle of the image.
         return ToolTip.Wrap(new BoxEl
         {
+            AlignSelf = FlexAlign.Stretch,
             Height = 24f, Margin = new Edges4(0f, 12f, 0f, 0f),
             Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Gap = PipGap,
             Children = pips,

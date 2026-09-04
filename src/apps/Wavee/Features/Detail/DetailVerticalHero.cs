@@ -208,9 +208,13 @@ static class DetailVerticalHero
         Add("hero-attribution", attributionEl, late: true);
 
         if (hasMeta)
+            // Wraps to a second line rather than truncating. "50 songs - 18.7M saves - 2 hr 45 min" does not fit a
+            // narrow hero measure, and a one-line cap turned the duration - the part a listener actually wants - into
+            // an ellipsis. Two lines is the cap: a third would push the action row off the cover's baseline.
             Add("hero-meta", WaveeType.TrackMeta(m.MetaLine) with
             {
-                MaxWidth = contentW, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                MaxWidth = contentW, MaxLines = 2,
+                Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
             }, late: true);
 
         // Daylist rollover countdown — hero scale, between the meta line and the action row (the Home hero's slot).

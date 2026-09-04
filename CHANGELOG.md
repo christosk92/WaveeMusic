@@ -39,6 +39,15 @@ versions separately under `v*` and is not tracked in this file.)
 - The What's New viewer dims the whole window again and shows its caption. The overlay root shrink-wrapped to the
   plate, so the veil covered only the plate's own box, and the caption's scroll viewport measured zero tall and
   was clipped away entirely. (#89)
+- Navigation no longer fills in behind itself. Two deliberate engine render budgets — a cold list growing 4 rows a
+  frame, and a returning page replaying its parked render debt 24 components a frame — were the reason a page kept
+  assembling after it arrived. Both are off; a page realizes in the flush that opens it.
+- The Library V3 destination rail shows which destination you are on (its accent underline had no width and never
+  drew), starts on the same left edge as the rows beneath it, and its words are reachable at a narrow pane through
+  hover chevrons with fades that only appear on a side that actually has more to show.
+- Playlist save counts read as counts. "18713647 saves" is now compact, through the same formatter the Plays column
+  uses, and the meta line wraps to a second line instead of ellipsising the duration away.
+- The What's New viewer's page dots sit under the middle of the image instead of at its leading edge.
 - The player bar's indeterminate seek sweep spans the bar. It was a hard 2400-DIP literal, so on a 3440-DIP
   ultrawide it stopped 1040 DIP short. (#94)
 - Settings' Zoom row no longer shows a stale percentage. The chords, the Ctrl+wheel hook and the palette all change
@@ -74,6 +83,10 @@ versions separately under `v*` and is not tracked in this file.)
 - The Concerts and Browse cards on Home have artwork: a procedurally drawn, endlessly drifting panel per card
   rather than an empty grey rectangle, on looping animation tracks at co-prime durations under the 30 Hz ambient
   cap, and reduced motion swaps the keyframes rather than branching. (#86)
+- **The detail page's left rail can be one size for every page.** Settings › Appearance › Track page layout, on
+  Automatic, gains "Keep left-rail same size": resize the rail once and every album, playlist, Liked Songs and
+  podcast page uses it. With it off, each surface keeps its own remembered width as before, and a "Clear all
+  remembered sizes" action forgets them.
 - The artist pick loses its "Artist pick" heading and keeps its column beside Top tracks — the card already says
   what it is. (#87)
 

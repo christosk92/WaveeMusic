@@ -53,4 +53,61 @@ public class DetailRailPolicyTests
         float dflt = DetailRailPolicy.DefaultWidthFor(scope);
         Assert.Equal(dflt, DetailRailPolicy.ClampStored(dflt, scope));
     }
+
+    /// <summary>"Keep left-rail same size" OFF: RailFor keeps resolving each surface to its OWN scope — the status quo,
+    /// unchanged.</summary>
+    [Theory]
+    [InlineData(RailScope.Album)]
+    [InlineData(RailScope.Playlist)]
+    [InlineData(RailScope.Liked)]
+    [InlineData(RailScope.Show)]
+    public void ScopeFor_Uniform_Off_KeepsTheRequestedScope(RailScope requested)
+        => Assert.Equal(requested, DetailRailPolicy.ScopeFor(requested, uniform: false));
+
+    /// <summary>"Keep left-rail same size" ON: every one of the four per-surface requests collapses onto the SAME
+    /// shared scope — the whole point of the setting (resize once, applies everywhere).</summary>
+    [Theory]
+    [InlineData(RailScope.Album)]
+    [InlineData(RailScope.Playlist)]
+    [InlineData(RailScope.Liked)]
+    [InlineData(RailScope.Show)]
+    public void ScopeFor_Uniform_On_CollapsesEveryRequestToOneSharedScope(RailScope requested)
+        => Assert.Equal(RailScope.Uniform, DetailRailPolicy.ScopeFor(requested, uniform: true));
+
+    /// <summary>The Uniform scope is a real <see cref="RailScope"/>, not a special case: ClampStored/MinWidthFor still
+    /// apply to it exactly as they do to the four surface scopes.</summary>
+    [Fact]
+    public void ScopeFor_Uniform_StillClampsThroughTheGripBounds()
+    {
+        var scope = DetailRailPolicy.ScopeFor(RailScope.Liked, uniform: true);
+        Assert.Equal(RailScope.Uniform, scope);
+        Assert.Equal(DetailRailPolicy.MinWidthFor(scope), DetailRailPolicy.ClampStored(10f, scope));
+        Assert.Equal(DetailRailPolicy.MaxWidth, DetailRailPolicy.ClampStored(9999f, scope));
+    }
+
+    /// <summary>The reset button's enable gate: every per-scope preference still at its authored default (and every
+    /// collapse flag false) means there is nothing to clear.</summary>
+    [Fact]
+    public void HasCustomizedRailPrefs_AllDefaults_IsFalse()
+        => Assert.False(DetailRailPolicy.HasCustomizedRailPrefs(
+            DetailRailPolicy.DefaultWidthFor(RailScope.Album), false,
+            DetailRailPolicy.DefaultWidthFor(RailScope.Playlist), false,
+            DetailRailPolicy.DefaultWidthFor(RailScope.Liked), false,
+            DetailRailPolicy.DefaultWidthFor(RailScope.Show), false));
+
+    [Fact]
+    public void HasCustomizedRailPrefs_OneWidthMoved_IsTrue()
+        => Assert.True(DetailRailPolicy.HasCustomizedRailPrefs(
+            DetailRailPolicy.DefaultWidthFor(RailScope.Album), false,
+            DetailRailPolicy.DefaultWidthFor(RailScope.Playlist), false,
+            300f, false,
+            DetailRailPolicy.DefaultWidthFor(RailScope.Show), false));
+
+    [Fact]
+    public void HasCustomizedRailPrefs_OneCollapsedFlagSet_IsTrue()
+        => Assert.True(DetailRailPolicy.HasCustomizedRailPrefs(
+            DetailRailPolicy.DefaultWidthFor(RailScope.Album), false,
+            DetailRailPolicy.DefaultWidthFor(RailScope.Playlist), true,
+            DetailRailPolicy.DefaultWidthFor(RailScope.Liked), false,
+            DetailRailPolicy.DefaultWidthFor(RailScope.Show), false));
 }

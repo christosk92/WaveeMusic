@@ -117,8 +117,13 @@ sealed class DetailShell : Component
     // silently share the album's width and collapse flag (and, before that, get no grip at all). `_railFade` is shared:
     // it is a transient in-gesture cue (the resist-zone content fade), never persisted, and only one rail is ever on
     // screen. Seeded 1f = fully opaque.
-    readonly RailPrefs _albumRail, _playlistRail, _likedRail, _showRail;
+    readonly RailPrefs _albumRail, _playlistRail, _likedRail, _showRail, _uniformRail;
     readonly Signal<float> _railFade = new(1f);
+    // "Keep left-rail same size" (Settings › Appearance, Automatic layout only): seeded from settings at mount and
+    // re-synced on every DetailHeroPrefs.Epoch bump (see Render) — the SAME epoch the Track-page-layout toggle
+    // already uses, not a second bump mechanism. RailFor(...) reads it (via DetailRailPolicy.ScopeFor) to decide
+    // whether a surface uses its own per-scope RailPrefs above or the one shared _uniformRail below.
+    readonly Signal<bool> _railUniform;
     ActionServices? _actsRef;             // resolved per render; read by the hero cover's drag payload inside RowChildren
 
     readonly record struct RailPrefs(RailScope Scope, Signal<float> Width, Signal<bool> Collapsed,
@@ -131,6 +136,11 @@ sealed class DetailShell : Component
         _playlistRail = SeedRail(settings, RailScope.Playlist, WaveeSettings.DetailPlaylistRailWidth, WaveeSettings.DetailPlaylistRailCollapsed);
         _likedRail = SeedRail(settings, RailScope.Liked, WaveeSettings.DetailLikedRailWidth, WaveeSettings.DetailLikedRailCollapsed);
         _showRail = SeedRail(settings, RailScope.Show, WaveeSettings.DetailShowRailWidth, WaveeSettings.DetailShowRailCollapsed);
+        // A NEW key pair, not "write to the album keys": toggling uniform mode OFF must restore each surface's own
+        // remembered width rather than having flattened them, and toggling it ON must not clobber four preferences
+        // with one shared write.
+        _uniformRail = SeedRail(settings, RailScope.Uniform, WaveeSettings.DetailUniformRailWidth, WaveeSettings.DetailUniformRailCollapsed);
+        _railUniform = new(settings?.Get(WaveeSettings.DetailRailUniform) ?? false);
     }
 
     // CLAMP the loaded width to the live grip bounds (the sidebar's seed rule, WaveeShell): the floor moved 220→180 with
@@ -141,13 +151,25 @@ sealed class DetailShell : Component
             new(settings?.Get(collapsedKey) ?? false),
             widthKey, collapsedKey);
 
-    RailPrefs RailFor(RailScope scope) => scope switch
+    RailPrefs RailFor(RailScope scope) => DetailRailPolicy.ScopeFor(scope, _railUniform.Value) switch
     {
         RailScope.Playlist => _playlistRail,
         RailScope.Liked => _likedRail,
         RailScope.Show => _showRail,
+        RailScope.Uniform => _uniformRail,
         _ => _albumRail,
     };
+
+    /// <summary>Re-seed one scope's LIVE width/collapsed signals from settings, clamped exactly like
+    /// <see cref="SeedRail"/> does at mount. Runs on every <see cref="DetailHeroPrefs"/> epoch bump — Track page
+    /// layout, "Keep left-rail same size", or Settings' "Clear all remembered sizes" — so a page already mounted
+    /// picks up the change immediately instead of on the next launch: clearing only the stored keys would leave an
+    /// open page sitting at its old width until then.</summary>
+    static void ResyncRail(RailPrefs rail, IAppSettings settings)
+    {
+        rail.Width.Value = DetailRailPolicy.ClampStored(settings.Get(rail.WidthKey), rail.Scope);
+        rail.Collapsed.Value = settings.Get(rail.CollapsedKey);
+    }
 
     // Per-context persisted-sort keys (each album/playlist remembers its own sort). Keyed by the context uri so two
     // different lists never share a sort; falls back to the kind when a context has no uri. The column default is a −1
@@ -428,6 +450,24 @@ sealed class DetailShell : Component
         // branch so single-column / vertical pages don't take a needless re-render on every resize.
         var viewportSig = UseContextSignal(Viewport.Size);
 
+        // Same "unconditional hook" reason as viewportSig just above: the rail scope only matters on the two-column
+        // path, but the EFFECT that keeps it live must run every render regardless of which branch this render takes.
+        // Reads settings.Get (never writes a signal from Render — see the _liveHandlers comment above) and republishes
+        // _railUniform + all four per-scope rail signals whenever DetailHeroPrefs.Epoch bumps: the Track-page-layout
+        // toggle, "Keep left-rail same size", and Settings' "Clear all remembered sizes" all bump that ONE epoch
+        // (no second bump mechanism), so an already-mounted page reflects any of the three immediately rather than on
+        // the next launch.
+        int railEpoch = DetailHeroPrefs.Epoch.Value;
+        UseEffect(() =>
+        {
+            _railUniform.Value = settings?.Get(WaveeSettings.DetailRailUniform) ?? false;
+            if (settings is null) return;
+            ResyncRail(_albumRail, settings);
+            ResyncRail(_playlistRail, settings);
+            ResyncRail(_likedRail, settings);
+            ResyncRail(_showRail, settings);
+        }, railEpoch);
+
         // Single-column fallback: just the track table, full width, no rail / no wash.
         if (!_cfg.TwoColumn)
             return Embed.Comp(() => new TrackList(_route, _model, bridge, handlers, liveHandlers: _liveHandlers))
@@ -461,7 +501,8 @@ sealed class DetailShell : Component
         // metadata rail is never composed; Automatic keeps the responsive rail↔hero behavior. The override is applied
         // at render time only (the _mode signal keeps tracking the real width, so flipping the setting back reverts
         // instantly). Epoch-subscribed → the Settings toggle re-renders any mounted (incl. KeepAlive-parked) page live.
-        _ = DetailHeroPrefs.Epoch.Value;
+        // (Already subscribed to DetailHeroPrefs.Epoch above via railEpoch — the effect that re-syncs the rail
+        // signals fires off the exact same bump, so this reads the same live setting without a second subscription.)
         if (_cfg.Content == DetailContent.Tracks
             && (settings?.Get(WaveeSettings.DetailPageLayout) ?? DetailVerticalLayout.PageAuto) == DetailVerticalLayout.PageHero)
             mode = Vertical;

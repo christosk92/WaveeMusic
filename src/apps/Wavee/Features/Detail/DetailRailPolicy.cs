@@ -4,8 +4,10 @@ namespace Wavee.Features.Detail;
 
 /// <summary>Which persisted rail preference pair (width + collapsed) a two-column detail surface reads and writes.
 /// One scope per surface family so Liked never silently shares the ALBUM width and collapse flag (the old
-/// "not playlist ⇒ album" fallback), and a podcast show keeps its own too.</summary>
-public enum RailScope : byte { Album, Playlist, Liked, Show }
+/// "not playlist ⇒ album" fallback), and a podcast show keeps its own too.
+/// <para><see cref="Uniform"/> is the fifth, synthetic scope "Keep left-rail same size" resolves every surface to
+/// (<see cref="DetailRailPolicy.ScopeFor"/>) — its own key pair, never one of the four above.</para></summary>
+public enum RailScope : byte { Album, Playlist, Liked, Show, Uniform }
 
 /// <summary>The PURE rail-resize policy for the shared detail surface — engine-free so <c>DetailRailPolicyTests</c>
 /// pins which surfaces get a grip and at which layout mode. <c>DetailShell</c> composes the grip from this; the
@@ -42,4 +44,24 @@ public static class DetailRailPolicy
     /// another build with a different floor, or a hand-edited store, must never seed raw.</summary>
     public static float ClampStored(float stored, RailScope scope)
         => Math.Clamp(stored, MinWidthFor(scope), MaxWidth);
+
+    /// <summary>Which scope's persisted pair <c>DetailShell.RailFor</c> should actually read/write: the REQUESTED
+    /// (per-surface) scope normally, or the one shared <see cref="RailScope.Uniform"/> scope when "Keep left-rail same
+    /// size" is on — every surface then resolves to the SAME width + collapse pair, so resizing once on any page
+    /// applies everywhere. Pure so <c>DetailRailPolicyTests</c> can pin the resolution rule without the engine.</summary>
+    public static RailScope ScopeFor(RailScope requested, bool uniform) => uniform ? RailScope.Uniform : requested;
+
+    /// <summary>Whether ANY of the four per-scope rail preferences has ever moved from its authored default — the
+    /// enable gate for Settings' "Clear all remembered sizes": offering a reset when nothing has ever been changed
+    /// would be a destructive-looking button that does nothing. Deliberately excludes <see cref="RailScope.Uniform"/>'s
+    /// own pair — that row is the per-surface case and only ever shown while uniform mode is off.</summary>
+    public static bool HasCustomizedRailPrefs(
+        float albumWidth, bool albumCollapsed,
+        float playlistWidth, bool playlistCollapsed,
+        float likedWidth, bool likedCollapsed,
+        float showWidth, bool showCollapsed)
+        => albumWidth != DefaultWidthFor(RailScope.Album) || albumCollapsed
+        || playlistWidth != DefaultWidthFor(RailScope.Playlist) || playlistCollapsed
+        || likedWidth != DefaultWidthFor(RailScope.Liked) || likedCollapsed
+        || showWidth != DefaultWidthFor(RailScope.Show) || showCollapsed;
 }

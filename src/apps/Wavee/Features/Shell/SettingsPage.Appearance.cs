@@ -113,6 +113,15 @@ sealed partial class SettingsPage
         int density = Math.Clamp(_density.Value, 0, DensityLabels().Length - 1);
         int trackListStyle = Math.Clamp(settings?.Get(WaveeSettings.TrackRowStyle) ?? 0, 0, TrackListStyleLabels().Length - 1);
         int pageLayout = Math.Clamp(settings?.Get(WaveeSettings.DetailPageLayout) ?? 0, 0, PageLayoutLabels().Length - 1);
+        bool railUniform = settings?.Get(WaveeSettings.DetailRailUniform) ?? false;
+        // The reset button's enable gate: offering "Clear all remembered sizes" when nothing has ever moved from its
+        // authored default would be a destructive-looking no-op. Deliberately excludes the uniform pair itself — this
+        // row only ever shows while uniform mode is off (see PageLayoutItems).
+        bool hasCustomRail = settings is not null && DetailRailPolicy.HasCustomizedRailPrefs(
+            settings.Get(WaveeSettings.DetailAlbumRailWidth), settings.Get(WaveeSettings.DetailAlbumRailCollapsed),
+            settings.Get(WaveeSettings.DetailPlaylistRailWidth), settings.Get(WaveeSettings.DetailPlaylistRailCollapsed),
+            settings.Get(WaveeSettings.DetailLikedRailWidth), settings.Get(WaveeSettings.DetailLikedRailCollapsed),
+            settings.Get(WaveeSettings.DetailShowRailWidth), settings.Get(WaveeSettings.DetailShowRailCollapsed));
         int lyricsSecondary = Math.Clamp(settings?.Get(WaveeSettings.LyricsSecondaryLine) ?? 0, 0, LyricsSecondaryLabels().Length - 1);
         // The zoom picker's mode: Auto/Dense show as the ONE head item ("Auto"); only Manual shows a ladder rung
         // selected. Clamp tolerates a value this build doesn't define (the int-enum convention).
@@ -191,6 +200,34 @@ sealed partial class SettingsPage
             Bump();
         }
 
+        // The SAME epoch SetPageLayout bumps above — no second bump mechanism. A mounted DetailShell re-reads this
+        // flag (and re-syncs its four per-scope rail signals) off that one bump; see DetailShell.Render.
+        void SetRailUniform(bool on)
+        {
+            settings?.Set(WaveeSettings.DetailRailUniform, on);
+            DetailHeroPrefs.Bump();
+            Bump();
+        }
+
+        // "Clear all remembered sizes": resets the FOUR per-scope pairs to their authored defaults — never the
+        // uniform pair, which this row has no business touching (it is the per-surface case, offered only while
+        // uniform mode is off). Bumps the same epoch so an open page's live rail signals snap to the reset widths
+        // immediately (DetailShell.ResyncRail) instead of on the next launch.
+        void ResetPerScopeRailPrefs()
+        {
+            if (settings is null) return;
+            settings.Set(WaveeSettings.DetailAlbumRailWidth, WaveeSettings.DetailAlbumRailWidth.Default);
+            settings.Set(WaveeSettings.DetailAlbumRailCollapsed, false);
+            settings.Set(WaveeSettings.DetailPlaylistRailWidth, WaveeSettings.DetailPlaylistRailWidth.Default);
+            settings.Set(WaveeSettings.DetailPlaylistRailCollapsed, false);
+            settings.Set(WaveeSettings.DetailLikedRailWidth, WaveeSettings.DetailLikedRailWidth.Default);
+            settings.Set(WaveeSettings.DetailLikedRailCollapsed, false);
+            settings.Set(WaveeSettings.DetailShowRailWidth, WaveeSettings.DetailShowRailWidth.Default);
+            settings.Set(WaveeSettings.DetailShowRailCollapsed, false);
+            DetailHeroPrefs.Bump();
+            Bump();
+        }
+
         // Its own writer rather than an AppearanceToggle: the lyrics surfaces re-read this one under LyricsPrefs.Epoch
         // (which the rail/immersive header toggles also bump), not under AppearancePrefs — one setting, one epoch, so a
         // change from either place reaches both mounted surfaces on the same frame.
@@ -228,7 +265,11 @@ sealed partial class SettingsPage
                 Loc.Get(Strings.Settings.Layout.Subtitle)),
             DensityGroup(density, SetDensity, settings),
             TrackListStyleGroup(trackListStyle, SetTrackListStyle),
-            PageLayoutGroup(pageLayout, SetPageLayout),
+            PageLayoutGroup(pageLayout, SetPageLayout, railUniform, SetRailUniform, hasCustomRail,
+                () => ConfirmThen(Loc.Get(Strings.Settings.Appearance.RailResetConfirmTitle),
+                    Loc.Get(Strings.Settings.Appearance.RailResetConfirmBody),
+                    Loc.Get(Strings.Settings.Appearance.RailResetAction),
+                    ResetPerScopeRailPrefs)),
 
             // The sidebar design. A Component rather than an inline block: the card needs SidebarPreferences and the
             // nav action from CONTEXT, and AppearanceTab runs only while the Appearance tab is selected, so a hook
@@ -329,8 +370,10 @@ sealed partial class SettingsPage
     // ── Lists → Track page layout ─────────────────────────────────────────────────────────────────────────────────────
     /// <summary>The page-layout picker. Collapsed like its siblings above — the header reports the current answer, and
     /// the wireframes only have to exist while choosing. Its former sibling row here, "Limit page color to the hero",
-    /// stays removed (the tone always covers the full page now), so this expander carries only the one choice.</summary>
-    Element PageLayoutGroup(int pageLayout, Action<int> setPageLayout)
+    /// stays removed (the tone always covers the full page now). Two sub-rows now ride the Items slot, both gated to
+    /// the Automatic choice (the Hero layout has no rail at all — see PageLayoutItems).</summary>
+    Element PageLayoutGroup(int pageLayout, Action<int> setPageLayout, bool railUniform, Action<bool> setRailUniform,
+        bool hasCustomRail, Action confirmReset)
         => SettingsExpander.Create(new SettingsExpander.Options
         {
             Header = Loc.Get(Strings.Settings.Appearance.PageLayout),
@@ -338,7 +381,28 @@ sealed partial class SettingsPage
             HeaderIcon = SettingsGlyphs.Row(SettingsTab.Appearance, "pageLayout"),
             Content = SettingsValueTag(PageLayoutLabels()[pageLayout]),
             ItemsHeader = SettingsExpanderPanel(PageLayoutCards(pageLayout, setPageLayout)),
+            Items = PageLayoutItems(pageLayout, railUniform, setRailUniform, hasCustomRail, confirmReset),
         }) with { Key = "appearance.pagelayout" };
+
+    // Two mutually exclusive sub-rows, both meaningless outside the Automatic layout (Hero never composes a rail):
+    //  · "Keep left-rail same size" — always shown for Automatic.
+    //  · "Clear all remembered sizes" — only while that toggle is OFF: once every surface already shares one width,
+    //    there is nothing per-surface left to clear.
+    static Element[] PageLayoutItems(int pageLayout, bool railUniform, Action<bool> setRailUniform,
+        bool hasCustomRail, Action confirmReset)
+    {
+        if (pageLayout != DetailVerticalLayout.PageAuto) return [];
+        Element uniformRow = SettingsItem(Loc.Get(Strings.Settings.Appearance.RailUniform),
+            Loc.Get(Strings.Settings.Appearance.RailUniformSub),
+            ToggleSwitch.Create(new Signal<bool>(railUniform), onChange: setRailUniform, style: SettingsCard.CompactToggleStyle()),
+            icon: SettingsGlyphs.Row(SettingsTab.Appearance, "railUniform"));
+        if (railUniform) return [uniformRow];
+        Element resetRow = SettingsItem(Loc.Get(Strings.Settings.Appearance.RailReset),
+            Loc.Get(Strings.Settings.Appearance.RailResetSub),
+            Button.Standard(Loc.Get(Strings.Settings.Appearance.RailResetAction), confirmReset, isEnabled: hasCustomRail),
+            icon: SettingsGlyphs.Row(SettingsTab.Appearance, "railReset"));
+        return [uniformRow, resetRow];
+    }
 
     // Each card is a mini skeleton-bar wireframe of the page SYSTEM it selects — Automatic: a narrow metadata rail
     // (art + title/meta bars + a pill) BESIDE a column of full-width track rows (the rail-when-wide layout); Hero:

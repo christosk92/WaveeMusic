@@ -41,10 +41,24 @@ static class LibraryV3Metrics
     /// <summary>Word type size and the gap between words. 13.5 sits under the 15px header title and above the 12.5px
     /// filter chips, which is what keeps all three legible as separate ranks.</summary>
     public const float DestinationWordSize = 13.5f, DestinationWordGap = 14f;
-    /// <summary>The right-edge fade the clipped last word peeks through — Zune's "words cut off at the edge of the
-    /// screen", and the affordance that says the rail scrolls. Labels NEVER drop: at the 180-DIP pane floor the rail
-    /// scrolls instead, because a word that has been abbreviated to a glyph is the thing this design exists to avoid.</summary>
+    /// <summary>The edge fade a clipped word peeks through — Zune's "words cut off at the edge of the screen", and
+    /// the affordance that says the rail scrolls. Labels NEVER drop: at the 180-DIP pane floor the rail scrolls
+    /// instead, because a word that has been abbreviated to a glyph is the thing this design exists to avoid.
+    /// The <c>EdgeMask</c> it is painted with is DERIVED per render from the rail's live scroll geometry (see
+    /// <c>LibraryV3NavBand.DestinationRail</c>), never a hardcoded side — a fade with nothing behind it is a lie.</summary>
     public const float DestinationRailFade = 20f;
+    /// <summary>Diameter of the hover-revealed pager chevrons at each end of the destination rail. Deliberately
+    /// smaller than <c>WaveeCta.IconButtonSize</c> (32, taller than the 30-DIP band itself): the rail is chrome
+    /// above the header, and a pager large enough to brush the band's own edges would read as enlarging it.</summary>
+    public const float DestinationRailChevronSize = 20f;
+    /// <summary>Glyph size inside <see cref="DestinationRailChevronSize"/> — scaled down from <c>Rail.cs</c>'s
+    /// 16-DIP shelf chevron glyph to fit the smaller puck without crowding it.</summary>
+    public const float DestinationRailChevronGlyph = 10f;
+    /// <summary>Fraction of the rail's LIVE viewport width a chevron click scrolls (via
+    /// <c>FluentGpu.Scroll.ScrollIntoView.ScrollTo</c> against the rail's own offset at click time — never a fixed
+    /// DIP figure, so the step scales with the pane). Less than 1 so a click leaves the trailing word of the
+    /// outgoing page still peeking at the OPPOSITE edge — continuity, not a jump-cut.</summary>
+    public const float DestinationRailPageStep = 0.8f;
 
     /// <summary>Gap between grid cells — the same <c>Spacing.S</c> the pane's grid strip lays out with, restated here so the
     /// derived column count and the strip that renders it cannot disagree.</summary>

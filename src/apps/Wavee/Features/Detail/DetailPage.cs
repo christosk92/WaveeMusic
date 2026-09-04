@@ -521,7 +521,7 @@ sealed class DetailPage : Component
         // shimmer bar in the row's place while MembershipLoaded is false (DetailRail), so the slot is still held.
         string meta = !membershipLoaded ? ""
             : saveCount is > 0 and var n
-            ? Strings.Detail.MetaLineSaved(songs, Strings.Detail.SaveCount(n), total)
+            ? Strings.Detail.MetaLineSaved(songs, SaveCountText(n), total)
             : Strings.Detail.MetaLine(songs, total);
         LogVideoSweep("playlist", p.Uri, tracks);
         return new DetailModel(
@@ -726,4 +726,13 @@ sealed class DetailPage : Component
     // (a caller passing a raw playlist id — no spotify: prefix — still gets a playlist url).
     internal static string SpotifyPlaylistWebUrl(string uri)
         => SpotifyLink.WebUrl(uri) ?? $"https://open.spotify.com/playlist/{uri}";
+
+    /// <summary>The save count as it reads in the meta line. Six- and eight-figure counts are the norm on an editorial
+    /// playlist ("18713647 saves"), and at caption size the full number is a wall of digits that also pushes the line
+    /// past its measure. Compact above 999, through the app's one compact formatter — the same one the Plays column
+    /// and the artist page's listener counts use, so a playlist's saves and a track's plays cannot format differently.
+    /// <para>Below 1000 the ICU plural key still runs, because "1 save" must not read "1 saves" and a three-digit
+    /// count is short enough to print in full.</para></summary>
+    static string SaveCountText(long n)
+        => n >= 1000 ? Strings.Detail.SaveCountCompact(HomeCards.CompactNumber(n)) : Strings.Detail.SaveCount(n);
 }
