@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.9] - unreleased
+
+### Fixed
+
+- **The audio cache had silently stopped storing anything, and every replay re-downloaded the track.** Before writing
+  a chunk the cache reserves free space — one twentieth of the volume, with a 5 GB floor. On a 1 TB drive that is
+  47.6 GB, so a machine with 25 GB free refused every single write, before it even opened a file. Nothing said so:
+  that path had no log at all, and Settings went on reporting "Keeps at least 47.6 GB free" as though it were a
+  healthy policy. The reserve is now capped at 20 GB (an unclamped twentieth would have demanded 200 GB on a 4 TB
+  drive), the refusal is logged once per transition, the cache evicts its own oldest bytes and retries instead of
+  giving up forever, and Settings › Storage says plainly that caching is paused and why. (#95)
+
 ## [0.2.8] - 2026-09-04
 
 ### Fixed

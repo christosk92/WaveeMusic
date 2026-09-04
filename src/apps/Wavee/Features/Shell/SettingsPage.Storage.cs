@@ -507,7 +507,15 @@ sealed partial class SettingsPage
         long? budget = status?.BudgetBytes;
         long used = s?.AudioBody ?? 0;
         float frac = budget is > 0 ? Math.Clamp((float)(used / (double)budget.Value), 0f, 1f) : 0f;
-        bool over = budget is { } b && used > b;
+        // Sourced from the cache itself, not re-derived here: the cache is the only thing that knows why a write was
+        // last refused (a volume probe failure and a below-reserve read look identical from `used`/`budget` alone).
+        var admission = status?.Admission ?? ChunkAdmission.Allow;
+        var barState = admission switch
+        {
+            ChunkAdmission.OverBudget => ProgressBarState.Error,
+            ChunkAdmission.VolumeUnavailable or ChunkAdmission.BelowFreeSpaceReserve => ProgressBarState.Paused,
+            _ => ProgressBarState.Normal,
+        };
 
         void SetMode(int next)
         {
@@ -547,16 +555,31 @@ sealed partial class SettingsPage
                     Loc.Get(Strings.Settings.Storage.DriveShare),
                     Loc.Get(Strings.Settings.Storage.Unlimited)], _bodyBudgetMode, onChange: SetMode),
                 editor,
-                ProgressBar.Determinate(frac, width: 300f, state: over ? ProgressBarState.Error : ProgressBarState.Normal),
+                ProgressBar.Determinate(frac, width: 300f, state: barState),
                 new TextEl(Strings.Settings.Storage.UsedOfBudget(FmtBytes(used), budgetLabel))
                     { Size = 11.5f, Color = Tok.TextSecondary },
-                status is { Available: false }
-                    ? new TextEl(Loc.Get(Strings.Settings.Storage.LocationUnavailable)) { Size = 11.5f, Color = Tok.SystemFillCritical }
-                    : new TextEl(Loc.Format("settings.storage.freeReserve", ("reserve", FmtBytes(status?.ReserveBytes ?? 0))))
-                        { Size = 11.5f, Color = Tok.TextTertiary },
+                ReserveLine(status, admission),
             ],
         };
     }
+
+    // The one line the reserve policy and its failure modes share, because seeing them apart is the bug: a healthy
+    // "won't cache below N free" sentence sitting next to a drive that already has less than N free. Every non-Allow
+    // branch says plainly that caching is paused and why; BelowFreeSpaceReserve additionally names both the policy
+    // number and the number that is actually true right now.
+    static Element ReserveLine(AudioBodyCacheStatus? status, ChunkAdmission admission) => admission switch
+    {
+        ChunkAdmission.VolumeUnavailable => new TextEl(Loc.Get(Strings.Settings.Storage.LocationUnavailable))
+            { Size = 11.5f, Color = Tok.SystemFillCritical },
+        ChunkAdmission.BelowFreeSpaceReserve => new TextEl(Loc.Format("settings.storage.freeReserveBelow",
+                ("free", FmtBytes(status?.FreeBytes ?? 0)), ("reserve", FmtBytes(status?.ReserveBytes ?? 0))))
+            { Size = 11.5f, Color = Tok.SystemFillCritical },
+        ChunkAdmission.OverBudget => new TextEl(Loc.Format("settings.storage.cachePausedOverBudget",
+                ("budget", FmtBytes(status?.BudgetBytes ?? 0))))
+            { Size = 11.5f, Color = Tok.SystemFillCritical },
+        _ => new TextEl(Loc.Format("settings.storage.freeReserve", ("reserve", FmtBytes(status?.ReserveBytes ?? 0))))
+            { Size = 11.5f, Color = Tok.TextTertiary },
+    };
 
     Element FixedBudgetEditor(Services? svc, IAppSettings? settings)
     {
