@@ -2,7 +2,7 @@
   <PropertyGroup>
     <!-- Hand-edited before a release: semver M.m.p or M.m.p-beta.N, and the per-MINOR codename (sea/wave series:
          Abyss 0.1, Breaker 0.2, Crest 0.3, Drift 0.4, Ebb, Fetch, Groundswell, Harbor, Inlet, Jetty, Kelp, Lagoon ...). -->
-    <WaveeVersion>0.2.7</WaveeVersion>
+    <WaveeVersion>0.2.8</WaveeVersion>
     <WaveeCodename>Breaker</WaveeCodename>
     <!-- NEVER hand-edited. Monotonic release counter (max 65535) bumped + committed by ops/release/wavee-release.ps1.
          MSIX Identity/@Version = M.m.p.WaveeBuild - the ONLY thing Windows and AppUpdateVersion.IsNewer compare. -->

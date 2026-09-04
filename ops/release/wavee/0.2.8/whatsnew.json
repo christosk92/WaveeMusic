@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.2.8",
+  "packageVersion": "",
+  "name": "Breaker",
+  "tagline": "Bigger type where there is room, a sidebar that reaches your library, and navigation that stops filling in behind itself.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "library-v3-sidebar",
+      "title": "The Library V3 sidebar, rebuilt",
+      "body": "Home sits above Your Library as fixed chrome, so filters and search never hide it. The search field is inline when the pane has room and collapses to a magnifier that morphs open in place when it does not — one Escape clears, a second closes, and it is never remembered across launches. Filter pills keep their width when selected, a round ✕ clears everything, and the fused qualifier pill is legible on any accent. Every row, glyph and chip now shares one left edge.",
+      "kind": "rebuilt",
+      "issues": [
+        69,
+        70,
+        71,
+        73
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/sidebar.jpg",
+        "alt": "The Library V3 sidebar: Home above Your Library, an inline search field beside the Recents pill, filter pills, and Liked Songs and playlists sharing one left edge",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "recents-means-played",
+      "title": "Recents means recently played",
+      "body": "In the sidebar and in Your Library, \"Recents\" now follows what you listened to — including plays from your other devices, through your listening history. Opening a playlist no longer moves it to the top; playing one does, and everything you have not played keeps its added-date order below.",
+      "kind": "fixed",
+      "issues": [
+        72,
+        75
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/recents.jpg",
+        "alt": "The sidebar sorted by Recents with the sort pill open, showing Recents, Recently added, Alphabetical and Creator",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "album-drawer",
+      "title": "A compact, instant album drawer",
+      "body": "On an artist page the album drawer opens in one 200 ms motion under the cover you clicked, with a caret pointing at it, compact rows, two columns on a wide window and a Show all row past the first dozen tracks — no skeleton flash for an album you already opened, and no drawer hopping between rows while the page scrolls.",
+      "kind": "improved",
+      "issues": [
+        77
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/drawer.jpg",
+        "alt": "An artist page's discography with the album drawer open under a cover: a caret at the cover, compact track rows in two columns",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}
