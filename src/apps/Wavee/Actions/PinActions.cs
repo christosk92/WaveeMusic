@@ -15,10 +15,15 @@ namespace Wavee;
 /// disabled one) and every Execute is a silent no-op — the documented contract on <c>ActionServices.Sidebar</c>.
 ///
 /// UNDO (F.5.5) IS THE TOAST, NOT THE ACTIVITY LOG. <c>ActivityKind</c> records library MUTATIONS, every kind maps to a
-/// server-reconciled write, and <c>ActivityUndoExecutor.ApplyInverseAsync</c> switches over exactly those kinds. A pin is
-/// local presentation state with no server side; adding a kind would put a non-mutation into the notification centre's
-/// mutation history and require a no-op inverse. Unpin's undo re-inserts at the pin's FORMER index (the index
-/// <c>SidebarPinStore.Unpin</c> hands back), which a plain re-pin would not restore.
+/// server-reconciled write, and <c>ActivityUndoExecutor.ApplyInverseAsync</c> switches over exactly those kinds. Pinning
+/// is still not one of them — not because a pin has no server side any more, but because <c>SidebarPinSync</c>
+/// (App/SidebarPinSync.cs) mirrors membership of the Spotify-kind pins (playlist/album/artist/show + Liked Songs)
+/// through Spotify's <c>ylpin</c> collection set on its own, silently, off the activity log; order, folders and app
+/// routes stay local-only and never sync at all (docs/plans/wavee/pin-spotify-sync-implementation.md §1). Adding a kind
+/// here would still put a UI-list edit into the notification centre's server-mutation history. Unpin's undo re-inserts
+/// at the pin's FORMER index (the index <c>SidebarPinStore.Unpin</c> hands back), which a plain re-pin would not
+/// restore — and, for a syncable pin, quietly re-pins it on the server too (the store's <c>OnLocalPinChanged</c> fires
+/// for <c>InsertPin</c> exactly as it does for <c>Pin</c>).
 /// </summary>
 public static class PinActions
 {

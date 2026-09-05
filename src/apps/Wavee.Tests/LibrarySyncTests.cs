@@ -155,6 +155,12 @@ public class LibrarySyncTests
                 case "artist": p.Items.Add(new Col.CollectionItem { Uri = "spotify:artist:ar1", AddedAt = 1 }); break;
                 case "show": p.Items.Add(new Col.CollectionItem { Uri = "spotify:show:s1", AddedAt = 1 }); break;
                 case "listenlater": p.Items.Add(new Col.CollectionItem { Uri = "spotify:episode:e1", AddedAt = 1 }); break;
+                // A pin set mixes kinds AND carries stray uris this client cannot pin (a track) — CollectionSets.AcceptsUri
+                // is what keeps the track out of the "pins" logical set.
+                case "ylpin":
+                    p.Items.Add(new Col.CollectionItem { Uri = "spotify:playlist:pin1", AddedAt = 1 });
+                    p.Items.Add(new Col.CollectionItem { Uri = "spotify:track:notapin", AddedAt = 2 });
+                    break;
             }
             return Ok(p.ToByteArray());
         }
@@ -319,18 +325,22 @@ public class LibrarySyncTests
         Assert.Equal("tok-artist", h.Revs["artist"]);
         Assert.Equal("tok-show", h.Revs["show"]);
         Assert.Equal("tok-listenlater", h.Revs["listenlater"]);
+        Assert.Equal("tok-ylpin", h.Revs["ylpin"]);
         Assert.False(h.Revs.ContainsKey("liked"));
         // the "playlists" saved-set fold
         Assert.True(h.Store.IsSaved("playlists", "spotify:playlist:p1"));
         Assert.True(h.Store.IsSaved("playlists", "spotify:playlist:p2"));
-        // one Bulk-coalesced signal per burst — no per-uri change leaked (rootlist+fold = 1, then 4 wire sets = 4).
+        // the pins set: the playlist landed, the stray track did not (CollectionSets.AcceptsUri)
+        Assert.True(h.Store.IsSaved("pins", "spotify:playlist:pin1"));
+        Assert.False(h.Store.IsSaved("pins", "spotify:track:notapin"));
+        // one Bulk-coalesced signal per burst — no per-uri change leaked (rootlist+fold = 1, then 5 wire sets = 5).
         List<StoreChange> snap; lock (col.All) snap = new List<StoreChange>(col.All);
         Assert.All(snap, c => Assert.True(c.IsBulk));
-        Assert.Equal(5, snap.Count);
+        Assert.Equal(6, snap.Count);
     }
 
     [Fact]
-    public async Task InitialHydrate_WalksFourWireSets_NotFiveLogicalSets()
+    public async Task InitialHydrate_WalksFiveWireSets_NotSixLogicalSets()
     {
         // liked + albums ride the same "collection" snapshot: walking it twice was how each logical set's sweep could
         // run over a truncated copy of the other's. One walk per wire set, one token per wire set.
@@ -339,9 +349,9 @@ public class LibrarySyncTests
         h.Sync.Enqueue(new SyncCommand(SyncKind.InitialHydrate, Done: done));
         await done.Task;
 
-        Assert.Equal(4, h.CollectionPosts);
-        Assert.Equal(4, h.Sync.SetFetches);
-        Assert.Equal(new[] { "collection", "artist", "show", "listenlater" }, h.Revs.Keys.OrderBy(k => Array.IndexOf(CollectionSets.WireSets, k)).ToArray());
+        Assert.Equal(5, h.CollectionPosts);
+        Assert.Equal(5, h.Sync.SetFetches);
+        Assert.Equal(new[] { "collection", "artist", "show", "listenlater", "ylpin" }, h.Revs.Keys.OrderBy(k => Array.IndexOf(CollectionSets.WireSets, k)).ToArray());
         Assert.True(h.Store.IsSaved("liked", "spotify:track:t1"));
         Assert.True(h.Store.IsSaved("albums", "spotify:album:a1"));
         Assert.Equal(0, h.Sync.ReconcilePasses);   // boot arms the periodic pass; it does not run one
@@ -683,12 +693,59 @@ public class LibrarySyncTests
         Assert.True(h.Store.IsSaved("liked", "spotify:track:t1"));
         Assert.True(h.Store.IsSaved("albums", "spotify:album:a1"));
 
-        // "ylpin" (an unknown wire set) → ignored, zero fetch.
+        // "artistban" (an unknown wire set) → ignored, zero fetch.
         var done2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "ylpin", Done: done2));
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "artistban", Done: done2));
         await done2.Task;
         Assert.Equal(1, h.Sync.SetFetches);      // unchanged — no fetch for the unknown set
         Assert.Equal(1, h.CollectionPosts);
+    }
+
+    [Fact]
+    public async Task CollectionPush_Ylpin_NeverDirectApplies_FetchesPinsSet()
+    {
+        // §0.1/§2.3 — ylpin pushes are opaque in practice; they always take the settle + delta-fetch path, NEVER a
+        // direct fold, even when the payload happens to parse with items.
+        await using var h = new SyncHarness(HydrateResponder);
+
+        // (a) no payload at all.
+        var done1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "ylpin", Done: done1));
+        await done1.Task;
+        Assert.Equal(0, h.Sync.PushDirectApplied);
+        Assert.Equal(1, h.Sync.SetFetches);
+        Assert.True(h.Store.IsSaved("pins", "spotify:playlist:pin1"));
+        Assert.False(h.Store.IsSaved("pins", "spotify:track:notapin"));   // AcceptsUri keeps the stray track out
+
+        // (b) a parseable PubSubUpdate carrying items — still no direct apply, still a fetch (the token is already set
+        // from (a), so this is a delta; the responder answers "nothing changed" for a held token).
+        var upd = new Col.PubSubUpdate();
+        upd.Items.Add(new Col.CollectionItem { Uri = "spotify:playlist:pin1", AddedAt = 1 });
+        var done2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "ylpin", Payload: upd.ToByteArray(), Done: done2));
+        await done2.Task;
+        Assert.Equal(0, h.Sync.PushDirectApplied);
+        Assert.Equal(2, h.Sync.SetFetches);
+    }
+
+    [Fact]
+    public async Task CollectionPush_YlpinEcho_IsDropped()
+    {
+        // The echo check runs BEFORE the direct-apply/PushDirectApplies gate, so our own accepted ylpin write's echo
+        // is dropped for free — zero fetch, zero fold.
+        const string cuid = "ylpin-cuid-1";
+        await using var h = new SyncHarness(HydrateResponder);
+        h.Echo.Record(cuid);
+
+        var upd = new Col.PubSubUpdate { ClientUpdateId = cuid };
+        upd.Items.Add(new Col.CollectionItem { Uri = "spotify:playlist:pin1", AddedAt = 1 });
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "ylpin", Payload: upd.ToByteArray(), Done: done));
+        await done.Task;
+
+        Assert.Equal(1, h.Sync.EchoDropped);
+        Assert.Equal(0, h.Sync.SetFetches);
+        Assert.Equal(0, h.CollectionPosts);
     }
 
     [Fact]
@@ -722,7 +779,7 @@ public class LibrarySyncTests
         await h.Sync.WaitForIdleAsync();
         await h.Sync.WaitForIdleAsync();
         Assert.Equal(1, h.Sync.ReconcilePasses);
-        Assert.Equal(8, h.CollectionPosts);          // (3) one walk per wire set + one shadow walk per wire set
+        Assert.Equal(10, h.CollectionPosts);         // (3) one walk per wire set + one shadow walk per wire set (5 wire sets)
         Assert.Equal(0, h.Sync.ReconcileDrifts);     // the reconnect walk just converged them — no drift
         Assert.Equal("tok-collection", h.Revs["collection"]);
 
@@ -733,7 +790,7 @@ public class LibrarySyncTests
         await h.Sync.WaitForIdleAsync();
         Assert.Equal(1, h.Sync.ReconcilePasses);
         Assert.Equal(1, h.Sync.ReconcilesSkipped);
-        Assert.Equal(12, h.CollectionPosts);         // the reconnect's own 4 (now delta) probes ran; the reconcile did not
+        Assert.Equal(15, h.CollectionPosts);         // the reconnect's own 5 (now delta) probes ran; the reconcile did not
     }
 
     [Fact]

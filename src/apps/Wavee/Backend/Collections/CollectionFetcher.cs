@@ -134,7 +134,7 @@ public sealed class CollectionFetcher
         foreach (var set in logical)
         {
             Func<string, bool>? pending = hasPending is null ? null : uri => hasPending(set, uri);
-            var report = CollectionDrift.Compare(set, _store.SavedItems(set), ledger.UrisFor(CollectionSets.UriPrefix(set)), pending, ledger.StartedAtMs);
+            var report = CollectionDrift.Compare(set, _store.SavedItems(set), ledger.UrisFor(CollectionSets.UriPrefix(set), set), pending, ledger.StartedAtMs);
             reports.Add(report);
             drift |= report.HasDrift;
         }
@@ -216,7 +216,7 @@ public sealed class CollectionFetcher
 
         foreach (var set in CollectionSets.LogicalSetsForWireSet(wireSet))
         {
-            var snapshot = ledger.UrisFor(CollectionSets.UriPrefix(set));
+            var snapshot = ledger.UrisFor(CollectionSets.UriPrefix(set), set);
             var existing = _store.SavedItems(set);
             int removed = 0, shieldedPending = 0, shieldedRecent = 0;
             for (int i = 0; i < existing.Count; i++)
@@ -247,6 +247,7 @@ public sealed class CollectionFetcher
         {
             var it = items[i];
             if (prefix is not null && !it.Uri.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            if (!CollectionSets.AcceptsUri(setId, it.Uri)) continue;
             if (_hasPending is not null && _hasPending(setId, it.Uri)) continue;
             _store.SetSaved(setId, it.Uri, !it.Removed, SyncState.Confirmed, it.AddedAt);
         }
@@ -321,10 +322,15 @@ public sealed class CollectionFetcher
     static CollectionDelta ForLogicalSet(CollectionDelta d, string setId)
     {
         string? prefix = CollectionSets.UriPrefix(setId);
-        if (prefix is null) return d with { SetId = setId };
+        if (prefix is null && setId != "pins") return d with { SetId = setId };
         var kept = new List<CollectionItem>(d.Items.Count);
         for (int i = 0; i < d.Items.Count; i++)
-            if (d.Items[i].Uri.StartsWith(prefix, StringComparison.Ordinal)) kept.Add(d.Items[i]);
+        {
+            var it = d.Items[i];
+            if (prefix is not null && !it.Uri.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            if (!CollectionSets.AcceptsUri(setId, it.Uri)) continue;
+            kept.Add(it);
+        }
         return d with { SetId = setId, Items = kept };
     }
 }

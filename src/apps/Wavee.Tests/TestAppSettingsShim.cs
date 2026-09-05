@@ -114,6 +114,9 @@ static class SidebarKeys
 
     public static readonly SettingKey<string> CuratedTemplateId = new("sidebar.curated.template", "wavee.curated.default");
     public static readonly SettingKey<bool> CuratedRailLabels = new("sidebar.curated.rail.labels", false);
+
+    // ── pin sync — MIRRORS src/apps/Wavee/Platform/AppSettings.cs VERBATIM, same rule as the sidebar keys above.
+    public static readonly SettingKey<bool> PinsMigratedToServer = new("sidebar.pins.migratedToServer", false);
 }
 
 /// <summary>An in-memory <see cref="IAppSettings"/> for tests: no registry, no file, no defaults magic beyond the key's

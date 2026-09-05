@@ -111,7 +111,7 @@ public class ReconnectResyncTests
         int diff = seq.IndexOf("diff");
         Assert.True(write >= 0 && root > write && firstCol > root && diff > firstCol,
             "expected write < rootlist < deltas < diff, got: " + string.Join(",", seq));
-        Assert.Equal(8, seq.FindAll(s => s == "collection").Count);   // 4 walks + the reconcile pass's 4 shadow walks
+        Assert.Equal(10, seq.FindAll(s => s == "collection").Count);   // 5 walks + the reconcile pass's 5 shadow walks
         Assert.Equal(0, rig.Mut.Pending);                    // the like reconciled
         Assert.Equal(1, rig.Sync.ReconnectResyncs);
         Assert.Equal(1, rig.Sync.DiffUpToDate);
