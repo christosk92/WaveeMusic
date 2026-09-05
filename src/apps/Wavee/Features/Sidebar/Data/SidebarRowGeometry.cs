@@ -192,6 +192,11 @@ static class SidebarRowGeometry
     /// small enough that it reads as the tree's closing gutter rather than as an item.</summary>
     public const float TreeEndHeight = 24f;
 
+    /// <summary>The <c>PinEnd</c> chrome row's REST extent (24) — the pinned band's closing gutter. It grows to
+    /// <c>SidebarPinDropZone.CompactActiveHeight</c> (32) only while a compatible drag is live, exactly as the
+    /// section's empty-state card grows 56↔72; the measured seam corrects that transient on realize.</summary>
+    public const float PinEndHeight = 24f;
+
     /// <summary>Subtitles are never rendered at Compact density.</summary>
     public static bool SubtitleVisible(SidebarDensity density, string? subtitle)
         => density != SidebarDensity.Compact && subtitle is { Length: > 0 };

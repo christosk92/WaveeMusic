@@ -34,7 +34,8 @@
     "addToQueue": "Add to queue",
     "playNext": "Play next",
     "cantMoveAcrossSections": "Can’t move across sections",
-    "reorderHint": "Drag to reorder"
+    "reorderHint": "Drag to reorder",
+    "collapsePinnedFolderToPin": "Collapse the pinned folder to pin here"
   },
   "detail": {
     "play": "Play",

@@ -78,6 +78,7 @@ sealed class SidebarPaneSlot : Component
                 heightOverride: SidebarPaneMetrics.RowHeight(section),
                 artOverride: SidebarPaneMetrics.ArtSize(section)),
             SidebarRowKind.TreeEnd => TreeEndRow(section, row, index),
+            SidebarRowKind.PinEnd => PinEndRow(section, row, index),
             SidebarRowKind.EntityCard => Card(section, row, sel, index),
             SidebarRowKind.PromptRow => Prompt(section),
             // PHASE 2 / Decision B — the customize canvas. Only `SidebarRowPlanner.BuildEdit` emits this kind, so the
@@ -401,7 +402,9 @@ sealed class SidebarPaneSlot : Component
                 snapshot.Name, resource, index, isPlaylistRow: playlistRow,
                 // The row's STRUCTURAL facts. The payload-dependent half (self / ancestor / whether the centre takes
                 // this payload's tracks) is folded in at hover, where the payload first exists.
-                rootFacts: TreeRowFacts(index, in snapshot))
+                rootFacts: TreeRowFacts(index, in snapshot),
+                pinBandDisabled: section.Kind == SidebarSectionKind.Pinned
+                    && PinSlot(row.SectionId, index) < 0 && _o.PinBandDisabled(row.SectionId))
             : PinSpec(section, row.SectionId, index);
 
         var spec = new SidebarRowSpec
@@ -1469,6 +1472,24 @@ sealed class SidebarPaneSlot : Component
             InsertionLine());
     }
 
+    /// <summary>The pinned band's closing gutter — the <see cref="TreeEndRow"/> idea for pins: 24 DIP at rest that owns
+    /// the one "append at the end" slot, and the compact form of the empty-state card while a compatible drag is live,
+    /// so a band that already has pins still SHOWS where a new one goes.</summary>
+    Element PinEndRow(SidebarSectionSpec section, in SidebarRow row, int index)
+    {
+        string sectionId = row.SectionId;
+        var owner = _o;
+        // The zone component owns its own UseDragState (re-renders itself, never the pane) and the accept → AcceptPinDrop
+        // at band.Count. The insertion line beneath it is the same bound caret every row carries, lit by the EndOfList
+        // slot this row publishes on hover.
+        return ZStack(
+            Embed.Comp(() => new SidebarPinDropZone(
+                (p, _) => owner.AcceptPinDrop(p, owner.BandCountOf(sectionId)),
+                compact: true,
+                onHover: over => owner.PublishPinEndSlot(index, over))) with { Key = "pin-end" },
+            InsertionLine());
+    }
+
     /// <summary>THE PILL'S ONE LIVE READ. The indicator's opacity is BOUND to this (never a mount-time literal), so it is
     /// re-derived by the row's own epoch on every edge that can change it — a navigation, a republish, a recycle — with
     /// no re-render and no dependence on whether the pane's motion transaction ran.
@@ -1496,9 +1517,10 @@ sealed class SidebarPaneSlot : Component
     {
         if (section.Kind != SidebarSectionKind.Pinned) return null;
         int slot = PinSlot(sectionId, index);
-        return slot >= 0
-            ? _o.ResourceDropSpec(sectionId, slot, null, null, rootPlanIndex: index, onSpringLoad: onSpringLoad)
-            : null;
+        // slot < 0 with pins present = the band is disabled by an expanded pinned folder. The row still owns a target so
+        // the drag chip can SAY why ("Collapse the pinned folder to pin here") instead of showing a bare glyph.
+        return _o.ResourceDropSpec(sectionId, slot, null, null, rootPlanIndex: index, onSpringLoad: onSpringLoad,
+                                   pinBandDisabled: slot < 0 && _o.PinBandDisabled(sectionId));
     }
 
     int PinSlot(string sectionId, int index)

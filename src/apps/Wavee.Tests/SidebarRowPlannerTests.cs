@@ -89,8 +89,10 @@ public sealed class SidebarRowPlannerTests
     {
         var input = FullInput();
 
+        // The trailing PinEnd is the band's closing gutter — the "top level, at the end" pin slot the band never had
+        // (pin-dragdrop-cue-implementation.md).
         Check(Sec("s", SidebarSectionKind.Pinned),
-            [SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.EntityRow]);
+            [SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.EntityRow, SidebarRowKind.PinEnd]);
 
         Check(Sec("s", SidebarSectionKind.JumpBackIn),
             [SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.EntityRow]);
@@ -293,10 +295,10 @@ public sealed class SidebarRowPlannerTests
         Assert.Equal(3, plan.Entries.Count);
         Assert.Equal(3, doc.Sections[0].Opts.MaxItems);        // the document is untouched
 
-        // Pinned honours MaxItems too.
+        // Pinned honours MaxItems too. header + 2 pins + the closing PinEnd gutter.
         var pinnedPlan = SidebarRowPlanner.Build(Doc(Sec("p", SidebarSectionKind.Pinned,
             SidebarDisplayOptions.Entities with { MaxItems = 2 })), input);
-        Assert.Equal(3, pinnedPlan.Rows.Count);
+        Assert.Equal(4, pinnedPlan.Rows.Count);
     }
 
     [Fact]
@@ -368,6 +370,25 @@ public sealed class SidebarRowPlannerTests
     }
 
     [Fact]
+    public void NonEmptyPinned_AppendsThePinEndGutter_UnlessGrid()
+    {
+        var pins = new[] { Playlist("1", "Alpha", order: 0), Album("2", "Beta", order: 1) };
+        var input = new SidebarProjectionInput { Pins = pins };
+
+        var plan = SidebarRowPlanner.Build(Doc(Sec("p", SidebarSectionKind.Pinned)), input);
+        Assert.Equal(new[] {SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.EntityRow,
+            SidebarRowKind.PinEnd}, KindsOf(plan));
+        Assert.Equal(SidebarRowKind.PinEnd, plan.Rows[^1].Kind);
+        Assert.Equal(-1, plan.Rows[^1].EntryIndex);
+        Assert.Equal("p", plan.Rows[^1].SectionId);
+
+        // A grid presentation has no vertical band to close.
+        var gridPlan = SidebarRowPlanner.Build(Doc(Sec("p", SidebarSectionKind.Pinned,
+            SidebarDisplayOptions.Entities with { Presentation = SidebarPresentation.Grid, GridColumns = 3 })), input);
+        Assert.DoesNotContain(SidebarRowKind.PinEnd, KindsOf(gridPlan));
+    }
+
+    [Fact]
     public void HiddenPinOverride_RemovesThatPinFromThePlan()
     {
         var input = FullInput();
@@ -375,7 +396,8 @@ public sealed class SidebarRowPlannerTests
             SidebarEntityKind.Playlist, Hidden: true);
 
         var plan = SidebarRowPlanner.Build(Doc(Sec("p", SidebarSectionKind.Pinned, items: [hide])), input);
-        Assert.Equal(new[] {SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow}, KindsOf(plan));
+        Assert.Equal(new[] {SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.PinEnd},
+            KindsOf(plan));
         Assert.Equal("album:spotify:album:9", plan.Entries[0].Id);
     }
 
@@ -407,10 +429,11 @@ public sealed class SidebarRowPlannerTests
             SidebarRowKind.EntityRow,
             SidebarRowKind.FolderHeader,
             SidebarRowKind.EntityRow,
+            SidebarRowKind.PinEnd,
         }, KindsOf(plan));
         Assert.Equal(new[] { "Pinned folder", "Direct child", "Collapsed child folder", "Independent pin" },
             NamesOf(plan));
-        Assert.Equal(new byte[] { 0, 0, 1, 1, 0 }, DepthsOf(plan));
+        Assert.Equal(new byte[] { 0, 0, 1, 1, 0, 0 }, DepthsOf(plan));
     }
 
     // ── the playlist tree ────────────────────────────────────────────────────────────────────────────────────────────
@@ -891,10 +914,10 @@ public sealed class SidebarRowPlannerTests
     {
         var plan = SidebarRowPlanner.Build(SidebarTemplates.Build(SidebarTemplates.Curated), FullInput());
 
-        // Pinned (2) / Jump back in via Played as a two-column media strip / shortcuts (5) /
+        // Pinned (2) + its closing PinEnd gutter / Jump back in via Played as a two-column media strip / shortcuts (5) /
         // tree (folder + 2 leaves + create), separated by the three authored quiet dividers.
         Assert.Equal(new[] {
-            SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.EntityRow,
+            SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.EntityRow, SidebarRowKind.PinEnd,
             SidebarRowKind.Divider,
             SidebarRowKind.SectionHeader, SidebarRowKind.GridStrip,
             SidebarRowKind.Divider,

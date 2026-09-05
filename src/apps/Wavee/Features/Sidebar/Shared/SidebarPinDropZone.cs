@@ -38,13 +38,32 @@ sealed class SidebarPinDropZone : Component
     /// <summary>The height while a compatible drag is live.</summary>
     public const float ActiveHeight = 72f;
 
+    /// <summary>The <c>compact</c> variant's REST height — <c>PinEnd</c>'s own extent (24), so the planned row and the
+    /// rendered card can never disagree.</summary>
+    public const float CompactRestHeight = SidebarRowGeometry.PinEndHeight;
+
+    /// <summary>The <c>compact</c> variant's height while a compatible drag is live or the pointer is hovering it.</summary>
+    public const float CompactActiveHeight = 32f;
+
     static readonly LayoutTransition Resize = new(
         TransitionChannels.Size, MotionTok.ContentResize.ToDynamics(),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing);
 
     readonly Action<object?, int> _accept;
+    readonly bool _compact;
+    readonly Action<bool>? _onHover;
 
-    public SidebarPinDropZone(Action<object?, int> accept) => _accept = accept;
+    /// <param name="accept">Drop-to-pin, at the slot this zone owns (0 for the empty-state card; the band's count for
+    /// the closing gutter — the caller decides).</param>
+    /// <param name="compact">The <c>PinEnd</c> gutter's shape: a quiet 24-DIP hairline at rest instead of the 56-DIP
+    /// empty-state card, because a band that already has pins must not repeat their whole billboard just to say
+    /// "there is a slot here".</param>
+    /// <param name="onHover">Fires true on enter/over, false on leave/drop — the <c>compact</c> caller's only way to
+    /// arm the band's <c>EndOfList</c> slot (the zone owns its own <c>UseDragState</c> and re-renders only itself).</param>
+    public SidebarPinDropZone(Action<object?, int> accept, bool compact = false, Action<bool>? onHover = null)
+    {
+        _accept = accept; _compact = compact; _onHover = onHover;
+    }
 
     public override Element Render()
     {
@@ -58,10 +77,10 @@ sealed class SidebarPinDropZone : Component
             // The zone's own copy says "drop to pin"; the chip says WHAT gets pinned, which is the half the user is
             // dragging and can no longer see once the chip covers it.
             caption: static p => Strings.Drag.Pin(p.Name),
-            onEnter: (_, _) => over.Value = true,
-            onOver: (_, _) => over.Value = true,
-            onLeave: _ => over.Value = false,
-            onDrop: (p, _) => { over.Value = false; _accept(p, 0); },
+            onEnter: (_, _) => { over.Value = true; _onHover?.Invoke(true); },
+            onOver: (_, _) => { over.Value = true; _onHover?.Invoke(true); },
+            onLeave: _ => { over.Value = false; _onHover?.Invoke(false); },
+            onDrop: (p, _) => { over.Value = false; _onHover?.Invoke(false); _accept(p, 0); },
             visualPolicy: DropTargetVisualPolicy.Spotlight), DepKey.Empty);
 
         bool compatible = drag.Active
@@ -69,6 +88,8 @@ sealed class SidebarPinDropZone : Component
             && WaveeResourceDrag.Unwrap(drag.Payload) is { CanPin: true };
         bool hovering = over.Value;
         bool active = compatible || hovering;
+
+        if (_compact) return CompactRender(spec, active);
 
         return new BoxEl
         {
@@ -118,6 +139,48 @@ sealed class SidebarPinDropZone : Component
             ],
         };
     }
+
+    /// <summary>The <c>PinEnd</c> gutter's own shape: at rest a quiet 24-DIP dashed hairline (no text, no fill) — the
+    /// same "there is a slot here" affordance the row always carries, visible even with no drag live, so a band that
+    /// already has pins still SAYS where a new one goes. Live/hovering it grows into the same one-line card the
+    /// full-size zone shows, just at half the height.</summary>
+    Element CompactRender(DropTargetSpec spec, bool active) => new BoxEl
+    {
+        Key = "pin-end",
+        Height = active ? CompactActiveHeight : CompactRestHeight,
+        Margin = new Edges4(0f, 0f, 0f, Spacing.XS),
+        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.XXS,
+        Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
+        Corners = Radii.ControlAll,
+        DropTarget = spec,
+        Fill = active ? Tok.AccentSubtle : ColorF.Transparent,
+        BorderColor = active ? Tok.AccentDefault : ColorF.Transparent,
+        BorderWidth = active ? 1f : 0f,
+        BorderDashOn = active ? Spacing.XS : 0f,
+        BorderDashOff = active ? Spacing.XXS : 0f,
+        Transition = MotionTok.ControlFaster,
+        Layout = Resize,
+        Children = active
+            ?
+            [
+                Icon(Icons.Pin, 14f, Tok.AccentTextPrimary),
+                new TextEl(Loc.Get(Strings.Sidebar.DropToPin))
+                {
+                    Size = 11f, Weight = 600, Color = Tok.AccentTextPrimary,
+                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                },
+            ]
+            :
+            [
+                // The quiet rest affordance: a 1-DIP dashed hairline centred in the 24-DIP gutter, always visible.
+                new BoxEl
+                {
+                    Height = 1f, Grow = 1f, Shrink = 1f,
+                    BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+                    BorderDashOn = Spacing.XS, BorderDashOff = Spacing.XXS,
+                },
+            ],
+    };
 }
 
 /// <summary>

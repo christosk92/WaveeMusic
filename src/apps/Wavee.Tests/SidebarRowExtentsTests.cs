@@ -54,7 +54,7 @@ public sealed class SidebarRowExtentsTests
         var rows = new List<SidebarRow>
         {
             Row(SidebarRowKind.Divider), Row(SidebarRowKind.TreeEnd), Row(SidebarRowKind.SectionCard),
-            Row(SidebarRowKind.EntityCard), Row(SidebarRowKind.GridStrip),
+            Row(SidebarRowKind.EntityCard), Row(SidebarRowKind.GridStrip), Row(SidebarRowKind.PinEnd),
         };
         Assert.Equal(SidebarRowGeometry.DividerHeight, H(rows, 0, section));
         Assert.Equal(SidebarRowGeometry.TreeEndHeight, H(rows, 1, section));
@@ -62,6 +62,8 @@ public sealed class SidebarRowExtentsTests
         Assert.Equal(SidebarRowGeometry.CardHeightFor(section.Opts.Density), H(rows, 3, section));
         // A GridStrip's cells wrap artwork + text at font metrics this layer cannot see: NOT analytic, by contract.
         Assert.True(float.IsNaN(H(rows, 4, section)));
+        Assert.Equal(SidebarRowGeometry.PinEndHeight, H(rows, 5, section));
+        Assert.Equal(24f, SidebarRowGeometry.PinEndHeight);
         // A row whose section is gone renders nothing, so it occupies nothing (never the 44-DIP estimate).
         Assert.Equal(0f, SidebarRowExtents.HeightOf(rows, 0, null, editable: false));
     }
