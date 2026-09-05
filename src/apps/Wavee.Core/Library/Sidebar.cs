@@ -19,7 +19,11 @@ public sealed record PlaylistSummary(string Uri, string Name, string OwnerName, 
 /// <summary>A node in the sidebar playlist tree: either a single playlist or a folder of playlists (WaveeMusic's
 /// hierarchical Playlists section — flat leaves + collapsible folders).</summary>
 public abstract record PlaylistNode;
-public sealed record PlaylistLeaf(PlaylistSummary Playlist) : PlaylistNode;
+
+/// <param name="AddedAtMs">The rootlist row's server ADD timestamp (playlist4 ItemAttributes.timestamp, unix ms) — when
+/// the user created or followed this playlist. 0 = not captured (a row adopted before the rootlist carried timestamps),
+/// in which case the sidebar falls back to its local first-seen proxy.</param>
+public sealed record PlaylistLeaf(PlaylistSummary Playlist, long AddedAtMs = 0) : PlaylistNode;
 
 /// <summary>A folder in the playlist tree. <see cref="Items"/> are NODES, not summaries — folders are RECURSIVE
 /// (Spotify's real rootlist model: a folder can contain folders). Flat consumers (the "Add to playlist" picker, the

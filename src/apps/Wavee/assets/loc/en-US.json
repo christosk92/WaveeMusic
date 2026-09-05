@@ -360,6 +360,7 @@
     "otherVersions": "Other versions",
     "recommended": "Recommended songs",
     "noSuggestions": "No suggestions right now",
+    "recsFailed": "Couldn’t load suggestions",
     "viewAllArtists": "View all artists",
     "goToAlbum": "Go to album",
     "collabOpen": "Open to collaboration",

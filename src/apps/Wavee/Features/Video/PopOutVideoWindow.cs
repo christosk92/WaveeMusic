@@ -4,6 +4,7 @@ using FluentGpu.Controls.Media;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Pal;
 using FluentGpu.Signals;
 using Wavee.SpotifyLive;
 
@@ -54,7 +55,9 @@ sealed class PopOutVideoWindow : Component
     /// the managed side sat at <c>Opening</c> until the start watchdog gave up — while the native log showed the video
     /// licensed, playing and feeding samples. A component re-renders itself, so its signal reads stay live.</para></summary>
     public override Element Render() =>
-        OverlayHost.Create(Embed.Comp(() => new PopOutVideoContent { Source = Source, Player = Player, Bridge = Bridge, Settings = Settings }));
+        OverlayHost.Create(
+            Embed.Comp(() => new PopOutVideoContent { Source = Source, Player = Player, Bridge = Bridge, Settings = Settings }),
+            isPrimaryToastHost: false);
 }
 
 /// <summary>The bundle a HOST hands the shared <see cref="PopOutVideoStage"/> so the stage never has to guess which
@@ -111,11 +114,27 @@ sealed class PopOutVideoContent : Component
             () => b.DetachedFullscreen.Value = !b.DetachedFullscreen.Peek())
         : null;
 
+    /// <summary>The window is <c>CustomFrame</c> (no OS caption — see <see cref="PopOutVideoWindow"/>/<c>AppHost.OpenDetachedWindow</c>),
+    /// so WM_NCHITTEST returns HTCLIENT everywhere unless a region is reported: with none registered the window paints
+    /// borderless but cannot be dragged by its content at all. Report a thin caption band across the TOP of the window —
+    /// clear of the transport bar the stage docks at the bottom — so the pop-out can still be repositioned by dragging
+    /// the video, the same gesture users expect from a picture-in-picture window. A point outside this one region falls
+    /// through to the default HTCLIENT (see <c>Win32Platform.HitTestRegions</c>), so every transport button is unaffected.</summary>
+    const float DragBandHeightDip = 32f;
+    readonly TitleBarRegion[] _dragRegions = new TitleBarRegion[1];
+
     public override Element Render()
     {
         // Size the root to THIS window's viewport (the AppHost does NOT auto-stretch a scene root — a bare Grow=1 hugs to
         // 0×0; WaveeShell fills the same way).
         var vp = UseContextSignal(Viewport.Size);
+        var hooks = UseContext(InputHooks.Current);
+        UseLayoutEffect(() =>
+        {
+            if (hooks.SetTitleBarRegions is not { } push) return;
+            _dragRegions[0] = new TitleBarRegion(new RectF(0f, 0f, vp.Value.Width, DragBandHeightDip), TitleBarHit.Caption);
+            push(_dragRegions, 1);
+        }, DepKey.From(HashCode.Combine(vp.Value.Width, vp.Value.Height)));
         var src = Source.Value;                 // subscribe → re-render on a source change (does NOT remount the stage — see stageKey below)
         var binding = Player.Value;             // subscribe → repaint the plate when the player arrives
         // Mount whenever a player exists — a brief source null must not unmount the only MF pump.

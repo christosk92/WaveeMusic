@@ -132,6 +132,11 @@ public readonly record struct SidebarLibraryEntry(
     /// is navigation recency and feeds only the "recently opened" feed.</summary>
     public long LastPlayedMs { get; init; }
 
+    /// <summary>The row's most recent user ACTIVITY: the later of its last play (<see cref="LastPlayedMs"/>) and its server
+    /// add stamp (<see cref="AddedAtMs"/> — created / followed / saved at). 0 = neither is known. This is what
+    /// <see cref="SidebarSort.Recents"/> sorts on.</summary>
+    public long ActivityMs => LastPlayedMs > AddedAtMs ? LastPlayedMs : AddedAtMs;
+
     // Field-backed so a default(SidebarLibraryEntry) (a scratch-list slot) still reads "" rather than null — these are
     // display strings a row concatenates without a null check.
     readonly string? _folderId;

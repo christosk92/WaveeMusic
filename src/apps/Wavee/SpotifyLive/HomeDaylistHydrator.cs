@@ -415,7 +415,7 @@ internal sealed class HomeDaylistHydrator
     /// title)</c>. Assigned by the composition root (Wavee wires it to the scheduled-toast notifier); null in tests and
     /// before wiring, which makes the report a no-op. Deliberately a hook, not a direct call — the hydrator resolves feed
     /// data and must stay ignorant of whether anything notifies.</summary>
-    internal static Action<string, long, string?>? WindowObserved;
+    internal static Action<string, long, string?>? WindowObserved { get; set; }
 
     static HomeCard OverlayCard(HomeCard card, HomePlaylistHeader header)
     {

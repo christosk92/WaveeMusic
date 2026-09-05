@@ -80,9 +80,9 @@ public class PlaybackStubsTests
     }
 
     [Fact]
-    public void NoLyricsProvider_ReturnsNull()
+    public async Task NoLyricsProvider_ReturnsNull()
     {
         var l = new NoLyricsProvider();
-        Assert.Null(l.GetLyricsAsync("spotify:track:a").GetAwaiter().GetResult());
+        Assert.Null(await l.GetLyricsAsync("spotify:track:a"));
     }
 }

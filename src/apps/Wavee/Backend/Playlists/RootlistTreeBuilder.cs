@@ -12,13 +12,13 @@ public static class RootlistTreeBuilder
 {
     /// <summary>The ONE marker shape the tree walk understands — the shared shape of a cold row and a live row, so the
     /// parse loop exists once and both public overloads are thin adapters over it.</summary>
-    public readonly record struct RootlistMarker(int Kind, string Uri, string? GroupName);
+    public readonly record struct RootlistMarker(int Kind, string Uri, string? GroupName, long AddedAtMs = 0);
 
     /// <summary>Cold (persisted) rows → the tree.</summary>
     public static IReadOnlyList<PlaylistNode> Build(IReadOnlyList<ColdRootlistEntry> entries, Func<string, PlaylistSummary> resolve)
     {
         var markers = new RootlistMarker[entries.Count];
-        for (int i = 0; i < entries.Count; i++) markers[i] = new RootlistMarker(entries[i].Kind, entries[i].Uri, entries[i].GroupName);
+        for (int i = 0; i < entries.Count; i++) markers[i] = new RootlistMarker(entries[i].Kind, entries[i].Uri, entries[i].GroupName, entries[i].AddedAtMs);
         return BuildCore(markers, resolve);
     }
 
@@ -27,7 +27,7 @@ public static class RootlistTreeBuilder
     public static IReadOnlyList<PlaylistNode> Build(IReadOnlyList<RootlistEntry> entries, Func<string, PlaylistSummary> resolve)
     {
         var markers = new RootlistMarker[entries.Count];
-        for (int i = 0; i < entries.Count; i++) markers[i] = new RootlistMarker(entries[i].Kind, entries[i].Uri, entries[i].GroupName);
+        for (int i = 0; i < entries.Count; i++) markers[i] = new RootlistMarker(entries[i].Kind, entries[i].Uri, entries[i].GroupName, entries[i].AddedAtMs);
         return BuildCore(markers, resolve);
     }
 
@@ -61,7 +61,7 @@ public static class RootlistTreeBuilder
                 default:  // a playlist (or any item) uri
                     if (EntityUri.KindOf(e.Uri) == EntityKind.Playlist)
                     {
-                        var leaf = new PlaylistLeaf(resolve(e.Uri));
+                        var leaf = new PlaylistLeaf(resolve(e.Uri), e.AddedAtMs);
                         (open.Count > 0 ? open.Peek().Items : top).Add(leaf);
                     }
                     break;

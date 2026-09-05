@@ -45,7 +45,7 @@ public class CollectionFetcherTests
                 hasPending, new WaveeLogger(Log, "sync"), () => nowMs);
         }
 
-        public IEnumerable<string> Events(string eventId) => Log.Entries.Where(e => e.EventId == eventId).Select(e => e.EventId);
+        public IEnumerable<string> Events(string eventId) => Log.Entries.Where(e => e.EventId == eventId).Select(_ => eventId);
         public string SentSet(int i) => Col.PageRequest.Parser.ParseFrom(Requests[i].Body).Set;
         public string SentPageToken(int i) => Col.PageRequest.Parser.ParseFrom(Requests[i].Body).PaginationToken;
     }

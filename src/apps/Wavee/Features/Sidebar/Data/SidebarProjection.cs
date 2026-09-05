@@ -149,9 +149,10 @@ public static class SidebarProjection
                     string id = SidebarPinId.PlaylistPrefix + p.Uri;
                     var flavor = FlavorOf(p);
                     flavorMask |= (byte)(1 << (int)flavor);
-                    // Playlists have NO add timestamp anywhere (the rootlist is an ordered marker stream, not a
-                    // timestamped SavedItem set) → AddedAtMs stays 0 and the sort key is the local first-seen proxy.
-                    long added = Added(addedAt, p.Uri);
+                    // The rootlist row's server ADD stamp (created / followed at) — the rootlist IS a timestamped marker stream
+                    // (ItemAttributes.timestamp, captured on the GET and stamped on a local create). 0 only for rows adopted
+                    // before timestamps were captured, which fall back to the first-seen proxy exactly as before.
+                    long added = leaf.AddedAtMs > 0 ? leaf.AddedAtMs : Added(addedAt, p.Uri);
                     into.Add(new SidebarLibraryEntry(
                         id, SidebarEntryKind.Playlist, p.Uri, p.Name ?? "", p.OwnerName ?? "",
                         p.Cover, p.Cover is null ? p.MosaicTiles : null, p.TrackCount, added,

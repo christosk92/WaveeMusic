@@ -66,7 +66,7 @@ public class SidebarPinStoreTests
         int version = s.Version.Peek();
         Assert.Equal(-1, s.Unpin("nope"));
         Assert.Equal(-1, s.Unpin(null));
-        Assert.Equal(1, s.Count);
+        Assert.Single(s);
         Assert.Equal(version, s.Version.Peek());
     }
 
@@ -376,7 +376,7 @@ public class SidebarPinStoreTests
         Assert.True(s.IsPinned("spotify:playlist:stuck"));
         Assert.True(s.IsPinned("pl:spotify:playlist:stuck"));
         Assert.Equal(0, s.Unpin("pl:spotify:playlist:stuck"));
-        Assert.Equal(0, s.Count);
+        Assert.Empty(s);
     }
 
     [Fact]
@@ -390,6 +390,6 @@ public class SidebarPinStoreTests
         ]);
         Assert.Equal(new[] { "pl:spotify:playlist:stuck" }, IdsOf(s));
         Assert.Equal(0, s.Unpin("spotify:playlist:stuck"));
-        Assert.Equal(0, s.Count);
+        Assert.Empty(s);
     }
 }

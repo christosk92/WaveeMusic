@@ -10,6 +10,7 @@ using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using Wavee.Backend.Playlists;
 using Wavee.Core;
 using Wavee.Features.Detail;
 using static FluentGpu.Dsl.Ui;
@@ -177,9 +178,14 @@ sealed class TrackList : Component
     const int RecBatch = 20;                                   // one extender page (matches the HAR capture)
     static readonly ColumnSet RecColumns = new(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: false, Thumb: false);
     readonly Signal<IReadOnlyList<Track>> _recs = new(Array.Empty<Track>());
-    readonly Signal<int> _recState = new(0);                   // 0 idle · 1 loading · 2 loaded
+    readonly Signal<RecsState> _recState = new(RecsState.Idle);   // was Signal<int> 0/1/2 — now carries Failed (RecsRefetchPolicy)
     readonly HashSet<string> _recShown = new(StringComparer.Ordinal);   // every id ever shown → the accumulated skip set (non-repeating batches)
-    readonly System.Threading.CancellationTokenSource _recCts = new();
+    readonly System.Threading.CancellationTokenSource _recCts = new();   // the LIFETIME token (unmount) — per-fetch tokens link to it
+    System.Threading.CancellationTokenSource? _recInflight;               // the CURRENT fetch's linked CTS; cancelled by Supersede / unmount
+    int _recEpoch;                                                        // monotonically increments per fetch; a completion with a stale epoch is dropped
+    long _recFetchedFp;                                                   // the membership fingerprint the CURRENT batch (or in-flight fetch) is for
+    bool _recArmed;                                                       // the header has realized at least once (the lazy gate)
+    readonly Signal<long> _membershipFp = new(0);                         // written in the layout effect below; the debounce source
     readonly Signal<int> _listCount = new(0);                  // ItemsView TOTAL (track rows + rec rows); _visibleCount stays the track count for §4.6
     // The expanded row, by MEMBERSHIP ROW identity (MembershipDiff.RowKey — the playlist4 per-row uid where the read
     // model has one, else uri#@displayIndex). NOT by track uri: a playlist may legitimately hold the same song twice,
@@ -632,7 +638,10 @@ sealed class TrackList : Component
                 _verticalHeroRowFlow = DetailVerticalLayout.RowFlow(DetailLayoutBreakpoints.EstimatePageWidthFromViewport(seedW));
         }
         _svc = svc; _post = UsePost();           // cached so the rec fetch/add handlers reach the extender + marshal results back to the UI thread
-        Context.UseSignalEffect(() => Reactive.OnCleanup(() => { try { _recCts.Cancel(); _recCts.Dispose(); } catch { } }));   // cancel in-flight rec fetches on unmount
+        Context.UseSignalEffect(() => Reactive.OnCleanup(() =>
+        {
+            try { _recInflight?.Cancel(); _recInflight?.Dispose(); _recCts.Cancel(); _recCts.Dispose(); } catch { }
+        }));   // cancel in-flight rec fetches (+ the current linked CTS) on unmount
         UseEffect(() =>
         {
             // Do not reset the measured hero height here. Passive effects drain after paint, so on first navigation
@@ -896,13 +905,17 @@ sealed class TrackList : Component
         // column is the page's opening, and three stacked analytics cards there push the first track below the fold.
         // Has() is an allocation-free early-exit scan (it already runs on every rail render), so it is cheap here.
         bool verticalFacts = _verticalHeader && !_cfg.HasTrailing && LikedFacts.Has(model, _cfg.Badges);
+        // The recs membership fingerprint: O(N), once per model change (Render already walks the rows for the count
+        // signals above). Rides the SAME effect and DepKey so it commits exactly when the other layout facts do.
+        long membershipFp = RecsRefetchPolicy.Fingerprint(model.ContextUri, model.Tracks);
         UseLayoutEffect(() =>
         {
             _visibleCount.Value = visible;
             _listCount.Value = listTotal;
             _verticalFacts.Value = verticalFacts;
             _verticalItemCount.Value = DetailVerticalLayout.ItemCount(visible, verticalFacts);
-        }, DepKey.From(HashCode.Combine(visible, listTotal, verticalFacts)));
+            _membershipFp.Value = membershipFp;      // equality-gated: a same-membership re-render writes nothing
+        }, DepKey.From(HashCode.Combine(visible, listTotal, verticalFacts, membershipFp)));
 
         Element RealList()
         {
@@ -2900,16 +2913,26 @@ sealed class TrackList : Component
         {
             var svc = UseContext(Services.Slot);
             var post = UsePost();
-            int state = _o._recState.Value;        // subscribe → spinner ↔ refresh, empty note
+            var state = _o._recState.Value;        // subscribe → spinner ↔ refresh ↔ failed note
             int count = _o._recs.Value.Count;      // subscribe → "no suggestions" only once loaded-empty
 
-            // Lazy first fetch when THIS header realizes (scrolled to bottom). Constant dep ⇒ runs once per mount;
-            // FetchRecs(force:false) no-ops unless idle, so a recycle remount never re-fetches.
+            // Arm + lazy first fetch when THIS header realizes (scrolled to bottom). Constant dep ⇒ once per mount; the
+            // policy makes a recycle remount a no-op when the batch is still current.
+            UseEffect(() =>
+            {
+                _o._recArmed = true;
+                if (svc?.RealExtender is not null && _o._model.ContextUri is { Length: > 0 } uri)
+                    _o.FetchRecs(svc, post, uri, force: false);
+            }, "rec-header-once");
+
+            // Membership-driven re-fetch: the fingerprint, debounced 750 ms (equality-gated — unrelated re-renders do not
+            // restart the timer). Keyed on the debounced VALUE, so it runs once per settled change, never per store bump.
+            var settledFp = UseDebouncedValue(_o._membershipFp, RecsRefetchPolicy.DebounceMs);
             UseEffect(() =>
             {
                 if (svc?.RealExtender is not null && _o._model.ContextUri is { Length: > 0 } uri)
                     _o.FetchRecs(svc, post, uri, force: false);
-            }, "rec-header-once");
+            }, DepKey.From(settledFp.Value));
 
             void Refresh()
             {
@@ -2918,9 +2941,11 @@ sealed class TrackList : Component
             }
 
             var trailing = new List<Element>(2);
-            if (state == 2 && count == 0)
-                trailing.Add(new TextEl("No suggestions right now") { Size = 12f, Color = Tok.TextTertiary });
-            trailing.Add(state == 1
+            if (state == RecsState.Loaded && count == 0)
+                trailing.Add(new TextEl(Loc.Get(Strings.Detail.NoSuggestions)) { Size = 12f, Color = Tok.TextTertiary });
+            else if (state == RecsState.Failed)
+                trailing.Add(new TextEl(Loc.Get(Strings.Detail.RecsFailed)) { Size = 12f, Color = Tok.TextTertiary });
+            trailing.Add(state == RecsState.Loading
                 ? new BoxEl { Width = 32f, Height = 32f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [TrackRow.Spinner()] }
                 : RefreshButton(Refresh));
 
@@ -2932,7 +2957,7 @@ sealed class TrackList : Component
                 Children =
                 [
                     // BodyStrong (14/20/600) — a list-section label, the same rung as the track titles under it. Was 15/700.
-                    Ui.BodyStrong("Recommended songs") with
+                    Ui.BodyStrong(Loc.Get(Strings.Detail.Recommended)) with
                     {
                         Grow = 1f, Basis = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
@@ -2977,29 +3002,56 @@ sealed class TrackList : Component
         ],
     }.WithMenu(_menuOverlay is { } ov ? Menus.TrackAttach(_acts, ov, t) : null);
 
-    // Fetch a fresh, non-repeating batch. force:false = the lazy trigger (fires only from idle); force:true = Refresh /
-    // auto-refill. The skip set carries every id ever shown, so the server never repeats. Marshalled back to the UI thread.
+    // Start (or supersede) a recs fetch per RecsRefetchPolicy. force:false = the lazy trigger / a membership change;
+    // force:true = Refresh / auto-refill. Every fetch gets its own epoch and a linked, deadline-bound token; a
+    // completion whose epoch is no longer current is dropped, so a superseded batch can never overwrite a newer one.
     void FetchRecs(Services svc, Action<Action> post, string uri, bool force)
     {
         if (svc.RealExtender is not { } extender) return;
-        if (_recState.Peek() == 1) return;                     // already loading
-        if (!force && _recState.Peek() != 0) return;           // the lazy trigger fires only once (idle → loading)
-        _recState.Value = 1;
+        long fp = _membershipFp.Peek();
+        var action = RecsRefetchPolicy.Decide(_recState.Peek(), _recArmed, fingerprintCurrent: fp == _recFetchedFp, force);
+        if (action == RecsAction.None) return;
+
+        if (action == RecsAction.Supersede)
+        {
+            PlaylistMutationDiagnostics.ExtendSuperseded(uri, _recEpoch);
+            try { _recInflight?.Cancel(); } catch { }
+        }
+        _recInflight?.Dispose();
+        var cts = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(_recCts.Token);
+        cts.CancelAfter(RecsRefetchPolicy.FetchDeadline);
+        _recInflight = cts;
+        int epoch = ++_recEpoch;
+        _recFetchedFp = fp;
+        _recState.Value = RecsState.Loading;
+
         string[] skip = _recShown.Count == 0 ? Array.Empty<string>() : new string[_recShown.Count];
         if (skip.Length > 0) _recShown.CopyTo(skip);
-        var ct = _recCts.Token;
+        var ct = cts.Token;
+        long started = Environment.TickCount64;
         _ = Run();
 
         async System.Threading.Tasks.Task Run()
         {
-            IReadOnlyList<Track> batch;
+            IReadOnlyList<Track>? batch = null;
+            bool timedOut = false;
             try { batch = await extender.ExtendAsync(uri, skip, RecBatch, ct).ConfigureAwait(false); }
-            catch { batch = Array.Empty<Track>(); }
+            catch (OperationCanceledException) when (_recCts.IsCancellationRequested) { return; }   // unmount — nothing to post to
+            catch (OperationCanceledException) { timedOut = !ct.IsCancellationRequested || cts.IsCancellationRequested; }
+            catch (Exception ex) { PlaylistMutationDiagnostics.ExtendFaulted(uri, epoch, ex); }
+
             post(() =>
             {
+                if (epoch != _recEpoch) return;                     // superseded while in flight — a newer fetch owns the state
+                if (batch is null)
+                {
+                    if (timedOut) PlaylistMutationDiagnostics.ExtendTimedOut(uri, epoch, Environment.TickCount64 - started);
+                    _recState.Value = RecsState.Failed;             // the old batch (if any) stays on screen; Refresh is offered
+                    return;
+                }
                 for (int i = 0; i < batch.Count; i++) { var id = batch[i].Id; if (id.Length > 0) _recShown.Add(id); }
                 _recs.Value = batch;
-                _recState.Value = 2;
+                _recState.Value = RecsState.Loaded;
             });
         }
     }

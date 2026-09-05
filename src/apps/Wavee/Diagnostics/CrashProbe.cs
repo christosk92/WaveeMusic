@@ -6,5 +6,5 @@ namespace Wavee;
 /// the crash-prompt path (managed report vs. WER dump vs. unclean exit) can be rehearsed end to end.</summary>
 static class CrashProbe
 {
-    public static string? Mode;
+    public static string? Mode { get; set; }
 }

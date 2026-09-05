@@ -345,8 +345,9 @@ public class StoreLibrarySourceTests
         Assert.Equal("Owner Display", pl!.OwnerName);
         Assert.Equal("Owner Display", pl.Owner!.Name);
         Assert.Equal("https://img/owner", pl.Owner.Avatar!.Url);
-        Assert.Equal(new[] { "Owner Display", "Friend Display" }, pl.Collaborators!.Select(o => o.Name).ToArray());
-        Assert.Equal(new[] { "owner_raw", "friend_raw" }, pl.Collaborators.Select(o => o.Id).ToArray());
+        var collaborators = pl.Collaborators!;
+        Assert.Equal(new[] { "Owner Display", "Friend Display" }, collaborators.Select(o => o.Name).ToArray());
+        Assert.Equal(new[] { "owner_raw", "friend_raw" }, collaborators.Select(o => o.Id).ToArray());
         Assert.Equal("owner_raw", pl.Tracks![0].AddedBy);
         Assert.Equal("friend_raw", pl.Tracks[1].AddedBy);
     }

@@ -24,6 +24,30 @@ static class PlaylistMutationDiagnostics
         WaveeLog.Instance.Warn(Category, "playlistextender.extend.failed", "POST playlistextender/extendp failed",
             WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("status", status));
 
+    public static void ExtendStarted(string playlistUri, int skip, int want) =>
+        WaveeLog.Instance.Info(Category, "playlistextender.extend.start", "POST playlistextender/extendp",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("skip", skip), WaveeLogField.Of("want", want));
+
+    public static void ExtendOk(string playlistUri, int count, int bytes, long ms) =>
+        WaveeLog.Instance.Info(Category, "playlistextender.extend.ok", "playlistextender batch received",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("count", count), WaveeLogField.Of("bytes", bytes), WaveeLogField.Of("ms", ms));
+
+    public static void ExtendParseFailed(string playlistUri, int bytes, Exception ex) =>
+        WaveeLog.Instance.Warn(Category, "playlistextender.extend.parsefailed", "playlistextender body could not be parsed — treated as empty",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("bytes", bytes), WaveeLogField.Of("error", ex.GetType().Name));
+
+    public static void ExtendSuperseded(string playlistUri, int epoch) =>
+        WaveeLog.Instance.Info(Category, "playlistextender.extend.superseded", "in-flight recs fetch cancelled — membership changed or Refresh pressed",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("epoch", epoch));
+
+    public static void ExtendTimedOut(string playlistUri, int epoch, long ms) =>
+        WaveeLog.Instance.Warn(Category, "playlistextender.extend.timeout", "recs fetch exceeded its deadline — section marked failed",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("epoch", epoch), WaveeLogField.Of("ms", ms));
+
+    public static void ExtendFaulted(string playlistUri, int epoch, Exception ex) =>
+        WaveeLog.Instance.Warn(Category, "playlistextender.extend.faulted", "recs fetch threw — section marked failed",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("epoch", epoch), WaveeLogField.Of("error", ex.GetType().Name));
+
     public static void PermissionConflict(string playlistUri) =>
         WaveeLog.Instance.Info(Category, "permission.base.conflict", "permission base revision conflict — retrying",
             WaveeLogField.Of("uri", playlistUri));
@@ -156,4 +180,41 @@ static class PlaylistMutationDiagnostics
     public static void RootlistBadRevision(int length, string source) =>
         WaveeLog.Instance.Warn(Category, "playlist.revision.rejected", "refused to store a malformed revision",
             WaveeLogField.Of("bytes", length), WaveeLogField.Of("source", source));
+
+    // ── I4 across the drain boundary: what the /changes reply carried, and whether the torn uri ever converged ──────────
+
+    /// <summary>A 2xx /changes reply with an EMPTY body. Nothing to fold, so the stored revision cannot advance — and if it
+    /// was null, every later edit posts base_revision = null and comes back changes_require_resync.</summary>
+    public static void ChangesEmptyBody(string playlistUri, int rawBytes) =>
+        WaveeLog.Instance.Warn(Category, "changes.response.empty", "/changes 2xx carried no body — revision not advanced",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("rawBytes", rawBytes));
+
+    /// <summary>A parseable /changes reply with NEITHER resulting_revisions NOR revision. Same consequence as above.</summary>
+    public static void ChangesRevisionMissing(string playlistUri, int bytes, bool hasSyncResult, bool hasContents) =>
+        WaveeLog.Instance.Warn(Category, "changes.revision.missing", "/changes reply carried no resulting revision — revision not advanced",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("bytes", bytes),
+            WaveeLogField.Of("syncResult", hasSyncResult), WaveeLogField.Of("contents", hasContents));
+
+    public static void ResyncTaken(int count, string firstUri) =>
+        WaveeLog.Instance.Info(Category, "resync.taken", "post-drain revalidation starting for torn playlists",
+            WaveeLogField.Of("count", count), WaveeLogField.Of("uri", firstUri));
+
+    public static void ResyncConverged(string playlistUri, string outcome, int attempt, long ms) =>
+        WaveeLog.Instance.Info(Category, "resync.converged", "torn playlist revalidated",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("outcome", outcome),
+            WaveeLogField.Of("attempt", attempt), WaveeLogField.Of("ms", ms));
+
+    /// <summary>The revalidate threw and a retry is scheduled. Warn, not Info: the page is showing a copy we cannot vouch for.</summary>
+    public static void ResyncFailed(string playlistUri, int attempt, string reason, long retryInMs) =>
+        WaveeLog.Instance.Warn(Category, "resync.failed", "torn playlist revalidation failed — retrying",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("attempt", attempt),
+            WaveeLogField.Of("reason", reason), WaveeLogField.Of("retryInMs", retryInMs));
+
+    public static void ResyncGaveUp(string playlistUri, int attempts, string reason) =>
+        WaveeLog.Instance.Warn(Category, "resync.gaveup", "torn playlist revalidation exhausted its retries — user retry only",
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("attempts", attempts), WaveeLogField.Of("reason", reason));
+
+    public static void DrainInline(string entityKey) =>
+        WaveeLog.Instance.Info(Category, "mutation.drain.inline", "playlist write drained off the sync loop (ScheduleDrain unset)",
+            WaveeLogField.Of("uri", entityKey));
 }

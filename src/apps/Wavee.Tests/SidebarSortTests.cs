@@ -14,9 +14,16 @@ namespace Wavee.Tests;
 public class SidebarSortTests
 {
     static SidebarLibraryEntry Pl(string id, string name, string creator = "Owner",
-                                  long sortStamp = 0, long visited = 0, int order = 0, long played = 0) =>
+                                  long sortStamp = 0, long visited = 0, int order = 0, long played = 0,
+                                  long added = 0, bool owner = false) =>
         new("pl:spotify:playlist:" + id, SidebarEntryKind.Playlist, "spotify:playlist:" + id, name, creator,
-            null, null, ChildCount: 0, AddedAtMs: 0, SortStamp: sortStamp, LastVisitedTicksUtc: visited,
+            null, null, ChildCount: 0, AddedAtMs: added, SortStamp: sortStamp > 0 ? sortStamp : added, LastVisitedTicksUtc: visited,
+            SourceOrder: order, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { LastPlayedMs = played, IsOwner = owner };
+
+    static SidebarLibraryEntry Album(string id, string name, long added = 0, long played = 0, int order = 0) =>
+        new("album:spotify:album:" + id, SidebarEntryKind.Album, "spotify:album:" + id, name, "",
+            null, null, ChildCount: 0, AddedAtMs: added, SortStamp: added, LastVisitedTicksUtc: 0,
             SourceOrder: order, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
         { LastPlayedMs = played };
 
@@ -93,6 +100,72 @@ public class SidebarSortTests
         var bVisitedAgain = b with { LastVisitedTicksUtc = 999_999 };
         var list2 = new List<SidebarLibraryEntry> { a, bVisitedAgain };
         Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list2, SidebarV3Sort.Recents)));
+    }
+
+    // The bug: a playlist created a moment ago, never played, must not sink under a year of plays. It is the user's most
+    // recent library ACTIVITY, so it leads — and a play more recent than another row's creation still wins over it.
+    [Fact]
+    public void Recents_ActivityIsTheLaterOfPlayedAndAdded()
+    {
+        const long T = 1_000_000_000_000L, Day = 86_400_000L;
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("c", "Summer 2024", played: T - 60 * Day, added: T - 400 * Day),
+            Pl("e", "Old empty", sortStamp: T - 100 * Day),                          // no play, no server stamp
+            Pl("a", "Gym", played: T - 1 * Day, added: T - 365 * Day),
+            Pl("g", "Older empty", sortStamp: T - 200 * Day),
+            Pl("d", "Lo-fi beats", creator: "Someone", added: T - 3 * Day),        // followed, never played
+            Album("f", "X", added: T - 10 * Day, played: T - 5 * Day),
+            Pl("b", "Road trip", added: T, owner: true),                            // created just now
+        };
+        // Activity(X) = T-5d, Activity(Lo-fi beats) = T-3d — more recent, so it ranks ABOVE X within the block.
+        Assert.Equal(new[] { "Road trip", "Gym", "Lo-fi beats", "X", "Summer 2024", "Old empty", "Older empty" },
+                     Names(Sorted(list, SidebarV3Sort.Recents)));
+        Assert.Equal(new[] { "Summer 2024", "X", "Lo-fi beats", "Gym", "Road trip", "Older empty", "Old empty" },
+                     Names(Sorted(list, SidebarV3Sort.Recents, desc: true)));
+    }
+
+    // The invariant the bug violated, stated on its own so a future retune cannot quietly reintroduce it.
+    [Fact]
+    public void Recents_CreatedNowNeverPlayed_OutranksPlayedLongAgo()
+    {
+        const long T = 1_000_000_000_000L, Day = 86_400_000L;
+        var list = new List<SidebarLibraryEntry> { Pl("old", "Played in March", played: T - 180 * Day), Pl("new", "Created now", added: T) };
+        Assert.Equal(new[] { "Created now", "Played in March" }, Names(Sorted(list, SidebarV3Sort.Recents)));
+    }
+
+    // Play still wins when it IS the more recent activity: created last week, vs played yesterday.
+    [Fact]
+    public void Recents_PlayedYesterday_OutranksCreatedLastWeek()
+    {
+        const long T = 1_000_000_000_000L, Day = 86_400_000L;
+        var list = new List<SidebarLibraryEntry> { Pl("n", "Created last week", added: T - 7 * Day), Pl("p", "Played yesterday", played: T - Day, added: T - 365 * Day) };
+        Assert.Equal(new[] { "Played yesterday", "Created last week" }, Names(Sorted(list, SidebarV3Sort.Recents)));
+    }
+
+    // Ownership is NOT a factor (decision §1): a followed playlist's follow instant is the user's activity too.
+    [Fact]
+    public void Recents_FollowedRecently_RanksByItsFollowStamp_RegardlessOfOwnership()
+    {
+        const long T = 1_000_000_000_000L, Day = 86_400_000L;
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("mine", "Mine, played a month ago", played: T - 30 * Day, owner: true),
+            Pl("theirs", "Theirs, followed yesterday", creator: "Someone", added: T - Day, owner: false),
+        };
+        Assert.Equal(new[] { "Theirs, followed yesterday", "Mine, played a month ago" }, Names(Sorted(list, SidebarV3Sort.Recents)));
+    }
+
+    // Rows with NEITHER stamp still sink as a block, by the first-seen proxy — the pre-existing contract, unchanged.
+    [Fact]
+    public void Recents_NoActivityRows_StillSinkAsABlock_ByFirstSeen()
+    {
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("n1", "NeverOld", sortStamp: 10), Pl("v1", "Played", played: 5), Pl("n2", "NeverNew", sortStamp: 99),
+            Pl("a1", "AddedOnly", added: 3),
+        };
+        Assert.Equal(new[] { "Played", "AddedOnly", "NeverNew", "NeverOld" }, Names(Sorted(list, SidebarV3Sort.Recents)));
     }
 
     [Fact]

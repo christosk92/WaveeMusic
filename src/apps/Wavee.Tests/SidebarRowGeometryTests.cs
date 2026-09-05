@@ -105,7 +105,7 @@ public sealed class SidebarRowGeometryTests
 
     [Fact]
     public void ClassicHeight_IsTheCozyWithSubtitleHeight()
-        => Assert.Equal(SidebarRowGeometry.HeightFor(SidebarDensity.Cozy, true), SidebarRowGeometry.ClassicHeight);
+        => Assert.Equal(SidebarRowGeometry.ClassicHeight, SidebarRowGeometry.HeightFor(SidebarDensity.Cozy, true));
 
     // (SidebarRowMetrics — the engine-bound facade that now forwards to this ladder — lives in Shared/, which the tests
     // deliberately do not source-include, so its delegation cannot be asserted here. It is one-line forwarding by

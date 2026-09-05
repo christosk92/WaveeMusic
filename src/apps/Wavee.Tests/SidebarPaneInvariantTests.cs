@@ -97,8 +97,8 @@ public class SidebarPaneInvariantTests
     [Fact]
     public void ContentLane_IsThePaneEdgePlusTheDepthZeroRowIndent()
     {
-        Assert.Equal(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.IndentFor(0), SidebarRowGeometry.ContentLane);
-        Assert.Equal(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.RowInsetRight, SidebarRowGeometry.ContentLaneEnd);
+        Assert.Equal(SidebarRowGeometry.ContentLane, SidebarRowGeometry.PaneEdge + SidebarRowGeometry.IndentFor(0));
+        Assert.Equal(SidebarRowGeometry.ContentLaneEnd, SidebarRowGeometry.PaneEdge + SidebarRowGeometry.RowInsetRight);
         // The landed numbers the screenshots were measured against, pinned so a "harmless" retune is a visible diff.
         Assert.Equal(12f, SidebarRowGeometry.ContentLane);
         Assert.Equal(16f, SidebarRowGeometry.ContentLaneEnd);

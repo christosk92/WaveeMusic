@@ -276,7 +276,7 @@ public class LiveHttpAudioStreamTests
         Assert.Equal(4, ReadFully(live, 4).Length);
         var reader = Task.Run(() =>
         {
-            try { live.Read(new byte[16], 0, 16); return "read"; }
+            try { _ = live.Read(new byte[16], 0, 16); return "read"; }
             catch (ObjectDisposedException) { return "disposed"; }
         });
         Assert.False(reader.Wait(150), "the reader must park while the stream is live but starved");

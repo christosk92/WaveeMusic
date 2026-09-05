@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Wavee.Backend;
 using Wavee.Backend.Metadata;
@@ -622,7 +623,7 @@ public class ColdStoreSchemaV5Tests
     /// dropped), leave <c>title</c> NULL rather than empty-string, and still be findable offline through the artist
     /// name — which is the only handle the user has on them.</summary>
     [Fact]
-    public void Migration_KeepsALegacyTrackWithAnEmptyTitle_AndOfflineSearchStillFindsItByArtist()
+    public async Task Migration_KeepsALegacyTrackWithAnEmptyTitle_AndOfflineSearchStillFindsItByArtist()
     {
         var path = TempDb();
         try
@@ -646,7 +647,7 @@ public class ColdStoreSchemaV5Tests
             Assert.Contains(candidates.Tracks, r => r.Uri == "spotify:track:notitle" && r.Title is null && r.Subtitle == "Jukjae");
 
             using var store = new CachedStore(cold);
-            store.WarmComplete.GetAwaiter().GetResult();
+            await store.WarmComplete;
             Assert.Contains(Wavee.Backend.Library.LibraryTrackSearch.Search(store, "jukj", 50),
                             t => t.Uri == "spotify:track:notitle");
         }

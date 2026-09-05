@@ -68,9 +68,10 @@ public class RecentsGroupingTests
 
         Assert.Equal(3, rows.Count);
         var first = rows[0];
-        Assert.Equal(["m1", "m2", "m3"], first.Members!.Select(m => m.ItemId));   // …the members are the full run, as sent
-        Assert.Equal(["spotify:track:c", "spotify:track:b", "spotify:track:a"], first.Members.Select(m => m.Uri));
-        Assert.Equal([99L, 98L, 97L], first.Members.Select(m => m.PlayedAtMs));  // each with its own played instant
+        var members = first.Members!;
+        Assert.Equal(["m1", "m2", "m3"], members.Select(m => m.ItemId));   // …the members are the full run, as sent
+        Assert.Equal(["spotify:track:c", "spotify:track:b", "spotify:track:a"], members.Select(m => m.Uri));
+        Assert.Equal([99L, 98L, 97L], members.Select(m => m.PlayedAtMs));  // each with its own played instant
         Assert.Equal(3, first.ChildCount);                                        // the count is still the wire's
         Assert.Equal(["m4"], rows[1].Members!.Select(m => m.ItemId));             // a run ends at the next header
         Assert.Empty(rows[2].Members!);                                           // a single collapses nothing
