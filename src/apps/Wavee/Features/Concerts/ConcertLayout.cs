@@ -63,59 +63,49 @@ public readonly record struct WideEditorialMetrics(
 // only ever does the arithmetic.
 public static class EditorialArtGeometry
 {
-    const double DegToRad = Math.PI / 180.0;
-
-    /// <summary>One circular-arc segment, in the node-local DIP space <c>PathEl.Geometry</c> expects. Two of these
-    /// (an outer sweep, an inner counter-sweep) are the Concerts treatment's "stage light" read, each on its own
-    /// <c>AnimChannel.StrokeTrimStart/End</c> draw-on loop.</summary>
-    public static ArcSweep Arc(float cx, float cy, float r, float startDeg, float sweepDeg)
+    /// <summary>The Concerts treatment's audio-equalizer motif: a small cluster of vertical bars, Fluent-proportioned
+    /// (even single-weight width, rounded pill caps) with a peak in the middle tapering at the edges so the cluster
+    /// reads as "live audio" rather than a bar chart. Centered horizontally in the pane and bottom-anchored on a
+    /// shared baseline so each bar can grow from its own foot on an <c>AnimChannel.ScaleY</c> pulse loop
+    /// (<c>TransformOriginY = 1</c>). Fixed (not randomized) so a resize's remount always produces the SAME layout
+    /// for the same box — deterministic, and testable.</summary>
+    public static BrowseTile[] ConcertBars(float width, float height)
     {
-        double a0 = startDeg * DegToRad, a1 = (startDeg + sweepDeg) * DegToRad;
-        float x0 = cx + r * (float)Math.Cos(a0), y0 = cy + r * (float)Math.Sin(a0);
-        float x1 = cx + r * (float)Math.Cos(a1), y1 = cy + r * (float)Math.Sin(a1);
-        int largeArc = MathF.Abs(sweepDeg) > 180f ? 1 : 0;
-        int sweepFlag = sweepDeg >= 0f ? 1 : 0;
-        return new ArcSweep(x0, y0, x1, y1, r, largeArc, sweepFlag);
+        const int count = 4;
+        float unit = MathF.Min(width, height);
+        float barWidth = MathF.Max(4f, unit * 0.07f);
+        float gap = barWidth * 0.85f;
+        float totalWidth = count * barWidth + (count - 1) * gap;
+        float startX = (width - totalWidth) * 0.5f;
+        float baselineY = height * 0.70f;
+        float maxBarHeight = MathF.Max(barWidth, unit * 0.30f);
+        // A peak in the middle, tapering toward the edges — an equalizer read, not a staircase.
+        ReadOnlySpan<float> heightFractions = [0.52f, 0.86f, 1f, 0.68f];
+
+        var bars = new BrowseTile[count];
+        for (int i = 0; i < count; i++)
+        {
+            float h = MathF.Max(barWidth, maxBarHeight * heightFractions[i]);
+            float x = startX + i * (barWidth + gap);
+            float y = MathF.Max(0f, baselineY - h);
+            bars[i] = new BrowseTile(x, y, barWidth, h);
+        }
+        return bars;
     }
 
-    /// <summary>The Concerts treatment's outer sweep — a broad arc low in the pane, biased toward the bottom so it
-    /// reads as a stage horizon rather than a halo around the copy.</summary>
-    public static ArcSweep ConcertArcOuter(float width, float height)
-    {
-        float cx = width * 0.5f, cy = height * 0.62f;
-        float r = MathF.Min(width, height) * 0.62f;
-        return Arc(cx, cy, r, startDeg: -150f, sweepDeg: 120f);
-    }
-
-    /// <summary>The Concerts treatment's inner counter-sweep — a tighter arc, swept the OPPOSITE direction, so the
-    /// pair reads as two beams crossing rather than one arc traced twice.</summary>
-    public static ArcSweep ConcertArcInner(float width, float height)
-    {
-        float cx = width * 0.5f, cy = height * 0.62f;
-        float r = MathF.Min(width, height) * 0.46f;
-        return Arc(cx, cy, r, startDeg: 40f, sweepDeg: -110f);
-    }
-
-    /// <summary>The Browse treatment's category mosaic: three rounded tiles at fixed relative fractions of the pane,
-    /// each riding its own co-prime <c>TranslateY</c> wobble loop. Fixed (not randomized) so a resize's remount
-    /// always produces the SAME layout for the same box — deterministic, and testable. Fractions overlap slightly
-    /// without touching an edge, at any pane size ≥ <see cref="WideEditorialMetrics.ArtworkMin"/>.</summary>
+    /// <summary>The Browse treatment's stacked-layers motif: a few same-sized rounded rectangles offset along one
+    /// diagonal, Fluent's "Stack" glyph shape — the back layer top-left, the front layer bottom-right. Each layer
+    /// rides its own co-prime <c>TranslateX</c>/<c>TranslateY</c> loop that nudges it FURTHER along the same diagonal
+    /// it is already offset on and back, so the stack gently fans open and settles rather than sitting static. Fixed
+    /// (not randomized) so a resize's remount always produces the SAME layout for the same box — deterministic, and
+    /// testable. Fractions overlap slightly without touching an edge, at any pane size ≥
+    /// <see cref="WideEditorialMetrics.ArtworkMin"/>.</summary>
     public static BrowseTile[] BrowseTiles(float width, float height) =>
     [
-        new BrowseTile(width * 0.10f, height * 0.14f, width * 0.40f, height * 0.46f),
-        new BrowseTile(width * 0.42f, height * 0.30f, width * 0.34f, height * 0.40f),
-        new BrowseTile(width * 0.30f, height * 0.58f, width * 0.30f, height * 0.34f),
+        new BrowseTile(width * 0.16f, height * 0.40f, width * 0.46f, height * 0.42f),
+        new BrowseTile(width * 0.26f, height * 0.28f, width * 0.46f, height * 0.42f),
+        new BrowseTile(width * 0.36f, height * 0.16f, width * 0.46f, height * 0.42f),
     ];
-}
-
-/// <summary>One circular-arc segment. <see cref="ToPathData"/> is the SVG path-data fragment
-/// <c>PathDataParser.Parse</c> consumes directly to build a <c>PathEl.Geometry</c>.</summary>
-public readonly record struct ArcSweep(float X0, float Y0, float X1, float Y1, float Radius, int LargeArc, int SweepFlag)
-{
-    public string ToPathData() => string.Format(
-        System.Globalization.CultureInfo.InvariantCulture,   // a decimal-comma locale must never corrupt the token stream
-        "M{0:F2},{1:F2} A{2:F2},{2:F2} 0 {3},{4} {5:F2},{6:F2}",
-        X0, Y0, Radius, LargeArc, SweepFlag, X1, Y1);
 }
 
 public readonly record struct BrowseTile(float X, float Y, float Width, float Height);

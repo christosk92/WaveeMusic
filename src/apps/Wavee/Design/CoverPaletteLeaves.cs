@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using FluentGpu.Animation;
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
@@ -184,12 +185,15 @@ sealed class CoverArtistBlendWash : Component
             ? (pagePal is { } wp ? WaveePalette.Lift(WaveePalette.Accent(wp)) : Tok.AccentDefault)
             : WaveePalette.BackgroundDark(pagePal ?? WaveePalette.Neutral);
         float heroWidth = p.HeroWidth;
+        // Same PAGE viewport reading as the banner/HeroArt — this leaf is its own component, so it reads the context
+        // directly rather than threading a second prop through every caller.
+        float pageViewportH = Wavee.Features.Shell.ShellViewport.PageHeightFor(UseContext(Viewport.Size).Height);
         return new BoxEl
         {
-            Height = ArtistHeroLayout.BlendBackdropHeightFor(heroWidth), HitTestVisible = false,
+            Height = ArtistHeroLayout.BlendBackdropHeightFor(heroWidth, pageViewportH), HitTestVisible = false,
             Gradient = GradientDown(
                 new GradientStop(0f, wash with { A = light ? 0.20f : 0.30f }),
-                new GradientStop(ArtistHeroLayout.BlendBoundaryFor(heroWidth), wash with { A = light ? 0.06f : 0.08f }),
+                new GradientStop(ArtistHeroLayout.BlendBoundaryFor(heroWidth, pageViewportH), wash with { A = light ? 0.06f : 0.08f }),
                 new GradientStop(1f, wash with { A = 0f })),
         };
     }
