@@ -91,7 +91,11 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
         try
         {
             if (ScheduleDrain is { } viaLoop) await viaLoop(CancellationToken.None).ConfigureAwait(false);
-            else await _mut.Drain(_transport, _ctx(), CancellationToken.None).ConfigureAwait(false);
+            else
+            {
+                PlaylistMutationDiagnostics.DrainInline(uri);
+                await _mut.Drain(_transport, _ctx(), CancellationToken.None).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException) { /* shutdown — the op stays durable and replays next login */ }
         catch (Exception ex) { PlaylistMutationDiagnostics.CreateFailed(uri, "drain-faulted:" + ex.GetType().Name); }
@@ -143,7 +147,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
             previousBatchLastId = members[count - 1].ItemId;
         }
         long edit = EnqueueEdit(playlistUri, ops);
-        return DrainAsync(edit, ct);
+        return DrainAsync(edit, playlistUri, ct);
     }
 
     /// <summary>I5 — the predecessor an index ADD was built against: the previous batch's last minted row when this is
@@ -164,7 +168,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
         if (IsLocal(playlistUri)) throw new PlaylistMutationException(PlaylistMutationFailure.NotSupported, $"Local playlist row removal is not implemented (uri={playlistUri}).");
         if (rows.Count == 0) return Task.CompletedTask;
         long edit = EnqueueEdit(playlistUri, BuildRemoveOps(rows));
-        return DrainAsync(edit, ct);
+        return DrainAsync(edit, playlistUri, ct);
     }
 
     /// <summary>One Delta, one keyed REM per row (the A 143 shape): every row is named by <c>(uri, item_id)</c> and
@@ -203,7 +207,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
         var op = BuildKeyedMove(_store!.Membership(playlistUri), rows, toIndex);
         if (op is null) return Task.CompletedTask;               // the rows already sit where the drop asked for them
         long edit = EnqueueEdit(playlistUri, op);
-        return DrainAsync(edit, ct);
+        return DrainAsync(edit, playlistUri, ct);
     }
 
     /// <summary>The ONE reorder shape: a single item-keyed MOV (the A 148 shape) carrying every selected row plus ONE
@@ -346,7 +350,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
         if (IsLocal(playlistUri)) throw new PlaylistMutationException(PlaylistMutationFailure.NotSupported, $"Local playlist metadata editing is not implemented (uri={playlistUri}).");
         var patch = new PlaylistListAttributePatch(Name: name, Description: description, Collaborative: collaborative);
         long edit = EnqueueEdit(playlistUri, new PlaylistOp(PlaylistOpKind.UpdateList, ListPatch: patch));
-        return DrainAsync(edit, ct);
+        return DrainAsync(edit, playlistUri, ct);
     }
 
     public async Task SetCoverJpegAsync(string playlistUri, byte[] jpeg, CancellationToken ct = default)
@@ -379,7 +383,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
         var pictureB64 = regJson.RootElement.GetProperty("picture").GetString() ?? "";
         var pictureBytes = Convert.FromBase64String(pictureB64);
         long edit = EnqueueEdit(playlistUri, new PlaylistOp(PlaylistOpKind.UpdateList, ListPatch: new PlaylistListAttributePatch(PictureBytes: pictureBytes)));
-        await DrainAsync(edit, ct).ConfigureAwait(false);
+        await DrainAsync(edit, playlistUri, ct).ConfigureAwait(false);
     }
 
     public async Task SetPlaylistVisibilityAsync(string playlistUri, bool isPublic, CancellationToken ct = default)
@@ -505,12 +509,20 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
 
     // The ONE place a queued playlist edit turns into a caller-visible outcome. Everything that leaves here is a
     // PlaylistMutationException carrying a KIND — the UI maps kinds to copy and never reads a message (P1 shared contract).
-    async Task DrainAsync(long edit, CancellationToken ct)
+    async Task DrainAsync(long edit, string uri, CancellationToken ct)
     {
         try
         {
             if (ScheduleDrain is { } viaLoop) await viaLoop(ct).ConfigureAwait(false);
-            else await _mut.Drain(_transport, _ctx(), ct).ConfigureAwait(false);
+            else
+            {
+                // A playlist write drained OFF the sync loop (pre-go-live, after GoOffline, tests). In production the
+                // transport here is the StubTransport, whose replies are never 200-with-a-body, so no uri gets marked
+                // into the I4 resync queue — the gap is theoretical today. Still: this is the only place a playlist
+                // edit can be drained off the loop, so log it structurally rather than leave it silent.
+                PlaylistMutationDiagnostics.DrainInline(uri);
+                await _mut.Drain(_transport, _ctx(), ct).ConfigureAwait(false);
+            }
         }
         catch (PlaylistMutationException) { throw; }
         catch (OperationCanceledException) { throw; }

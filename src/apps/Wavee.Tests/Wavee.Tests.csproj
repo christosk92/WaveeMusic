@@ -141,6 +141,9 @@
          PlaylistPageNoticeRulesTests drive the real decisions. -->
     <Compile Include="..\Wavee\Features\Detail\PlaylistEditErrorKinds.cs" />
     <Compile Include="..\Wavee\Features\Detail\PlaylistPageNoticeRules.cs" />
+    <!-- The I4 "still syncing with Spotify" chip rule: PlaylistResyncQueue.Entry -> PlaylistSyncHealth (System +
+         the Backend entry record only). PlaylistSyncHealthRulesTests pins it. -->
+    <Compile Include="..\Wavee\Features\Detail\PlaylistSyncHealthRules.cs" />
     <!-- DetailPage's initial-load Title/Cover merge rule (System + Wavee.Core only) — the stale-daylist-header fix's
          cause 1: prefer the fresh nav preview over the not-yet-revalidated store row for a ROLLING-IDENTITY container
          only. DetailHeaderMergeRulesTests. -->

@@ -35,6 +35,8 @@ public sealed class LibraryBridge : IUndoTarget
     // would be a lie in the one place the user goes to find out what is happening.
     readonly Dictionary<string, Signal<int>> _pendingByUri = new(StringComparer.Ordinal);
     readonly HashSet<string> _editedUris = new(StringComparer.Ordinal);
+    readonly Dictionary<string, Signal<PlaylistResyncQueue.Entry>> _resyncByUri = new(StringComparer.Ordinal);
+    PlaylistResyncQueue? _resync;
     Wavee.Backend.MutationEngine? _mutations;
     Wavee.Backend.IStore? _store;
     Action<Action> _post = static a => a();
@@ -140,6 +142,32 @@ public sealed class LibraryBridge : IUndoTarget
         if (playlistUri.Length == 0) return;
         _editedUris.Add(playlistUri);
         PublishPending(playlistUri);
+    }
+
+    // ── I4 resync state (the "still syncing with Spotify" chip) ───────────────────────────────────────────────────────
+    /// <summary>Attach the shared I4 resync queue. Called by the composition root beside <see cref="AttachMutations"/>.</summary>
+    public void AttachResync(PlaylistResyncQueue queue)
+    {
+        _resync = queue;
+        queue.Changed = uri => _post(() => PublishResync(uri));   // the queue fires off-thread; signals are UI-thread only
+    }
+
+    /// <summary>The live I4 resync entry for ONE playlist — Marked/Revalidating while the server's head is not yet ours,
+    /// Failed when a revalidate threw, None once converged. Reading it subscribes the caller to that uri only.</summary>
+    public IReadSignal<PlaylistResyncQueue.Entry> ResyncState(string playlistUri)
+    {
+        if (!_resyncByUri.TryGetValue(playlistUri, out var state))
+        {
+            state = new Signal<PlaylistResyncQueue.Entry>(_resync?.Get(playlistUri) ?? PlaylistResyncQueue.Entry.None);
+            _resyncByUri.Add(playlistUri, state);
+        }
+        return state;
+    }
+
+    void PublishResync(string uri)
+    {
+        if (_resync is null) return;
+        if (_resyncByUri.TryGetValue(uri, out var state)) state.Value = _resync.Get(uri);
     }
 
     // ── playlist edits (create + add) ──────────────────────────────────────────────────────────────────────

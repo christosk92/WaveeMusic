@@ -1080,4 +1080,90 @@ public class LibrarySyncTests
         Assert.Equal(0, h.Sync.PermissionSeeds);
         Assert.Empty(h.TransportRoutes);
     }
+
+    // ── I4 post-drain resync: retry, resolve, give up (§2.2.2) ─────────────────────────────────────────────────────────
+
+    /// <summary>Poll until <paramref name="until"/> is true (or the deadline passes), letting the loop drain between
+    /// checks. The scheduled retry runs on its own <c>Task.Run</c> after <see cref="LibrarySync.ResyncRetryDelay"/>
+    /// (collapsed to zero by the caller), so there is nothing else to await directly.</summary>
+    static async Task PollAsync(LibrarySync sync, Func<bool> until, CancellationToken ct, int timeoutMs = 2000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!until() && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10, ct);
+            await sync.WaitForIdleAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PostDrainResync_ThatThrows_IsRetried_ThenResolves()
+    {
+        const string uri = "spotify:playlist:p";
+        var header = new Pl.SelectedListContent { Attributes = new Pl.ListAttributes { Name = "Mine" } };
+        int playlistCalls = 0;
+        await using var h = new SyncHarness(req =>
+        {
+            if (!req.Url.Contains("/playlist/v2/")) return Ok(Array.Empty<byte>());
+            playlistCalls++;
+            return playlistCalls == 1 ? new HttpResp(500, new Dictionary<string, string>(), Array.Empty<byte>()) : Ok(header.ToByteArray());
+        });
+        h.Sync.ResyncRetryDelay = _ => TimeSpan.Zero;   // collapse the backoff so the test does not sleep for real seconds
+        h.Store.UpsertPlaylist(new Playlist("p", uri, "Old", null, "bob", null, 0));
+
+        h.Resync.Mark(uri);
+        await h.Sync.DrainWritesAsync(TestContext.Current.CancellationToken);   // attempt 0: the GET fails -> Failed, retry scheduled
+
+        await PollAsync(h.Sync, () => h.Resync.Get(uri).Phase == PlaylistResyncQueue.Phase.None, TestContext.Current.CancellationToken);
+
+        Assert.Equal(PlaylistResyncQueue.Phase.None, h.Resync.Get(uri).Phase);
+        Assert.Equal(2, h.PlaylistGets);   // one failed attempt, one that converged
+    }
+
+    [Fact]
+    public async Task PostDrainResync_ExhaustsRetries_StaysFailed()
+    {
+        const string uri = "spotify:playlist:p";
+        await using var h = new SyncHarness(req =>
+            req.Url.Contains("/playlist/v2/") ? new HttpResp(500, new Dictionary<string, string>(), Array.Empty<byte>()) : Ok(Array.Empty<byte>()));
+        h.Sync.ResyncRetryDelay = _ => TimeSpan.Zero;
+        h.Store.UpsertPlaylist(new Playlist("p", uri, "Old", null, "bob", null, 0));
+
+        h.Resync.Mark(uri);
+        await h.Sync.DrainWritesAsync(TestContext.Current.CancellationToken);
+
+        await PollAsync(h.Sync, () => h.Resync.Get(uri) is { Phase: PlaylistResyncQueue.Phase.Failed, Attempts: 4 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(PlaylistResyncQueue.Phase.Failed, h.Resync.Get(uri).Phase);
+        Assert.Equal(4, h.Resync.Get(uri).Attempts);   // LibrarySync.MaxResyncAttempts — stays Failed, no further auto-retry
+        int getsAtGiveUp = h.PlaylistGets;
+        await Task.Delay(120, TestContext.Current.CancellationToken);
+        await h.Sync.WaitForIdleAsync();
+        Assert.Equal(getsAtGiveUp, h.PlaylistGets);   // no further GETs once retries are exhausted
+    }
+
+    [Fact]
+    public async Task AnyConvergencePath_Resolves()
+    {
+        const string uri = "spotify:playlist:p";
+        await using var h = new SyncHarness(req => req.Url.Contains("/playlist/v2/")
+            ? Ok(new Pl.SelectedListContent { UpToDate = true }.ToByteArray())
+            : Ok(Array.Empty<byte>()));
+        h.Store.UpsertPlaylist(new Playlist("p", uri, "Mine", null, "bob", null, 0));
+        h.Store.SetMembership(uri, new[] { M("a01", "spotify:track:a") }, Rev24(1));
+        h.Sync.SetOpenContext(uri);
+
+        h.Resync.Mark(uri);
+        Assert.Equal(PlaylistResyncQueue.Phase.Marked, h.Resync.Get(uri).Phase);
+
+        // Gate 4 (a new, well-formed head with no usable parent and no ops) on the OPEN uri revalidates directly —
+        // no DrainWrites involved. RevalidateCoreAsync resolves the resync entry on every convergence path, not just
+        // the post-drain one.
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, ParentRev: null, NewRev: Rev24(2), Ops: null, Done: done));
+        await done.Task;
+
+        Assert.Equal(PlaylistResyncQueue.Phase.None, h.Resync.Get(uri).Phase);
+    }
 }

@@ -125,9 +125,9 @@ static class PlaylistMutationDiagnostics
         WaveeLog.Instance.Info(Category, "changes.syncresult.applied", "applied the /changes sync_result ops",
             WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("ops", ops));
 
-    public static void SyncResultTorn(string playlistUri, string reason) =>
+    public static void SyncResultTorn(string playlistUri, string reason, bool baseWasNull) =>
         WaveeLog.Instance.Info(Category, "changes.syncresult.torn", "could not fold the /changes response — revalidating",
-            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("reason", reason));
+            WaveeLogField.Of("uri", playlistUri), WaveeLogField.Of("reason", reason), WaveeLogField.Of("baseNull", baseWasNull));
 
     public static void ReapplyPending(string playlistUri, int ops) =>
         WaveeLog.Instance.Info(Category, "mutation.reapply.pending", "re-applied pending ops onto a fresh snapshot",

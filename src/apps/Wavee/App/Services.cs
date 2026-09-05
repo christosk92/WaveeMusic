@@ -790,6 +790,8 @@ public sealed class Services
         // tile, the "Move to folder…" picker) is decided against `IStore.Rootlist()`, the marker stream the write
         // itself indexes into.
         svc.LibraryBridge.AttachRootlist(store);
+        // The header's "still syncing with Spotify" chip (I4) reads this same shared queue through the bridge.
+        svc.LibraryBridge.AttachResync(resyncQueue);
         svc.RealResyncQueue = resyncQueue;
         svc.RealSessionHost = sessionHost;
         svc.EchoRing = echoRing;
