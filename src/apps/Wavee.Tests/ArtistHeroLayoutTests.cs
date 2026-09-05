@@ -63,8 +63,10 @@ public class ArtistHeroLayoutTests
             ArtistHeroLayout.CompactHeight);
         Assert.Equal(ArtistHeroLayout.NarrowPhotoHeight + ArtistHeroLayout.NarrowExpandedIdentityHeight,
             ArtistHeroLayout.NarrowHeight);
-        Assert.True(ArtistHeroLayout.CompactExpandedIdentityHeight > 240f);
-        Assert.True(ArtistHeroLayout.NarrowExpandedIdentityHeight > 276f);
+        // Lowered again (D82: the header was taller stacked than wide) — bio 2->1 line, one horizontal meta row at
+        // Compact — but the identity band still reserves a real anatomy, not a bare title.
+        Assert.True(ArtistHeroLayout.CompactExpandedIdentityHeight > 200f);
+        Assert.True(ArtistHeroLayout.NarrowExpandedIdentityHeight > 240f);
     }
 
     [Fact]
@@ -124,5 +126,70 @@ public class ArtistHeroLayoutTests
         // a slightly wider band, still nowhere near the old "half again larger" totals.
         Assert.InRange(ArtistHeroLayout.NarrowHeight,
             ArtistHeroLayout.MediumHeight, ArtistHeroLayout.MediumHeight * 1.35f);
+    }
+
+    // ── the viewport cap (§3, D83) ───────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ZeroOrAbsentViewport_LeavesHeightsUnclamped()
+    {
+        var wide = ArtistHeroLayout.For(1440f, pageViewportHeight: 0f, ArtistHeroTier.Wide);
+        Assert.Equal(ArtistHeroLayout.WideHeight, wide.MinHeight);
+    }
+
+    [Fact]
+    public void HorizontalTiers_ClampToTheViewportFraction_NeverBelowTheCopyBudget()
+    {
+        // 900x600 -> a page viewport of ~520 DIP (window height minus the shell's chrome). cap = 520*0.45 = 234,
+        // below WideHeight (360) -> the hero clamps, but never under the copy's own worst-case budget.
+        var m = ArtistHeroLayout.For(1440f, pageViewportHeight: 520f, ArtistHeroTier.Wide);
+        Assert.True(m.MinHeight < ArtistHeroLayout.WideHeight);
+        Assert.True(m.MinHeight >= ArtistHeroLayout.CopyBudgetFor(ArtistHeroTier.Wide));
+    }
+
+    [Fact]
+    public void StackedTiers_ClampThePhotoBandButKeepTheFullIdentityBand()
+    {
+        var m = ArtistHeroLayout.For(320f, pageViewportHeight: 300f, ArtistHeroTier.Narrow);
+        Assert.True(m.MinHeight < ArtistHeroLayout.NarrowHeight);
+        // The identity band's full anatomy survives the clamp; only the photo band above it gives.
+        float photo = ArtistHeroLayout.PhotoHeightFor(m);
+        Assert.True(photo >= ArtistHeroLayout.MinPhotoHeight);
+        Assert.True(m.MinHeight - photo >= ArtistHeroLayout.IdentityHeightFor(ArtistHeroTier.Narrow) - 0.5f);
+    }
+
+    [Fact]
+    public void PhotoHeightFor_NeverBelowMinPhotoHeight()
+    {
+        foreach (var tier in new[] { ArtistHeroTier.Narrow, ArtistHeroTier.Compact, ArtistHeroTier.Medium, ArtistHeroTier.Wide })
+        {
+            float width = tier switch
+            {
+                ArtistHeroTier.Narrow => 320f,
+                ArtistHeroTier.Compact => 500f,
+                ArtistHeroTier.Medium => 700f,
+                _ => 1440f,
+            };
+            var m = ArtistHeroLayout.For(width, pageViewportHeight: 50f, tier);
+            Assert.True(ArtistHeroLayout.PhotoHeightFor(m) >= ArtistHeroLayout.MinPhotoHeight);
+        }
+    }
+
+    [Fact]
+    public void GenerousViewport_NeverClampsBelowTheBaseHeight()
+    {
+        var m = ArtistHeroLayout.For(1440f, pageViewportHeight: 4000f, ArtistHeroTier.Wide);
+        Assert.Equal(ArtistHeroLayout.WideHeight, m.MinHeight);
+    }
+
+    [Fact]
+    public void HeroHeightForOverloads_AgreeWithForsMinHeight()
+    {
+        Assert.Equal(
+            ArtistHeroLayout.For(1440f, 520f, ArtistHeroTier.Wide).MinHeight,
+            ArtistHeroLayout.HeroHeightFor(1440f, 520f));
+        float h = ArtistHeroLayout.HeroHeightFor(1440f, 520f);
+        Assert.Equal(h + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(1440f, 520f));
+        Assert.Equal(h / (h + ArtistHeroLayout.ContentBlendTail), ArtistHeroLayout.BlendBoundaryFor(1440f, 520f));
     }
 }

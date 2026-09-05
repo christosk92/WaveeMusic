@@ -148,6 +148,16 @@ sealed class HomePage : Component
         // reseed on every All<->facet swap and throw away every measured correction belonging to both.
         var facetLayout = UseMemo(static () => new HomeFacetVirtualLayout(), DepKey.Empty);
 
+        // The hero's own viewport-aware density (§1 of the responsive plan): the page's visible content height, not
+        // the raw window — a maximized 4K window and a snapped half-window both have plenty of WIDTH, but only one of
+        // them has the vertical room for the hero's full copy budget. `heroTier` is the hysteresis memory the render
+        // arm and the estimator must share (HomeHeroLayout.TierFor), so a resize sitting on a tier boundary cannot
+        // have the renderer and the estimator disagree about which tier is current.
+        float pageH = Wavee.Features.Shell.ShellViewport.PageHeightFor(UseContext(Viewport.Size).Height);
+        var heroTier = UseRef(HomeHeroTier.Wide);
+        homeLayout.SetPageViewportHeight(pageH);
+        facetLayout.SetPageViewportHeight(pageH);
+
         // The background home-refresh loop, tied to this component's lifetime. Its Reactive.OnCleanup fires on unmount
         // (KeepAlive eviction / a page whose cache entry was evicted) and before each re-run. Without it, each cold
         // remount of Home leaked an orphaned 60s PeriodicTimer loop that COMPOUNDED over a long session. Mirrors the
@@ -612,12 +622,18 @@ sealed class HomePage : Component
                 case HomeFacetRowKind.Hero:
                 {
                     var card = g.Cards[0];
+                    bool hasPulse = card.Meta is { ExpiresAtMs: > 0 };
                     return HomeModules.SourceModule(g,
-                        Responsive.Of(w => HomeCards.HeroBand(card, HeroEyebrow(card, feed), CardMeta(card),
-                            () => PlayCard(card), () => ShuffleCard(card), () => NavCard(card),
-                            () => lib?.ToggleSaved(card.Uri, card.Title),
-                            ChromeOf(card).Menu,
-                            w),
+                        Responsive.Of(w =>
+                        {
+                            var m = HomeHeroLayout.For(w, pageH, hasPulse, heroTier.Value);
+                            heroTier.Value = m.Tier;
+                            return HomeCards.HeroBand(card, HeroEyebrow(card, feed), CardMeta(card),
+                                () => PlayCard(card), () => ShuffleCard(card), () => NavCard(card),
+                                () => lib?.ToggleSaved(card.Uri, card.Title),
+                                ChromeOf(card).Menu,
+                                in m);
+                        },
                             fallback: 900f),
                         open);
                 }
@@ -686,11 +702,17 @@ sealed class HomePage : Component
                 case HomeRow.Hero:
                     return landing.Get(HomeGroupKind.Hero) is { Group: { } h }
                         ? HomeModules.SourceModule(h,
-                            Responsive.Of(w => HomeCards.HeroBand(h.Cards[0], HeroEyebrow(h.Cards[0], feed), CardMeta(h.Cards[0]),
-                                () => PlayCard(h.Cards[0]), () => ShuffleCard(h.Cards[0]), () => NavCard(h.Cards[0]),
-                                () => lib?.ToggleSaved(h.Cards[0].Uri, h.Cards[0].Title),
-                                ChromeOf(h.Cards[0]).Menu,
-                                w),
+                            Responsive.Of(w =>
+                            {
+                                bool hasPulse = h.Cards[0].Meta is { ExpiresAtMs: > 0 };
+                                var m = HomeHeroLayout.For(w, pageH, hasPulse, heroTier.Value);
+                                heroTier.Value = m.Tier;
+                                return HomeCards.HeroBand(h.Cards[0], HeroEyebrow(h.Cards[0], feed), CardMeta(h.Cards[0]),
+                                    () => PlayCard(h.Cards[0]), () => ShuffleCard(h.Cards[0]), () => NavCard(h.Cards[0]),
+                                    () => lib?.ToggleSaved(h.Cards[0].Uri, h.Cards[0].Title),
+                                    ChromeOf(h.Cards[0]).Menu,
+                                    in m);
+                            },
                                 fallback: 900f))
                         : new BoxEl();
                 case HomeRow.Weekly:
@@ -1223,6 +1245,13 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
     // change together from this call site's point of view.
     byte _chartsState;
     bool _chartsEmpty;
+    // Home hero viewport-aware density (§1 of the responsive plan): the page viewport height and whether the hero
+    // card carries a daylist pulse row are the two inputs HomeHeroLayout.For needs beyond width, and _heroTier is
+    // the hysteresis memory this estimator's OWN Hero-row arm advances — never read by anything else, so it can
+    // never disagree with itself.
+    float _pageViewportH;
+    bool _heroHasPulse;
+    HomeHeroTier _heroTier = HomeHeroTier.Wide;
     int _shapeVersion;
     int _seededVersion = -1;
     float _seededCross = float.NaN;
@@ -1234,6 +1263,16 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
         if (state == _chartsState && empty == _chartsEmpty) return;
         _chartsState = state;
         _chartsEmpty = empty;
+        _shapeVersion++;
+    }
+
+    /// <summary>Mirror the page's live viewport height in (HomePage reads <c>Viewport.Size</c> and derives it through
+    /// <c>ShellViewport.PageHeightFor</c>) — the layout object itself has no context access. A resize past the
+    /// Compact/Full density boundary is exactly the kind of change that must reseed the Hero row's estimate.</summary>
+    public void SetPageViewportHeight(float pageViewportHeight)
+    {
+        if (MathF.Abs(pageViewportHeight - _pageViewportH) <= 0.5f) return;
+        _pageViewportH = pageViewportHeight;
         _shapeVersion++;
     }
 
@@ -1262,6 +1301,8 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
             _rows = CopyRows(landing.Rows);
             changed = true;
         }
+        bool heroHasPulse = landing.Get(HomeGroupKind.Hero)?.Group.Cards is [{ Meta.ExpiresAtMs: > 0 }, ..];
+        if (heroHasPulse != _heroHasPulse) { _heroHasPulse = heroHasPulse; changed = true; }
         if (changed) _shapeVersion++;
     }
 
@@ -1348,16 +1389,6 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
             return extent;
         }
 
-        float First(HomeGroupKind kind)
-        {
-            if (!_groups.TryGetValue(kind, out var groups)) return 0f;
-            for (int i = 0; i < groups.Count; i++)
-                if (groups[i].Count > 0)
-                    return (groups[i].Titled ? Head : 0f)
-                        + HomeModuleLayout.ContentExtent(kind, available, groups[i].Count);
-            return 0f;
-        }
-
         float RowStack(HomeGroupKind kind, bool shelfOwnsHeader = false)
         {
             float extent = Stack(kind, shelfOwnsHeader);
@@ -1372,14 +1403,24 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
             return left + HomeModuleLayout.Gap(width) + right + outerGap;
         }
 
+        // The hero row bypasses First()/Stack(): it is the one module whose extent depends on the PAGE viewport
+        // height and whether it carries a daylist pulse, neither of which the generic per-kind helpers know about.
+        // _heroTier is advanced here exactly once per Estimate call, mirroring the tier the render arm's own
+        // HomeHeroLayout.For call resolves for the same width.
+        float HeroRowExtent()
+        {
+            if (!_groups.TryGetValue(HomeGroupKind.Hero, out var groups) || groups.Count == 0 || groups[0].Count == 0)
+                return 0f;
+            var m = HomeHeroLayout.For(available, _pageViewportH, _heroHasPulse, _heroTier);
+            _heroTier = m.Tier;
+            return (groups[0].Titled ? Head : 0f) + m.Height;
+        }
+
         return row switch
         {
             // Greeting fallback (only when there is no hero) + the chip row.
             HomeRow.Chips => (Count(HomeGroupKind.Hero) > 0 ? 0f : 84f) + 40f + Spacing.XXL + gap,
-            // Through ContentExtent, not a second literal: the hero band's authored text/action allocation and the
-            // estimator's prediction are the same arithmetic.
-            HomeRow.Hero => Count(HomeGroupKind.Hero) == 0 ? 0f
-                : First(HomeGroupKind.Hero) + gap,
+            HomeRow.Hero => Count(HomeGroupKind.Hero) == 0 ? 0f : HeroRowExtent() + gap,
             HomeRow.Weekly => RowStack(HomeGroupKind.WeeklyPair),
             HomeRow.Quick => RowStack(HomeGroupKind.QuickGrid),
             // PagedShelf owns the recents header, chevrons, lift clearance, and shared MediaCard height.
@@ -1465,15 +1506,26 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
 /// other arithmetic.</para></summary>
 sealed class HomeFacetVirtualLayout : IMeasuredVirtualLayout
 {
-    readonly record struct RowMetric(HomeFacetRowKind Kind, int Count, bool Titled);
+    readonly record struct RowMetric(HomeFacetRowKind Kind, int Count, bool Titled, bool HasPulse);
 
     static readonly RowMetric[] NoRows = [];
     RowMetric[] _rows = NoRows;
 
     readonly ExtentTable _extents = new(0, 1f);
+    // Same viewport-aware Hero geometry as HomeFeedVirtualLayout — see its own fields' doc comment.
+    float _pageViewportH;
+    HomeHeroTier _heroTier = HomeHeroTier.Wide;
     int _shapeVersion;
     int _seededVersion = -1;
     float _seededCross = float.NaN;
+
+    /// <summary>Mirror the page's live viewport height in — see <see cref="HomeFeedVirtualLayout.SetPageViewportHeight"/>.</summary>
+    public void SetPageViewportHeight(float pageViewportHeight)
+    {
+        if (MathF.Abs(pageViewportHeight - _pageViewportH) <= 0.5f) return;
+        _pageViewportH = pageViewportHeight;
+        _shapeVersion++;
+    }
 
     /// <summary>The section rows plus the two chrome rows the page always has: the chip block at 0 and the tail last.</summary>
     public int ItemCount => _rows.Length + 2;
@@ -1490,7 +1542,8 @@ sealed class HomeFacetVirtualLayout : IMeasuredVirtualLayout
     }
 
     static RowMetric Metric(HomeFacetRow row)
-        => new(row.Kind, row.Group.Cards.Count, row.Group.Title is { Length: > 0 });
+        => new(row.Kind, row.Group.Cards.Count, row.Group.Title is { Length: > 0 },
+               row.Group.Cards is [{ Meta.ExpiresAtMs: > 0 }, ..]);
 
     static bool SameShape(RowMetric[] a, IReadOnlyList<HomeFacetRow> b)
     {
@@ -1523,6 +1576,13 @@ sealed class HomeFacetVirtualLayout : IMeasuredVirtualLayout
     // A module head is Subtitle 20/28 plus the module head gap - the same constant the landing estimator uses.
     const float Head = 28f + HomeModuleLayout.HeadGap;
 
+    float FacetHeroHeight(float available, bool hasPulse)
+    {
+        var m = HomeHeroLayout.For(available, _pageViewportH, hasPulse, _heroTier);
+        _heroTier = m.Tier;
+        return m.Height;
+    }
+
     float Estimate(int index, float cross)
     {
         // The SAME arithmetic HomeRowShell performs: cap the row at the app page measure, then take the page gutter off
@@ -1544,10 +1604,9 @@ sealed class HomeFacetVirtualLayout : IMeasuredVirtualLayout
         if (metric.Count == 0) return 0f;
         return metric.Kind switch
         {
-            // Through ContentExtent, not a second literal: the hero band's authored text/action allocation and the
-            // estimator's prediction stay the same arithmetic.
-            HomeFacetRowKind.Hero => (metric.Titled ? Head : 0f)
-                + HomeModuleLayout.ContentExtent(HomeGroupKind.Hero, available, 1) + gap,
+            // Viewport-aware, same as HomeFeedVirtualLayout's own Hero arm: the height depends on the PAGE viewport
+            // height and the pulse row too, neither of which the generic ContentExtent(kind, width, count) knows.
+            HomeFacetRowKind.Hero => (metric.Titled ? Head : 0f) + FacetHeroHeight(available, metric.HasPulse) + gap,
             // Every PagedShelf owns its own header, chevrons and lift clearance, so ShelfExtent IS the whole row.
             HomeFacetRowKind.Podcasts or HomeFacetRowKind.Recents or HomeFacetRowKind.Feed or HomeFacetRowKind.Shelf
                 => HomeModuleLayout.ShelfExtent(available) + gap,

@@ -47,6 +47,11 @@ sealed class ArtistPopular : Component
     readonly PlaybackBridge? _bridge;
     readonly Services _svc;
     readonly Func<ColorF> _accent;
+    // The chart column's own width — NOT the whole TopBand: TopBand gives the chart Grow 2 against the releases
+    // rail's Grow 1, so this is ~⅔ of the band when a featured column exists, or the whole band when it doesn't.
+    // Frozen at mount (component-props contract): a live-resize row-density flip is not worth a signal here, since
+    // ArtistPage.TopTracks already remounts through its own tier flips for the same reason (_topBandWide).
+    readonly float _bandWidth;
     // The list actually being charted: the seed until the extended fetch lands, then the merged one. Render writes it
     // BEFORE building the row children, so the frozen-prop ChartRows read the current list at their own render.
     IReadOnlyList<Track> _live;
@@ -68,9 +73,11 @@ sealed class ArtistPopular : Component
     // selection change re-skins the realized pills on the COMPOSITOR instead of re-rendering the chart.
     readonly SelectionModel _selection = new() { Mode = ItemsSelectionMode.Extended };
 
-    public ArtistPopular(IReadOnlyList<Track> tracks, string ctx, PlaybackBridge? bridge, Services svc, string title, Func<ColorF> accent)
+    public ArtistPopular(IReadOnlyList<Track> tracks, string ctx, PlaybackBridge? bridge, Services svc, string title,
+                         Func<ColorF> accent, float bandWidth)
     {
         _tracks = tracks; _live = tracks; _ctx = ctx; _bridge = bridge; _svc = svc; _title = title; _accent = accent;
+        _bandWidth = bandWidth;
     }
 
     // The chart shows the FULL extended popular list (overview seed ∪ artist-top-tracks-extensions), not just the
@@ -125,7 +132,10 @@ sealed class ArtistPopular : Component
         // Never offer more columns than the rows can fill: a ≤5-track chart is ONE full-width column, not two
         // half-empty ones (the shelf's own fit is count-independent, so this is where that clamp lives).
         int maxCols = Math.Clamp((total + MaxRows - 1) / MaxRows, 1, MaxColumns);
-        float rowH = _classic ? ClassicRowH : RowH;
+        // A narrow BAND (the chart column ITSELF, threaded in from TopBand — see _bandWidth's own doc comment) drops
+        // to the compact 48-DIP row instead of the modern 56, which is what lets five rows fit in less vertical space
+        // once a shrunk header (ArtistHeroLayout.MaxViewportFraction) frees up room above the chart.
+        float rowH = _classic ? ClassicRowH : _bandWidth < ColBreakW ? ClassicRowH : RowH;
         float cellGap = _classic ? Spacing.S : CellGap;
 
         // No measured width, no page signal, no pages clamp: the shelf self-measures, owns the page, and snaps. The only

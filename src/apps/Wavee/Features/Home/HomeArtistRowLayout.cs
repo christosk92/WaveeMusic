@@ -45,10 +45,26 @@ public static class HomeArtistRowLayout
     // measured-width SCALE so the strip stretches to fill instead of packing left.
     public static float BaseArtSize(int i) => i == 0 ? 76f : i < 3 ? 60f : 46f;
 
-    /// <summary>Never SHRINK the ramp below the prototype's own sizing — only grow it to fill spare width.</summary>
-    public const float MinArtScale = 1f;
+    /// <summary>Shrink down to about half the prototype ramp before anything else gives (46 → 23 for the tail) — the
+    /// row must NEVER wrap, so on a narrow card the avatars shrink instead.</summary>
+    public const float MinArtScale = 0.5f;
     /// <summary>A strip of two or three top artists on a very wide card must not turn into portrait-sized avatars.</summary>
     public const float MaxArtScale = 1.6f;
+
+    /// <summary>The narrowest pod. 40 = a 32 avatar + 8 chrome; below this the row stops shrinking and clips at the
+    /// trailing edge instead of wrapping (only reachable below ~520 DIP with ten artists at this floor).</summary>
+    public const float MinPodWidth = 40f;
+
+    /// <summary>The pod column for an art size: the art plus its chrome, floored — the 60-DIP floor RankedAvatar used
+    /// to hard-code is what made ten pods 696 DIP wide no matter what the measured width was.</summary>
+    public static float PodWidth(float artSize) => MathF.Max(artSize + 8f, MinPodWidth);
+
+    /// <summary>Name lines under a pod: two at full scale, one when squeezed, none when tiny (the tooltip carries the
+    /// accessible name instead).</summary>
+    public static int LabelLines(float scale) => scale >= 0.85f ? 2 : scale >= 0.65f ? 1 : 0;
+
+    /// <summary>Rank badge edge: 20 at full scale, 16 when the avatar is squeezed under ~48 DIP.</summary>
+    public static float BadgeSize(float scale) => scale >= 0.8f ? 20f : 16f;
 
     /// <summary>The scale that stretches the podium to fill the width a caller already fitted <paramref name="count"/>
     /// equal columns into (<c>FillRowVirtualLayout.Fit</c>'s own arithmetic, forced to exactly <paramref name="count"/>
@@ -73,6 +89,10 @@ public static class HomeArtistRowLayout
     }
 
     public static float ArtSize(int i, float scale) => BaseArtSize(i) * scale;
+
+    /// <summary>The slot every pod reserves for its art — the tallest avatar in the strip (rank 1's), so every
+    /// label in the row lands on one baseline.</summary>
+    public static float SlotHeight(float scale) => ArtSize(0, scale);
 
     /// <summary>This row's OWN module-bottom gap — deliberately NOT <c>HomeModuleLayout.Gap</c>, which is shared by
     /// every other Home row (a change there would compact every module, not just this one). 40/32 → 32/24, the same

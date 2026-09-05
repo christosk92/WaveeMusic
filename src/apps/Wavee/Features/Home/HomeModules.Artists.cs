@@ -95,16 +95,22 @@ sealed class HomeArtistRow : Component
         float width = measuredWidth.Value;
         float effectiveWidth = width > 0.5f ? width : HomeModuleLayout.FallbackWidth;
         // The tier is resolved HERE, from this row's own measured width, and pushed down to Disclosure/MixviewPanel —
-        // the D17 fix: no more `Responsive.Of` boundary for either to freeze props behind.
-        int tier = HomeArtistRowLayout.NominalTierFor(effectiveWidth);
+        // the D17 fix: no more `Responsive.Of` boundary for either to freeze props behind. Hysteretic (the rule
+        // already existed but went unused): narrow immediately, widen back only once clear of the recovery band, so a
+        // resize sitting right on the 900-DIP boundary cannot flap the disclosure's split layout every frame.
+        var tierRef = UseRef(HomeArtistRowLayout.InitialTierForViewport(UseContext(Viewport.Size).Width));
+        int tier = HomeArtistRowLayout.TierFor(effectiveWidth, tierRef.Value, initialized: width > 0.5f);
+        tierRef.Value = tier;
 
         // #82 — the ramp is a function of the measured width: FillRowVirtualLayout.Fit solves the same per-column
         // width every other Home/Browse row derives from its viewport (forced to exactly `artists.Count` columns,
         // since the podium always shows every artist — nothing here virtualizes), and HomeArtistRowLayout scales the
         // prototype's 76/60/46 ramp around it so the strip stretches to fill a wide card instead of packing left.
-        const float PodChrome = Spacing.S;   // the "+8" RankedAvatar's own `w = max(artSize+8, 60)` adds per pod
+        // The fit is allowed to go BELOW the ramp's own average box width (minCardW is the POD FLOOR, not rank-1's
+        // own box) — that is what lets ten artists shrink to fit one row instead of wrapping under width pressure.
+        const float PodChrome = Spacing.S;   // the "+8" RankedAvatar's own PodWidth(artSize) adds per pod
         float podiumContentW = MathF.Max(0f, effectiveWidth - 2f * Spacing.M);
-        var (_, fittedPodW) = FillRowVirtualLayout.Fit(podiumContentW, HomeArtistRowLayout.BaseArtSize(0) + PodChrome,
+        var (_, fittedPodW) = FillRowVirtualLayout.Fit(podiumContentW, HomeArtistRowLayout.MinPodWidth,
             9999f, Spacing.S, perPageOverride: artists.Count);
         float rampScale = HomeArtistRowLayout.RampScaleFor(fittedPodW, artists.Count, PodChrome);
 
@@ -128,9 +134,12 @@ sealed class HomeArtistRow : Component
             strip.Add(pod is BoxEl b ? b with { Key = "home-topartist:" + a.Uri } : pod);
         }
 
+        // ONE row, always: the pods shrink (HomeArtistRowLayout.RampScaleFor / RankedAvatar's own scale-driven label
+        // and badge collapse) rather than wrapping to a second line. ClipToBounds is the last resort — only reachable
+        // below ~520 DIP with ten artists already at MinPodWidth — and clips the trailing pod instead of wrapping it.
         var podium = new BoxEl
         {
-            Direction = 0, Wrap = true, Gap = Spacing.S, MinWidth = 0f,
+            Direction = 0, Wrap = false, Gap = Spacing.S, MinWidth = 0f, ClipToBounds = true,
             Padding = Edges4.All(Spacing.M),
             Children = [.. strip],
         };

@@ -274,10 +274,10 @@ static class HomeCards
     /// virtual estimator retain the same geometry while the artwork can touch the clipped surface. The pulse row
     /// (<see cref="FlipCountdown"/>) is reserved in that geometry for every hero; non-daylist mounts collapse it.</para></summary>
     public static Element HeroBand(HomeCard c, string eyebrow, string meta, Action onPlay, Action onShuffle,
-                                   Action onNav, Action onLike, MenuAttach? menu, float width)
+                                   Action onNav, Action onLike, MenuAttach? menu, in HomeHeroMetrics metrics)
     {
+        float width = metrics.Width;
         var accent = AccentOrChrome(c);
-        var metrics = HomeHeroLayout.For(width);
         TextEl title = metrics.Tier switch
         {
             HomeHeroTier.Wide => WaveeType.ArtistTitle(c.Title),
@@ -285,54 +285,59 @@ static class HomeCards
             _ => WaveeType.PageHero(c.Title),
         };
 
-        // Pulse slot always present so ContentHeight's PulseBlock matches the children list; empty when no daylist window.
-        Element pulse = c.Meta is { ExpiresAtMs: > 0 } m
+        // Pulse slot present only when the metrics reserved it (a daylist window) — the estimator and this renderer
+        // agree on ShowPulse, so a non-daylist hero neither reserves nor pays for the 40-DIP row.
+        Element? pulse = metrics.ShowPulse && c.Meta is { ExpiresAtMs: > 0 } m
             ? Embed.Comp(() => new FlipCountdown
               {
                   // Chrome fill — FlipCountdown contrast-grades it to TextInk so the digits stay the daylist hue
                   // without disappearing into the peach/yellow wash (the Play capsule keeps this fill as a plate).
                   ExpiresAtMs = m.ExpiresAtMs, Accent = () => accent, BottomMargin = Spacing.M,
               }) with { Key = c.Uri + ":" + m.ExpiresAtMs }
-            : new BoxEl();
+            : null;
+
+        var copyChildren = new List<Element>(6)
+        {
+            // The prototype's `.hero-eyebrow { text-transform: uppercase }` is NOT honoured, and this is the site
+            // that proves the rule: this string is "Good morning, {user} · your daylist" — localized copy carrying
+            // the USER'S OWN DISPLAY NAME. Upper-casing it shouted a person's name back at them and mangled it in
+            // any locale with casing rules Invariant does not model. The eyebrow's rung + weight + tracking already
+            // make it read as a label; case never had to.
+            WaveeType.Eyebrow(eyebrow) with
+            {
+                Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                Margin = new Edges4(0f, 0f, 0f, Spacing.S),
+            },
+            title with
+            {
+                Wrap = TextWrap.Wrap, MaxLines = metrics.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Margin = new Edges4(0f, 0f, 0f, Spacing.M),
+            },
+        };
+        if (metrics.ShowTags && c.Meta?.Seeds is { Count: > 0 } seeds)
+            copyChildren.Add(new BoxEl
+            {
+                Direction = 0, Wrap = true, Gap = Spacing.XS, MinWidth = 0f,
+                Margin = new Edges4(0f, 0f, 0f, Spacing.M),
+                Children = [.. Tags(seeds, 6)],
+            });
+        if (meta.Length > 0)
+            // Body (14/20), not a bespoke 13/19. HomeHeroLayout.MetaBlock tracks this pair exactly. Compact density
+            // keeps ONE line (the estimator's CompactMetaBlock assumes it) instead of two.
+            copyChildren.Add(Body(meta) with
+            {
+                Color = Tok.TextSecondary, MaxLines = metrics.Density == HomeHeroDensity.Compact ? 1 : 2,
+                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Margin = new Edges4(0f, 0f, 0f, Spacing.L),
+            });
+        if (pulse is not null) copyChildren.Add(pulse);
 
         var copy = new BoxEl
         {
             Direction = 1, Width = MathF.Max(1f, width - 2f * metrics.CopyPaddingX), Gap = 0f, MinWidth = 0f,
             Children =
             [
-                // The prototype's `.hero-eyebrow { text-transform: uppercase }` is NOT honoured, and this is the site
-                // that proves the rule: this string is "Good morning, {user} · your daylist" — localized copy carrying
-                // the USER'S OWN DISPLAY NAME. Upper-casing it shouted a person's name back at them and mangled it in
-                // any locale with casing rules Invariant does not model. The eyebrow's rung + weight + tracking already
-                // make it read as a label; case never had to.
-                WaveeType.Eyebrow(eyebrow) with
-                {
-                    Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    Margin = new Edges4(0f, 0f, 0f, Spacing.S),
-                },
-                title with
-                {
-                    Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    Margin = new Edges4(0f, 0f, 0f, Spacing.M),
-                },
-                c.Meta?.Seeds is { Count: > 0 } seeds
-                    ? new BoxEl
-                    {
-                        Direction = 0, Wrap = true, Gap = Spacing.XS, MinWidth = 0f,
-                        Margin = new Edges4(0f, 0f, 0f, Spacing.M),
-                        Children = [.. Tags(seeds, 6)],
-                    }
-                    : new BoxEl(),
-                meta.Length > 0
-                    // Body (14/20), not a bespoke 13/19. HomeHeroLayout.MetaBlock tracks this pair exactly.
-                    ? Body(meta) with
-                    {
-                        Color = Tok.TextSecondary, MaxLines = 2,
-                        Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                        Margin = new Edges4(0f, 0f, 0f, Spacing.L),
-                    }
-                    : new BoxEl(),
-                pulse,
+                .. copyChildren,
                 // `.hero-actions` — the app's ONE primary-action grammar: an accent Play capsule on the daylist's own
                 // graded colour, a standard Shuffle capsule beside it, then the icon-only arm of the same capsule for
                 // like and overflow. This used to be a private 32px/13px cluster whose own doc comment declared the
@@ -991,8 +996,17 @@ static class HomeCards
     public static Element RankedAvatar(RelatedArtist a, int rank, bool selected, float artSize, float slotHeight,
                                        Action onSelect, MenuAttach? menu = null)
     {
-        float w = MathF.Max(artSize + Spacing.S, 60f);
-        return new BoxEl
+        float w = Wavee.Features.Home.HomeArtistRowLayout.PodWidth(artSize);
+        // The scale that shrunk the ramp to artSize (rank 0's own BaseArtSize is 76, so this is exact for every rank
+        // since every pod in the strip shares the SAME scale — HomeArtistRowLayout.RampScaleFor solves one scale for
+        // the whole row). Cheaper than passing a second parameter through every call site: rank-1's own base is 76.
+        float scale = artSize / 76f;
+        int labelLines = Wavee.Features.Home.HomeArtistRowLayout.LabelLines(scale);
+        float badge = Wavee.Features.Home.HomeArtistRowLayout.BadgeSize(scale);
+        bool showBadge = scale >= 0.55f;
+        int decodePx = Math.Clamp((int)MathF.Ceiling(artSize * 2f), 64, 192);
+
+        Element pod = new BoxEl
         {
             Direction = 1, Gap = Spacing.S, Shrink = 0f, AlignItems = FlexAlign.Center, Width = w,
             Padding = new Edges4(Spacing.XXS, Spacing.S, Spacing.XXS, Spacing.S),
@@ -1016,11 +1030,12 @@ static class HomeCards
                             // BorderWidth has NO layout effect in this engine, so the ring would paint over the art's
                             // outer 3px. Inset the artwork by hand to get WinUI's border-insets-child behaviour.
                             Padding = selected ? new Edges4(3f, 3f, 3f, 3f) : default,
-                            Children =
-                            [
+                            Children = showBadge
+                                ?
+                                [
                                 Surfaces.Artwork(a.Image, SpotifyExportMapper.Hash(a.Uri),
                                     selected ? artSize - 6f : artSize, selected ? artSize - 6f : artSize,
-                                    Radii.Full, decodePx: 128),
+                                    Radii.Full, decodePx: decodePx),
                                 // `.rk` — the rank plate on the ARTWORK's leading corner, which is why it lives inside the
                                 // art box and not beside it in the slot: the slot is as tall as the LARGEST avatar (so
                                 // every name lands on one baseline), so a pill anchored to the slot floated 30px above a
@@ -1033,10 +1048,10 @@ static class HomeCards
                                 // dark — an invisible plate on the card it sits on, opaque white in light.)
                                 new BoxEl
                                 {
-                                    Width = rank >= 10 ? 28f : 20f, Height = Spacing.XL,
+                                    Width = rank >= 10 ? badge + 8f : badge, Height = badge,
                                     AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                                     AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                                    Corners = Radii.Circle(Spacing.XL),
+                                    Corners = Radii.Circle(badge),
                                     Fill = selected ? Tok.AccentDefault : Tok.FillControlSolid,
                                     BorderWidth = selected ? 0f : 1f, BorderColor = Tok.StrokeCardDefault,
                                     HitTestVisible = false,
@@ -1051,18 +1066,29 @@ static class HomeCards
                                         },
                                     ],
                                 },
-                            ],
+                                ]
+                                : [
+                                Surfaces.Artwork(a.Image, SpotifyExportMapper.Hash(a.Uri),
+                                    selected ? artSize - 6f : artSize, selected ? artSize - 6f : artSize,
+                                    Radii.Full, decodePx: decodePx),
+                                ],
                         },
                     ],
                 },
-                Caption(a.Name) with
-                {
-                    Weight = 600, Color = Tok.TextPrimary,
-                    Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
-                    MaxWidth = w, MinWidth = 0f,
-                },
+                labelLines > 0
+                    ? Caption(a.Name) with
+                    {
+                        Weight = 600, Color = Tok.TextPrimary,
+                        Wrap = TextWrap.Wrap, MaxLines = labelLines, Trim = TextTrim.CharacterEllipsis,
+                        MaxWidth = w, MinWidth = 0f,
+                    }
+                    : new BoxEl(),
             ],
         }.WithMenu(menu).Interactive(Interaction.Subtle);
+
+        // Too tiny to carry a visible label: the accessible name still rides the tooltip, matching every other
+        // icon-only control in the app.
+        return labelLines == 0 ? ToolTip.Wrap(pod, a.Name) : pod;
     }
 
     /// <summary>The standard "Go to artist" row (#83's nav route: right-click on a Mixview pod/node, since left-click is

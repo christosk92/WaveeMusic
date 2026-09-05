@@ -17,7 +17,13 @@ public readonly record struct ArtistHeroMetrics(
 }
 
 /// <summary>Responsive geometry for the full-bleed artist hero. The photo always fills the hero; pressure changes only
-/// the copy placement and veil direction. Tier selection retains the detail layout's 24-DIP recovery band.</summary>
+/// the copy placement and veil direction. Tier selection retains the detail layout's 24-DIP recovery band.
+///
+/// <para>A second axis on top of width: the PAGE viewport height (<see cref="Wavee.Features.Shell.ShellViewport"/>).
+/// On a short window the fixed per-tier height used to be paid regardless — on horizontal tiers that is dead air
+/// around a centred copy block (Justify=Center already absorbs slack there, so the height itself can shrink); on
+/// stacked tiers the photo band is what gives, down to <see cref="MinPhotoHeight"/>, because the identity column
+/// below it has a real anatomy (name, bio, meta, actions) that cannot compress further without dropping content.</para></summary>
 public static class ArtistHeroLayout
 {
     // Lowered from 480/760/1040: the old thresholds dropped into the stacked (Compact/Narrow) presentation at
@@ -28,34 +34,55 @@ public static class ArtistHeroLayout
     public const float WideWidth = 880f;
     public const float TierHysteresis = 24f;
 
-    public const float WideHeight = 440f;
-    public const float MediumHeight = 384f;
+    public const float WideHeight = 360f;              // was 440 — 24 pad + ~290 copy + 24 pad + slack
+    public const float MediumHeight = 320f;            // was 384
 
     // Stacked (Compact/Narrow) photo band: the photograph is a FIELD at the top of the hero and the identity column
     // sits BELOW it on the page surface — copy never floats over the picture on these tiers, so there is no overlay
     // veil to size.
-    public const float CompactPhotoHeight = 200f;
-    public const float NarrowPhotoHeight = 176f;
+    public const float CompactPhotoHeight = 160f;      // was 200
+    public const float NarrowPhotoHeight = 136f;       // was 176
 
     // The stacked identity band has a declared WORST-CASE anatomy and its fixed hero must actually reserve it. The
-    // former 344/388 were inflated for a THREE-line stacked title and a vertically-STACKED meta row (rank + listeners
-    // + followers each on their own line) — together good for 80 DIP more than the copy now needs. The name is capped
-    // at 2 lines on every tier (D81 #1) and Compact's meta returned to one horizontal row (D81 #2), so the budget here
-    // is: verified caption (16) + 2-line compact title (2 × 40) + bio (2 × 20) + meta (one 20-DIP row at Compact,
-    // three 20 + 2×4 stacked rows at Narrow, which is why Narrow still needs an equivalent 40-DIP bigger identity
-    // area than a straight line count would suggest) + the inter-block gaps + 12/20 vertical padding + actions.
-    // Compact actions are one 36-DIP row; Narrow owns two such rows plus their 8-DIP gap — that is the whole reason
-    // Narrow's identity band still runs ahead of Compact's after the cut.
-    public const float CompactExpandedIdentityHeight = 252f;
-    public const float NarrowExpandedIdentityHeight = 300f;
-    public const float CompactHeight = CompactPhotoHeight + CompactExpandedIdentityHeight;
-    public const float NarrowHeight = NarrowPhotoHeight + NarrowExpandedIdentityHeight;
+    // former 252/300 were inflated for a THREE-line stacked title and a vertically-stacked meta row; the name is
+    // capped at 2 lines on every tier and Compact's meta is one horizontal row, so the cut below still reserves:
+    // verified caption (16) + 2-line compact title (2 x 40) + bio (1 line, 20) + meta (one 20-DIP row at Compact,
+    // stacked rows at Narrow) + the inter-block gaps + 12/20 vertical padding + actions.
+    public const float CompactExpandedIdentityHeight = 220f;   // was 252 — bio 2->1 line, meta one row, actions 36
+    public const float NarrowExpandedIdentityHeight = 252f;    // was 300 — bio 1 line, meta stacked, two action rows
+    public const float CompactHeight = CompactPhotoHeight + CompactExpandedIdentityHeight;   // 380
+    public const float NarrowHeight = NarrowPhotoHeight + NarrowExpandedIdentityHeight;       // 388
+
+    /// <summary>The hero never exceeds this fraction of the page viewport; on horizontal tiers the air around the
+    /// centred copy gives first, on stacked tiers the PHOTO band shrinks to <see cref="MinPhotoHeight"/>.</summary>
+    public const float MaxViewportFraction = 0.45f;
+    public const float MinPhotoHeight = 96f;
+
+    // The horizontal copy block's own worst case (verified 16 + 2-line name + 1-line bio + meta 20 + actions 36 +
+    // 4 gaps of 8 + 2x24 padding) — the floor a horizontal tier's clamp cannot go under, spelled out as constants so
+    // ArtistHeroLayoutTests can assert MinHeight >= CopyBudgetFor(tier) for every input.
+    const float VerifiedCaption = 16f, NameTwoLine = 80f, BioOneLine = 20f, MetaRow = 20f, ActionsRow = 36f;
+    const float CopyGaps = 4f * Spacing.S;
+    const float CopyPadding = 2f * 24f;
+    public const float WideCopyBudget = CopyPadding + VerifiedCaption + NameTwoLine + BioOneLine + MetaRow + ActionsRow + CopyGaps;
+    public const float MediumCopyBudget = WideCopyBudget;
+
+    public static float CopyBudgetFor(ArtistHeroTier tier) => tier switch
+    {
+        ArtistHeroTier.Wide => WideCopyBudget,
+        _ => MediumCopyBudget,
+    };
+
+    public static float IdentityHeightFor(ArtistHeroTier tier) => tier switch
+    {
+        ArtistHeroTier.Narrow => NarrowExpandedIdentityHeight,
+        _ => CompactExpandedIdentityHeight,
+    };
 
     /// <summary>The photograph's own extent inside the hero: the full hero on horizontal tiers, the top slice on
     /// stacked tiers. Both the banner's media box and <c>HeroArt</c> derive from THIS, so they cannot disagree.</summary>
     public static float PhotoHeightFor(in ArtistHeroMetrics m) => !m.Stacked ? m.MinHeight
-        : m.Tier == ArtistHeroTier.Compact ? CompactPhotoHeight
-        : NarrowPhotoHeight;
+        : MathF.Max(MinPhotoHeight, m.MinHeight - IdentityHeightFor(m.Tier));
 
     public const float WideCopyMaxWidth = 1120f;
     public const float MediumCopyMaxWidth = 760f;
@@ -77,16 +104,30 @@ public static class ArtistHeroLayout
         return ArtistHeroTier.Narrow;
     }
 
-    public static ArtistHeroMetrics For(float width, ArtistHeroTier previous)
+    static ArtistHeroMetrics Base(ArtistHeroTier tier) => tier switch
+    {
+        ArtistHeroTier.Wide => new(tier, WideHeight, Spacing.PageWide, ArtistHeroVeilAxis.Horizontal, WideCopyMaxWidth),
+        ArtistHeroTier.Medium => new(tier, MediumHeight, Spacing.XXXL, ArtistHeroVeilAxis.Horizontal, MediumCopyMaxWidth),
+        ArtistHeroTier.Compact => new(tier, CompactHeight, Spacing.L, ArtistHeroVeilAxis.Vertical, CompactCopyMaxWidth),
+        _ => new(tier, NarrowHeight, Spacing.PageNarrow, ArtistHeroVeilAxis.Vertical, NarrowCopyMaxWidth),
+    };
+
+    /// <summary>Width-only geometry, unclamped — kept for callers with no page viewport reading (none in the app
+    /// today; retained so a future pre-measure caller has a stateless entry point identical to before this file
+    /// gained the viewport axis).</summary>
+    public static ArtistHeroMetrics For(float width, ArtistHeroTier previous) => For(width, 0f, previous);
+
+    public static ArtistHeroMetrics For(float width, float pageViewportHeight, ArtistHeroTier previous)
     {
         var tier = TierFor(width, previous);
-        return tier switch
-        {
-            ArtistHeroTier.Wide => new(tier, WideHeight, Spacing.PageWide, ArtistHeroVeilAxis.Horizontal, WideCopyMaxWidth),
-            ArtistHeroTier.Medium => new(tier, MediumHeight, Spacing.XXXL, ArtistHeroVeilAxis.Horizontal, MediumCopyMaxWidth),
-            ArtistHeroTier.Compact => new(tier, CompactHeight, Spacing.L, ArtistHeroVeilAxis.Vertical, CompactCopyMaxWidth),
-            _ => new(tier, NarrowHeight, Spacing.PageNarrow, ArtistHeroVeilAxis.Vertical, NarrowCopyMaxWidth),
-        };
+        var m = Base(tier);
+        if (pageViewportHeight <= 0f) return m;
+        float cap = pageViewportHeight * MaxViewportFraction;
+        if (m.MinHeight <= cap) return m;
+        // Horizontal: clamp the whole hero (the centred copy absorbs the removed slack). Stacked: clamp the photo
+        // band down to MinPhotoHeight and keep the identity band's full anatomy — never below either floor.
+        float floor = m.Stacked ? IdentityHeightFor(tier) + MinPhotoHeight : CopyBudgetFor(tier);
+        return m with { MinHeight = MathF.Max(floor, cap) };
     }
 
     public static float PageGutterFor(float width) => width >= WideWidth ? Spacing.PageWide
@@ -104,14 +145,18 @@ public static class ArtistHeroLayout
     // has no capsules: its actions are words, they are the cheapest things in the row, and they never drop — what
     // yields under pressure is the PIVOT, from the right, which ContextBandLayout owns.
 
-    public static float HeroHeightFor(float width) => width >= WideWidth ? WideHeight
-        : width >= MediumWidth ? MediumHeight
-        : width >= CompactWidth ? CompactHeight
-        : NarrowHeight;
-    public static float BlendBackdropHeightFor(float width) => HeroHeightFor(width) + ContentBlendTail;
-    public static float BlendBoundaryFor(float width)
+    public static float HeroHeightFor(float width) => HeroHeightFor(width, 0f);
+    public static float HeroHeightFor(float width, float pageViewportHeight)
+        => For(width, pageViewportHeight, ArtistHeroTier.Wide).MinHeight;
+
+    public static float BlendBackdropHeightFor(float width) => BlendBackdropHeightFor(width, 0f);
+    public static float BlendBackdropHeightFor(float width, float pageViewportHeight)
+        => HeroHeightFor(width, pageViewportHeight) + ContentBlendTail;
+
+    public static float BlendBoundaryFor(float width) => BlendBoundaryFor(width, 0f);
+    public static float BlendBoundaryFor(float width, float pageViewportHeight)
     {
-        float height = HeroHeightFor(width);
+        float height = HeroHeightFor(width, pageViewportHeight);
         return height / (height + ContentBlendTail);
     }
 }
