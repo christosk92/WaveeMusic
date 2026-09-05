@@ -741,6 +741,11 @@ public static class Menus
         // GROUP 1 — primary. The transport four are the strip above these rows (SidebarPlaylistMenu), not rows.
         if (ContainerAddToPlaylistItem(in ctx) is { } add) rows.Add(add);
         rows.Add(ContainerActions.OpenItem.ToMenuItem(ctx));
+        // Pin/Unpin immediately after Open (F.5.3 / §3.2.11), same position as the card menu (ContainerRows) and the
+        // route rows — the sidebar playlist/folder rows used to bury this one level down in Organize ▸, which is the
+        // one surface with no top-level Pin at all (#97).
+        if (PinActions.RowForId(s, SidebarPinId.Canonical(uri), SidebarEntryKind.Playlist, uri, name) is { } topPin)
+            rows.Add(topPin);
 
         // GROUP 2 — organize: everything answering "where does this row LIVE". "Move out of {folder}" is nested-only
         // (absent, never disabled, at top level: there is nothing to move out of). The command addresses the row by its
@@ -751,8 +756,7 @@ public static class Menus
                 ActionIcons.Resolve(ActionIcons.Folder), s.Library is not null,
                 () => FolderActions.MoveOut(s, entryId.Length > 0 ? entryId : SidebarPinId.Canonical(uri) ?? uri))
             : null;
-        Group(rows, OrganizeItem(organize, moveOut,
-            PinActions.RowForId(s, SidebarPinId.Canonical(uri), SidebarEntryKind.Playlist, uri, name)));
+        Group(rows, OrganizeItem(organize, moveOut, pin: null));
         if (isOwner) rows.Add(ContainerActions.RenamePlaylist.ToMenuItem(ctx));
 
         // GROUP 3 — access & sharing. Access ▸ is owner+live only (the permission verbs mean nothing otherwise); Share ▸
@@ -995,13 +999,16 @@ public static class Menus
         rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.NewFolderInside), ActionIcons.Resolve(ActionIcons.Folder),
             live && s.Overlay is not null && folderId.Length > 0, () => FolderActions.NewFolder(s, folderId)));
         rows.Add(MenuFlyoutItem.Separator);
-        // Organize ▸ — the same submenu the playlist arm gets, over this folder's own moves and pin.
+        // Pin/Unpin as a top-level row (F.5.3 / §3.2.11), same position as the playlist arm and the card menu — not
+        // nested inside Organize ▸ (#97).
+        if (PinActions.RowForEntry(s, in e) is { } topPin) rows.Add(topPin);
+        // Organize ▸ — the same submenu the playlist arm gets, over this folder's own moves.
         MenuFlyoutItem? moveOut = parentId.Length > 0
             ? new MenuFlyoutItem(Strings.Menu.MoveOutOf(MenuLabel.Clip(parentName)),
                 ActionIcons.Resolve(ActionIcons.Folder), live,
                 () => FolderActions.MoveOut(s, entryId))
             : null;
-        Group(rows, OrganizeItem(organize, moveOut, PinActions.RowForEntry(s, in e)));
+        Group(rows, OrganizeItem(organize, moveOut, pin: null));
         rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.RenameFolder), ActionIcons.Resolve(ActionIcons.Rename),
             live && s.Overlay is not null && folderId.Length > 0, () => FolderActions.Rename(s, folderId, name)));
         rows.Add(MenuFlyoutItem.Separator);
