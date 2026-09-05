@@ -246,6 +246,10 @@
     <Compile Include="..\Wavee\Features\Sidebar\SidebarPaneInvariant.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\SidebarPinStore.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\Data\*.cs" />
+    <!-- The Spotify ylpin↔sidebar-pin bridge (docs/plans/wavee/pin-spotify-sync-implementation.md §1.5). Engine-free
+         apart from the store/mutation seams (Backend is already source-included above) and the IAppSettings shim, so
+         SidebarPinSyncTests drives the real bridge with an InMemoryStore + a recording IPinMutations fake. -->
+    <Compile Include="..\Wavee\App\SidebarPinSync.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\Persistence\*.cs" />
     <!-- O3 — the nav band's PURE half: how the customizable shortcut band (SidebarCustomLayout.EffectiveTopBar) shapes
          into tiles at its new sidebar render site (order, empty-collapse, the four tile shapes, the tile → route rule

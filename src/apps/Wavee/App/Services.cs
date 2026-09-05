@@ -260,6 +260,11 @@ public sealed class Services
     /// app root via <c>SidebarPreferences.Slot</c>. Constructed in the shared private ctor, so both CreateFake and
     /// CreateReal get one — local preferences are real on every backend (the settings store already is).</summary>
     public SidebarPreferences Sidebar { get; }
+    /// <summary>The Spotify ylpin↔sidebar-pin bridge (REAL backend only; null for the fake, which has no server pin set
+    /// to mirror). Read/write both directions through the existing collection-set + mutation-outbox plumbing
+    /// (docs/plans/wavee/pin-spotify-sync-implementation.md). <c>Activate</c> is called from the same mount effect that
+    /// activates <see cref="Sidebar"/>.</summary>
+    public SidebarPinSync? PinSync { get; private set; }
     /// <summary>Home layout preferences (visibility + order). Local document beside sidebar-layout.json; real on
     /// every backend. Provided at the app root via <c>HomePreferences.Slot</c>.</summary>
     public HomePreferences Home { get; }
@@ -796,6 +801,14 @@ public sealed class Services
         svc.RealSessionHost = sessionHost;
         svc.EchoRing = echoRing;
         svc.RealMutationSource = mutations;
+        // The Spotify ylpin↔sidebar-pin bridge (§1.5): read hydration rides the SAME store the collection fetcher
+        // writes "pins" into, write-back rides the SAME mutation engine every other set save does. "Converged" is the
+        // cold store's own ylpin sync-token — the collection fetcher already tokens every wire set it walks, so this
+        // needs no bespoke flag.
+        svc.PinSync = new SidebarPinSync(store, svc.Sidebar.Pins, mutations, settings,
+            () => sessionHost.Current.Account,
+            () => cold.GetCollectionRevision("ylpin") is not null,
+            uri => mutEngine.HasPending("pins", uri));
         svc.RealPlaylistMutations = playlistMutations;
         svc.RealExtender = extender;
         svc.RealSpclientBaseUrl = spclientBaseUrl;

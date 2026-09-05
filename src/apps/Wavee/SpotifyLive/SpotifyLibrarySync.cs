@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Wavee.Backend;
@@ -20,7 +21,7 @@ namespace Wavee.SpotifyLive;
 // `--spotify-sync`. This one-shot doubles as the integration probe of the real orchestrator — no divergent hand-wiring.
 public static class SpotifyLibrarySync
 {
-    static readonly string[] Sets = { "liked", "albums", "artists", "shows", "episodes" };
+    static readonly string[] Sets = { "liked", "albums", "artists", "shows", "episodes", "pins" };
 
     public static async Task<int> RunAsync(WaveeLogger log, CancellationToken ct, string language = "en")
     {
@@ -76,6 +77,11 @@ public static class SpotifyLibrarySync
         var rootlist = store.Rootlist();
         log.Info("  " + rootlist.Count(e => e.Kind == 0) + " playlists, " + rootlist.Count(e => e.Kind == 1) + " folders.");
         foreach (var set in Sets) log.Info("  " + set + ": " + store.SavedUris(set).Count + " items.");
+        // §0.1/§5 — the capture step for the Liked Songs pin's wire uri: print the first few "pins" set uris so a run
+        // against an account with Liked Songs pinned tells us the exact spelling collection2v2 uses for it.
+        var pinUris = store.SavedUris("pins");
+        if (pinUris.Count > 0)
+            log.Info("  pins (first " + Math.Min(5, pinUris.Count) + "): " + string.Join(", ", pinUris.Take(5)));
         store.Flush();
         log.Info("Library synced + persisted to " + dbPath);
 

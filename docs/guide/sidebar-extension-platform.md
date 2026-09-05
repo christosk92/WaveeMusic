@@ -57,6 +57,16 @@ narrow overlay drawer.
 in the same document). App routes, playlists, albums, artists, shows and playlist folders are pinnable; tracks are
 not.
 
+**Membership of the Spotify-kind pins (playlist/album/artist/show + Liked Songs) mirrors Spotify's own `ylpin`
+collection set** — see `docs/plans/wavee/pin-spotify-sync-implementation.md`. `App/SidebarPinSync.cs` bridges the
+store's `"pins"` logical set (hydrated by the same collection-set plumbing as liked/albums/artists/shows, settled +
+delta-fetched — never direct-applied — on a dealer push) and `SidebarPinStore`: a remote add/remove folds through
+`SidebarPinStore.ApplyRemote` (never raises a local-change event, so it can never echo back as a write), and a user's
+own `Pin`/`Insert`/`Unpin` raises `OnLocalPinChanged`, which the bridge turns into a `/collection/v2/write` through
+`EngineMutationSource.SetPinnedAsync`. Order, folders, app routes and `wavee:` playlists stay local-only and never
+sync. A pre-existing local pin is migrated (pushed to the server), never swept, the first time the server set is seen
+converged — see `PinSyncRules` (`Features/Sidebar/Data/PinSyncRules.cs`) for exactly which pins are syncable.
+
 ### The Shortcuts band is shared across all three designs — but Library V3 renders it as chrome, not a section
 
 The document also carries **one global shortcut band** — `SidebarCustomLayout.TopBar`, whose wire member still spells

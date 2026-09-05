@@ -971,6 +971,7 @@ public sealed class InMemoryStore : IStore
         "shows" or "episodes" => CollectionKind.Shows,
         "playlists" => CollectionKind.Playlists,
         "liked" => CollectionKind.Liked,
+        "pins" => CollectionKind.Pins,
         _ => null,
     };
 

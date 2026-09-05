@@ -112,7 +112,7 @@ public class CollectionFetcherTests
     public async Task FetchWireSet_UnknownWireSet_Throws()
     {
         var rig = new Rig((_, _) => Fail());
-        await Assert.ThrowsAsync<ArgumentException>(() => rig.Fetcher.FetchWireSetAsync("ylpin", TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => rig.Fetcher.FetchWireSetAsync("artistban", TestContext.Current.CancellationToken));
         Assert.Empty(rig.Requests);
     }
 
