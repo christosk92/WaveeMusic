@@ -38,28 +38,27 @@ public sealed class LibraryV3SearchRulesTests
     // ── open width ────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void OpenWidth_IsThePaneMinusPaddingMinusThePillAndGap()
+    public void OpenWidth_IsThePaneMinusPaddingMinusTitleAndTrailingControlsAndTwoGaps()
     {
-        // 320 pane, 43 toolbar padding (LeadInset 27 + ContentLaneEnd 16) -> 320 - 43 - 28 - 4 = 245.
-        float width = LibraryV3SearchRules.OpenWidth(320f, 43f);
-        Assert.Equal(245f, width);
+        // 500 pane, 43 toolbar padding (LeadInset 27 + ContentLaneEnd 16) -> 500 - 43 - 96 - 96 - 8 = 257.
+        float width = LibraryV3SearchRules.OpenWidth(500f, 43f);
+        Assert.Equal(257f, width);
     }
 
     [Fact]
     public void OpenWidth_NeverGoesBelowClosedWidth()
     {
-        // A pane too narrow to fit the pill+gap must not yield a negative or shrinking host.
+        // A pane too narrow to fit the title + trailing controls must not yield a negative or shrinking host.
         float width = LibraryV3SearchRules.OpenWidth(40f, 43f);
         Assert.Equal(LibraryV3SearchRules.ClosedWidth, width);
     }
 
     [Fact]
-    public void Resolve_WidePane_IsInlineAndExpanded_WithALabelledPill()
+    public void Resolve_WidePane_IsInlineAndExpanded()
     {
         var wide = LibraryV3SearchRules.Resolve(LibraryV3SearchRules.InlineWidth, openedByUser: false, hasText: false);
         Assert.True(wide.Inline);
         Assert.True(wide.Expanded);
-        Assert.False(wide.SortIconOnly);
     }
 
     [Fact]
@@ -69,11 +68,10 @@ public sealed class LibraryV3SearchRulesTests
         var closed = LibraryV3SearchRules.Resolve(narrow, openedByUser: false, hasText: false);
         Assert.False(closed.Inline);
         Assert.False(closed.Expanded);
-        Assert.False(closed.SortIconOnly);            // 299 ≥ 280: the pill keeps its label while the field is a button
 
         var opened = LibraryV3SearchRules.Resolve(narrow, openedByUser: true, hasText: false);
+        Assert.False(opened.Inline);
         Assert.True(opened.Expanded);
-        Assert.True(opened.SortIconOnly);             // the field owns the row
 
         // A query typed while wide survives a drag past the threshold: text alone keeps the field expanded.
         var typed = LibraryV3SearchRules.Resolve(narrow, openedByUser: false, hasText: true);
@@ -81,19 +79,12 @@ public sealed class LibraryV3SearchRulesTests
     }
 
     [Fact]
-    public void Resolve_VeryNarrowPane_DropsThePillLabelEvenWhenClosed()
-    {
-        var tiny = LibraryV3SearchRules.Resolve(240f, openedByUser: false, hasText: false);
-        Assert.False(tiny.Expanded);
-        Assert.True(tiny.SortIconOnly);
-    }
-
-    [Fact]
     public void OpenWidth_AtTheFloorBoundary_IsExact()
     {
-        // paneWidth - padH - pill - gap == ClosedWidth exactly: the floor must not clip a legitimate value.
+        // paneWidth - padH - title - trailing - 2*gap == ClosedWidth exactly: the floor must not clip a legitimate value.
         float width = LibraryV3SearchRules.OpenWidth(
-            LibraryV3SearchRules.ClosedWidth + 43f + LibraryV3SearchRules.SortIconOnlyWidth + LibraryV3SearchRules.Gap,
+            LibraryV3SearchRules.ClosedWidth + 43f + LibraryV3SearchRules.TitleReserve
+                + LibraryV3SearchRules.TrailingControlsWidth + LibraryV3SearchRules.Gap * 2f,
             43f);
         Assert.Equal(LibraryV3SearchRules.ClosedWidth, width);
     }

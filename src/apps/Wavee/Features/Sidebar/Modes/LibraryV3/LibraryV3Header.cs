@@ -12,7 +12,12 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>
-/// §3.2.3 — the header band: <c>[library glyph · "Your Library"]</c> · spacer · <c>[+]</c> · <c>[…]</c> · <c>[collapse]</c>.
+/// §3.2.3 — the header band: <c>["Your Library"]</c> · <c>[search]</c> · spacer · <c>[+]</c> · <c>[…]</c> ·
+/// <c>[collapse]</c>. Folds in what used to be a second 36-DIP toolbar row (search + a standalone sort/view pill):
+/// the decorative library glyph this row used to lead with was pure decoration next to a title that already says
+/// "Your Library", and Sort/View now live as submenus of the <c>…</c> overflow (<see cref="V3SortViewMenu"/>)
+/// rather than a second always-visible pill — a crowded 7-icon-across-two-rows header was the direct complaint
+/// this collapses down to a title plus 2 icons.
 ///
 /// <para>The overflow menu is where V3 carries locked entry point 3 (the quick sidebar-layout switch): it embeds
 /// <c>SidebarLayoutMenu.Rows</c> as a SUB-MENU rather than re-declaring the three design radios, so the pane menu, the
@@ -59,32 +64,28 @@ sealed class LibraryV3Header : Component
             return m;
         }, DepKey.Empty);
 
+        // The search host now shares this row (it used to own a whole second toolbar row alone with the sort/view
+        // pill, which is gone). ONE rule for the row's shape (LibraryV3SearchRules.Resolve): Inline lets the field
+        // grow to fill the row (the title takes only its natural width, see the spacer's Grow below); Narrow keeps
+        // the field a fixed-width host and an explicit spacer pushes the button cluster to the trailing edge.
+        var layout = UseComputed(() => LibraryV3SearchRules.Resolve(
+            _session.Width.Value, _session.SearchOpen.Value, _session.Prefs?.V3Search.Value is { Length: > 0 }));
+        bool inline = layout.Value.Inline;
+
         var kids = new List<Element>(6)
         {
-            // W7 — the glyph box IS the art column (SidebarCover.S32 == SidebarRowMetrics.ArtFor(Cozy) == 32), so the
-            // header's library mark and every row's cover/glyph below it share one edge; the 16-DIP glyph is centred
-            // inside it exactly as a row's bare-glyph art is. Segoe MDL2 Assets (not Icons.List/Theme's Segoe Fluent
-            // Icons face) is this glyph's own font, so it must be named explicitly (Icon's `family` param) — reading
-            // only a codepoint against the wrong face is how an icon renders as tofu.
-            new BoxEl
-            {
-                Width = SidebarCover.S32, Height = SidebarCover.S32, Shrink = 0f,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                // The row's label sits a LeadingGap (10) past the art column (W7), not the row's own 4-DIP button
-                // rhythm — so the extra 6 rides on the glyph box's own margin rather than widening the whole row's
-                // Gap (which would also push the create/overflow/collapse buttons apart from each other).
-                Margin = new Edges4(0f, 0f, 6f, 0f),
-                // U+E71C (Segoe MDL2 "Filter"/library mark) as an ESCAPE, never a literal: the private-use character is
-                // invisible in every editor and was silently dropped once already when this file was rewritten.
-                Children = [Icon("", 16f, Tok.TextSecondary, "Segoe MDL2 Assets")],
-            },
             new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
             {
                 // Ui.BodyStrong is 14/20/600; the header title sits one rung up (15) and no alias covers that exact
                 // size, so it stays an explicit override rather than a one-call-site alias (W5).
+                // Grow=0 (not the old 1/Basis=0): the search host is the row's OTHER flexible sibling now, and two
+                // Grow=1 elements would split the remaining space by ratio instead of the title staying its natural
+                // ("Your Library" is short and fixed) width.
                 Size = 15f, Weight = 600, Color = Tok.TextPrimary,
-                Grow = 1f, Basis = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             },
+            Embed.Comp(() => new LibraryV3Search(_session)) with { Key = "v3-search" },
+            new BoxEl { Key = "v3-header-spacer", Grow = inline ? 0f : 1f },
             // H2 (#85) — the same drop spec Classic's section-header "+" gets: a rootlist selection files into a new
             // top-level folder, a track set becomes a new playlist. V3 never sets SidebarPaneConfig.HeaderCreate (it
             // renders no section headers at all), so this button needed its own copy of that spec.
@@ -143,12 +144,24 @@ sealed class LibraryV3Header : Component
             rows.Add(MenuFlyoutItem.Separator);
         }
 
+        // Sort/View USED TO be a standalone always-visible pill (V3SortViewTrigger, now deleted) sharing a second
+        // toolbar row with search. Folded in here as two submenus — the same "misc controls live in the overflow"
+        // precedent the layout-mode submenu above already set — so the header collapses to title + 2 icons.
+        if (prefs is not null)
+        {
+            rows.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Library.SortBy), V3SortViewMenu.SortRows(prefs), Icons.Sort));
+            rows.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Library.ViewAs), V3SortViewMenu.ViewRows(prefs),
+                LibraryV3Labels.ViewGlyph(LibraryV3Metrics.NormalizeView(prefs.V3View.Value))));
+            rows.Add(MenuFlyoutItem.Separator);
+        }
+
         rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.V3.ClearFilters), Icons.Cancel,
                                     _session.AnyFilterActive, _session.ClearAllFilters));
 
-        if (!_session.InDrawer)
-            rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.V3.Collapse), Icons.ChevronLeft, prefs is not null,
-                                        _session.Collapse));
+        // The standalone "Collapse" row that used to live here too is gone: it was a same-screen duplicate of the
+        // header's own "<" chevron (both visible together whenever this overflow is open) — a safe, independent cut
+        // (the chevron itself, and the rail footer's opposite-direction expand tile, are NOT duplicates of each
+        // other: they live in mutually exclusive mount states and both stay).
 
         // DEVELOPER SURFACE, hidden unless developer mode is on (Settings ▸ Diagnostics) — the same gate Classic's
         // Tools section rides. Deliberately unlocalized, matching Classic's DevToolsRow: it is a dev entry point, not
@@ -161,49 +174,5 @@ sealed class LibraryV3Header : Component
                                         () => _session.Go(DeveloperMode.ApiConsoleRoute, null)));
         }
         return rows;
-    }
-}
-
-/// <summary>§3.2.2 band 2 — the search + sort row. Its own component so opening the search field or flipping a sort
-/// re-renders 36 DIP of chrome instead of the whole pane.</summary>
-sealed class LibraryV3Toolbar : Component
-{
-    readonly LibraryV3Session _session;
-
-    public LibraryV3Toolbar(LibraryV3Session session) => _session = session;
-
-    public override Element Render()
-    {
-        // The sort pill collapses to icon-only when the search host is open (it owns the row) or when the pane is
-        // simply too narrow for a label. A MEMO, not a raw width read: a seam drag writes the width every frame, and
-        // the memo's equality cut-off means this component re-renders only when the BOOLEAN flips.
-        //
-        // W1 — reads _session.SearchOpen (a session Signal), never prefs.V3SearchOpen: the open flag left
-        // SidebarPreferences entirely (it is no longer a persisted setting), so the toolbar's own idea of "is search
-        // open" lives on the same object LibraryV3Search itself writes to.
-        // ONE rule for the row's shape (LibraryV3SearchRules.Resolve), read by the host and by this toolbar alike, so
-        // the pill can never be icon-only while the field is a button, nor labelled while the field owns the row.
-        var layout = UseComputed(() => LibraryV3SearchRules.Resolve(
-            _session.Width.Value, _session.SearchOpen.Value, _session.Prefs?.V3Search.Value is { Length: > 0 }));
-        var iconOnly = UseComputed(() => layout.Value.SortIconOnly);
-        bool inline = layout.Value.Inline;
-
-        // W1 — children are ALWAYS [search, spacer, trigger], never keyed on the open flag: in the NARROW shape the
-        // search HOST's own explicit Width does the morph (LibraryV3SearchRules.OpenWidth) and the spacer (Grow=1)
-        // simply shrinks to (near) 0 while it is open; in the INLINE shape the host itself grows and the spacer
-        // yields (Grow=0), or the two would split the row. Swapping the child SET would remount the spacer and
-        // reintroduce the old file's cross-fade-instead-of-morph bug at the toolbar level.
-        Element search = Embed.Comp(() => new LibraryV3Search(_session)) with { Key = "v3-search" };
-        Element spacer = new BoxEl { Key = "v3-toolbar-spacer", Grow = inline ? 0f : 1f };
-        Element trigger = Embed.Comp(() => new V3SortViewTrigger(iconOnly)) with { Key = "v3-sortview" };
-
-        return new BoxEl
-        {
-            Direction = 0, Height = LibraryV3Metrics.ToolbarHeight, AlignItems = FlexAlign.Center, Gap = 4f,
-            // W7 — LeadBandInset: the search host's closed 28-DIP box must sit on the rows' art column (27), exactly
-            // like the header's glyph and the nav band's rows, so the whole chrome stack shares one left edge.
-            Padding = SidebarPaneMetrics.LeadBandInset,
-            Children = [search, spacer, trigger],
-        };
     }
 }

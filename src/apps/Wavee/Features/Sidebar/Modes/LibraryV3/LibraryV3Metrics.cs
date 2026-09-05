@@ -19,8 +19,9 @@ namespace Wavee;
 static class LibraryV3Metrics
 {
     // ── the expanded chrome stack (§3.2.2) ────────────────────────────────────────────────────────────────────────────
+    /// <summary>Also carries what used to be a separate 36-DIP toolbar band (search + the sort/view pill) — both
+    /// folded into this row when the standalone toolbar band was deleted.</summary>
     public const float HeaderHeight = 44f;
-    public const float ToolbarHeight = 36f;
     /// <summary>The ONE filter rail. There is no second (qualifier) band any more: the selected facet's sub-filter fuses
     /// INTO its pill (<c>LibraryV3Chips</c>'s morphing facet-chip grammar, copied from <c>HomeFacetChips</c>), so the
     /// chrome stack lost a 32-DIP row. The 40 (vs the pills' 28) is deliberate slack: the compound pill's raised inner
@@ -63,9 +64,6 @@ static class LibraryV3Metrics
     /// <summary>Gap between grid cells — the same <c>Spacing.S</c> the pane's grid strip lays out with, restated here so the
     /// derived column count and the strip that renders it cannot disagree.</summary>
     public const float GridGap = 8f;
-
-    /// <summary>Below this pane width the sort/view trigger renders icon-only so the search field gets the row.</summary>
-    public const float SortIconOnlyWidth = 280f;
 
     /// <summary>Revision 2's folder amendment: at or above this pane width folders disclose INLINE (recursive, indented);
     /// below it — and always in the overlay drawer — folders NAVIGATE (session-only drill-in with breadcrumb + back).

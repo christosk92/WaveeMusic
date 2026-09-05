@@ -13,8 +13,9 @@ namespace Wavee;
 
 /// <summary>
 /// §3.2.2's fixed vertical stack — V3's CHROME, mounted above the pane's scroll surface through
-/// <c>SidebarPaneConfig.Head</c>: header band · toolbar (search + sort/view) · the ONE filter-chip rail · the drill-in
-/// breadcrumb · the retry banner · the actionable empty state.
+/// <c>SidebarPaneConfig.Head</c>: header band (title + search + create/overflow/collapse) · the ONE filter-chip
+/// rail · the drill-in breadcrumb · the retry banner · the actionable empty state. Search and Sort/View used to be
+/// a second standalone toolbar band here; both now live in the header (search inline, Sort/View as "…" submenus).
 ///
 /// <para>The qualifier used to be a second chip band here; it is now a segment that fuses into the selected facet's pill
 /// inside <c>LibraryV3Chips</c> (the <c>HomeFacetChips</c> grammar), which is why this band list is one shorter than
@@ -84,8 +85,9 @@ sealed class LibraryV3Chrome : Component
         var bands = new List<Element>(7)
         {
             Embed.Comp(() => new LibraryV3NavBand(_session)) with { Key = "v3-nav" },
+            // The header now also carries the search host and (via its "…" overflow) Sort/View — the standalone
+            // 36-DIP toolbar band that used to sit here is gone (LibraryV3Toolbar, deleted).
             Embed.Comp(() => new LibraryV3Header(_session)) with { Key = "v3-header" },
-            Embed.Comp(() => new LibraryV3Toolbar(_session)) with { Key = "v3-toolbar" },
             Embed.Comp(() => new LibraryV3Chips(_session)) with { Key = "v3-chips" },
             // Spans the CONTENT LANE, exactly like the plan's own SidebarSectionHeader.ExplicitDivider — a rule that
             // stopped 6 DIP short of the rows it separates is the same ragged edge in hairline form.
