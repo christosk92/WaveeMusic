@@ -73,10 +73,23 @@ public static class ClusterMapper
         if (img.Length == 0) img = Get("image_url");
         string artistUri = !string.IsNullOrEmpty(t.ArtistUri) ? t.ArtistUri : Get("artist_uri");
         string albumUri = !string.IsNullOrEmpty(t.AlbumUri) ? t.AlbumUri : Get("album_uri");
-        return new RemoteTrack(t.Uri, Get("title"), Get("artist_name"), artistUri, Get("album_title"), albumUri,
+        string title = Get("title");
+        string artistName = Get("artist_name");
+        // A sender that stamps the TRACK TITLE into artist_name with no artist_uri (observed from a phone-side Connect
+        // session: the player bar read "Self talk / Self talk") has not named an artist at all. An empty credit is what
+        // lets the projection's catalog resolve fill the real one (PlaybackProjection keeps `cur.Artists` only when the
+        // resolved track has none); repeating the title would pin a lie the hydration never overwrites. A self-titled
+        // track from the catalog always carries its artist_uri, so it keeps its credit.
+        if (RepeatsTitleAsArtist(title, artistName, artistUri)) artistName = "";
+        return new RemoteTrack(t.Uri, title, artistName, artistUri, Get("album_title"), albumUri,
             img.Length == 0 ? null : img, dur, t.Uid, t.Provider,
             m.Count == 0 ? null : new Dictionary<string, string>(m, StringComparer.Ordinal));
     }
+
+    /// <summary>True when the wire's artist credit is just the title again and no artist uri backs it — the one shape
+    /// the mapper refuses to carry as a credit. Public so the ingest can log the raw metadata once when it fires.</summary>
+    public static bool RepeatsTitleAsArtist(string title, string artistName, string artistUri)
+        => artistName.Length > 0 && artistUri.Length == 0 && string.Equals(artistName, title, StringComparison.Ordinal);
 
     static DeviceKind MapKind(P.DeviceType type, bool isUs)
     {
@@ -101,6 +114,7 @@ public sealed class ClusterIngest : IDisposable
     readonly WaveeLogger _log;
     readonly Action<long>? _onServerTimestamp;   // feeds the server-clock estimator a free passive sample per cluster
     readonly IDisposable _sub;
+    string? _reportedTitleAsArtistUri;             // one raw-metadata log line per track uri, never per cluster push
 
     public ClusterIngest(ITransport transport, NowPlayingProjection projection, LiveConnectDevices devices,
         string ourDeviceId, WaveeLogger log = default, Action<long>? onServerTimestamp = null)
@@ -135,9 +149,37 @@ public sealed class ClusterIngest : IDisposable
     void Apply(P.Cluster cluster)
     {
         var delta = ClusterMapper.Map(cluster, _ourDeviceId);
+        ReportTitleAsArtist(cluster);
         _onServerTimestamp?.Invoke(delta.ServerTimestampMs);   // refresh the clock BEFORE the fold reads its offset
         _devices.Update(delta.Devices);
         _projection.OnCluster(delta);
+    }
+
+    /// <summary>The evidence line for the title-as-artist guard: when the active track's wire metadata repeats its title
+    /// as artist_name with no artist uri, dump every metadata pair once for that uri so the next report answers "what did
+    /// the phone actually send" from the log alone.</summary>
+    void ReportTitleAsArtist(P.Cluster cluster)
+    {
+        var t = cluster.PlayerState?.Track;
+        if (t is null || string.IsNullOrEmpty(t.Uri) || string.Equals(t.Uri, _reportedTitleAsArtistUri, StringComparison.Ordinal)) return;
+        var m = t.Metadata;
+        string title = m.TryGetValue("title", out var tv) ? tv ?? "" : "";
+        string artist = m.TryGetValue("artist_name", out var av) ? av ?? "" : "";
+        string artistUri = !string.IsNullOrEmpty(t.ArtistUri) ? t.ArtistUri : m.TryGetValue("artist_uri", out var uv) ? uv ?? "" : "";
+        if (!ClusterMapper.RepeatsTitleAsArtist(title, artist, artistUri)) return;
+        _reportedTitleAsArtistUri = t.Uri;
+        var sb = new System.Text.StringBuilder(256);
+        sb.Append("cluster track repeats its title as artist_name (credit dropped, catalog resolve fills it) uri=").Append(t.Uri)
+          .Append(" provider=").Append(t.Provider).Append(" device=").Append(cluster.ActiveDeviceId).Append(" metadata=[");
+        int n = 0;
+        foreach (var kv in m)
+        {
+            if (n++ > 0) sb.Append(' ');
+            sb.Append(kv.Key).Append('=').Append(kv.Value);
+            if (sb.Length > 1400) { sb.Append(" …"); break; }
+        }
+        sb.Append(']');
+        _log.Info(sb.ToString());
     }
 
     public void Dispose() => _sub.Dispose();
