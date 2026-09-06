@@ -204,7 +204,7 @@ source that raises `Changed` mid-rebuild only marks the binder dirty.
 | `SetSectionCollapsed` | `Action<string,bool>?` | Where collapse state lives. Null ⇒ non-collapsible headers. |
 | `ReadOnly` | `bool` | Suppresses inline `EntityList` controls, the missing-entity "Remove" verb and the empty-pane customize CTA; `Dispatch` becomes a no-op. |
 | `SearchHead` | `bool` | Render the pane-owned library-only search box (only when the document actually contains a visible `EntityList`). |
-| `Head` | `Func<Element?>?` | Arbitrary mode chrome above the scroll surface. V3's `LibraryV3Chrome` mounts, in order: the nav band (`LibraryV3NavBand`, Compact 32) · the header (`LibraryV3Header` — the title is the collapse toggle and never truncates; the inline search field folds into it per `LibraryV3HeaderRules`) · the filter-chip rail (`LibraryV3Chips`, 36) · the lens row (`LibraryV3LensRow`, 32 — the row count, the Albums/Artists/Podcasts page link and the Sort/View controls) while not drilled, or the drill-in breadcrumb while it is · a retry banner or one of the actionable empty states. Rendered before `SearchHead`. |
+| `Head` | `Func<Element?>?` | Arbitrary mode chrome above the scroll surface. V3's `LibraryV3Chrome` mounts, in order: the nav band (`LibraryV3NavBand`, Compact 32) · the header (`LibraryV3Header` — the title opens the library flyout, `LibraryV3DestinationsFlyout` (Liked Songs · Albums · Artists · Podcasts, each with a count and a pin toggle), and never truncates; the inline search field folds into it per `LibraryV3HeaderRules`; Collapse lives in the "…" overflow) · the filter-chip rail (`LibraryV3Chips`, 36) · the lens row (`LibraryV3LensRow`, 32 — the row count, the Albums/Artists/Podcasts page link and the Sort/View controls) while not drilled, or the drill-in breadcrumb while it is · a retry banner or one of the actionable empty states. Rendered before `SearchHead`. |
 | `ShowLayoutMenu` | `bool` (default true) | Hang the quick layout menu off the pane's **first** section header. |
 | `RailLayoutMenu` | `bool` (default true) | Put it at the bottom of the rail too. |
 | `RailFooter` | `Func<Element?>?` | An extra rail affordance after the planned tiles (Classic's create-playlist "+"). |
@@ -695,7 +695,7 @@ member table above. `OnCustomize` is never set — its document is ephemeral, so
 
 `ChromeHead` mounts `LibraryV3Chrome`, which stacks, in order: `LibraryV3NavBand` (fixed chrome, W3 — `prefs.TopBar`
 rendered directly, never a document section, never touched by search/filter/drill; Compact density, 32-DIP rows) ·
-`LibraryV3Header` (44 — the title is the collapse toggle and never truncates; the ladder in
+`LibraryV3Header` (44 — the title opens `LibraryV3DestinationsFlyout` and never truncates; Collapse is an overflow row; the ladder in
 `LibraryV3HeaderRules.Resolve` decides whether search sits inline, folds to icons, or takes the row) ·
 `LibraryV3Chips` (the filter rail, 36) · `LibraryV3LensRow` (32 — the row count, the Albums/Artists/Podcasts page
 link and the Sort/View controls) while not drilled, or the drill-in breadcrumb while `state.Drilled` is true (the

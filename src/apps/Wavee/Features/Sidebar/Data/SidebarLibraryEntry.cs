@@ -70,6 +70,19 @@ public static class SidebarEntryKinds
 
     public static bool Has(SidebarEntryKindMask mask, SidebarEntryKind kind) => (mask & Of(kind)) != 0;
 
+    /// <summary>The route pin id of the Liked Songs collection (<c>SidebarPinId.FromRoute("liked")</c>) — spelled here so this
+    /// engine-free file can name the one route that counts as a playlist without reaching into the pin-id table.</summary>
+    public const string LikedRoutePinId = "liked";
+
+    /// <summary>Whether a lens admits an ENTRY: <see cref="Has"/> for every projected kind, plus the one exception a kind
+    /// cannot express — the Liked Songs route pin IS the saved-songs collection, a playlist in Spotify's own taxonomy, so
+    /// the Playlists lens (and All) admit it even though its Kind is AppRoute; every other route pin is a PAGE, admitted
+    /// only by the unfiltered lens. This is what lets a pinned Liked Songs survive the V3 lens filter at all.</summary>
+    public static bool Admits(SidebarEntryKindMask mask, in SidebarLibraryEntry e)
+        => e.Kind != SidebarEntryKind.AppRoute ? Has(mask, e.Kind)
+         : string.Equals(e.Id, LikedRoutePinId, StringComparison.Ordinal) ? (mask & SidebarEntryKindMask.Playlist) != 0
+         : mask == SidebarEntryKindMask.All;
+
     /// <summary>The V3 chip row → kinds. Playlists includes folders (a folder IS part of the playlist tree); every other
     /// chip is a single kind. Locked decision 10's chip set, made mechanical.</summary>
     public static SidebarEntryKindMask From(SidebarV3Filter filter) => filter switch

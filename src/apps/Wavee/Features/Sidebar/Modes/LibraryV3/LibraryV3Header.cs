@@ -41,6 +41,25 @@ sealed class LibraryV3Header : Component
         var svc = UseContext(Overlay.Service);
         var anchor = UseRef<NodeHandle>(default);
         var handle = UseRef<OverlayHandle?>(null);
+        var destAnchor = UseRef<NodeHandle>(default);
+        var destHandle = UseRef<OverlayHandle?>(null);
+
+        // The title's flyout: the library's fixed destinations (Liked Songs · Albums · Artists · Podcasts), each a row
+        // that opens its page and a pin toggle that puts it in the pinned band. This is where the destination word
+        // rail went in V3.1 — one click behind the title instead of 30 DIP of chrome — and, unlike the rail, every
+        // destination is pinnable in place. Same popup discipline as the overflow: built at OPEN time, light-dismiss.
+        void ToggleDestinations()
+        {
+            if (svc is null) return;
+            if (destHandle.Value is { IsOpen: true } open) { open.Close(); return; }
+            destHandle.Value = svc.Open(
+                () => destAnchor.Value,
+                () => Embed.Comp(() => new LibraryV3DestinationsFlyout(_session, () => destHandle.Value?.Close())),
+                FlyoutPlacement.BottomLeft,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
+                { ConstrainToRootBounds = false });
+            destHandle.Value.ClosedAction = () => destHandle.Value = null;
+        }
 
         void ToggleOverflow()
         {
@@ -75,27 +94,20 @@ sealed class LibraryV3Header : Component
         var shape = UseComputed(() => LibraryV3HeaderRules.Resolve(
             _session.Width.Value, _session.SearchOpen.Value, _session.Prefs?.V3Search.Value is { Length: > 0 })).Value;
 
-        // The title IS the collapse toggle now (the "‹" chevron is gone) — docked only, since the drawer has no rail
-        // to collapse into (§3.2.14); there it is a plain, non-interactive title. Text-only (no leading glyph: the
-        // engine's Icons table has no library glyph, and the width budget at the 180 floor has no room for one
-        // anyway), Shrink = 0, no Trim — it never ellipsizes, on the strength of LibraryV3HeaderRules alone.
-        Element title = _session.InDrawer
-            ? new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
+        // The title opens the library flyout (ToggleDestinations) in the docked pane AND the drawer — a flyout needs
+        // no rail to exist. Collapse lives in the "…" overflow only. Text-only (no leading glyph: the engine's Icons
+        // table has no library glyph, and the width budget at the 180 floor has no room for one anyway), Shrink = 0,
+        // no Trim — it never ellipsizes, on the strength of LibraryV3HeaderRules alone.
+        Element title = new BoxEl
+        {
+            Direction = 0, Height = 28f, Padding = new Edges4(4f, 0f, 6f, 0f), Corners = Radii.ControlAll,
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+            OnClick = ToggleDestinations, OnRealized = h => destAnchor.Value = h, Shrink = 0f,
+            Children = [new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
             {
-                Size = 15f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Shrink = 0f,
-            }
-            : ToolTip.Wrap(
-                new BoxEl
-                {
-                    Direction = 0, Height = 28f, Padding = new Edges4(4f, 0f, 6f, 0f), Corners = Radii.ControlAll,
-                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                    OnClick = _session.Collapse, Shrink = 0f,
-                    Children = [new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
-                    {
-                        Size = 15f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1,
-                    }],
-                }.Interactive(Interaction.Subtle),
-                Loc.Get(Strings.Sidebar.V3.Collapse));
+                Size = 15f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1,
+            }],
+        }.Interactive(Interaction.Subtle);
 
         var kids = new List<Element>(6)
         {
@@ -103,10 +115,11 @@ sealed class LibraryV3Header : Component
             // zero-size flex child still collects the row's Gap, pitfalls.md "Geometry and virtualization").
             Flow.Show(() => !shape.SearchTakesRow, title),
             Embed.Comp(() => new LibraryV3Search(_session)) with { Key = "v3-search" },
-            // Grow=0 when inline (not the old 1/Basis=0): the search host is the row's OTHER flexible sibling then,
-            // and two Grow=1 elements would split the remaining space by ratio instead of the title staying its
-            // natural ("Your Library" is short and fixed) width.
-            new BoxEl { Key = "v3-header-spacer", Grow = shape.InlineSearch ? 0f : 1f },
+            // Grow=0 whenever the search host is the row's flexible sibling — inline, or OPEN on a narrow pane (it takes
+            // the row then): two Grow=1 elements would split the remaining space by ratio, which is exactly the
+            // half-width open field the first V3.1 build showed. Grow=1 only around the closed magnifier, where the
+            // title keeps its natural ("Your Library" is short and fixed) width and the spacer pushes the icons out.
+            new BoxEl { Key = "v3-header-spacer", Grow = shape.InlineSearch || shape.SearchTakesRow ? 0f : 1f },
         };
 
         if (shape.ShowsCreate)

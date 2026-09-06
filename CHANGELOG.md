@@ -12,9 +12,22 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
-- The artist hero has a little more room again: 392 DIP on wide pages and 344 on medium ones (up from 360 / 320
-  after the earlier cut), so a two-line bio no longer sits flush against the name, the stats row and the actions.
-  The stacked narrow layouts are unchanged. (#106)
+- **"Your Library" opens the library's destinations.** Clicking the Library V3 title shows a flyout with Liked
+  Songs, Albums, Artists and Podcasts, each with its count and a pin toggle, so any of them can be promoted to a
+  permanent row in the pinned band; Collapse lives in the "…" menu. A pin the library does not contain — the Liked
+  Songs route pin Spotify syncs by default, an editorial playlist never saved, a pinned page — is no longer dropped by
+  the V3 lenses: Liked Songs counts as a playlist, a pinned page shows under the unfiltered lens, and both join the
+  band and answer the library search like any other row. (#108)
+- Library V3 search matches the design: the open field takes the row on a narrow pane instead of sharing it with the
+  spacer, the match count and the empty state read the published projection so a pinned match is never reported as
+  "0 matches", the matched run is highlighted in each title, and a playlist found inside a folder shows its folder
+  in front of its name. (#109)
+- On Classic and Curated rows the pin glyph is a hover button that unpins the row (with the usual undo toast), and the
+  pinned band ends with a visible divider instead of a dashed hairline that read as blank space. (#110)
+- The artist hero and the Home daylist hero have a little more room again. The artist copy block breathes at 12
+  between its blocks with 24 of vertical air on wide and medium pages (392 / 344 DIP minimum, up from 360 / 320
+  after the earlier cut); the daylist card gains four DIP under its title, meta and countdown and eight in its
+  padding. Neither stacked narrow layout changes. (#106)
 
 ### Fixed
 

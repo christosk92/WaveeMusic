@@ -182,6 +182,35 @@ public static class SidebarBinderPipeline
     /// binder is the only impure caller (it owns the async fetch + the per-pin cache), so this merge is what a headless
     /// test drives to pin the "art/count arrive once hydrated" contract without a network or an engine.</para>
     /// </summary>
+    /// <summary>The V3 list is built from the LIBRARY (<c>SidebarProjection.Build</c> over the store's rootlist, albums,
+    /// artists and shows), so a pin the library does not contain — the Liked Songs route pin, an editorial playlist never
+    /// saved, a pinned page — is simply not in it, and <c>PinsFirst</c> cannot move what is absent: Classic showed those
+    /// pins (its band reads the resolved pin rows directly) while every V3 lens silently dropped them. Append the unlisted
+    /// pin rows the lens admits (<see cref="SidebarEntryKinds.Admits"/>), in pin order, skipping an id the list already
+    /// carries; <c>PinsFirst</c> then partitions them into the band like any other pin. Returns how many were added.</summary>
+    public static int AppendUnlistedPins(List<SidebarLibraryEntry> list, IReadOnlyList<SidebarLibraryEntry> unlisted,
+                                         SidebarEntryKindMask kinds)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        if (unlisted is null || unlisted.Count == 0) return 0;
+        int added = 0;
+        for (int i = 0; i < unlisted.Count; i++)
+        {
+            var e = unlisted[i];
+            if (e.Id.Length == 0 || !SidebarEntryKinds.Admits(kinds, in e) || ContainsId(list, e.Id)) continue;
+            list.Add(e);
+            added++;
+        }
+        return added;
+    }
+
+    static bool ContainsId(List<SidebarLibraryEntry> list, string id)
+    {
+        for (int i = 0; i < list.Count; i++)
+            if (string.Equals(list[i].Id, id, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
     public static SidebarLibraryEntry ResolveUnlistedPin(SidebarPin pin, int sourceOrder, SidebarLibraryEntry? hydrated)
     {
         var baseEntry = new SidebarLibraryEntry(

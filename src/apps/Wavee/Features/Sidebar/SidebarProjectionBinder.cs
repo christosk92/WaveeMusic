@@ -58,6 +58,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     readonly List<SidebarLibraryEntry> _all = new(256);       // the full projection, source order (planner Library)
     readonly List<SidebarLibraryEntry> _tree = new(128);      // the flattened rootlist tree (planner PlaylistTree)
     readonly List<SidebarLibraryEntry> _pinRows = new(16);    // resolved pins, in pin order
+    readonly List<SidebarLibraryEntry> _unlistedPinRows = new(8);   // the subset the library projection does not contain
     readonly List<SidebarLibraryEntry> _visited = new(16);
     readonly List<SidebarLibraryEntry> _played = new(16);
     readonly List<SidebarLibraryEntry> _newReleases = new(8);
@@ -381,6 +382,11 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                                                lastPlayed: lastPlayed);
 
         ResolvePins(prefs);
+        // A pin the library does not contain (the Liked Songs route pin, an editorial playlist never saved, a pinned
+        // page) is absent from `buffer`, and Shape's PinsFirst cannot move what is absent — so V3 dropped exactly the
+        // pins Classic's band still drew. Append the ones this lens admits before shaping; they join the band like
+        // any other pin and answer the search like any other row.
+        SidebarBinderPipeline.AppendUnlistedPins(buffer, _unlistedPinRows, SidebarEntryKinds.From(filter));
         var query = new SidebarV3Query(filter, qualifier, sort, desc, search, qualifiers);
         var shape = SidebarBinderPipeline.Shape(buffer, _scratch, in query, prefs.Pins.Items,
                                                 prefs.CanReorderV3 ? prefs.V3CustomOrder : null);
@@ -445,6 +451,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     void ResolvePins(SidebarPreferences prefs)
     {
         _pinRows.Clear();
+        _unlistedPinRows.Clear();
         _pinnedIds.Clear();
         var pins = prefs.Pins.Items;
         for (int i = 0; i < pins.Count; i++)
@@ -465,7 +472,9 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
             // whatever RequestPinHydration has already resolved through the SAME catalog façade the detail page uses —
             // and kick a hydration request the first time we see it unresolved.
             SidebarLibraryEntry? hydrated = _pinHydration.TryGetValue(pin.Id, out var h) ? h : null;
-            _pinRows.Add(SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated));
+            var unlisted = SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated);
+            _pinRows.Add(unlisted);
+            _unlistedPinRows.Add(unlisted);
             if (hydrated is null) RequestPinHydration(pin);
         }
     }
