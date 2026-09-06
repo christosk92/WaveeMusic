@@ -304,6 +304,15 @@ sealed class HomePage : Component
         // reaches the user as a toast instead of dying in a discarded Task.
         void PlayCard(HomeCard c) => _ = PlayCardAsync(svc, post, c.Uri, c.Kind);
 
+        // The daylist hero's countdown reaching zero: ask for the SAME re-read the reactivation compare asks for
+        // (svc.HomeFeedRevalidate — onActivated a few lines up), never a direct epoch bump. The cache is the epoch's
+        // one publisher; a countdown that bumped it itself would let a page which never re-reads still claim its
+        // window moved. Swallows nothing itself — RevalidateAsync already swallows its own failures.
+        void OnDaylistExpired()
+        {
+            if (svc.HomeFeedRevalidate is { } revalidate) _ = revalidate(default);
+        }
+
         // Every home card is a drag SOURCE for the entity it stands for — drop it on a sidebar playlist to add its
         // tracks, on a folder to file it, on the pin band to pin it. The payload factory is gesture-COLD (it runs once,
         // at promotion), so it reads `acts` live rather than snapshotting anything here.
@@ -632,7 +641,7 @@ sealed class HomePage : Component
                                 () => PlayCard(card), () => ShuffleCard(card), () => NavCard(card),
                                 () => lib?.ToggleSaved(card.Uri, card.Title),
                                 ChromeOf(card).Menu,
-                                in m);
+                                in m, OnDaylistExpired);
                         },
                             fallback: 900f),
                         open);
@@ -711,7 +720,7 @@ sealed class HomePage : Component
                                     () => PlayCard(h.Cards[0]), () => ShuffleCard(h.Cards[0]), () => NavCard(h.Cards[0]),
                                     () => lib?.ToggleSaved(h.Cards[0].Uri, h.Cards[0].Title),
                                     ChromeOf(h.Cards[0]).Menu,
-                                    in m);
+                                    in m, OnDaylistExpired);
                             },
                                 fallback: 900f))
                         : new BoxEl();

@@ -274,7 +274,8 @@ static class HomeCards
     /// virtual estimator retain the same geometry while the artwork can touch the clipped surface. The pulse row
     /// (<see cref="FlipCountdown"/>) is reserved in that geometry for every hero; non-daylist mounts collapse it.</para></summary>
     public static Element HeroBand(HomeCard c, string eyebrow, string meta, Action onPlay, Action onShuffle,
-                                   Action onNav, Action onLike, MenuAttach? menu, in HomeHeroMetrics metrics)
+                                   Action onNav, Action onLike, MenuAttach? menu, in HomeHeroMetrics metrics,
+                                   Action? onExpired = null)
     {
         float width = metrics.Width;
         var accent = AccentOrChrome(c);
@@ -293,6 +294,10 @@ static class HomeCards
                   // Chrome fill — FlipCountdown contrast-grades it to TextInk so the digits stay the daylist hue
                   // without disappearing into the peach/yellow wash (the Play capsule keeps this fill as a plate).
                   ExpiresAtMs = m.ExpiresAtMs, Accent = () => accent, BottomMargin = Spacing.M,
+                  // The countdown reaching zero asks Home to re-read through the SAME seam the reactivation compare
+                  // uses (HomePage wires this to svc.HomeFeedRevalidate) — never a direct epoch bump. Component props
+                  // freeze at mount, so this thunk is the page's, taken fresh every render rather than captured once.
+                  OnExpired = onExpired,
               }) with { Key = c.Uri + ":" + m.ExpiresAtMs }
             : null;
 
