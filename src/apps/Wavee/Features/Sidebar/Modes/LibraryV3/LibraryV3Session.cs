@@ -304,6 +304,19 @@ sealed class LibraryV3Session
         }
     }
 
+    /// <summary>W2 — THE ONE row-count expression, shared by <see cref="LibraryV3Chrome"/> (the empty-state gate)
+    /// and <see cref="LibraryV3LensRow"/> (the count it displays), so the two can never disagree about how many
+    /// rows are on screen. Moved verbatim from what used to be <c>LibraryV3Chrome.Render</c>'s own inline
+    /// computation. Reading <c>Entries.Version.Value</c> SUBSCRIBES the caller: the count moves with the
+    /// projection, exactly like the state it used to be folded alongside.</summary>
+    public int VisibleRowCount(in LibraryV3DocState state)
+    {
+        if (Prefs is not { } prefs) return 0;
+        _ = prefs.Entries.Version.Value;                    // subscribe: state/count move with the projection
+        int pinBand = state.PinsBandVisible ? prefs.Entries.PinCount : 0;
+        return View.Count + pinBand;
+    }
+
     /// <summary>Re-arm the projection (the chrome's retry banner). Invalidating + syncing the binder re-runs the
     /// contributing warmers, which is the only retry the sidebar itself owns (each store's refresh policy owns the rest).</summary>
     public void Retry()

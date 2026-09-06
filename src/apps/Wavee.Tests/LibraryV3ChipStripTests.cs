@@ -29,7 +29,7 @@ public sealed class LibraryV3ChipStripTests
         Assert.All(slots, s => Assert.Equal(V3ChipKind.Facet, s.Kind));
         Assert.All(slots, s => Assert.False(s.Selected));
         Assert.DoesNotContain(slots, s => s.Kind == V3ChipKind.Clear);
-        Assert.Equal(new[] { Playlists, Podcasts, Albums, Artists }, new[] { slots[0].Code, slots[1].Code, slots[2].Code, slots[3].Code });
+        Assert.Equal(new[] { Playlists, Albums, Artists, Podcasts }, new[] { slots[0].Code, slots[1].Code, slots[2].Code, slots[3].Code });
 
         // Tapping an idle facet SELECTS it (Any qualifier — a fresh filter never carries over a stale sub-filter).
         Assert.Equal(Playlists, slots[0].SelectFilter);
@@ -174,8 +174,10 @@ public sealed class LibraryV3ChipStripTests
     [Fact]
     public void FocusIndex_FindsTheMatchingKey()
     {
+        // Albums is the SECOND facet at idle (Playlists · Albums · Artists · Podcasts — the destination order, V3.1).
         var slots = LibraryV3ChipStrip.Slots(All, Any, qualifiersAvailable: false);
-        Assert.Equal(2, LibraryV3ChipStrip.FocusIndex(slots, "v3f" + Albums));
+        Assert.Equal(1, LibraryV3ChipStrip.FocusIndex(slots, "v3f" + Albums));
+        Assert.Equal(3, LibraryV3ChipStrip.FocusIndex(slots, "v3f" + Podcasts));
     }
 
     [Fact]
@@ -250,7 +252,7 @@ public sealed class LibraryV3ChipStripTests
     {
         // The contract H4 decided: Route is data a RENDERER may act on with a secondary gesture (Library V3 chose a
         // double-click) — it must never change what SelectFilter/SelectQualifier themselves write for a plain tap.
-        var albums = LibraryV3ChipStrip.Slots(All, Any, qualifiersAvailable: false)[2];
+        var albums = LibraryV3ChipStrip.Slots(All, Any, qualifiersAvailable: false)[1];
         Assert.Equal(Albums, albums.Code);
         Assert.Equal("albums", albums.Route);
         Assert.Equal(Albums, albums.SelectFilter);   // a tap still only selects the Albums filter

@@ -184,6 +184,23 @@ public class SidebarPinStoreTests
     }
 
     [Fact]
+    public void LoadFrom_PrunesARetiredAppRoutePin_ButKeepsAnEntityPinAndAStillPinnableRoute()
+    {
+        // W7: "local" (Local Files) is retired — SidebarPinId.PinnableRoutes no longer accepts it, so a pin left
+        // behind by an older document must not survive the load; it has no entity to resolve later and no menu that
+        // could ever re-offer it, so keeping it would paint a dead row forever. This is a one-time retirement PRUNE,
+        // not the general "missing entity renders disabled" rule — an entity pin (here, a playlist) and a route pin
+        // that is STILL pinnable ("liked") are both untouched.
+        var s = new SidebarPinStore();
+        s.LoadFrom([
+            Pin("local", SidebarEntryKind.AppRoute, "", "Local files"),
+            Pin("liked", SidebarEntryKind.AppRoute, "spotify:collection:tracks", "Liked Songs"),
+            Pin("pl:spotify:playlist:1", SidebarEntryKind.Playlist),
+        ]);
+        Assert.Equal(new[] { "liked", "pl:spotify:playlist:1" }, IdsOf(s));
+    }
+
+    [Fact]
     public void OnChanged_FiresForAcceptedMutationsOnly()
     {
         var s = new SidebarPinStore();

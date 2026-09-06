@@ -12,18 +12,22 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>
-/// §3.2.3 — the header band: <c>["Your Library"]</c> · <c>[search]</c> · spacer · <c>[+]</c> · <c>[…]</c> ·
-/// <c>[collapse]</c>. Folds in what used to be a second 36-DIP toolbar row (search + a standalone sort/view pill):
-/// the decorative library glyph this row used to lead with was pure decoration next to a title that already says
-/// "Your Library", and Sort/View now live as submenus of the <c>…</c> overflow (<see cref="V3SortViewMenu"/>)
-/// rather than a second always-visible pill — a crowded 7-icon-across-two-rows header was the direct complaint
-/// this collapses down to a title plus 2 icons.
+/// §3.2.3 — the header band, its shape resolved once per render by <see cref="LibraryV3HeaderRules.Resolve"/> (the
+/// ONE Priority+ ladder: the title is the last thing to yield):
+/// <c>[title = collapse toggle]</c> · <c>[search]</c> · spacer · <c>[+]</c> · <c>[…]</c>. The title itself is text
+/// only, <c>Shrink = 0</c>, never ellipsized, never squeezed by the search field — it hides ENTIRELY (never shrinks)
+/// while <c>Shape.SearchTakesRow</c>, and reappears the instant the field closes or the pane widens past
+/// <see cref="LibraryV3HeaderRules.InlineSearchWidth"/>. The "‹" collapse chevron this row used to carry is gone —
+/// the title is the collapse affordance now (docked only; the drawer has no rail to collapse into, so it renders a
+/// plain, non-interactive title there) — and a "Collapse" row is back in the "…" overflow to replace it.
 ///
 /// <para>The overflow menu is where V3 carries locked entry point 3 (the quick sidebar-layout switch): it embeds
 /// <c>SidebarLayoutMenu.Rows</c> as a SUB-MENU rather than re-declaring the three design radios, so the pane menu, the
-/// Classic header button and this menu can never disagree about what switching a design does. Labels are resolved AT OPEN
-/// TIME, never in the render body — <c>Loc.Get</c> reads the culture epoch, and a static header button must not subscribe
-/// to it four times over (the docked pane and the drawer each keep an expanded and a compact body mounted).</para>
+/// Classic header button and this menu can never disagree about what switching a design does. Sort/View moved OFF this
+/// menu entirely (they now live on the lens row below the chips, a separate workstream) — this header no longer
+/// mentions <c>V3SortViewMenu</c> at all. Labels are resolved AT OPEN TIME, never in the render body — <c>Loc.Get</c>
+/// reads the culture epoch, and a static header button must not subscribe to it four times over (the docked pane and
+/// the drawer each keep an expanded and a compact body mounted).</para>
 /// </summary>
 sealed class LibraryV3Header : Component
 {
@@ -64,49 +68,63 @@ sealed class LibraryV3Header : Component
             return m;
         }, DepKey.Empty);
 
-        // The search host now shares this row (it used to own a whole second toolbar row alone with the sort/view
-        // pill, which is gone). ONE rule for the row's shape (LibraryV3SearchRules.Resolve): Inline lets the field
-        // grow to fill the row (the title takes only its natural width, see the spacer's Grow below); Narrow keeps
-        // the field a fixed-width host and an explicit spacer pushes the button cluster to the trailing edge.
-        var layout = UseComputed(() => LibraryV3SearchRules.Resolve(
-            _session.Width.Value, _session.SearchOpen.Value, _session.Prefs?.V3Search.Value is { Length: > 0 }));
-        bool inline = layout.Value.Inline;
+        // W1 — the ONE rule for the whole row's shape (LibraryV3HeaderRules.Resolve), mirrored from the search
+        // host's own equality-gated read: a seam drag re-renders this component only when the SHAPE flips, not per
+        // frame. Priority+: the title is the last thing to yield — it is never a parameter of the ladder's own
+        // narrowing logic, only the search field and the create button react to width.
+        var shape = UseComputed(() => LibraryV3HeaderRules.Resolve(
+            _session.Width.Value, _session.SearchOpen.Value, _session.Prefs?.V3Search.Value is { Length: > 0 })).Value;
+
+        // The title IS the collapse toggle now (the "‹" chevron is gone) — docked only, since the drawer has no rail
+        // to collapse into (§3.2.14); there it is a plain, non-interactive title. Text-only (no leading glyph: the
+        // engine's Icons table has no library glyph, and the width budget at the 180 floor has no room for one
+        // anyway), Shrink = 0, no Trim — it never ellipsizes, on the strength of LibraryV3HeaderRules alone.
+        Element title = _session.InDrawer
+            ? new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
+            {
+                Size = 15f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Shrink = 0f,
+            }
+            : ToolTip.Wrap(
+                new BoxEl
+                {
+                    Direction = 0, Height = 28f, Padding = new Edges4(4f, 0f, 6f, 0f), Corners = Radii.ControlAll,
+                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+                    OnClick = _session.Collapse, Shrink = 0f,
+                    Children = [new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
+                    {
+                        Size = 15f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1,
+                    }],
+                }.Interactive(Interaction.Subtle),
+                Loc.Get(Strings.Sidebar.V3.Collapse));
 
         var kids = new List<Element>(6)
         {
-            new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
-            {
-                // Ui.BodyStrong is 14/20/600; the header title sits one rung up (15) and no alias covers that exact
-                // size, so it stays an explicit override rather than a one-call-site alias (W5).
-                // Grow=0 (not the old 1/Basis=0): the search host is the row's OTHER flexible sibling now, and two
-                // Grow=1 elements would split the remaining space by ratio instead of the title staying its natural
-                // ("Your Library" is short and fixed) width.
-                Size = 15f, Weight = 600, Color = Tok.TextPrimary,
-                Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            },
+            // Hidden — never shrunk — while the search field takes the whole row (Flow.Show, never Width = 0: a
+            // zero-size flex child still collects the row's Gap, pitfalls.md "Geometry and virtualization").
+            Flow.Show(() => !shape.SearchTakesRow, title),
             Embed.Comp(() => new LibraryV3Search(_session)) with { Key = "v3-search" },
-            new BoxEl { Key = "v3-header-spacer", Grow = inline ? 0f : 1f },
-            // H2 (#85) — the same drop spec Classic's section-header "+" gets: a rootlist selection files into a new
-            // top-level folder, a track set becomes a new playlist. V3 never sets SidebarPaneConfig.HeaderCreate (it
-            // renders no section headers at all), so this button needed its own copy of that spec.
-            Embed.Comp(() => new SidebarCreateButton(
-                _session.CreatePlaylist, menu: CreateMenu,
-                drop: _session.HeaderCreateDropSpec(), dropActive: () => _session.HeaderCreateDropActive.Value,
-                box: 28f, glyph: 14f)),
-            // W5 — IconButton.Create gives the overflow button its focus ring, Space/Enter activation and
-            // AutomationRole for free; the hand-rolled BoxEl this used to be had none of those.
-            ToolTip.Wrap(
-                IconButton.Create(Icons.More, ToggleOverflow, parts: overflowParts, size: ControlSize.Small)
-                    with { Key = "v3-overflow" },
-                Loc.Get(Strings.Sidebar.Layout.MenuTitle)),
+            // Grow=0 when inline (not the old 1/Basis=0): the search host is the row's OTHER flexible sibling then,
+            // and two Grow=1 elements would split the remaining space by ratio instead of the title staying its
+            // natural ("Your Library" is short and fixed) width.
+            new BoxEl { Key = "v3-header-spacer", Grow = shape.InlineSearch ? 0f : 1f },
         };
 
-        // A drawer has no rail to collapse INTO, so the affordance is absent rather than dead (§3.2.14).
-        if (!_session.InDrawer)
-            kids.Add(ToolTip.Wrap(
-                IconButton.Create(Icons.ChevronLeft, _session.Collapse, size: ControlSize.Small)
-                    with { Key = "v3-collapse" },
-                Loc.Get(Strings.Sidebar.V3.Collapse)));
+        if (shape.ShowsCreate)
+            // H2 (#85) — the same drop spec Classic's section-header "+" gets: a rootlist selection files into a new
+            // top-level folder, a track set becomes a new playlist. V3 never sets SidebarPaneConfig.HeaderCreate (it
+            // renders no section headers at all), so this button needed its own copy of that spec. Folds into the
+            // "…" overflow (New playlist / New folder) below LibraryV3HeaderRules.CreateFoldWidth.
+            kids.Add(Embed.Comp(() => new SidebarCreateButton(
+                _session.CreatePlaylist, menu: CreateMenu,
+                drop: _session.HeaderCreateDropSpec(), dropActive: () => _session.HeaderCreateDropActive.Value,
+                box: 28f, glyph: 14f)));
+
+        // W5 — IconButton.Create gives the overflow button its focus ring, Space/Enter activation and
+        // AutomationRole for free; the hand-rolled BoxEl this used to be had none of those.
+        kids.Add(ToolTip.Wrap(
+            IconButton.Create(Icons.More, ToggleOverflow, parts: overflowParts, size: ControlSize.Small)
+                with { Key = "v3-overflow" },
+            Loc.Get(Strings.Sidebar.Layout.MenuTitle)));
 
         return new BoxEl
         {
@@ -133,7 +151,10 @@ sealed class LibraryV3Header : Component
         });
     }
 
-    /// <summary>The overflow rows, built at OPEN time (§3.2.3's exact order).</summary>
+    /// <summary>The overflow rows, built at OPEN time (§3.2.3's exact order): Sidebar layout ▸ · separator ·
+    /// [New playlist · New folder — only when the header's own "+" is folded away] · Clear filters · Collapse
+    /// (docked only) · separator · API Console (developer mode). Sort/View are GONE from this menu entirely — they
+    /// now live on the lens row under the chips (a separate workstream), never re-declared here.</summary>
     List<MenuFlyoutItem> BuildOverflow(SidebarPreferences? prefs)
     {
         var rows = new List<MenuFlyoutItem>(8);
@@ -144,24 +165,21 @@ sealed class LibraryV3Header : Component
             rows.Add(MenuFlyoutItem.Separator);
         }
 
-        // Sort/View USED TO be a standalone always-visible pill (V3SortViewTrigger, now deleted) sharing a second
-        // toolbar row with search. Folded in here as two submenus — the same "misc controls live in the overflow"
-        // precedent the layout-mode submenu above already set — so the header collapses to title + 2 icons.
-        if (prefs is not null)
-        {
-            rows.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Library.SortBy), V3SortViewMenu.SortRows(prefs), Icons.Sort));
-            rows.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Library.ViewAs), V3SortViewMenu.ViewRows(prefs),
-                LibraryV3Labels.ViewGlyph(LibraryV3Metrics.NormalizeView(prefs.V3View.Value))));
-            rows.Add(MenuFlyoutItem.Separator);
-        }
+        // The header's own "+" folds away below LibraryV3HeaderRules.CreateFoldWidth — reuse the exact two verbs
+        // CreateMenu() already builds so the header and this overflow can never disagree about what "New playlist"/
+        // "New folder" do. `Peek`, not `Value`: built at OPEN time, nothing to subscribe.
+        bool showsCreate = LibraryV3HeaderRules.Resolve(
+            _session.Width.Peek(), _session.SearchOpen.Peek(), _session.Prefs?.V3Search.Peek() is { Length: > 0 }).ShowsCreate;
+        if (!showsCreate && CreateMenu() is { Rows.Count: > 0 } createMenu)
+            rows.AddRange(createMenu.Rows);
 
         rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.V3.ClearFilters), Icons.Cancel,
                                     _session.AnyFilterActive, _session.ClearAllFilters));
 
-        // The standalone "Collapse" row that used to live here too is gone: it was a same-screen duplicate of the
-        // header's own "<" chevron (both visible together whenever this overflow is open) — a safe, independent cut
-        // (the chevron itself, and the rail footer's opposite-direction expand tile, are NOT duplicates of each
-        // other: they live in mutually exclusive mount states and both stay).
+        // The "Collapse" row is BACK — the header's own "‹" chevron is gone (the title is the collapse toggle now),
+        // so this is the only remaining path to it. Docked only: a drawer has no rail to collapse into.
+        if (!_session.InDrawer)
+            rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.V3.Collapse), Icons.ChevronLeft, true, _session.Collapse));
 
         // DEVELOPER SURFACE, hidden unless developer mode is on (Settings ▸ Diagnostics) — the same gate Classic's
         // Tools section rides. Deliberately unlocalized, matching Classic's DevToolsRow: it is a dev entry point, not

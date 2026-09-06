@@ -45,6 +45,10 @@ sealed class SidebarPaneSlot : Component
 
     public SidebarPaneSlot(SidebarPane owner, RowScope scope) { _o = owner; _scope = scope; }
 
+    /// <summary>W4 — THE MODE SEAM read once per row build. Every <c>new SidebarRowSpec</c> below stamps
+    /// <c>Style = Style</c> so <c>SidebarEntityRow.Create</c> never has to ask which mode is rendering (rule 1).</summary>
+    SidebarRowStyle Style => _o.Config.RowStyle;
+
     public override Element Render()
     {
         int index = _scope.Index.Value;        // a recycle writes this → exactly this row re-renders
@@ -411,7 +415,7 @@ sealed class SidebarPaneSlot : Component
         {
             Key = row.Key,
             Label = label,
-            Subtitle = section.Opts.Subtitles ? SidebarPaneText.SubtitleOf(in snapshot) : null,
+            Subtitle = section.Opts.Subtitles ? SidebarPaneText.SubtitleOf(in snapshot, Style) : null,
             Selected = selected,
             Enabled = named || track,
             Depth = baseDepth,
@@ -439,6 +443,7 @@ sealed class SidebarPaneSlot : Component
             OnMove = move,
             Drag = drag,
             DropTarget = drop,
+            Style = Style,
         };
         // MULTI-SELECT (tree rows outside a reorder band only). Ctrl/Shift reach the row through `OnActivate`, which
         // REPLACES `OnClick`; the check lane and the plate read the pane's live selection.
@@ -507,7 +512,10 @@ sealed class SidebarPaneSlot : Component
         {
             Key = row.Key,
             Label = entry.Name.Length > 0 ? entry.Name : SidebarPaneText.ShortUri(entry.Id),
-            Subtitle = section.Opts.Subtitles ? Strings.Sidebar.V3.ItemCount(entry.ChildCount) : null,
+            // Under Cluster style this equals the old bare `Strings.Sidebar.V3.ItemCount(entry.ChildCount)` string —
+            // SidebarSubtitleRules.For's Folder arm returns exactly that shape — so Cluster stays byte-identical
+            // through the SAME table Slot uses, rather than a second copy of the item-count string.
+            Subtitle = section.Opts.Subtitles ? SidebarPaneText.SubtitleOf(in entry, Style) : null,
             Depth = baseDepth,
             TreeNode = treeNode,
             TreeDepth = treeDepth,
@@ -532,6 +540,7 @@ sealed class SidebarPaneSlot : Component
             OnMove = move,
             Drag = reordering ? null : (rootlistItem ? _o.TreeDragPayload(in snapshot) : resource),
             DropTarget = drop,
+            Style = Style,
         };
         if (rootlistItem) ApplyTreeSelection(ref spec, folderId.Length > 0 ? snapshot.Id : "", activate);
         // A folder row carries no selection pill (it has no route), but it still needs both drop cues: the bottom band
@@ -579,6 +588,7 @@ sealed class SidebarPaneSlot : Component
         float height = SidebarPaneMetrics.RowHeight(section);
         string key = item.Key;
         string title = item.LabelOverride is { Length: > 0 } alias ? alias : dest.Title;
+        string glyph = SidebarIcons.For(item, dest.Glyph);
 
         // A route row is a pin drag source when it is a durable application destination and a Reorderable is not
         // already the drag owner. SidebarPinId centrally excludes editor/tooling routes.
@@ -590,22 +600,43 @@ sealed class SidebarPaneSlot : Component
         }
         var drop = PinSpec(section, section.Id, index);
 
+        // W4 (Slot only) — a SYSTEM route row now earns real chrome: the Liked collection's dynamic cover (or a
+        // glyph tile) instead of a bare 16-DIP glyph, the "Kind · detail" subtitle grammar, and the now-playing
+        // equalizer, so Liked Songs reads like the library entity it is rather than a nav shortcut. Cluster's route
+        // rows keep the bare glyph + no subtitle + no play state they always had — RouteRow never read play state
+        // under Cluster, and this keeps it that way.
+        bool slot = Style == SidebarRowStyle.Slot;
+        float artSize = SidebarPaneMetrics.ArtSize(section);
+        Element? leading = slot && section.Opts.Artwork
+            ? (string.Equals(key, SidebarSubtitleRules.LikedRouteKey, StringComparison.Ordinal)
+                ? SidebarCover.Liked(artSize)
+                : SidebarCover.Glyph(glyph, artSize))
+            : null;
+        string? subtitle = slot && section.Opts.Subtitles ? SidebarPaneText.RouteSubtitle(key, _o.Store) : null;
+        var (playing, animated) = slot ? _o.RowPlayState(index) : default;
+
         var spec = new SidebarRowSpec
         {
             Key = key,
             Label = title,
+            Subtitle = subtitle,
             Selected = selected,
             Depth = 0,
             Density = section.Opts.Density,
             Height = height,
-            Glyph = SidebarIcons.For(item, dest.Glyph),
+            ArtSize = artSize,
+            Leading = leading,
+            Glyph = leading is null ? glyph : null,
             Trailing = CountBadge(section, key),
+            Playing = playing,
+            PlayingAnimated = animated,
             OnClick = () => _o.Navigate(key, null),
             Overflow = _o.Acts is not null && _o.MenuOverlay is not null,
             MenuOverlay = _o.MenuOverlay,
             Menu = RouteMenu(section, item, index),
             Drag = drag,
             DropTarget = drop,
+            Style = Style,
         };
         return Indicator(SidebarEntityRow.Create(spec), selected, 0, height, key);
     }
@@ -649,6 +680,7 @@ sealed class SidebarPaneSlot : Component
             OnClick = () => _o.Play(uri, asTrack: true),
             MenuOverlay = _o.MenuOverlay,
             Menu = LayoutOnlyMenu(section, item, index, uri),
+            Style = Style,
         };
         return SidebarEntityRow.WithPlayTrackHint(SidebarEntityRow.Create(spec));
     }
@@ -710,6 +742,7 @@ sealed class SidebarPaneSlot : Component
             OnClick = click,
             MenuOverlay = _o.MenuOverlay,
             Menu = LayoutOnlyMenu(section, item, index, item.Key),
+            Style = Style,
         };
         Element row = SidebarEntityRow.Create(spec);
         // grow: 1f — the tooltip wrapper is a flex ROW, so without it the DISABLED arm of this row (the only arm that
@@ -763,6 +796,7 @@ sealed class SidebarPaneSlot : Component
             Glyph = section.Opts.Artwork ? null : SidebarPaneText.Glyph(item, Icons.MusicNote),
             MenuOverlay = _o.MenuOverlay,
             Menu = menu,
+            Style = Style,
         };
         // grow: 1f — see WithPlayTrackHint. A retention row is ALWAYS tooltip-wrapped, so without it the missing-entity
         // row was the one row in a section that never filled: dimmed AND narrow, which reads as broken rather than as
@@ -789,7 +823,7 @@ sealed class SidebarPaneSlot : Component
             : resolved && entry.Name.Length > 0 ? entry.Name
             : item?.FallbackTitle is { Length: > 0 } cached ? cached
             : SidebarPaneText.ShortUri(row.Key);
-        string? subtitle = resolved ? SidebarPaneText.SubtitleOf(in entry) : Loc.Get(SidebarPaneLoc.MissingEntity);
+        string? subtitle = resolved ? SidebarPaneText.SubtitleOf(in entry, Style) : Loc.Get(SidebarPaneLoc.MissingEntity);
         bool circular = resolved
             ? entry.Circular || entry.Kind == SidebarEntryKind.Artist
             : item?.EntityKind == SidebarEntityKind.Artist;
@@ -944,19 +978,36 @@ sealed class SidebarPaneSlot : Component
         var snapshot = entry;
         float artEdge = MathF.Max(SidebarCover.S40, edge - Spacing.S);
 
+        TextEl labelText = new TextEl(label)
+        {
+            Size = 12f, Weight = (ushort)(selected ? 600 : 400), Color = selected ? Tok.AccentTextPrimary : Tok.TextPrimary,
+            MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+        };
+        // W4 (Slot only) — a pinned grid cell (H1, #85) gets the same 10-DIP mark the list rows do, ahead of the
+        // label. Cluster grid cells never carried a pin mark at all, so this is purely additive under Slot.
+        // Typed separately from the TextEl: the abstract Element record carries no flex members, and the pin wrapper
+        // needs Grow/Shrink/MinWidth on the concrete TextEl it wraps.
+        Element labelLine = labelText;
+        if (Style == SidebarRowStyle.Slot && SidebarRowGeometry.ShowsPinGlyph(entry.IsPinned, entry.IsTrack))
+            labelLine = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.PinMarkSubtitleGap,
+                Children =
+                [
+                    Icon(Icons.Pin, SidebarRowGeometry.PinMarkSize, Tok.AccentTextPrimary) with { Shrink = 0f },
+                    labelText with { Grow = 1f, Shrink = 1f, MinWidth = 0f },
+                ],
+            };
+
         var kids = new List<Element>(3)
         {
             // ForEntry, not Art: a grid cell is an art slot like every other one, and calling the raw cover factory
             // skipped the KIND dispatch — so an app-route entry (Liked Songs, Albums, Podcasts) lost its glyph tile
             // and painted a bare seeded tint, and Liked lost its dynamic cover with it.
             SidebarCover.ForEntry(in entry, artEdge),
-            new TextEl(label)
-            {
-                Size = 12f, Weight = (ushort)(selected ? 600 : 400), Color = selected ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            },
+            labelLine,
         };
-        if (section.Opts.Subtitles && SidebarPaneText.SubtitleOf(in entry) is { Length: > 0 } sub)
+        if (section.Opts.Subtitles && SidebarPaneText.SubtitleOf(in entry, Style) is { Length: > 0 } sub)
             kids.Add(new TextEl(sub) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
 
         Action? click = null;
@@ -1026,6 +1077,7 @@ sealed class SidebarPaneSlot : Component
                 Density = section.Opts.Density,
                 Height = SidebarPaneMetrics.RowHeight(section),
                 Glyph = section.Kind == SidebarSectionKind.Concerts ? Icons.Calendar : Icons.Grid,
+                Style = Style,
             });
 
         return new BoxEl

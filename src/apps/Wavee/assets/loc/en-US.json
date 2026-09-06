@@ -1383,7 +1383,6 @@
     "artists": "Artists",
     "likedSongs": "Liked Songs",
     "podcasts": "Podcasts",
-    "localFiles": "Local files",
     "recents": "Recents",
     "playlist": "Playlist",
     "playlistPrivate": "Playlist · Private",
@@ -1545,7 +1544,7 @@
       "recentlyPlayed": "Recently played",
       "recentlyPlayedSub": "What you actually listened to, most recent first",
       "shortcuts": "Library shortcuts",
-      "shortcutsSub": "Liked Songs, Albums, Artists, Podcasts, Local files",
+      "shortcutsSub": "Liked Songs, Albums, Artists, Podcasts",
       "playlistTree": "Playlists",
       "playlistTreeSub": "Your playlists, with folders",
       "entityList": "Library list",
@@ -1847,6 +1846,15 @@
         "folder": "Folder"
       },
       "itemCount": "{count, plural, one {# item} other {# items}}",
+      "lens": {
+        "all": "All",
+        "playlists": "All playlists",
+        "albums": "All albums",
+        "artists": "All artists",
+        "podcasts": "All podcasts",
+        "matches": "{count, plural, one {# match} other {# matches}}",
+        "openPage": "Open {page}"
+      },
       "empty": {
         "library": "Nothing in Your Library yet",
         "librarySub": "Save an album, follow an artist or create a playlist and it shows up here.",

@@ -138,7 +138,14 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
     }
 
     /// <summary>Replace the whole list from the loaded document (startup only). Skips null/empty and duplicate ids so a
-    /// hand-edited file can never produce two rows with one identity. Silent — no <see cref="OnChanged"/>.</summary>
+    /// hand-edited file can never produce two rows with one identity. Silent — no <see cref="OnChanged"/>.
+    ///
+    /// <para>W7: also drops a pin whose id names a RETIRED route (<see cref="SidebarPinId.IsRetiredRoute"/>) —
+    /// today that means a pin id of exactly <c>"local"</c>, left behind by the retired Local Files page. The test is the
+    /// explicit retired list, never "not pinnable": a bare id the store has never heard of is kept (rule 9). This is a
+    /// deliberate retirement PRUNE, not the general "missing entity renders disabled" rule (iron rule 9): an AppRoute
+    /// pin has no entity to resolve later and no menu offers it back, so keeping it around would only paint a dead row
+    /// forever. Entity pins (playlist/album/artist/show/folder/track) are never touched here.</para></summary>
     public void LoadFrom(IReadOnlyList<SidebarPin>? pins)
     {
         _items.Clear();
@@ -148,6 +155,7 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
             {
                 var p = Canonicalize(pins[i]);
                 if (string.IsNullOrEmpty(p.Id) || _index.ContainsKey(p.Id)) continue;
+                if (SidebarPinId.IsRetiredRoute(p.Id)) continue;
                 _index[p.Id] = _items.Count;
                 _items.Add(p);
             }

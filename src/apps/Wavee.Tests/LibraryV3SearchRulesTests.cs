@@ -3,8 +3,9 @@ using Xunit;
 namespace Wavee.Tests;
 
 // W1 — the search host's morph logic is decided by LibraryV3SearchRules (System-only), never by the component that
-// renders it, so the Escape ladder / blur-close / open-width arithmetic are pinned here without an EditableText, a
-// signal or a frame.
+// renders it, so the Escape ladder / blur-close / shape rules are pinned here without an EditableText, a signal or a
+// frame. The width arithmetic (OpenWidth/TitleReserve/TrailingControlsWidth) is GONE — the open narrow field now
+// takes the whole row (LibraryV3HeaderRules.Resolve decides that, and this file's Resolve just reads its Shape).
 public sealed class LibraryV3SearchRulesTests
 {
     // ── Escape ladder ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -35,23 +36,7 @@ public sealed class LibraryV3SearchRulesTests
         Assert.False(LibraryV3SearchRules.ClosesOnBlur("blue"));
     }
 
-    // ── open width ────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void OpenWidth_IsThePaneMinusPaddingMinusTitleAndTrailingControlsAndTwoGaps()
-    {
-        // 500 pane, 43 toolbar padding (LeadInset 27 + ContentLaneEnd 16) -> 500 - 43 - 96 - 96 - 8 = 257.
-        float width = LibraryV3SearchRules.OpenWidth(500f, 43f);
-        Assert.Equal(257f, width);
-    }
-
-    [Fact]
-    public void OpenWidth_NeverGoesBelowClosedWidth()
-    {
-        // A pane too narrow to fit the title + trailing controls must not yield a negative or shrinking host.
-        float width = LibraryV3SearchRules.OpenWidth(40f, 43f);
-        Assert.Equal(LibraryV3SearchRules.ClosedWidth, width);
-    }
+    // ── shape (delegates to LibraryV3HeaderRules) ────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Resolve_WidePane_IsInlineAndExpanded()
@@ -79,13 +64,13 @@ public sealed class LibraryV3SearchRulesTests
     }
 
     [Fact]
-    public void OpenWidth_AtTheFloorBoundary_IsExact()
+    public void Resolve_AtTheBoundary_319IsNarrow_320IsInline()
     {
-        // paneWidth - padH - title - trailing - 2*gap == ClosedWidth exactly: the floor must not clip a legitimate value.
-        float width = LibraryV3SearchRules.OpenWidth(
-            LibraryV3SearchRules.ClosedWidth + 43f + LibraryV3SearchRules.TitleReserve
-                + LibraryV3SearchRules.TrailingControlsWidth + LibraryV3SearchRules.Gap * 2f,
-            43f);
-        Assert.Equal(LibraryV3SearchRules.ClosedWidth, width);
+        var below = LibraryV3SearchRules.Resolve(319f, openedByUser: false, hasText: false);
+        Assert.False(below.Inline);
+
+        var at = LibraryV3SearchRules.Resolve(320f, openedByUser: false, hasText: false);
+        Assert.True(at.Inline);
+        Assert.True(at.Expanded);
     }
 }

@@ -43,9 +43,10 @@ internal static class WaveeNavProbe
         ("pl:spotify:playlist:pl4", "Playlist 4"),
         ("pl:spotify:playlist:pl5", "Playlist 5"),
     ];
+    // W7: "local" dropped — the Local Files collection page is retired, so the probe no longer has a route to visit.
     static readonly (string Key, string? Arg)[] CheapRoutes =
     [
-        ("albums", null), ("artists", null), ("podcasts", null), ("local", null), ("browse", null),
+        ("albums", null), ("artists", null), ("podcasts", null), ("browse", null),
     ];
 
     /// <summary>Every env flag that hands this probe the run loop. ONE list, read by both <see cref="TryRun"/> and the

@@ -75,7 +75,8 @@ sealed class DetailPage : Component
         // Same kind, same config, same shell — only the id needs resolving before the load can read it.
         : r.Name.StartsWith("prerelease:", StringComparison.Ordinal) ? (DetailKind.Album, r.Name["prerelease:".Length..])
         : r.Name.StartsWith("pl:", StringComparison.Ordinal) ? (DetailKind.Playlist, r.Name["pl:".Length..])
-        : r.Name == "local" ? (DetailKind.Playlist, "wavee:local:all")   // the Local Files collection (LocalSource owns it)
+        // W7: the "local" route (the Local Files collection page) is retired — no arm maps to it any more; LocalSource
+        // itself still owns the `wavee:local:*` uri space for local FILE playback, which is a different, live feature.
         : r.Name.StartsWith("show:", StringComparison.Ordinal) ? (DetailKind.Show, r.Name["show:".Length..])
         : (DetailKind.Liked, null);
 

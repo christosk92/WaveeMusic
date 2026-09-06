@@ -16,7 +16,7 @@ namespace Wavee.Tests
         [InlineData("artists")]
         [InlineData("liked")]
         [InlineData("podcasts")]
-        [InlineData("local")]
+        // W7: "local" (Local Files) is retired — it moved to UnknownKeys_AreNotKnown below.
         [InlineData("history")]
         [InlineData("recents")]
         [InlineData("settings")]
@@ -74,6 +74,7 @@ namespace Wavee.Tests
         [InlineData("spotify:concerts")]               // a client-feature uri is not a route key
         [InlineData("albumspotify:album:1")]           // missing the ':' separator — not the album family
         [InlineData("home-section")]                   // the prefix's name without its ':' is nothing
+        [InlineData("local")]                          // W7: the Local Files collection page is retired
         [InlineData("")]
         [InlineData(null)]
         public void UnknownKeys_AreNotKnown(string? key) => Assert.False(ShellRoutes.IsKnown(key));

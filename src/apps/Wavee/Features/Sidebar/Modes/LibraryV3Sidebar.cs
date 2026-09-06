@@ -135,6 +135,10 @@ sealed class LibraryV3Sidebar : Component
             // The document is ephemeral and the CHROME owns every piece of its state: no inline section controls, no
             // document commands (a Dispatch here would edit the CURATED document), no customize CTA.
             ReadOnly = true,
+            // V3.1's one-trailing-slot row anatomy (pin mark in the subtitle, "Kind · detail" subtitles, system route
+            // rows with art): a MODE seam on the config (W4's `SidebarRowStyle`), never a Design branch. Classic and
+            // Curated keep the default `Cluster` anatomy untouched.
+            RowStyle = SidebarRowStyle.Slot,
             // V3 has its own library-only search in the toolbar (§3.2.5), writing the mode-global V3Search the projection
             // binder folds in — the pane's pinned search head would be a second, competing query.
             SearchHead = false,
@@ -150,7 +154,9 @@ sealed class LibraryV3Sidebar : Component
             RailFooter = BuildRailFooter,
             // W3 — the nav band left the document entirely (it is fixed chrome above the header now,
             // `LibraryV3Chrome` → `LibraryV3NavBand`), so it has no section for the plan's `ShowInRail` to draw rail
-            // tiles from any more. This supplies the rail its own copy of those tiles directly from the same list.
+            // tiles from any more. This supplies the rail its own copy of the shortcut band's tiles directly from the
+            // same list (`SidebarPreferences.TopBar`) — the Liked Songs system row still reaches the rail through its
+            // own `ShowInRail` section, unaffected by this seam.
             RailHead = BuildRailHead,
             IsReorderableSection = IsSectionReorderable,
             TreeSortedNonCustom = TreeSortedNonCustom,
@@ -359,12 +365,18 @@ sealed class LibraryV3Sidebar : Component
 
     // ── the nav band's OWN rail tiles (W3) ───────────────────────────────────────────────────────────────────────────
 
-    /// <summary>W3's <c>SidebarPaneConfig.RailHead</c>: the nav band's tiles, drawn a second way for the 56-DIP rail.
-    /// The band itself is chrome (<c>LibraryV3NavBand</c>, mounted above the header) and left the document — and
-    /// therefore the plan — entirely, so <c>SidebarRowPlanner.BuildRail</c> has no <c>ShowInRail</c> section to read
-    /// these tiles from any more; this reads the SAME list (<c>SidebarPreferences.TopBar</c>) directly. Reuses
+    /// <summary>W3's <c>SidebarPaneConfig.RailHead</c>: the shortcut band's tiles, drawn a second way for the 56-DIP
+    /// rail. The band itself is chrome (<c>LibraryV3NavBand</c>, mounted above the header) and lives entirely outside
+    /// the document — and therefore the plan — so <c>SidebarRowPlanner.BuildRail</c> has no <c>ShowInRail</c> section
+    /// to read its tiles from; this reads the SAME list (<c>SidebarPreferences.TopBar</c>) directly. Reuses
     /// <c>SidebarNavBandModel</c>'s pure rules (kind, route resolution, selection) so the two forms of one tile cannot
-    /// disagree, exactly as <c>LibraryV3NavBand</c> does for the expanded band.</summary>
+    /// disagree, exactly as <c>LibraryV3NavBand</c> does for the expanded band.
+    ///
+    /// <para>The five fixed library destinations the band once carried a second copy of here are gone (W3): Liked
+    /// Songs is now a system section with <c>ShowInRail: true</c>, so <c>SidebarRowPlanner.BuildRail</c> draws its
+    /// tile after this rail head on its own, without this file's help; Albums/Artists/Podcasts moved to the lens
+    /// row's page link and Local files is retired from every navigation surface (W7). This method carries ONLY the
+    /// shortcut band now.</para></summary>
     Element? BuildRailHead()
     {
         if (_prefs is not { } prefs) return null;
@@ -372,21 +384,7 @@ sealed class LibraryV3Sidebar : Component
 
         string route = _route.Peek().Name;
         var registry = _session?.Acts?.Extensions;
-        var kids = new List<Element>(items.Count + SidebarShortcutsSection.LibraryDestinations.Length);
-
-        // The five library destinations, as rail tiles. The expanded pane draws them as a word rail in the chrome
-        // (LibraryV3NavBand) — which means they belong to no document section, so SidebarRowPlanner.BuildRail has
-        // nothing to draw them from and a COLLAPSED V3 pane showed none of them at all. A rail is icon-only by
-        // construction, so the tooltip carries the name; that is the one place a glyph without a visible label is the
-        // right answer, because the whole rail is that trade.
-        var keys = SidebarShortcutsSection.LibraryDestinations;
-        for (int i = 0; i < keys.Length; i++)
-        {
-            var dest = ShellNav.Dest(keys[i]);
-            string key = keys[i];
-            kids.Add(SidebarRailItem.Icon(key, dest.Glyph,
-                string.Equals(route, key, StringComparison.Ordinal), () => _go(key, null), dest.Title));
-        }
+        var kids = new List<Element>(items.Count);
 
         for (int i = 0; i < items.Count; i++)
         {

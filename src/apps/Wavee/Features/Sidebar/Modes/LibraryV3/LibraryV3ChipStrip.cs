@@ -46,10 +46,13 @@ public static class LibraryV3ChipStrip
     const int Playlists = (int)SidebarV3Filter.Playlists;
     const int Any = (int)SidebarV3Qualifier.Any;
 
+    // W2 — the DESTINATION order (Playlists, Albums, Artists, Podcasts), not enum declaration order: this is the
+    // idle rail's left-to-right read, and Podcasts moved last to match the lens row's/library page ordering the
+    // rest of V3.1 settled on.
     public static readonly int[] Facets =
     [
-        (int)SidebarV3Filter.Playlists, (int)SidebarV3Filter.Podcasts,
-        (int)SidebarV3Filter.Albums, (int)SidebarV3Filter.Artists,
+        (int)SidebarV3Filter.Playlists, (int)SidebarV3Filter.Albums,
+        (int)SidebarV3Filter.Artists, (int)SidebarV3Filter.Podcasts,
     ];
 
     public static readonly int[] Qualifiers =

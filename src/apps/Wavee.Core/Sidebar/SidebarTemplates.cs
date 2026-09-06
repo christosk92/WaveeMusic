@@ -73,7 +73,7 @@ public static class SidebarTemplates
             Route("albums", "Album"),
             Route("artists", "Contact"),
             Route("podcasts", "RadioTower"),
-            Route("local", "Folder"),
+            // W7: "local" (Local Files) dropped — the page it opened is retired.
         ]),
         Divider(),
         Section(SidebarSectionKind.PlaylistTree, "sidebar.playlists", SidebarDisplayOptions.Entities),
@@ -94,7 +94,7 @@ public static class SidebarTemplates
             Route("artists", "Contact"),
             Route("liked", "Heart"),
             Route("podcasts", "RadioTower"),
-            Route("local", "Folder"),
+            // W7: "local" (Local Files) dropped — the page it opened is retired.
         ]),
         Divider(),
         // Subtitles = the song-count caption.

@@ -90,10 +90,11 @@ public static class SidebarShortcutsSection
     ///
     /// <para>Library V3 uses it to drop its own <c>v3.liked</c> section when Liked Songs is already a shortcut —
     /// otherwise the pane would show the identical destination twice, two rows apart.</para></summary>
-    /// <summary>The five fixed library destinations, in the order they are presented. The ONE owner of that list, so
+    /// <summary>The four fixed library destinations, in the order they are presented. The ONE owner of that list, so
     /// the top-bar seed, the Classic dedupe and Library V3's destination strip cannot disagree about what counts as a
-    /// "library destination" — a set that drifted is how the same row ends up rendered twice.</summary>
-    public static readonly string[] LibraryDestinations = ["liked", "albums", "artists", "podcasts", "local"];
+    /// "library destination" — a set that drifted is how the same row ends up rendered twice.
+    /// W7: "local" (Local Files) dropped — that page is retired from every nav surface.</summary>
+    public static readonly string[] LibraryDestinations = ["liked", "albums", "artists", "podcasts"];
 
     /// <summary>Is this route one of <see cref="LibraryDestinations"/>?</summary>
     public static bool IsLibraryDestination(string? routeKey)

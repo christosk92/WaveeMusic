@@ -401,21 +401,20 @@ public sealed class SidebarRailPlannerTests
 
         var plan = SidebarRowPlanner.BuildRail(SidebarTemplates.Build(SidebarTemplates.Curated), input);
 
-        // 2 pin tiles · rule · 5 shortcut glyphs · rule · folder + its ONE top-level sibling ("Inner" sits inside the
-        // folder, and the rail is top level only). Jump back in ships ShowInRail:false, and its two flanking dividers
-        // collapse into the single quiet rule before the shortcuts.
+        // 2 pin tiles · rule · 4 shortcut glyphs (W7: "local"/Local Files retired) · rule · folder + its ONE top-level
+        // sibling ("Inner" sits inside the folder, and the rail is top level only). Jump back in ships ShowInRail:false,
+        // and its two flanking dividers collapse into the single quiet rule before the shortcuts.
         Assert.Equal(new[]
         {
             SidebarRowKind.EntityRow, SidebarRowKind.EntityRow,
             SidebarRowKind.Divider,
             SidebarRowKind.IconRow, SidebarRowKind.IconRow, SidebarRowKind.IconRow, SidebarRowKind.IconRow,
-            SidebarRowKind.IconRow,
             SidebarRowKind.Divider,
             SidebarRowKind.FolderHeader, SidebarRowKind.EntityRow,
         }, KindsOf(plan));
 
-        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "local" },
-            new[] { plan.Rows[3].Key, plan.Rows[4].Key, plan.Rows[5].Key, plan.Rows[6].Key, plan.Rows[7].Key });
+        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts" },
+            new[] { plan.Rows[3].Key, plan.Rows[4].Key, plan.Rows[5].Key, plan.Rows[6].Key });
     }
 
     [Fact]

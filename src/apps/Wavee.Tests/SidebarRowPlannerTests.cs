@@ -914,7 +914,7 @@ public sealed class SidebarRowPlannerTests
     {
         var plan = SidebarRowPlanner.Build(SidebarTemplates.Build(SidebarTemplates.Curated), FullInput());
 
-        // Pinned (2) + its closing PinEnd gutter / Jump back in via Played as a two-column media strip / shortcuts (5) /
+        // Pinned (2) + its closing PinEnd gutter / Jump back in via Played as a two-column media strip / shortcuts (4) /
         // tree (folder + 2 leaves + create), separated by the three authored quiet dividers.
         Assert.Equal(new[] {
             SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.EntityRow, SidebarRowKind.PinEnd,
@@ -922,7 +922,7 @@ public sealed class SidebarRowPlannerTests
             SidebarRowKind.SectionHeader, SidebarRowKind.GridStrip,
             SidebarRowKind.Divider,
             SidebarRowKind.SectionHeader, SidebarRowKind.IconRow, SidebarRowKind.IconRow, SidebarRowKind.IconRow,
-            SidebarRowKind.IconRow, SidebarRowKind.IconRow,
+            SidebarRowKind.IconRow,
             SidebarRowKind.Divider,
             SidebarRowKind.SectionHeader, SidebarRowKind.FolderHeader, SidebarRowKind.EntityRow,
             SidebarRowKind.EntityRow, SidebarRowKind.TreeEnd,

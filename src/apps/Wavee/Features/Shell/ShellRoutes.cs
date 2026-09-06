@@ -32,7 +32,9 @@ static class ShellRoutes
         "artists",
         "liked",
         "podcasts",
-        "local",
+        // W7: "local" (the Local Files collection page) is retired — no page renders it any more, so it must not be a
+        // known route either (an accepted-but-unrenderable key would land on the not-found page instead of being
+        // refused up front by the deep-link intake).
         "history",
         "recents",
         "settings",

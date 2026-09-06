@@ -1451,7 +1451,12 @@ sealed class SidebarPane : Component
                 var section = SectionOf(row.SectionId);
                 if (section is null) return "";
                 var item = SidebarPaneText.ItemOf(section, row.Key);
-                return item is { Target: SidebarItemTarget.Track } ? item.Key : "";
+                if (item is { Target: SidebarItemTarget.Track }) return item.Key;
+                // W4 — the Liked Songs SYSTEM ROW is the only route with a playable collection uri; every other route
+                // (Home, Search, Albums, …) stays dark, exactly as it always has (Cluster's RouteRow never reads play
+                // state at all, so Classic/Curated are unaffected either way).
+                return item is { Target: SidebarItemTarget.Route } && SidebarPinId.FromRoute(item.Key) is { } pin
+                    ? SidebarPinId.UriOf(pin) : "";
             }
             default:
                 return "";

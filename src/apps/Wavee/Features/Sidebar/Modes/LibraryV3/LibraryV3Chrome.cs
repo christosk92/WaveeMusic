@@ -13,9 +13,14 @@ namespace Wavee;
 
 /// <summary>
 /// §3.2.2's fixed vertical stack — V3's CHROME, mounted above the pane's scroll surface through
-/// <c>SidebarPaneConfig.Head</c>: header band (title + search + create/overflow/collapse) · the ONE filter-chip
-/// rail · the drill-in breadcrumb · the retry banner · the actionable empty state. Search and Sort/View used to be
-/// a second standalone toolbar band here; both now live in the header (search inline, Sort/View as "…" submenus).
+/// <c>SidebarPaneConfig.Head</c>: nav band · header band (title + search + create/overflow/collapse) · the ONE
+/// filter-chip rail · the lens row (or the drill-in breadcrumb while drilled) · the retry banner · the actionable
+/// empty state. Search used to be a second standalone toolbar band here; it now lives in the header (inline).
+///
+/// <para>W2 — Sort/View moved OFF the header's "…" overflow and onto the lens row (<see cref="LibraryV3LensRow"/>),
+/// the 32-DIP band under the chips that also names which slice of the library you are looking at and links to its
+/// full page when one exists. The band that used to separate the chips from the rows below them (a plain
+/// <c>Divider()</c>) is gone — the lens row itself is the separation.</para>
 ///
 /// <para>The qualifier used to be a second chip band here; it is now a segment that fuses into the selected facet's pill
 /// inside <c>LibraryV3Chips</c> (the <c>HomeFacetChips</c> grammar), which is why this band list is one shorter than
@@ -85,28 +90,23 @@ sealed class LibraryV3Chrome : Component
         var bands = new List<Element>(7)
         {
             Embed.Comp(() => new LibraryV3NavBand(_session)) with { Key = "v3-nav" },
-            // The header now also carries the search host and (via its "…" overflow) Sort/View — the standalone
-            // 36-DIP toolbar band that used to sit here is gone (LibraryV3Toolbar, deleted).
+            // The header now also carries the search host — the standalone 36-DIP toolbar band that used to sit
+            // here is gone (LibraryV3Toolbar, deleted).
             Embed.Comp(() => new LibraryV3Header(_session)) with { Key = "v3-header" },
             Embed.Comp(() => new LibraryV3Chips(_session)) with { Key = "v3-chips" },
-            // Spans the CONTENT LANE, exactly like the plan's own SidebarSectionHeader.ExplicitDivider — a rule that
-            // stopped 6 DIP short of the rows it separates is the same ragged edge in hairline form.
-            Divider() with
-            {
-                Key = "v3-chrome-rule",
-                Margin = new Edges4(SidebarPaneMetrics.ContentLane, 4f, SidebarPaneMetrics.ContentLaneEnd, 4f),
-            },
         };
 
-        if (state.Drilled) bands.Add(Breadcrumb());
+        // W2 — the lens row (count + Sort/View) while at the library root; the drill-in breadcrumb takes its place
+        // while inside a folder (the two are mutually exclusive, same as the chrome's other drilled/root swaps).
+        bands.Add(state.Drilled
+            ? Breadcrumb()
+            : Embed.Comp(() => new LibraryV3LensRow(_session)) with { Key = "v3-lens" });
 
         if (prefs is { } p)
         {
-            _ = p.Entries.Version.Value;                       // subscribe: state/count move with the projection
             var load = p.Entries.State;
             bool anyPending = p.Entries.AnyContributingKindPending;
-            int pinBand = state.PinsBandVisible ? p.Entries.PinCount : 0;
-            int rows = _session.View.Count + pinBand;
+            int rows = _session.VisibleRowCount(in state);    // the ONE row-count expression (W2) — shared with LibraryV3LensRow
 
             // §3.2.10's rule this file exists to keep: loaded content is NEVER blanked. A failure WITH rows present is a
             // one-line retry banner above them; only a failure with nothing to show takes the pane.

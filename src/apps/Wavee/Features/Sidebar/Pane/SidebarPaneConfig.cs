@@ -23,6 +23,16 @@ sealed record SidebarPaneConfig
     /// renderer never branches on it (that would be the drift this seam exists to prevent).</summary>
     public required SidebarDesign Design { get; init; }
 
+    /// <summary>W4 — the row's own ANATOMY: one trailing slot, the pin mark folded into the title/subtitle line, and
+    /// the "Kind · detail" subtitle grammar (<see cref="SidebarRowStyle.Slot"/>), versus the landed trailing cluster +
+    /// per-kind subtitle strings (<see cref="SidebarRowStyle.Cluster"/>, the struct default). A FLAG, not a
+    /// <c>Design</c> branch (rule 1) — <c>SidebarPaneSlot</c> reads it once per row build and stamps it onto every
+    /// <c>SidebarRowSpec</c> it constructs, so <c>SidebarEntityRow.Create</c> never has to ask which mode is
+    /// rendering. Library V3's config sets <see cref="SidebarRowStyle.Slot"/>; Classic and Curated leave the default,
+    /// and so do the hand-built rows outside this pipeline (<c>LibraryV3NavBand</c>, <c>SidebarRailFolderFlyout</c>),
+    /// which build <c>SidebarRowSpec</c>s with no config to read at all.</summary>
+    public SidebarRowStyle RowStyle { get; init; } = SidebarRowStyle.Cluster;
+
     /// <summary>Scroll-restoration key prefix. The pane appends <c>".drawer"</c> for the narrow-drawer mount, so the
     /// docked pane and the drawer never fight over one saved offset.</summary>
     public required string ScrollKeyPrefix { get; init; }

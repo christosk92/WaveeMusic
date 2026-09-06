@@ -20,7 +20,6 @@ namespace FluentGpu.Controls
         public const string Search = "glyph:Search";
         public const string Heart = "glyph:Heart";
         public const string RadioTower = "glyph:RadioTower";
-        public const string Folder = "glyph:Folder";
         public const string Clock = "glyph:Clock";
         /// <summary>Added with the "recents" arm: the recently-PLAYED destination's glyph (Clock is "history").</summary>
         public const string Headphones = "glyph:Headphones";
@@ -140,7 +139,8 @@ namespace Wavee.Tests
             Assert.Equal((Loc.Get(Strings.Nav.Artists), Icons.Contact), Dest("artists"));
             Assert.Equal((Loc.Get(Strings.Nav.LikedSongs), Icons.Heart), Dest("liked"));
             Assert.Equal((Loc.Get(Strings.Nav.Podcasts), Icons.RadioTower), Dest("podcasts"));
-            Assert.Equal((Loc.Get(Strings.Nav.LocalFiles), Icons.Folder), Dest("local"));
+            // W7: "local" (Local Files) is retired — it now falls through to the "Your Library" default, pinned by
+            // UnknownRoute_FallsBackToYourLibrary above.
             Assert.Equal((Loc.Get(Strings.Nav.History.Title), Icons.Clock), Dest("history"));
             Assert.Equal((Loc.Get(Strings.Nav.Recents), Icons.Headphones), Dest("recents"));
         }

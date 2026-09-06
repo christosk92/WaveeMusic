@@ -355,11 +355,12 @@ public class SidebarLayoutStoreTests : IDisposable
     }
 
     [Fact]
-    public void CurrentVersion_IsTwo()
+    public void CurrentVersion_IsThree()
     {
-        // The document's "version": 2 (LAYOUT V2) and SidebarLayoutStore.CurrentVersion must not drift apart.
-        Assert.Equal(2, SidebarLayoutStore.CurrentVersion);
-        Assert.Equal(2, SidebarLayoutDefaults.EmptyDocument().Version);
+        // The document's "version": 3 (LAYOUT V3, W7: the retired "local" route is pruned) and
+        // SidebarLayoutStore.CurrentVersion must not drift apart.
+        Assert.Equal(3, SidebarLayoutStore.CurrentVersion);
+        Assert.Equal(3, SidebarLayoutDefaults.EmptyDocument().Version);
     }
 
     // ── LAYOUT V2 size budgets: refuse WHOLE, never truncate, never partially write ────────────────────────────────────

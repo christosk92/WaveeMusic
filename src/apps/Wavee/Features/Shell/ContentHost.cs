@@ -145,15 +145,16 @@ sealed class ContentHost : Component
         Children = [ Embed.Comp(() => new ArtistPage(new Signal<Route>(route))) ],
     };
 
-    // album / playlist / liked / local / SHOW all flow through the one shared detail surface (DetailPage → DetailShell);
-    // a show just renders Episodes instead of Tracks on the right (DetailConfig.Show.Content == Episodes).
+    // album / playlist / liked / SHOW all flow through the one shared detail surface (DetailPage → DetailShell); a show
+    // just renders Episodes instead of Tracks on the right (DetailConfig.Show.Content == Episodes).
     // A `prerelease:` route IS the album detail surface: the prerelease uri is resolved to its album INSIDE DetailPage's
     // load (kind 138 — the ids differ, so nothing can map them earlier), so it needs no page class of its own, only its
     // own keep-alive slot.
+    // W7: "local" dropped — the Local Files collection page is retired from every nav surface.
     static bool IsDetail(Route r) =>
         r.Name.StartsWith("album:", StringComparison.Ordinal) || r.Name.StartsWith("pl:", StringComparison.Ordinal)
         || r.Name.StartsWith("prerelease:", StringComparison.Ordinal)
-        || r.Name.StartsWith("show:", StringComparison.Ordinal) || r.Name == "liked" || r.Name == "local";
+        || r.Name.StartsWith("show:", StringComparison.Ordinal) || r.Name == "liked";
 
     static bool IsArtist(Route r) => r.Name.StartsWith("artist:", StringComparison.Ordinal);
 

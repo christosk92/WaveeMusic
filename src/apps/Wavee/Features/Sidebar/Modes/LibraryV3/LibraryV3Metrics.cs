@@ -24,42 +24,21 @@ static class LibraryV3Metrics
     public const float HeaderHeight = 44f;
     /// <summary>The ONE filter rail. There is no second (qualifier) band any more: the selected facet's sub-filter fuses
     /// INTO its pill (<c>LibraryV3Chips</c>'s morphing facet-chip grammar, copied from <c>HomeFacetChips</c>), so the
-    /// chrome stack lost a 32-DIP row. The 40 (vs the pills' 28) is deliberate slack: the compound pill's raised inner
-    /// segment carries a shadow, and the rail is a clipping scroll viewport.</summary>
-    public const float ChipRailHeight = 40f;
-    /// <summary>The drill-in breadcrumb band (narrow/drawer only — Revision 2's folder amendment).</summary>
+    /// chrome stack lost a 32-DIP row. Compact, like the rest of V3.1's chrome (W2): 36, not the pills' 28 plus the
+    /// slack the compound pill's raised inner segment and the rail's clipping scroll viewport still want.</summary>
+    public const float ChipRailHeight = 36f;
+    /// <summary>The drill-in breadcrumb band (narrow/drawer only — Revision 2's folder amendment). Same height as
+    /// <see cref="LensRowHeight"/> — the breadcrumb REPLACES the lens row while drilled, never stacks beside it.</summary>
     public const float BreadcrumbHeight = 32f;
+    /// <summary>W2 — the row under the chips: which slice of the library you're looking at (with a link to its full
+    /// page when one exists), the row count, and the Sort/View controls that used to live in the header's "…"
+    /// overflow. Replaces the deleted "v3-chrome-rule" divider as the seam between the chips and the rows.</summary>
+    public const float LensRowHeight = 32f;
 
     /// <summary>W3 — the nav band's row height. It is CHROME above the header (<c>LibraryV3NavBand</c>), not a list
-    /// section, so it does not have to match the 44 content row: fastspotify/Spotify nav rows are 40, and that is the
-    /// number Spotify's own "Your Library" uses for Home.</summary>
-    public const float NavRowHeight = 40f;
-    /// <summary>The library-destination WORD RAIL (#85 H4): five words between Home and the "Your Library" rule.
-    /// 30 is 13.5px type plus its 2-DIP accent underline and the breathing room either side — deliberately shorter
-    /// than a row (NavRowHeight 40), because it is a band of type, not a list. Replaced a 52-DIP tile strip whose
-    /// labels dropped below ~270 DIP of pane, leaving five ambiguous glyphs.</summary>
-    public const float DestinationRailH = 30f;
-    /// <summary>Word type size and the gap between words. 13.5 sits under the 15px header title and above the 12.5px
-    /// filter chips, which is what keeps all three legible as separate ranks.</summary>
-    public const float DestinationWordSize = 13.5f, DestinationWordGap = 14f;
-    /// <summary>The edge fade a clipped word peeks through — Zune's "words cut off at the edge of the screen", and
-    /// the affordance that says the rail scrolls. Labels NEVER drop: at the 180-DIP pane floor the rail scrolls
-    /// instead, because a word that has been abbreviated to a glyph is the thing this design exists to avoid.
-    /// The <c>EdgeMask</c> it is painted with is DERIVED per render from the rail's live scroll geometry (see
-    /// <c>LibraryV3NavBand.DestinationRail</c>), never a hardcoded side — a fade with nothing behind it is a lie.</summary>
-    public const float DestinationRailFade = 20f;
-    /// <summary>Diameter of the hover-revealed pager chevrons at each end of the destination rail. Deliberately
-    /// smaller than <c>WaveeCta.IconButtonSize</c> (32, taller than the 30-DIP band itself): the rail is chrome
-    /// above the header, and a pager large enough to brush the band's own edges would read as enlarging it.</summary>
-    public const float DestinationRailChevronSize = 20f;
-    /// <summary>Glyph size inside <see cref="DestinationRailChevronSize"/> — scaled down from <c>Rail.cs</c>'s
-    /// 16-DIP shelf chevron glyph to fit the smaller puck without crowding it.</summary>
-    public const float DestinationRailChevronGlyph = 10f;
-    /// <summary>Fraction of the rail's LIVE viewport width a chevron click scrolls (via
-    /// <c>FluentGpu.Scroll.ScrollIntoView.ScrollTo</c> against the rail's own offset at click time — never a fixed
-    /// DIP figure, so the step scales with the pane). Less than 1 so a click leaves the trailing word of the
-    /// outgoing page still peeking at the OPPOSITE edge — continuity, not a jump-cut.</summary>
-    public const float DestinationRailPageStep = 0.8f;
+    /// section, so it does not have to match the 44 content row. Compact (W2): 32, matching the rest of V3.1's
+    /// tightened chrome stack — was 40 (fastspotify/Spotify's own "Your Library" Home row height) before the sweep.</summary>
+    public const float NavRowHeight = 32f;
 
     /// <summary>Gap between grid cells — the same <c>Spacing.S</c> the pane's grid strip lays out with, restated here so the
     /// derived column count and the strip that renders it cannot disagree.</summary>

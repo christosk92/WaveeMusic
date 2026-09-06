@@ -45,7 +45,7 @@ the renderer takes nothing else.
 | document | `SidebarBuiltInDocuments.Classic(pinnedOpen, libraryOpen, playlistsOpen)` | `LibraryV3Document.Build(in LibraryV3DocState)` | `SidebarPreferences.Layout` |
 | persisted? | no (three collapse flags only) | no | yes, `sidebar-layout.json` |
 | user-editable? | no | no (its chrome owns the state) | yes, in the customizer |
-| chrome | none beyond the pane | nav band, header band, toolbar, chip rails, breadcrumb (through `Config.Head`) | none beyond the pane |
+| chrome | none beyond the pane | nav band (the shortcut band as chrome, Compact 32), header, chips, lens row, breadcrumb (through `Config.Head`) | none beyond the pane |
 | mode component | `Features/Sidebar/WaveeSidebar.cs` | `Modes/LibraryV3Sidebar.cs` | `Modes/CuratedSidebar.cs` |
 
 Switching applies live with no restart. `Features/Sidebar/SidebarHost.cs` reads `SidebarPreferences.Design` and
@@ -93,14 +93,20 @@ knowing:
 - An **empty** band contributes no section at all: emptying it is a legitimate choice, and `Prepend` then returns the
   document unchanged.
 
-**Library V3 is the one exception.** Its own "Your Library" nav band (Home, and whatever else `TopBar` holds) sits
-ABOVE the header as fixed CHROME (`Modes/LibraryV3/LibraryV3NavBand.cs`, mounted through `SidebarPaneConfig.Head`) —
-never scrolls, never filtered or searched with the list, and is **not** a section of `LibraryV3Document.Build`'s
-synthesized document at all. It reads `prefs.TopBar` directly and mutates it through the same
-`SidebarItemCommands`/sentinel path as Classic and Curated. The one place the two paths still meet: a user who put
-Liked Songs in the band does not also get V3's own `v3.liked` row (`SidebarShortcutsSection.ContainsRoute` checked
-against the live `topBar`). Because the band left V3's document, the 56-DIP rail also has no `ShowInRail` section to
-draw a Home tile from, so V3 is the one mode that supplies `SidebarPaneConfig.RailHead` — see
+**Library V3 is the one exception, and its chrome now carries less.** Its own "Your Library" nav band (Home, and
+whatever else `TopBar` holds) still sits ABOVE the header as fixed CHROME (`Modes/LibraryV3/LibraryV3NavBand.cs`,
+mounted through `SidebarPaneConfig.Head`, Compact density, 32-DIP rows) — never scrolls, never filtered or searched
+with the list, and is **not** a section of `LibraryV3Document.Build`'s synthesized document at all. It reads
+`prefs.TopBar` directly and mutates it through the same `SidebarItemCommands`/sentinel path as Classic and Curated.
+The five destinations that used to sit beside it in a word rail are gone from the chrome entirely: Liked Songs is
+now the document's own `v3.system` `StaticLinks` section (Artwork + Subtitles, `ShowInRail: true`) at the top of
+the pinned band, Albums/Artists/Podcasts are a single link on the lens row under the chips, and Local files is
+retired from the mode altogether. The one place the two remaining paths still meet: a user who put Liked Songs in
+the band does not also get the `v3.system` Liked row (`SidebarShortcutsSection.ContainsRoute` checked against the
+live `topBar`) — the dedupe obligation is unchanged, only which row it suppresses moved. Because the nav band left
+V3's document, the 56-DIP rail still has no `ShowInRail` section of its own to draw a Home tile from, so V3 is
+still the one mode that supplies `SidebarPaneConfig.RailHead` — and that delegate now draws ONLY the shortcut
+band's tiles (Liked Songs draws through the `v3.system` section's own `ShowInRail`, not through `RailHead`) — see
 `.claude/skills/wavee-sidebar/architecture.md` for the seam.
 
 ### What `SidebarPaneConfig` may and may not carry
@@ -133,6 +139,17 @@ navigate — it replaces the row's click *and* its context-menu verb, so the two
 
 The rule that keeps this honest: **a mode may not reach around the config.** If a mode needs something the renderer
 lacks, it becomes a config member or a planner-input option — never a `switch (Config.Design)`.
+
+### `SidebarPaneConfig.RowStyle` — the one config-level row-anatomy seam
+
+Row anatomy (the trailing region, the pin mark, the subtitle grammar) is a **config flag**, `RowStyle`, never a
+`Design` branch and never a persisted display flag: `public SidebarRowStyle RowStyle { get; init; } =
+SidebarRowStyle.Cluster;`. `Cluster` is the default and is Classic's and Curated's landed anatomy, byte-identical
+to before; `SidebarDesign.LibraryV3` is the one design that opts into `Slot` — one trailing slot (chevron /
+playing equalizer / hover "…"), the pin mark leading the subtitle instead of sitting in the trailing cluster, and
+the "Kind · detail" subtitle grammar. The renderer branches on the row spec's own `Style` field, stamped from the
+config at build time — never on `Config.Design` — so a row built without a pane config (the rail folder flyout,
+V3's nav band) simply lands on the `Cluster` default.
 
 ### Why the document is not rendered section by section
 
@@ -228,7 +245,7 @@ source's.
 
 ---
 
-## 3. The layout document (`sidebar-layout.json`, version 2)
+## 3. The layout document (`sidebar-layout.json`, version 3)
 
 One file, local only, at `%LOCALAPPDATA%\Wavee\WaveeMusic\sidebar-layout.json` — beside `history.json`. Written
 atomically (temp → `File.Replace`, which installs the new file *and* rotates the previous good one into `.bak` in
@@ -240,7 +257,7 @@ first-seen stamps), and the **Curated document**.
 
 ```jsonc
 {
-  "version": 2,
+  "version": 3,
   "updatedAtMs": 1785000000000,
   "appVersion": "0.9.0",
 
@@ -362,7 +379,9 @@ the fault, so a user can never lose their layout to a parse error. The document 
 `Commit()` no-ops and in-memory state runs ahead of disk until the document shrinks.
 
 v1 → v2 is an **identity** migration: an existing document loads unchanged and stamps `"version": 2` on its next
-ordinary save.
+ordinary save. v2 → v3 is a **prune**: every `Route` item whose key is `"local"` is dropped from every section
+(children included) and from `topBar`, in place, because Local files is retired from navigation entirely — the
+rest of the document, including extension-data carry, is untouched.
 
 ### Never written
 

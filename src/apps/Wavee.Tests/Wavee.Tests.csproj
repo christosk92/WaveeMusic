@@ -289,6 +289,11 @@
          drive the REAL grammar instead of a renderer copy of it. -->
     <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3ChipStrip.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3SearchRules.cs" />
+    <!-- Library V3.1: two more PURE halves — the header row's Priority+ ladder (inline search / folded "+" thresholds) and
+         the lens row's shape (which slice, the page link, the count/sort/view controls). System-only, so
+         LibraryV3HeaderRulesTests and LibraryV3LensRulesTests drive the REAL rules. -->
+    <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3HeaderRules.cs" />
+    <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3LensRules.cs" />
     <!-- the full-page customizer's PURE model (tier ladder + palette table/filter + outline flattening/drag + the
          display projection + the opaque extension-config rewriter). Engine-free by construction, exactly like Data\
          above, so SidebarCustomizerLayoutTests drive the REAL rules. The rest of Features\Sidebar\Curated\ is

@@ -12,19 +12,26 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>
-/// §3.2.5 — the library-only search. TWO shapes, decided by <see cref="LibraryV3SearchRules.Resolve"/>:
+/// §3.2.5 — the library-only search. TWO shapes, decided by <see cref="LibraryV3HeaderRules.Resolve"/> (via
+/// <see cref="LibraryV3SearchRules.Resolve"/>):
 /// <list type="bullet">
-/// <item><b>Inline</b> (pane ≥ <see cref="LibraryV3SearchRules.InlineWidth"/>): the field is simply THERE — a
-///   transparent, borderless lane with the magnifier and "Search in Your Library", growing to fill the toolbar beside
-///   the full sort/view pill. Nothing to open, nothing to morph: if there is room, the field is already expanded.</item>
-/// <item><b>Narrow</b>: a 32-DIP magnifier button; a click morphs the SAME keyed host (<c>Key="v3-search"</c>) to the
-///   row's width with a <see cref="SizeMode.Reflow"/> tween (so the sort pill is genuinely pushed to icon-only), and an
-///   empty blur / a second Escape collapses it again.</item>
+/// <item><b>Inline</b> (pane ≥ <see cref="LibraryV3HeaderRules.InlineSearchWidth"/>): the field is simply THERE — a
+///   transparent, borderless lane with the magnifier and "Search in Your Library", growing to fill the row beside
+///   the title. Nothing to open, nothing to morph: if there is room, the field is already expanded.</item>
+/// <item><b>Narrow</b>: a 32-DIP magnifier button; a click morphs the SAME keyed host (<c>Key="v3-search"</c>) to
+///   fill the WHOLE row (the title hides instead of being squeezed — <c>LibraryV3Header</c> reads
+///   <c>Shape.SearchTakesRow</c>) with a <see cref="SizeMode.Reflow"/> tween, and an empty blur / a second Escape
+///   collapses it again.</item>
 /// </list>
 ///
 /// <para>THE MAGNIFIER NEVER MOVES. It is one always-mounted glyph pinned to the host's leading 32 DIP; the field layer
 /// behind it pads its text lane past that glyph. In the narrow morph the only things that change are the host's width
 /// and the text appearing — the icon the eye is on stays exactly where it was.</para>
+///
+/// <para>The host never squeezes the title: <c>Shrink = 0</c> in every shape (the title's own <c>Shrink = 0</c> in
+/// <c>LibraryV3Header</c> only holds because nothing else in the row competes for its space either). The open narrow
+/// shape fills the row via <c>Grow = 1, Width = NaN</c> rather than a computed width — there is no longer anything
+/// beside it to leave room for.</para>
 ///
 /// <para>Scope is the whole point: this filters ONLY the sidebar projection (<c>prefs.V3Search</c>, which the
 /// projection binder folds into its rebuild trigger, debounced). It never navigates, never touches the omnibar, and
@@ -74,10 +81,6 @@ sealed class LibraryV3Search : Component
             _session.Width.Value, _session.SearchOpen.Value, _session.Prefs?.V3Search.Value is { Length: > 0 })).Value;
         bool inline = layout.Inline;
         bool expanded = layout.Expanded;
-
-        // Narrow-mode open width, quantized (MathF.Round) so a drag re-renders only when the INTEGER width moves.
-        var openWidth = UseComputed(() => MathF.Round(LibraryV3SearchRules.OpenWidth(
-            _session.Width.Value, SidebarPaneMetrics.LeadInset + SidebarPaneMetrics.ContentLaneEnd)));
 
         // ONE memoised parts map (mutating a TemplateParts bumps its Epoch — never rebuild this per render).
         //  · PartRoot: focus the EDITOR after commit (UsePost — the node is not laid out yet inside OnRealized) when a
@@ -180,12 +183,12 @@ sealed class LibraryV3Search : Component
         return new BoxEl
         {
             Key = "v3-search", ZStack = true, ClipToBounds = true, Height = HostEdge,
-            // INLINE fills the row (Grow) AND yields (Shrink): the placeholder's natural width is wider than the lane a
-            // 300-DIP pane leaves beside the labelled sort pill, and a non-shrinking host pushed that pill off the pane.
-            // NARROW is an explicit width so the reflow tween has a from and a to; it never shrinks (the tween owns the
-            // width). The morph recipe is attached only where a morph can happen — a growing node has no declared width.
-            Grow = inline ? 1f : 0f, Shrink = inline ? 1f : 0f, MinWidth = 0f,
-            Width = inline ? float.NaN : expanded ? openWidth.Value : HostEdge,
+            // EXPANDED (inline OR the narrow-open shape taking the whole row) grows to fill it — the row has nothing
+            // else left to share space with once the title hides, so there is no computed width to leave room for
+            // any more. COLLAPSED is the fixed 32-DIP button. Shrink = 0 in every shape: the host never squeezes the
+            // title — LibraryV3HeaderRules is the one place that decides who yields, and it is never this box.
+            Grow = expanded ? 1f : 0f, Shrink = 0f, MinWidth = 0f,
+            Width = expanded ? float.NaN : HostEdge,
             Animate = inline ? null : HostMorph,
             // Transparent and borderless in every state (the field is a lane, not a box); the only surface is the
             // collapsed button's hover/press, cross-faded over the same duration as the width tween.

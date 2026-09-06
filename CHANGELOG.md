@@ -10,8 +10,23 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.2.9] - unreleased
 
+### Changed
+
+- The artist hero has a little more room again: 392 DIP on wide pages and 344 on medium ones (up from 360 / 320
+  after the earlier cut), so a two-line bio no longer sits flush against the name, the stats row and the actions.
+  The stacked narrow layouts are unchanged. (#106)
+
 ### Fixed
 
+- The Home daylist hero no longer keeps yesterday's title under a dead 00:00:00 countdown. A cached Home body whose
+  daylist window has already closed is never trusted: the card is re-hydrated, its header re-read and the body
+  requeried the moment the window is seen to have expired (retried at most every five minutes while Spotify has not
+  rolled it over yet); the countdown reaching zero asks Home to re-read right away instead of waiting for the next
+  poll; and opening the daylist page, which rewrites its header, now wakes Home for that playlist too. (#105)
+- The player bar no longer shows a track's title as its artist when a phone is playing it through Connect. The
+  cluster metadata for such a track repeated the title in `artist_name` with no artist uri, and the credit was
+  carried through verbatim; that shape now counts as "no artist", so the catalog resolve fills in the real one,
+  and the wire metadata of the offending track is logged once so the next report can be read off the log. (#107)
 - **The audio cache had silently stopped storing anything, and every replay re-downloaded the track.** Before writing
   a chunk the cache reserves free space — one twentieth of the volume, with a 5 GB floor. On a 1 TB drive that is
   47.6 GB, so a machine with 25 GB free refused every single write, before it even opened a file. Nothing said so:
@@ -19,6 +34,22 @@ versions separately under `v*` and is not tracked in this file.)
   healthy policy. The reserve is now capped at 20 GB (an unclamped twentieth would have demanded 200 GB on a 4 TB
   drive), the refusal is logged once per transition, the cache evicts its own oldest bytes and retries instead of
   giving up forever, and Settings › Storage says plainly that caching is paused and why. (#95)
+
+### Changed
+
+- **The Library V3 sidebar drops its word rail for one taxonomy, and its title stops truncating.** "Albums" no
+  longer means two different things two rows apart: Liked Songs is now a system row at the top of the pinned band,
+  with its own cover and "Playlist · 1,204 songs", and Albums, Artists and Podcasts open from a new lens row under
+  the chips, which also carries the row count and the Sort and View controls that used to hide in the "…" menu.
+  The header follows a Priority+ ladder where the title is the one thing that never yields — "Your Library" no
+  longer clips to "Your L…" — and the title is now the collapse toggle itself, so the "‹" chevron leaves the header
+  and Collapse moves into the "…" menu. Home sits in a Compact 32-DIP band above the header, the chips are 36 DIP
+  in Playlists · Albums · Artists · Podcasts order, and every V3 row carries exactly one trailing slot (a folder's
+  chevron, the playing equalizer, or a hover "…") with its pin mark leading a "Kind · detail" subtitle instead of a
+  second glyph sitting at rest — Classic and Curated rows are unchanged. Local files is retired from every
+  navigation surface: it was never a real Spotify collection, so it no longer appears in Classic, the customizer,
+  the pin picker or any deep link; a persisted layout is migrated on load and a stale "Local files" pin is quietly
+  dropped, while local file playback itself keeps working exactly as before. (#104)
 
 ## [0.2.8] - 2026-09-04
 

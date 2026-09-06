@@ -3,6 +3,24 @@ using Wavee.Core.Sidebar;
 
 namespace Wavee;
 
+/// <summary>W4 — THE ONE MODE SEAM for a row's own anatomy (iron rule 1: the renderer never branches on
+/// <c>Design</c>, only on a config member/flag). <see cref="Cluster"/> is the landed shape — a trailing CLUSTER
+/// (chevron · equalizer · 12-DIP pin glyph · <c>Trailing</c>) folded behind a ZStack "…" overlay, and today's
+/// per-kind <c>SubtitleOf</c> strings — kept byte-identical and the struct default (the polarity rule: an
+/// unstamped <see cref="SidebarRowSpec"/> must keep rendering exactly as it always has). <see cref="Slot"/> is
+/// V3.1's redraw: one 28-DIP trailing SLOT, a pin mark folded into the title/subtitle line instead of the
+/// cluster, and the "Kind · detail" subtitle grammar (<see cref="SidebarSubtitleRules"/>). Library V3's own config
+/// sets <see cref="Slot"/>; Classic and Curated — and the hand-built <c>LibraryV3NavBand</c>/
+/// <c>SidebarRailFolderFlyout</c> rows, which build specs with no config at all — stay on the default.</summary>
+public enum SidebarRowStyle : byte { Cluster = 0, Slot = 1 }
+
+/// <summary>W4 — the Slot trailing slot's three possible REST contents (top-level, like <see cref="SidebarRowStyle"/>,
+/// so every call site — the geometry, the row builder, the tests — spells it the same bare way).</summary>
+public enum SidebarTrailingContent : byte { Empty = 0, Chevron = 1, Equalizer = 2 }
+
+/// <summary>W4 — where the Slot pin mark mounts relative to the row's text.</summary>
+public enum SidebarPinMark : byte { None = 0, BeforeSubtitle = 1, AfterTitle = 2 }
+
 // THE ONE ROW-GEOMETRY LADDER, in the engine-free layer so it is unit-testable.
 //
 // WHY IT MOVED HERE. `SidebarRowMetrics` (Shared/SidebarEntityRow.cs) used to own the height/indent ladder outright, but
@@ -37,6 +55,42 @@ static class SidebarRowGeometry
 
     /// <summary>A row's OWN trailing padding (8) — the right-hand half of <c>SidebarPaneMetrics.RowInset</c>.</summary>
     public const float RowInsetRight = 8f;
+
+    // ── W4 — THE ONE TRAILING SLOT (Slot style only) ─────────────────────────────────────────────────────────────────
+    // Cluster's trailing edge is a ZStack overlay with no fixed width of its own (SidebarEntityRow.ClusterOverflowWidth
+    // reserves 26 DIP only when the row actually carries the "…"); Slot instead reserves ONE constant-width lane for
+    // every row, so a chevron / the now-playing equalizer / the hover "…" all occupy the SAME rect and nothing shifts
+    // when a row gains or loses one of them.
+
+    /// <summary>The ONE trailing slot's edge (28) — Slot style only.</summary>
+    public const float TrailingSlotWidth = 28f;
+
+    /// <summary>The slot's lane, gap included: <see cref="LeadingGap"/> before it + its own width + <see cref="RowInsetRight"/>
+    /// after it = 6 + 28 + 8 = 42. The slot's right edge lands at <see cref="PaneEdge"/> + <see cref="RowInsetRight"/> = 16
+    /// DIP from the pane's outer edge — clear of the 12-DIP overlay scrollbar that rides on top of the list.</summary>
+    public const float TrailingLaneWidth = LeadingGap + TrailingSlotWidth + RowInsetRight;
+
+    /// <summary>What the slot shows at REST (no hover): a folder's chevron beats the now-playing equalizer beats
+    /// nothing — a folder always has a chevron and is never <c>Playing</c>, so the two can never actually collide.</summary>
+    public static SidebarTrailingContent TrailingAtRest(bool hasChevron, bool playing)
+        => hasChevron ? SidebarTrailingContent.Chevron : playing ? SidebarTrailingContent.Equalizer : SidebarTrailingContent.Empty;
+
+    /// <summary>Does ROW hover swap the slot to the "…" overflow button? Never for a row that carries a disclosure
+    /// chevron — a folder's menu stays reachable only by right-click / the Menu key, so the chevron never has to
+    /// fight the "…" for the same 28×28 rect.</summary>
+    public static bool HoverShowsOverflow(bool hasChevron, bool showsOverflow) => showsOverflow && !hasChevron;
+
+    /// <summary>The pin mark's size (10) and its gap to whichever line it rides beside (3 before the subtitle, 4 after
+    /// the title) — Slot style only. Cluster keeps its own 12-DIP glyph in the trailing cluster
+    /// (<see cref="ShowsPinGlyph"/>); this is the SEPARATE mark <see cref="PinMarkPlacement"/> folds into the text
+    /// column instead.</summary>
+    public const float PinMarkSize = 10f, PinMarkSubtitleGap = 3f, PinMarkTitleGap = 4f;
+
+    /// <summary>Where the Slot pin mark rides: not pinned ⇒ nowhere; a visible subtitle ⇒ ahead of it (so "Playlist ·
+    /// 12 songs" reads with the pin first, matching Spotify); no subtitle (Compact, or a kind with none) ⇒ straight
+    /// after the title instead, so a pin is never silently dropped just because the row has no second line.</summary>
+    public static SidebarPinMark PinMarkPlacement(bool pinned, bool subtitleVisible)
+        => !pinned ? SidebarPinMark.None : subtitleVisible ? SidebarPinMark.BeforeSubtitle : SidebarPinMark.AfterTitle;
 
     /// <summary>THE CONTENT LANE (12): the single x at which pane content begins — a row's selection gutter, a section
     /// header's title, a chrome band's first glyph, a divider's hairline. Rows reach it as
@@ -80,9 +134,10 @@ static class SidebarRowGeometry
     // There is NO reserved disclosure cell here (W7): a folder used to insert a fixed 16-DIP chevron cell ahead of its
     // art on every tree row (leaf rows included, so their art would still line up with a sibling folder's), which put
     // tree rows 4 DIP right of every other row family the moment a section had ANY folder in it (F7). The folder's
-    // disclosure chevron now lives in the row's TRAILING cluster instead (`SidebarEntityRow.Create`, beside the
-    // now-playing equalizer and the count badge), so `TreeLeading` is IDENTICAL to `StandardLeading` at depth 0 and a
-    // tree section's art column never moves depending on whether it happens to contain a folder.
+    // disclosure chevron now lives in the row's TRAILING cluster instead (`SidebarEntityRow.Create`, in the trailing
+    // cluster under Cluster style / the trailing slot under Slot style — see `SidebarRowStyle`), so `TreeLeading` is
+    // IDENTICAL to `StandardLeading` at depth 0 and a tree section's art column never moves depending on whether it
+    // happens to contain a folder.
     // The caret used to be translated by `IndentFor(depth)` and `PickDepth` used to read the same ladder BACKWARDS, so
     // the line painted roughly one whole level left of what it meant and the outdent band (x < 12) was practically
     // unreachable with a pointer (F2/F3). The constants below are the layout's own, they live HERE because this file is
@@ -294,10 +349,12 @@ static class SidebarRowGeometry
         return count > 0;
     }
 
-    /// <summary>H1 (#85) — whether a row draws the trailing pin glyph: the entry survived
+    /// <summary>H1 (#85) — whether a row draws its pin mark at all: the entry survived
     /// <c>SidebarProjection.PinsFirst</c>'s stamp AND is not a track (a track is never pinnable — locked decision 4).
     /// <c>SidebarPaneSlot.EntryRow</c> sets <c>SidebarRowSpec.Pinned</c> from exactly this, so the decision is pinned
-    /// here where a test can reach it instead of only inside the engine-bound row builder.</summary>
+    /// here where a test can reach it instead of only inside the engine-bound row builder. Cluster style renders it as
+    /// the 12-DIP glyph in the trailing cluster; Slot style feeds it to <see cref="PinMarkPlacement"/> instead, which
+    /// decides WHERE beside the text the (smaller, 10-DIP) mark rides.</summary>
     public static bool ShowsPinGlyph(bool isPinned, bool isTrack) => isPinned && !isTrack;
 
     // ── grid strip fallback (issue #84) ──────────────────────────────────────────────────────────────────────────────
