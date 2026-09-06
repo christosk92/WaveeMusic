@@ -1,0 +1,341 @@
+<title>Wavee Track Filter</title>
+<style>
+  :root {
+    --lab-bg: #e7eaf0; --lab-text: #1a1e26; --lab-muted: #5a6373;
+    --lab-panel: rgba(255,255,255,.66); --lab-stroke: rgba(20,30,50,.10); --lab-bad: #a4262c; --lab-good: #0f7b3a;
+    --mica: #f3f3f3; --mica-a: rgba(243,243,243,.84); --blob1: #b9d2f2; --blob2: #e6c8e0;
+    --layer: rgba(255,255,255,.60); --layer-stroke: rgba(0,0,0,.058);
+    --flyout: rgba(249,249,249,.92); --flyout-stroke: rgba(0,0,0,.07);
+    --text-1: rgba(0,0,0,.896); --text-2: rgba(0,0,0,.606); --text-3: rgba(0,0,0,.446); --text-4: rgba(0,0,0,.32);
+    --fill-ctrl: rgba(255,255,255,.72); --ctrl-stroke: rgba(0,0,0,.07);
+    --subtle: rgba(0,0,0,.037); --subtle-2: rgba(0,0,0,.062); --divider: rgba(0,0,0,.08);
+    --accent: #005fb8; --accent-text: #003e92; --accent-subtle: rgba(0,95,184,.12); --on-accent: #fff;
+    --shadow: 0 10px 36px rgba(20,30,50,.20); --shadow-flyout: 0 8px 24px rgba(0,0,0,.18);
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-d: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --r-ctrl: 4px; --r-flyout: 8px; --r-pill: 999px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --lab-bg: #0e1014; --lab-text: #eef1f5; --lab-muted: #97a0af; --lab-panel: rgba(27,30,37,.80); --lab-stroke: rgba(255,255,255,.09);
+      --lab-bad: #ff9d9d; --lab-good: #7ee2a8;
+      --mica: #202020; --mica-a: rgba(32,32,32,.86); --blob1: #3d5a8f; --blob2: #6b3a63;
+      --layer: rgba(58,58,58,.30); --layer-stroke: rgba(255,255,255,.06);
+      --flyout: rgba(44,44,44,.92); --flyout-stroke: rgba(255,255,255,.09);
+      --text-1: #fff; --text-2: rgba(255,255,255,.786); --text-3: rgba(255,255,255,.544); --text-4: rgba(255,255,255,.34);
+      --fill-ctrl: rgba(255,255,255,.061); --ctrl-stroke: rgba(255,255,255,.07);
+      --subtle: rgba(255,255,255,.061); --subtle-2: rgba(255,255,255,.084); --divider: rgba(255,255,255,.084);
+      --accent: #4cc2ff; --accent-text: #6fcbff; --accent-subtle: rgba(76,194,255,.16); --on-accent: #001b28;
+      --shadow: 0 18px 56px rgba(0,0,0,.55); --shadow-flyout: 0 8px 28px rgba(0,0,0,.5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --lab-bg: #0e1014; --lab-text: #eef1f5; --lab-muted: #97a0af; --lab-panel: rgba(27,30,37,.80); --lab-stroke: rgba(255,255,255,.09);
+    --lab-bad: #ff9d9d; --lab-good: #7ee2a8;
+    --mica: #202020; --mica-a: rgba(32,32,32,.86); --blob1: #3d5a8f; --blob2: #6b3a63;
+    --layer: rgba(58,58,58,.30); --layer-stroke: rgba(255,255,255,.06);
+    --flyout: rgba(44,44,44,.92); --flyout-stroke: rgba(255,255,255,.09);
+    --text-1: #fff; --text-2: rgba(255,255,255,.786); --text-3: rgba(255,255,255,.544); --text-4: rgba(255,255,255,.34);
+    --fill-ctrl: rgba(255,255,255,.061); --ctrl-stroke: rgba(255,255,255,.07);
+    --subtle: rgba(255,255,255,.061); --subtle-2: rgba(255,255,255,.084); --divider: rgba(255,255,255,.084);
+    --accent: #4cc2ff; --accent-text: #6fcbff; --accent-subtle: rgba(76,194,255,.16); --on-accent: #001b28;
+    --shadow: 0 18px 56px rgba(0,0,0,.55); --shadow-flyout: 0 8px 28px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--lab-bg); color: var(--lab-text); font: 14px/1.5 var(--font); padding: 28px 28px 96px; }
+  h1 { font: 600 28px/1.15 var(--font-d); letter-spacing: -.02em; margin: 0 0 6px; text-wrap: balance; }
+  h2 { font: 600 19px/1.25 var(--font-d); letter-spacing: -.015em; margin: 48px 0 6px; }
+  h3 { font: 600 14px/1.3 var(--font); margin: 0 0 4px; }
+  p { margin: 0 0 10px; max-width: 78ch; }
+  .lede { color: var(--lab-muted); font-size: 15px; max-width: 88ch; }
+  .muted { color: var(--lab-muted); } .sm { font-size: 12.5px; }
+  code { font: 12px/1 "Cascadia Code", Consolas, monospace; background: var(--lab-stroke); padding: 2px 5px; border-radius: 4px; }
+  svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .theme { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--lab-stroke); border-radius: var(--r-pill); background: var(--lab-panel); }
+  .theme button { border: 0; background: transparent; color: var(--lab-muted); font: 600 12px var(--font); padding: 5px 12px; border-radius: var(--r-pill); cursor: pointer; }
+  .theme button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  .theme button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .panel { background: var(--lab-panel); border: 1px solid var(--lab-stroke); border-radius: 12px; padding: 18px 20px; backdrop-filter: blur(24px); }
+  .cols { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+  .defects { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 24px; margin: 0; padding: 0; list-style: none; counter-reset: d; }
+  .defects li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 13px; line-height: 1.45; }
+  .defects li::before { counter-increment: d; content: counter(d); font: 600 11px/22px var(--font); text-align: center; color: var(--lab-bad); border: 1px solid currentColor; border-radius: 50%; width: 22px; height: 22px; }
+  .defects b { color: var(--lab-text); } .fix { color: var(--lab-good); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--lab-stroke); vertical-align: top; }
+  th { font-weight: 600; color: var(--lab-muted); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; }
+  .tbl { overflow-x: auto; }
+  .ladder { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .spec { width: max-content; max-width: 100%; }
+  .spec .w { font: 600 11px/1 var(--font); letter-spacing: .05em; text-transform: uppercase; color: var(--lab-muted); margin: 0 0 8px; }
+  .spec .cap { font-size: 12px; color: var(--lab-muted); margin: 8px 0 0; max-width: 40ch; line-height: 1.45; }
+  .spec .cap b { color: var(--lab-text); font-weight: 600; }
+
+  /* ── the detail-page slice, on Mica ───────────────────────────────────────── */
+  .win { width: min(1100px, 100%); height: 640px; margin: 18px 0 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--layer-stroke); box-shadow: var(--shadow);
+         background: linear-gradient(var(--mica-a), var(--mica-a)), radial-gradient(760px 520px at 8% 0%, var(--blob1) 0%, transparent 62%), radial-gradient(820px 600px at 94% 98%, var(--blob2) 0%, transparent 64%), var(--mica);
+         color: var(--text-1); font-family: var(--font); position: relative; display: grid; grid-template-columns: 260px 1fr; }
+  .side { padding: 22px 20px; border-right: 1px solid var(--layer-stroke); }
+  .cover { width: 220px; height: 220px; border-radius: 6px; background: linear-gradient(135deg, #b8843a, #4a2f18); box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+  .side h4 { font: 600 26px/1.15 var(--font-d); letter-spacing: -.015em; margin: 18px 0 6px; }
+  .side .meta { color: var(--text-2); font-size: 13px; }
+  .content { background: var(--layer); border-left: 1px solid var(--layer-stroke); padding: 0 24px; position: relative; overflow: hidden; }
+  .toolbar { display: flex; align-items: center; gap: 4px; height: 56px; }
+  .tb { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: var(--r-ctrl); color: var(--text-1); font-size: 14px; }
+  .tb:hover { background: var(--subtle); }
+  .tb .i { color: var(--text-2); } .tb .chev { width: 12px; height: 12px; color: var(--text-3); }
+  .tb.ic { width: 32px; padding: 0; justify-content: center; }
+  .sep { width: 1px; height: 20px; background: var(--divider); margin: 0 6px; }
+  .grow { flex: 1; }
+  .search { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 4px 0 10px; width: 300px; background: var(--fill-ctrl); border: 1px solid var(--ctrl-stroke); border-bottom: 2px solid var(--accent); border-radius: var(--r-ctrl); font-size: 14px; }
+  .search .q { flex: 1; color: var(--text-1); } .search .q i { display: inline-block; width: 1px; height: 16px; background: var(--text-1); vertical-align: -3px; }
+  .search .scope { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px 0 8px; border-radius: var(--r-ctrl); color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .search .scope:hover { background: var(--subtle); } .search .scope .chev { width: 11px; height: 11px; }
+  .funnel { position: relative; }
+  .funnel .n { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font: 700 10px/16px var(--font); text-align: center; }
+  .funnel.open { background: var(--subtle-2); }
+  .hdr { display: grid; grid-template-columns: 32px 1fr 80px 90px 60px 32px; gap: 10px; align-items: center; height: 40px; color: var(--text-3); font-size: 12px; border-bottom: 1px solid var(--divider); padding: 0 8px; }
+  .row { display: grid; grid-template-columns: 32px 1fr 80px 90px 60px 32px; gap: 10px; align-items: center; height: 56px; padding: 0 8px; border-radius: var(--r-ctrl); }
+  .row:hover { background: var(--subtle); }
+  .row .n { color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .row .t { display: flex; flex-direction: column; min-width: 0; } .row .t b { font-weight: 400; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .t s { text-decoration: none; color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .t .e { display: inline-block; font: 600 9px/14px var(--font); padding: 0 4px; border: 1px solid var(--text-3); color: var(--text-3); border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
+  .row .v { color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .row .bpm { display: flex; align-items: center; gap: 6px; } .row .bpm::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: #6ccf8e; }
+  .row.dim { opacity: .38; }
+
+  /* ── THE FLYOUT ────────────────────────────────────────────────────────────── */
+  .fly { position: absolute; top: 52px; right: 24px; width: 392px; background: var(--flyout); backdrop-filter: blur(60px) saturate(1.25);
+         border: 1px solid var(--flyout-stroke); border-radius: var(--r-flyout); box-shadow: var(--shadow-flyout); padding: 6px 4px 8px; color: var(--text-1); }
+  .fly.free { position: static; width: 392px; }
+  .fly .head { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px 0 14px; }
+  .fly .head h5 { margin: 0; font: 600 16px/1 var(--font); letter-spacing: -.01em; }
+  .fly .head .count { color: var(--text-3); font-size: 12px; }
+  .fly .head .clear { margin-left: auto; height: 28px; padding: 0 10px; border-radius: var(--r-ctrl); color: var(--accent-text); font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; }
+  .fly .head .clear:hover { background: var(--subtle); }
+  .fly .head .clear.off { color: var(--text-4); font-weight: 400; pointer-events: none; }
+  .fly .rule { height: 1px; background: var(--divider); margin: 2px 12px 6px; }
+  /* one facet = one row: label column + the options as WORDS; the chosen one is bright with the Home-tab underline */
+  .facet { display: grid; grid-template-columns: 104px 1fr; align-items: baseline; gap: 8px; padding: 0 8px 0 14px; min-height: 34px; }
+  .facet .lbl { font-size: 13px; color: var(--text-2); padding-top: 8px; display: flex; gap: 8px; align-items: center; }
+  .facet .lbl .i { width: 14px; height: 14px; color: var(--text-3); }
+  .facet .opts { display: flex; flex-wrap: wrap; gap: 0 2px; }
+  .opt { position: relative; padding: 7px 8px 9px; border-radius: var(--r-ctrl); font-size: 13.5px; color: var(--text-2); white-space: nowrap; cursor: default; }
+  .opt:hover { background: var(--subtle); color: var(--text-1); }
+  .opt.on { color: var(--text-1); font-weight: 600; }
+  .opt.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 4px; height: 2px; border-radius: 1px; background: var(--accent); }
+  .opt .hint { color: var(--text-4); font-size: 11px; font-weight: 400; margin-left: 4px; }
+  .opt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  /* binary rows: real Fluent check boxes, no bordered card around them */
+  .check { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 14px; border-radius: var(--r-ctrl); font-size: 13.5px; margin: 0 6px; }
+  .check:hover { background: var(--subtle); }
+  .check .box { width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--text-3); background: var(--fill-ctrl); display: grid; place-items: center; color: var(--on-accent); }
+  .check .box.on { background: var(--accent); border-color: var(--accent); }
+  .check .box .i { width: 12px; height: 12px; stroke-width: 2.4; }
+  .check .i.lead { color: var(--text-3); }
+  .check .gate { margin-left: auto; color: var(--text-4); font-size: 11px; }
+  .callouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 22px; margin: 14px 0 0; padding: 0; list-style: none; }
+  .callouts li { font-size: 13px; line-height: 1.45; padding-left: 12px; border-left: 2px solid var(--accent); }
+  .callouts b { display: block; font-weight: 600; }
+  @media (prefers-reduced-motion: no-preference) { .opt, .check, .tb { transition: background-color .1s; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-funnel" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-chd" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-8-4.9-8-10.4A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 8 3.1c0 5.5-8 10.4-8 10.4z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+  <symbol id="i-explicit" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M14 8h-4v8h4M10 12h3.5"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-2.5v9L16 14"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-tempo" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></symbol>
+  <symbol id="i-dev" viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="1.5"/><path d="M12 17.5h.01"/></symbol>
+</svg>
+
+<div class="topbar">
+  <div>
+    <h1>Track filter — one row per question, the answer is a word</h1>
+    <p class="lede">The current flyout is a settings dialog in a popover: an icon tile, a subtitle, three section captions, two three-way segmented controls whose first segment says <i>All</i>, a check box inside a bordered card, two expanders hiding the ranges, and a status footer. The redesign is the Zune grammar inside a Fluent flyout: every facet is <b>one row</b> whose options are <b>words</b>, the chosen word is bright with the Home tab's underline, binary facets are plain check boxes, the search scope moves into the search box where it belongs, and the only chrome is a title, an active count and Clear.</p>
+  </div>
+  <div class="theme" role="group" aria-label="Preview theme">
+    <button type="button" data-t="system" aria-pressed="true">System</button>
+    <button type="button" data-t="light" aria-pressed="false">Light</button>
+    <button type="button" data-t="dark" aria-pressed="false">Dark</button>
+  </div>
+</div>
+
+<div class="win" aria-label="Playlist page with the redesigned filter flyout open">
+  <div class="side">
+    <div class="cover"></div>
+    <h4>Late Night Dance</h4>
+    <div class="meta">Playlist · 148 songs · 9 hr 12 min</div>
+  </div>
+  <div class="content">
+    <div class="toolbar">
+      <span class="tb"><svg class="i"><use href="#i-play"/></svg>Play next<svg class="i chev"><use href="#i-chd"/></svg></span>
+      <span class="sep"></span>
+      <span class="tb"><svg class="i"><use href="#i-sort"/></svg>Custom order<svg class="i chev"><use href="#i-chd"/></svg></span>
+      <span class="tb">Default<svg class="i chev"><use href="#i-chd"/></svg></span>
+      <span class="tb ic"><svg class="i"><use href="#i-more"/></svg></span>
+      <span class="grow"></span>
+      <div class="search"><svg class="i"><use href="#i-search"/></svg><span class="q">self<i></i></span><span class="scope">Everything<svg class="i chev"><use href="#i-chd"/></svg></span><span class="tb ic" style="width:24px;height:24px"><svg class="i" style="width:12px;height:12px"><use href="#i-x"/></svg></span></div>
+      <span class="tb ic funnel open"><svg class="i"><use href="#i-funnel"/></svg><span class="n">2</span></span>
+    </div>
+    <div class="hdr"><span>#</span><span>Title</span><span>Plays</span><span>BPM · Key</span><span></span><span></span></div>
+    <div class="row"><span class="n">2</span><span class="t"><b>Self Talk</b><s>Thomas Asselman · Late Night Dance</s></span><span class="v">3.9M</span><span class="v bpm">124 · 8B</span><span class="v">3:41</span><span></span></div>
+    <div class="row dim"><span class="n">3</span><span class="t"><b><span class="e">E</span>Give Your Heart a Break</b><s>Demi Lovato · Unbroken</s></span><span class="v">441.4M</span><span class="v bpm">123 · 2B</span><span class="v">3:25</span><span></span></div>
+    <div class="row"><span class="n">4</span><span class="t"><b>The Middle</b><s>Zedd, Maren Morris, Grey · The Middle</s></span><span class="v">1.81B</span><span class="v bpm">107 · 9B</span><span class="v">3:04</span><span></span></div>
+    <div class="row"><span class="n">5</span><span class="t"><b>I Really Like You</b><s>Carly Rae Jepsen · Emotion (Deluxe)</s></span><span class="v">607M</span><span class="v bpm">122 · 7B</span><span class="v">3:24</span><span></span></div>
+    <div class="row dim"><span class="n">6</span><span class="t"><b><span class="e">E</span>Airplanes (feat. Hayley Williams)</b><s>B.o.B, Hayley Williams · B.o.B Presents</s></span><span class="v">1.13B</span><span class="v bpm">93 · 11B</span><span class="v">3:00</span><span></span></div>
+    <div class="row"><span class="n">7</span><span class="t"><b>Wolves</b><s>Selena Gomez, Marshmello · Wolves</s></span><span class="v">1.57B</span><span class="v bpm">125 · 10B</span><span class="v">3:17</span><span></span></div>
+    <div class="row"><span class="n">8</span><span class="t"><b>Down</b><s>Jay Sean, Lil Wayne · All Or Nothing</s></span><span class="v">1.08B</span><span class="v bpm">132 · 10B</span><span class="v">3:32</span><span></span></div>
+
+    <div class="fly" role="dialog" aria-label="Filter">
+      <div class="head"><h5>Filter</h5><span class="count">2 active · 133 of 148 songs</span><span class="clear">Clear</span></div>
+      <div class="rule"></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-explicit"/></svg>Explicit</span><span class="opts"><span class="opt">Show</span><span class="opt on">Hide</span><span class="opt">Only</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-video"/></svg>Video</span><span class="opts"><span class="opt on">Show</span><span class="opt">Hide</span><span class="opt">Only</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-clock"/></svg>Length</span><span class="opts"><span class="opt on">Any</span><span class="opt">Under 3 min</span><span class="opt">3–5 min</span><span class="opt">Over 5 min</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-tempo"/></svg>Tempo</span><span class="opts"><span class="opt">Any</span><span class="opt">Slow<span class="hint">&lt;90</span></span><span class="opt">Mid<span class="hint">90–119</span></span><span class="opt on">Upbeat<span class="hint">120–139</span></span><span class="opt">Fast<span class="hint">140+</span></span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-cal"/></svg>Added</span><span class="opts"><span class="opt on">Any time</span><span class="opt">7 days</span><span class="opt">30 days</span><span class="opt">6 months</span><span class="opt">1 year</span></span></div>
+      <div class="rule" style="margin-top:6px"></div>
+      <div class="check"><span class="box"></span><svg class="i lead"><use href="#i-heart"/></svg>Liked songs only</div>
+      <div class="check"><span class="box"></span><svg class="i lead"><use href="#i-play"/></svg>Playable only<span class="gate">2 unavailable here</span></div>
+    </div>
+  </div>
+</div>
+<p class="sm muted" style="margin-top:10px">Explicit is set to Hide and Tempo to Upbeat: the funnel wears a 2, the header says what that costs ("133 of 148 songs"), the rows the filter removes are shown dimmed here only to make the effect legible on one screen (the real list simply drops them), and the search scope ("Everything ▾") lives inside the search box.</p>
+
+<h2>What is wrong with the flyout today</h2>
+<div class="panel">
+  <ol class="defects">
+    <li><span><b>It is a dialog wearing a popover.</b> A 40-DIP icon tile, a two-line header ("Filter tracks / All tracks"), three section captions and a status footer for six questions. <span class="fix">→ a 16-DIP title, the count, Clear. Nothing else is chrome.</span></span></li>
+    <li><span><b>"All · Hide · Only" is unreadable.</b> For "Explicit content", <i>All</i> reads as "all explicit". The three words answer different questions. <span class="fix">→ Show · Hide · Only: three verbs about the same thing, and the label is the noun ("Explicit").</span></span></li>
+    <li><span><b>Segmented plates and bordered cards inside a flyout.</b> Two rounded segmented controls, a check box wrapped in its own card, expanders with chevrons: four container styles on one surface. <span class="fix">→ words on the flyout ground; the chosen word carries the same 2-DIP underline the Home tabs use. One vocabulary.</span></span></li>
+    <li><span><b>The ranges hide.</b> Duration and Tempo are expanders showing "Any duration"; you open one to learn the choices. <span class="fix">→ every option is visible; a facet is one row you scan, not a drawer you open.</span></span></li>
+    <li><span><b>"Search in" is not a filter.</b> It scopes the search box, yet it is the first thing in the filter panel. <span class="fix">→ it moves into the search box as a scope chip (WinUI AutoSuggestBox with a scope), and the filter panel is only about what the list shows.</span></span></li>
+    <li><span><b>The footer states the obvious.</b> "No filters applied" next to a disabled Clear button. <span class="fix">→ the count in the header ("2 active · 133 of 148 songs") says what the filter is doing; Clear sits beside it and is dimmed at zero.</span></span></li>
+  </ol>
+</div>
+
+<h2>The three states</h2>
+<div class="ladder">
+  <div class="spec">
+    <p class="w">Nothing active</p>
+    <div class="fly free">
+      <div class="head"><h5>Filter</h5><span class="count">148 songs</span><span class="clear off">Clear</span></div>
+      <div class="rule"></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-explicit"/></svg>Explicit</span><span class="opts"><span class="opt on">Show</span><span class="opt">Hide</span><span class="opt">Only</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-video"/></svg>Video</span><span class="opts"><span class="opt on">Show</span><span class="opt">Hide</span><span class="opt">Only</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-clock"/></svg>Length</span><span class="opts"><span class="opt on">Any</span><span class="opt">Under 3 min</span><span class="opt">3–5 min</span><span class="opt">Over 5 min</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-tempo"/></svg>Tempo</span><span class="opts"><span class="opt on">Any</span><span class="opt">Slow<span class="hint">&lt;90</span></span><span class="opt">Mid<span class="hint">90–119</span></span><span class="opt">Upbeat<span class="hint">120–139</span></span><span class="opt">Fast<span class="hint">140+</span></span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-cal"/></svg>Added</span><span class="opts"><span class="opt on">Any time</span><span class="opt">7 days</span><span class="opt">30 days</span><span class="opt">6 months</span><span class="opt">1 year</span></span></div>
+      <div class="rule" style="margin-top:6px"></div>
+      <div class="check"><span class="box"></span><svg class="i lead"><use href="#i-heart"/></svg>Liked songs only</div>
+      <div class="check"><span class="box"></span><svg class="i lead"><use href="#i-play"/></svg>Playable only<span class="gate">2 unavailable here</span></div>
+    </div>
+    <p class="cap"><b>Every default is the leftmost word</b>, so an untouched flyout reads as a column of bright first words: Show · Show · Any · Any · Any time. Clear is dimmed, the header counts the list.</p>
+  </div>
+
+  <div class="spec">
+    <p class="w">An album page (fewer questions)</p>
+    <div class="fly free">
+      <div class="head"><h5>Filter</h5><span class="count">1 active · 9 of 12 songs</span><span class="clear">Clear</span></div>
+      <div class="rule"></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-explicit"/></svg>Explicit</span><span class="opts"><span class="opt">Show</span><span class="opt on">Hide</span><span class="opt">Only</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-video"/></svg>Video</span><span class="opts"><span class="opt on">Show</span><span class="opt">Hide</span><span class="opt">Only</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-clock"/></svg>Length</span><span class="opts"><span class="opt on">Any</span><span class="opt">Under 3 min</span><span class="opt">3–5 min</span><span class="opt">Over 5 min</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-tempo"/></svg>Tempo</span><span class="opts"><span class="opt on">Any</span><span class="opt">Slow<span class="hint">&lt;90</span></span><span class="opt">Mid<span class="hint">90–119</span></span><span class="opt">Upbeat<span class="hint">120–139</span></span><span class="opt">Fast<span class="hint">140+</span></span></span></div>
+      <div class="rule" style="margin-top:6px"></div>
+      <div class="check"><span class="box"></span><svg class="i lead"><use href="#i-heart"/></svg>Liked songs only</div>
+    </div>
+    <p class="cap"><b>Capabilities remove rows, never grey them.</b> An album has no "date added" and nothing unplayable, so those rows are absent (today's <code>TrackFilterCapabilities</code> already gates them). A local-files playlist would add a <b>Source</b> row: Any · Streamed · Local.</p>
+  </div>
+
+  <div class="spec">
+    <p class="w">Liked Songs (the facts panel's lenses)</p>
+    <div class="fly free">
+      <div class="head"><h5>Filter</h5><span class="count">3 active · 41 of 1,204 songs</span><span class="clear">Clear</span></div>
+      <div class="rule"></div>
+      <div class="facet"><span class="lbl">Artist</span><span class="opts"><span class="opt on">Phil Collins<span class="hint">×</span></span></span></div>
+      <div class="facet"><span class="lbl">Year</span><span class="opts"><span class="opt on">1981–1985<span class="hint">×</span></span></span></div>
+      <div class="facet"><span class="lbl">Tag</span><span class="opts"><span class="opt">Any</span><span class="opt on">Soft rock</span></span></div>
+      <div class="rule" style="margin-top:6px"></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-explicit"/></svg>Explicit</span><span class="opts"><span class="opt on">Show</span><span class="opt">Hide</span><span class="opt">Only</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-clock"/></svg>Length</span><span class="opts"><span class="opt on">Any</span><span class="opt">Under 3 min</span><span class="opt">3–5 min</span><span class="opt">Over 5 min</span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-tempo"/></svg>Tempo</span><span class="opts"><span class="opt on">Any</span><span class="opt">Slow<span class="hint">&lt;90</span></span><span class="opt">Mid<span class="hint">90–119</span></span><span class="opt">Upbeat<span class="hint">120–139</span></span><span class="opt">Fast<span class="hint">140+</span></span></span></div>
+      <div class="facet"><span class="lbl"><svg class="i"><use href="#i-cal"/></svg>Added</span><span class="opts"><span class="opt on">Any time</span><span class="opt">7 days</span><span class="opt">30 days</span><span class="opt">6 months</span><span class="opt">1 year</span></span></div>
+      <div class="rule" style="margin-top:6px"></div>
+      <div class="check"><span class="box"></span><svg class="i lead"><use href="#i-heart"/></svg>Liked songs only</div>
+    </div>
+    <p class="cap"><b>A lens the facts panel set shows up as a chosen word with an ×</b> (artist, year window, tag) at the top of the same flyout, so the funnel's count and the panel's clicks are one state — today a lens is invisible here and only the funnel badge admits it exists.</p>
+  </div>
+</div>
+
+<h2>The rules the mock encodes</h2>
+<div class="cols">
+  <div class="panel">
+    <h3>Anatomy</h3>
+    <div class="tbl"><table>
+      <tr><th>Part</th><th>Spec</th></tr>
+      <tr><td>Flyout</td><td>WinUI Flyout chrome: 392 wide, 8-DIP radius, 1-DIP stroke, acrylic; 6/4/8 padding. No icon tile, no subtitle.</td></tr>
+      <tr><td>Header</td><td>"Filter" 16/600 · the count in tertiary 12 ("2 active · 133 of 148 songs"; "148 songs" at zero) · Clear as an accent text button, dimmed at zero. Height 40, then a rule.</td></tr>
+      <tr><td>Facet row</td><td>34 min-height, label column 104 (13 secondary, optional 14-DIP glyph), options as words 13.5 with 8/7/8/9 padding; the chosen word is 600 in primary with a 2-DIP accent underline 4 DIP up (the Home tab's mark); hover is the subtle plate. Options wrap onto a second line when they must (Tempo, Added at 392).</td></tr>
+      <tr><td>Word radios</td><td>One row is one <code>RadioButtons</code> group: Left/Right move within the row, Up/Down between rows, Space/Enter picks. A BPM hint rides the tempo words in tertiary 11 instead of a second explanatory line.</td></tr>
+      <tr><td>Binary rows</td><td>Real CheckBox rows (20-DIP box, 13.5 label, leading 16-DIP glyph), 34 tall, on the flyout ground — no card. A capability note (“2 unavailable here”) sits trailing in tertiary 11.</td></tr>
+      <tr><td>Order</td><td>Lenses the page set (artist · year · tag) first, then the three-way traits (Explicit · Video), then the ranges (Length · Tempo · Added · Source), a rule, then the check boxes. Rows a page cannot answer are absent, never disabled.</td></tr>
+      <tr><td>Search scope</td><td>Leaves the flyout. A "Everything ▾" scope chip inside the search box (Everything · Title · Artist · Album), the WinUI AutoSuggestBox-with-scope shape; the funnel count never includes it.</td></tr>
+    </table></div>
+  </div>
+  <div class="panel">
+    <h3>Words, not controls</h3>
+    <div class="tbl"><table>
+      <tr><th>Facet</th><th>Today</th><th>Now</th></tr>
+      <tr><td>Explicit content</td><td>All · Hide · Only (segmented)</td><td>Explicit — <b>Show</b> · Hide · Only</td></tr>
+      <tr><td>Video tracks</td><td>All · Hide · Only (segmented)</td><td>Video — <b>Show</b> · Hide · Only</td></tr>
+      <tr><td>Duration</td><td>expander "Any duration" → 4 radios</td><td>Length — <b>Any</b> · Under 3 min · 3–5 min · Over 5 min</td></tr>
+      <tr><td>Tempo</td><td>expander "Any tempo" → 5 radios</td><td>Tempo — <b>Any</b> · Slow ‹90 · Mid 90–119 · Upbeat 120–139 · Fast 140+</td></tr>
+      <tr><td>Date added</td><td>expander → 5 radios</td><td>Added — <b>Any time</b> · 7 days · 30 days · 6 months · 1 year</td></tr>
+      <tr><td>Source (local files)</td><td>expander → 3 radios</td><td>Source — <b>Any</b> · Streamed · Local</td></tr>
+      <tr><td>Liked only / Playable only</td><td>check box in a bordered card</td><td>plain CheckBox rows after the rule</td></tr>
+      <tr><td>Search in</td><td>segmented at the top of the flyout</td><td>a scope chip inside the search box</td></tr>
+    </table></div>
+    <p class="sm muted" style="margin-top:10px">The model does not change: <code>TrackFilterState</code>'s facets map one to one; only the vocabulary and the chrome do. "All" becomes "Show" on the traits, "Duration" becomes "Length" (the column is already called that), and the tempo bands get the listener words the enum's own doc comment uses.</p>
+  </div>
+</div>
+
+<h2>Why this is the Fluent/Zune answer</h2>
+<div class="panel">
+  <ul class="callouts">
+    <li><b>Zune: navigation and choice as typography.</b> Metro grew out of Zune's habit of using words as controls, the active one bright and the rest quiet, with no boxes around them. A facet row of words is that idiom applied to a filter.</li>
+    <li><b>Fluent: one surface, one vocabulary.</b> A WinUI Flyout carries content on its own acrylic; it does not nest cards, segmented plates and expanders inside itself. Check boxes and radio groups are the native primitives for exactly these questions.</li>
+    <li><b>Show everything, decide in place.</b> WinUI's guidance for a small option set is to show it (RadioButtons), not to hide it behind a ComboBox or an expander; the sets here are three to five words long.</li>
+    <li><b>The count is the feedback.</b> "2 active · 133 of 148 songs" tells the user what the filter did before they close the flyout; a "No filters applied" footer only told them what it did not do.</li>
+    <li><b>Scope belongs to the search box.</b> "Search in" answers "where does my text match", which is a property of the text field, not of the list's filter; the AutoSuggestBox-with-scope shape is where every Microsoft app puts it.</li>
+  </ul>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement, btns = document.querySelectorAll('.theme button');
+    function set(t) {
+      if (t === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', t);
+      btns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.t === t)); });
+      try { localStorage.setItem('tf2-theme', t); } catch (e) {}
+    }
+    btns.forEach(function (b) { b.addEventListener('click', function () { set(b.dataset.t); }); });
+    var saved = null; try { saved = localStorage.getItem('tf2-theme'); } catch (e) {}
+    if (saved === 'light' || saved === 'dark') set(saved);
+  })();
+</script>
