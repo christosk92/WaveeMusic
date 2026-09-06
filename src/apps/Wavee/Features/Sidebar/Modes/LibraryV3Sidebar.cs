@@ -142,6 +142,11 @@ sealed class LibraryV3Sidebar : Component
             // V3 has its own library-only search in the toolbar (§3.2.5), writing the mode-global V3Search the projection
             // binder folds in — the pane's pinned search head would be a second, competing query.
             SearchHead = false,
+            // W8 — the SAME query, handed to the pane so a Slot row can paint its matched title run in accent
+            // (SidebarPaneSlot.EntryRow). `session.Prefs` is refreshed every render (the landed WaveeSidebar._acts
+            // pattern), so this delegate always reads the LIVE search text even though the config itself freezes at
+            // mount.
+            SearchQuery = () => session.Prefs?.V3Search.Value ?? "",
             Head = ChromeHead,
             // W3 — the nav band left BuildDocument entirely: it is fixed chrome above the header now
             // (`LibraryV3NavBand`, the first child `ChromeHead` mounts through `LibraryV3Chrome`), never a document

@@ -122,6 +122,9 @@ struct SidebarRowSpec
         OnActivate = null;
         OnEscape = null;
         Style = SidebarRowStyle.Cluster;
+        HighlightStart = -1;
+        HighlightLength = 0;
+        OnUnpin = null;
     }
 
     // ── identity ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -135,6 +138,17 @@ struct SidebarRowSpec
 
     /// <summary>The second line (track count / kind · creator / item count). Ignored at <see cref="SidebarDensity.Compact"/>.</summary>
     public string? Subtitle;
+
+    /// <summary>W8 — the UTF-16 offset of a live search match inside <see cref="Label"/> (already folded with a
+    /// flattened search's "Folder / name" prefix, when one applies), or <c>-1</c> for no highlight. STATIC per render,
+    /// like every other field here — <c>SidebarPaneSlot.EntryRow</c> stamps it once per row build from
+    /// <c>SidebarSearch.Find</c>, never as a bound thunk. Cluster style ignores it: only <see cref="Style"/> ==
+    /// <see cref="SidebarRowStyle.Slot"/> ever reads it (rule 1 — a mode seam, never a caller branch on Design).</summary>
+    public int HighlightStart;
+
+    /// <summary>The length of the highlighted run starting at <see cref="HighlightStart"/>. Ignored when
+    /// <see cref="HighlightStart"/> is negative.</summary>
+    public int HighlightLength;
 
     // ── state ────────────────────────────────────────────────────────────────────────────────────────────────────────
     /// <summary>Drives the 4-state ramp (rest/hover/pressed all shift when selected). Compute it from the live route.</summary>
@@ -192,15 +206,25 @@ struct SidebarRowSpec
     public Element? DisclosureChevron;
 
     /// <summary>Issue #85 (H1) — this row is a PINNED library entry (<c>SidebarLibraryEntry.IsPinned</c>). Under
-    /// Cluster style, renders a quiet 12-DIP pin glyph in the trailing cluster, beside the count badge. Under Slot
-    /// style (W4), it instead folds a smaller 10-DIP mark into the TEXT column — ahead of the subtitle when one is
+    /// Cluster style, renders a quiet 12-DIP pin glyph in the trailing cluster, beside the count badge — or, when
+    /// <see cref="OnUnpin"/> is set (W8), a live 24×24 hover unpin button in its place. Under Slot style (W4), it
+    /// instead folds a smaller 10-DIP mark into the TEXT column — ahead of the subtitle when one is
     /// visible, else right after the title (<c>SidebarRowGeometry.PinMarkPlacement</c>) — because Slot's trailing
-    /// slot has no room for a fourth glyph. Either way it is a per-row marker rather than a section header, so it
+    /// slot has no room for a fourth glyph, and unpins through its "…" menu instead (<see cref="OnUnpin"/> is
+    /// ignored there). Either way it is a per-row marker rather than a section header, so it
     /// keeps working when a pin is filtered into the middle of a lens (Library V3 renders no section headers at all —
     /// see <c>LibraryV3Document.cs</c> — and the pinned band itself, <c>v3.pins</c>, floats pins to the top of every
     /// sort mode but has never actually MARKED the rows it floats). Never true for a <see cref="Track"/> row (a track
     /// cannot be pinned).</summary>
     public bool Pinned;
+
+    /// <summary>W8 — the hover UNPIN button. Under Cluster style ONLY: when set, the trailing cluster's static 12-DIP
+    /// pin glyph (<see cref="Pinned"/>'s Cluster rendering) becomes a 24×24 hover button that calls this and carries an
+    /// "Unpin from sidebar" tooltip; when null, the glyph stays exactly the static, non-interactive mark it always was
+    /// — byte-identical for a row that cannot be unpinned this way. Slot style never reads this: a Slot row's pin mark
+    /// is a plain subtitle/title glyph (see <see cref="SidebarRowGeometry.PinMarkPlacement"/>) and unpins through its
+    /// "…" menu instead, same as every other Slot verb.</summary>
+    public Action? OnUnpin;
 
     /// <summary>Trailing content (a count badge, a "new" dot, a state glyph). Under Cluster style, placed before the
     /// overflow affordance in the trailing cluster. Under Slot style, placed as its OWN flex child ahead of the one
@@ -673,8 +697,11 @@ static class SidebarEntityRow
             if (spec.DisclosureChevron is { } chevron) parts[t++] = chevron;
             if (spec.Playing) parts[t++] = WaveeEqualizer.Of(spec.PlayingAnimated, Tok.AccentDefault, 12f);
             // H1 (#85) — the pin marker sits right beside the count badge (SidebarPaneSlot.TrailingBadge / the
-            // library-shortcut count), ahead of whichever one this row also carries.
-            if (spec.Pinned) parts[t++] = Icon(Icons.Pin, 12f, Tok.TextTertiary);
+            // library-shortcut count), ahead of whichever one this row also carries. W8 — a row that CAN be unpinned
+            // this way (spec.OnUnpin set) gets a live hover button instead of the bare glyph; every other pinned row
+            // (OnUnpin null) keeps the exact static mark it always drew.
+            if (spec.Pinned)
+                parts[t++] = spec.OnUnpin is { } onUnpin ? ClusterUnpinButton(onUnpin) : Icon(Icons.Pin, 12f, Tok.TextTertiary);
             if (spec.Trailing is { } trailingContent) parts[t++] = trailingContent;
             trailingCluster = new BoxEl
             {
@@ -693,6 +720,19 @@ static class SidebarEntityRow
         if (trailingCluster is not null) kids[k++] = trailingCluster;
         return kids;
     }
+
+    /// <summary>W8 — the Cluster pin glyph's live form: a 24×24 hover UNPIN button, wrapped with an "Unpin from
+    /// sidebar" tooltip (the row itself carries no automation-name channel beyond its title, same reasoning as
+    /// <see cref="WithPlayTrackHint"/>). <c>BlocksDragArm</c> keeps a press here from arming the row's own resource
+    /// drag; <c>ClickRequestsContext</c> is deliberately NOT set — this is a plain click verb, not a second way into
+    /// the row's context menu.</summary>
+    static Element ClusterUnpinButton(Action onUnpin) => ToolTip.Wrap(new BoxEl
+    {
+        Width = 24f, Height = 24f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Corners = CornerRadius4.All(12f), HoverFill = Tok.FillSubtleTertiary,
+        Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = onUnpin, BlocksDragArm = true,
+        Children = [Icon(Icons.Pin, 12f, Tok.TextTertiary)],
+    }, Loc.Get(Strings.Sidebar.Pin.Unpin));
 
     /// <summary>The hover overlay's box (26 DIP) — shared with the trailing cluster's own reserve in
     /// <c>ClusterChildren</c>, so a chevron or a count badge can never sit under it whichever this changes to.</summary>
@@ -734,9 +774,11 @@ static class SidebarEntityRow
     static Element SlotTextColumn(in SidebarRowSpec spec, bool hasSubtitle)
     {
         SidebarPinMark pinMark = SidebarRowGeometry.PinMarkPlacement(spec.Pinned, hasSubtitle);
-        TextEl titleText = Body(spec.Label) with { Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
-        // The abstract Element record carries no flex members (Grow/Shrink/MinWidth live on each concrete record), so the
-        // title keeps its TextEl type and the pinned wrapper is typed separately.
+        // W8 — a live search match paints as a SpanTextEl (three runs); no match is the plain TextEl it always was.
+        // The abstract Element record carries no flex members (Grow/Shrink/MinWidth live on each concrete record), so
+        // the pinned wrapper is typed separately and the "no subtitle" Grow arm below goes through GrowTitle rather
+        // than a shared `with`.
+        Element titleText = TitleElement(in spec);
         BoxEl? titleRow = pinMark == SidebarPinMark.AfterTitle
             ? new BoxEl
             {
@@ -744,10 +786,10 @@ static class SidebarEntityRow
                 Shrink = 1f, MinWidth = 0f, Children = [titleText, PinMark()],
             }
             : null;
-        Element title = titleRow ?? (Element)titleText;
+        Element title = titleRow ?? titleText;
 
         if (!hasSubtitle && spec.Caption is null)
-            return titleRow is not null ? titleRow with { Grow = 1f } : titleText with { Grow = 1f };
+            return titleRow is not null ? titleRow with { Grow = 1f } : GrowTitle(titleText);
 
         int lines = 1 + (hasSubtitle ? 1 : 0) + (spec.Caption is { Length: > 0 } ? 1 : 0);
         var stack = new Element[lines];
@@ -768,6 +810,40 @@ static class SidebarEntityRow
             stack[n++] = new TextEl(cap) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
         return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 1f, Children = stack };
     }
+
+    /// <summary>W8 — the title itself: a plain single-line Body TextEl, or — when this row carries a live search
+    /// match (<see cref="SidebarRowSpec.HighlightStart"/>/<see cref="SidebarRowSpec.HighlightLength"/>, stamped by
+    /// <c>SidebarPaneSlot.EntryRow</c> from <c>SidebarSearch.Find</c>) — a three-run <c>SpanTextEl</c> [before][match
+    /// in accent, weight 600][after]. Same Size/LineHeight as <c>Body</c> either way (14/20), so a highlighted row
+    /// never shifts baseline or wraps differently than the plain rows around it. The range is re-validated here (never
+    /// trusted from the spec) so a stale index against a title that changed under it degrades to the plain title
+    /// instead of throwing.</summary>
+    static Element TitleElement(in SidebarRowSpec spec)
+    {
+        string label = spec.Label;
+        int start = spec.HighlightStart, len = spec.HighlightLength;
+        if (len <= 0 || start < 0 || start + len > label.Length)
+            return Body(label) with { Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+
+        int end = start + len;
+        var spans = new List<TextSpan>(3);
+        if (start > 0) spans.Add(new TextSpan(label[..start]));
+        spans.Add(new TextSpan(label.Substring(start, len), Weight: 600, Color: Tok.AccentTextPrimary));
+        if (end < label.Length) spans.Add(new TextSpan(label[end..]));
+        return new SpanTextEl(spans.ToArray())
+        {
+            Size = 14f, LineHeight = 20f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1,
+        };
+    }
+
+    /// <summary>Apply the "no subtitle, no caption" arm's <c>Grow = 1f</c> — per-type <c>with</c>, because Grow lives
+    /// on each concrete Element record, not the abstract base (see <see cref="TitleElement"/>'s remark).</summary>
+    static Element GrowTitle(Element title) => title switch
+    {
+        TextEl t => t with { Grow = 1f },
+        SpanTextEl s => s with { Grow = 1f },
+        _ => title,
+    };
 
     /// <summary>The Slot pin mark: smaller than Cluster's trailing glyph (10 vs 12 DIP) and tinted with the accent —
     /// it rides IN the text column now, not beside the count badge, so it needs to read at a glance against a title

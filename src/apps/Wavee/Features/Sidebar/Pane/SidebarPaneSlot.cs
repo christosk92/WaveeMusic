@@ -330,6 +330,16 @@ sealed class SidebarPaneSlot : Component
         string label = item?.LabelOverride is { Length: > 0 } alias ? alias
             : named ? entry.Name
             : SidebarPaneText.ShortUri(entry.Uri);
+        // W8 — a search FLATTENS the tree into one EntityList section, so a nested playlist ("Savannah", inside the
+        // "Road trips" folder) would otherwise read as a top-level entry with no folder at all. Restore it as a
+        // "Folder / name" prefix — PlaylistTree already shows the real tree (folder rows and indentation), Pinned
+        // floats matches to the top of the pin band, and neither ever has a non-root FLATTENED row, so this is scoped
+        // to the one section kind that actually flattens. `entry.FolderName` is populated for exactly this case
+        // (`SidebarProjection.Build`'s `includeFolderChildren: searching`), and the highlight range below is computed
+        // on the COMBINED string, so a query that matches inside the folder name highlights there too.
+        if (Style == SidebarRowStyle.Slot && section.Kind == SidebarSectionKind.EntityList
+            && entry.Depth == 0 && entry.FolderName.Length > 0)
+            label = entry.FolderName + " / " + label;
         bool track = entry.IsTrack;
         string? route = entry.RouteKey;
         // Through the pane, which resolves it with SidebarRowResolve — the SAME rule its selection sweep uses, so the
@@ -411,6 +421,23 @@ sealed class SidebarPaneSlot : Component
                     && PinSlot(row.SectionId, index) < 0 && _o.PinBandDisabled(row.SectionId))
             : PinSpec(section, row.SectionId, index);
 
+        bool pinned = SidebarRowGeometry.ShowsPinGlyph(snapshot.IsPinned, track);
+        // W8 — the Cluster hover UNPIN button. `_o.Prefs` is the same pin-store owner NavExtras/the entity menu's
+        // Unpin verb already mutate through (PinActions.RowForEntry → RowForId), so this is the SAME mutation path,
+        // never a second one: SidebarPinId.FromEntry refuses a Track (never pinnable) the same way ShowsPinGlyph does.
+        Action? onUnpin = pinned && _o.Prefs is { } unpinPrefs && SidebarPinId.FromEntry(in snapshot) is { } pinId
+            ? () => PinActions.Unpin(unpinPrefs, pinId, snapshot.Name)
+            : null;
+
+        // W8 — the search-match highlight. SLOT ONLY (Cluster never highlights): a static per-row read of the live
+        // query, never a bound thunk — a keystroke bumps the mode epoch, which re-renders this row's slot anyway
+        // (SidebarPaneConfig.ModeEpoch), so there is nothing to gain from binding it and a bound thunk would be wired
+        // at MOUNT ONLY (pitfalls.md "Bind wiring is MOUNT-ONLY") and go stale on a recycle.
+        int highlightStart = -1, highlightLength = 0;
+        if (Style == SidebarRowStyle.Slot
+            && SidebarSearch.Normalize(_o.Config.SearchQuery?.Invoke()) is { Length: > 0 } query)
+            (highlightStart, highlightLength) = SidebarSearch.Find(label, query);
+
         var spec = new SidebarRowSpec
         {
             Key = row.Key,
@@ -429,9 +456,12 @@ sealed class SidebarPaneSlot : Component
             Leading = LeadingArt(section, in snapshot, item),
             Glyph = section.Opts.Artwork ? null : SidebarPaneText.Glyph(item, SidebarPaneText.EntryGlyph(snapshot.Kind)),
             Trailing = TrailingBadge(section, in snapshot),
+            HighlightStart = highlightStart,
+            HighlightLength = highlightLength,
             // H1 (#85) — SidebarProjection.PinsFirst stamps IsPinned on every entry it floats, in every sort mode,
             // but nothing rendered it. ShowsPinGlyph is the pure (and therefore unit-tested) half of this decision.
-            Pinned = SidebarRowGeometry.ShowsPinGlyph(snapshot.IsPinned, track),
+            Pinned = pinned,
+            OnUnpin = onUnpin,
             Playing = playing,
             PlayingAnimated = animated,
             Track = track,

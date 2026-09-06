@@ -140,7 +140,7 @@ sealed class SidebarPinDropZone : Component
         };
     }
 
-    /// <summary>The <c>PinEnd</c> gutter's own shape: at rest a quiet 24-DIP dashed hairline (no text, no fill) — the
+    /// <summary>The <c>PinEnd</c> gutter's own shape: at rest a quiet 24-DIP divider hairline (no text, no fill) — the
     /// same "there is a slot here" affordance the row always carries, visible even with no drag live, so a band that
     /// already has pins still SAYS where a new one goes. Live/hovering it grows into the same one-line card the
     /// full-size zone shows, just at half the height.</summary>
@@ -172,13 +172,10 @@ sealed class SidebarPinDropZone : Component
             ]
             :
             [
-                // The quiet rest affordance: a 1-DIP dashed hairline centred in the 24-DIP gutter, always visible.
-                new BoxEl
-                {
-                    Height = 1f, Grow = 1f, Shrink = 1f,
-                    BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-                    BorderDashOn = Spacing.XS, BorderDashOff = Spacing.XXS,
-                },
+                // The quiet rest affordance: a 1-DIP divider hairline centred in the 24-DIP gutter — the SAME stroke
+                // SidebarSectionHeader.ExplicitDivider draws between sections. It used to be a dashed StrokeCardDefault
+                // line, which on the pane's Mica ground read as blank space, so the band had no visible end.
+                new BoxEl { Height = 1f, Grow = 1f, Shrink = 1f, Fill = Tok.StrokeDividerDefault },
             ],
     };
 }
