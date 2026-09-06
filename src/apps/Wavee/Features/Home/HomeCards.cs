@@ -293,7 +293,7 @@ static class HomeCards
               {
                   // Chrome fill — FlipCountdown contrast-grades it to TextInk so the digits stay the daylist hue
                   // without disappearing into the peach/yellow wash (the Play capsule keeps this fill as a plate).
-                  ExpiresAtMs = m.ExpiresAtMs, Accent = () => accent, BottomMargin = Spacing.M,
+                  ExpiresAtMs = m.ExpiresAtMs, Accent = () => accent, BottomMargin = Spacing.L,   // HomeHeroLayout.PulseBlock
                   // The countdown reaching zero asks Home to re-read through the SAME seam the reactivation compare
                   // uses (HomePage wires this to svc.HomeFeedRevalidate) — never a direct epoch bump. Component props
                   // freeze at mount, so this thunk is the page's, taken fresh every render rather than captured once.
@@ -316,7 +316,7 @@ static class HomeCards
             title with
             {
                 Wrap = TextWrap.Wrap, MaxLines = metrics.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                Margin = new Edges4(0f, 0f, 0f, Spacing.M),
+                Margin = new Edges4(0f, 0f, 0f, Spacing.L),   // HomeHeroLayout.TitleMargin
             },
         };
         if (metrics.ShowTags && c.Meta?.Seeds is { Count: > 0 } seeds)
@@ -333,7 +333,8 @@ static class HomeCards
             {
                 Color = Tok.TextSecondary, MaxLines = metrics.Density == HomeHeroDensity.Compact ? 1 : 2,
                 Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                Margin = new Edges4(0f, 0f, 0f, Spacing.L),
+                // HomeHeroLayout.MetaBlock / CompactMetaBlock — the estimator states 20 + XL (Full) and 20 + S (Compact).
+                Margin = new Edges4(0f, 0f, 0f, metrics.Density == HomeHeroDensity.Compact ? Spacing.S : Spacing.XL),
             });
         if (pulse is not null) copyChildren.Add(pulse);
 

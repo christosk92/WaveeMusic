@@ -80,14 +80,16 @@ sealed partial class ArtistPage : Component
                 Width = MathF.Min(metrics.CopyMaxWidth, MathF.Max(1f, width - 2f * metrics.Gutter)),
                 MaxWidth = metrics.CopyMaxWidth,
                 MinWidth = 0f,
-                Gap = Spacing.S,
+                // #106 — the horizontal tiers breathe at 12 between blocks; the stacked identity band keeps 8 (its
+                // height is a declared worst-case anatomy, ArtistHeroLayout.IdentityHeightFor, and is not the complaint).
+                Gap = metrics.Stacked ? Spacing.S : Spacing.M,
                 Enter = new EnterExit(Dy: Spacing.M, Opacity: 0f, Active: true),
                 Transition = MotionTok.EmphasizedEnter,
                 Children =
                 [
                     new BoxEl
                     {
-                        Direction = 1, Gap = Spacing.S, MinWidth = 0f,
+                        Direction = 1, Gap = metrics.Stacked ? Spacing.S : Spacing.M, MinWidth = 0f,
                         // Meta stays a single horizontal row at Compact (Direction=0 below) — only Narrow keeps the
                         // stacked column, because Narrow is where the horizontal row would itself wrap.
                         Children = [verified, name, bio, HeroMeta(a, metrics.Tier == ArtistHeroTier.Narrow)],
@@ -163,7 +165,8 @@ sealed partial class ArtistPage : Component
                 Direction = 1,
                 Justify = FlexJustify.Center,
                 AlignItems = FlexAlign.Start,
-                Padding = new Edges4(metrics.Gutter, Spacing.L, metrics.Gutter, Spacing.L),
+                // #106 — 24 of vertical air (ArtistHeroLayout.CopyPadding's own figure; the renderer used to pay 16).
+                Padding = new Edges4(metrics.Gutter, Spacing.XXL, metrics.Gutter, Spacing.XXL),
                 Children = [Identity()],
             };
 

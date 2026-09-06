@@ -8,10 +8,11 @@ public class HomeHeroLayoutTests
 
     [Theory]
     // (tier, hasPulse) -> content height, before any viewport cap.
-    [InlineData((byte)HomeHeroTier.Wide, true, 384f)]
-    [InlineData((byte)HomeHeroTier.Wide, false, 344f)]
-    [InlineData((byte)HomeHeroTier.Medium, true, 344f)]
-    [InlineData((byte)HomeHeroTier.Medium, false, 304f)]
+    // #106: 2*48 padding + 24 eyebrow + title lines + 16 title margin + 32 tags + 40 meta (+44 pulse) + 32 actions.
+    [InlineData((byte)HomeHeroTier.Wide, true, 404f)]
+    [InlineData((byte)HomeHeroTier.Wide, false, 360f)]
+    [InlineData((byte)HomeHeroTier.Medium, true, 364f)]
+    [InlineData((byte)HomeHeroTier.Medium, false, 320f)]
     public void FullDensity_HeightIsExact(byte tierByte, bool hasPulse, float expected)
     {
         var tier = (HomeHeroTier)tierByte;
@@ -28,8 +29,9 @@ public class HomeHeroLayoutTests
 
     [Theory]
     // Narrow is ALWAYS Compact, regardless of viewport.
-    [InlineData(true, 220f)]
-    [InlineData(false, 180f)]
+    // Compact: 2*24 + 24 + 36 + 16 + 28 (+44 pulse) + 32.
+    [InlineData(true, 228f)]
+    [InlineData(false, 184f)]
     public void Narrow_IsAlwaysCompact(bool hasPulse, float expected)
     {
         var m = HomeHeroLayout.For(600f, pageViewportHeight: 0f, hasPulse, HomeHeroTier.Narrow);
@@ -45,8 +47,9 @@ public class HomeHeroLayoutTests
 
     [Theory]
     // A short PAGE viewport forces Compact even at a wide/medium tier.
-    [InlineData(true, 224f)]
-    [InlineData(false, 184f)]
+    // Compact at Medium: 2*24 + 24 + 40 + 16 + 28 (+44 pulse) + 32.
+    [InlineData(true, 232f)]
+    [InlineData(false, 188f)]
     public void ShortViewport_ForcesCompactAtMediumTier(bool hasPulse, float expected)
     {
         // pageViewportHeight below CompactViewportHeight (720) forces Compact, but 600 is generous enough that the
@@ -59,11 +62,11 @@ public class HomeHeroLayoutTests
     [Fact]
     public void TallViewport_KeepsFullDensity()
     {
-        // Large enough that 0.42*pageViewportHeight comfortably exceeds the Full content height (384) too — this
+        // Large enough that 0.42*pageViewportHeight comfortably exceeds the Full content height (404) too — this
         // test is about DENSITY, not the cap (that is ViewportCap_NeverAppliesWhenContentIsAlreadySmaller's job).
         var m = HomeHeroLayout.For(980f, pageViewportHeight: 2000f, hasPulse: true, HomeHeroTier.Wide);
         Assert.Equal(HomeHeroDensity.Full, m.Density);
-        Assert.Equal(384f, m.Height);
+        Assert.Equal(404f, m.Height);   // 2*48 + 24 + 2*60 + 16 + 32 + 40 + 44 + 32
     }
 
     // ── DensityFor ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -111,7 +114,7 @@ public class HomeHeroLayoutTests
     {
         // A generous viewport whose cap exceeds the content height leaves the content height untouched.
         var m = HomeHeroLayout.For(980f, pageViewportHeight: 4000f, hasPulse: false, HomeHeroTier.Wide);
-        Assert.Equal(344f, m.Height);
+        Assert.Equal(360f, m.Height);   // the same minus the 44-DIP pulse block
     }
 
     // ── TierFor hysteresis (mirrors ArtistHeroLayoutTests) ──────────────────────────────────────────────────────────
@@ -158,9 +161,9 @@ public class HomeHeroLayoutTests
         bool compact = density == HomeHeroDensity.Compact;
         float copyPaddingY = compact ? HomeHeroLayout.CompactCopyPaddingY : HomeHeroLayout.CopyPaddingY;
         const float eyebrowBlock = 16f + 8f;
-        const float titleMargin = 12f;
+        const float titleMargin = 16f;                              // #106 — was 12
         const float tagsBlock = 20f + 12f;
-        float metaBlock = compact ? 20f + 8f : 20f + 16f;
+        float metaBlock = compact ? 20f + 8f : 20f + 20f;           // #106 — Full was 20 + 16
         const float actionsBlock = 32f;
 
         Assert.Equal(

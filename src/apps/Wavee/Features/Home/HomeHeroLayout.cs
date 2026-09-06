@@ -32,12 +32,12 @@ internal static class HomeHeroLayout
     /// <summary>The hero never takes more than this fraction of the page viewport; the copy budget shrinks first
     /// (density), then the height clamps and the artwork (a square whose edge is the height) follows.</summary>
     public const float MaxViewportFraction = 0.42f;
-    public const float MinHeight = 168f;                           // Compact, no tags, 1-line title, no pulse: 2*24 + 24 + 36 + 12 + 28 + 32 = 180 -> floor a rung under it
+    public const float MinHeight = 168f;                           // Compact, no tags, 1-line title, no pulse: 2*24 + 24 + 36 + 16 + 28 + 32 = 184 -> floor a rung under it
 
     // Flatten the old SectionBand inset (16) and inner hero padding (32x28) without moving the copy by one DIP.
     public const float CopyPaddingX = Spacing.L + Spacing.XXXL;    // 48
     public const float CompactCopyPaddingX = Spacing.XXL;          // 24
-    public const float CopyPaddingY = Spacing.L + Spacing.XXL + Spacing.XS;  // 44
+    public const float CopyPaddingY = Spacing.L + Spacing.XXL + Spacing.S;   // 48 (#106 — was 44)
     public const float CompactCopyPaddingY = Spacing.XXL;          // 24
     public const float ArtworkFade = Spacing.XXXL * 3f;            // 96
 
@@ -48,16 +48,16 @@ internal static class HomeHeroLayout
     const float WideTitleLine = 60f;                               // WaveeType.ArtistTitle 48/60
     const float MediumTitleLine = 40f;                             // WaveeType.ArtistCompactTitle 32/40
     const float NarrowTitleLine = 36f;                             // WaveeType.PageHero 28/36
-    const float TitleMargin = Spacing.M;
+    const float TitleMargin = Spacing.L;                           // #106 — was M
     // A tag is Caption 12/16 inside a 2-DIP vertical padding = 20, plus the row's 12 margin.
     const float TagsBlock = 20f + Spacing.M;
     // Body 14/20 plus a 16 margin (Full). Compact keeps one line and a tighter 8-DIP margin.
-    const float MetaBlock = 20f + Spacing.L;
+    const float MetaBlock = 20f + Spacing.XL;                      // #106 — was L
     const float CompactMetaBlock = 20f + Spacing.S;
     // The 28-DIP flip-countdown digit row (FlipCountdown.HeroRowHeight, restated — this file is engine-free and
     // test-included, so it cannot reference the component) plus a 12 margin — reserved ONLY when the card is a
     // daylist; non-daylist heroes collapse this slot to an empty BoxEl and neither renderer nor estimator reserve it.
-    const float PulseBlock = 28f + Spacing.M;                      // 40
+    const float PulseBlock = 28f + Spacing.L;                      // 44 (#106 — was 40)
     const float ActionsBlock = Spacing.XXXL;                       // 32, the hero button row
 
     /// <summary>Narrow immediately; widen back only once past threshold + hysteresis (the ArtistHeroLayout shape).</summary>

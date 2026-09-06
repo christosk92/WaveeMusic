@@ -64,7 +64,7 @@ public static class ArtistHeroLayout
     // 4 gaps of 8 + 2x24 padding) — the floor a horizontal tier's clamp cannot go under, spelled out as constants so
     // ArtistHeroLayoutTests can assert MinHeight >= CopyBudgetFor(tier) for every input.
     const float VerifiedCaption = 16f, NameTwoLine = 80f, BioOneLine = 20f, MetaRow = 20f, ActionsRow = 36f;
-    const float CopyGaps = 4f * Spacing.S;
+    const float CopyGaps = 4f * Spacing.M;              // #106 — the horizontal copy block's gap is 12, was 8
     const float CopyPadding = 2f * 24f;
     public const float WideCopyBudget = CopyPadding + VerifiedCaption + NameTwoLine + BioOneLine + MetaRow + ActionsRow + CopyGaps;
     public const float MediumCopyBudget = WideCopyBudget;
