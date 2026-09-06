@@ -141,7 +141,7 @@ public class ArtistHeroLayoutTests
     public void HorizontalTiers_ClampToTheViewportFraction_NeverBelowTheCopyBudget()
     {
         // 900x600 -> a page viewport of ~520 DIP (window height minus the shell's chrome). cap = 520*0.45 = 234,
-        // below WideHeight (360) -> the hero clamps, but never under the copy's own worst-case budget.
+        // below WideHeight (392) -> the hero clamps, but never under the copy's own worst-case budget.
         var m = ArtistHeroLayout.For(1440f, pageViewportHeight: 520f, ArtistHeroTier.Wide);
         Assert.True(m.MinHeight < ArtistHeroLayout.WideHeight);
         Assert.True(m.MinHeight >= ArtistHeroLayout.CopyBudgetFor(ArtistHeroTier.Wide));

@@ -34,8 +34,10 @@ public static class ArtistHeroLayout
     public const float WideWidth = 880f;
     public const float TierHysteresis = 24f;
 
-    public const float WideHeight = 360f;              // was 440 — 24 pad + ~290 copy + 24 pad + slack
-    public const float MediumHeight = 320f;            // was 384
+    // #106 — the D81 cut (440 → 360, 384 → 320) left a two-line bio with no air between the name, the stats row and
+    // the actions. +32 / +24 puts a breath back without returning to the pre-cut band.
+    public const float WideHeight = 392f;              // was 360 (D81), 440 before that
+    public const float MediumHeight = 344f;            // was 320 (D81), 384 before that
 
     // Stacked (Compact/Narrow) photo band: the photograph is a FIELD at the top of the hero and the identity column
     // sits BELOW it on the page surface — copy never floats over the picture on these tiers, so there is no overlay
