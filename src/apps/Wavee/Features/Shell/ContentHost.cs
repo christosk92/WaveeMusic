@@ -84,7 +84,12 @@ sealed class ContentHost : Component
                             PageNavMotion.SlotKey,
                             s => PageFor(s.Route),
                             new KeepAliveOptions(
-                                MaxEntries: 8,
+                                // Three entries = the live page plus a two-deep back stack. Eight retained every
+                                // route a perf tour visited (scene nodes 494 -> 15668, components 93 -> 1479) and
+                                // the working set never came back down; parked pages still release their image
+                                // pins (ReleaseInactiveResources default), so the cost of a shorter stack is one
+                                // rebuild on a deep back-navigation, not a re-download.
+                                MaxEntries: 3,
                                 TransitionFor: PageTransition,
                                 SuppressLayoutTransitionsOnActivation: true)),
                     ],
