@@ -123,7 +123,8 @@ sealed class AlbumTrailing : Component
         var moreBy = m.MoreByArtist is { Count: > 0 } mb ? mb
             : data.About?.TopAlbums is { Count: > 0 } ta ? ta : null;
         if (moreBy is { Count: > 0 } && m.Artists.Count > 0)
-            sections.Add(AlbumList(Strings.Detail.MoreBy(m.Artists[0].Name), moreBy, h, acts));
+            sections.Add(Embed.Comp(new AlbumMoreByList.Props(m.ContextUri ?? "", m.Artists[0].Name, moreBy, h, acts),
+                () => new AlbumMoreByList()) with { Key = "more-by:" + m.ContextUri });
 
         if (data.Featured.Count > 0)
             sections.Add(FeaturedSection(data.Featured, h, acts));
@@ -162,12 +163,6 @@ sealed class AlbumTrailing : Component
             : Task.FromResult<Artist?>(null);
         var fans = Safe(ct2 => FansAsync(svc, ready, shortRelease, leadArtistUri, seedTrackUri, ct2),
             (IReadOnlyList<Artist>)Array.Empty<Artist>(), ct);
-        // The album FULL rung (getAlbum: label / ©℗ / OtherVersions / MoreBy / detailed artists) is what powers
-        // "About this release" — and this pane is the only thing that needs it, so it is asked for HERE, in the
-        // background, off the interactive open path. The enrichment service no longer back-calls LiveSessionHost for it.
-        if (albumUri.Length > 0)
-            _ = svc.Hydrator.EnsureAsync(albumUri, HydrationLevel.Full,
-                new HydrationOptions(HydrationMode.Background, Surface: TraitSurface.AlbumOpen), ct);
         var featured = albumUri.Length > 0
             ? Safe(ct2 => svc.AlbumEnrichment.GetRecommendedPlaylistsAsync(albumUri, ct2),
                 (IReadOnlyList<PlaylistSummary>)Array.Empty<PlaylistSummary>(), ct)
@@ -203,7 +198,7 @@ sealed class AlbumTrailing : Component
     internal static Element ReleasePanel(DetailModel m, DetailHandlers h, bool outerPadding = true)
     {
         var children = new List<Element>(4);
-        if (m.OtherVersions is { Count: > 0 } ov) children.Add(OtherVersionsDropDown(ov, h));
+        if (m.OtherVersions is { Count: > 0 }) children.Add(OtherVersionsDropDown(m.ContextUri ?? "", h));
 
         var facts = m.ReleaseFacts;
         // The facts ARRIVE IN WAVES — Songs/Length with the tracks, Released with the full model, Label/©/℗/other
@@ -283,25 +278,19 @@ sealed class AlbumTrailing : Component
         ],
     };
 
-    static Element OtherVersionsDropDown(IReadOnlyList<Album> versions, DetailHandlers h)
+    static Element OtherVersionsDropDown(string albumUri, DetailHandlers h)
     {
-        var items = new MenuFlyoutItem[versions.Count];
-        for (int i = 0; i < versions.Count; i++)
-        {
-            var v = versions[i];
-            items[i] = new MenuFlyoutItem(VersionLabel(v), Icons.MusicNote,
-                Invoke: () => h.OpenAlbum(v));
-        }
         return new BoxEl
         {
             // Lands with the publishing hydration, after the tiles: keyed + fades up like the rest of the panel.
             Key = "release-versions", Enter = DetailRail.FadeUp, Layout = DetailRail.Shove,
             Direction = 0, Padding = new Edges4(0f, 2f, 0f, 2f),
-            Children = [new BoxEl { Grow = 1f, Children = [DropDownButton.Create(Loc.Get(Strings.Detail.OtherVersions), items, Icons.MusicNote)] }],
+            Children = [Embed.Comp(new AlbumVersionsSelector.Props(albumUri, h), () => new AlbumVersionsSelector())
+                with { Key = "versions:" + albumUri }],
         };
     }
 
-    static string VersionLabel(Album a)
+    internal static string VersionLabel(Album a)
     {
         var parts = new List<string>(3) { a.Name };
         if (a.Year > 0) parts.Add(a.Year.ToString());
@@ -355,7 +344,6 @@ sealed class AlbumTrailing : Component
     static Element WatchVideoSection(DetailModel m, DetailHandlers h) => new BoxEl
     {
         Direction = 1,
-        Grow = 1f,
         AlignSelf = FlexAlign.Stretch,
         Padding = new Edges4(Spacing.L, Spacing.XL, Spacing.L, 0f),
         Children =
@@ -467,25 +455,29 @@ sealed class AlbumTrailing : Component
             signature: "featured:" + pls.Count + ":" + (pls.Count > 0 ? pls[0].Uri : ""));
 
     // More-by / Similar albums — open the album, or play it from the row's hover FAB.
-    static Element AlbumList(string header, IReadOnlyList<Album> albums, DetailHandlers h, ActionServices? acts)
+    internal static Element AlbumList(string header, IReadOnlyList<Album> albums, DetailHandlers h, ActionServices? acts,
+        string? identity = null, Action<int>? shownChanged = null)
         => TrailingSection(header, albums.Count,
             i => MediaCard.Row(albums[i].Cover, albums[i].Name, AlbumSubtitle(albums[i]), albums[i].Uri, circular: false,
                 onClick: () => h.OpenAlbum(albums[i]), onPlay: () => h.PlayContext(albums[i].Uri),
                 drag: Drag.Source(WaveeDragKinds.Resource,
                     () => WaveeResourceDragPayload.ForEntity(WaveeResourceKind.Album, albums[i].Uri, albums[i].Name,
                                                              albums[i].Cover, acts))),
-            signature: header + ":" + albums.Count + ":" + (albums.Count > 0 ? albums[0].Uri : ""));
+            signature: identity ?? header + ":" + (albums.Count > 0 ? albums[0].Uri : ""), shownChanged: shownChanged);
 
     /// <summary>The shared section wrapper: the page's trailing padding around a capped, expandable stack.
-    /// <paramref name="signature"/> keys the stateful stack so a re-bound section (the model going preview→full, or a
-    /// route swap onto a reused instance) remounts with the new data — a Component freezes its ctor args at mount.</summary>
-    static Element TrailingSection(string title, int count, Func<int, Element> rowAt, string signature) => new BoxEl
+    /// <paramref name="signature"/> identifies the section. Live props deliver joined metadata without resetting expansion.</summary>
+    static Element TrailingSection(string title, int count, Func<int, Element> rowAt, string signature,
+        Action<int>? shownChanged = null) => new BoxEl
     {
+        // Content-sized on the cross axis of the page's column, never Grow: while the skeleton region eases from its
+        // reserved height down to the real content, a Grow section shared that surplus — the About card floated
+        // mid-air in a 400px box and "Fans also like" grew a blank apron under its chips.
         Direction = 1,
-        Grow = 1f,
         AlignSelf = FlexAlign.Stretch,
         Padding = new Edges4(Spacing.L, Spacing.XL, Spacing.L, Spacing.L),
-        Children = [Embed.Comp(() => new TrailingStack(title, count, rowAt)) with { Key = "trail:" + signature }],
+        Children = [Embed.Comp(new TrailingStack.Props(title, count, rowAt, shownChanged), () => new TrailingStack())
+            with { Key = "trail:" + signature }],
     };
 
     // Album card subtitle: the artist (similar albums carry their own artist), else the year, else the kind badge.
@@ -540,7 +532,6 @@ sealed class AlbumTrailing : Component
     static Element Section(string title, Element body) => new BoxEl
     {
         Direction = 1, Gap = Spacing.M,
-        Grow = 1f,
         AlignSelf = FlexAlign.Stretch,
         Padding = new Edges4(Spacing.L, Spacing.XL, Spacing.L, Spacing.L),
         Children = [WaveeType.RailHeader(title), body],
@@ -549,7 +540,6 @@ sealed class AlbumTrailing : Component
     static Element AboutArtistSection(Artist artist, DetailHandlers h) => new BoxEl
     {
         Direction = 1,
-        Grow = 1f,
         AlignSelf = FlexAlign.Stretch,
         Padding = new Edges4(Spacing.L, Spacing.XL, Spacing.L, Spacing.L),
         Children = [AboutCard(artist, h)],
@@ -562,7 +552,7 @@ sealed class AlbumTrailing : Component
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center,
-            Grow = 1f, AlignSelf = FlexAlign.Stretch,
+            AlignSelf = FlexAlign.Stretch,
             Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
             Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardSecondary,
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
@@ -646,7 +636,6 @@ sealed class AlbumTrailing : Component
     static Element SectionSkeleton(Element body) => new BoxEl
     {
         Direction = 1, Gap = Spacing.M,
-        Grow = 1f,
         AlignSelf = FlexAlign.Stretch,
         Padding = new Edges4(Spacing.L, Spacing.XL, Spacing.L, Spacing.L),
         Children =
@@ -664,41 +653,35 @@ sealed class AlbumTrailing : Component
 /// loaded, so expanding is free and there is nowhere else to send the user — a link that navigated to a fifth surface
 /// to show four more albums would be worse than the horizontal shelf this replaced.</para>
 ///
-/// <para>Ctor args freeze at mount (component-props contract), so the section that builds this keys it by a data
-/// signature — see <c>TrailingSection</c>.</para></summary>
+/// <para>Re-pushed props update row metadata while preserving the expansion state.</para></summary>
 sealed class TrailingStack : Component
 {
     /// <summary>How many rows show before "Show all" — shared with the section wrapper's documented cap.</summary>
     internal const int Cap = 5;
 
-    readonly string _title;
-    readonly int _count;
-    readonly Func<int, Element> _rowAt;
-
-    public TrailingStack(string title, int count, Func<int, Element> rowAt)
-    {
-        _title = title; _count = count; _rowAt = rowAt;
-    }
+    internal sealed record Props(string Title, int Count, Func<int, Element> RowAt, Action<int>? ShownChanged = null);
 
     public override Element Render()
     {
+        var p = UseProps<Props>();
         var (expanded, setExpanded) = UseState(false);
-        int shown = expanded ? _count : Math.Min(_count, Cap);
+        int shown = expanded ? p.Count : Math.Min(p.Count, Cap);
+        UseEffect(() => { p.ShownChanged?.Invoke(shown); }, DepKey.From(shown));
         var rows = new Element[shown];
-        for (int i = 0; i < shown; i++) rows[i] = _rowAt(i);
+        for (int i = 0; i < shown; i++) rows[i] = p.RowAt(i);
 
         var head = new List<Element>(3)
         {
-            WaveeType.RailHeader(_title) with { Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            WaveeType.RailHeader(p.Title) with { Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
         };
-        if (_count > shown)
+        if (p.Count > shown)
             // The stock quiet link (HyperlinkButton at the Small rung) — the same control Home's modules use for the
             // same job, so "there is more here" reads identically on both pages.
-            head.Add(HyperlinkButton.Create(Strings.Home.ShowAllCount(_count), () => setExpanded(true), size: ControlSize.Small));
+            head.Add(HyperlinkButton.Create(Strings.Home.ShowAllCount(p.Count), () => setExpanded(true), size: ControlSize.Small));
 
         return new BoxEl
         {
-            Direction = 1, Gap = Spacing.M, Grow = 1f, AlignSelf = FlexAlign.Stretch,
+            Direction = 1, Gap = Spacing.M, AlignSelf = FlexAlign.Stretch,
             Children =
             [
                 new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Children = head.ToArray() },

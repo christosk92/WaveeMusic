@@ -52,15 +52,15 @@ public sealed class CatalogAlbumEnrichmentService : IAlbumEnrichmentService
     public CatalogAlbumEnrichmentService(IMusicLibrary library) => _library = library;
 
     public async Task<NowPlayingInfo?> GetNowPlayingInfoAsync(string artistUri, string trackUri, CancellationToken ct = default)
-        => new(string.IsNullOrEmpty(artistUri) ? null : await _library.GetArtistAsync(artistUri, HydrationLevel.Rich, ct).ConfigureAwait(false), null);
+        => new(string.IsNullOrEmpty(artistUri) ? null : await _library.GetArtistAsync(artistUri, ct).ConfigureAwait(false), null);
 
     public async Task<Artist?> GetAboutArtistAsync(string artistUri, string leadTrackUri, CancellationToken ct = default)
-        => string.IsNullOrEmpty(artistUri) ? null : await _library.GetArtistAsync(artistUri, HydrationLevel.Rich, ct).ConfigureAwait(false);
+        => string.IsNullOrEmpty(artistUri) ? null : await _library.GetArtistAsync(artistUri, ct).ConfigureAwait(false);
 
     public async Task<IReadOnlyList<Artist>> GetRelatedArtistsAsync(string artistUri, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(artistUri)) return Array.Empty<Artist>();
-        var artist = await _library.GetArtistAsync(artistUri, HydrationLevel.Rich, ct).ConfigureAwait(false);
+        var artist = await _library.GetArtistAsync(artistUri, ct).ConfigureAwait(false);
         if (artist.Extras?.Related is not { Count: > 0 } related) return Array.Empty<Artist>();
         var result = new List<Artist>(related.Count);
         foreach (var a in related) result.Add(new Artist(a.Id, a.Uri, a.Name, a.Image));

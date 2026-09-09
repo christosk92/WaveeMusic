@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,15 +20,44 @@ namespace Wavee.Tests;
 // Stage E — command arbitration: the routing spine (local iff nobody/we active, else forward), ghost resume, per-verb
 // routing, "another device active stops local", transfer self/away, and inbound-always-local. See
 // docs/plans/wavee-playback-arbitration-rules.md.
-public class ConnectControllerTests
+public class ConnectControllerTests : PlaybackCatalogTestBase
 {
     static readonly IReadOnlyDictionary<string, string> NoHeaders = new Dictionary<string, string>();
 
     static IContextResolver Ctx(params string[] uris) => new FakeContextResolver(uris);
 
+    static async Task UntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) return;
+            await Task.Delay(15);
+        }
+    }
+
+    // The inbound command is dispatched onto the controller's own lane; the old fixed 30 ms sleep flaked under
+    // suite load. Wait at least that long AND until the host's call log has stopped changing, capped at 2 s.
+    static async Task Settled(RecordingAudioHost host)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        int seen = -1;
+        while (true)
+        {
+            await Task.Delay(30);
+            int now = host.Calls.Count;
+            if (now == seen || DateTime.UtcNow > deadline) return;
+            seen = now;
+        }
+    }
+
     sealed class RecordingAudioHost : IAudioHost, IAudioOutputDeviceControl
     {
-        public readonly List<string> Calls = new();
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, _sig.OnNext);
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, _sig.OnNext);
+        public bool PlayIntent => IsPlaying;
+
+        public readonly ConcurrentQueue<string> Calls = new();
         readonly SimpleSubject<AudioHostSignal> _sig = new();
         public IObservable<AudioHostSignal> Signals => _sig;
         public long PositionMs { get; set; }
@@ -38,22 +68,22 @@ public class ConnectControllerTests
         // path (PlaybackController.PublishPositionMs) rather than trivially always reading true. Starts false, like
         // the real FluentMediaAudioHost: a never-opened host has no honest clock either.
         public bool ClockValid { get; private set; }
-        public void Load(in AudioStreamHandle s) { Calls.Add("load:" + s.TrackUri); ClockValid = true; }
-        public void LoadFastStart(in AudioFastStart s) { Calls.Add("faststart:" + s.TrackUri); ClockValid = true; }
-        public void SupplyBody(in AudioStreamHandle s) { Calls.Add("body:" + s.TrackUri); }
-        public void Play() { IsPlaying = true; Calls.Add("play"); }
-        public void Pause() { IsPlaying = false; Calls.Add("pause"); }
-        public void Stop() { IsPlaying = false; ClockValid = false; Calls.Add("stop"); }
-        public void Seek(long ms, SeekMode mode) { PositionMs = ms; Calls.Add("seek:" + ms); }
-        public void SetVolume(double v) { Calls.Add("vol"); }
+        public void Load(in AudioStreamHandle s) { Calls.Enqueue("load:" + s.TrackUri); ClockValid = true; }
+        public void LoadFastStart(in AudioFastStart s) { Calls.Enqueue("faststart:" + s.TrackUri); ClockValid = true; }
+        public void SupplyBody(in AudioStreamHandle s) { Calls.Enqueue("body:" + s.TrackUri); }
+        public void Play() { IsPlaying = true; Calls.Enqueue("play"); }
+        public void Pause() { IsPlaying = false; Calls.Enqueue("pause"); }
+        public void Stop() { IsPlaying = false; ClockValid = false; Calls.Enqueue("stop"); }
+        public void Seek(long ms, SeekMode mode) { PositionMs = ms; Calls.Enqueue("seek:" + ms); }
+        public void SetVolume(double v) { Calls.Enqueue("vol"); }
         public void Emit(AudioHostSignal s) => _sig.OnNext(s);
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         // IAudioOutputDeviceControl (Phase A/B)
         public event Action<OutputDeviceNotice>? OutputDeviceNotice;
         public event Action<double, bool>? ExternalVolumeChanged;
-        public void SetOutputDevice(string? deviceId) { Calls.Add("setoutput:" + (deviceId ?? "(default)")); }
-        public void SetOutputMuted(bool muted) { Calls.Add("mute:" + muted); }
+        public void SetOutputDevice(string? deviceId) { Calls.Enqueue("setoutput:" + (deviceId ?? "(default)")); }
+        public void SetOutputMuted(bool muted) { Calls.Enqueue("mute:" + muted); }
         public void RaiseDeviceNotice(OutputDeviceNotice n) => OutputDeviceNotice?.Invoke(n);
         public void RaiseExternalVolume(double v, bool muted) => ExternalVolumeChanged?.Invoke(v, muted);
     }
@@ -114,7 +144,7 @@ public class ConnectControllerTests
         ITransferStateDecoder? transferDecoder = null)
     {
         host = new RecordingAudioHost();
-        proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), clock ?? (() => 0));
+        proj = Catalog.Projection("us", clock ?? (() => 0));
         outbound = new RecordingOutbound();
         return new PlaybackController(host, new StubTrackResolver(), proj,
             ctx ?? Ctx("spotify:track:a", "spotify:track:b"), "us", outbound, extra,
@@ -210,7 +240,7 @@ public class ConnectControllerTests
     public async Task NoActiveDevice_Resume_GhostResumesFromClusterSnapshot()
     {
         using var c = Make(out var host, out var proj, out _, ctx: Ctx());
-        proj.OnCluster(Cluster("", Remote("spotify:track:ghost"), pos: 5000));   // ghost: cluster has a track, nobody active
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:track:ghost"), pos: 5000));   // ghost: cluster has a track, nobody active
         await c.ResumeAsync();
         await Task.Delay(20);
         Assert.Contains("load:spotify:track:ghost", host.Calls);   // seeded from the cluster
@@ -269,7 +299,7 @@ public class ConnectControllerTests
     public async Task TransferToAsync_WhileNotActiveOwner_DoesNotPublishFreshState()
     {
         using var c = Make(out _, out var proj, out var outbound);
-        proj.OnCluster(Cluster("other-device"));   // somebody else already owns the cluster
+        Catalog.Cluster(proj, Cluster("other-device"));   // somebody else already owns the cluster
 
         int publishCount = 0;
         c.PublishFreshStateOnWire = () => publishCount++;
@@ -389,9 +419,9 @@ public class ConnectControllerTests
     {
         var events = new RecordingProjection();
         using var c = Make(out var host, out var proj, out var outbound, extra: new[] { events });
-        proj.OnCluster(Cluster("other-device"));
+        Catalog.Cluster(proj, Cluster("other-device"));
         await c.PauseAsync();
-        await c.SeekAsync(4242, SeekMode.Accurate);
+        await c.SeekAsync(new(4242, SeekMode.Accurate, PlaybackSeekKind.Commit));
         await c.SetVolumeAsync(0.5);
         await c.PlayAsync("spotify:playlist:p");
         Assert.DoesNotContain(host.Calls, x => x is "pause" or "play");   // nothing driven locally
@@ -407,7 +437,7 @@ public class ConnectControllerTests
     public async Task RemoteActive_Repeat_SplitsIntoTrackThenContext()
     {
         using var c = Make(out _, out var proj, out var outbound);
-        proj.OnCluster(Cluster("other-device"));
+        Catalog.Cluster(proj, Cluster("other-device"));
         await c.SetRepeatAsync(RepeatMode.Context);
         Assert.Equal(2, outbound.Sent.Count);
         Assert.Contains("set_repeating_track", outbound.Sent[0].Json);
@@ -419,7 +449,7 @@ public class ConnectControllerTests
     public async Task RemoteActive_Enqueue_SendsAddToQueueTrackObject_NotFlatUri()
     {
         using var c = Make(out _, out var proj, out var outbound);
-        proj.OnCluster(Cluster("other-device"));
+        Catalog.Cluster(proj, Cluster("other-device"));
         await c.EnqueueAsync("spotify:track:x");
         using var doc = JsonDocument.Parse(outbound.LastJson!);
         var cmd = doc.RootElement.GetProperty("command");
@@ -441,14 +471,16 @@ public class ConnectControllerTests
         var track = new Track("v", "spotify:track:v", "A Video Song",
             new[] { new ArtistRef("ar1", "spotify:artist:ar1", "Some Artist") },
             new AlbumRef("al1", "spotify:album:al1", "Some Album"), 210_000, false, null);
-        var store = new InMemoryStore();
-        store.UpsertVideoAssociation(new VideoAssociation(track.Uri, true, "spotify:track:v-video",
-            VideoAssociation.NoFiles, null, DateTimeOffset.UtcNow, 0));
+        await Catalog.ObserveAsync(new Wavee.Core.Catalog.CatalogObservation(
+            Catalog.Key(track.Uri, Wavee.Core.Catalog.FacetKind.VideoAssociation),
+            new Wavee.Core.Catalog.ReplaceFacetPatch(new Wavee.Core.Catalog.VideoAssociationValue(
+                new VideoAssociation(track.Uri, true, "spotify:track:v-video",
+                    VideoAssociation.NoFiles, null, DateTimeOffset.UtcNow, 0)))));
         try
         {
-            VideoPresence.Attach(null, store);
+            VideoPresence.Attach(null, Catalog.Repository);
             using var c = Make(out _, out var proj, out var outbound);
-            proj.OnCluster(Cluster("other-device"));
+            Catalog.Cluster(proj, Cluster("other-device"));
             await c.EnqueueAsync(track);
 
             using var doc = JsonDocument.Parse(outbound.LastJson!);
@@ -466,7 +498,7 @@ public class ConnectControllerTests
     public async Task RemoteActive_PlayOrdered_EmbedsVisibleOrder_AndSkipTo()
     {
         using var c = Make(out _, out var proj, out var outbound);
-        proj.OnCluster(Cluster("other-device"));
+        Catalog.Cluster(proj, Cluster("other-device"));
         await c.PlayOrderedAsync("spotify:playlist:p", new[]
         {
             new PlaybackContextTrack("spotify:track:c", "uc"),
@@ -493,7 +525,7 @@ public class ConnectControllerTests
     public async Task RemoteActive_PlayOrdered_SelectedRowIsVideo_CarriesModesMedia()
     {
         using var c = Make(out _, out var proj, out var outbound);
-        proj.OnCluster(Cluster("other-device"));
+        Catalog.Cluster(proj, Cluster("other-device"));
         var videoMeta = new Dictionary<string, string> { ["track_player"] = "video" };
         await c.PlayOrderedAsync("spotify:playlist:p", new[]
         {
@@ -510,7 +542,7 @@ public class ConnectControllerTests
     public async Task RemoteActive_PlayOrdered_PlainTrack_CarriesNoModesOverride()
     {
         using var c = Make(out _, out var proj, out var outbound);
-        proj.OnCluster(Cluster("other-device"));
+        Catalog.Cluster(proj, Cluster("other-device"));
         await c.PlayOrderedAsync("spotify:playlist:p", new[] { new PlaybackContextTrack("spotify:track:a", "ua") }, startIndex: 0);
 
         using var doc = JsonDocument.Parse(outbound.LastJson!);
@@ -528,7 +560,7 @@ public class ConnectControllerTests
             new PlaybackContextTrack("spotify:track:b", "ub"),
             new PlaybackContextTrack("spotify:track:a", "ua"),
         }, startIndex: 0);
-        await Task.Delay(30);
+        await Settled(host);
         Assert.Contains("load:spotify:track:b", host.Calls);        // embedded order honored
         Assert.DoesNotContain("load:spotify:track:x", host.Calls);  // NOT the resolver's list
     }
@@ -540,7 +572,7 @@ public class ConnectControllerTests
         using var c = Make(out var host, out var proj, out _, extra: new[] { events });
         await c.PlayAsync("spotify:playlist:p");
         Assert.True(host.IsPlaying);
-        proj.OnCluster(Cluster("other-device"));   // someone else takes over
+        Catalog.Cluster(proj, Cluster("other-device"));   // someone else takes over
         Assert.Contains("stop", host.Calls);
         Assert.False(host.IsPlaying);
         Assert.Equal(1, events.Count(EvKind.BecameInactive));
@@ -551,7 +583,7 @@ public class ConnectControllerTests
     {
         var events = new RecordingProjection();
         using var c = Make(out var host, out var proj, out var outbound, extra: new[] { events });
-        proj.OnCluster(Cluster("", Remote("spotify:track:ghost"), pos: 1000));
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:track:ghost"), pos: 1000));
         await c.TransferToAsync("us");                 // self → ghost resume
         await Task.Delay(20);
         Assert.Contains("load:spotify:track:ghost", host.Calls);
@@ -568,7 +600,7 @@ public class ConnectControllerTests
     {
         var events = new RecordingProjection();
         using var c = Make(out var host, out var proj, out var outbound, extra: new[] { events });
-        proj.OnCluster(Cluster("active-device", Remote("spotify:track:remote"), playing: true));
+        Catalog.Cluster(proj, Cluster("active-device", Remote("spotify:track:remote"), playing: true));
 
         await c.TransferToAsync("target-device");
 
@@ -600,8 +632,8 @@ public class ConnectControllerTests
     {
         var events = new RecordingProjection();
         using var c = Make(out var host, out var proj, out _, extra: new[] { events });
-        proj.OnCluster(Cluster("remote-a", Remote("spotify:track:a"), playing: true));
-        proj.OnCluster(Cluster("remote-b", Remote("spotify:track:b"), playing: true));
+        Catalog.Cluster(proj, Cluster("remote-a", Remote("spotify:track:a"), playing: true));
+        Catalog.Cluster(proj, Cluster("remote-b", Remote("spotify:track:b"), playing: true));
 
         Assert.DoesNotContain("stop", host.Calls);
         Assert.Equal(0, events.Count(EvKind.BecameInactive));
@@ -621,10 +653,10 @@ public class ConnectControllerTests
         int wireInactiveCalls = 0;
         c.PublishInactiveOnWire = () => wireInactiveCalls++;
         await c.PlayAsync("spotify:playlist:p");
-        proj.OnCluster(Cluster("us", Remote("spotify:track:a"), playing: true));
+        Catalog.Cluster(proj, Cluster("us", Remote("spotify:track:a"), playing: true));
         host.Calls.Clear();
 
-        proj.OnCluster(Cluster(""));
+        Catalog.Cluster(proj, Cluster(""));
 
         Assert.DoesNotContain("stop", host.Calls);
         Assert.Equal(0, events.Count(EvKind.BecameInactive));
@@ -636,7 +668,7 @@ public class ConnectControllerTests
     {
         using var c = Make(out var host, out var proj, out _, ctx: Ctx("spotify:track:a"));
         await c.PlayAsync("spotify:playlist:p");
-        proj.OnCluster(Cluster("other-device"));   // routing would say "forward"...
+        Catalog.Cluster(proj, Cluster("other-device"));   // routing would say "forward"...
         host.Calls.Clear();
         ConnectCommand.TryParse(new WireRequest("k", "hm://connect-state/v1/player/command",
             Encoding.UTF8.GetBytes("{\"command\":{\"endpoint\":\"pause\"}}"), NoHeaders), out var cmd);
@@ -658,7 +690,7 @@ public class ConnectControllerTests
     {
         using var c = Make(out var host, out _, out _, ctx: new FakeContextResolver("spotify:track:a", "spotify:track:b"));
         Dispatch(c, "{\"command\":{\"endpoint\":\"play\",\"context\":{\"uri\":\"spotify:playlist:p\"}}}");
-        await Task.Delay(30);
+        await Settled(host);
         Assert.Contains("load:spotify:track:a", host.Calls);
         Assert.Contains("play", host.Calls);
     }
@@ -668,7 +700,7 @@ public class ConnectControllerTests
     {
         using var c = Make(out var host, out _, out _, ctx: new FakeContextResolver("spotify:track:a", "spotify:track:b", "spotify:track:c"));
         Dispatch(c, "{\"command\":{\"endpoint\":\"play\",\"context\":{\"uri\":\"spotify:playlist:p\"},\"prepare_play_options\":{\"skip_to\":{\"track_uid\":\"uid2\"}}}}");
-        await Task.Delay(30);
+        await Settled(host);
         Assert.Contains("load:spotify:track:c", host.Calls);   // uid2 → index 2
     }
 
@@ -677,7 +709,7 @@ public class ConnectControllerTests
     {
         using var c = Make(out var host, out _, out _, ctx: new FakeContextResolver("spotify:track:a", "spotify:track:b", "spotify:track:c"));
         Dispatch(c, "{\"command\":{\"endpoint\":\"play\",\"context\":{\"uri\":\"spotify:playlist:p\"},\"prepare_play_options\":{\"skip_to\":{\"track_index\":1}}}}");
-        await Task.Delay(30);
+        await Settled(host);
         Assert.Contains("load:spotify:track:b", host.Calls);
     }
 
@@ -686,7 +718,7 @@ public class ConnectControllerTests
     {
         using var c = Make(out var host, out _, out _, ctx: new FakeContextResolver("spotify:track:x"));   // the resolver's fixed list
         Dispatch(c, "{\"command\":{\"endpoint\":\"play\",\"context\":{\"uri\":\"spotify:playlist:p\",\"pages\":[{\"tracks\":[{\"uri\":\"spotify:track:e1\",\"uid\":\"u1\"},{\"uri\":\"spotify:track:e2\",\"uid\":\"u2\"}]}]}}}");
-        await Task.Delay(30);
+        await Settled(host);
         Assert.Contains("load:spotify:track:e1", host.Calls);          // embedded pages win
         Assert.DoesNotContain("load:spotify:track:x", host.Calls);
     }
@@ -718,7 +750,7 @@ public class ConnectControllerTests
     {
         var audio = new RecordingAudioHost();
         var video = new RecordingAudioHost();
-        var projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var projection = Catalog.Projection("us", () => 0);
         int videoLoads = 0;
         using var controller = new PlaybackController(
             audio, new StubTrackResolver(), projection, Ctx("spotify:track:a"), "us", videoHost: video);
@@ -754,7 +786,7 @@ public class ConnectControllerTests
     {
         var audio = new RecordingAudioHost();
         var video = new RecordingAudioHost();
-        var projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var projection = Catalog.Projection("us", () => 0);
         int videoLoads = 0;
         using var controller = new PlaybackController(
             audio, new StubTrackResolver(), projection, Ctx("spotify:track:a"), "us", videoHost: video);
@@ -828,11 +860,13 @@ public class ConnectControllerTests
     {
         var audio = new RecordingAudioHost();
         var video = new RecordingAudioHost();
-        var projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var projection = Catalog.Projection("us", () => 0);
         using var controller = new PlaybackController(
             audio, new StubTrackResolver(), projection, Ctx("spotify:track:other"), "us",
             videoHost: video, transferDecoder: new ProtoTransferStateDecoder());
         controller.LoadCurrentVideoAsync = (_, _, _) => Task.FromResult(true);
+        Task videoLoad = Task.CompletedTask;
+        controller.VideoLoadSpawnedForTest = task => videoLoad = task;
 
         var currentTrack = new TransferContextTrack { Uri = "spotify:track:vid1", Uid = "current" };
         currentTrack.Metadata["track_player"] = "video";
@@ -864,6 +898,7 @@ public class ConnectControllerTests
         ConnectCommand.TryParse(new WireRequest("transfer", "hm://connect-state/v1/player/command",
             Encoding.UTF8.GetBytes(body), NoHeaders), out var command);
         var outcome = await controller.HandleRemoteCommandAsync(command);
+        await videoLoad.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Equal(ConnectCommandOutcome.Applied, outcome);
         Assert.Equal(PlayableKind.Video, controller.CurrentMediaKind);
@@ -879,11 +914,13 @@ public class ConnectControllerTests
     {
         var audio = new RecordingAudioHost();
         var video = new RecordingAudioHost();
-        var projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var projection = Catalog.Projection("us", () => 0);
         using var controller = new PlaybackController(
             audio, new StubTrackResolver(), projection, Ctx("spotify:track:other"), "us",
             videoHost: video, transferDecoder: new ProtoTransferStateDecoder());
         controller.LoadCurrentVideoAsync = (_, _, _) => Task.FromResult(true);
+        Task videoLoad = Task.CompletedTask;
+        controller.VideoLoadSpawnedForTest = task => videoLoad = task;
 
         var options = new TransferPlayerOptions();
         options.Modes.Add(new Wavee.Protocol.Player.ModeEntry { Key = "video_persistence", Value = "VIDEO" });
@@ -913,6 +950,7 @@ public class ConnectControllerTests
         ConnectCommand.TryParse(new WireRequest("transfer", "hm://connect-state/v1/player/command",
             Encoding.UTF8.GetBytes(body), NoHeaders), out var command);
         var outcome = await controller.HandleRemoteCommandAsync(command);
+        await videoLoad.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Equal(ConnectCommandOutcome.Applied, outcome);
         Assert.Equal(PlayableKind.Video, controller.CurrentMediaKind);
@@ -928,7 +966,7 @@ public class ConnectControllerTests
     {
         using var c = Make(out var host, out var proj, out _, ctx: new FakeContextResolver());   // empty context → idle
         Dispatch(c, "{\"command\":{\"endpoint\":\"add_to_queue\",\"track\":{\"uri\":\"spotify:track:q1\",\"uid\":\"uq1\"}}}");
-        await Task.Delay(30);
+        await Settled(host);
         Assert.Contains("load:spotify:track:q1", host.Calls);
         Assert.Equal("spotify:track:q1", proj.CurrentTrack!.Uri);
     }
@@ -949,15 +987,19 @@ public class ConnectControllerTests
     {
         using var c = Make(out _, out var proj, out _, ctx: new FakeContextResolver("spotify:track:a", "spotify:track:b"));
         Dispatch(c, PlayP);
-        await Task.Delay(20);
+        await UntilAsync(() => proj.Queue.Any(e => e.Bucket == QueueBucket.NowPlaying));
         Dispatch(c, "{\"command\":{\"endpoint\":\"add_to_queue\",\"track\":{\"uri\":\"spotify:track:old\"}}}");
-        await Task.Delay(20);
+        await UntilAsync(() => proj.Queue.Any(e => e.Track.Uri == "spotify:track:old"));
         Dispatch(c, "{\"command\":{\"endpoint\":\"set_queue\",\"next_tracks\":[" +
             "{\"uri\":\"spotify:track:n1\",\"uid\":\"u1\",\"provider\":\"queue\"}," +
             "{\"uri\":\"spotify:track:n2\",\"uid\":\"u2\",\"provider\":\"queue\"}]}}");
-        await Task.Delay(30);
-        var uq = proj.Queue.Where(e => e.Bucket == QueueBucket.UserQueue).Select(e => e.Track.Uri).ToArray();
-        Assert.Equal(new[] { "spotify:track:n1", "spotify:track:n2" }, uq);   // 'old' replaced
+        await UntilAsync(() =>
+        {
+            var uq = proj.Queue.Where(e => e.Bucket == QueueBucket.UserQueue).Select(e => e.Track.Uri).ToArray();
+            return uq.Length == 2 && uq[0] == "spotify:track:n1" && uq[1] == "spotify:track:n2";
+        });
+        var replaced = proj.Queue.Where(e => e.Bucket == QueueBucket.UserQueue).Select(e => e.Track.Uri).ToArray();
+        Assert.Equal(new[] { "spotify:track:n1", "spotify:track:n2" }, replaced);
         Assert.DoesNotContain(proj.Queue, e => e.Track.Uri == "spotify:track:old");
     }
 
@@ -1016,7 +1058,7 @@ public class ConnectControllerTests
     public async Task RemoteActive_PlayNext_SendsSetQueue_InsertedRowsAreQueueProvider()
     {
         using var c = Make(out _, out var proj, out var outbound, ctx: new FakeContextResolver("spotify:track:a", "spotify:track:b"));
-        proj.OnCluster(Cluster("other-device"));
+        Catalog.Cluster(proj, Cluster("other-device"));
         await c.PlayNextAsync(new[]
         {
             new PlaybackContextTrack("spotify:track:t1", "q1"),
@@ -1041,7 +1083,7 @@ public class ConnectControllerTests
     public async Task RemoteActive_PlayNext_EchoesQueueRevisionFromCluster()
     {
         using var c = Make(out _, out var proj, out var outbound);
-        proj.OnCluster(Cluster("other-device") with { QueueRevision = "10355548321371651421" });   // threaded from the proto
+        Catalog.Cluster(proj, Cluster("other-device") with { QueueRevision = "10355548321371651421" });   // threaded from the proto
         await c.PlayNextAsync(new[] { new PlaybackContextTrack("spotify:track:t1", "") });
         using var doc = JsonDocument.Parse(outbound.LastJson!);
         Assert.Equal(10355548321371651421UL,
@@ -1053,7 +1095,7 @@ public class ConnectControllerTests
     {
         using var c = Make(out _, out var proj, out var outbound);
         // The active remote device's REAL queue (from its cluster): a queued row, then a context-continuation row, plus history.
-        proj.OnCluster(Cluster("other-device") with
+        Catalog.Cluster(proj, Cluster("other-device") with
         {
             QueueRevision = "42",
             NextTracks = new[]
@@ -1087,7 +1129,7 @@ public class ConnectControllerTests
     }
 
     [Fact]
-    public async Task InboundSetOptions_RepeatTrack_NextStaysOnSameTrack()
+    public async Task InboundSetOptions_RepeatTrack_ExplicitNextAdvancesToTheNextTrack()
     {
         using var c = Make(out var host, out _, out _, ctx: new FakeContextResolver("spotify:track:a", "spotify:track:b"));
         Dispatch(c, PlayP);
@@ -1096,8 +1138,8 @@ public class ConnectControllerTests
         await Task.Delay(20);
         host.Calls.Clear();
         Dispatch(c, "{\"command\":{\"endpoint\":\"skip_next\"}}");
-        await Task.Delay(30);
-        Assert.Contains("load:spotify:track:a", host.Calls);   // repeat-one → reloads a, not b
+        await Settled(host);
+        Assert.Contains("load:spotify:track:b", host.Calls);   // explicit Next bypasses repeat-one
     }
 
     [Fact]
@@ -1105,11 +1147,13 @@ public class ConnectControllerTests
     {
         using var c = Make(out var host, out _, out _, ctx: new FakeContextResolver("spotify:track:a", "spotify:track:b"));
         Dispatch(c, PlayP);
-        await Task.Delay(20);
+        // Wait for the load/play to settle, not a fixed 20 ms: on a loaded machine the play landed AFTER Calls.Clear()
+        // and skip_prev then ran against a track that was not loaded yet (observed flaky 2026-09-09).
+        await Settled(host);
         host.PositionMs = 5000;
         host.Calls.Clear();
         Dispatch(c, "{\"command\":{\"endpoint\":\"skip_prev\"}}");
-        await Task.Delay(30);
+        await Settled(host);
         Assert.Contains("seek:0", host.Calls);
         Assert.DoesNotContain(host.Calls, x => x.StartsWith("load:"));
     }
@@ -1123,7 +1167,7 @@ public class ConnectControllerTests
         host.PositionMs = 1000;
         host.Calls.Clear();
         Dispatch(c, "{\"command\":{\"endpoint\":\"skip_prev\"}}");
-        await Task.Delay(30);
+        await Settled(host);
         Assert.Contains("load:spotify:track:a", host.Calls);   // stepped back to a
     }
 
@@ -1132,7 +1176,7 @@ public class ConnectControllerTests
     public async Task RemoteActive_SetVolume_UsesConnectVolumeEndpoint_NotPlayerCommand()
     {
         using var c = Make(out _, out var proj, out var outbound);
-        proj.OnCluster(Cluster("other-device"));
+        Catalog.Cluster(proj, Cluster("other-device"));
         await c.SetVolumeAsync(0.25);
         Assert.Equal((int)System.Math.Round(0.25 * 65535), outbound.LastVolume);
         Assert.Equal("other-device", outbound.Volumes[^1].Target);
@@ -1142,10 +1186,10 @@ public class ConnectControllerTests
     [Fact]
     public void Cluster_ActiveDeviceVolume_DrivesSlider_AndRemoteChangeReacts()
     {
-        var proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 1_000_000);   // clock far ahead → outside any local-command window
-        proj.OnCluster(Cluster("other-device") with { ActiveVolume0_65535 = 32768 });
+        var proj = Catalog.Projection("us", () => 1_000_000);   // clock far ahead → outside any local-command window
+        Catalog.Cluster(proj, Cluster("other-device") with { ActiveVolume0_65535 = 32768 });
         Assert.Equal(0.5, proj.Volume, 2);   // the active device's volume drives the slider
-        proj.OnCluster(Cluster("other-device") with { ActiveVolume0_65535 = 13107 });   // a remote controller turned it down
+        Catalog.Cluster(proj, Cluster("other-device") with { ActiveVolume0_65535 = 13107 });   // a remote controller turned it down
         Assert.Equal(0.2, proj.Volume, 2);   // reacted to the remote change
     }
 
@@ -1168,7 +1212,7 @@ public class ConnectControllerTests
     public async Task Resume_GhostResume_Rejected_WhenHookSet()
     {
         using var c = Make(out var host, out var proj, out _, ctx: Ctx());
-        proj.OnCluster(Cluster("", Remote("spotify:track:ghost"), pos: 5000));   // a cluster track, nobody active → local ghost-resume
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:track:ghost"), pos: 5000));   // a cluster track, nobody active → local ghost-resume
         int rejects = 0; c.OnLocalPlaybackRejected = () => rejects++;
         await c.ResumeAsync();
         await Task.Delay(20);
@@ -1180,7 +1224,7 @@ public class ConnectControllerTests
     public async Task TransferToSelf_Rejected_WhenHookSet()
     {
         using var c = Make(out var host, out var proj, out _);
-        proj.OnCluster(Cluster("", Remote("spotify:track:ghost"), pos: 1000));
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:track:ghost"), pos: 1000));
         int rejects = 0; c.OnLocalPlaybackRejected = () => rejects++;
         await c.TransferToAsync("us");   // transfer to THIS device = local playback → rejected
         await Task.Delay(20);
@@ -1192,7 +1236,7 @@ public class ConnectControllerTests
     public async Task RemoteForward_Unaffected_WhenHookSet()
     {
         using var c = Make(out var host, out var proj, out var outbound);
-        proj.OnCluster(Cluster("other-device"));           // another device active → routes REMOTE
+        Catalog.Cluster(proj, Cluster("other-device"));           // another device active → routes REMOTE
         int rejects = 0; c.OnLocalPlaybackRejected = () => rejects++;
         await c.PlayAsync("spotify:playlist:p");
         await c.PauseAsync();
@@ -1220,7 +1264,7 @@ public class ConnectControllerTests
         var svc = new LocalAudioDeviceService(
             new FakeDeviceMonitor(),
             host,                                         // IAudioOutputDeviceControl — records set-output ids
-            (id, ct) => { host.Calls.Add("transfer:" + id); return Task.CompletedTask; },
+            (id, ct) => { host.Calls.Enqueue("transfer:" + id); return Task.CompletedTask; },
             "us",
             () => "other-device",                         // a remote device owns playback
             (_, _) => { });
@@ -1229,7 +1273,8 @@ public class ConnectControllerTests
 
         Assert.Contains("setoutput:dev-1", host.Calls);
         Assert.Contains("transfer:us", host.Calls);
-        Assert.True(host.Calls.IndexOf("setoutput:dev-1") < host.Calls.IndexOf("transfer:us"));   // route FIRST, then transfer home
+        var calls = host.Calls.ToArray();
+        Assert.True(Array.IndexOf(calls, "setoutput:dev-1") < Array.IndexOf(calls, "transfer:us"));   // route FIRST, then transfer home
     }
 
     // ── launch session restore (docs/plans/wavee/playback-restore-findings.md §§1, 2, 5, 8) ───────────────────────────
@@ -1252,7 +1297,7 @@ public class ConnectControllerTests
         // empty queue until the user pressed Play — and then ghost-resume AUTOPLAYED. Recovery seeds it paused instead.
         using var c = Make(out var host, out var proj, out var outbound);
 
-        proj.OnCluster(Cluster("", Remote("spotify:track:ghost"), pos: 42_000));
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:track:ghost"), pos: 42_000));
 
         Assert.True(await Settle(() => proj.CurrentTrack is not null && proj.Queue.Count > 0),
             "recovery did not seed the session from the cluster");
@@ -1265,7 +1310,7 @@ public class ConnectControllerTests
     public async Task SessionRecovery_ThenResume_LoadsAtTheStoredPosition_WithoutASecondSeed()
     {
         using var c = Make(out var host, out var proj, out _);
-        proj.OnCluster(Cluster("", Remote("spotify:track:ghost"), pos: 42_000));
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:track:ghost"), pos: 42_000));
         Assert.True(await Settle(() => proj.Queue.Count > 0));
         host.Calls.Clear();
 
@@ -1285,7 +1330,7 @@ public class ConnectControllerTests
     {
         using var c = Make(out var host, out var proj, out _);
 
-        proj.OnCluster(Cluster("other-device", Remote("spotify:track:remote"), pos: 5_000, playing: true));
+        Catalog.Cluster(proj, Cluster("other-device", Remote("spotify:track:remote"), pos: 5_000, playing: true));
         await Task.Delay(60);   // give a (wrongly) scheduled recovery time to do damage
 
         Assert.DoesNotContain("play", host.Calls);
@@ -1301,7 +1346,7 @@ public class ConnectControllerTests
     public async Task IsActiveOwner_FalseWhilePassivelyViewingAnotherDevice_EvenThoughATrackMirrors()
     {
         using var c = Make(out _, out var proj, out _);
-        proj.OnCluster(Cluster("other-device", Remote("spotify:track:remote"), pos: 5_000, playing: true));
+        Catalog.Cluster(proj, Cluster("other-device", Remote("spotify:track:remote"), pos: 5_000, playing: true));
         await Task.Delay(20);
 
         Assert.NotNull(proj.CurrentTrack);   // the viewer DOES mirror a track…
@@ -1323,7 +1368,7 @@ public class ConnectControllerTests
         // refused the cluster queue AND shuffle/repeat — now-playing showed a track over an empty queue panel.
         using var c = Make(out _, out var proj, out _);
 
-        proj.OnCluster(Cluster("us", Remote("spotify:track:mine"), pos: 1_000) with
+        Catalog.Cluster(proj, Cluster("us", Remote("spotify:track:mine"), pos: 1_000) with
         {
             NextTracks = [Remote("spotify:track:next1"), Remote("spotify:track:next2")],
             Shuffle = true,
@@ -1340,7 +1385,7 @@ public class ConnectControllerTests
     {
         // Root cause 2, the payoff: prev_tracks now rebuild History, so Previous after a restore actually goes back.
         using var c = Make(out var host, out var proj, out _);
-        proj.OnCluster(Cluster("", Remote("spotify:track:current"), pos: 1_000) with
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:track:current"), pos: 1_000) with
         {
             PrevTracks = [Remote("spotify:track:older"), Remote("spotify:track:played")],
         });
@@ -1360,7 +1405,7 @@ public class ConnectControllerTests
     public async Task LocalPrev_AfterARestoreWithNoHistory_RestartsPast3s_AndNoOpsUnderIt()
     {
         using var c = Make(out var host, out var proj, out _);
-        proj.OnCluster(Cluster("", Remote("spotify:track:only"), pos: 0));   // no prev_tracks → History stays empty
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:track:only"), pos: 0));   // no prev_tracks → History stays empty
         Assert.True(await Settle(() => proj.Queue.Count > 0));
         await c.ResumeAsync();
         Assert.True(await Settle(() => host.Calls.Contains("play")));
@@ -1429,7 +1474,7 @@ public class ConnectControllerTests
             PositionMs: 0, Shuffle: false, Repeat: RepeatMode.Off,
             UserQueue: Array.Empty<QueuedRef>(), AutoplayActive: false);
 
-        proj.OnCluster(Cluster("", Remote("spotify:local:Claude::Claude+FM:0"), pos: 5_000) with
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:local:Claude::Claude+FM:0"), pos: 5_000) with
         {
             ContextUri = moduleUri,
         });
@@ -1449,7 +1494,7 @@ public class ConnectControllerTests
         c.OnPlaybackError = errors.Add;
         c.IsPlayableHere = uri => !uri.StartsWith("spotify:local:", StringComparison.Ordinal);
 
-        proj.OnCluster(Cluster("", Remote("spotify:local:Claude::Claude+FM:0"), pos: 5_000));
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:local:Claude::Claude+FM:0"), pos: 5_000));
         await Task.Delay(120);
 
         Assert.False(c.HasLocalSession);
@@ -1468,7 +1513,7 @@ public class ConnectControllerTests
         // before, so nothing about the Spotify recovery path moved.
         using var c = Make(out _, out var proj, out _);
 
-        proj.OnCluster(Cluster("", Remote("spotify:track:ghost"), pos: 42_000));
+        Catalog.Cluster(proj, Cluster("", Remote("spotify:track:ghost"), pos: 42_000));
 
         Assert.True(await Settle(() => proj.CurrentTrack?.Uri == "spotify:track:ghost"));
     }
@@ -1540,7 +1585,7 @@ public class ConnectControllerTests
 
         Assert.True(await Settle(() => proj.CurrentTrack?.Uri == ModuleUri),
             "a declining owner took the restore down with it; current = " + proj.CurrentTrack?.Uri);
-        Assert.Equal(ModuleUri, proj.CurrentTrack!.Title);   // the thin row, exactly as before
+        Assert.Empty(proj.CurrentTrack!.Title);   // An unknown title remains unknown; identity stays in Uri.
         Assert.False(proj.IsPlaying);
         Assert.DoesNotContain("play", host.Calls);
         Assert.Empty(errors);                                // Info, never a toast
@@ -1577,7 +1622,7 @@ public class ConnectControllerTests
         var asked = new List<string>();
         c.HydratePlayable = (uri, _) => { asked.Add(uri); return Task.FromResult<Track?>(ModuleAnswer()); };
 
-        proj.OnCluster(Cluster("", Remote(ModuleUri, dur: 206_000), pos: 0) with { ContextUri = ModuleUri });
+        Catalog.Cluster(proj, Cluster("", Remote(ModuleUri, dur: 206_000), pos: 0) with { ContextUri = ModuleUri });
 
         Assert.True(await Settle(() => proj.CurrentTrack?.Title == "Claude FM — 24/7 lofi"),
             "the cluster row was seeded verbatim; title = " + proj.CurrentTrack?.Title);

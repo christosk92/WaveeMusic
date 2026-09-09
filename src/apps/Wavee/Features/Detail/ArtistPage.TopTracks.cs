@@ -31,6 +31,12 @@ sealed partial class ArtistPage : Component
     // is no pick — a standalone Zune date-led upcoming card. Never both sections at once: stacking pick + upcoming
     // in the rail out-ran Top tracks and left a dead band beside it. Latest release stays its own wide banner
     // above Albums (see ArtistPage.cs Body).
+    // Every value the band's painted content depends on besides width. `go`/`play`/`accent` stay plain closures
+    // (stable navigate/play/color behaviour, not band data — accent is a live Func read fresh at build time either way).
+    sealed record TopBandState(IReadOnlyList<Track> Popular, string Uri, PlaybackBridge? Bridge, Services Svc,
+        PinnedItem? Pinned, Image? ArtistImage, Image? ArtistBackground, string ArtistName,
+        ArtistPreRelease? Upcoming, bool ShowTrackArtwork, bool Classic);
+
     Element TopBand(IReadOnlyList<Track> popular, string uri, PlaybackBridge? bridge, Services svc,
                     PinnedItem? pinned, Image? artistImage, Image? artistBackground, string artistName,
                     ArtistPreRelease? upcoming,
@@ -38,17 +44,19 @@ sealed partial class ArtistPage : Component
     {
         bool showTrackArtwork = !AppearancePrefs.TrackArtworkHidden(svc.Settings);
         bool classic = svc.Settings.Get(WaveeSettings.TrackRowStyle) == 1;
-        return Responsive.Of(w =>
+        var state = new TopBandState(popular, uri, bridge, svc, pinned, artistImage, artistBackground, artistName,
+            upcoming, showTrackArtwork, classic);
+        return Responsive.Of(state, (s, w) =>
         {
             bool wide = TopBandWide(w);
             string popTitle = Loc.Get(Strings.Artist.TopTracks);
-            bool hasFeatured = pinned is not null || upcoming is { IsUpcoming: true };
+            bool hasFeatured = s.Pinned is not null || s.Upcoming is { IsUpcoming: true };
             // The chart column's own width: TopBand gives it Grow 2 against the rail's Grow 1 (a ~2:1 split, not
             // exactly ⅔ once the XL gap between them is accounted for, close enough for the row-density threshold).
             float bandWidth = hasFeatured && wide ? MathF.Max(1f, w * (2f / 3f)) : w;
-            Element tracks = Embed.Comp(() => new ArtistPopular(popular, uri, bridge, svc, popTitle, accent, bandWidth))
-                with { SkeletonProxy = () => ArtistPopular.SkeletonShape(popular, popTitle, showTrackArtwork, classic) };
-            Element featured = FeaturedColumn(pinned, artistImage, artistBackground, artistName, upcoming, go, play, accent, wide);
+            Element tracks = Embed.Comp(() => new ArtistPopular(s.Popular, _artistView!, s.Uri, s.Bridge, s.Svc, popTitle, accent, bandWidth))
+                with { SkeletonProxy = () => ArtistPopular.SkeletonShape(s.Popular, popTitle, s.ShowTrackArtwork, s.Classic) };
+            Element featured = FeaturedColumn(s.Pinned, s.ArtistImage, s.ArtistBackground, s.ArtistName, s.Upcoming, go, play, accent, wide);
 
             if (!hasFeatured)
                 return new BoxEl { Direction = 1, Children = [tracks] };

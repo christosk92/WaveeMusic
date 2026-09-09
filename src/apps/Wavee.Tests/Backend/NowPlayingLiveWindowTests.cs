@@ -14,19 +14,19 @@ namespace Wavee.Tests;
 /// <para>The union with <see cref="NowPlayingProjection.SetLiveOverride"/> is the point of these tests: a module states
 /// live-ness at resolve, the engine states the window once metadata loads, and neither answer may erase the other.</para>
 /// </summary>
-public class NowPlayingLiveWindowTests
+public class NowPlayingLiveWindowTests : PlaybackCatalogTestBase
 {
     const string StreamUri = "wavee:module:wavee.youtube:aGVsbG8";
     const string SongUri = "spotify:track:abc";
 
-    static NowPlayingProjection New() => new("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+    NowPlayingProjection New() => Catalog.Projection("dev");
 
     static Track TrackFor(string uri, long durationMs = 0) => new(
         Id: uri, Uri: uri, Title: "t", Artists: Array.Empty<ArtistRef>(), Album: new AlbumRef("", "", ""),
         DurationMs: durationMs, IsExplicit: false, Image: null);
 
-    static void Start(NowPlayingProjection p, string uri, long durationMs = 0)
-        => p.OnEvent(new PlaybackEvent(EvKind.Started, TrackFor(uri, durationMs), 0));
+    void Start(NowPlayingProjection p, string uri, long durationMs = 0)
+        => Catalog.Event(p, new PlaybackEvent(EvKind.Started, TrackFor(uri, durationMs), 0));
 
     /// <summary>A four-hour DVR window — a real YouTube live stream's shape.</summary>
     static LiveWindow Dvr(long positionMs = 25_800_000, bool atEdge = true) => new(
@@ -224,7 +224,7 @@ public class NowPlayingLiveWindowTests
         Start(p, StreamUri);
         p.SetLiveWindow(StreamUri, Dvr());
 
-        p.OnEvent(new PlaybackEvent(EvKind.Resumed, null, 1234));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Resumed, null, 1234));
 
         Assert.True(p.IsLive);
         Assert.Equal(Dvr(), p.Live);
@@ -295,7 +295,7 @@ public class NowPlayingLiveWindowTests
         using var p = New();
         Start(p, StreamUri);
         p.SetLiveWindow(StreamUri, Dvr());
-        p.OnEvent(new PlaybackEvent(EvKind.Started, TrackFor(StreamUri), 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Started, TrackFor(StreamUri), 0));
 
         Assert.True(p.CanSeek);   // local playback re-arms every capability
     }
@@ -305,7 +305,7 @@ public class NowPlayingLiveWindowTests
 /// The module cache's live answer as the relay reads it — and specifically the three-valued reading that fixes the
 /// latched-false defect: <c>null</c> means "not resolved yet", which is NOT the same as "not live".
 /// </summary>
-public class ModuleLivenessProbeTests
+public class ModuleLivenessProbeTests : PlaybackCatalogTestBase
 {
     const string StreamUri = "wavee:module:wavee.youtube:aGVsbG8";
 

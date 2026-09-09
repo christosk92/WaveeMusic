@@ -345,8 +345,13 @@ public static class ConcertUi
     // minus the band (deliberate cohesion).
     public static Element Hero(Image image, string eyebrow, string title, uint? accent, Element? trailing = null,
         Element? stats = null) =>
-        Responsive.Of(width => BuildHero(image, eyebrow, title, accent, trailing, stats, width > 0f ? width : 900f),
+        // Gated on every value BuildHero reads besides width: the band photo/accent wash and the copy block are pure
+        // functions of these six — nothing else varies the built subtree.
+        Responsive.Of(new HeroState(image, eyebrow, title, accent, trailing, stats),
+            static (s, width) => BuildHero(s.Image, s.Eyebrow, s.Title, s.Accent, s.Trailing, s.Stats, width > 0f ? width : 900f),
             fallback: 900f);
+
+    private readonly record struct HeroState(Image Image, string Eyebrow, string Title, uint? Accent, Element? Trailing, Element? Stats);
 
     static Element BuildHero(Image image, string eyebrow, string title, uint? accent, Element? trailing, Element? stats, float width)
     {
@@ -707,9 +712,15 @@ public static class ConcertUi
         Action onClick,
         float fallbackWidth = 1000f,
         EditorialArtStyle style = EditorialArtStyle.Concert) =>
-        Responsive.Of(width => BuildWideEditorial(
-            artwork, style, eyebrow, title, subtitle, actionLabel, onClick,
-            width > 0f ? width : fallbackWidth), fallback: fallbackWidth);
+        // Gated on every value BuildWideEditorial reads besides width, including onClick — a caller that swaps its
+        // action (a new playlist id, say) must rebuild the card, not just react to a resize.
+        Responsive.Of(new WideEditorialState(artwork, style, eyebrow, title, subtitle, actionLabel, onClick, fallbackWidth),
+            static (s, width) => BuildWideEditorial(
+                s.Artwork, s.Style, s.Eyebrow, s.Title, s.Subtitle, s.ActionLabel, s.OnClick,
+                width > 0f ? width : s.FallbackWidth), fallback: fallbackWidth);
+
+    private readonly record struct WideEditorialState(Image? Artwork, EditorialArtStyle Style, string Eyebrow,
+        string Title, string Subtitle, string ActionLabel, Action OnClick, float FallbackWidth);
 
     static Element BuildWideEditorial(
         Image? artwork,

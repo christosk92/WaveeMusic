@@ -18,6 +18,10 @@ namespace Wavee;
 sealed partial class ArtistPage : Component
 {
     readonly Signal<float> _heroWidth = new(ArtistHeroLayout.WideWidth);
+    // The copy block's own laid-out CONTENT height (Identity(), no padding) — measured, not guessed, so a horizontal
+    // tier's hero is a floor over the real copy rather than trusting ArtistHeroLayout's constants to have anticipated
+    // every localization/font-fallback case (library-v3-1 findings Part 5 §7). 0 until the first post-layout settle.
+    readonly Signal<float> _measuredIdentityH = new(0f);
 
     Element Banner(Artist a, string uri, Action play, Action shuffle, Action radio,
                    bool compactCanHit, ContextPivotItem[] pivot, IReadSignal<float> pageScroll,
@@ -26,13 +30,14 @@ sealed partial class ArtistPage : Component
         float width = MathF.Max(1f, _heroWidth.Value);
         float pageViewportH = Wavee.Features.Shell.ShellViewport.PageHeightFor(UseContext(Viewport.Size).Height);
         var tier = UseRef(ArtistHeroTier.Wide);
-        var metrics = ArtistHeroLayout.For(width, pageViewportH, tier.Value);
+        float measuredCopyHeight = ArtistHeroLayout.MeasuredCopyHeightFrom(_measuredIdentityH.Value);
+        var metrics = ArtistHeroLayout.For(width, pageViewportH, tier.Value, measuredCopyHeight);
         tier.Value = metrics.Tier;
         float height = metrics.MinHeight;
         float collapseDistance = ArtistHeroLayout.CollapseDistance(height);
         var background = a.HeaderImage ?? a.Image;
 
-        Element Identity()
+        BoxEl Identity()
         {
             Element verified = a.Verified
                 ? new BoxEl
@@ -102,7 +107,7 @@ sealed partial class ArtistPage : Component
         float photoH = ArtistHeroLayout.PhotoHeightFor(metrics);
         ColorF Placeholder() => Surfaces.ArtworkPlaceholder;
         Element art = background?.Url is { Length: > 0 } source
-            ? Embed.Comp(() => new HeroArt(source, _heroWidth, background.BlurHash, Placeholder))
+            ? Embed.Comp(() => new HeroArt(source, _heroWidth, _measuredIdentityH, background.BlurHash, Placeholder))
                 with { Key = "heroart:" + source }
             : new BoxEl { Width = width, Height = photoH, Fill = Placeholder() };
         Element media = new BoxEl
@@ -117,6 +122,14 @@ sealed partial class ArtistPage : Component
         {
             if (bounds.W > 0f && MathF.Abs(bounds.W - _heroWidth.Peek()) > 0.5f)
                 _heroWidth.Value = bounds.W;
+        }
+
+        // Only the horizontal copy block is measured (ArtistHeroLayout.For ignores measuredCopyHeight on stacked
+        // tiers anyway — its identity column has no fixed inner height to clip against).
+        void MeasureIdentity(RectF bounds)
+        {
+            if (bounds.H > 0f && MathF.Abs(bounds.H - _measuredIdentityH.Peek()) > 0.5f)
+                _measuredIdentityH.Value = bounds.H;
         }
 
         // Collapse binds are shared by both arms: the whole expanded presentation slides up and fades as the band
@@ -167,7 +180,10 @@ sealed partial class ArtistPage : Component
                 AlignItems = FlexAlign.Start,
                 // #106 — 24 of vertical air (ArtistHeroLayout.CopyPadding's own figure; the renderer used to pay 16).
                 Padding = new Edges4(metrics.Gutter, Spacing.XXL, metrics.Gutter, Spacing.XXL),
-                Children = [Identity()],
+                // OnBoundsChanged publishes Identity()'s own natural (unclamped) content height — its width here
+                // depends only on `width`/`metrics.Tier` (both independently measured/stable), never on the height
+                // this feeds back into, so there is no oscillation for the engine's measured-bounds tripwire to catch.
+                Children = [Identity() with { OnBoundsChanged = MeasureIdentity }],
             };
 
             expandedPresentation = new BoxEl
@@ -298,18 +314,22 @@ sealed class HeroArt : Component
 
     readonly string _url;
     readonly IReadSignal<float> _width;
+    readonly IReadSignal<float> _measuredIdentityH;
     readonly string? _blurHash;
     readonly Func<ColorF> _placeholder;
 
-    public HeroArt(string url, IReadSignal<float> width, string? blurHash, Func<ColorF> placeholder)
-    { _url = url; _width = width; _blurHash = blurHash; _placeholder = placeholder; }
+    public HeroArt(string url, IReadSignal<float> width, IReadSignal<float> measuredIdentityH, string? blurHash, Func<ColorF> placeholder)
+    { _url = url; _width = width; _measuredIdentityH = measuredIdentityH; _blurHash = blurHash; _placeholder = placeholder; }
 
     public override Element Render()
     {
         float width = MathF.Max(1f, _width.Value);
         float pageViewportH = Wavee.Features.Shell.ShellViewport.PageHeightFor(UseContext(Viewport.Size).Height);
         var tier = UseRef(ArtistHeroTier.Wide);
-        var metrics = ArtistHeroLayout.For(width, pageViewportH, tier.Value);
+        // Mirrors Banner's own metrics call (same width/viewport/measured-copy inputs) so the photo band this
+        // component decodes/paints at can never disagree with the media box Banner actually sizes it into.
+        float measuredCopyHeight = ArtistHeroLayout.MeasuredCopyHeightFrom(_measuredIdentityH.Value);
+        var metrics = ArtistHeroLayout.For(width, pageViewportH, tier.Value, measuredCopyHeight);
         tier.Value = metrics.Tier;
         // The photo BAND, not the hero: on stacked tiers the photograph is the top slice and the identity column
         // owns the rest — sized through the same helper the banner's media box uses, so the two cannot disagree.

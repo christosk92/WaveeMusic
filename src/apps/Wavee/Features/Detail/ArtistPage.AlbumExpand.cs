@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -11,6 +12,7 @@ using FluentGpu.Localization;
 using FluentGpu.Render;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Features.Detail;
 using static FluentGpu.Dsl.Ui;
 
@@ -28,25 +30,6 @@ namespace Wavee;
 // panel, the reserved height and the bring-into-view scroll can never disagree, and a loaded album that is not the
 // SELECTED one (C1) is simply "not loaded" rather than a stale tracklist under the wrong cover.
 
-// Task<T> is invariant, so the Task<Album> the catalog returns is not a Task<Album?> — and the UseResource seed pins
-// T = Album?. Awaiting and re-wrapping is the conversion; the loaders below all go through it.
-static class AlbumLoader
-{
-    internal static async System.Threading.Tasks.Task<Album?> LoadAlbumAsync(Services svc, string uri, System.Threading.CancellationToken ct)
-        => await svc.Library.GetAlbumAsync(uri, ct: ct).ConfigureAwait(false);
-
-    /// <summary>C3: a SYNCHRONOUS store peek, passed as the UseResource seed so a re-opened (or already-warm) album is
-    /// Ready on the very click frame — no shimmer for a fetch that would only re-confirm what the store already holds.
-    /// Null for a cold/Identity-only album (TryPeekAlbum's own Open-or-better gate) or a closed drawer.</summary>
-    internal static Album? Peek(Services svc, string uri)
-        => uri.Length > 0 && svc.Library.TryPeekAlbum(uri, out var album) ? album : null;
-}
-
-// ── Discography facets (Albums / Singles / Compilations) ───────────────────────────────────────────────
-// The artist page keeps each complete facet inline, virtualized over a VirtualCollection<Album> that pages as the outer
-// page scrolls. The legacy facet route remains deep-link compatible, but ordinary catalogue browsing never leaves the
-// artist page. Both surfaces share the same iTunes-style inline track drawer.
-
 static class AlbumNavAction
 {
     public static Element Create(Action onClick, float size = 34f) => ToolTip.Wrap(new BoxEl
@@ -58,29 +41,6 @@ static class AlbumNavAction
         OnClick = onClick, Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
         Children = [ Icon(Icons.OpenInNewWindow, size * 0.42f, Tok.TextSecondary) ],
     }.Interactive(Interaction.Subtle), "Go to album");
-}
-
-// Builds the paged data source for one (artist, facet): pages of 60; the source reports the facet total from page 0.
-static class DiscoVc
-{
-    public static VirtualCollection<Album> Make(Services svc, string artistUri, DiscographyKind kind, Action<Action> post, System.Threading.CancellationToken ct)
-        => new(async (off, cnt, c) =>
-        {
-            var p = await svc.Library.GetDiscographyAsync(artistUri, kind, off, cnt, c);
-            var arr = p.Items as Album[] ?? p.Items.ToArray();
-            return new PageResult<Album>(p.Total, arr);
-        }, pageSize: 60, post: post, ct: ct);
-
-    /// <summary>The cheapest correct index lookup over a loaded window (C2): a linear scan of the resident items —
-    /// there is no reverse uri→index map to keep in sync, and a discography facet is at most a few hundred albums.
-    /// -1 when the album is not resident (its page has not landed yet, or it left the snapshot).</summary>
-    public static int IndexOf(VirtualCollection<Album> vc, string uri)
-    {
-        int n = vc.CountOr0;
-        for (int i = 0; i < n; i++)
-            if (vc[i] is { } a && a.Uri == uri) return i;
-        return -1;
-    }
 }
 
 // The DiscoGrid expand drawer body. The discography album is THIN (no tracklist); the one full-album fetch lives in
@@ -334,12 +294,7 @@ sealed class AlbumDrawerPanel : Component
         }
     }
 
-    // READY BUT EMPTY. GetAlbumAsync swallows its fetch failure (StoreLibrarySource.EnsureFetchedAsync's `catch { }`)
-    // and returns whatever the store holds, so the resource legitimately settles Ready on a trackless album — offline,
-    // a failed envelope, or a cold-restored stub. That used to be a 0-row slot with nothing in it and no way out:
-    // VirtualCollection has no invalidation, so the stale snapshot never healed. Retry re-runs the loader keeping the
-    // current value visible (Resource.Refresh — stale-while-revalidate). Sized by AlbumDrawerVerdict's ReadyEmpty
-    // branch (2 rows) in the slot.
+    // A known empty album can be refreshed explicitly; the query preserves its current content during retry.
     static Element EmptyNote(Action retry) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
@@ -397,7 +352,11 @@ sealed class AlbumDrawerPanel : Component
 
 sealed class DiscoGrid : Component
 {
-    readonly VirtualCollection<Album> _vc;
+    readonly Func<int> _count;
+    readonly Func<int, Album?> _itemAt;
+    readonly Action<int, int>? _demand;
+    readonly Func<int, Exception?>? _pageError;
+    readonly Action<int>? _retryPage;
     readonly Services _svc;
     readonly Action<string, string?> _go;
     readonly Action<string> _play;
@@ -440,7 +399,7 @@ sealed class DiscoGrid : Component
         return b.Finish(PathContentEpoch.Mint(), FillRule.NonZero);
     }
 
-    Resource<Album?> _full;             // the ONE full-album fetch for the open drawer (re-assigned every render)
+    QueryPresentation<Album?> _full = null!;             // the ONE full-album fetch for the open drawer (re-assigned every render)
     // C4: the LAST verdict DrawerFor computed. DrawerFor recomputes it fresh on every call — LazyGrid re-renders
     // whenever `_expandedIndex`/`_full.Loadable` change (reading them HERE, inside a delegate LazyGrid invokes from
     // its own Render, subscribes LazyGrid transitively — the same trick the old `_drawer` UseComputed memo relied on).
@@ -467,12 +426,13 @@ sealed class DiscoGrid : Component
         Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(100f, Easing.EaseInOut));
 
-    public DiscoGrid(VirtualCollection<Album> vc, Services svc, Action<string, string?> go, Action<string> play,
+    public DiscoGrid(Func<int> count, Func<int, Album?> itemAt, Services svc, Action<string, string?> go, Action<string> play,
+                     Action<int, int>? demand = null, Func<int, Exception?>? pageError = null, Action<int>? retryPage = null,
                      int initialIndex = 0, Func<ColorF>? accent = null,
                      Action<LazyGridVisibleRange>? onVisibleRangeChanged = null, float expandedTopInset = 28f,
                      float expandedRevealPeek = AlbumDrawerVerdict.HeaderH + 2f * AlbumDrawerVerdict.RowPitch)
     {
-        _vc = vc; _svc = svc; _go = go; _play = play; _initialIndex = initialIndex;
+        _count = count; _itemAt = itemAt; _demand = demand; _pageError = pageError; _retryPage = retryPage; _svc = svc; _go = go; _play = play; _initialIndex = initialIndex;
         _accent = accent ?? ThemeAccent;
         _visibleRangeChanged = onVisibleRangeChanged;
         _expandedTopInset = expandedTopInset;
@@ -484,28 +444,24 @@ sealed class DiscoGrid : Component
         _acts = UseContext(ActionServices.Slot);
         _menuOverlay = UseContext(Overlay.Service);
 
-        _ = _vc.Version.Value;                        // subscribe → the expanded uri resolves once its page lands
+        _ = _count();                        // subscribe → the expanded uri resolves once its page lands
         string expandedUri = _expandedUri.Value;       // C2: subscribe → the URI is the source of truth, never an index
 
         // Re-derive LazyGrid's index contract from the uri every render — a late page landing or a facet replace
         // re-points it (or closes it, -1) instead of leaving a stale ordinal pointed at whatever now sits at that slot.
-        int expandedIndex = expandedUri.Length == 0 ? -1 : DiscoVc.IndexOf(_vc, expandedUri);
+        int expandedIndex = expandedUri.Length == 0 ? -1 : IndexOf(expandedUri);
         if (_expandedIndex.Peek() != expandedIndex) _expandedIndex.Value = expandedIndex;
 
-        // ONE fetch for the open drawer, keyed by uri (collapsed ⇒ "" ⇒ a completed no-op task, never a request).
-        // Lifted out of AlbumDrawerPanel so the row count is known where the drawer's SLOT is sized. GetAlbumAsync is
-        // cached, so re-expanding the same album costs nothing — and C3's warm seed means it costs no SHIMMER either.
-        _full = UseResource(ct => expandedUri.Length == 0
-                ? System.Threading.Tasks.Task.FromResult<Album?>(null)
-                : AlbumLoader.LoadAlbumAsync(_svc, expandedUri, ct),
-            AlbumLoader.Peek(_svc, expandedUri), expandedUri);
+        _full = QueryHooks.UseMapped<Album, Album?>(Context, static (page, value) => page.SetReady(value), _svc.Queries,
+            expandedUri.Length == 0 ? null : new AlbumDetailQuery(_svc.CatalogScope, expandedUri),
+            static album => album, null);
 
         return Embed.Comp(() => new LazyGrid(
         // The count is the whole facet. LazyGrid realizes only the viewport window plus overscan.
         count: Count,
         cell: Cell,
-        ensureRange: (f, l) => _vc.EnsureRange(f, l - 1),
-        minColWidth: MinCol, gap: Gap, rowExtra: CardChrome + RowGap, overscanRows: 4,
+        ensureRange: (f, l) => _demand?.Invoke(f, l),
+        minColWidth: MinCol, gap: Gap, rowExtra: CardChrome + RowGap, overscanRows: 2,
         expanded: _expandedIndex,
         drawer: DrawerFor,
         drawerHeight: DrawerHeight,
@@ -520,16 +476,20 @@ sealed class DiscoGrid : Component
         reveal: ExpandedReveal.AlignTop));
     }
 
-    int Count()
+    int Count() => _count();
+
+    int IndexOf(string uri)
     {
-        _ = _vc.Version.Value;
-        return _vc.CountOr0;
+        int count = _count();
+        for (int i = 0; i < count; i++) if (_itemAt(i)?.Uri == uri) return i;
+        return -1;
     }
 
     Element Cell(int idx, float cardW)
     {
-        var al = _vc![idx];
-        if (al is null) return Placeholder(cardW);
+        var al = _itemAt(idx);
+        if (al is null) return _pageError?.Invoke(idx) is { } error
+            ? ErrorState.Compact(error, () => _retryPage?.Invoke(idx)) : Placeholder(cardW);
         string subtitle = AlbumMeta(al);
         Element card = MediaCard.GridCard(al.Cover, al.Name, subtitle, al.Uri,
             onClick: () => _expandedUri.Value = _expandedUri.Peek() == al.Uri ? "" : al.Uri,
@@ -613,9 +573,9 @@ sealed class DiscoGrid : Component
 
     Element DrawerFor(int idx, GridDrawerInfo info)
     {
-        var al = _vc?[idx];
+        var al = _itemAt(idx);
         if (al is null) return new BoxEl();
-        _retryFull ??= () => _full.Refresh();
+        _retryFull ??= () => { if (_full.Binding.Peek() is { } binding) _ = binding.RefreshAsync(); };
         _lastGridCols = info.Columns;
 
         // THE verdict, recomputed fresh on every call (see the `_verdict` field doc for why LazyGrid keeps calling
@@ -691,50 +651,49 @@ sealed class DiscoGrid : Component
 // restart and no late-arriving structure can change the section's measured extent while the user is scrolling.
 sealed class DiscographySection : Component
 {
-    internal sealed record Props(Album[] Items);
-
+    readonly string _artistUri;
     readonly string _title;
     readonly DiscographyKind _kind;
     readonly Services _svc;
     readonly Action<string, string?> _go;
     readonly Action<string> _play;
     readonly Func<ColorF> _accent;
-    readonly Signal<LazyGridVisibleRange> _visible = new(default);
+    readonly Signal<LazyGridVisibleRange> _visible = new(new(0, 0, 1));
+    readonly Signal<bool> _expanded = new(true);
     readonly Signal<bool> _gridClipped = new(false);
-    VirtualCollection<Album>? _vc;
-    int _snapshotKey, _snapshotCount = -1;
+    IReadSignal<Album[]>? _items;
     TemplateParts? _parts;
 
     const float HeaderRowH = 40f;
     const float StickyInset = ArtistHeroLayout.CompactIdentityHeight + HeaderRowH;
 
-    public DiscographySection(DiscographyKind kind, string title, Services svc,
+    public DiscographySection(string artistUri, DiscographyKind kind, string title, Services svc,
                               Action<string, string?> go, Action<string> play, Func<ColorF> accent)
     {
-        _kind = kind; _title = title; _svc = svc;
+        _artistUri = artistUri; _kind = kind; _title = title; _svc = svc;
         _go = go; _play = play; _accent = accent;
     }
 
     public override Element Render()
     {
-        var props = UsePropsOrDefault<Props>();
-        Album[] items = props?.Items ?? Array.Empty<Album>();
-        int snapshotKey = SnapshotKey(items);
-        _vc ??= VirtualCollection<Album>.FromSnapshot(items);
-        if (_snapshotCount < 0) { _snapshotKey = snapshotKey; _snapshotCount = items.Length; }
+        var releases = QueryHooks.Use(Context, static (page, value) => page.SetReady(value), _svc.Queries, new ArtistReleasesQuery(_svc.CatalogScope, _artistUri, _kind),
+            new Wavee.Core.DiscographyPage([], 0), new QueryDemand(true, QueryPriority.Visible, []));
+        bool expanded = _expanded.Value;
+        var binding = releases.Binding.Value;
         UseEffect(() =>
         {
-            if (_snapshotKey == snapshotKey && _snapshotCount == items.Length) return;
-            _snapshotKey = snapshotKey;
-            _snapshotCount = items.Length;
-            _vc!.ReplaceSnapshot(items);
-            if (_visible.Peek() != default) _visible.Value = default;
-        }, DepKey.From(snapshotKey, items.Length));
+            binding?.SetDemand(expanded
+                ? new QueryDemand(true, QueryPriority.Visible, [])
+                : QueryDemand.None);
+        }, DepKey.From(HashCode.Combine(RuntimeHelpers.GetHashCode(binding), expanded)));
+        var itemsSignal = UseComputed(() => releases.Loadable.Value.Value.Items.ToArray());
+        _items = itemsSignal;
+        Album[] items = itemsSignal.Value;
         var eras = DiscographyEraBands.PlanAlbums(items);
 
         // The real section heading pins directly below the compact artist bar. The grid owns one subtree clip at the
         // combined inset, so cards pass behind neither painted row and no signal-driven surrogate header is needed.
-        Element header = Header(items.Length, eras);
+        Element header = Header(releases.Loadable.Value.Value.Total, eras);
         Element grid = new BoxEl
         {
             Direction = 1,
@@ -743,7 +702,8 @@ sealed class DiscographySection : Component
                 : null,
             Children =
             [
-                Embed.Comp(() => new DiscoGrid(_vc!, _svc, _go, _play,
+                Embed.Comp(() => new DiscoGrid(() => _items!.Value.Length,
+                    index => (uint)index < (uint)_items!.Value.Length ? _items.Value[index] : null, _svc, _go, _play,
                     accent: _accent,
                     onVisibleRangeChanged: OnVisibleRangeChanged,
                     expandedTopInset: StickyInset)),
@@ -762,7 +722,7 @@ sealed class DiscographySection : Component
                 // click played TWO height tweens (the drawer's own DrawerResize plus the section reflowing under it).
                 // Off ⇒ the section only tweens on an actual expand/collapse toggle: one motion per click.
                 Embed.Comp(new Expander.ExpanderSlots(header, grid, parts),
-                    () => new Expander { InitiallyExpanded = true, Options = new ExpanderOptions { AnimateContentResize = false } }),
+                    () => new Expander { IsExpanded = _expanded, Options = new ExpanderOptions { AnimateContentResize = false } }),
                 new BoxEl { Height = Spacing.XXL, HitTestVisible = false },
             ],
         };
@@ -826,22 +786,7 @@ sealed class DiscographySection : Component
         if (_visible.Peek() != range) _visible.Value = range;
     }
 
-    static int SnapshotKey(Album[] items)
-    {
-        var hash = new HashCode();
-        hash.Add(items.Length);
-        for (int i = 0; i < items.Length; i++)
-        {
-            var item = items[i];
-            hash.Add(item.Uri, StringComparer.Ordinal);
-            hash.Add(item.Name, StringComparer.Ordinal);
-            hash.Add(item.Year);
-            hash.Add(item.ReleaseDate, StringComparer.Ordinal);
-            hash.Add(item.TrackCount);
-            hash.Add(item.Cover?.Url, StringComparer.Ordinal);
-        }
-        return hash.ToHashCode();
-    }
+
 }
 
 /// <summary>The only reactive leaf in the pinned facet heading. Visible-window changes replace one fixed-line text run;

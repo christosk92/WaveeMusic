@@ -59,7 +59,7 @@ static class AppLaunchVersion
 
         log.Info(LogCategory, "identity: " + (packageIdentity is { Length: > 0 } pfn ? pfn : "unpackaged")
             + "; lastRun='" + lastRun + "'; appData="
-            + System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee"));
+            + UnpackagedAppDataRoot.Current);
 
         string from = "";
         if (!me.IsDev && AppUpdateVersion.IsFirstRunAfterUpdate(lastRun, me.LastRunKey))

@@ -19,16 +19,14 @@ internal interface IAudioReadStream : IDisposable
     IDisposable PauseReadAhead();
     void ResumeReadAheadAtCurrentOffset();
 
-    /// <summary>Non-blocking read for the engine's dedicated decode thread, which must never do synchronous network
-    /// I/O: return the bytes available RIGHT NOW (possibly fewer than requested, or zero) instead of blocking on a
-    /// CDN fetch, setting <paramref name="wouldBlock"/> on a miss so the caller knows a zero here is NOT end-of-stream
-    /// (every codec above this seam latches a zero read as permanent EOF — see <see cref="PrefetchingReadStream"/>,
-    /// which turns this into a bounded-wait primitive instead of ever surfacing a transient miss as a short read).
-    /// The default forwards to a plain blocking read and never reports <c>wouldBlock</c> — correct for a source with
-    /// no fetch that can actually block (a local file, a module byte stream, a live ring that never blocks past
-    /// prefill). <see cref="SpotifyAudioStream"/> overrides this with a real non-blocking implementation that kicks
-    /// an async prefetch on a miss.</summary>
-    int TryRead(Span<byte> dst, out bool wouldBlock) { wouldBlock = false; return AsStream().Read(dst); }
+    /// <summary>Read only available bytes. Zero with wouldBlock is never EOF.</summary>
+    int TryRead(Span<byte> dst, out bool wouldBlock);
+
+    /// <summary>Changes after data, completion, failure, seek or disposal. Read before TryRead.</summary>
+    long DataVersion { get; }
+
+    /// <summary>Wait until the observed version changes; cancellation wakes the actual source wait.</summary>
+    void WaitForData(long observedVersion, System.Threading.CancellationToken cancellationToken);
 
     /// <summary>Feed the negotiated bitrate + connection-metered state to a ranged source's adaptive read-ahead
     /// window. No-op default — a source with no read-ahead window has nothing to configure;

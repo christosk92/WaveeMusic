@@ -19,19 +19,19 @@ namespace Wavee.Tests;
 /// And on top of both: while the playable is LIVE the published duration is 0 whatever the slab holds — a broadcast has
 /// no end to count down to, and that answer is folded on READ so the real length survives for the next track.
 /// </summary>
-public class NowPlayingDurationFoldTests
+public class NowPlayingDurationFoldTests : PlaybackCatalogTestBase
 {
     const string SongUri = "spotify:track:song";
     const string StreamUri = "wavee:module:wavee.youtube:dFJzUXNUTXZQTmc";
 
-    static NowPlayingProjection New() => new("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+    NowPlayingProjection New() => Catalog.Projection("us");
 
     static Track TrackFor(string uri, long durationMs) => new(
         Id: uri, Uri: uri, Title: "t", Artists: Array.Empty<ArtistRef>(), Album: new AlbumRef("", "", ""),
         DurationMs: durationMs, IsExplicit: false, Image: null);
 
-    static void Start(NowPlayingProjection p, string uri, long durationMs)
-        => p.OnEvent(new PlaybackEvent(EvKind.Started, TrackFor(uri, durationMs), 0));
+    void Start(NowPlayingProjection p, string uri, long durationMs)
+        => Catalog.Event(p, new PlaybackEvent(EvKind.Started, TrackFor(uri, durationMs), 0));
 
     [Fact]
     public void ATrackChangeToAnUnknownLength_ZeroesTheDuration()
@@ -52,7 +52,7 @@ public class NowPlayingDurationFoldTests
         Start(p, SongUri, 205_000);
 
         // The same playable, re-published thin (a queue mutation, a cluster echo that carried no length).
-        p.OnEvent(new PlaybackEvent(EvKind.TrackChanged, TrackFor(SongUri, 0), 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.TrackChanged, TrackFor(SongUri, 0), 0));
 
         Assert.Equal(205_000, p.DurationMs);
     }
@@ -91,7 +91,7 @@ public class NowPlayingDurationFoldTests
         Start(p, SongUri, 205_000);
         p.SetDurationOverride(SongUri, 90_000);   // a user-attached video is its own edit
 
-        p.OnEvent(new PlaybackEvent(EvKind.TrackChanged, TrackFor(SongUri, 0), 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.TrackChanged, TrackFor(SongUri, 0), 0));
 
         Assert.Equal(90_000, p.DurationMs);
     }
@@ -102,6 +102,8 @@ public class NowPlayingDurationFoldTests
         using var p = New();
         var song = Row(1, SongUri, 205_000);
         var stream = Row(2, StreamUri, 0);
+
+        Catalog.Seed(song.Track, stream.Track);
 
         p.ApplyLocalSnapshot(Snap(song), new PlaybackEvent(EvKind.Started, song.Track, 0));
         Assert.Equal(205_000, p.DurationMs);

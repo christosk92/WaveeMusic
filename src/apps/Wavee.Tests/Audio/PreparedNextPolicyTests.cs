@@ -11,7 +11,7 @@ public class PreparedNextPolicyTests
 {
     static Track T(string uri, string? source = null) =>
         new(uri[(uri.LastIndexOf(':') + 1)..], uri, uri, Array.Empty<ArtistRef>(),
-            new AlbumRef("", "spotify:album:al", "Al"), 200_000, false, null, Source: source);
+            new AlbumRef("", "spotify:album:" + uri, "Al"), 200_000, false, null, Source: source);
 
     static QueueEntry E(ulong id, string uri, string? source = null) =>
         new(new QueueItemId(id), "e" + id, T(uri, source), QueueBucket.NextUp, QueueProvider.Context, false);
@@ -87,6 +87,31 @@ public class PreparedNextPolicyTests
     }
 
     // ── the dedupe signature ─────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SameAlbumWithoutShuffle_PreparesGapless()
+    {
+        var current = Music(1);
+        var next = Music(2) with { Track = Music(2).Track with { Album = current.Track.Album } };
+        Assert.True(Decide(current, next).Prepare);
+        Assert.False(Decide(current, next).AllowOverlap);
+        Assert.True(PreparedNextPolicy.Decide(PlayableKind.Audio, current, next, PlayableKind.Audio, true, RepeatMode.Off, shuffle: true).AllowOverlap);
+    }
+
+    [Fact]
+    public void UnknownDuration_PreparesWithoutOverlap()
+    {
+        var current = Music(1) with { Track = Music(1).Track with { DurationMs = 0 } };
+        Assert.True(Decide(current, Music(2)).Prepare);
+        Assert.False(Decide(current, Music(2)).AllowOverlap);
+    }
+
+    [Fact]
+    public void UnknownAlbumTiming_RemainsGapless()
+    {
+        var current = Music(1) with { Track = Music(1).Track with { Album = new AlbumRef("", "", "") } };
+        Assert.False(Decide(current, Music(2)).AllowOverlap);
+    }
 
     [Fact]
     public void Signature_IsStableForTheSamePair_SoARescheduleIsANoOp()

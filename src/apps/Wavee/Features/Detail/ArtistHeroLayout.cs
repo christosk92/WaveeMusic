@@ -60,14 +60,34 @@ public static class ArtistHeroLayout
     public const float MaxViewportFraction = 0.45f;
     public const float MinPhotoHeight = 96f;
 
-    // The horizontal copy block's own worst case (verified 16 + 2-line name + 1-line bio + meta 20 + actions 36 +
-    // 4 gaps of 8 + 2x24 padding) — the floor a horizontal tier's clamp cannot go under, spelled out as constants so
-    // ArtistHeroLayoutTests can assert MinHeight >= CopyBudgetFor(tier) for every input.
-    const float VerifiedCaption = 16f, NameTwoLine = 80f, BioOneLine = 20f, MetaRow = 20f, ActionsRow = 36f;
+    // The horizontal copy block's own worst case — the floor a horizontal tier's clamp cannot go under, spelled out
+    // as constants so ArtistHeroLayoutTests can assert MinHeight >= CopyBudgetFor(tier) for every input.
+    //
+    // library-v3-1 findings (2026-09-06) Part 3/Part 5 §7 — "artist hero clipped" (ARASHI: a two-line Japanese bio on
+    // Wide clipped the actions row). Two undercounts, both silent because nothing had ever pinned the real numbers:
+    //   1. NameLine used to be one constant (80 = 2 * 40) shared by BOTH horizontal tiers, borrowed from
+    //      ArtistCompactTitle/ArtistTitle's 40/60-DIP rung. Wide's actual name face is WaveeType.ArtistDisplay
+    //      (84/96/700, ArtistPage.Hero.cs:51) — 96 DIP a line, not 40 — so the constant was defending against the
+    //      WRONG tier's font on Wide the entire time.
+    //   2. BioOneLine reserved exactly one bio line everywhere, but ArtistPage.Hero.cs:72 grants the bio MaxLines = 2
+    //      on Wide specifically (every other tier keeps 1). The budget never paid for the second line it allowed.
+    // Fixed: Wide's own name-line constant at its real 96 DIP, and a two-line bio reservation on Wide only (Medium
+    // keeps its own smaller name face and the one-line bio budget). WideHeight (392) already covers the corrected
+    // 304 unclamped — the bug was only ever the CLAMP's floor (MaxViewportFraction, D83) landing below the real
+    // copy need on an ordinary window height, not WideHeight itself. See MeasuredCopyHeightFrom below for the
+    // second, structural half of the fix: the copy block's own measured height as a floor UseMeasuredBounds/
+    // OnBoundsChanged cannot be wrong about, whatever these constants still miss.
+    const float VerifiedCaption = 16f;
+    const float WideNameLine = 96f;                     // WaveeType.ArtistDisplay: 84 / 96 / 700
+    const float MediumNameLine = 60f;                   // WaveeType.ArtistTitle: 48 / 60 / 700
+    const float BioOneLine = 20f;                       // Ui.Body: 14 / 20 — every tier below Wide (one bio line)
+    const float BioTwoLine = 2f * BioOneLine;           // Wide only: MaxLines = 2 (ArtistPage.Hero.cs:72)
+    const float MetaRow = 20f;
+    const float ActionsRow = 36f;                       // WaveeCta.PillHeight
     const float CopyGaps = 4f * Spacing.M;              // #106 — the horizontal copy block's gap is 12, was 8
-    const float CopyPadding = 2f * 24f;
-    public const float WideCopyBudget = CopyPadding + VerifiedCaption + NameTwoLine + BioOneLine + MetaRow + ActionsRow + CopyGaps;
-    public const float MediumCopyBudget = WideCopyBudget;
+    public const float CopyPadding = 2f * 24f;          // public: ArtistPage.Hero.cs's MeasuredCopyHeightFrom caller
+    public const float WideCopyBudget = CopyPadding + VerifiedCaption + WideNameLine + BioTwoLine + MetaRow + ActionsRow + CopyGaps;
+    public const float MediumCopyBudget = CopyPadding + VerifiedCaption + MediumNameLine + BioOneLine + MetaRow + ActionsRow + CopyGaps;
 
     public static float CopyBudgetFor(ArtistHeroTier tier) => tier switch
     {
@@ -117,20 +137,47 @@ public static class ArtistHeroLayout
     /// <summary>Width-only geometry, unclamped — kept for callers with no page viewport reading (none in the app
     /// today; retained so a future pre-measure caller has a stateless entry point identical to before this file
     /// gained the viewport axis).</summary>
-    public static ArtistHeroMetrics For(float width, ArtistHeroTier previous) => For(width, 0f, previous);
+    public static ArtistHeroMetrics For(float width, ArtistHeroTier previous) => For(width, 0f, previous, 0f);
 
     public static ArtistHeroMetrics For(float width, float pageViewportHeight, ArtistHeroTier previous)
+        => For(width, pageViewportHeight, previous, 0f);
+
+    /// <summary>The full geometry pass, including the MEASURED floor (library-v3-1 findings Part 5 §7): a horizontal
+    /// tier's hero can never end up shorter than <paramref name="measuredCopyHeight"/> — the copy block's own
+    /// previous-frame laid-out height (0 before the first settle; see <see cref="MeasuredCopyHeightFrom"/> and
+    /// ArtistPage.Hero.cs's <c>OnBoundsChanged</c> on <c>Identity()</c>). This is deliberately independent of the
+    /// analytical <see cref="CopyBudgetFor"/> constants above: those are corrected for the KNOWN worst case (a
+    /// two-line bio on Wide), this catches whatever they still miss — a longer localization, a font-fallback metric,
+    /// a future copy block change — without anyone having to re-derive the constants again.
+    /// <para>Stacked tiers ignore it: their identity column sits BELOW the photo with no fixed inner height to clip
+    /// against (ArtistPage.Hero.cs's stacked arm gives it <c>Grow = 1</c>, not a shared fixed box), so there is
+    /// nothing for a copy-height floor to protect — <see cref="IdentityHeightFor"/> already owns that anatomy.</para></summary>
+    public static ArtistHeroMetrics For(float width, float pageViewportHeight, ArtistHeroTier previous, float measuredCopyHeight)
     {
         var tier = TierFor(width, previous);
         var m = Base(tier);
-        if (pageViewportHeight <= 0f) return m;
-        float cap = pageViewportHeight * MaxViewportFraction;
-        if (m.MinHeight <= cap) return m;
-        // Horizontal: clamp the whole hero (the centred copy absorbs the removed slack). Stacked: clamp the photo
-        // band down to MinPhotoHeight and keep the identity band's full anatomy — never below either floor.
-        float floor = m.Stacked ? IdentityHeightFor(tier) + MinPhotoHeight : CopyBudgetFor(tier);
-        return m with { MinHeight = MathF.Max(floor, cap) };
+        if (pageViewportHeight > 0f)
+        {
+            float cap = pageViewportHeight * MaxViewportFraction;
+            if (m.MinHeight > cap)
+            {
+                // Horizontal: clamp the whole hero (the centred copy absorbs the removed slack). Stacked: clamp the
+                // photo band down to MinPhotoHeight and keep the identity band's full anatomy — never below either floor.
+                float floor = m.Stacked ? IdentityHeightFor(tier) + MinPhotoHeight : CopyBudgetFor(tier);
+                m = m with { MinHeight = MathF.Max(floor, cap) };
+            }
+        }
+        if (!m.Stacked && measuredCopyHeight > m.MinHeight)
+            m = m with { MinHeight = measuredCopyHeight };
+        return m;
     }
+
+    /// <summary>Converts the copy block's own measured CONTENT height (<c>Identity()</c>'s laid-out height, no
+    /// padding) into the hero height it needs — i.e. plus the copy block's own top/bottom <see cref="CopyPadding"/>.
+    /// Zero in (not yet measured) ⇒ zero out, so the very first frame — before any <c>OnBoundsChanged</c> has fired —
+    /// falls back to the analytical <see cref="CopyBudgetFor"/> floor above with no special-casing at the call site.</summary>
+    public static float MeasuredCopyHeightFrom(float identityContentHeight)
+        => identityContentHeight > 0f ? identityContentHeight + CopyPadding : 0f;
 
     public static float PageGutterFor(float width) => width >= WideWidth ? Spacing.PageWide
         : width >= MediumWidth ? Spacing.XXXL

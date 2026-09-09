@@ -58,6 +58,7 @@ public sealed class AudioPlaybackStack : IAsyncDisposable
             () => null,
 #endif
             HttpPools.Get(HttpPool.Cdn),
+            FluentMediaAudioHost.CreateWasapiBackend,
             log,
             BodyDiskCache);
         // Apply persisted DSP before the first load/Hello, via the ONE shared seed helper (also used to seed the

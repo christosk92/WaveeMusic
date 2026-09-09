@@ -11,6 +11,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Features.Detail;
 
 namespace Wavee;
@@ -159,6 +160,7 @@ sealed class StagePanes : Component
 /// </summary>
 sealed class StageQueuePane : Component
 {
+    QuerySignalBinding<QueueQuerySnapshot>? _query;
     const float RowH = 56f;
     const float RowArt = 38f;
     const float TimeW = 44f;
@@ -200,7 +202,23 @@ sealed class StageQueuePane : Component
         UseEffect(() => setAutoplay(svc?.Settings.Get(WaveeSettings.AutoplayEnabled) ?? true), prefsEpoch);
 
         string ctxUri = b?.CurrentContext.Value ?? "";
-        var ctxName = UseResource(ct => ResolveContextNameAsync(svc, ctxUri, ct), (string?)null, ctxUri).Loadable;
+        var scope = svc?.CatalogScope;
+        var post = UsePost();
+        var active = UseIsActive();
+        UseEffect(() =>
+        {
+            if (svc is null || scope is null) return (Action?)null;
+            var binding = new QuerySignalBinding<QueueQuerySnapshot>(svc.Queries.Acquire(new QueueQuery(scope)), post);
+            _query = binding;
+            binding.SetDemand(new QueryDemand(true, QueryPriority.Playback, []));
+            binding.SetActive(active.Peek() && StagePane.Current.Peek() == StagePane.Queue);
+            return () => { if (ReferenceEquals(_query, binding)) _query = null; binding.Dispose(); };
+        }, DepKey.From(HashCode.Combine(svc, scope)));
+        UseSignalEffect(() =>
+        {
+            _query?.SetDemand(new QueryDemand(true, QueryPriority.Playback, []));
+            _query?.SetActive(active.Value && StagePane.Current.Value == StagePane.Queue);
+        });
         UseEffect(() => { _pages.Value = 1; }, ctxUri);
 
         if (b is null) return new BoxEl();
@@ -217,7 +235,6 @@ sealed class StageQueuePane : Component
         string? curUri = track?.Uri;
         foreach (var e in queue)
         {
-            if (curUri is { Length: > 0 } && e.Track.Uri == curUri) continue;
             switch (e.Bucket)
             {
                 case QueueBucket.UserQueue: userQueue.Add(e); break;
@@ -227,7 +244,7 @@ sealed class StageQueuePane : Component
 
         bool viewer = PlayerBarContent.RemoteDevice(b) is not null;
         bool showTrackArtwork = !AppearancePrefs.TrackArtworkHidden(svc?.Settings);
-        string? source = ctxName.Value.Value is { Length: > 0 } rn ? rn : ImmediateContextName(ctxUri);
+        string? source = b.CurrentContextName.Value is { Length: > 0 } rn ? rn : ImmediateContextName(ctxUri);
 
         // The upcoming list as reorder SLOTS (QueueSlots): the stage has no section captions, so the three sections
         // run straight into each other — rows and "Show more" rows only — but the split still governs the drop: a move
@@ -594,21 +611,5 @@ sealed class StageQueuePane : Component
             ? Loc.Get(Strings.Player.LikedSongs)
             : null;
 
-    static async Task<string?> ResolveContextNameAsync(Services? svc, string uri, CancellationToken ct)
-    {
-        if (svc is null || uri.Length == 0) return null;
-        try
-        {
-            switch (EntityUri.KindOf(uri))   // the ONE parser decides which read answers the context name
-            {
-                case EntityKind.Collection: return Loc.Get(Strings.Player.LikedSongs);
-                case EntityKind.Playlist: return (await svc.Library.GetPlaylistAsync(uri, HydrationLevel.Identity, ct).ConfigureAwait(false))?.Name;
-                case EntityKind.Album: return (await svc.Library.GetAlbumAsync(uri, HydrationLevel.Identity, ct).ConfigureAwait(false))?.Name;
-                case EntityKind.Artist: return (await svc.Library.GetArtistAsync(uri, HydrationLevel.Identity, ct).ConfigureAwait(false))?.Name;
-            }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch { }
-        return null;
-    }
+
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -60,18 +60,18 @@ public class DiscographyRoutingTests
         public bool Owns(string uri) => uri == ownedUri;
         public SourceCapabilities Capabilities => SourceCapabilities.Catalog;
 
-        public Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+        public Task<Artist?> GetArtistAsync(string uri, CancellationToken ct = default)
             => Task.FromResult<Artist?>(uri == ownedUri ? artist : null);
 
         // Unused by discography routing / DIM probe — deliberately unsupported so a stray call is loud.
-        public Task<Playlist?> GetPlaylistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Playlist?> GetPlaylistAsync(string uri, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Album?> GetAlbumAsync(string uri, CancellationToken ct = default) => throw new NotSupportedException();
         public IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<LibraryItem>> GetLibraryAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<PlaylistSummary>> GetPlaylistsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<Album>> GetAlbumsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<Track>> GetLikedSongsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default) => throw new NotSupportedException();
@@ -90,15 +90,18 @@ public class DiscographyRoutingTests
         const string owned = "spotify:artist:owned";
         var artist = ArtistWith(owned, Alb("a1"), Alb("a2"), Alb("a3"));
         var reg = new SourceRegistry(new ISource[] { new FakeArtistSource(owned, artist) });
-        var cat = new AggregateCatalog(reg);
+        await using var host = new CatalogQueryTestHost(reg.All.ToArray());
+        var cat = host.Library;
 
         var mine = await cat.GetDiscographyAsync(owned, DiscographyKind.Albums, 0, 60);
         Assert.Equal(3, mine.Total);                 // served via the owning source's DIM over the 3-album slice
         Assert.Equal(3, mine.Items.Count);
 
-        var theirs = await cat.GetDiscographyAsync("spotify:artist:nobody", DiscographyKind.Albums, 0, 60);
-        Assert.Empty(theirs.Items);                  // no owner → clean empty, total 0
-        Assert.Equal(0, theirs.Total);
+        var theirs = await host.Data.Queries.ReadOnceAsync(new Wavee.Core.Catalog.ArtistDiscographyQuery(
+            host.Scope, "spotify:artist:nobody", DiscographyKind.Albums));
+        Assert.False(theirs.Status.HasPrimaryData);
+        Assert.Empty(theirs.Value.Items);                  // no owner → clean empty, total 0
+        Assert.Equal(0, theirs.Value.Total);
     }
 
     // ── 4a. Probe (limit <= 0) through the ICatalogSource DIM → (empty, total), no window materialized ──
@@ -148,80 +151,6 @@ public class DiscographyRoutingTests
     }
 }
 
-public class StoreLibraryDiscographyTests
-{
-    const string ArtistUri = "spotify:artist:ar";
-
-    static Album Alb(string id, AlbumKind kind = AlbumKind.Album, int year = 2020)
-        => new(id, "spotify:album:" + id, "N" + id, null, Array.Empty<ArtistRef>(), year, 10, null, kind);
-    static Track Trk(string id) => new(id, "spotify:track:" + id, "T" + id, Array.Empty<ArtistRef>(),
-        new AlbumRef("", "", ""), 1000, false, null);
-
-    // The facade every StoreLibrarySource read goes through. Offline = store-only, never networks (design 1.3).
-    static SwitchableEntityHydrator Offline(IStore store) => new(new Wavee.Backend.Hydration.OfflineEntityHydrator(store));
-
-
-    // Seed an artist into an InMemoryStore whose TopAlbums IS the whole discography (V4 groups → resident cards).
-    static (StoreLibrarySource Src, InMemoryStore Store) SourceWith(params Album[] topAlbums)
-    {
-        var store = new InMemoryStore();
-        store.UpsertArtist(new Artist("ar", ArtistUri, "Ar", null, topAlbums));
-        return (new StoreLibrarySource(store, Offline(store), OfflineOnlineCatalog.Instance), store);
-    }
-
-    // ── Probe (limit <= 0) → (empty window, in-memory filtered count). No network; TopAlbums holds the whole facet. ──
-    [Fact]
-    public async Task Probe_TotalIsInMemoryFilteredCount()
-    {
-        var (src, _) = SourceWith(Alb("a1"), Alb("a2"), Alb("a3"));
-
-        var probe = await src.GetDiscographyAsync(ArtistUri, DiscographyKind.Albums, 0, 0);
-
-        Assert.Empty(probe.Items);   // limit <= 0 → total-only probe
-        Assert.Equal(3, probe.Total);
-    }
-
-    // ── Offset windows slice the in-memory filtered list. ──
-    [Fact]
-    public async Task OffsetWindow_SlicesInMemory()
-    {
-        var (src, _) = SourceWith(Alb("a1"), Alb("a2"), Alb("a3"), Alb("a4"), Alb("a5"));
-
-        var page = await src.GetDiscographyAsync(ArtistUri, DiscographyKind.Albums, 2, 2);
-
-        Assert.Equal(5, page.Total);                          // total is always the in-memory filtered count
-        Assert.Equal(2, page.Items.Count);
-        Assert.Equal("spotify:album:a3", page.Items[0].Uri);
-        Assert.Equal("spotify:album:a4", page.Items[1].Uri);
-    }
-
-    // ── The Singles facet surfaces Singles AND EPs (Spotify's `singles` grouping), never Albums/Compilations. ──
-    [Fact]
-    public async Task SinglesFacet_SurfacesSinglesAndEps_NotAlbums()
-    {
-        var (src, _) = SourceWith(
-            Alb("single", AlbumKind.Single), Alb("ep", AlbumKind.EP),
-            Alb("album", AlbumKind.Album), Alb("comp", AlbumKind.Compilation));
-
-        var page = await src.GetDiscographyAsync(ArtistUri, DiscographyKind.Singles, 0, 60);
-
-        Assert.Equal(2, page.Total);   // the Single + the EP
-        var uris = new HashSet<string>();
-        foreach (var a in page.Items) uris.Add(a.Uri);
-        Assert.Contains("spotify:album:single", uris);
-        Assert.Contains("spotify:album:ep", uris);
-        Assert.DoesNotContain("spotify:album:album", uris);
-    }
-
-    // The album on-open gate (AlbumGate_OpensOnNamedV4Tracks_FullUpgradeIsBelowTheFold) and its two predicates
-    // (IsAlbumOpenReady_NamedTracklistIsEnough_UnnamedAndEmptyAreNot / IsAlbumComplete) lived here because this source
-    // owned them. They are now ONE thing in ONE place: HydrationLevels.Of(Album) -- Identity = named header,
-    // Open = a named Tracks-level list (the old IsAlbumOpenReady), Rich = + publishing, Full = the getAlbum envelope.
-    // Replaced by HydrationLevelsTests.Album_* (the predicate, every state) and AlbumHydrationTests.Open_*/Rich_*/Full_*
-    // (what the ladder actually does at each rung, including the V4-empty getAlbum fallback these pinned indirectly).
-}
-
-// ── 8. VirtualCollection<T> provisional-seed reconciliation (the Phase-2 regression, both directions) ──
 public class VirtualCollectionSeedTests
 {
     // A synchronous fetch that reports a fixed total and fills each page with ascending ints (item value == index).

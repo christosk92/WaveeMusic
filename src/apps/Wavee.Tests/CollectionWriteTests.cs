@@ -18,11 +18,11 @@ public class CollectionWriteTests
     {
         var strat = new SetReplayStrategy(new CollectionEchoRing());
         var t = new StubTransport();
-        var op = new OutboxOp(1, "set", "spotify:track:x", "liked", true, 1, 0);
+        var op = new OutboxOp(1, "set", "spotify:track:x", "liked", true, 1, 0, CreatedAtMs: 1_700_000_000_000L);
 
         var ok = await strat.Replay(op, t, Ctx, TestContext.Current.CancellationToken);
 
-        Assert.True(ok);
+        Assert.Equal(MutationReplayDisposition.Applied, ok.Disposition);
         Assert.Equal("/collection/v2/write", t.LastRequestRoute);
         Assert.Equal("POST", t.LastRequestMethod);                 // explicit — not body-empty inference
         Assert.Equal("application/vnd.collection-v2.spotify.proto", t.LastRequestHeaders!["Content-Type"]);
@@ -41,7 +41,7 @@ public class CollectionWriteTests
     [Fact]
     public async Task Replay_ArtistFollow_UsesArtistWireSet()
     {
-        var strat = new SetReplayStrategy();
+        var strat = new SetReplayStrategy(new CollectionEchoRing());
         var t = new StubTransport();
         var op = new OutboxOp(2, "set", "spotify:artist:y", "artists", true, 2, 0);
 
@@ -55,7 +55,7 @@ public class CollectionWriteTests
     [Fact]
     public async Task Replay_Unsave_InvertsIsRemoved()
     {
-        var strat = new SetReplayStrategy();
+        var strat = new SetReplayStrategy(new CollectionEchoRing());
         var t = new StubTransport();
         var op = new OutboxOp(3, "set", "spotify:track:x", "liked", false, 3, 0);
 

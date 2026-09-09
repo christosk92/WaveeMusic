@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.Versioning;
 using FluentGpu.WindowsApi.Notifications;
 
@@ -9,7 +9,10 @@ namespace Wavee;
 /// <c>wavee://</c> launch argument through <see cref="DeepLinkChannel"/>. Registration is fail-soft — a missing
 /// AUMID / elevated process / older OS must never block playback.
 /// <para>
-/// Called from <see cref="PlaybackBridge.Activate"/> (window exists, UI thread). Boot-time register is optional;
+/// TWO entry points, on purpose (see <see cref="StartupActivation"/>): <see cref="InstallDispatcher"/> is free and runs
+/// in the startup schedule's core phase, so an activation arriving in the first milliseconds has somewhere to land;
+/// <see cref="Register"/> is the registry + COM half and runs as a window-phase step, on the UI thread but in its own
+/// posted drain. Both need a real UI session, which is why neither is called from the composition root.
 /// <c>Program.cs</c> already posts toast-activated command-line args into <see cref="DeepLinkChannel"/> on cold launch.
 /// </para>
 /// </summary>
@@ -24,20 +27,35 @@ public static class WaveeNativeBoot
 
     static int _installed;
 
-    /// <summary>Install the UI-thread dispatcher, subscribe <see cref="ToastNotifier.Activated"/>, then
-    /// <see cref="ToastNotifier.Register"/>. Idempotent. <paramref name="post"/> is the same marshal
-    /// <see cref="PlaybackBridge.Activate"/> already uses.</summary>
-    public static void Install(Action<Action> post)
+    /// <summary>Install the UI-thread dispatcher and subscribe <see cref="ToastNotifier.Activated"/>. Idempotent, and
+    /// FREE — two field writes, no registry, no COM. <paramref name="post"/> is the same marshal the playback bridge
+    /// uses.
+    ///
+    /// <para>Split from <see cref="Register"/> so it can run in the startup schedule's core phase: the dispatcher must
+    /// be in place before an activation can arrive, but the identity registration behind it is ~9 HKCU writes plus one
+    /// or two <c>CoRegisterClassObject</c> calls and has no business inside a rendered frame.</para></summary>
+    public static void InstallDispatcher(Action<Action> post)
     {
         ArgumentNullException.ThrowIfNull(post);
-        if (System.Threading.Interlocked.Exchange(ref _installed, 1) != 0)
-        {
-            ToastNotifier.Default.ActivationDispatcher = post;
-            return;
-        }
-
         ToastNotifier.Default.ActivationDispatcher = post;
+        if (System.Threading.Interlocked.Exchange(ref _installed, 1) != 0) return;
         ToastNotifier.Default.Activated += OnActivated;
+    }
+
+    /// <summary>Register Wavee's toast activator identity: the unpackaged AUMID under
+    /// <c>HKCU\Software\Classes\AppUserModelId</c>, the <c>LocalServer32</c> CLSID entry, the display name/icon
+    /// assets, and the class object itself. Idempotent and fail-soft.
+    ///
+    /// <para>UI THREAD. The engine's activator falls back to a NON-agile class object (AGILE is rejected for the
+    /// ComWrappers CCW), which lives in the registering thread's apartment, and the notifier caches raw pointers that
+    /// bind every later <c>Show</c>/<c>Update</c> to it — so this cannot be handed to the thread pool. It is a
+    /// window-phase startup step instead: same thread, its own posted drain.</para>
+    ///
+    /// <para>ORDERING: everything that needs an AUMID must come after this — the Jump List (the shell keys a custom
+    /// destination list by AUMID, and <c>ToastNotifier.Default.Aumid</c> is empty until now) and the scheduled
+    /// release/daylist toasts.</para></summary>
+    public static void Register()
+    {
         try
         {
             if (OperatingSystem.IsWindowsVersionAtLeast(10, 0) && ToastNotifier.IsSupported)

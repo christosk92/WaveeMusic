@@ -18,11 +18,16 @@ namespace Wavee.Tests;
 /// The fix: <c>Pos()</c> clamps to <c>[0, duration]</c> on EVERY read, playing or not — mirrors
 /// <see cref="LaunchRecoveryBufferingTests"/>'s fixture shape.
 /// </summary>
-public class RestoredPositionClampTests
+public class RestoredPositionClampTests : PlaybackCatalogTestBase
 {
-    static Track Local(string uri, long durationMs) => new(
+    Track Local(string uri, long durationMs)
+    {
+        var track = new Track(
         Id: uri, Uri: uri, Title: "Ik Wil Dat Je Liegt", Artists: Array.Empty<ArtistRef>(),
         Album: new AlbumRef("", "", ""), DurationMs: durationMs, IsExplicit: false, Image: null);
+        Catalog.Seed(track);
+        return track;
+    }
 
     static QueueSnapshot Snap(Track track) => new(
         Revision: 1, ContextUri: "spotify:album:al", AutoplayContextUri: null,
@@ -38,7 +43,7 @@ public class RestoredPositionClampTests
         const long durationMs = 174_000;
         const long corruptPositionMs = 2_132_000;
         var track = Local("spotify:track:liegt", durationMs);
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var p = Catalog.Projection("us");
 
         p.ApplyLocalSnapshot(Snap(track), new PlaybackEvent(EvKind.Paused, track, corruptPositionMs));
 
@@ -54,7 +59,7 @@ public class RestoredPositionClampTests
         const long durationMs = 174_000;
         const long positionMs = 90_000;
         var track = Local("spotify:track:liegt", durationMs);
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var p = Catalog.Projection("us");
 
         p.ApplyLocalSnapshot(Snap(track), new PlaybackEvent(EvKind.Paused, track, positionMs));
 
@@ -66,7 +71,7 @@ public class RestoredPositionClampTests
     {
         const long durationMs = 174_000;
         var track = Local("spotify:track:liegt", durationMs);
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var p = Catalog.Projection("us");
 
         p.ApplyLocalSnapshot(Snap(track), new PlaybackEvent(EvKind.Paused, track, -500));
 
@@ -83,7 +88,7 @@ public class RestoredPositionClampTests
         const long positionMs = 90_000;
         var track = Local("spotify:track:liegt", durationMs);
         long now = 1_000_000;
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), clock: () => now);
+        using var p = Catalog.Projection("us", clock: () => now);
 
         p.ApplyLocalSnapshot(Snap(track), new PlaybackEvent(EvKind.Paused, track, positionMs));
         Assert.Equal(positionMs, p.PositionMs);
@@ -100,7 +105,7 @@ public class RestoredPositionClampTests
         const long durationMs = 174_000;
         var track = Local("spotify:track:liegt", durationMs);
         long now = 1_000_000;
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), clock: () => now);
+        using var p = Catalog.Projection("us", clock: () => now);
 
         p.ApplyLocalSnapshot(Snap(track), new PlaybackEvent(EvKind.Resumed, track, durationMs - 1000));
         now += 60_000;   // a full minute of "playing" — well past the track's own end
@@ -118,7 +123,7 @@ public class RestoredPositionClampTests
         // the ticks stream through the SAME clamped Pos() every other reader uses.
         const long durationMs = 174_000;
         var track = Local("spotify:track:liegt", durationMs);
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var p = Catalog.Projection("us");
         p.ApplyLocalSnapshot(Snap(track), new PlaybackEvent(EvKind.Resumed, track, 0));
 
         long? observed = null;

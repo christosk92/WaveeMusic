@@ -1,8 +1,32 @@
 using System;
 using System.Collections.Generic;
+using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Core.Sidebar;
 
 namespace Wavee;
+
+/// <summary>Required-change C — the pure half of <c>SidebarProjectionBinder.RebindScope</c>'s account gate. A same-
+/// account session merely CONFIRMING itself (<c>CatalogScope.ContextKnown</c> flipping false→true, e.g. a "which
+/// account is this?" prompt resolving to the account the binder already assumed) must not tear down and re-acquire
+/// the library query and every pin query — that used to run on ANY scope publication, including a bare
+/// <c>ContextKnown</c> flip, which is expensive (a fresh fetch of the whole library + re-subscribing N pin queries)
+/// for zero actual change in what data is being asked for. The three fields that DO identify a different backing
+/// account/session are <c>Provider</c>, <c>ProviderAccount</c> and <c>StorageAccount</c>; <c>Locale</c>/<c>Market</c>/
+/// <c>Catalogue</c>/<c>Tier</c>/<c>ExplicitFilter</c> reshape a query's RESULTS (the query definitions already read
+/// them per-call) but never its IDENTITY, so a change restricted to those does not need a fresh handle either — only
+/// the account-identity fields force one.</summary>
+public static class ScopeRebindRules
+{
+    /// <summary>True when <paramref name="next"/> names a different backing account/session than
+    /// <paramref name="previous"/> — the library query and every pin query must be disposed and re-acquired against
+    /// it. False for an identical scope, and false for a scope that differs ONLY in <c>ContextKnown</c> (or any of
+    /// the result-shaping fields) — those keep the existing handles.</summary>
+    public static bool RequiresReacquire(CatalogScope previous, CatalogScope next)
+        => !string.Equals(previous.Provider, next.Provider, StringComparison.Ordinal)
+           || !string.Equals(previous.ProviderAccount, next.ProviderAccount, StringComparison.Ordinal)
+           || !string.Equals(previous.StorageAccount, next.StorageAccount, StringComparison.Ordinal);
+}
 
 // The PURE half of the projection binder (F.7.5–F.7.10 + M1's contribution resolution).
 //
@@ -20,9 +44,12 @@ namespace Wavee;
 /// Everything a rebuild depends on, folded to one comparable value. The binder peeks these (never subscribes) and
 /// rebuilds iff the fold moved, so a redundant pump render or an external <c>Sync()</c> costs one struct compare.
 ///
-/// <para><b>LibraryEpoch</b> is a REFERENCE-identity fold of <c>LibraryStore</c>'s cells, not a counter: every
-/// <c>Refresh</c>/<c>Fill</c> publishes a NEW list instance, so instance identity is an exact content epoch — a rename
-/// inside a same-length list moves it, which a Count-based epoch would miss.</para>
+/// <para><b>LibraryEpoch</b> is a REFERENCE-identity fold of the <c>SidebarLibraryQuery</c> node's projected value (see
+/// <see cref="LibraryEpochOf"/>), not its <c>QuerySnapshot.Revision</c> counter: <c>LibraryDefinition.Read</c>
+/// (<c>CatalogQueryDefinitions.cs</c>) publishes a NEW <c>LibraryQuerySnapshot</c> instance every time it actually
+/// re-projects, so instance identity is an exact content epoch — a rename inside a same-length list moves it, which a
+/// Count-based epoch would miss, while a Revision-based epoch would ALSO move on changes the projection never sees
+/// (an unrelated identity commit that only touches the query's Resources dictionary).</para>
 /// </summary>
 public readonly record struct SidebarBinderTriggers(
     int LibraryEpoch = 0,
@@ -43,6 +70,21 @@ public readonly record struct SidebarBinderTriggers(
     public static int PackV3(int design, int filter, int qualifier, int sort, bool descending)
         => (design & 0xF) | ((filter & 0xFF) << 4) | ((qualifier & 0xFF) << 12)
          | ((sort & 0xFF) << 20) | (descending ? 1 << 28 : 0);
+
+    /// <summary>The <see cref="LibraryEpoch"/> lane: VALUE identity, not <c>QuerySnapshot&lt;T&gt;.Revision</c>. A
+    /// <c>QueryService.Node</c> bumps Revision on ANY <c>changed</c> — a Resources-dictionary delta from an unrelated
+    /// identity commit included — but only replaces <c>Value</c> when the projected value actually differs (an
+    /// activity/error-only pass reuses the exact same <c>LibraryQuerySnapshot</c> instance); folding Revision therefore
+    /// forces a full sidebar rebuild for changes the projection never sees.
+    ///
+    /// <para>Folds <c>LibraryQuerySnapshot.GetHashCode()</c> — the record's own (structural once agent B lands: two
+    /// snapshots with equal per-collection content fold identically even across DISTINCT instances, so an
+    /// activity-only publication that reprojects a fresh-but-equal snapshot no longer moves this epoch either. Before
+    /// that lands, the record's default field-wise hash is still strictly better than an identity hash: it already
+    /// folds <c>LibraryStats</c> (a plain value record) structurally, and two snapshots that share a <c>Value</c>
+    /// reference — the exact same-instance case the old identity hash existed for — still fold identically.</para></summary>
+    public static int LibraryEpochOf(QuerySnapshot<LibraryQuerySnapshot>? snapshot)
+        => snapshot is null ? 0 : HashCode.Combine(snapshot.Value.GetHashCode(), snapshot.Status);
 
     /// <summary>A 64-bit avalanche of every lane — the pump's <c>DepKey</c> and the binder's change gate. Deterministic:
     /// same lanes ⇒ same fold, so the gate can never depend on allocation addresses beyond the epochs above.</summary>
@@ -211,7 +253,20 @@ public static class SidebarBinderPipeline
         return false;
     }
 
-    public static SidebarLibraryEntry ResolveUnlistedPin(SidebarPin pin, int sourceOrder, SidebarLibraryEntry? hydrated)
+    /// <summary>A pin's live header card, PARTIALLY resolved fields included: a cover that landed before the name (or
+    /// the reverse) must not be thrown away, because <see cref="ResolveUnlistedPin"/> already merges whichever of
+    /// (name, cover, count, creator) resolved over the pin's base entry field-by-field — the bug this used to have
+    /// (problem 2) was returning null, and therefore nothing at all, whenever the name specifically had not
+    /// resolved, discarding a cover that HAD. Null only once nothing has resolved (name AND cover both unknown) —
+    /// the base entry alone still renders in that case, per F.5.4's offline-first contract. Moved here (out of
+    /// <c>SidebarProjectionBinder</c>, which is engine-bound and not source-included in Wavee.Tests) so the merge
+    /// this feeds is testable end to end without the engine.</summary>
+    public static SidebarLibraryEntry? PinEntry(SidebarEntryKind kind, string name, Image? cover, int count, string creator)
+        => name.Length == 0 && cover is null ? null : new("", kind, "", name, creator, cover, null,
+            ChildCount: count, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: kind == SidebarEntryKind.Artist, Flavor: SidebarPlaylistFlavor.None);
+
+    public static SidebarLibraryEntry ResolveUnlistedPin(SidebarPin pin, int sourceOrder, SidebarLibraryEntry? current)
     {
         var baseEntry = new SidebarLibraryEntry(
             pin.Id, pin.Kind, pin.Uri, pin.Name, "", null, null,
@@ -220,13 +275,31 @@ public static class SidebarBinderPipeline
             Flavor: SidebarPlaylistFlavor.None)
         { IsPinned = true, FolderId = "", FolderName = "", FirstArtistName = "" };
 
-        if (hydrated is not { } h) return baseEntry;
+        if (current is not { } h) return baseEntry;
         return baseEntry with
         {
+            Name = h.Name.Length > 0 ? h.Name : baseEntry.Name,
             Cover = h.Cover ?? baseEntry.Cover,
             ChildCount = h.ChildCount,
             Creator = h.Creator.Length > 0 ? h.Creator : baseEntry.Creator,
         };
+    }
+
+    /// <summary>A pin whose entity IS in the caller's library index (found via <c>SidebarProjectionBinder._index</c>,
+    /// the pin's own kind/uri already resolved through the ordinary library projection) still owes the SAME "an
+    /// UNRESOLVED pin renders from its own display cache" contract <see cref="ResolveUnlistedPin"/> gives an
+    /// UNLISTED pin — before this the listed branch used <paramref name="entry"/> completely as-is, so a playlist
+    /// whose cover/child-count/subtitle had already resolved through the library's replica/mosaic path (which does
+    /// not wait on the <c>PlaylistHeader</c> facet — see <c>CatalogReadView.Playlist</c>'s <c>MosaicCover</c>) but
+    /// whose <c>PlaylistHeader</c> facet had not yet been demanded (e.g. its row briefly fell outside the pane's
+    /// realized window, or landed before the header round-trip finished) rendered a correct mosaic/subtitle beside a
+    /// permanently blank name: <paramref name="entry"/>.Name is empty and nothing here falls back to the pin's own
+    /// cached <see cref="SidebarPin.Name"/>, unlike <see cref="ResolveUnlistedPin"/>'s baseEntry. This restores that
+    /// fallback for the listed branch too — once the library entry's own name resolves it always wins.</summary>
+    public static SidebarLibraryEntry ResolveListedPin(SidebarPin pin, int sourceOrder, SidebarLibraryEntry entry)
+    {
+        var display = entry.Name.Length > 0 ? entry : entry with { Name = pin.Name };
+        return display with { IsPinned = true, SourceOrder = sourceOrder };
     }
 
     /// <summary>

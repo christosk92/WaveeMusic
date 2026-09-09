@@ -123,8 +123,7 @@ public static class SpotifyExportMapper
             artistsDetailed.Count > 0 ? artistsDetailed : null,
             otherVersions.Count > 0 ? otherVersions : null,
             CourtesyLine: courtesyLine, ReleaseDatePrecision: releasePrecision, DiscCount: discCount,
-            ShareUrl: shareUrl, IsPreRelease: isPreRelease, PreReleaseEnd: preReleaseEnd,
-            Hydration: AlbumHydrationLevel.Full);
+            ShareUrl: shareUrl, IsPreRelease: isPreRelease, PreReleaseEnd: preReleaseEnd);
     }
 
     // The album's primary artists WITH avatars (albumUnion.artists.items[].visuals.avatarImage) — for the stacked header.

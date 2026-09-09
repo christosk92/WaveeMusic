@@ -95,6 +95,10 @@ public static class SidebarPinId
     public static string? Canonical(string? idOrUri)
     {
         if (string.IsNullOrEmpty(idOrUri)) return null;
+        // A pin persisted before the liked spellings were unified could carry the collection under the playlist
+        // prefix; left alone it stays a "Playlist" whose header can never resolve (a collection has no playlist
+        // header), so its name would be a skeleton forever. Every liked spelling collapses onto the route pin.
+        if (KindOf(idOrUri) == SidebarEntryKind.Playlist && EntityUri.IsLikedCollection(UriOf(idOrUri))) return "liked";
         if (KindOf(idOrUri) != SidebarEntryKind.AppRoute) return idOrUri;   // already a prefixed pin id
         if (idOrUri.StartsWith("spotify:", StringComparison.Ordinal)
             || idOrUri.StartsWith("wavee:", StringComparison.Ordinal))

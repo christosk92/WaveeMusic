@@ -1,8 +1,9 @@
-﻿using System.Linq;
+using System.Linq;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using Wavee.Core;
 using Wavee.SpotifyLive;
+using Wavee.Core.Catalog;
 
 namespace Wavee;
 
@@ -13,6 +14,21 @@ namespace Wavee;
 /// </summary>
 public sealed class Services
 {
+    public Wavee.Backend.CatalogRuntime Data { get; }
+    public IQueryService Queries => Data.Queries;
+    public CatalogScope CatalogScope => CatalogScopeSignal.Value;
+    public Signal<CatalogScope> CatalogScopeSignal { get; }
+    public System.Threading.Tasks.Task DataReady { get; }
+    public Wavee.Backend.Catalog.NativeCatalogBootstrap NativeCatalog { get; }
+    readonly System.IDisposable _catalogColors;
+    /// <summary>The app's UI-thread marshaller, captured once <see cref="Wavee.SpotifyLive.LiveSessionHost.StartAsync"/>
+    /// knows it (findings 4.2's scope-handover fix — <see cref="Data"/>'s <c>Session</c> publication is observed from
+    /// this constructor, before any login attempt exists to hand one over). Runs inline until then, which is safe:
+    /// nothing publishes a <c>Session</c> change before a live session is attempted.</summary>
+    // Dropped until LiveSessionHost attaches the UI marshaller; AttachUiPost then posts one catch-up Publish.
+    System.Action<System.Action> _uiPost = static _ => { };
+    readonly CatalogScopePublisher _scopePublisher;
+    internal Wavee.Backend.Catalog.SwitchableCatalogResourceProvider? SpotifyCatalogProvider { get; private set; }
     /// <summary>Context slot — provide at the root, read with <c>UseContext(Services.Slot)</c>.</summary>
     public static readonly Context<Services?> Slot = new(null);
 
@@ -34,35 +50,8 @@ public sealed class Services
     /// — registration order is the routing table. Null on the fake backend.</summary>
     public Wavee.Backend.MediaSources.MediaProviderRegistry? MediaProviders { get; private set; }
 
-    /// <summary>The persistent backend store (REAL backend only; null for the fake). Exposed so the live-session bootstrap
-    /// can hydrate playlist headers into the SAME store the catalog reads (InMemoryStore is lock-guarded → safe).</summary>
+    /// <summary>Effective library membership projection for the mutation and protocol adapters.</summary>
     public Wavee.Backend.IStore? RealStore { get; private set; }
-
-    /// <summary>The store-backed catalog source (REAL backend only). It carries NO hooks and NO settable seams at all any
-    /// more: hydration goes through <see cref="Hydrator"/>, the online reads (search / suggest / home) through
-    /// <see cref="OnlineCatalog"/>, and playlist owner / added-by identities straight off the store (P4-C).
-    /// Kept as a handle purely for diagnostics.</summary>
-    public Wavee.Backend.Library.StoreLibrarySource? RealLibrarySource { get; private set; }
-
-    /// <summary>THE metadata façade (design §1.3 / §3): ONE entry point for every catalog fetch/enrich in the app.
-    /// Never null — the fake backend answers <see cref="CompleteEntityHydrator"/> (everything it owns is already
-    /// complete), the real backend the Spotify source's switchable (offline → live → offline). P4 replaces this with
-    /// the router over the SourceRegistry; until then it IS the Spotify source's hydrator, which is what every uri the
-    /// real backend serves needs.</summary>
-    public IEntityHydrator Hydrator { get; private set; } = CompleteEntityHydrator.Instance;
-
-    /// <summary>The go-live seam behind <see cref="Hydrator"/> on the REAL backend (null on the fake). <c>LiveSessionHost</c>
-    /// swaps the <c>SpotifyProviderHydrator</c> in through it and <see cref="GoOffline"/> swaps it back — one stable
-    /// reference every consumer holds for the whole process lifetime.</summary>
-    internal SwitchableEntityHydrator? SpotifyHydration { get; private set; }
-
-    /// <summary>THE online-read seam (design §2.7): full-catalog search, as-you-type suggestions and the editorial Home
-    /// feed — the reads <see cref="Wavee.Backend.Library.StoreLibrarySource"/> cannot answer from the Store. Never null:
-    /// the inner is <see cref="OfflineOnlineCatalog"/> until <c>LiveSessionHost</c> installs the Spotify catalog and
-    /// again after <see cref="GoOffline"/>, so the source calls it unconditionally and no consumer asks "am I online?".
-    /// The REAL backend re-points this at the very instance its catalog source was constructed with — one stable
-    /// reference for the whole process lifetime; the fake keeps the offline default (it has no online catalog).</summary>
-    public SwitchableOnlineCatalog OnlineCatalog { get; private set; } = new(OfflineOnlineCatalog.Instance);
 
     /// <summary>The user's LOCAL VIDEO OVERRIDE curation (REAL backend only — it is store-backed; null for the fake, where
     /// every override path is unreachable). The one instance shared by the resolver's tier 1, the playback bridge's
@@ -72,13 +61,10 @@ public sealed class Services
     /// <summary>The switchable mutation transport (REAL backend only): stub until go-live, then the live dealer transport,
     /// back to stub on logout — so writes made while logged out queue in the durable outbox and replay on next login (§2.1).</summary>
     public Wavee.Backend.SwitchableTransport? MutTransport { get; private set; }
-    /// <summary>The SQLite cold tier (REAL backend only) — exposed so the go-live block can wire the collection revision
-    /// get/set + rootlist revision behind the sync loop.</summary>
+    /// <summary>Durable normalized catalog, scoped replicas and user curation.</summary>
     public Wavee.Backend.Persistence.SqliteColdStore? RealCold { get; private set; }
-    /// <summary>The metadata-cache garbage collector (REAL backend only; null for the fake). Armed from the app-mount
-    /// effect with the UI-thread <c>post</c> marshaller — it must snapshot <see cref="BuildPinSet"/> on the UI thread.
-    /// Also owns the one-time post-migration VACUUM and the user-settable cache budget.</summary>
-    public Wavee.Backend.Persistence.EntityCacheGc? CacheGc { get; private set; }
+    /// <summary>Serialized cache retention, budget accounting and idle compaction.</summary>
+    public Wavee.Backend.Persistence.CatalogCacheMaintenance? CacheGc { get; private set; }
     /// <summary>The durable mutation engine (REAL backend only) — exposed so the sync loop drains it + the collection
     /// fetcher's mark-and-sweep can consult its pending-op shield.</summary>
     public Wavee.Backend.MutationEngine? RealMutations { get; private set; }
@@ -93,25 +79,13 @@ public sealed class Services
     public Wavee.Backend.Collections.CollectionEchoRing? EchoRing { get; private set; }
     /// <summary>The single library-sync writer loop (REAL backend only, after go-live) — the on-open SWR + DetailPage
     /// live-refresh hooks reach it here. Null offline / fake backend.</summary>
-    public Wavee.Backend.Sync.LibrarySync? RealSync { get; internal set; }
+    public Wavee.Backend.Sync.LibrarySync? RealSync => Data.LiveSync;
     /// <summary>Reactive live capability for server-driven automatic-playlist tuning.</summary>
     public Signal<IPlaylistTuningSource?> PlaylistTuning { get; } = new(null);
     /// <summary>The selected home facet chip id (Spotify <c>home.homeChips[].id</c>, e.g. "music-chip" or
     /// "podcasts-following-chip"); null/empty = the unfiltered feed. Written by the home chip row, read by the live
     /// home fetch when it builds the <c>facet</c> request variable. Opaque server token — never synthesised.</summary>
     public Signal<string?> HomeFacet { get; } = new(null);
-    /// <summary>Monotonic Home-feed revision, published by the live Home cache. Bumped when a Home read resolves a NEW
-    /// daylist identity (so every OTHER mounted page learns its card was superseded) and when the store rewrites the
-    /// header of an identity the composed feed already depends on — which is exactly what opening the daylist detail
-    /// page does while Home sits KeepAlive-PARKED behind it. Home subscribes in an EFFECT (a bump re-reads and restarts
-    /// the poll; effects keep running while parked) and COMPARES it on reactivation, so a page that comes back cannot
-    /// render a feed the cache has already superseded. Never read in a page's Render — an epoch is a refresh trigger,
-    /// not a rendered value.</summary>
-    public Signal<int> HomeFeedEpoch { get; } = new(0);
-    /// <summary>The reactivation compare: head-probe the hydrated Home identities and publish <see cref="HomeFeedEpoch"/>
-    /// only if one has genuinely rolled over. Installed on go-live, null offline/fake (a page then simply skips the
-    /// compare). Called from Home's <c>UseActivation</c>, never from a render and never on a cadence.</summary>
-    public Func<System.Threading.CancellationToken, System.Threading.Tasks.Task>? HomeFeedRevalidate { get; internal set; }
     /// <summary>The engine-backed Mutations seam adapter (REAL backend only) — exposed so go-live can route its post-write
     /// drains through the sync loop (§6, <c>ScheduleDrain</c>) and GoOffline can reset them to inline.</summary>
     public Wavee.Backend.EngineMutationSource? RealMutationSource { get; private set; }
@@ -158,6 +132,10 @@ public sealed class Services
     /// <summary>The persisted-credential store backing the live session — cleared on logout so the next launch can't
     /// silently re-login.</summary>
     public Wavee.Backend.Persistence.ICredentialStore? CredStore { get; private set; }
+    /// <summary>Where the live session records the exact <see cref="CatalogScope"/> it installed, so the NEXT launch can
+    /// serve this account's cached library under that scope before there is any session (see the provisional-scope block
+    /// in <see cref="CreateReal"/>). Null on the fake backend, which has no credentials and no cold store.</summary>
+    public Wavee.Backend.Persistence.ISessionScopeStore? SessionScopes { get; private set; }
 
     public IWaveeLog Log { get; }
     public ISpotifySession Session { get; }
@@ -171,9 +149,6 @@ public sealed class Services
     /// <summary>Progressive, below-the-fold album data. Stable wrapper; the live Spotify implementation is installed
     /// after login while mounted pages keep the same service identity.</summary>
     public SwitchableAlbumEnrichmentService AlbumEnrichment { get; }
-    // ArtistStats / ArtistPopularTracks were TWO seams for what is one question — "how hydrated is this artist?" —
-    // each with its own provider, cache and freshness rule. They are the artist ladder's Rich and Full rungs now:
-    // ArtistPage asks GetArtistAsync(uri, Rich), the chart asks Full, and Home's expander asks Rich (design §1.5).
     /// <summary>The signed-in user's own top artists and tracks (<c>userTopContent</c>, 4-week affinity) — Home's
     /// top-artist row and its personal track badges.
     /// Stable wrapper; the live provider is installed after login, offline/fake it is <see cref="NullUserTopService"/>,
@@ -195,12 +170,6 @@ public sealed class Services
     /// go-live. Offline it is <see cref="NullContentFilterService"/> (empty), and the Liked chip bar then derives its
     /// chips from the tracks' own kind-6 descriptors instead of showing nothing.</summary>
     public SwitchableContentFilterService ContentFilters { get; }
-    // Video association, row tint/tempo, play counts and ©/℗ are NOT seams any more: they are trait projectors behind
-    // Hydrator.EnsureTraitsAsync (design §2.4). A surface that wants them asks the façade for its TraitSurface and then
-    // READS THE STORE — which is why four service properties, their offline stand-ins and their GoOffline resets are gone.
-    // Playlist owner / added-by identities are NOT a seam any more either (P4-C): an Owner is a store entity written by
-    // UserHydration, so every surface that renders a byline reads IStore.GetOwner and repaints off IStore.Changes. The
-    // switchable service, its Null stand-in, its private cache and its Changed event are deleted.
     /// <summary>Spotify friend-activity (presence) feed — what friends are listening to. Stable wrapper; the live provider
     /// is installed after login, offline/fake it is the permanently-offline <see cref="NullFriendActivityService"/>.</summary>
     public SwitchableFriendActivityService Friends { get; }
@@ -306,9 +275,14 @@ public sealed class Services
 
     Services(IWaveeLog log, ISpotifySession session, IMusicLibrary library,
              IPlaybackPlayer player, IConnectDevices devices, ILyricsProvider lyrics, IAppSettings settings, IMutationSource mutations,
-             UserPlaylistSource userPlaylists, IPlaylistMutationSource playlistEdits, IActivityStore activityStore, AppLocale appLocale)
+             UserPlaylistSource userPlaylists, IPlaylistMutationSource playlistEdits, IActivityStore activityStore, AppLocale appLocale,
+             Wavee.Backend.CatalogRuntime data, Wavee.Backend.Catalog.NativeCatalogBootstrap nativeCatalog)
     {
         Log = log;
+        Data = data;
+        CatalogScopeSignal = new(data.Catalog.Scope);
+        NativeCatalog = nativeCatalog;
+        DataReady = InitializeDataAsync();
         Session = session;
         Library = library;
         Player = player;
@@ -330,6 +304,7 @@ public sealed class Services
         Sidebar = new SidebarPreferences(settings, SidebarLayoutStore.ForApp());
         Home = new HomePreferences(HomeLayoutStore.ForApp());
         Playback = new PlaybackBridge(player, devices, session);
+        Playback.AttachQueueQueries(Queries, data.Catalog.Scope);
         // Seed the movable video surface from persisted settings BEFORE the first frame, so the remembered placement is
         // already in effect rather than popping in after the shell mounts.
         Playback.SeedVideoSurfaceFromSettings(settings);
@@ -393,7 +368,7 @@ public sealed class Services
             notes: ReleaseNotes);
         Notifications = new NotificationCenterBridge(Activity, SpotifyNotifications, WhatsNew, AppUpdate, settings,
             new ActivityUndoExecutor(LibraryBridge, library, Activity));
-        LibraryStore = new LibraryStore(library, mutations, userPlaylists, library as ICollectionEvents);
+        LibraryStore = new LibraryStore(Queries, CatalogScope);
 
         // ── the local play log + the extension platform + the sidebar projection driver (M1) ──
         // Both Create paths funnel through this ctor, so the fake backend gets the same wiring over its own fake stores.
@@ -407,42 +382,76 @@ public sealed class Services
         // WaveeExtensionRegistry.Build(ActionServices) from the shell — it needs the service bag the shell owns — and this
         // table is published into that registry by RegisterSidebarSources below. The sidebar never waits for it: its own
         // host resolves the first-party table directly, and consults the registry only for contributed (third-party) ids.
-        SidebarBinder = new SidebarProjectionBinder(Sidebar, LibraryStore, PlayLog, Playback, library);
-        SidebarSources = WaveeBuiltInDataSources.RegisterAll(registrar: null, SidebarBinder, library,
-            WhatsNew, Concerts, Playback);
+        SidebarBinder = new SidebarProjectionBinder(Sidebar, Queries, CatalogScope, PlayLog, Playback);
+        SidebarSources = WaveeBuiltInDataSources.RegisterAll(registrar: null, SidebarBinder,
+            queries: Queries, scope: () => CatalogScope, whatsNew: WhatsNew, concerts: Concerts, playback: Playback);
         SidebarBinder.UseHost(new WaveeBuiltInDataSources.ContributionHost(SidebarSources), SidebarSources);
         Sidebar.Binder = SidebarBinder;
-        // Wire the detail caches as a sheddable arena (priority 2 = shed under MODERATE+ pressure, so at-rest A→B→A stays
-        // instant; the LRU insert-cap already bounds steady state). The entity-store "unpinned drop" (priority 3/4) is the
-        // documented follow-up — it needs a reachability pin-set to evict live entities safely.
-        Residency.Register(2, "detail-cache", () => LibraryStore.ShedDetails(keep: 16));
-        // Priority 3 = "unpinned entities" (shed only under CRITICAL OS pressure, per the governor tiers). The reachability
-        // pin-set is built ON DEMAND inside the callback — no steady-state bookkeeping. Null RealStore (fake backend) ⇒ a
-        // no-op 0, and the ?. short-circuit means BuildPinSet never even runs there. The closure captures `this`; RealStore
-        // is populated by CreateReal after construction, long before the 30 s poll first fires.
-        Residency.Register(3, "entity-store",
-            () => (RealStore as Wavee.Backend.Persistence.CachedStore)?.ShedEntities(BuildPinSet(), EntityResidencyCap) ?? 0L);
+        // Findings 4.2: publish the UI-facing scope from the repository's own Session publication instead of a
+        // one-shot postUi captured at bootstrap — the fire-and-forget callback this replaced (LiveSessionHost.cs)
+        // could silently drop the handover (an epoch bump between enqueue and drain, or a throw before it ran),
+        // pinning every reactive query to a dead scope with no retry and no inverse. Subscribing here, AFTER
+        // Playback/LibraryStore/SidebarBinder exist, covers install AND SetOfflineCore's logout/reconnect inverse
+        // through the exact same idempotent path (both publish CatalogChangeKind.Session).
+        // The rebind callback receives (previous, next): a same-scope confirmation never reaches it at all (the
+        // publisher answers those with one `confirmed` line and no rebind), and the ones that DO arrive can still tell
+        // an account switch from a mere reshaping — LibraryStore.RebindScope and SidebarProjectionBinder.RebindScope
+        // each apply that rule to their own state (ScopeRebindRules).
+        _scopePublisher = new CatalogScopePublisher(() => Data.Catalog.Scope, () => Data.Catalog.Epoch, CatalogScopeSignal,
+            (previous, scope) => { Playback.AttachQueueQueries(Queries, scope); LibraryStore.RebindScope(scope); SidebarBinder.RebindScope(scope); },
+            (eventId, message) => Log.Event(WaveeLogLevel.Info, "catalog", eventId, message));
+        _catalogColors = data.Catalog.Changes.Subscribe(Wavee.Backend.Observers.From<CatalogChangeSet>(change =>
+        {
+            if (change.Kind == CatalogChangeKind.Session) _uiPost(_scopePublisher.Publish);
+            var activeScope = data.Catalog.Scope;
+            foreach (var key in change.Keys)
+            {
+                if (key.Facet != FacetKind.VisualIdentity || key.Scope with { Provider = activeScope.Provider } != activeScope
+                    || data.Catalog.Peek(key).Value is not VisualIdentityValue value) continue;
+                var scheme = new CoverColorPlane.Scheme(value.Background ?? 0, value.BackgroundTinted ?? 0,
+                    value.Text ?? 0, value.TextSubdued ?? 0, value.Accent ?? 0);
+                foreach (var uri in value.ImageUris ?? [value.ImageUri]) CoverColorPlane.Current.SetDark(uri, scheme);
+            }
+        }));
+        // Memory pressure sheds catalog facts outside current query demand.
+        Residency.Register(3, "catalog",
+            () => Data.Catalog.TrimUnpinned(Data.Queries.CollectActiveResourceKeys, EntityResidencyCap));
     }
 
-    /// <summary>Build the entity-eviction pin-set on demand (inside the shed callback): the now-playing + queue uris, the
-    /// uris a still-cached detail model will re-render, and the saved-set heads. UI-thread (the governor Trim is posted to
-    /// the UI thread); Peek reads never subscribe.
-    ///
-    /// UI-THREAD-AFFINE (critique #10): <see cref="LibraryStore.CollectPinnedUris"/> walks the detail caches, which only
-    /// the UI thread mutates. Both callers marshal: the MemoryGovernor through its <c>post(() =&gt; Residency.Trim(...))</c>
-    /// timer, and the cache GC through the very same <c>post</c> handed to <see cref="Wavee.Backend.Persistence.EntityCacheGc.Start"/>.
-    /// Never call it from a background thread.</summary>
-    internal System.Collections.Generic.ISet<string> BuildPinSet()
+    /// <summary>The account the reusable credential names, or "" when there is none, or it cannot be read on this
+    /// machine (a different at-rest protector, a moved profile). Never throws: a credential that will not load is a
+    /// launch without a provisional scope, not a failed launch.</summary>
+    static string StoredAccount(Wavee.Backend.Persistence.ICredentialStore credentials)
     {
-        var pins = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-        if (Playback.CurrentTrack.Peek()?.Uri is { Length: > 0 } cur) pins.Add(cur);
-        if (Playback.CurrentContext.Peek() is { Length: > 0 } ctx) pins.Add(ctx);
-        var queue = Playback.Queue.Peek();
-        for (int i = 0; i < queue.Count; i++) if (queue[i].Track.Uri is { Length: > 0 } qu) pins.Add(qu);
-        LibraryStore.CollectPinnedUris(pins);
-        (RealStore as Wavee.Backend.Persistence.CachedStore)?.CollectSavedHeads(pins, SavedHeadPinCount);
-        return pins;
+        try { return credentials.Load()?.Username ?? ""; }
+        catch { return ""; }
     }
+
+    async System.Threading.Tasks.Task InitializeDataAsync()
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        Log.Info("catalog", "Initializing catalog and library replicas");
+        try
+        {
+            await Data.InitializeAsync().ConfigureAwait(false);
+            Log.Info("catalog", "Catalog storage and library replicas ready; loading native sources");
+            await NativeCatalog.StartAsync().ConfigureAwait(false);
+            Log.Info("catalog", $"Catalog ready ({System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:0} ms)");
+        }
+        catch (System.Exception error)
+        {
+            Log.Error("catalog", "Catalog initialization failed", error);
+            throw;
+        }
+    }
+
+    internal async System.Threading.Tasks.Task EndCatalogSessionAsync(long expectedEpoch)
+    {
+        if (!await Data.EndSessionAsync(expectedEpoch).ConfigureAwait(false)) return;
+        await NativeCatalog.RefreshAsync().ConfigureAwait(false);
+    }
+
+
 
     // ── the PRE-LOGIN local media session ───────────────────────────────────────────────────────────────────────────
     // The audio half of "a playable that needs no session". Built by CreateReal, torn down at go-live (the live stack
@@ -483,18 +492,19 @@ public sealed class Services
     }
 
     static PreLoginMedia BuildPreLoginMedia(Wavee.Backend.MediaSources.MediaProviderRegistry providers,
-        IEntityHydrator hydrator, Wavee.Backend.IStore store, string deviceId, IAppSettings settings)
+        Wavee.Backend.CatalogRuntime data, string deviceId, IAppSettings settings)
     {
         var log = new WaveeLogger(WaveeLog.Instance, "playback");
         // No PlayPlay decryptor factory and no body disk cache: neither exists without a session, and neither is
         // reachable from a local file, an internet radio station or a module's own byte stream.
         var audio = new Wavee.SpotifyLive.Audio.FluentMediaAudioHost(
-            static () => null, Wavee.Backend.Spotify.HttpPools.Get(Wavee.Backend.Spotify.HttpPool.Cdn), log, bodyDisk: null);
+            static () => null, Wavee.Backend.Spotify.HttpPools.Get(Wavee.Backend.Spotify.HttpPool.Cdn),
+            Wavee.SpotifyLive.Audio.FluentMediaAudioHost.CreateWasapiBackend, log, bodyDisk: null);
         // Seed persisted EQ/crossfade before this host ever opens a session — the SAME helper AudioPlaybackStack uses
         // for the live host, so a user who sets EQ before signing in (or after logging out, back on local playback)
         // hears it immediately instead of only after the next go-live.
         if (audio is Wavee.Backend.IAudioDspControl dsp) PlaybackDsp.SeedFromSettings(dsp, settings);
-        var projection = new Wavee.Backend.NowPlayingProjection(deviceId, hydrator, store);
+        var projection = new Wavee.Backend.NowPlayingProjection(deviceId, data.PlaybackQueue);
         var controller = new Wavee.Backend.PlaybackController(audio, providers, projection,
             Wavee.Backend.EmptyContextResolver.Instance, deviceId, log: log, fast: providers)
         {
@@ -553,15 +563,8 @@ public sealed class Services
     public string CensusLine()
     {
         var sb = new System.Text.StringBuilder(160);
-        if (RealStore is Wavee.Backend.Persistence.CachedStore cs)
-        {
-            var c = cs.EntityCounts;
-            sb.Append(System.Globalization.CultureInfo.InvariantCulture,
-                $"store t={c.Tracks} al={c.Albums} ar={c.Artists} pl={c.Playlists} sh={c.Shows} ep={c.Episodes} v={c.Versions} estMB={cs.EstimatedEntityBytes / (1024.0 * 1024):0.0}");
-            if (cs.HasEvictedEntities) sb.Append(" evicted");
-        }
-        else sb.Append("store (fake)");
-        sb.Append(System.Globalization.CultureInfo.InvariantCulture, $" | detail={LibraryStore.DetailCount}");
+        sb.Append(System.Globalization.CultureInfo.InvariantCulture,
+            $"catalog resources={Data.Catalog.ResidentCount} estMB={Data.Catalog.EstimatedResidentBytes / (1024.0 * 1024):0.0}");
         return sb.ToString();
     }
 
@@ -576,47 +579,54 @@ public sealed class Services
         var devices = new NoConnectDevices();   // no in-process devices — the roster comes from the live Connect cluster
         // The composition root may create the store early (to seed the theme before the first frame) and pass it in;
         // otherwise create it here. Same registry either way (the wrapper is stateless), so a second instance is harmless.
-        settings ??= AppDataSettings.ForUnpackaged("Wavee", "Wavee");
+        settings ??= AppDataSettings.ForUnpackaged(UnpackagedAppDataRoot.CurrentFolderName, UnpackagedAppDataRoot.CurrentFolderName);
         var store = settings;
         var export = SpotifyExport.Load();
 
-        // The Mutations facet (docs/plans/wavee/architecture.md §4.2): the user's saved/liked/followed set, persisted via the settings
-        // store (the in-process outbox). Seeded on first run from the first ~300 liked uris so the Liked page reads as
-        // saved; later runs load the persisted set (incl. session likes). Registered as a capability-only source.
-        string rawSaved = store.Get(WaveeSettings.SavedLibrary);
-        IEnumerable<string> savedSeed = string.IsNullOrEmpty(rawSaved)
-            ? FakeData.LikedSongs(System.Math.Min(System.Math.Max(0, export.LikedCount), 300)).Select(t => t.Uri)
-            : rawSaved.Split('\n', System.StringSplitOptions.RemoveEmptyEntries);
-        var mutations = new LocalMutationSource(savedSeed, snap => store.Set(WaveeSettings.SavedLibrary, string.Join("\n", snap)));
-
-        // User-created playlists (the playlist-edit Mutations): a catalog source owning wavee:playlist:*.
         var userPlaylists = new UserPlaylistSource();
         var playlistEdits = new LocalPlaylistMutationSource(userPlaylists);
-
-        // The unified source registry (docs/plans/wavee/architecture.md §4.3): every connected catalog source + the facets it declares.
-        // Playback/Lyrics/Remote are NOT in-process sources anymore (local playback is unsupported; the roster is the live
-        // Connect cluster's) — the session registers its Session facet; the catalog façade federates the catalog sources.
-        var registry = new SourceRegistry(new ISource[]
-        {
-            new SpotifyExportSource(export),   // Catalog | Home | Search (owns spotify:*)
-            new LocalSource(),                 // Catalog | Search | LocalDecode (owns local: / wavee:local:* — the peer source)
-            userPlaylists,                     // Catalog (owns wavee:playlist:* — user-created playlists; before the fallback)
-            new FakeSource(),                  // Catalog (synthetic collections + the non-spotify fallback)
-            new FakePodcastSource(),           // Podcasts (synthetic shows / episodes; owns wavee:show:* / wavee:episode:*)
-            mutations,                         // Mutations (save / like / follow)
-            session,                           // Session (auth / account / market)
-        });
-        var library = new AggregateCatalog(registry);
-        var svc = new Services(WaveeLog.Instance, session, library, player, devices, new NoLyricsProvider(), settings, mutations, userPlaylists, playlistEdits, new InMemoryActivityStore(), appLocale ?? AppLocale.English);
-        // THE hydration façade: the router over the registry above (design §2.1) — the same door the real backend uses,
-        // so nothing downstream can tell the two apart. Every source in the fake registry is COMPLETE at construction
-        // (the export, local files, the synthetic catalog, user playlists), so every rung it routes to is already
-        // reached and there is nothing to fetch; a uri no source owns answers Unsupported instead of pretending.
-        svc.Hydrator = new HydrationRouter(registry);
-        svc.Playback.AttachHydrator(svc.Hydrator);
+        ISource[] nativeSources = [new SpotifyExportSource(export), new LocalSource(), userPlaylists,
+            new FakeSource(), new FakePodcastSource()];
+        string rawSaved = store.Get(WaveeSettings.SavedLibrary);
+        var savedSeed = string.IsNullOrEmpty(rawSaved) ? InitialNativeSaved(nativeSources)
+            : rawSaved.Split('\n', System.StringSplitOptions.RemoveEmptyEntries);
+        var mutations = new LocalMutationSource(savedSeed,
+            snapshot => store.Set(WaveeSettings.SavedLibrary, string.Join("\n", snapshot) + "\n"));
+        var registry = new SourceRegistry(nativeSources.Concat(new ISource[] { mutations, session }).ToArray());
+        string OwnerProvider(string uri) => registry.OwnerOf(uri)?.Id
+            ?? registry.OfCapability(SourceCapabilities.Fallback).First().Id;
+        var memoryData = new Wavee.Backend.Persistence.MemoryDataPersistence();
+        var demoStore = new Wavee.Backend.InMemoryStore();
+        var data = new Wavee.Backend.CatalogRuntime(new CatalogScope("spotify", "demo", (appLocale ?? AppLocale.English).SpotifyLanguage,
+            "", "", -1, false), "demo", memoryData, memoryData, new Wavee.Backend.Persistence.MemoryReplicaProjection(demoStore),
+            registry.All.Where(source => source is ICatalogSource or IPodcastSource)
+                .Select(source => new Wavee.Backend.Catalog.NativeCatalogResourceProvider(registry, source)), OwnerProvider,
+            Wavee.Backend.Catalog.ProviderExecutionPolicy.Ready);
+        CatalogScope ScopeForSubject(string uri) => data.ScopeForSubject(uri);
+        var library = new AggregateCatalog(registry, data.Queries, ScopeForSubject);
+        var nativeCatalog = new Wavee.Backend.Catalog.NativeCatalogBootstrap(registry, data.Replicas, ScopeForSubject, mutations);
+        var svc = new Services(WaveeLog.Instance, session, library, player, devices, new NoLyricsProvider(), settings, mutations, userPlaylists, playlistEdits, new InMemoryActivityStore(), appLocale ?? AppLocale.English, data, nativeCatalog);
         player.OnPlayIntentRejected = () => svc.Playback.NotifyLocalPlaybackUnsupported();   // any play intent → the standard toast
         svc.Log.Info("app", "Services created (sources: spotify-export, local-files, user-playlists, podcasts, fake + session facet; playback remote-only; mutations: saved-state + playlists)");
         return svc;
+    }
+
+    static string[] InitialNativeSaved(ISource[] sources)
+    {
+        var uris = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+        foreach (var source in sources)
+        {
+            if (source is ICatalogSource catalog)
+            {
+                uris.UnionWith(catalog.GetLikedSongsAsync().GetAwaiter().GetResult().Select(item => item.Uri));
+                uris.UnionWith(catalog.GetAlbumsAsync().GetAwaiter().GetResult().Select(item => item.Uri));
+                uris.UnionWith(catalog.GetArtistsAsync().GetAwaiter().GetResult().Select(item => item.Uri));
+                uris.UnionWith(SidebarTree.Flatten(catalog.GetPlaylistTreeAsync().GetAwaiter().GetResult()).Select(item => item.Uri));
+            }
+            if (source is IPodcastSource podcast)
+                uris.UnionWith(podcast.GetShowsAsync().GetAwaiter().GetResult().Select(item => item.Uri));
+        }
+        return uris.ToArray();
     }
 
     /// <summary>The REAL backend wiring: the persistent Store-backed catalog (<see cref="Wavee.Backend.Library.StoreLibrarySource"/>
@@ -633,21 +643,79 @@ public sealed class Services
         // media session composed below. See UnsupportedPlaybackPlayer.LocalPlayback.
         var player = new UnsupportedPlaybackPlayer();
         var devices = new NoConnectDevices();           // empty roster until the live Connect cluster arrives on go-live
-        settings ??= AppDataSettings.ForUnpackaged("Wavee", "Wavee");
+        settings ??= AppDataSettings.ForUnpackaged(UnpackagedAppDataRoot.CurrentFolderName, UnpackagedAppDataRoot.CurrentFolderName);
 
-        // The persistent, offline-first backend store (its own SQLite file under LocalAppData by default).
-        accountDbPath ??= System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "Wavee", "library.db");
+        // The persistent, offline-first backend store (its own SQLite file under the unpackaged root by default).
+        accountDbPath ??= UnpackagedAppDataRoot.UnderCurrent("library.db");
         System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(accountDbPath)!);
         // §G startup marks: the two ctors are the only synchronous disk work before first paint, so they are what
-        // `boot.sqlite_open_ms` (open + migrate + open-time sweep) and `boot.identity_load_ms` (the DEFERRED ctor's
+        // `boot.sqlite_open_ms` (open + schema-reset + open-time sweep) and `boot.identity_load_ms` (the DEFERRED ctor's
         // identity tier: saved sets, video map, overrides, pin mirrors) actually measure.
         long openStart = System.Environment.TickCount64;
         var cold = new Wavee.Backend.Persistence.SqliteColdStore(accountDbPath, Wavee.Backend.Persistence.SqliteColdStore.DefaultAccount, locale.SpotifyLanguage);
         long openMs = System.Environment.TickCount64 - openStart;
+        if (cold.ResetFromSchema is { } previousSchema)
+            WaveeLog.Instance.Info("catalog", $"library.db schema v{previousSchema} → v{Wavee.Backend.Persistence.SqliteColdStore.CurrentSchemaVersion}: " +
+                "catalog cache and library replicas cleared; they re-fetch from Spotify on this launch");
         long identityStart = System.Environment.TickCount64;
-        var store = new Wavee.Backend.Persistence.CachedStore(cold);
+        var store = new Wavee.Backend.InMemoryStore();
         long identityMs = System.Environment.TickCount64 - identityStart;
+        var spotifyProvider = new Wavee.Backend.Catalog.SwitchableCatalogResourceProvider("spotify",
+            new Wavee.Backend.Catalog.OfflineCatalogResourceProvider("spotify"));
+        var userPlaylists = new UserPlaylistSource { ExposeInCatalog = false };
+        var registry = new SourceRegistry(new ISource[]
+        {
+            new CatalogSourceRegistration("spotify", uri => EntityUri.Parse(uri).Provider == "spotify",
+                SourceCapabilities.Home | SourceCapabilities.Search | SourceCapabilities.Podcasts),
+            new LocalSource(), userPlaylists,
+        });
+        string OwnerProvider(string uri) => registry.OwnerOf(uri)?.Id ?? "spotify";
+        var catalogProviders = registry.All.Where(source => source is ICatalogSource or IPodcastSource)
+            .Select(source => (ICatalogResourceProvider)new Wavee.Backend.Catalog.NativeCatalogResourceProvider(registry, source))
+            .Prepend(spotifyProvider).ToArray();
+        // ── the PROVISIONAL catalog scope ───────────────────────────────────────────────────────────────────────────
+        // The user's library is already on this machine: durable replicas, every playlist header, every cover. The one
+        // thing that used to keep it off screen for the first ~2.5 s of a launch is that nothing could say WHO it
+        // belonged to until the AP welcome landed — so the replica scope named no account, every replica read answered
+        // Missing, and every cached catalog row sat under a scope the pre-login reads never addressed.
+        //
+        // Both facts are on disk. The reusable credential names the account; the session-scope memory names the exact
+        // CatalogScope that account's rows were written under. Recalling them makes the replica scope and every catalog
+        // ResourceKey identical to the ones the live session will install, so the sidebar joins the real library on the
+        // first frame — and the network session then CONFIRMS that scope (SessionInstallRules) instead of replacing it.
+        //
+        // It is served OFFLINE (online: false): the scope names a context, it does not certify a connection, and no
+        // provider request can leave the machine until the protocol session installs. A launch with no stored
+        // credential — a first run, or a logged-out one — keeps the anonymous pre-login scope exactly as before.
+        (Wavee.Backend.Persistence.LocalCredentialStore credentials, string localDeviceId) =
+            Wavee.SpotifyLive.SpotifyLiveLogin.OpenCredentialStore();
+        var sessionScopes = new Wavee.Backend.Persistence.LocalSessionScopeStore(credentials.Store, credentials.Protector);
+        var anonymousScope = new CatalogScope("spotify", "", locale.SpotifyLanguage, "", "", -1, false,
+            ContextKnown: false, StorageAccount: cold.Account);
+        string storedAccount = StoredAccount(credentials);
+        var remembered = sessionScopes.Recall();
+        bool provisional = storedAccount.Length > 0 && remembered is { } recalled
+            && recalled.ContextKnown
+            && string.Equals(recalled.Provider, "spotify", System.StringComparison.Ordinal)
+            && string.Equals(recalled.ProviderAccount, storedAccount, System.StringComparison.Ordinal)
+            && string.Equals(recalled.StorageAccount, cold.Account, System.StringComparison.Ordinal);
+        var startScope = provisional ? remembered! : anonymousScope;
+        WaveeLog.Instance.Event(WaveeLogLevel.Info, "catalog", "catalog.scope.provisional",
+            provisional
+                ? "serving the cached library under the remembered session scope"
+                : "no remembered session scope; the library waits for the session",
+            fields:
+            [
+                WaveeLogField.Of("account", startScope.ProviderAccount),
+                WaveeLogField.Of("source", provisional ? "stored-credentials" : "none"),
+                WaveeLogField.Of("locale", startScope.Locale),
+                WaveeLogField.Of("market", startScope.Market),
+                WaveeLogField.Of("sinceStartMs", WaveeLog.SinceStartMs),
+            ]);
+        var data = new Wavee.Backend.CatalogRuntime(startScope, provisional ? storedAccount : "", cold, cold,
+            new Wavee.Backend.Persistence.MemoryReplicaProjection(store), catalogProviders, OwnerProvider,
+            Wavee.Backend.Catalog.ProviderExecutionPolicy.ProtocolSession, online: false);
+        CatalogScope ScopeForSubject(string uri) => data.ScopeForSubject(uri);
 
         // The collection self-write echo registry (§7.1): the write strategy records accepted-write cuids; the sync loop
         // drops our own echoes. One instance shared between the write path and the read loop (wired below on go-live).
@@ -655,67 +723,39 @@ public sealed class Services
         var spclientBaseUrl = new Wavee.Backend.SpclientBaseUrlHolder();
         // I2 — the ONE rootlist write lane, shared by the outbox's follow/unfollow strategy and the direct rootlist ops
         // on PlaylistMutationSource (move / delete / visibility / create). Required on both; never optional.
-        var rootlistLane = new Wavee.Backend.Playlists.RootlistLane();
         // The durable, multi-set mutation engine (set saves + playlist OpRebase edits) behind the IMutationSource seam.
         // I4 — the ONE post-drain revalidation queue, shared by the replay strategy and the sync loop (wired on go-live).
         var resyncQueue = new Wavee.Backend.Playlists.PlaylistResyncQueue();
-        var mutEngine = new Wavee.Backend.MutationEngine(store,
+        var mutEngine = new Wavee.Backend.MutationEngine(data.Replicas,
             new Wavee.Backend.IMutationStrategy[]
             {
                 new Wavee.Backend.SetReplayStrategy(echoRing),
-                new Wavee.Backend.OpRebaseStrategy(store, () => spclientBaseUrl.Value, resyncQueue),
-                new Wavee.Backend.CreatePlaylistStrategy(store, () => spclientBaseUrl.Value, resyncQueue),
-                new Wavee.Backend.RootlistFollowStrategy(store, rootlistLane),
-            }, cold);
+                new Wavee.Backend.OpRebaseStrategy(data.Replicas, () => spclientBaseUrl.Value),
+                new Wavee.Backend.CreatePlaylistStrategy(data.Replicas, () => spclientBaseUrl.Value),
+                new Wavee.Backend.RootlistFollowStrategy(data.Replicas, () => spclientBaseUrl.Value),
+            });
         // The mutation transport is SWITCHABLE (stub → live dealer on go-live, back to stub on logout) so writes made while
         // logged out queue durably and replay on next login (§2.1); the drain binds to this stable facade once.
         var mutTransport = new Wavee.Backend.SwitchableTransport(new Wavee.Backend.StubTransport());
         var sessionHost = new Wavee.Backend.SessionContextHost(
             new Wavee.Backend.SessionContext("", "US", "premium", locale.SpotifyLanguage, Wavee.Backend.Tier.Premium, false));
-        var mutations = new Wavee.Backend.EngineMutationSource(store, mutEngine, mutTransport, () => sessionHost.Current);
+        var mutations = new Wavee.Backend.EngineMutationSource(store, mutEngine, data.Commands);
 
-        // The catalog: the persistent Store-backed source (collection_items × shared entities; owns spotify:* + podcasts)
-        // and the user-created playlists source (owns wavee:playlist:*).
-        // THE façade for the Spotify source. It starts OFFLINE — a real implementation that answers from the store
-        // (and promotes cold rows while doing it), never a null seam — and LiveSessionHost swaps the provider hydrator
-        // in at go-live, GoOffline swaps it back. One reference, held forever by the source AND by svc.Hydrator.
-        var spotifyHydration = new SwitchableEntityHydrator(new Wavee.Backend.Hydration.OfflineEntityHydrator(store));
-        // …and THE online-read seam (design §2.7), for the same reason: search / suggest / home are ctor deps of the
-        // source, which holds this one reference forever — go-live SetInner()s the Spotify catalog into it, GoOffline
-        // resets it. It replaces the four Live* hooks the source used to expose.
-        var onlineCatalog = new SwitchableOnlineCatalog(OfflineOnlineCatalog.Instance);
-        var storeLibrary = new Wavee.Backend.Library.StoreLibrarySource(store, spotifyHydration, onlineCatalog, log: new WaveeLogger(WaveeLog.Instance, "library"));
-        var userPlaylists = new UserPlaylistSource();
-        userPlaylists.ExposeInCatalog = false;
         var playlistMutations = new Wavee.Backend.Playlists.PlaylistMutationSource(
             mutEngine, mutTransport, new Wavee.Backend.Spotify.HttpClientExchange(), () => sessionHost.Current,
-            () => spclientBaseUrl.Value, userPlaylists, rootlistLane, store);
+            () => spclientBaseUrl.Value, userPlaylists, store, data.Replicas, data.Commands);
         // The "recommended songs" extender rides the SAME switchable transport (stub → live dealer on go-live, back on logout).
         var extender = new Wavee.Backend.Playlists.PlaylistExtenderClient(mutTransport);
 
-        var registry = new SourceRegistry(new ISource[]
-        {
-            storeLibrary,          // Catalog | Podcasts (the real persistent backend; owns spotify:*)
-            new LocalSource(),     // Catalog | Search | LocalDecode (the local-files peer)
-            userPlaylists,         // Catalog (wavee:playlist:* — user-created playlists)
-            mutations,             // Mutations (durable, multi-set save/unsave + playlist edits)
-            session,               // Session
-        });
-        var library = new AggregateCatalog(registry);
-        // P4 — THE hydration façade is the ROUTER over the registry (design §2.1). Built HERE rather than after the
-        // Services ctor because the pre-login media session below needs it: its now-playing projection upgrades a thin
-        // row through the same door every page open uses.
-        var hydrationRouter = new HydrationRouter(registry);
+        var library = new AggregateCatalog(registry, data.Queries, ScopeForSubject);
+        var nativeCatalog = new Wavee.Backend.Catalog.NativeCatalogBootstrap(registry, data.Replicas, ScopeForSubject);
 
-        // ── the PRE-LOGIN local media session (playback modules, local files, internet radio) ───────────────────────
         // None of this needs a session, a token or a cluster — which is exactly why it is composed here and not in the
         // live bootstrap. `MediaProviderRegistry` used to be built inside LiveConnect, so a build with no Spotify
         // resolver had no routing table at all and "Play file…" was hidden until sign-in; the registry is a property of
         // the APP, not of a session, and go-live only prepends Spotify to it.
-        (Wavee.Backend.Persistence.LocalCredentialStore credentials, string localDeviceId) =
-            Wavee.SpotifyLive.SpotifyLiveLogin.OpenCredentialStore();
         var moduleSecrets = new Wavee.Backend.Modules.ProtectedModuleSecretStore(
-            Wavee.Backend.Persistence.FileLocalStore.ForApp("Wavee"), credentials.Protector);
+            Wavee.Backend.Persistence.FileLocalStore.ForApp(UnpackagedAppDataRoot.CurrentFolderName), credentials.Protector);
         var modules = new Wavee.Backend.Modules.ModuleHost(
             Wavee.Backend.Modules.ModuleCatalog.Discover(),
             new WaveeLogger(WaveeLog.Instance, "modules"),
@@ -744,7 +784,7 @@ public sealed class Services
         // which is the whole point. Spotify play intents still reject (nothing owns a spotify: uri here), so the
         // "choose a remote device" toast is unchanged for exactly the playables that genuinely need an account.
         System.Func<PreLoginMedia> preLoginFactory = () =>
-            BuildPreLoginMedia(mediaProviders, hydrationRouter, store, localDeviceId, settings);
+            BuildPreLoginMedia(mediaProviders, data, localDeviceId, settings);
         PreLoginMedia preLogin = preLoginFactory();
         player.LocalPlayback = preLogin.Controller;
         player.CanPlayLocally = uri => mediaProviders.OwnerOf(uri) is not null;
@@ -755,28 +795,23 @@ public sealed class Services
         var swDevices = new Wavee.Backend.SwitchableDevices(devices);
         var swSession = new Wavee.Backend.SwitchableSession(session);
         var swLyrics = new Wavee.Backend.SwitchableLyrics(new NoLyricsProvider());   // swapped to the real AggregatingLyricsProvider on live login
-        var svc = new Services(WaveeLog.Instance, swSession, library, swPlayer, swDevices, swLyrics, settings, mutations, userPlaylists, playlistMutations, new Wavee.Backend.Persistence.SqliteActivityStore(accountDbPath), locale);
+        var svc = new Services(WaveeLog.Instance, swSession, library, swPlayer, swDevices, swLyrics, settings, mutations, userPlaylists, playlistMutations, new Wavee.Backend.Persistence.SqliteActivityStore(accountDbPath), locale, data, nativeCatalog);
+        svc.SpotifyCatalogProvider = spotifyProvider;
         player.OnPlayIntentRejected = () => svc.Playback.NotifyLocalPlaybackUnsupported();   // pre-go-live: play intents show the "choose a remote device" toast
         svc.RealStore = store;
+        svc.SessionScopes = sessionScopes;
         // The user's local video-override curation. Wired HERE (not on go-live) precisely so attaching a custom mp4 works
         // WITHOUT Spotify: the bridge's has-video answer consults it directly, and the resolver installed below has no
         // source tier at all — an override is the only video such a build can serve. LiveSessionHost later replaces that
         // resolver with the full two-tier composite, keeping tier 1 identical.
-        var videoOverrides = new VideoOverrideService(store, new WaveeLogger(WaveeLog.Instance, VideoOverrideService.LogCategory));
+        var videoOverrides = new VideoOverrideService(data.Commits, cold,
+            cold.ReadVideoOverridesAsync().AsTask().GetAwaiter().GetResult(),
+            new WaveeLogger(WaveeLog.Instance, VideoOverrideService.LogCategory));
         videoOverrides.OnChanged = (uri, kind) => svc.Playback.NotifyVideoOverrideChanged(uri, kind);
         videoOverrides.OnBrokenLink = uri => svc.Playback.NotifyVideoOverrideMissing(uri);
         svc.VideoOverrides = videoOverrides;
         svc.Playback.AttachVideoOverrides(videoOverrides);
         svc.Playback.ResolveVideoSource = CompositeVideoResolver.OverridesOnly(videoOverrides).ResolveAsync;
-        svc.RealLibrarySource = storeLibrary;
-        svc.OnlineCatalog = onlineCatalog;   // the SAME switchable storeLibrary holds — never a second one
-        svc.SpotifyHydration = spotifyHydration;
-        // P4: THE façade is the ROUTER over the registry, not the Spotify switchable directly (design §2.1). A
-        // spotify: uri still lands in `spotifyHydration` — StoreLibrarySource.Hydrator IS that switchable — but a
-        // mixed batch (a playlist holding a local import, a session-created wavee:playlist:) now reaches the source
-        // that actually owns each uri instead of being reported Unsupported by the Spotify ladder.
-        svc.Hydrator = hydrationRouter;
-        svc.Playback.AttachHydrator(svc.Hydrator);   // the queue's trait pass rides the same door
         // The pre-login module host + routing table + local media session (built above, before the switchable player
         // captured the stub's state). LocalPlaybackSupported is "an audio host exists", and one does — from now on,
         // not from go-live.
@@ -807,21 +842,17 @@ public sealed class Services
         // needs no bespoke flag.
         svc.PinSync = new SidebarPinSync(store, svc.Sidebar.Pins, mutations, settings,
             () => sessionHost.Current.Account,
-            () => cold.GetCollectionRevision("ylpin") is not null,
+            () => data.Replicas.ReadConfirmedCollection("pins").WireRevision is not null,
             uri => mutEngine.HasPending("pins", uri));
         svc.RealPlaylistMutations = playlistMutations;
         svc.RealExtender = extender;
         svc.RealSpclientBaseUrl = spclientBaseUrl;
-        // The metadata-cache GC (design §C). Constructed here (composition root) but NOT started: it needs the UI-thread
-        // marshaller to snapshot BuildPinSet, so WaveeApp's mount effect arms it — the same place, and the same `post`,
-        // the MemoryGovernor poll uses. It also owns the one-time post-migration VACUUM that used to be kicked off here.
-        svc.CacheGc = new Wavee.Backend.Persistence.EntityCacheGc(cold, store, svc.Log, svc.BuildPinSet,
-            System.Math.Max(MinMetadataCacheBudgetBytes, settings.Get(WaveeSettings.MetadataCacheBudgetBytes)))
-        {
-            OpenMillis = openMs,
-            IdentityLoadMillis = identityMs,
-        };
-        svc.Log.Info("app", "Services created (REAL backend: persistent Store + StoreLibrarySource + durable multi-set mutations; live session/fetch/dealer connect on bootstrap)");
+        // Retention uses detached query demand and the same serialized SQLite writer.
+        svc.CacheGc = new Wavee.Backend.Persistence.CatalogCacheMaintenance(cold, data.Catalog, data.Commits,
+            data.Queries.GetActiveResourceKeys, System.TimeProvider.System,
+            System.Math.Max(MinMetadataCacheBudgetBytes, settings.Get(WaveeSettings.MetadataCacheBudgetBytes)),
+            error => svc.Log.Error("catalog", "Cache maintenance failed: " + error.Message));
+        svc.Log.Info("app", $"Services created (normalized catalog and durable replicas; database open {openMs} ms, replica display {identityMs} ms)");
         return svc;
     }
 
@@ -899,6 +930,18 @@ public sealed class Services
     /// host exists is undone by <see cref="GoOffline"/>.</summary>
     internal void AttachWiring(Wavee.Backend.Wiring.LiveWiring wiring) => Wiring = wiring;
 
+    /// <summary>Hand this Services the app's UI-thread marshaller, so the catalog-scope publisher wired in the
+    /// constructor (which runs long before any login attempt) can hop onto the UI thread when a session installs or
+    /// ends. Called once per <c>LiveSessionHost.StartAsync</c>; the same marshaller every time, so re-attaching on a
+    /// reconnect is harmless.</summary>
+    internal void AttachUiPost(System.Action<System.Action> post)
+    {
+        _uiPost = post ?? throw new System.ArgumentNullException(nameof(post));
+        // A Session publication that arrived before the marshaller existed was dropped, not run on the wrong
+        // thread; Publish is idempotent against the CURRENT scope, so one catch-up post reconciles it.
+        _uiPost(_scopePublisher.Publish);
+    }
+
     /// <summary>The inverse of go-live, in ONE line: replay the install ledger backwards (design §2.6).
     ///
     /// This used to be a hand-maintained list of ~35 resets that had to be kept in step with an equally long list of
@@ -938,11 +981,23 @@ public sealed class Services
     /// every module child process) and the pre-login local media session. Idempotent.</summary>
     public void Dispose()
     {
+        if (System.Threading.Interlocked.Exchange(ref _disposed, 1) != 0) return;
         DisposePreLoginMedia();
         var modules = Modules;
         Modules = null;
         modules?.Dispose();
+        try { DataReady.GetAwaiter().GetResult(); }
+        catch (System.Exception error) { Log.Info("catalog", "Data initialization failed: " + error.Message); }
+        SidebarBinder.Stop();
+        _catalogColors.Dispose();
+        LibraryStore.Dispose();
+        NativeCatalog.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        if (CacheGc is { } cache) cache.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        RealMutations?.Dispose();
+        Data.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        RealCold?.Dispose();
     }
+    int _disposed;
 
     /// <summary>Sign out without a restart: flip the session logged-out (gate → takeover), wipe the persisted reusable
     /// credential (else the next launch silently re-logs-in), tear the live host down OFF the UI thread, then reset to the

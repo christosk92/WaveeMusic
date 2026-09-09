@@ -10,19 +10,19 @@ namespace Wavee.Tests;
 /// track change, and — while it applies — it is what makes <see cref="IPlaybackState.CanSeek"/> false. Live-ness is a
 /// fact the SOURCE stated; it is deliberately NOT inferred from a 0 duration, which is also what "unknown" looks like.
 /// </summary>
-public class NowPlayingLiveOverrideTests
+public class NowPlayingLiveOverrideTests : PlaybackCatalogTestBase
 {
     const string RadioUri = "wavee:module:wavee.radio:aGVsbG8";
     const string SongUri = "spotify:track:abc";
 
-    static NowPlayingProjection New() => new("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+    NowPlayingProjection New() => Catalog.Projection("dev");
 
     static Track TrackFor(string uri, long durationMs = 0) => new(
         Id: uri, Uri: uri, Title: "t", Artists: Array.Empty<ArtistRef>(), Album: new AlbumRef("", "", ""),
         DurationMs: durationMs, IsExplicit: false, Image: null);
 
-    static void Start(NowPlayingProjection p, string uri, long durationMs = 0)
-        => p.OnEvent(new PlaybackEvent(EvKind.Started, TrackFor(uri, durationMs), 0));
+    void Start(NowPlayingProjection p, string uri, long durationMs = 0)
+        => Catalog.Event(p, new PlaybackEvent(EvKind.Started, TrackFor(uri, durationMs), 0));
 
     [Fact]
     public void Default_IsNotLive()
@@ -86,7 +86,7 @@ public class NowPlayingLiveOverrideTests
         Start(p, RadioUri);
         p.SetLiveOverride(RadioUri, true);
 
-        p.OnEvent(new PlaybackEvent(EvKind.Resumed, null, 1234));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Resumed, null, 1234));
 
         Assert.True(p.IsLive);
         Assert.False(p.CanSeek);

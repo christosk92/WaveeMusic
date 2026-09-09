@@ -87,10 +87,9 @@ public sealed class PlayLogStore
     /// (§F.0). Bumps <see cref="Version"/> with the ring, so one subscription covers both.</summary>
     public IReadOnlyDictionary<string, long> Recency => _recency.Map;
 
-    /// <summary>%LOCALAPPDATA%\Wavee\WaveeMusic\play-log.json — beside history.json and sidebar-layout.json.</summary>
-    public static string DefaultPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Wavee", "WaveeMusic", "play-log.json");
+    /// <summary>%LOCALAPPDATA%\{Wavee|Wavee-fake}\WaveeMusic\play-log.json — beside history.json and sidebar-layout.json.
+    /// The folder name is <see cref="UnpackagedAppDataRoot"/>'s one decision (a --fake run must not share the real profile).</summary>
+    public static string DefaultPath() => UnpackagedAppDataRoot.MusicFile("play-log.json");
 
     /// <summary>Call once (before <see cref="LoadFromDisk"/>) with the full file path. Injectable so tests point at a
     /// temp file (the <c>HistoryStore.Init</c> / <c>FileLocalStore</c> precedent). The recency sidecar path is derived

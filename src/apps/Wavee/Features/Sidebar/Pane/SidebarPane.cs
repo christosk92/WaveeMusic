@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using FluentGpu.Animation;
 using FluentGpu.Controls;   // Route
 using FluentGpu.Dsl;
@@ -10,6 +11,7 @@ using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Backend.Playlists;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Core.Sidebar;
 using static FluentGpu.Dsl.Ui;
 
@@ -83,6 +85,8 @@ sealed class SidebarPane : Component
     /// <summary>The reactive row count for the frozen-at-mount ItemsView. Written in a LAYOUT EFFECT, never in Render.</summary>
     readonly Signal<int> _rowCount = new(0);
     readonly Signal<int> _planVersion = new(0);
+    static readonly LibraryQuerySnapshot EmptyCatalogLibrary = new([], [], new LibraryStats(0, 0, 0, 0),
+        new Dictionary<string, long>());
 
     /// <summary>Bumped by any live reorder gesture AND by a collapse/expand choreography, so the ItemsView re-seeds its
     /// displacement / FLIP / fade tracks over the recycling window.</summary>
@@ -459,12 +463,17 @@ sealed class SidebarPane : Component
         MenuOverlay = UseContext(Overlay.Service);
         Playback = UseContext(PlaybackBridge.Slot);
         Store = UseContext(LibraryStore.Slot);
+        var services = UseContext(Services.Slot);
+        var demandVisibility = UseContext(SidebarDemandVisibility.Slot);
+        var active = UseIsActive();
+        var binder = Prefs?.Binder;
+        var catalogView = QueryHooks.Use(Context, static (page, value) => page.SetReady(value), services?.Queries,
+            services is null ? null : new SidebarLibraryQuery(services.CatalogScope), EmptyCatalogLibrary,
+            QueryDemand.Initial);
         // The registry is the ONE lookup path for a bound action row (never AppActions.All — the M3 forward-compat
         // guardrail). Context first, then the action bag, so a host that provides only one of them still resolves.
         Registry = UseContext(WaveeExtensionRegistry.Slot) ?? Acts?.Extensions;
         // Every mode's dynamic sections read the same warm cells Classic always did, so the first frame paints from cache.
-        Store?.EnsureStats();
-        Store?.EnsurePlaylists();
 
         // The mode's live document. Invoked HERE so the signals it reads (the Curated LayoutVersion, Classic's three
         // section flags, V3's filter/sort state) subscribe this pane.
@@ -484,6 +493,31 @@ sealed class SidebarPane : Component
         var stage = UseMemo(() => BuildStage(sourceDoc, search, edit), PlanDep(search, in edit));
         if (!_planPublished) PublishStage(stage, notify: false);
         int planVersion = _planVersion.Value;
+        // R3.x demand-effect gating: this used to be a plain auto-tracked UseEffect (no dep key), which subscribes
+        // to whatever it happens to read at RUN time — including the whole projected library Loadable and the
+        // pane-wide plan-version cell, both of which move on rebuilds this pane's own demand never needed to react
+        // to (a pins-only or feed-only projection rebuild, an unrelated row's metadata refresh). An explicit DepKey,
+        // built from render-time (tracked) reads of exactly what the body below depends on, means a rebuild whose
+        // published entries/library reference are unchanged for THIS pane's window/search/sort/pins never re-plans
+        // demand at all.
+        bool activeNow = active.Value;
+        bool demandVisibleNow = demandVisibility?.Value != false;
+        var binding = catalogView.Binding.Value;
+        var demandKey = DepKey.Combine(
+            DepKey.From(HashCode.Combine(activeNow, demandVisibleNow, RuntimeHelpers.GetHashCode(binder))),
+            DepKey.FromRef(binding));
+        UseEffect(() =>
+        {
+            if (!activeNow || !demandVisibleNow)
+            {
+                binding?.SetDemand(QueryDemand.None);
+                binder?.SetPinDemand(this, null);
+                return;
+            }
+            binding?.SetDemand(QueryDemand.Initial);
+            binder?.SetPinDemand(this, null);
+        }, demandKey);
+        UseEffect(() => (Action?)(() => binder?.SetPinDemand(this, null)), DepKey.FromRef(binder));
         int disclosureUiVersion = _disclosureVersion.Value;
         UseLayoutEffect(() => TryPublishStage(stage),
             DepKey.From(HashCode.Combine(stage.Epoch, disclosureUiVersion)));
@@ -703,6 +737,7 @@ sealed class SidebarPane : Component
             Grow = 1f,
             CountSignal = _rowCount,
             Controller = _listController,
+            Entrance = new EntranceOptions { StaggerColdRealize = true },
             // One recycle pool per row kind: a header slot never rebinds into an entity row's shape (which is also what
             // makes the per-header/per-folder animated chevron components safe under recycling).
             ContentType = ContentTypeOf,

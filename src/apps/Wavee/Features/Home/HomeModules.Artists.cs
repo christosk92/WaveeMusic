@@ -9,6 +9,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Features.Home;
 using static FluentGpu.Dsl.Ui;
 
@@ -83,12 +84,16 @@ sealed class HomeArtistRow : Component
         // blanking for the round trip (a BoxEl skeleton cannot positionally match a ComponentEl, so it used to
         // unmount/remount, which read as "disappears and reappears").
         string? hubUri = effectiveHub?.Uri;
-        Artist? warm = hubUri is null ? null : svc.RealStore?.GetArtist(hubUri);
-        if (HydrationLevels.Of(warm) < HydrationLevel.Rich) warm = null;
-        var detail = UseResource(
-            async ct => hubUri is null ? null : await svc.Library.GetArtistAsync(hubUri, HydrationLevel.Rich, ct).ConfigureAwait(false),
-            seed: warm, deps: DepKey.From(StringComparer.Ordinal.GetHashCode(hubUri ?? "")),
-            options: new ResourceOptions { KeepPreviousData = true });
+        // Memoized on the hub's uri: this used to allocate a fresh seed Artist record on EVERY render this row did
+        // (top-artists refresh, userTop refresh, an unrelated Mixview signal) even though the hub rarely changes.
+        Artist? warm = hubUri is null
+            ? null
+            : UseMemo(() => new Artist("", effectiveHub!.Uri, effectiveHub!.Name, null), (DepKey)hubUri);
+        var detail = QueryHooks.UseMapped<Artist, Artist?>(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            hubUri is null ? null : new ArtistDetailQuery(svc.CatalogScope, hubUri),
+            static artist => artist, warm,
+            new QueryDemand(true, QueryPriority.Visible,
+                TrackPresentationRequirements.RequiredFacets(TrackRow.PresentationFacts(TrackCols))), keepPrevious: true);
 
         if (artists.Count == 0) return new BoxEl();
 
@@ -163,7 +168,7 @@ sealed class HomeArtistRow : Component
                        Children =
                        [
                            new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault },
-                           Disclosure(detail.Loadable, warm, effectiveHub!, selectedUri!, tier,
+                           Disclosure(detail, warm, effectiveHub!, selectedUri!, tier,
                                go, overlay, svc, bridge, lib, userTopUris, userTopTracks.Count, onHubChanged),
                        ],
                    }],
@@ -215,17 +220,18 @@ sealed class HomeArtistRow : Component
     /// this method builds a plain Element tree with no <c>Responsive.Of</c> boundary of its own (the D17 fix: a
     /// nested <c>ResponsiveBox</c> here froze `hub`/`svc`/`go`/… at first mount, which is why a Mixview click used to
     /// do nothing — see MixviewPanel's own doc comment).</para></summary>
-    static Element Disclosure(Loadable<Artist?> loadable, Artist? warm, RelatedArtist hub, string ownerUri, int tier,
+    static Element Disclosure(QueryPresentation<Artist?> query, Artist? warm, RelatedArtist hub, string ownerUri, int tier,
                               Action<string, string?>? go, IOverlayService? overlay, Services svc,
                               PlaybackBridge? bridge, LibraryBridge? lib,
                               IReadOnlySet<string> userTopUris, int userTopCount, Action<RelatedArtist> onHubChanged)
     {
+        var loadable = query.Loadable;
         Element Content(Artist? artist)
         {
             var related = artist?.Extras?.Related ?? (IReadOnlyList<RelatedArtist>)Array.Empty<RelatedArtist>();
             // The LEFT pane now reads off the HUB, not the podium's original pick (#83): TopTracks, the section
             // header's monthly-listener facts and the Play button all follow wherever Mixview is currently centred.
-            Element left = TopTracks(artist, hub, svc, go, bridge, lib, userTopUris, userTopCount);
+            Element left = TopTracks(artist, hub, svc, go, bridge, lib, userTopUris, userTopCount, query.Binding.Value);
             Element right = Embed.Comp(
                 new MixviewProps(hub, related, tier, onHubChanged, go),
                 static () => new MixviewPanel()) with { Key = "mixview:" + ownerUri };
@@ -286,7 +292,7 @@ sealed class HomeArtistRow : Component
     // `.exp-l` — padding 16/18/18, a head with a subdued fact and a Play, then the track rows.
     static Element TopTracks(Artist? a, RelatedArtist hub, Services svc, Action<string, string?>? go,
                              PlaybackBridge? bridge, LibraryBridge? lib,
-                             IReadOnlySet<string> userTopUris, int userTopCount)
+                             IReadOnlySet<string> userTopUris, int userTopCount, IQuerySignalBinding? binding)
     {
         bool showArtwork = !AppearancePrefs.TrackArtworkHidden(svc.Settings);
         var rowCols = showArtwork ? TrackCols : TrackColsNoArt;
@@ -322,13 +328,16 @@ sealed class HomeArtistRow : Component
             {
                 var t = tracks[i];
                 var st = TrackRow.StateOf(bridge, lib, t);
+                ResourceSnapshot? count = null;
+                binding?.Resources.Value.TryGetValue(new(svc.Data.ScopeForSubject(t.Uri), t.Uri, FacetKind.PlayCount), out count);
                 // `i`, not `i + 1`: TrackRow renders DisplayIndex + 1, so passing the ordinal made the list start at 2.
                 kids.Add(TrackRow.Row(t, i, st, rowCols, rowTracks, TrackRow.RowHeight,
                              showTrackArtist: false,
                              navigate,
                              onPlay: () => TrackRow.Invoke(bridge, t, () => _ = svc.Player.PlayTrackAsync(t.Uri)),
                              onLike: t.Uri.Length > 0 ? () => lib?.ToggleSaved(t.Uri, t.Title) : null,
-                              actionsCell: TrackActions(userTopUris.Contains(t.Uri), userTopCount))
+                              actionsCell: TrackActions(userTopUris.Contains(t.Uri), userTopCount),
+                              playsState: TrackFactPresentation.State(count, binding?.Failure.Value is not null))
                          with { Key = "home-toptrack:" + t.Uri + ":art=" + showArtwork });
             }
         }

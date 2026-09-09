@@ -7,7 +7,7 @@ using Wavee.Core.Sidebar;
 namespace Wavee;
 
 // ── The versioned sidebar-layout document: wire DTOs + the AOT source-generated context (F.3.2) ───────────────────────
-// The HistoryJsonCtx / EntityJson precedent: everything persisted here goes through a JsonSerializerContext, never
+// The HistoryJsonCtx precedent: everything persisted here goes through a JsonSerializerContext, never
 // reflection. The DTOs are deliberately SEPARATE from the live records (Wavee.Core.Sidebar's SidebarCustomLayout &
 // friends): the wire shape is flat, nullable-tolerant and versioned, so a shape change is an UPGRADE, never a silent
 // data loss. Nothing in this file throws on an unknown or missing member.

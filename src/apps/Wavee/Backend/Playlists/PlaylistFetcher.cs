@@ -1,6 +1,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using Wavee.Backend.Sync;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,330 +15,148 @@ namespace Wavee.Backend.Playlists;
 /// <summary>How a revision-gated <c>/diff</c> revalidation resolved (§2.6): ops applied in place / already current /
 /// fell back to a full re-fetch (no baseline, stale revision (509), torn apply, or an unparseable response).</summary>
 public enum DiffOutcome { Applied, UpToDate, FellBackToFull }
+public sealed record PlaylistHeaderReadResult(Playlist Header, byte[]? Revision);
 
 // ── The live membership fetch (SpotifyLive boundary, but Backend so the orchestration is unit-tested) ─────────────────
-// GETs /playlist/v2/{path}?decorate=... → SelectedListContent, projects a THIN playlist header + the ordered membership
-// into the Store, and hands the membership uris to a hydrate delegate (the facade at Identity) to fill the shared entities.
+// GETs /playlist/v2/{path}?decorate=... and returns protocol observations. The replica coordinator owns adoption;
+// catalog demand independently resolves the returned occurrence URIs.
 // The same path serves a playlist and the rootlist (the rootlist is just a playlist of playlist-uri + group markers).
 public sealed class PlaylistFetcher
 {
     const string Decorate = "?decorate=revision,attributes,length,owner,capabilities,picture";
-    const string DecorateRevisionOnly = "?decorate=revision";
-
     readonly IHttpExchange _http;
     readonly Func<string> _baseUrl;
     readonly Func<string> _account;
-    readonly IStore _store;
-    readonly Func<IReadOnlyList<string>, CancellationToken, Task> _hydrate;
-    readonly Action<string>? _onRevisionChanged;
 
-    /// <param name="onRevisionChanged">Fired after a snapshot/diff apply actually ADVANCES the stored revision (never
-    /// on a no-op re-adopt of the same one). Optional: today's one caller is the playlist save-count cache, which has
-    /// no invalidation hook of its own and otherwise only ages out on its 6h TTL.</param>
-    public PlaylistFetcher(IHttpExchange http, Func<string> baseUrl, IStore store, Func<IReadOnlyList<string>, CancellationToken, Task> hydrate, Func<string> account,
-        Action<string>? onRevisionChanged = null)
+    public PlaylistFetcher(IHttpExchange http, Func<string> baseUrl, Func<string> account)
+        => (_http, _baseUrl, _account) = (http, baseUrl, account);
+
+    public async Task<PlaylistReadResult> FetchPlaylistAsync(string uri, CancellationToken ct = default)
+        => ReadSnapshot(uri, await GetAsync(uri, ct).ConfigureAwait(false));
+
+    public async Task<Playlist?> FetchPlaylistHeaderAsync(string uri, CancellationToken ct = default)
     {
-        _http = http;
-        _baseUrl = baseUrl;
-        _store = store;
-        _hydrate = hydrate;
-        _account = account;
-        _onRevisionChanged = onRevisionChanged;
+        var body = await GetAsync(uri, ct).ConfigureAwait(false);
+        return body.Attributes is { } attributes ? HeaderOf(uri, attributes, body) : null;
     }
 
-    public async Task FetchPlaylistAsync(string playlistUri, CancellationToken ct = default)
+    public async Task<PlaylistHeaderReadResult> ReadHeaderAsync(string uri, CancellationToken ct = default)
     {
-        var slc = await GetAsync(playlistUri, ct).ConfigureAwait(false);
-        var members = AdoptSnapshot(playlistUri, slc);
-        await HydrateAsync(members, ct).ConfigureAwait(false);
-        _store.Bump(playlistUri);
+        var body = await GetAsync(uri, ct).ConfigureAwait(false);
+        if (body.Attributes is not { } attributes)
+            throw new FormatException("The playlist header response omitted its attributes.");
+        return new(HeaderOf(uri, attributes, body), body.HasRevision ? body.Revision.ToByteArray() : null);
     }
 
-    /// <summary>Fetch + store ONLY a playlist's header (name / cover / owner / count) — no membership, no track hydration.
-    /// Populates the rootlist playlists' names + covers for the home + sidebar without pulling every playlist's tracks.</summary>
-    public async Task FetchPlaylistHeaderAsync(string playlistUri, CancellationToken ct = default)
+    public async Task<byte[]?> FetchPlaylistRevisionAsync(string uri, CancellationToken ct = default)
     {
-        var slc = await GetAsync(playlistUri, ct).ConfigureAwait(false);
-        if (slc.Attributes is { } attr) _store.UpsertPlaylist(HeaderOf(playlistUri, attr, slc));
-    }
-
-    /// <summary>The playlist HEAD read: GET <c>/playlist/v2/{path}?decorate=revision</c> → the current playlist4 base
-    /// revision (null when the server sends none). The cheapest authoritative answer to "has this playlist's content
-    /// rolled over", and the only one available to a surface whose own transport carries no revision — Pathfinder
-    /// <c>home</c> is GraphQL and exposes no playlist4 field, so the Home daylist hero has to ask here. Same
-    /// decorate-revision idiom the rootlist bootstrap already uses (<c>RootlistOps.BootstrapRootlistAsync</c>).
-    /// <para>Writes NOTHING to the store, deliberately: a head read must not be able to clobber a header, a membership
-    /// baseline, or the revision the sync loop owns. The caller compares the answer itself.</para></summary>
-    public async Task<byte[]?> FetchPlaylistRevisionAsync(string playlistUri, CancellationToken ct = default)
-    {
-        var url = _baseUrl() + "/playlist/v2/" + PathOf(playlistUri) + DecorateRevisionOnly;
+        var url = _baseUrl() + "/playlist/v2/" + PathOf(uri) + "?decorate=revision";
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Accept"] = "application/protobuf" };
-        using var resp = await _http.SendAsync(new HttpReq("GET", url, headers, null), ct).ConfigureAwait(false);
-        if (resp.Status != 200) throw new InvalidOperationException($"playlist revision fetch failed ({resp.Status}) for {playlistUri}");
-        var slc = Pl.SelectedListContent.Parser.ParseFrom(resp.Body);
-        return slc.HasRevision ? slc.Revision.ToByteArray() : null;
+        using var response = await _http.SendAsync(new HttpReq("GET", url, headers, null), ct).ConfigureAwait(false);
+        if (response.Status != 200) throw new System.Net.Http.HttpRequestException("Playlist revision fetch failed.", null, (System.Net.HttpStatusCode)response.Status);
+        var body = Pl.SelectedListContent.Parser.ParseFrom(response.Body);
+        return body.HasRevision ? body.Revision.ToByteArray() : null;
     }
 
-    public async Task FetchRootlistAsync(string rootlistUri, CancellationToken ct = default)
+    public async Task<RootlistReadResult> FetchRootlistAsync(string uri, CancellationToken ct = default)
     {
-        var slc = await GetAsync(rootlistUri, ct).ConfigureAwait(false);
+        var body = await GetAsync(uri, ct).ConfigureAwait(false);
+        return ReadRootlist(body);
+    }
+
+    public static RootlistReadResult ReadRootlist(Pl.SelectedListContent body)
+    {
+        if (body.Contents is { Truncated: true } || body.Contents is { Pos: > 0 })
+            throw new InvalidOperationException("The rootlist response is an incomplete membership page.");
+        if (body.Contents is null && !(body.HasLength && body.Length == 0))
+            throw new InvalidOperationException("The rootlist response omitted its membership.");
         var uris = new List<string>();
-        var timestamps = new List<long>();
-        if (slc.Contents is { } contents)
+        var stamps = new List<long>();
+        if (body.Contents is { } contents)
             foreach (var item in contents.Items)
             {
                 uris.Add(item.Uri);
-                // The ADD timestamp is what a folder rename has to resend verbatim (golden b037) — capture it here or
-                // the rename has nothing but "now" to send.
-                timestamps.Add(item.Attributes is { HasTimestamp: true } a ? a.Timestamp : 0);
+                stamps.Add(item.Attributes is { HasTimestamp: true } a ? a.Timestamp : 0);
             }
-        // the flat-marker parse lives once in RootlistTreeBuilder (shared with LibrarySync + RootlistFollowStrategy).
-        var entries = RootlistTreeBuilder.EntriesFromUris(uris, timestamps);
-        var rev = slc.HasRevision ? slc.Revision.ToByteArray() : null;
-        // I1 — the rootlist revision is stored ONLY when it is the 24-byte head (§2.6); anything else keeps the value we
-        // already trust (the 1-arg overload) so a malformed head can never become the base of the next write.
-        if (PlaylistRevisions.IsWellFormed(rev)) _store.SetRootlist(entries, rev);
-        else
-        {
-            if (rev is not null) PlaylistMutationDiagnostics.RootlistBadRevision(rev.Length, "rootlist-fetch");
-            _store.SetRootlist(entries);
-        }
+        return new RootlistReadResult(RootlistTreeBuilder.EntriesFromUris(uris, stamps).ToImmutableArray(),
+            body.HasRevision ? body.Revision.ToByteArray() : PlaylistWireMapper.ResultingRevision(body));
     }
 
-    /// <summary>Revision-gated revalidation via GET <c>/playlist/v2/{path}/diff</c> (§2.6, fixes RC5): a resident,
-    /// unchanged playlist costs one up-to-date round-trip (or a 304); a changed one applies ONLY the server's ops onto the
-    /// resident baseline and hydrates ONLY the added uris. No baseline / no stored revision / a stale revision (509) /
-    /// a torn apply / an unparseable body all fall back to the full <see cref="FetchPlaylistAsync"/> — always converges.</summary>
-    public async Task<DiffOutcome> FetchPlaylistDiffAsync(string playlistUri, CancellationToken ct = default)
+    public PlaylistReadResult ReadSnapshot(string uri, Pl.SelectedListContent body)
     {
-        var rev = _store.PlaylistRevision(playlistUri);
-        var baseline = _store.Membership(playlistUri);
-        if (rev is null || rev.Length < 5 || baseline.Count == 0)   // rev = 4B counter + hash; nothing to gate on → full
-        {
-            await FetchPlaylistAsync(playlistUri, ct).ConfigureAwait(false);
-            return DiffOutcome.FellBackToFull;
-        }
+        if (body.Contents is { Truncated: true } || body.Contents is { Pos: > 0 })
+            throw new InvalidOperationException("The playlist response is an incomplete membership page.");
+        if (body.Contents is null && !(body.HasLength && body.Length == 0) && body.Attributes?.DeletedByOwner != true)
+            throw new InvalidOperationException("The playlist response omitted its membership.");
+        var (members, revision) = PlaylistWireMapper.ParseContents(body);
+        return new PlaylistReadResult(uri, PlaylistReadKind.Snapshot, null, revision,
+            members.ToImmutableArray(), [], body.Attributes is { } attr ? HeaderOf(uri, attr, body) : null);
+    }
 
-        // revision wire string "counter,hexhash" — the comma MUST be %2C-encoded or the gateway 509s (§2.6).
-        var enc = Uri.EscapeDataString(FormatRevision(rev));
-        var url = _baseUrl() + "/playlist/v2/" + PathOf(playlistUri) + "/diff?revision=" + enc + "&handlesContent=&hint_revision=" + enc;
+    public async Task<PlaylistReadResult> FetchPlaylistDiffAsync(string uri, PlaylistReplicaBaseline baseline,
+        CancellationToken ct = default)
+    {
+        var revision = baseline.Revision;
+        if (!PlaylistRevisions.IsWellFormed(revision) || baseline.State is ReplicaBaselineState.Missing or ReplicaBaselineState.RecoveryOnly or ReplicaBaselineState.NeedsResync)
+            return await FetchPlaylistAsync(uri, ct).ConfigureAwait(false);
+        var encoded = Uri.EscapeDataString(FormatRevision(revision!));
+        var url = _baseUrl() + "/playlist/v2/" + PathOf(uri) + "/diff?revision=" + encoded + "&handlesContent=&hint_revision=" + encoded;
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Accept"] = "application/protobuf" };
-        byte[] body;
-        int status;
-        using (var resp = await _http.SendAsync(new HttpReq("GET", url, headers, null), ct).ConfigureAwait(false))
+        Pl.SelectedListContent? body = null;
+        bool unchanged = false;
+        using (var response = await _http.SendAsync(new HttpReq("GET", url, headers, null), ct).ConfigureAwait(false))
         {
-            status = resp.Status;
-            if (status == 304)   // Not Modified = our revision is current
+            if (response.Status == 200)
             {
-                await RefreshRollingHeaderAsync(playlistUri, ct).ConfigureAwait(false);
-                return DiffOutcome.UpToDate;
+                using var bytes = new MemoryStream();
+                await response.Body.CopyToAsync(bytes, ct).ConfigureAwait(false);
+                try { body = Pl.SelectedListContent.Parser.ParseFrom(SpotifyZstd.MaybeDecompressZstd(bytes.ToArray())); }
+                catch (Google.Protobuf.InvalidProtocolBufferException) { }
             }
-            if (status != 200)                                // 509 (revision too stale — editorial mixes) or anything else
-            {
-                await FetchPlaylistAsync(playlistUri, ct).ConfigureAwait(false);
-                return DiffOutcome.FellBackToFull;
-            }
-            using var ms = new MemoryStream();
-            await resp.Body.CopyToAsync(ms, ct).ConfigureAwait(false);   // diff bodies are small — buffer for the zstd sniff
-            body = ms.ToArray();
+            else if (response.Status == 304) unchanged = true;
+            else
+                return await FetchPlaylistAsync(uri, ct).ConfigureAwait(false);
         }
-
-        Pl.SelectedListContent slc;
-        try { slc = Pl.SelectedListContent.Parser.ParseFrom(SpotifyZstd.MaybeDecompressZstd(body)); }
-        catch
+        if (body is null && !unchanged)
         {
-            await FetchPlaylistAsync(playlistUri, ct).ConfigureAwait(false);
-            return DiffOutcome.FellBackToFull;
+            // A malformed 200 cannot certify an unchanged baseline; a 304 is handled by the explicit read below.
+            return await FetchPlaylistAsync(uri, ct).ConfigureAwait(false);
         }
-
-        if (slc.HasUpToDate && slc.UpToDate)
+        body ??= new Pl.SelectedListContent { UpToDate = true };
+        if (body.Contents is not null) return ReadSnapshot(uri, body);
+        ImmutableArray<PlaylistOp> ops = [];
+        var kind = PlaylistReadKind.Unchanged;
+        var head = revision;
+        if (body.Diff is { } diff && !(body.HasUpToDate && body.UpToDate))
         {
-            await RefreshRollingHeaderAsync(playlistUri, ct).ConfigureAwait(false);
-            return DiffOutcome.UpToDate;
-        }
-
-        if (slc.Diff is { } diff)
-        {
-            var list = new List<PlaylistMember>(baseline);
-            var before = new HashSet<string>(StringComparer.Ordinal);
-            for (int i = 0; i < baseline.Count; i++) before.Add(baseline[i].ItemUri);
-            IReadOnlyList<PlaylistOp> mappedOps;
-            // Torn apply — the resident baseline drifted, or the diff carries an op shape this client cannot express.
-            // Either way a full re-fetch converges.
+            if (diff.HasFromRevision && !PlaylistRevisions.Equal(revision, diff.FromRevision.ToByteArray()))
+                return await FetchPlaylistAsync(uri, ct).ConfigureAwait(false);
             try
             {
-                mappedOps = PlaylistWireMapper.MapOps(diff.Ops);
-                PlaylistDiffApplier.Apply(list, mappedOps);
+                ops = PlaylistWireMapper.MapOps(diff.Ops).ToImmutableArray();
+                // Validate without publishing; the coordinator validates the expected base again at commit time.
+                var candidate = new List<PlaylistMember>(baseline.Members);
+                PlaylistDiffApplier.Apply(candidate, ops);
             }
-            catch (ArgumentOutOfRangeException)
-            {
-                await FetchPlaylistAsync(playlistUri, ct).ConfigureAwait(false);
-                return DiffOutcome.FellBackToFull;
-            }
-            _store.SetMembership(playlistUri, list,
-                StorableRevision(playlistUri, diff.HasToRevision ? diff.ToRevision.ToByteArray() : rev, "diff"));
-            var added = new List<string>();
-            for (int i = 0; i < list.Count; i++) { var u = list[i].ItemUri; if (!before.Contains(u)) added.Add(u); }
-            if (added.Count > 0) { await HydrateUrisAsync(added, ct).ConfigureAwait(false); _store.Bump(playlistUri); }
-            if (ContainsUpdateList(mappedOps))
-            {
-                // Best-effort: the ops already applied to the resident membership above, so a failed header re-fetch
-                // leaves a stale name/description/cover — annoying, not wrong — rather than losing the diff apply.
-                // Swallowing it SILENTLY (the old bare catch) hid exactly that staleness from every diagnostic; logging
-                // it here costs nothing on the happy path and gives support a trail when a playlist's header lags.
-                try { await FetchPlaylistHeaderAsync(playlistUri, ct).ConfigureAwait(false); }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    WaveeLog.Instance.Event(WaveeLogLevel.Warning, "playlist", "playlist.header.refetch.fail",
-                        "header re-fetch after diff failed", ex: ex, fields: [WaveeLogField.Of("uri", playlistUri)]);
-                }
-            }
-            // No UPDATE_LIST op does not mean the header is current for a ROLLING-IDENTITY playlist (cause 4): the
-            // server can swap the whole edition without ever emitting one.
-            else await RefreshRollingHeaderAsync(playlistUri, ct).ConfigureAwait(false);
-            if (!PlaylistRevisions.Equal(rev, _store.PlaylistRevision(playlistUri))) _onRevisionChanged?.Invoke(playlistUri);
-            return DiffOutcome.Applied;
+            catch (ArgumentOutOfRangeException) { return await FetchPlaylistAsync(uri, ct).ConfigureAwait(false); }
+            kind = PlaylistReadKind.Delta;
+            head = diff.HasToRevision ? diff.ToRevision.ToByteArray() : null;
         }
-
-        if (slc.Contents is not null)   // some responses carry the full contents instead of ops — treat as a full refresh
-        {
-            var members = AdoptSnapshot(playlistUri, slc, rev);
-            await HydrateAsync(members, ct).ConfigureAwait(false);
-            _store.Bump(playlistUri);
-            // AdoptSnapshot only wrote the header when this body carried Attributes — a rolling-identity playlist still
-            // needs the real header GET when it did not.
-            if (slc.Attributes is null) await RefreshRollingHeaderAsync(playlistUri, ct).ConfigureAwait(false);
-            return DiffOutcome.FellBackToFull;
-        }
-
-        // 200 with nothing actionable — nothing changed that we can see, EXCEPT possibly a rolling-identity header.
-        await RefreshRollingHeaderAsync(playlistUri, ct).ConfigureAwait(false);
-        return DiffOutcome.UpToDate;
+        if (body.Diff is null && !(body.HasUpToDate && body.UpToDate))
+            return await FetchPlaylistAsync(uri, ct).ConfigureAwait(false);
+        Playlist? header = body.Attributes is { } attr ? HeaderOf(uri, attr, body) : null;
+        return new PlaylistReadResult(uri, kind, revision, head, [], ops, header);
     }
 
-    /// <summary>Cause (4) of the stale-daylist-header defect: a rolling-identity playlist (<see
-    /// cref="PlaylistSnapshotFacts.IsRollingIdentity"/> — a daylist and its future siblings) can swap its entire
-    /// header (name, description, cover) for a new edition without a single op a <c>/diff</c> response would ever
-    /// carry. So every outcome above that did NOT just land a fresh header itself (a 304, an up-to-date verdict, an
-    /// APPLIED diff with no <c>UPDATE_LIST</c> op) asks for one here, unconditionally, for exactly this shape of
-    /// playlist. Best-effort and logged, mirroring the UPDATE_LIST re-fetch above it: a failed GET here must never
-    /// lose the diff/membership outcome the caller already has.</summary>
-    async Task RefreshRollingHeaderAsync(string playlistUri, CancellationToken ct)
-    {
-        var header = _store.GetPlaylist(playlistUri);
-        if (!PlaylistSnapshotFacts.IsRollingIdentity(header?.Format, header?.DaylistExpiresAtMs ?? 0)) return;
-        try { await FetchPlaylistHeaderAsync(playlistUri, ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            WaveeLog.Instance.Event(WaveeLogLevel.Warning, "playlist", "playlist.header.refetch.fail",
-                "rolling-identity header refresh failed", ex: ex, fields: [WaveeLogField.Of("uri", playlistUri)]);
-        }
-    }
-
-    /// <summary>The playlist4 revision wire string: 4-byte big-endian counter + the remaining bytes as lowercase hex,
-    /// joined with a comma (percent-encode when it rides a query string).</summary>
-    internal static string FormatRevision(byte[] rev)
-        => BinaryPrimitives.ReadInt32BigEndian(rev.AsSpan(0, 4)) + "," + Convert.ToHexStringLower(rev.AsSpan(4));
-
-    /// <summary>Hydrate the entities behind a specific uri list (the LibrarySync in-place-apply path fills ONLY the added
-    /// track/episode uris without a full re-fetch). Non-track/episode uris are skipped, mirroring <see cref="HydrateAsync"/>.</summary>
-    public async Task HydrateUrisAsync(IReadOnlyList<string> uris, CancellationToken ct = default)
-    {
-        var filtered = new List<string>(uris.Count);
-        for (int i = 0; i < uris.Count; i++)
-        {
-            var u = uris[i];
-            if (EntityUri.KindOf(u) is EntityKind.Track or EntityKind.Episode) filtered.Add(u);
-        }
-        if (filtered.Count > 0) await _hydrate(filtered, ct).ConfigureAwait(false);
-    }
-
-    /// <summary>Atomically adopts a full playlist response. Revision, header, and membership land before metadata
-    /// hydration, so a failed hydrator cannot roll back an accepted server mutation.</summary>
-    public IReadOnlyList<PlaylistMember> AdoptSnapshot(
-        string playlistUri,
-        Pl.SelectedListContent slc,
-        byte[]? fallbackRevision = null)
-    {
-        var (members, revision) = PlaylistWireMapper.ParseContents(slc);
-        var previous = _store.GetPlaylist(playlistUri);
-        var priorRevision = _store.PlaylistRevision(playlistUri);
-        byte[]? storedRevision;
-        using (_store.BeginBulk())
-        {
-            if (slc.Attributes is { } attr) _store.UpsertPlaylist(HeaderOf(playlistUri, attr, slc));
-            storedRevision = StorableRevision(playlistUri, revision ?? fallbackRevision, "full-get");
-            _store.SetMembership(playlistUri, members, storedRevision);
-            _store.Bump(playlistUri);
-        }
-        LogSnapshot(playlistUri, previous, _store.GetPlaylist(playlistUri), members, revision ?? fallbackRevision);
-        // A genuinely NEW revision — never a same-uri re-adopt of the one already resident — is the "this playlist's
-        // identity may have moved" signal the save-count cache has no other hook for.
-        if (!PlaylistRevisions.Equal(priorRevision, storedRevision)) _onRevisionChanged?.Invoke(playlistUri);
-        return members;
-    }
-
-    static void LogSnapshot(string uri, Playlist? previous, Playlist? next,
-        IReadOnlyList<PlaylistMember> members, byte[]? revision)
-    {
-        if (!WaveeLog.Instance.IsEnabled(WaveeLogLevel.Info)) return;
-        WaveeLog.Instance.Event(WaveeLogLevel.Info, "playlist", "playlist.snapshot",
-            "playlist header and membership adopted",
-            fields:
-            [
-                WaveeLogField.Of("uri", uri),
-                WaveeLogField.Of("format", next?.Format ?? ""),
-                WaveeLogField.Of("rev", PlaylistSnapshotFacts.ShortRev(revision)),
-                WaveeLogField.Of("name", next?.Name ?? ""),
-                WaveeLogField.Of("nameChanged", PlaylistSnapshotFacts.NameChanged(previous?.Name, next?.Name)),
-                WaveeLogField.Of("cover", PlaylistSnapshotFacts.CoverId(next?.Cover)),
-                WaveeLogField.Of("sameArt", ImageSource.SameArt(previous?.Cover, next?.Cover)),
-                WaveeLogField.Of("members", members.Count),
-                WaveeLogField.Of("headUid", PlaylistSnapshotFacts.HeadUid(members)),
-            ]);
-    }
-
-    /// <summary>I1 — the gate every membership-revision write passes through. A candidate that is not the 24-byte
-    /// playlist4 head is refused (with a logged reason) and the revision we already trust is kept: adopting a malformed
-    /// head would make it the base of the next /changes POST and of every echo-suppression comparison.</summary>
-    byte[]? StorableRevision(string playlistUri, byte[]? candidate, string source)
-    {
-        if (PlaylistRevisions.IsWellFormed(candidate)) return candidate;
-        if (candidate is not null) PlaylistMutationDiagnostics.RootlistBadRevision(candidate.Length, source);
-        return _store.PlaylistRevision(playlistUri);
-    }
-
-    /// <summary>Hydrates the current authoritative membership; safe to retry after another snapshot has landed.</summary>
-    public Task HydrateMembershipAsync(string playlistUri, CancellationToken ct = default)
-        => HydrateAsync(_store.Membership(playlistUri), ct);
+    internal static string FormatRevision(byte[] revision)
+        => BinaryPrimitives.ReadInt32BigEndian(revision.AsSpan(0, 4)) + "," + Convert.ToHexStringLower(revision.AsSpan(4));
 
     async Task<Pl.SelectedListContent> GetAsync(string uri, CancellationToken ct)
     {
-        var url = _baseUrl() + "/playlist/v2/" + PathOf(uri) + Decorate;
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Accept"] = "application/protobuf" };
-        using var resp = await _http.SendAsync(new HttpReq("GET", url, headers, null), ct).ConfigureAwait(false);
-        if (resp.Status != 200) throw new InvalidOperationException($"playlist fetch failed ({resp.Status}) for {uri}");
-        return Pl.SelectedListContent.Parser.ParseFrom(resp.Body);   // stream-parse: a 10k-item body never lands on the LOH
-    }
-
-    async Task HydrateAsync(IReadOnlyList<PlaylistMember> members, CancellationToken ct)
-    {
-        var uris = new List<string>(members.Count);
-        for (int i = 0; i < members.Count; i++)
-        {
-            var u = members[i].ItemUri;
-            if (EntityUri.KindOf(u) is EntityKind.Track or EntityKind.Episode) uris.Add(u);
-        }
-        if (uris.Count > 0) await _hydrate(uris, ct).ConfigureAwait(false);
-    }
-
-    static bool ContainsUpdateList(IReadOnlyList<PlaylistOp> ops)
-    {
-        for (int i = 0; i < ops.Count; i++)
-            if (ops[i].Kind == PlaylistOpKind.UpdateList) return true;
-        return false;
+        using var response = await _http.SendAsync(new HttpReq("GET", _baseUrl() + "/playlist/v2/" + PathOf(uri) + Decorate, headers, null), ct).ConfigureAwait(false);
+        if (response.Status != 200) throw new System.Net.Http.HttpRequestException("Playlist fetch failed.", null, (System.Net.HttpStatusCode)response.Status);
+        return Pl.SelectedListContent.Parser.ParseFrom(response.Body);
     }
 
     // "spotify:playlist:abc" → "playlist/abc"; "spotify:user:bob:rootlist" → "user/bob/rootlist".

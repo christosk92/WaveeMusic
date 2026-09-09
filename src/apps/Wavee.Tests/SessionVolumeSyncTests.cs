@@ -11,10 +11,14 @@ using Xunit;
 namespace Wavee.Tests;
 
 // Two-way Windows session-volume sync at the controller/sink level (plan §D1 SessionVolumeSyncTests).
-public class SessionVolumeSyncTests
+public class SessionVolumeSyncTests : PlaybackCatalogTestBase
 {
     sealed class RecAudioHost : IAudioHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, _sig.OnNext);
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, _sig.OnNext);
+        public bool PlayIntent => IsPlaying;
+
         public readonly List<string> Calls = new();
         readonly SimpleSubject<AudioHostSignal> _sig = new();
         public IObservable<AudioHostSignal> Signals => _sig;
@@ -54,21 +58,21 @@ public class SessionVolumeSyncTests
         new(active, false, default, "spotify:playlist:ctx", false, true, false, 0, 0, 0, 0, false, RepeatMode.Off,
             Array.Empty<ConnectDeviceRow>(), Array.Empty<RemoteTrack>());
 
-    static PlaybackController Make(out RecAudioHost host, out NowPlayingProjection proj, out RecOutbound outbound, out RecProj extra)
+    PlaybackController Make(out RecAudioHost host, out NowPlayingProjection proj, out RecOutbound outbound, out RecProj extra)
     {
         host = new RecAudioHost();
-        proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        proj = Catalog.Projection("us", () => 0);
         outbound = new RecOutbound();
         extra = new RecProj();
         return new PlaybackController(host, new StubTrackResolver(), proj, new FakeContextResolver("spotify:track:a"), "us", outbound, new[] { extra });
     }
 
-    static async Task PrimeLocalPlaybackWithStaleProjection(
+    async Task PrimeLocalPlaybackWithStaleProjection(
         PlaybackController controller, RecAudioHost host, NowPlayingProjection projection)
     {
         await controller.PlayAsync("spotify:track:a");
         host.PositionMs = 15_000;   // the audio engine is authoritative at 0:15
-        projection.OnEvent(new PlaybackEvent(EvKind.Seeked, projection.CurrentTrack, 60_000));
+        Catalog.Event(projection, new PlaybackEvent(EvKind.Seeked, projection.CurrentTrack, 60_000));
         host.Calls.Clear();         // ignore setup calls; the volume intent must write the host exactly once
     }
 
@@ -89,7 +93,7 @@ public class SessionVolumeSyncTests
     {
         using var c = Make(out _, out var proj, out _, out _);
         c.OnExternalVolumeChanged(0.5);                          // NoteLocalCommand + slider 0.5
-        proj.OnCluster(Cluster("us") with { ActiveVolume0_65535 = 6553 });   // stale ~0.1 echo inside the window
+        Catalog.Cluster(proj, Cluster("us") with { ActiveVolume0_65535 = 6553 });   // stale ~0.1 echo inside the window
         Assert.Equal(0.5, proj.Volume, 2);                       // not snapped back
     }
 
@@ -133,7 +137,7 @@ public class SessionVolumeSyncTests
     public async Task SetVolumeAsync_StillForwards_ToRemoteTarget()
     {
         using var c = Make(out _, out var proj, out var outbound, out _);
-        proj.OnCluster(Cluster("other-device"));
+        Catalog.Cluster(proj, Cluster("other-device"));
         await c.SetVolumeAsync(0.25);
         Assert.Equal((int)Math.Round(0.25 * 65535), outbound.LastVolume);   // regression: remote volume PUT unchanged
     }

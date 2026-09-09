@@ -234,7 +234,11 @@ sealed class PopOutVideoStage : Component
                 PauseRequested = bridge is null ? null : () => _ = bridge.Player.PauseAsync(),
                 // The seek MODE travels with the target: a scrub-in-flight asks for Keyframe (cheap, snappy) and the
                 // commit asks for Accurate. Dropping it here forced every seek through the accurate path.
-                SeekRequested = bridge is null ? null : (target, mode) => _ = bridge.Player.SeekAsync((long)target.TotalMilliseconds, mode),
+                SeekRequested = bridge is null ? null : (target, mode) =>
+                {
+                    if (mode == FluentGpu.Media.SeekMode.Keyframe) bridge.PreviewSeek((long)target.TotalMilliseconds);
+                    else bridge.CommitSeek((long)target.TotalMilliseconds);
+                },
                 AspectMode = bridge?.VideoAspectPolicy,
                 CustomAspectRatio = bridge?.VideoCustomAspectRatio,
                 AspectModeChanged = bridge is null ? null : bridge.SetVideoAspect,

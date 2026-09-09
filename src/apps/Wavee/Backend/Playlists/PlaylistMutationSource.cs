@@ -1,16 +1,18 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Backend.Spotify;
+using Wavee.Backend.Sync;
 using Wavee.Core;
 using Pl = Wavee.Protocol.Playlist;
 
 namespace Wavee.Backend.Playlists;
 
-/// <summary>Real Spotify playlist editing backed by <see cref="MutationEngine.Edit"/> and direct HTTP for cover/permission.</summary>
+/// <summary>Real Spotify playlist editing backed by <see cref="MutationEngine.EditAsync"/> and direct HTTP for cover/permission.</summary>
 public sealed class PlaylistMutationSource : IPlaylistMutationSource
 {
     /// <summary>Spotify's public mutation contract caps one item batch at 100. The internal playlist4 wire accepts the
@@ -18,25 +20,20 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     public const int MaxItemBatch = 100;
     readonly MutationEngine _mut;
     readonly ITransport _transport;
-    readonly IStore? _store;
+    readonly IStore _store;
+    readonly LibraryReplicaCoordinator _replicas;
+    readonly IRootlistCommandQueue _commands;
     readonly PlaylistPermissionClient _permissions;
     IHttpExchange _http;
     readonly Func<SessionContext> _ctx;
     readonly Func<string> _spclientBaseUrl;
     readonly UserPlaylistSource _local;
-    // I2 — the ONE rootlist write lane. Shared with the outbox's RootlistFollowStrategy at the composition root, so a
-    // drained follow/unfollow can never interleave with a direct move/delete/visibility/create op and rebase a
-    // positional MOV against marker indices that moved underneath it.
-    readonly RootlistLane _rootlistLane;
-
-    /// <summary>Set at go-live (§6): routes post-write drains through LibrarySync (same as <see cref="EngineMutationSource.ScheduleDrain"/>).</summary>
-    public Func<CancellationToken, Task>? ScheduleDrain { get; set; }
-
     public PlaylistMutationSource(
         MutationEngine mut, ITransport transport, IHttpExchange http, Func<SessionContext> ctx,
-        Func<string> spclientBaseUrl, UserPlaylistSource local, RootlistLane rootlistLane, IStore? store = null)
-        => (_mut, _transport, _http, _ctx, _spclientBaseUrl, _local, _rootlistLane, _store, _permissions) =
-            (mut, transport, http, ctx, spclientBaseUrl, local, rootlistLane, store, new PlaylistPermissionClient(transport));
+        Func<string> spclientBaseUrl, UserPlaylistSource local, IStore store,
+        LibraryReplicaCoordinator replicas, IRootlistCommandQueue commands)
+        => (_mut, _transport, _http, _ctx, _spclientBaseUrl, _local, _store, _replicas, _commands, _permissions) =
+            (mut, transport, http, ctx, spclientBaseUrl, local, store, replicas, commands, new PlaylistPermissionClient(transport));
 
     public void SetHttp(IHttpExchange http) => _http = http;
 
@@ -48,58 +45,34 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     /// a fire-and-forget follow-up) and what makes an offline create work with no extra code.</para></summary>
     public PlaylistCreated CreatePlaylist(string name, RootlistPlacement placement)
     {
-        RequireStore();
-        var store = _store!;
         var ctx = _ctx();
         string trimmed = string.IsNullOrWhiteSpace(name) ? "New Playlist" : name.Trim();
-        long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        // The id is OURS: the create posts /changes to it, so the uri is knowable before the first byte leaves.
         string id = SpotifyIds.NewPlaylistId();
         string uri = "spotify:playlist:" + id;
+        var header = new Playlist(id, uri, trimmed, null, ctx.Account, null, 0, Array.Empty<Track>(),
+            Owner: new Owner(ctx.Account, ctx.Account, null),
+            Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: true, CanEditMetadata: true,
+                IsCollaborative: false, IsOwner: true, CanAdministratePermissions: true, Known: true), IsPublic: true);
+        var staged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        return new PlaylistCreated(uri, CreateAndDrainAsync(header, placement, staged)) { Staged = staged.Task };
+    }
 
-        using (store.BeginBulk())
+    async Task CreateAndDrainAsync(Playlist header, RootlistPlacement placement, TaskCompletionSource staged)
+    {
+        Task completion;
+        try
         {
-            store.UpsertPlaylist(new Playlist(
-                id, uri, trimmed, null, ctx.Account, null, 0, System.Array.Empty<Track>(),
-                Owner: new Owner(ctx.Account, ctx.Account, null),
-                // We are the owner of a brand-new list: every edit affordance is live, and a fresh playlist is public
-                // until the permission GET says otherwise (which is also what desktop assumes).
-                Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: true, CanEditMetadata: true,
-                                                       IsCollaborative: false, IsOwner: true, CanAdministratePermissions: true, Known: true),
-                IsPublic: true));
-            store.SetMembership(uri, System.Array.Empty<PlaylistMember>(), null);
-            int at = RootlistOps.PlacementIndex(store.Rootlist(), placement);
-            if (at < 0) at = 0;                       // the folder vanished between the menu and the click → top level
-            store.SetRootlist(RootlistOps.ApplyLocally(store.Rootlist(),
-                new[] { new PlaylistOp(PlaylistOpKind.Add, FromIndex: at, Items: new[] { new PlaylistMember("", uri, null, nowMs) }) }));
-            store.SetSaved("playlists", uri, true, SyncState.Pending, nowMs);
-            store.Bump("rootlist", CollectionKind.Playlists);
+            (_, completion) = await _mut.CreateAsync(header.Uri, header.Name, header, placement.ParentFolderId).ConfigureAwait(false);
+            staged.TrySetResult();
         }
-
-        var (_, completion) = _mut.Create(uri, trimmed);
-        // The rootlist ADD is queued as its own durable op behind the create. Its optimistic arm is a no-op here (the
-        // entry is already in the list above); its replay resolves the folder to an index against the CURRENT rootlist.
-        _mut.Follow(uri, true, placement.ParentFolderId);
-        _ = PumpAsync(uri);
-        return new PlaylistCreated(uri, completion);
+        catch (Exception error) { staged.TrySetException(error); throw; }
+        await _commands.DrainWritesAsync(CancellationToken.None).ConfigureAwait(false);
+        await completion.ConfigureAwait(false);
     }
 
     // Kick the drain without making the seam async. Failures are not swallowed: an op-level failure is already reported
     // through the create completion / the pending state, and a drain-level fault is logged here.
-    async Task PumpAsync(string uri)
-    {
-        try
-        {
-            if (ScheduleDrain is { } viaLoop) await viaLoop(CancellationToken.None).ConfigureAwait(false);
-            else
-            {
-                PlaylistMutationDiagnostics.DrainInline(uri);
-                await _mut.Drain(_transport, _ctx(), CancellationToken.None).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) { /* shutdown — the op stays durable and replays next login */ }
-        catch (Exception ex) { PlaylistMutationDiagnostics.CreateFailed(uri, "drain-faulted:" + ex.GetType().Name); }
-    }
+
 
     public Task AddTracksAsync(string playlistUri, IReadOnlyList<Track> tracks, CancellationToken ct = default)
     {
@@ -117,11 +90,8 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     Task InsertTracksCoreAsync(string playlistUri, IReadOnlyList<Track> tracks, int? toIndex, CancellationToken ct)
     {
         if (tracks.Count == 0) return Task.CompletedTask;
-        RequireStore();
         // Membership is intentionally thin (URI + row facts). Recommended/search results are not guaranteed to have
-        // passed through metadata hydration, so persist the supplied entities before the optimistic membership edit;
-        // otherwise JoinMembership drops the new row and the add appears to work only for previously-cached tracks.
-        for (int i = 0; i < tracks.Count; i++) _store!.UpsertTrack(tracks[i]);
+        // passed through the catalog, so seed their known fields in the same durable transaction as the membership edit.
         long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         string account = _ctx().Account;
         var membership = _store!.Membership(playlistUri);
@@ -146,8 +116,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
                 Anchor: toIndex is null ? null : InsertAnchor(membership, at, previousBatchLastId)));
             previousBatchLastId = members[count - 1].ItemId;
         }
-        long edit = EnqueueEdit(playlistUri, ops);
-        return DrainAsync(edit, playlistUri, ct);
+        return StageAndDrainAsync(playlistUri, ops, ct, tracks);
     }
 
     /// <summary>I5 — the predecessor an index ADD was built against: the previous batch's last minted row when this is
@@ -167,8 +136,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     {
         if (IsLocal(playlistUri)) throw new PlaylistMutationException(PlaylistMutationFailure.NotSupported, $"Local playlist row removal is not implemented (uri={playlistUri}).");
         if (rows.Count == 0) return Task.CompletedTask;
-        long edit = EnqueueEdit(playlistUri, BuildRemoveOps(rows));
-        return DrainAsync(edit, playlistUri, ct);
+        return StageAndDrainAsync(playlistUri, BuildRemoveOps(rows), ct);
     }
 
     /// <summary>One Delta, one keyed REM per row (the A 143 shape): every row is named by <c>(uri, item_id)</c> and
@@ -203,11 +171,9 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     {
         if (IsLocal(playlistUri)) throw new PlaylistMutationException(PlaylistMutationFailure.NotSupported, $"Local playlist row reordering is not implemented (uri={playlistUri}).");
         if (rows.Count == 0) return Task.CompletedTask;
-        RequireStore();
         var op = BuildKeyedMove(_store!.Membership(playlistUri), rows, toIndex);
         if (op is null) return Task.CompletedTask;               // the rows already sit where the drop asked for them
-        long edit = EnqueueEdit(playlistUri, op);
-        return DrainAsync(edit, playlistUri, ct);
+        return StageAndDrainAsync(playlistUri, [op], ct);
     }
 
     /// <summary>The ONE reorder shape: a single item-keyed MOV (the A 148 shape) carrying every selected row plus ONE
@@ -290,7 +256,6 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     /// build is a THROW, never a quiet return (F3): the caller must not toast "Moved to …" for a batch never sent.</para></summary>
     public async Task MoveRootlistItemsAsync(IReadOnlyList<RootlistMove> moves, CancellationToken ct = default)
     {
-        RequireStore();
         // One log key for the whole batch: the first source, and how many rode with it.
         string logKey = moves.Count == 0 ? "rootlist"
                       : moves.Count == 1 ? moves[0].Source.Key
@@ -313,16 +278,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     /// bootstrap (or a dealer push) may already have replaced them with server truth, and restoring a pre-move snapshot
     /// over that would resurrect rows the server no longer has. Returns the still-outstanding optimistic rows (null once
     /// there is nothing left to undo) so a caller can keep tracking it with one assignment.</summary>
-    static IReadOnlyList<RootlistEntry>? RollbackRootlist(IStore store, IReadOnlyList<RootlistEntry> before,
-                                                          IReadOnlyList<RootlistEntry>? optimistic, string reason)
-    {
-        if (optimistic is null) return null;
-        if (!ReferenceEquals(store.Rootlist(), optimistic)) return null;   // server truth already landed on top of ours
-        store.SetRootlist(before);
-        store.Bump("rootlist", CollectionKind.Playlists);
-        PlaylistMutationDiagnostics.RootlistMoveRolledBack(reason);
-        return null;
-    }
+
 
     static string ReasonOf(Exception ex) => ex switch
     {
@@ -349,8 +305,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     {
         if (IsLocal(playlistUri)) throw new PlaylistMutationException(PlaylistMutationFailure.NotSupported, $"Local playlist metadata editing is not implemented (uri={playlistUri}).");
         var patch = new PlaylistListAttributePatch(Name: name, Description: description, Collaborative: collaborative);
-        long edit = EnqueueEdit(playlistUri, new PlaylistOp(PlaylistOpKind.UpdateList, ListPatch: patch));
-        return DrainAsync(edit, playlistUri, ct);
+        return StageAndDrainAsync(playlistUri, [new PlaylistOp(PlaylistOpKind.UpdateList, ListPatch: patch)], ct);
     }
 
     public async Task SetCoverJpegAsync(string playlistUri, byte[] jpeg, CancellationToken ct = default)
@@ -382,61 +337,28 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
         var regJson = JsonDocument.Parse(reg.Body);
         var pictureB64 = regJson.RootElement.GetProperty("picture").GetString() ?? "";
         var pictureBytes = Convert.FromBase64String(pictureB64);
-        long edit = EnqueueEdit(playlistUri, new PlaylistOp(PlaylistOpKind.UpdateList, ListPatch: new PlaylistListAttributePatch(PictureBytes: pictureBytes)));
-        await DrainAsync(edit, playlistUri, ct).ConfigureAwait(false);
+        await StageAndDrainAsync(playlistUri, [new PlaylistOp(PlaylistOpKind.UpdateList, ListPatch: new PlaylistListAttributePatch(PictureBytes: pictureBytes))], ct).ConfigureAwait(false);
     }
 
     public async Task SetPlaylistVisibilityAsync(string playlistUri, bool isPublic, CancellationToken ct = default)
     {
         if (IsLocal(playlistUri)) throw new PlaylistMutationException(PlaylistMutationFailure.NotSupported, $"Local playlists have no visibility (uri={playlistUri}).");
-        RequireStore();
         var level = isPublic ? PlaylistPermissionLevel.Viewer : PlaylistPermissionLevel.Blocked;
         var resulting = await _permissions.SetBasePermissionAsync(playlistUri, level, ct).ConfigureAwait(false);
-        PatchPlaylistVisibility(playlistUri, isPublic, resulting.Revision);
+        await PatchPlaylistVisibilityAsync(playlistUri, isPublic, resulting.Revision, ct).ConfigureAwait(false);
         try { await TryRootlistPublicFlagAsync(playlistUri, isPublic, ct).ConfigureAwait(false); }
         catch { /* best-effort — permission already committed */ }
     }
 
-    public async Task DeletePlaylistAsync(string playlistUri, CancellationToken ct = default)
+    public Task DeletePlaylistAsync(string playlistUri, CancellationToken ct = default)
     {
-        if (IsLocal(playlistUri)) throw new PlaylistMutationException(PlaylistMutationFailure.NotSupported, $"Local playlist delete is not implemented (uri={playlistUri}).");
-        RequireStore();
-        var store = _store!;
-        var ctx = _ctx();
-        // I2 — the index this REM carries is only valid against the marker stream nobody else is rewriting.
-        await _rootlistLane.WaitAsync(ct).ConfigureAwait(false);
-        try
+        if (IsLocal(playlistUri)) throw new PlaylistMutationException(PlaylistMutationFailure.NotSupported, "Local playlist deletion is unavailable.");
+        return RunRootlistOpAsync(playlistUri, entries =>
         {
-            int index = RootlistOps.FindPlaylistIndex(store.Rootlist(), playlistUri);
-            if (index < 0)
-            {
-                await RootlistOps.BootstrapRootlistAsync(store, _transport, ctx, ct).ConfigureAwait(false);
-                index = RootlistOps.FindPlaylistIndex(store.Rootlist(), playlistUri);
-            }
-            if (index < 0) throw new InvalidOperationException($"Playlist '{playlistUri}' is not in the user's rootlist.");
-            var rem = new PlaylistOp(PlaylistOpKind.Remove, FromIndex: index, Length: 1);
-            // Local-first, like every other rootlist write: the reply has no contents, so the row can only leave the
-            // tree because we removed it. A failed POST puts it straight back.
-            var before = store.Rootlist();
-            IReadOnlyList<RootlistEntry>? optimistic = RootlistOps.ApplyLocally(before, new[] { rem });
-            store.SetRootlist(optimistic);
-            store.Bump("rootlist", CollectionKind.Playlists);
-            try
-            {
-                await RootlistOps.PostRootlistOpsAsync(store, _transport, _spclientBaseUrl, ctx, new[] { rem }, ct, playlistUri)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                RollbackRootlist(store, before, optimistic, ReasonOf(ex));
-                PlaylistMutationDiagnostics.DeleteFailed(playlistUri, ex);
-                throw;
-            }
-            store.SetRootlist(optimistic, store.RootlistRevision());   // the reply advanced the revision; the ROWS are ours
-        }
-        finally { _rootlistLane.Release(); }
-        store.SetSaved("playlists", playlistUri, false, SyncState.Confirmed);
-        store.Bump("rootlist", CollectionKind.Playlists);
+            int index = RootlistOps.FindPlaylistIndex(entries, playlistUri);
+            if (index < 0) throw new PlaylistMutationException(PlaylistMutationFailure.Deleted, "That playlist is no longer in your library.");
+            return [new PlaylistOp(PlaylistOpKind.Remove, FromIndex: index, Length: 1)];
+        }, ct);
     }
 
     public async Task<string> CreateContributorInviteAsync(string playlistUri, CancellationToken ct = default)
@@ -465,47 +387,34 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
 
     async Task EnsureCollaborativeForInviteAsync(string playlistUri, CancellationToken ct)
     {
-        bool needsCollab = _store?.GetPlaylist(playlistUri) is not { Capabilities.IsCollaborative: true };
+        await _replicas.EnsurePlaylistCachedAsync(playlistUri, ct).ConfigureAwait(false);
+        bool needsCollab = _replicas.ReadConfirmedPlaylist(playlistUri).Header is not { Capabilities.IsCollaborative: true };
         if (!needsCollab) return;
         await UpdateDetailsAsync(playlistUri, null, null, true, ct).ConfigureAwait(false);
     }
 
-    void PatchPlaylistVisibility(string playlistUri, bool isPublic, string revision)
+    async Task PatchPlaylistVisibilityAsync(string playlistUri, bool isPublic, string revision, CancellationToken ct)
     {
-        if (_store?.GetPlaylist(playlistUri) is not { } header) return;
-        _store.UpsertPlaylist(header with { IsPublic = isPublic, BasePermissionRevision = revision });
+        if (_replicas.ReadConfirmedPlaylist(playlistUri).Header is null) return;
+        await _replicas.ObservePermissionsAsync(playlistUri, isPublic, revision, ct: ct).ConfigureAwait(false);
     }
 
-    async Task TryRootlistPublicFlagAsync(string playlistUri, bool isPublic, CancellationToken ct)
-    {
-        var store = _store!;
-        var ctx = _ctx();
-        await _rootlistLane.WaitAsync(ct).ConfigureAwait(false);   // I2 — same lane as every other rootlist write
-        try
+    Task TryRootlistPublicFlagAsync(string playlistUri, bool isPublic, CancellationToken ct)
+        => RunRootlistOpAsync(playlistUri, entries =>
         {
-            int index = RootlistOps.FindPlaylistIndex(store.Rootlist(), playlistUri);
-            if (index < 0)
-            {
-                await RootlistOps.BootstrapRootlistAsync(store, _transport, ctx, ct).ConfigureAwait(false);
-                index = RootlistOps.FindPlaylistIndex(store.Rootlist(), playlistUri);
-            }
-            if (index < 0) return;
-            var op = new PlaylistOp(PlaylistOpKind.UpdateItem, FromIndex: index, ItemPublic: isPublic);
-            await RootlistOps.PostRootlistOpsAsync(store, _transport, _spclientBaseUrl, ctx, new[] { op }, ct, playlistUri).ConfigureAwait(false);
-        }
-        finally { _rootlistLane.Release(); }
-    }
+            int index = RootlistOps.FindPlaylistIndex(entries, playlistUri);
+            return index < 0 ? [] : [new PlaylistOp(PlaylistOpKind.UpdateItem, FromIndex: index, ItemPublic: isPublic)];
+        }, ct);
 
-    void RequireStore()
-    {
-        if (_store is null) throw new InvalidOperationException("Playlist visibility/delete requires the persistent store.");
-    }
+
 
     // Every edit is enqueued against the revision it was BUILT for (I5). OpRebaseStrategy compares that base against
     // the freshest stored one at replay time and re-expresses any index op whose base moved underneath it.
-    long EnqueueEdit(string playlistUri, params PlaylistOp[] ops) => EnqueueEdit(playlistUri, (IReadOnlyList<PlaylistOp>)ops);
-    long EnqueueEdit(string playlistUri, IReadOnlyList<PlaylistOp> ops)
-        => RequireEdit(_mut.Edit(playlistUri, ops, _store?.PlaylistRevision(playlistUri)));
+    async Task StageAndDrainAsync(string uri, IReadOnlyList<PlaylistOp> ops, CancellationToken ct, IReadOnlyList<Track>? seedTracks = null)
+    {
+        var id = await _mut.EditAsync(uri, ops, _replicas.ReadConfirmedPlaylist(uri).Revision, ct, seedTracks).ConfigureAwait(false);
+        await DrainAsync(id, uri, ct).ConfigureAwait(false);
+    }
 
     // The ONE place a queued playlist edit turns into a caller-visible outcome. Everything that leaves here is a
     // PlaylistMutationException carrying a KIND — the UI maps kinds to copy and never reads a message (P1 shared contract).
@@ -513,16 +422,7 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     {
         try
         {
-            if (ScheduleDrain is { } viaLoop) await viaLoop(ct).ConfigureAwait(false);
-            else
-            {
-                // A playlist write drained OFF the sync loop (pre-go-live, after GoOffline, tests). In production the
-                // transport here is the StubTransport, whose replies are never 200-with-a-body, so no uri gets marked
-                // into the I4 resync queue — the gap is theoretical today. Still: this is the only place a playlist
-                // edit can be drained off the loop, so log it structurally rather than leave it silent.
-                PlaylistMutationDiagnostics.DrainInline(uri);
-                await _mut.Drain(_transport, _ctx(), ct).ConfigureAwait(false);
-            }
+            await _commands.DrainWritesAsync(ct).ConfigureAwait(false);
         }
         catch (PlaylistMutationException) { throw; }
         catch (OperationCanceledException) { throw; }
@@ -576,7 +476,6 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
 
     public async Task<string> CreateFolderAsync(string name, RootlistPlacement placement, CancellationToken ct = default)
     {
-        RequireStore();
         RequireOnline();
         string groupId = SpotifyIds.NewGroupId();
         string trimmed = string.IsNullOrWhiteSpace(name) ? "New Folder" : name.Trim();
@@ -594,26 +493,16 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
 
     public async Task RenameFolderAsync(string groupId, string name, CancellationToken ct = default)
     {
-        RequireStore();
         RequireOnline();
         string trimmed = string.IsNullOrWhiteSpace(name) ? "New Folder" : name.Trim();
         long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        // The rename has to resend the marker's ORIGINAL create timestamp. If the resident row has none (adopted before
-        // the rootlist carried timestamps), the GET is the only place to get it — bootstrap BEFORE building the op.
-        if (RootlistOps.FindFolderStart(_store!.Rootlist(), groupId) is var found && (found < 0 || _store.Rootlist()[found].AddedAtMs <= 0))
-        {
-            await _rootlistLane.WaitAsync(ct).ConfigureAwait(false);
-            try { await RootlistOps.BootstrapRootlistAsync(_store, _transport, _ctx(), ct).ConfigureAwait(false); }
-            finally { _rootlistLane.Release(); }
-        }
         await RunRootlistOpAsync(groupId, entries => RootlistOps.BuildRenameFolder(entries, groupId, trimmed, nowMs)
-            ?? throw FolderGone(), ct).ConfigureAwait(false);
+            ?? throw FolderGone(), ct, requireMarkerTimestamps: true).ConfigureAwait(false);
         PlaylistMutationDiagnostics.FolderRenamed(groupId, trimmed);
     }
 
     public async Task DeleteFolderAsync(string groupId, CancellationToken ct = default)
     {
-        RequireStore();
         RequireOnline();
         await RunRootlistOpAsync(groupId, entries => RootlistOps.BuildDeleteFolder(entries, groupId)
             ?? throw FolderGone(), ct).ConfigureAwait(false);
@@ -621,50 +510,58 @@ public sealed class PlaylistMutationSource : IPlaylistMutationSource
     }
 
     /// <summary>Build-apply-post-adopt under the rootlist lane, with ONE rebase: a 409 has already refreshed the
-    /// rootlist inside <see cref="RootlistOps.TryPostRootlistOpsAsync"/>, so the second attempt rebuilds its indices
+    /// rootlist inside <see cref="RootlistProtocol.PostAsync"/>, so the second attempt rebuilds its indices
     /// against the marker stream that actually exists. The tree is computed locally because a rootlist /changes reply
     /// carries revision bookkeeping only.
     /// <para>It is applied BEFORE the POST (the same order <c>MoveRootlistItemsAsync</c> uses): a new folder appears
     /// under the cursor instead of after a round trip, and a write that does not land puts <c>before</c> back rather
     /// than leaving a folder the server never got.</para></summary>
-    async Task RunRootlistOpAsync(string logKey, Func<IReadOnlyList<RootlistEntry>, IReadOnlyList<PlaylistOp>> build, CancellationToken ct)
+    Task RunRootlistOpAsync(string logKey, Func<IReadOnlyList<RootlistEntry>, IReadOnlyList<PlaylistOp>> build, CancellationToken ct,
+        bool requireMarkerTimestamps = false)
     {
-        var store = _store!;
-        await _rootlistLane.WaitAsync(ct).ConfigureAwait(false);
-        var before = store.Rootlist();
-        IReadOnlyList<RootlistEntry>? optimistic = null;
-        try
+        RequireOnline();
+        return _commands.ExecuteRootlistAsync(async token =>
         {
+            var scope = _replicas.Scope;
             for (int attempt = 0; attempt < 2; attempt++)
             {
-                var entries = store.Rootlist();
-                var ops = build(entries);
-                optimistic = RootlistOps.ApplyLocally(entries, ops);
-                store.SetRootlist(optimistic);                          // rows now; the revision we still trust stands
-                store.Bump("rootlist", CollectionKind.Playlists);
-                var outcome = await RootlistOps.TryPostRootlistOpsAsync(store, _transport, _spclientBaseUrl, _ctx(), ops, logKey, ct)
-                    .ConfigureAwait(false);
-                if (outcome == RootlistPostOutcome.Rebased)
-                {   // 409: the bootstrap already refreshed the rootlist — undo ours only if that GET carried nothing.
-                    optimistic = RollbackRootlist(store, before, optimistic, "rebased-without-contents");
+                var baseline = _replicas.ReadConfirmedRootlist();
+                if (!PlaylistRevisions.IsWellFormed(baseline.Revision) || attempt > 0
+                    || requireMarkerTimestamps && baseline.Entries.Any(x => x.Kind != 0 && x.AddedAtMs <= 0))
+                {
+                    await _replicas.AdoptRootlistAsync(await RootlistProtocol.ReadAsync(_transport, _ctx(), token).ConfigureAwait(false), token, scope).ConfigureAwait(false);
+                    baseline = _replicas.ReadConfirmedRootlist();
+                }
+                var ops = build(baseline.Entries);
+                if (ops.Count == 0) return;
+                var intent = await _replicas.StageAsync("rootlist-edit", logKey, "rootlist", false,
+                    ops, baseline.Revision, ct: token, expectedScope: scope,
+                    initialState: ReplicaIntentState.AwaitingVerification).ConfigureAwait(false);
+                if (scope != _replicas.Scope) throw new OperationCanceledException("The library session changed before dispatch.");
+                MutationReplayResult reply;
+                try { reply = await RootlistProtocol.PostAsync(baseline, _transport, _spclientBaseUrl(), _ctx(), ops, token).ConfigureAwait(false); }
+                catch (PlaylistMutationException error)
+                { await _replicas.RejectAsync(intent, error.Kind, error.Message, token, scope).ConfigureAwait(false); throw; }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch { reply = new MutationReplayResult(MutationReplayDisposition.Verify); }
+                if (reply.Disposition == MutationReplayDisposition.Rebase)
+                {
+                    await _replicas.RejectAsync(intent, PlaylistMutationFailure.Conflict, "rootlist-base-moved", token, scope).ConfigureAwait(false);
                     continue;
                 }
-                if (outcome == RootlistPostOutcome.Retry)
-                    throw new PlaylistMutationException(PlaylistMutationFailure.Unknown,
-                        "Spotify could not be reached — that change was not saved.");
-                store.SetRootlist(optimistic, store.RootlistRevision());   // the reply advanced the revision; the ROWS are ours
-                store.Bump("rootlist", CollectionKind.Playlists);
+                if (reply.Disposition == MutationReplayDisposition.Retry)
+                {
+                    await _replicas.RejectAsync(intent, PlaylistMutationFailure.Pending, "rootlist-rate-limited", token, scope).ConfigureAwait(false);
+                    throw new PlaylistMutationException(PlaylistMutationFailure.Pending, "Spotify asked to retry that change later.");
+                }
+                await _replicas.CompleteAsync(intent, null, reply.Rootlist,
+                    reply.Disposition == MutationReplayDisposition.Verify, reply.AcknowledgedRevision, token, scope).ConfigureAwait(false);
+                if (reply.Disposition == MutationReplayDisposition.Verify)
+                    throw new PlaylistMutationException(PlaylistMutationFailure.Pending, "That library change is awaiting verification.");
                 return;
             }
-            throw new PlaylistMutationException(PlaylistMutationFailure.Conflict,
-                "Your library changed while that was saving — try again.");
-        }
-        catch (Exception ex)
-        {
-            RollbackRootlist(store, before, optimistic, ReasonOf(ex));
-            throw;
-        }
-        finally { _rootlistLane.Release(); }
+            throw new PlaylistMutationException(PlaylistMutationFailure.Conflict, "Your library changed while that was saving.");
+        }, ct);
     }
 
     static PlaylistMutationException FolderGone() =>

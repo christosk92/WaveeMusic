@@ -1,5 +1,11 @@
 using System;
 using System.Threading.Tasks;
+using System.Threading;
+using Wavee.Backend.Collections;
+using Wavee.Backend.Persistence;
+using Wavee.Backend.Playlists;
+using Wavee.Backend.Sync;
+using Wavee.Core.Catalog;
 using Wavee.Core;
 
 namespace Wavee.Backend;
@@ -8,7 +14,7 @@ namespace Wavee.Backend;
 // Constructs the five engines over the store. The Spotify configs (Resource fetchers wired to real protocol routes), the
 // real Transport (AP/dealer/HTTPS), and real audio are STUBS — they need network/credentials/protocol mechanics that are
 // out of scope now. This wires the engines so they are exercisable end-to-end (see BackendSelfTest).
-public sealed class BackendScaffold
+public sealed class BackendScaffold : IDisposable
 {
     public IStore Store { get; }
     public SessionContextHost Session { get; }
@@ -16,15 +22,36 @@ public sealed class BackendScaffold
     public MutationEngine Mutations { get; }
     public StubAudioEngine Audio { get; }
     public PlaybackReducer Playback { get; }
+    public CatalogRuntime Data { get; }
+    readonly CancellationTokenSource _lifetime = new();
+    readonly LibrarySync _sync;
 
     public BackendScaffold()
     {
-        Store = new InMemoryStore();
+        var store = new InMemoryStore();
+        Store = store;
         Session = new SessionContextHost(new SessionContext("me", "US", "premium", "en", Tier.Premium, false));
         Transport = new StubTransport();
-        Mutations = new MutationEngine(Store, new IMutationStrategy[] { new SetReplayStrategy(), new RootlistFollowStrategy(Store, new Playlists.RootlistLane()) });
+        var persistence = new MemoryDataPersistence();
+        Data = new(new CatalogScope("spotify", "me", "en", "US", "premium", 1, false), "me",
+            persistence, persistence, new MemoryReplicaProjection(store), []);
+        var echo = new CollectionEchoRing();
+        Mutations = new MutationEngine(Data.Replicas, [new SetReplayStrategy(echo), new RootlistFollowStrategy(Data.Replicas, () => "https://unused.invalid")]);
+        var http = new Spotify.HttpClientExchange();
+        _sync = new LibrarySync(Store, Data.Replicas, new PlaylistFetcher(http, () => "https://unused.invalid", () => "me"),
+            new CollectionFetcher(http, () => "https://unused.invalid", () => "me"), Mutations, new PlaylistResyncQueue(),
+            Transport, () => Session.Current, () => "me", default, _lifetime.Token, echo);
+        Data.SetProtocolSessionAsync(_sync, Data.Catalog.Epoch).GetAwaiter().GetResult();
         Audio = new StubAudioEngine();
         Playback = new PlaybackReducer(Audio);
+    }
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _sync.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        Mutations.Dispose();
+        Data.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _lifetime.Dispose();
     }
 }
 
@@ -41,16 +68,14 @@ public static class BackendSelfTest
         }
 
         log.Info("Wavee backend self-test - the five engines over a queryable store");
-        var sc = new BackendScaffold();
+        using var sc = new BackendScaffold();
 
         // ── store (queryable spine) ──
         var t1 = Trk("spotify:track:1", "Alpha Song", "Aretha");
         var t2 = Trk("spotify:track:2", "Beta Tune", "Beck");
-        sc.Store.UpsertTrack(t1);
-        sc.Store.UpsertTrack(t2);
-        Check("store: read back by uri", ReferenceEquals(sc.Store.GetTrack("spotify:track:1"), t1));
-        Check("store: query filters by title (case-insensitive)", sc.Store.QueryTracks("alpha", TrackSort.Title).Count == 1);
-        Check("store: sort by title", sc.Store.QueryTracks(null, TrackSort.Title)[0].Title == "Alpha Song");
+        sc.Store.SetSaved("liked", t1.Uri, true, SyncState.Confirmed);
+        sc.Store.SetSaved("liked", t2.Uri, true, SyncState.Confirmed);
+        Check("store: effective saved membership", sc.Store.IsSaved("liked", t1.Uri));
 
         bool fired = false;
         var sub = sc.Store.Changes.Subscribe(Obs<StoreChange>(_ => fired = true));
@@ -81,12 +106,12 @@ public static class BackendSelfTest
         Check("resource: concurrent revalidate dedups to one fetch", fetches == 1);
 
         // ── ② Mutation (optimistic + outbox + drain + reconcile) ──
-        sc.Mutations.Save("liked", "spotify:track:1", true);
+        sc.Mutations.SaveAsync("liked", "spotify:track:1", true).GetAwaiter().GetResult();
         Check("mutation: optimistic save reflects in the store", sc.Store.IsSaved("liked", "spotify:track:1"));
         Check("mutation: one pending outbox row", sc.Mutations.Pending == 1);
-        sc.Mutations.Save("liked", "spotify:track:1", false);   // coalesce: same entity → still one row
+        sc.Mutations.SaveAsync("liked", "spotify:track:1", false).GetAwaiter().GetResult();
         Check("mutation: re-save same entity coalesces (still 1 row)", sc.Mutations.Pending == 1);
-        sc.Mutations.Save("liked", "spotify:track:1", true);
+        sc.Mutations.SaveAsync("liked", "spotify:track:1", true).GetAwaiter().GetResult();
         sc.Mutations.Drain(sc.Transport, sc.Session.Current).GetAwaiter().GetResult();
         Check("mutation: drain clears the outbox", sc.Mutations.Pending == 0);
         Check("mutation: still saved after confirm", sc.Store.IsSaved("liked", "spotify:track:1"));
@@ -117,7 +142,7 @@ public static class BackendSelfTest
         Check("playback: stub decrypt passthrough has the right shape", StubCrypto.Decrypt(new byte[] { 1, 2, 3 }, new byte[16]).Length == 3);
 
         // ── §7 seam adapters (engines → Wavee.Core facets) — driven THROUGH the seam interfaces ──
-        IMutationSource ims = new EngineMutationSource(sc.Store, sc.Mutations, sc.Transport, () => sc.Session.Current, "liked2");
+        IMutationSource ims = new EngineMutationSource(sc.Store, sc.Mutations, sc.Data.Commands, "liked2");
         Check("seam: IMutationSource declares Mutations + owns spotify uris", ims.Capabilities.HasFlag(SourceCapabilities.Mutations) && ims.Owns("spotify:track:1"));
         Check("seam: starts not-saved", !ims.IsSaved("spotify:track:7"));
         ims.SetSavedAsync("spotify:track:7", true).GetAwaiter().GetResult();

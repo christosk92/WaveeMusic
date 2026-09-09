@@ -18,17 +18,18 @@ namespace Wavee.Tests;
 //   • the open-failure recovery hook, its ordering, and its one-attempt-per-playable loop guard,
 //   • the media-authoritative duration surviving a queue republish,
 // plus the standing rule that every one of these paths is INERT when its hook/service is unwired.
-public class VideoOverrideTests
+public class VideoOverrideTests : PlaybackCatalogTestBase
 {
+    readonly VideoOverrideTestHost _curation = new();
+    public override void Dispose() { _curation.Dispose(); base.Dispose(); }
     static Track T(string uri) => new(uri[(uri.LastIndexOf(':') + 1)..], uri, uri,
         Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
 
-    static VideoOverrideService Svc(params (string Uri, string Path)[] attached)
+    VideoOverrideService Svc(params (string Uri, string Path)[] attached)
     {
-        var store = new InMemoryStore();
-        var svc = new VideoOverrideService(store);
+        var svc = _curation.Service();
         svc.FileExists = _ => true;                       // the default probe for these tests; overridden per case
-        foreach (var (uri, path) in attached) svc.Attach(uri, path);
+        foreach (var (uri, path) in attached) VideoOverrideTestHost.Attach(svc, uri, path);
         return svc;
     }
 
@@ -92,7 +93,7 @@ public class VideoOverrideTests
         Assert.True(svc.IsQuarantined("spotify:track:a", key));
         Assert.Equal(VideoOverrideTier.Quarantined, svc.Decide("spotify:track:a").Tier);
         // Scoped to the exact PAIR: the same file attached to a different playable is unaffected.
-        svc.Attach("spotify:episode:e", @"C:\v\a.mp4");
+        VideoOverrideTestHost.Attach(svc, "spotify:episode:e", @"C:\v\a.mp4");
         Assert.Equal(VideoOverrideTier.UseOverride, svc.Decide("spotify:episode:e").Tier);
     }
 
@@ -103,7 +104,7 @@ public class VideoOverrideTests
         svc.Quarantine("spotify:track:a", svc.Decide("spotify:track:a").Override.SourceKey);
         Assert.Equal(VideoOverrideTier.Quarantined, svc.Decide("spotify:track:a").Tier);
 
-        svc.Attach("spotify:track:a", @"C:\v\a.mp4");      // re-pick the same path after fixing it
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", @"C:\v\a.mp4");      // re-pick the same path after fixing it
 
         Assert.Equal(VideoOverrideTier.UseOverride, svc.Decide("spotify:track:a").Tier);
         Assert.Single(svc.All());                          // uri is the PK — a duplicate attach IS the replace
@@ -120,13 +121,12 @@ public class VideoOverrideTests
     [Fact]
     public void AttachAndReplace_NotifyWithTheCorrectMutationKind()
     {
-        var store = new InMemoryStore();
-        var svc = new VideoOverrideService(store) { FileExists = _ => true };
+        var svc = _curation.Service();
         var changed = new List<OverrideMutationKind>();
         svc.OnChanged = (_, kind) => changed.Add(kind);
 
-        svc.Attach("spotify:track:a", @"C:\v\a.mp4");
-        svc.Attach("spotify:track:a", @"C:\v\b.mp4");
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", @"C:\v\a.mp4");
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", @"C:\v\b.mp4");
 
         Assert.Equal(new[] { OverrideMutationKind.Attach, OverrideMutationKind.Replace }, changed.ToArray());
     }
@@ -138,8 +138,8 @@ public class VideoOverrideTests
         var changed = new List<(string Uri, OverrideMutationKind Kind)>();
         svc.OnChanged = (uri, kind) => changed.Add((uri, kind));
 
-        Assert.True(svc.Remove("spotify:track:a"));
-        Assert.False(svc.Remove("spotify:track:a"));
+        Assert.True(VideoOverrideTestHost.Remove(svc, "spotify:track:a"));
+        Assert.False(VideoOverrideTestHost.Remove(svc, "spotify:track:a"));
 
         Assert.Equal(new[] { ("spotify:track:a", OverrideMutationKind.Remove) }, changed.ToArray());
         Assert.False(svc.Has("spotify:track:a"));
@@ -165,14 +165,13 @@ public class VideoOverrideTests
     [Fact]
     public void Attach_PersistsThroughTheStore_SoAFreshServiceSeesTheSameRoster()
     {
-        var store = new InMemoryStore();
-        new VideoOverrideService(store).Attach("spotify:track:a", @"C:\v\a.mp4");
+        VideoOverrideTestHost.Attach(_curation.Service(), "spotify:track:a", @"C:\v\a.mp4");
 
-        var reloaded = new VideoOverrideService(store);
+        var reloaded = _curation.Service();
 
         Assert.True(reloaded.Has("spotify:track:a"));
         Assert.Equal(1, reloaded.Count);
-        Assert.Equal(@"C:\v\a.mp4", store.GetVideoOverride("spotify:track:a")!.Value.Path);
+        Assert.Equal(@"C:\v\a.mp4", Assert.Single(_curation.Persistence.LoadAsync().AsTask().GetAwaiter().GetResult()).Path);
     }
 
     // ── the has-video latch (what ShouldPlayAsVideo / RecomputeHasVideo fold) ─────────────────────────────────────────
@@ -267,7 +266,7 @@ public class VideoOverrideTests
     [Fact]
     public async Task ForcedRefresh_ReloadsAVideoPlayable_WhenTheKindDidNotChange()
     {
-        using var h = new Harness { VideoIntent = true };
+        using var h = new Harness(Catalog) { VideoIntent = true };
         await h.Controller.PlayAsync("spotify:playlist:p");
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
         int loadsBefore = h.LoadVideoCalls;
@@ -283,7 +282,7 @@ public class VideoOverrideTests
     [Fact]
     public async Task ForcedRefresh_NeverReloadsAnAudioPlayable()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         await h.Controller.PlayAsync("spotify:playlist:p");
         int before = h.Log.Count;
 
@@ -299,7 +298,7 @@ public class VideoOverrideTests
     {
         // Local (non-Connect) video faults without a recovery hook surface as a typed playback error. Automatic
         // video→audio fallback is reserved for Connect-originated sessions (see FallbackVideoToAudioAsync).
-        using var h = new Harness { VideoIntent = true };
+        using var h = new Harness(Catalog) { VideoIntent = true };
         await h.Controller.PlayAsync("spotify:playlist:p");
 
         h.Video!.Sig.Emit(AudioHostSignal.Fault(0, AudioKeyFailureReason.None, "decode failed"));
@@ -312,7 +311,7 @@ public class VideoOverrideTests
     [Fact]
     public async Task VideoError_RecoveryDeclines_ReportsError_AfterAskingOnce()
     {
-        using var h = new Harness { VideoIntent = true };
+        using var h = new Harness(Catalog) { VideoIntent = true };
         await h.Controller.PlayAsync("spotify:playlist:p");
         h.Controller.TryRecoverVideoAsync = (t, _) => { h.RecoveryAsks.Add(t.Uri); return Task.FromResult(false); };
 
@@ -327,7 +326,7 @@ public class VideoOverrideTests
     [Fact]
     public async Task VideoError_RecoverySucceeds_ReloadsInsteadOfReportingAnError()
     {
-        using var h = new Harness { VideoIntent = true };
+        using var h = new Harness(Catalog) { VideoIntent = true };
         await h.Controller.PlayAsync("spotify:playlist:p");
         int loadsBefore = h.LoadVideoCalls;
         h.Controller.TryRecoverVideoAsync = (t, _) => { h.RecoveryAsks.Add(t.Uri); return Task.FromResult(true); };
@@ -342,7 +341,7 @@ public class VideoOverrideTests
     [Fact]
     public async Task VideoError_RecoveryIsAttemptedAtMostOncePerPlayable()
     {
-        using var h = new Harness { VideoIntent = true };
+        using var h = new Harness(Catalog) { VideoIntent = true };
         await h.Controller.PlayAsync("spotify:playlist:p");
         h.Controller.TryRecoverVideoAsync = (t, _) => { h.RecoveryAsks.Add(t.Uri); return Task.FromResult(true); };
 
@@ -360,7 +359,7 @@ public class VideoOverrideTests
     [Fact]
     public async Task AudioError_NeverConsultsTheVideoRecoveryHook()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         await h.Controller.PlayAsync("spotify:playlist:p");
         h.Controller.TryRecoverVideoAsync = (t, _) => { h.RecoveryAsks.Add(t.Uri); return Task.FromResult(true); };
 
@@ -374,11 +373,12 @@ public class VideoOverrideTests
     // ── the projection: MP4-authoritative duration ───────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void DurationOverride_OutranksTheCatalogLength_AndSurvivesAQueueRepublish()
+    public async Task DurationOverride_OutranksTheCatalogLength_AndSurvivesAQueueRepublish()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var p = Catalog.Projection("us", () => 0);
         var track = T("spotify:track:a") with { DurationMs = 200_000 };
-        p.OnEvent(new PlaybackEvent(EvKind.Started, track, 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Started, track, 0));
+        await QueryPublication.Until(() => p.CurrentTrack?.DurationMs == 200_000);
         Assert.Equal(200_000, p.DurationMs);
 
         p.SetDurationOverride("spotify:track:a", 247_500);
@@ -389,31 +389,34 @@ public class VideoOverrideTests
         p.ApplyLocalSnapshot(Snap(track));
         Assert.Equal(247_500, p.DurationMs);
 
-        p.OnEvent(new PlaybackEvent(EvKind.Seeked, track, 1000));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Seeked, track, 1000));
         Assert.Equal(247_500, p.DurationMs);
     }
 
     [Fact]
-    public void DurationOverride_IsDroppedWhenTheTrackChanges()
+    public async Task DurationOverride_IsDroppedWhenTheTrackChanges()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var p = Catalog.Projection("us", () => 0);
         var a = T("spotify:track:a") with { DurationMs = 200_000 };
         var b = T("spotify:track:b") with { DurationMs = 180_000 };
-        p.OnEvent(new PlaybackEvent(EvKind.Started, a, 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Started, a, 0));
+        await QueryPublication.Until(() => p.CurrentTrack?.DurationMs == 200_000);
         p.SetDurationOverride("spotify:track:a", 247_500);
 
-        p.OnEvent(new PlaybackEvent(EvKind.TrackChanged, b, 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.TrackChanged, b, 0));
+        await QueryPublication.Until(() => p.CurrentTrack?.Uri == b.Uri && p.CurrentTrack.DurationMs == 180_000);
 
         Assert.Equal(180_000, p.DurationMs);          // the next song must never inherit the video's length
         Assert.Equal(0, p.DurationOverrideMs);
     }
 
     [Fact]
-    public void DurationOverride_ForAnotherPlayable_NeverAppliesToTheCurrentOne()
+    public async Task DurationOverride_ForAnotherPlayable_NeverAppliesToTheCurrentOne()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var p = Catalog.Projection("us", () => 0);
         var a = T("spotify:track:a") with { DurationMs = 200_000 };
-        p.OnEvent(new PlaybackEvent(EvKind.Started, a, 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Started, a, 0));
+        await QueryPublication.Until(() => p.CurrentTrack?.DurationMs == 200_000);
 
         p.SetDurationOverride("spotify:track:zzz", 999_000);
 
@@ -424,7 +427,7 @@ public class VideoOverrideTests
     [Fact]
     public async Task DurationOverride_ClearedWhenLeavingVideoKind()
     {
-        using var h = new Harness { VideoIntent = true };
+        using var h = new Harness(Catalog) { VideoIntent = true };
         await h.Controller.PlayAsync("spotify:playlist:p");
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
         h.Projection.SetDurationOverride("spotify:track:a", 255_095);
@@ -442,7 +445,7 @@ public class VideoOverrideTests
     [Fact]
     public async Task DurationOverride_ReAdoptedWhenVideoReloads()
     {
-        using var h = new Harness { VideoIntent = true };
+        using var h = new Harness(Catalog) { VideoIntent = true };
         await h.Controller.PlayAsync("spotify:playlist:p");
         h.Projection.SetDurationOverride("spotify:track:a", 255_095);
         h.VideoIntent = false;
@@ -458,11 +461,12 @@ public class VideoOverrideTests
     }
 
     [Fact]
-    public void DurationOverride_NonPositiveOrEmpty_ClearsIt()
+    public async Task DurationOverride_NonPositiveOrEmpty_ClearsIt()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var p = Catalog.Projection("us", () => 0);
         var a = T("spotify:track:a") with { DurationMs = 200_000 };
-        p.OnEvent(new PlaybackEvent(EvKind.Started, a, 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Started, a, 0));
+        await QueryPublication.Until(() => p.CurrentTrack?.DurationMs == 200_000);
         p.SetDurationOverride("spotify:track:a", 247_500);
 
         p.SetDurationOverride("spotify:track:a", 0);
@@ -501,6 +505,10 @@ public class VideoOverrideTests
 
     sealed class FakeAudioHost(List<string> shared) : IAudioHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, Sig.Emit);
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, Sig.Emit);
+        public bool PlayIntent => IsPlaying;
+
         public readonly TestSignals Sig = new();
         void Note(string call) => shared.Add("audio:" + call);
         public IObservable<AudioHostSignal> Signals => Sig;
@@ -521,6 +529,8 @@ public class VideoOverrideTests
 
     sealed class FakeVideoHost(List<string> shared) : IMediaHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, Sig.Emit);
+
         public readonly TestSignals Sig = new();
         void Note(string call) => shared.Add("video:" + call);
         public IObservable<AudioHostSignal> Signals => Sig;
@@ -537,6 +547,7 @@ public class VideoOverrideTests
 
     sealed class Harness : IDisposable
     {
+        readonly PlaybackCatalogTestHost Catalog;
         public readonly List<string> Log = new();
         public readonly FakeAudioHost Audio;
         public readonly FakeVideoHost? Video;
@@ -548,11 +559,12 @@ public class VideoOverrideTests
         public bool VideoIntent;
         public int LoadVideoCalls;
 
-        public Harness()
+        public Harness(PlaybackCatalogTestHost catalog)
         {
+            Catalog = catalog;
             Audio = new FakeAudioHost(Log);
             Video = new FakeVideoHost(Log);
-            Projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+            Projection = Catalog.Projection("us", () => 0);
             Controller = new PlaybackController(Audio, new StubTrackResolver(), Projection,
                 new FakeContextResolver("spotify:track:a", "spotify:track:b"), "us", videoHost: Video);
             Controller.ShouldPlayAsVideo = _ => VideoIntent;

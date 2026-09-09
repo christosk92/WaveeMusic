@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Wavee.Backend;
-using Wavee.Backend.Persistence;
 using Wavee.Backend.Playlists;
 using Wavee.Core;
 using Xunit;
@@ -15,7 +14,7 @@ public class RootlistTreeBuilderTests
 {
     static PlaylistSummary Resolve(string uri) => new(uri, "Name-" + uri.Split(':')[^1], "Owner", 0, null);
 
-    static ColdRootlistEntry Cold(int pos, int kind, string uri, string? group = null, int depth = 0)
+    static RootlistEntry Cold(int pos, int kind, string uri, string? group = null, int depth = 0)
         => new(pos, kind, uri, group, depth);
 
     static string Start(string id, string name) => "spotify:start-group:" + id + ":" + name;
@@ -336,7 +335,7 @@ public class RootlistTreeBuilderTests
     [Fact]
     public void PlaylistLeaf_CarriesTheRowsAddedAtStamp_FromBothOverloads()
     {
-        var cold = new[] { new ColdRootlistEntry(0, 0, Pl("p1"), null, 0, AddedAtMs: 12345) };
+        var cold = new[] { new RootlistEntry(0, 0, Pl("p1"), null, 0, AddedAtMs: 12345) };
         var live = new[] { new RootlistEntry(0, 0, Pl("p1"), null, 0, AddedAtMs: 12345) };
 
         Assert.Equal(12345L, Leaf(Assert.Single(RootlistTreeBuilder.Build(cold, Resolve))).AddedAtMs);

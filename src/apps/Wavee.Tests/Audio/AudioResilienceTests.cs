@@ -8,13 +8,13 @@ using Xunit;
 
 namespace Wavee.Tests.Audio;
 
-public class PlaybackErrorPathTests
+public class PlaybackErrorPathTests : PlaybackCatalogTestBase
 {
     [Fact]
     public async Task LocalPlay_ResolveFailure_SurfacesTypedError_NotSilentDrop()
     {
         var host = new SilentAudioHost();
-        var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var proj = Catalog.Projection("dev");
         var resolver = new ThrowingResolver(AudioKeyFailureReason.License403);
         var controller = new PlaybackController(host, resolver, proj, EmptyContextResolver.Instance, "dev");
         PlaybackErrorInfo? surfaced = null;
@@ -32,7 +32,7 @@ public class PlaybackErrorPathTests
     public async Task RetryCurrent_ReResolves()
     {
         var host = new SilentAudioHost();
-        var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var proj = Catalog.Projection("dev");
         var resolver = new ThrowingResolver(AudioKeyFailureReason.Network);
         var controller = new PlaybackController(host, resolver, proj, EmptyContextResolver.Instance, "dev");
         int errors = 0;
@@ -47,12 +47,12 @@ public class PlaybackErrorPathTests
     }
 }
 
-public class ProjectionPrebufferingTests
+public class ProjectionPrebufferingTests : PlaybackCatalogTestBase
 {
     [Fact]
     public void Prebuffering_ReadsAsBuffering_ThenClearsOnPlaying()
     {
-        var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var proj = Catalog.Projection("dev");
 
         proj.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
         Assert.True(proj.IsBuffering);
@@ -68,7 +68,7 @@ public class ProjectionPrebufferingTests
     public void Buffering_FreezesProjectedPosition_UntilPlayingReturns()
     {
         long now = 0;
-        var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
+        var proj = Catalog.Projection("dev", () => now);
 
         proj.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.Playing, 1_000, true, false, false));
         now = 500;
@@ -89,14 +89,14 @@ public class ProjectionPrebufferingTests
     }
 }
 
-public class NetworkFailureControllerTests
+public class NetworkFailureControllerTests : PlaybackCatalogTestBase
 {
     [Fact]
     public async Task TypedNetworkFailure_RetryReloadsAndSeeksLastAudiblePosition()
     {
         var host = new RecordingAudioHost();
         var resolver = new SuccessfulResolver();
-        var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var proj = Catalog.Projection("dev", () => 0);
         using var controller = new PlaybackController(host, resolver, proj, EmptyContextResolver.Instance, "dev");
         PlaybackErrorInfo? surfaced = null;
         controller.OnPlaybackError = e => surfaced = e;
@@ -113,7 +113,7 @@ public class NetworkFailureControllerTests
     }
 }
 
-public class StatusServiceTests
+public class StatusServiceTests : PlaybackCatalogTestBase
 {
     [Fact]
     public void KeyFailure_SetsIssue_FiresChanged_ThenClears()
@@ -133,7 +133,7 @@ public class StatusServiceTests
     }
 }
 
-public class KeyValidationTests
+public class KeyValidationTests : PlaybackCatalogTestBase
 {
     [Fact]
     public void ValidateKeyOnBodyRange_TrueForRightKey_FalseForWrong()

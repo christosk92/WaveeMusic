@@ -9,13 +9,13 @@ using Xunit;
 
 namespace Wavee.Tests.Audio;
 
-public class InstantStartTests
+public class InstantStartTests : PlaybackCatalogTestBase
 {
     [Fact]
     public async Task Play_StartsOnHead_BeforeBodyResolves_ThenSuppliesBody()
     {
         var host = new RecordingAudioHost();
-        var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var proj = Catalog.Projection("dev");
         var bodyTcs = new TaskCompletionSource<AudioStreamHandle>(TaskCreationOptions.RunContinuationsAsynchronously);
         var start = new AudioFastStart("spotify:track:x", "fid", AudioFormat.OggVorbis320, 1000, 0f, new byte[10]);
         var fast = new FakeFastResolver(new FastStartPlan(start, bodyTcs.Task));
@@ -41,7 +41,7 @@ public class InstantStartTests
     public async Task Play_FastResolveFailure_SurfacesError_NoStart()
     {
         var host = new RecordingAudioHost();
-        var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var proj = Catalog.Projection("dev");
         var fast = new ThrowingFastResolver(AudioKeyFailureReason.RotationDrift);
         var controller = new PlaybackController(host, new StubTrackResolver(), proj, EmptyContextResolver.Instance, "dev", fast: fast);
         PlaybackErrorInfo? err = null;
@@ -59,7 +59,7 @@ public class InstantStartTests
     public async Task BodyFailureAfterHeadStart_StopsHost_SurfacesError_AndLogsContext()
     {
         var host = new RecordingAudioHost();
-        var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var proj = Catalog.Projection("dev");
         var bodyTcs = new TaskCompletionSource<AudioStreamHandle>(TaskCreationOptions.RunContinuationsAsynchronously);
         var start = new AudioFastStart("spotify:track:x", "fid", AudioFormat.OggVorbis320, 1000, 0f, new byte[10]);
         var fast = new FakeFastResolver(new FastStartPlan(start, bodyTcs.Task));
@@ -78,8 +78,8 @@ public class InstantStartTests
 
         Assert.True(host.StopCalled);
         Assert.Equal(AudioKeyFailureReason.Network, err?.Reason);
-        Assert.Contains(sink.Entries, e => e.Message.Contains("fast-start body failed for active track=spotify:track:x", StringComparison.Ordinal));
-        Assert.Contains(sink.Entries, e => e.Message.Contains("stopping audio host to unblock head stream", StringComparison.Ordinal));
+        Assert.Contains(sink.Entries, e => e.Message.Contains("media host failure track=spotify:track:x", StringComparison.Ordinal)
+            && e.Message.Contains("Network", StringComparison.Ordinal) && e.Message.Contains("cdn down", StringComparison.Ordinal));
         controller.Dispose();
     }
 
@@ -94,7 +94,7 @@ public class InstantStartTests
     public async Task BodyAlreadyReady_IsSuppliedPromptly_AfterTheClearHead()
     {
         var host = new RecordingAudioHost();
-        var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var proj = Catalog.Projection("dev");
         var start = new AudioFastStart("spotify:track:x", "fid", AudioFormat.OggVorbis320, 1000, 0f, new byte[10]);
         var body = Task.FromResult(new AudioStreamHandle("spotify:track:x", "fid", "https://cdn", new byte[16],
             AudioFormat.OggVorbis320, 1000, 0f, new[] { "https://cdn" }, 10));

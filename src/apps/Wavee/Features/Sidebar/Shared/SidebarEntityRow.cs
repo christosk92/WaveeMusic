@@ -125,6 +125,7 @@ struct SidebarRowSpec
         HighlightStart = -1;
         HighlightLength = 0;
         OnUnpin = null;
+        TitleSkeleton = false;
     }
 
     // ── identity ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -348,6 +349,13 @@ struct SidebarRowSpec
     /// config to read (<c>LibraryV3NavBand</c>, <c>SidebarRailFolderFlyout</c>) leaves it at the default and renders
     /// Cluster, by construction rather than by remembering to set it.</summary>
     public SidebarRowStyle Style;
+
+    /// <summary>The row's identity has not resolved a title yet (<c>SidebarRowTitlePresentation.IsSkeleton</c>): render
+    /// the sidebar's own loading skeleton bar in the TITLE slot instead of <see cref="Label"/> — everything else about
+    /// the row (leading art, <see cref="Subtitle"/>, <see cref="Height"/>) renders exactly as authored, so nothing jumps
+    /// once the name lands. A raw uri/id is never a title; <see cref="Label"/> may still carry one as a caller-side
+    /// accessibility fallback, but it is not drawn while this is set.</summary>
+    public bool TitleSkeleton;
 }
 
 static class SidebarEntityRow
@@ -663,14 +671,22 @@ static class SidebarEntityRow
     static Element ClusterTextColumn(in SidebarRowSpec spec, bool hasSubtitle)
     {
         if (!hasSubtitle && spec.Caption is null)
+        {
             // Shrink + MinWidth 0, like the stacked arm below: a Grow-only TextEl keeps its intrinsic width and runs
             // under the trailing cluster instead of ellipsizing when the pane is narrower than the title.
-            return Body(spec.Label) with { Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+            Element grownTitle = spec.TitleSkeleton
+                ? TitleSkeletonBar() with { Grow = 1f, Shrink = 1f, MinWidth = 0f }
+                : Body(spec.Label) with { Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+            return grownTitle;
+        }
 
         int lines = 1 + (hasSubtitle ? 1 : 0) + (spec.Caption is { Length: > 0 } ? 1 : 0);
         var stack = new Element[lines];
         int n = 0;
-        stack[n++] = Body(spec.Label) with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+        Element titleLine = spec.TitleSkeleton
+            ? TitleSkeletonBar()
+            : Body(spec.Label) with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+        stack[n++] = titleLine;
         if (hasSubtitle)
             stack[n++] = Caption(spec.Subtitle!).Secondary() with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
         if (spec.Caption is { Length: > 0 } cap)
@@ -820,6 +836,7 @@ static class SidebarEntityRow
     /// instead of throwing.</summary>
     static Element TitleElement(in SidebarRowSpec spec)
     {
+        if (spec.TitleSkeleton) return TitleSkeletonBar();
         string label = spec.Label;
         int start = spec.HighlightStart, len = spec.HighlightLength;
         if (len <= 0 || start < 0 || start + len > label.Length)
@@ -842,8 +859,15 @@ static class SidebarEntityRow
     {
         TextEl t => t with { Grow = 1f },
         SpanTextEl s => s with { Grow = 1f },
+        BoxEl b => b with { Grow = 1f },   // the TitleSkeleton bar
         _ => title,
     };
+
+    /// <summary>The title-column shimmer bar for <see cref="SidebarRowSpec.TitleSkeleton"/>: the SAME static bar shape
+    /// <see cref="SidebarSkeletons"/> uses for the sidebar's own pending-SECTION rows (140×12, 4-DIP corners,
+    /// <c>Tok.FillSubtleSecondary</c>) — one look for "this row is loading" everywhere in the sidebar, never a second
+    /// hand-rolled placeholder.</summary>
+    static BoxEl TitleSkeletonBar() => SidebarSkeletons.Bar(140f, 12f) with { Shrink = 1f, MinWidth = 24f };
 
     /// <summary>The Slot pin mark: smaller than Cluster's trailing glyph (10 vs 12 DIP) and tinted with the accent —
     /// it rides IN the text column now, not beside the count badge, so it needs to read at a glance against a title

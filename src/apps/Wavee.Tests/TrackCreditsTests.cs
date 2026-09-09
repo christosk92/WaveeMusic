@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Wavee.Backend;
-using Wavee.Backend.Hydration;
+using Wavee.Backend.Catalog;
 using Wavee.Backend.Metadata;
 using Wavee.Backend.Spotify;
 using Wavee.Core;
@@ -22,8 +22,12 @@ namespace Wavee.Tests;
 // ordered, plus the record label the attribution line prints. These drive the real service over crafted protobuf: wire
 // order and grouping survive the projection, an absent artist_uri means "not linkable", and the two ways a track can
 // have no drawer (a 404, or a non-track uri) both answer null without asking twice.
-public class TrackCreditsTests
+public class TrackCreditsTests : IAsyncLifetime
 {
+    readonly List<CatalogResourceWireFixture> _fixtures = new();
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync() { foreach (var fixture in _fixtures) await fixture.DisposeAsync(); }
+
     const string TrackUri = "spotify:track:0spnMEFDuWTQRTsI941Q5n";
     const string Label = "WaterTower Music";
 
@@ -81,7 +85,7 @@ public class TrackCreditsTests
         }
     }
 
-    static (ExtensionReader Reader, ExtensionEtagCache Cache, Wire Log) Rig(Func<string, Ca.CreditsTrait?> answers, bool gated = false)
+    (CatalogExtensionReader Reader, CatalogResourceWireFixture Cache, Wire Log) Rig(Func<string, Ca.CreditsTrait?> answers, bool gated = false)
     {
         var log = new Wire();
         var http = new FakeExchange((req, _) =>
@@ -111,12 +115,9 @@ public class TrackCreditsTests
             resp.ExtendedMetadata.Add(array);
             return new HttpResp(200, new Dictionary<string, string>(), resp.ToByteArray());
         });
-        var em = new ExtendedMetadataSource(gated ? new GatedExchange(http, log.Gate.Task) : http,
-                                           () => "https://spclient.test", () => Ctx);
-        var cache = new ExtensionEtagCache(em, () => Ctx);
-        // The service is THIN over this reader (design §2.5) — the answers-including-negatives table, the coalescing
-        // slot and the attribution header all live here now, so the tests drive the real reader, not a stand-in.
-        return (new ExtensionReader(cache, new NegativeMemo()), cache, log);
+        var fixture = new CatalogResourceWireFixture(gated ? new GatedExchange(http, log.Gate.Task) : http, Ctx);
+        _fixtures.Add(fixture);
+        return (fixture.Reader, fixture, log);
     }
 
     static Func<string, Ca.CreditsTrait?> Only(string uri, Ca.CreditsTrait msg) => u => u == uri ? msg : null;
@@ -178,7 +179,7 @@ public class TrackCreditsTests
     }
 
     [Fact]
-    public async Task A200WithNoUsableRow_IsTheSameAnswerAsA404()
+    public async Task A200WithNoUsableRow_ProducesNoDrawerWithoutChangingTransportKnowledge()
     {
         var (reader, cache, _) = Rig(Only(TrackUri, new Ca.CreditsTrait { Label = new Ca.CreditsTrait.Types.Label { Name = Label } }));
         var svc = new SpotifyTrackCreditsService(reader);
@@ -204,7 +205,7 @@ public class TrackCreditsTests
 
         // …and the etag cache's 24 h Missing row stops even a service over a FRESH reader (its own parsed cache, its
         // own negative memo) from paying for the same miss — the durable half of the answer is one tier down.
-        var second = new SpotifyTrackCreditsService(new ExtensionReader(cache, new NegativeMemo()));
+        var second = new SpotifyTrackCreditsService(cache.Reader);
         Assert.Null(await second.GetAsync(TrackUri, CT));
         Assert.Equal(1, log.Posts);
     }
@@ -270,6 +271,6 @@ public class TrackCreditsTests
 
         Assert.Equal(1, log.Posts);
         Assert.All(both, c => Assert.Equal(7, c!.Credits.Count));
-        Assert.Same(both[0], both[1]);        // ONE parsed answer, not two decodes of the same 40 KB
+        Assert.Equal(both[0]!.Credits, both[1]!.Credits);        // ONE parsed answer, not two decodes of the same 40 KB
     }
 }

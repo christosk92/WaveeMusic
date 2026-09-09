@@ -1,142 +1,156 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Wavee.Backend;
-using Wavee.Backend.Library;
+using Wavee.Backend.Catalog;
+using Wavee.Backend.Persistence;
+using Wavee.Backend.Queries;
+using Wavee.Backend.Sync;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Xunit;
 
 namespace Wavee.Tests;
 
-// Offline, cache-only HIERARCHICAL library search (LibrarySearchIndex): artist ▸ matching albums ▸ matching tracks.
-public class LibrarySearchTests
+public sealed class LibrarySearchTests
 {
-    static readonly ArtistRef MjRef = new("mj", "spotify:artist:mj", "Michael Jackson");
-    static readonly ArtistRef OtherRef = new("q", "spotify:artist:q", "Queen");
-
-    static Track Trk(string id, string title, ArtistRef artist, string albumUri, string albumName) =>
-        new(id, "spotify:track:" + id, title, [artist], new AlbumRef("", albumUri, albumName), 200_000, false, null);
-
-    static Album Alb(string uri, string name, ArtistRef artist, params Track[] tracks) =>
-        new("id" + uri, uri, name, null, [artist], 1982, tracks.Length, tracks, Hydration: AlbumHydrationLevel.Tracks);
-
-    static InMemoryStore SeedArtistLibrary()
+    [Theory]
+    [InlineData("michael", 2, 2, LibraryMatchKind.None)]
+    [InlineData("thriller", 1, 2, LibraryMatchKind.Album)]
+    [InlineData("billie", 1, 1, LibraryMatchKind.Track)]
+    public async Task FollowedArtistSearch_CascadesMatchingNamesAndExplainsChildHits(string text, int albums, int firstTracks, LibraryMatchKind reason)
     {
-        var store = new InMemoryStore();
+        await using var fixture = await LibrarySearchFixture.CreateAsync();
+        var result = await fixture.Search(text);
+        var artist = Assert.Single(result.Artists);
+        Assert.Equal("Michael Jackson", artist.Name);
+        Assert.Equal(albums, artist.Albums.Count);
+        Assert.Equal(firstTracks, artist.Albums[0].Tracks.Count);
+        Assert.Equal(reason, artist.Match.Kind);
+        Assert.Equal(0, fixture.Network.Calls);
+    }
 
-        var thriller = Alb("spotify:album:thriller", "Thriller", MjRef,
-            Trk("bj", "Billie Jean", MjRef, "spotify:album:thriller", "Thriller"),
-            Trk("bi", "Beat It", MjRef, "spotify:album:thriller", "Thriller"));
-        var bad = Alb("spotify:album:bad", "Bad", MjRef,
-            Trk("smooth", "Smooth Criminal", MjRef, "spotify:album:bad", "Bad"));
-        store.UpsertAlbum(thriller);
-        store.UpsertAlbum(bad);
-        store.UpsertArtist(new Artist("mj", "spotify:artist:mj", "Michael Jackson", null, TopAlbums: [thriller, bad]));
-        store.SetSaved("artists", "spotify:artist:mj", true, SyncState.Confirmed);
-
-        // Queen is resident but NOT followed → must never surface in an artists-scope search.
-        var queenAlbum = Alb("spotify:album:opera", "A Night at the Opera", OtherRef,
-            Trk("bohemian", "Bohemian Rhapsody", OtherRef, "spotify:album:opera", "A Night at the Opera"));
-        store.UpsertAlbum(queenAlbum);
-        store.UpsertArtist(new Artist("q", "spotify:artist:q", "Queen", null, TopAlbums: [queenAlbum]));
-
-        return store;
+    [Theory]
+    [InlineData("queen")]
+    [InlineData("bohemian")]
+    [InlineData("opera")]
+    [InlineData("   ")]
+    [InlineData("unfindable")]
+    public async Task SearchNeverIncludesAnUnfollowedArtistOrUnmatchedTree(string text)
+    {
+        await using var fixture = await LibrarySearchFixture.CreateAsync();
+        Assert.True((await fixture.Search(text)).IsEmpty);
     }
 
     [Fact]
-    public void ArtistNameMatch_HighlightsArtist_AndShowsAllAlbums()
+    public async Task OrderedRelations_PreserveDuplicateUrisAndTheirActualAlbumIndices()
     {
-        var r = LibrarySearchIndex.Run(SeedArtistLibrary(), LibrarySearchScope.Artists, "michael");
-        var a = Assert.Single(r.Artists);
-        Assert.Equal("spotify:artist:mj", a.Uri);
-        Assert.True(a.MatchLen > 0);                 // the artist name itself matched → highlighted
-        Assert.Equal(2, a.Albums.Count);             // artist matched → ALL albums shown (browse the artist)
-        Assert.Equal(LibraryMatchKind.None, a.Match.Kind);   // name hit → no "why" caption (highlight is self-evident)
+        await using var fixture = await LibrarySearchFixture.CreateAsync();
+        var key = LibrarySearchFixture.Key("spotify:album:thriller", FacetKind.AlbumTracks, new(0, 50));
+        var record = LibrarySearchFixture.Record(key, new RelationPageValue(FacetKind.AlbumTracks, "replacement", null,
+            0, 3, null, RelationCoverage.Complete, [new("one", "spotify:track:bj"), new("two", "spotify:track:bi"), new("three", "spotify:track:bj")]));
+        await fixture.Storage.CommitAsync(new(2, [record]), TestContext.Current.CancellationToken);
+        var album = Assert.Single((await fixture.Search("billie", LibrarySearchScope.Albums)).Albums);
+        Assert.Equal(new[] { 0, 2 }, album.Tracks.Select(track => track.AlbumIndex));
+        Assert.All(album.Tracks, track => Assert.Equal("spotify:track:bj", track.Uri));
     }
 
     [Fact]
-    public void AlbumNameMatch_SurfacesArtist_HighlightsAlbum_ShowsAllItsTracks()
+    public void ImportedAlbumLinks_DoNotInventAnOrdering_AndUnicodeMatchingUsesOrdinalCaseFolding()
     {
-        var r = LibrarySearchIndex.Run(SeedArtistLibrary(), LibrarySearchScope.Artists, "thriller");
-        var a = Assert.Single(r.Artists);
-        Assert.Equal(0, a.MatchLen);                 // artist present via its album, name not highlighted
-        Assert.Equal(LibraryMatchKind.Album, a.Match.Kind);  // "why": surfaced through a name-matched album …
-        Assert.Equal("Thriller", a.Match.Term);              // … and the caption quotes that album
-        var al = Assert.Single(a.Albums);
-        Assert.Equal("Thriller", al.Name);
-        Assert.True(al.MatchLen > 0);                // album name matched → highlighted
-        Assert.Equal(2, al.Tracks.Count);            // album matched → all its tracks shown
+        var scope = LibrarySearchFixture.Scope;
+        var rows = new CatalogSearchRow[] { new(scope, "spotify:album:a", EntityKind.Album, "Album", null, []),
+            new(scope, "spotify:track:t", EntityKind.Track, "small ω song", "spotify:album:a", []) };
+        var selected = LibrarySearchSelection.Select(new(rows, []), scope, LibrarySearchScope.Albums,
+            ["spotify:album:a"], "Ω", _ => "spotify", TestContext.Current.CancellationToken);
+        Assert.Equal(-1, Assert.Single(Assert.Single(selected.Albums).Tracks).AlbumIndex);
     }
 
     [Fact]
-    public void TrackMatch_SurfacesArtistAndAlbum_ShowsOnlyMatchingTracks()
+    public void RelationReplacement_DoesNotCombineOtherSnapshotsOrResurrectOldAlbumLinks()
     {
-        var r = LibrarySearchIndex.Run(SeedArtistLibrary(), LibrarySearchScope.Artists, "billie");
-        var a = Assert.Single(r.Artists);
-        Assert.Equal(LibraryMatchKind.Track, a.Match.Kind);  // "why": surfaced through a title-matched track …
-        Assert.Equal("Billie Jean", a.Match.Term);           // … and the caption quotes that track
-        var al = Assert.Single(a.Albums);            // only Thriller (contains the match), not Bad
-        Assert.Equal("Thriller", al.Name);
-        Assert.Equal(0, al.MatchLen);                // album present via a track, not highlighted
-        var t = Assert.Single(al.Tracks);            // only the matching track, not the whole tracklist
-        Assert.Equal("Billie Jean", t.Title);
-        Assert.True(t.MatchLen > 0);
+        var scope = LibrarySearchFixture.Scope;
+        CatalogSearchPage Page(int offset, string snapshot, params string[] children) => new(scope, "spotify:album:a",
+            FacetKind.AlbumTracks, new ResourceArguments(offset, 50).ToStorageKey(), snapshot, offset, children, offset == 0 ? 5 : 4);
+        var corpus = new CatalogSearchCorpus([
+            new(scope, "spotify:album:a", EntityKind.Album, "Album", null, []),
+            new(scope, "spotify:track:old", EntityKind.Track, "old match", "spotify:album:a", [])],
+            [Page(0, "new"), Page(50, "old", "spotify:track:old")]);
+        Assert.Empty(LibrarySearchSelection.Select(corpus, scope, LibrarySearchScope.Albums,
+            ["spotify:album:a"], "old", _ => "spotify", TestContext.Current.CancellationToken).Albums);
     }
+}
 
-    [Fact]
-    public void ExcludesUnfollowedArtistsContent()
+sealed class LibrarySearchFixture : IAsyncDisposable
+{
+    public static readonly CatalogScope Scope = new("spotify", "account", "en", "NL", "premium", 1, false);
+    public SearchPersistence Storage { get; }
+    public CatalogRuntime Data { get; }
+    public NoSearchNetwork Network { get; } = new();
+    LibrarySearchFixture(SearchPersistence storage, IReplicaPersistence replicas)
     {
-        var store = SeedArtistLibrary();
-        Assert.True(LibrarySearchIndex.Run(store, LibrarySearchScope.Artists, "queen").IsEmpty);
-        Assert.True(LibrarySearchIndex.Run(store, LibrarySearchScope.Artists, "bohemian").IsEmpty);
-        Assert.True(LibrarySearchIndex.Run(store, LibrarySearchScope.Artists, "opera").IsEmpty);
+        Storage = storage;
+        Data = new(Scope, Scope.ProviderAccount, storage, replicas, new MemoryReplicaProjection(new InMemoryStore()), [Network]);
     }
-
-    [Fact]
-    public void NoMatch_IsEmpty()
-        => Assert.True(LibrarySearchIndex.Run(SeedArtistLibrary(), LibrarySearchScope.Artists, "zzzznope").IsEmpty);
-
-    [Fact]
-    public void EmptyQuery_IsEmpty()
-        => Assert.True(LibrarySearchIndex.Run(SeedArtistLibrary(), LibrarySearchScope.Artists, "   ").IsEmpty);
-
-    [Fact]
-    public void AlbumsRankBeforeAlbumsMatchedOnlyByTrack()
+    public static async Task<LibrarySearchFixture> CreateAsync(ICatalogPersistence? storage = null,
+        IReplicaPersistence? replicas = null, ICatalogSearchPersistence? search = null, bool seed = true)
     {
-        var store = new InMemoryStore();
-        var thriller = Alb("spotify:album:thriller", "Thriller", MjRef,
-            Trk("bj", "Billie Jean", MjRef, "spotify:album:thriller", "Thriller"));
-        var bad = Alb("spotify:album:bad", "Bad", MjRef,
-            Trk("tr", "Thriller Reprise", MjRef, "spotify:album:bad", "Bad"));   // matches on TRACK only
-        store.UpsertAlbum(thriller);
-        store.UpsertAlbum(bad);
-        store.UpsertArtist(new Artist("mj", "spotify:artist:mj", "Michael Jackson", null, TopAlbums: [bad, thriller]));
-        store.SetSaved("artists", "spotify:artist:mj", true, SyncState.Confirmed);
-
-        var albums = Assert.Single(LibrarySearchIndex.Run(store, LibrarySearchScope.Artists, "thriller").Artists).Albums;
-        Assert.Equal(2, albums.Count);
-        Assert.Equal("Thriller", albums[0].Name);    // name match ranks ahead of the track-only match
-        Assert.Equal("Bad", albums[1].Name);
+        var memory = new MemoryDataPersistence();
+        storage ??= memory; replicas ??= memory; search ??= (ICatalogSearchPersistence)storage;
+        if (seed)
+        {
+            await storage.CommitAsync(new CatalogCommit(1, Records()), TestContext.Current.CancellationToken);
+            await replicas.CommitAsync(new(new(Scope.ProviderAccount, 1), [], null,
+                [new("artists", [new("spotify:artist:mj", 1)]), new("albums", [new("spotify:album:thriller", 1)])], [], [], [], []),
+                TestContext.Current.CancellationToken);
+        }
+        var fixture = new LibrarySearchFixture(new(storage, search), replicas);
+        await fixture.Data.InitializeAsync(TestContext.Current.CancellationToken);
+        await fixture.Data.SetSessionAsync(Scope, Scope.ProviderAccount, false, TestContext.Current.CancellationToken);
+        if (seed) Assert.Contains(fixture.Data.Replicas.ReadCollection("artists").Items, item => item.Uri == "spotify:artist:mj");
+        return fixture;
     }
-
-    [Fact]
-    public void AlbumScope_MatchesSavedAlbumsAndTheirTracks()
+    public async Task<LibrarySearchResults> Search(string text, LibrarySearchScope scope = LibrarySearchScope.Artists)
+        => (await Data.Queries.ReadOnceAsync(new LibrarySearchQuery(Scope, text, scope), cancellationToken: TestContext.Current.CancellationToken)).Value;
+    public ValueTask DisposeAsync() => Data.DisposeAsync();
+    public static ResourceKey Key(string uri, FacetKind facet, ResourceArguments args = default) => new(Scope, uri, facet, args);
+    public static CatalogRecord Record(ResourceKey key, CatalogValue value) => new(key, Knowledge.Present, value,
+        CatalogProvenance.Provider, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), 1);
+    public static CatalogRecord[] Records() => [
+        Record(Key("spotify:artist:mj", FacetKind.ArtistIdentity), new ArtistIdentityValue("Michael Jackson")),
+        Record(Key("spotify:artist:q", FacetKind.ArtistIdentity), new ArtistIdentityValue("Queen")),
+        Record(Key("spotify:album:thriller", FacetKind.AlbumIdentity), new AlbumIdentityValue("Thriller", ArtistUris: ["spotify:artist:mj"], Year: 1982)),
+        Record(Key("spotify:album:bad", FacetKind.AlbumIdentity), new AlbumIdentityValue("Bad", ArtistUris: ["spotify:artist:mj"], Year: 1980)),
+        Record(Key("spotify:album:opera", FacetKind.AlbumIdentity), new AlbumIdentityValue("A Night at the Opera", ArtistUris: ["spotify:artist:q"])),
+        Record(Key("spotify:track:bj", FacetKind.TrackIdentity), new TrackIdentityValue("Billie Jean", ["spotify:artist:mj"], "spotify:album:thriller")),
+        Record(Key("spotify:track:bi", FacetKind.TrackIdentity), new TrackIdentityValue("Beat It", ["spotify:artist:mj"], "spotify:album:thriller")),
+        Record(Key("spotify:track:smooth", FacetKind.TrackIdentity), new TrackIdentityValue("Smooth Criminal", ["spotify:artist:mj"], "spotify:album:bad")),
+        Record(Key("spotify:track:queen", FacetKind.TrackIdentity), new TrackIdentityValue("Bohemian Rhapsody", ["spotify:artist:q"], "spotify:album:opera")),
+        Record(Key("spotify:album:thriller", FacetKind.AlbumTracks, new(0, 50)), new RelationPageValue(FacetKind.AlbumTracks,
+            "thriller", null, 0, 2, null, RelationCoverage.Complete, [new("one", "spotify:track:bj"), new("two", "spotify:track:bi")])),
+    ];
+    public sealed class NoSearchNetwork : ICatalogResourceProvider
     {
-        var store = new InMemoryStore();
-        var thriller = Alb("spotify:album:thriller", "Thriller", MjRef,
-            Trk("bj", "Billie Jean", MjRef, "spotify:album:thriller", "Thriller"));
-        store.UpsertAlbum(thriller);
-        store.SetSaved("albums", "spotify:album:thriller", true, SyncState.Confirmed);
-
-        var byName = LibrarySearchIndex.Run(store, LibrarySearchScope.Albums, "thril");
-        Assert.Empty(byName.Artists);
-        var byNameAl = Assert.Single(byName.Albums);
-        Assert.Equal("Thriller", byNameAl.Name);
-        Assert.Equal(LibraryMatchKind.None, byNameAl.Match.Kind);   // album name hit → no caption
-
-        var byTrack = LibrarySearchIndex.Run(store, LibrarySearchScope.Albums, "billie");
-        var al = Assert.Single(byTrack.Albums);
-        Assert.Equal(LibraryMatchKind.Track, al.Match.Kind);        // "why": album surfaced through a track match …
-        Assert.Equal("Billie Jean", al.Match.Term);                 // … quoted in the caption
-        var t = Assert.Single(al.Tracks);
-        Assert.Equal("Billie Jean", t.Title);
-        Assert.Equal(0, t.AlbumIndex);
+        public int Calls;
+        public string Provider => "spotify";
+        public ValueTask<IReadOnlyList<ResourceResponse>> FetchAsync(IReadOnlyList<ResourceRequest> requests, CancellationToken ct)
+        { Interlocked.Increment(ref Calls); throw new InvalidOperationException("Offline search must never request transport metadata."); }
     }
+}
+
+sealed class SearchPersistence(ICatalogPersistence storage, ICatalogSearchPersistence search) : ICatalogPersistence, ICatalogSearchPersistence
+{
+    public readonly List<ResourceKey> ReadKeys = [];
+    public int CorpusReads;
+    public Func<int, CancellationToken, ValueTask<CatalogSearchCorpus>>? ReadCorpus;
+    public ValueTask<IReadOnlyList<CatalogRecord?>> ReadManyAsync(IReadOnlyList<ResourceKey> keys, CancellationToken ct)
+    { lock (ReadKeys) ReadKeys.AddRange(keys); return storage.ReadManyAsync(keys, ct); }
+    public ValueTask CommitAsync(CatalogCommit commit, CancellationToken ct) => storage.CommitAsync(commit, ct);
+    public ValueTask<CatalogTransportRecord?> ReadTransportAsync(CatalogScope scope, string subject, int extensionKind, CancellationToken ct)
+        => storage.ReadTransportAsync(scope, subject, extensionKind, ct);
+    public ValueTask<CatalogSearchCorpus> ReadSearchCorpusAsync(CatalogScope scope, CancellationToken ct)
+    { int call = Interlocked.Increment(ref CorpusReads); return ReadCorpus?.Invoke(call, ct) ?? search.ReadSearchCorpusAsync(scope, ct); }
 }

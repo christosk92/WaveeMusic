@@ -37,7 +37,7 @@ namespace Wavee.Tests;
 // (3) pins the routing leg: that fault travels the ordinary AudioHostSignal channel into PlaybackController.OnHostSignal
 // and out through the existing error path, so the paused-at-0:00 zombie state is impossible.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-public class VideoLoadSupersessionTests
+public class VideoLoadSupersessionTests : PlaybackCatalogTestBase
 {
     // ── the pump rig: fake clear/apply steps that append to ONE ordered log, so "A finished before B started" is a
     //    provable ordering fact rather than two independent counters (the HostSwap-tests shape).
@@ -284,6 +284,10 @@ public class VideoLoadSupersessionTests
 
     sealed class FakeAudioHost : IAudioHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, Sig.Emit);
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, Sig.Emit);
+        public bool PlayIntent => IsPlaying;
+
         public readonly TestSignals Sig = new();
         public IObservable<AudioHostSignal> Signals => Sig;
         public long PositionMs { get; set; }
@@ -303,6 +307,8 @@ public class VideoLoadSupersessionTests
 
     sealed class FakeVideoHost : IMediaHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, Sig.Emit);
+
         public readonly TestSignals Sig = new();
         public IObservable<AudioHostSignal> Signals => Sig;
         public long PositionMs { get; set; }
@@ -321,12 +327,15 @@ public class VideoLoadSupersessionTests
     {
         var audio = new FakeAudioHost();
         var video = new FakeVideoHost();
-        var projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var projection = Catalog.Projection("us", () => 0);
         var errors = new List<PlaybackErrorInfo>();
         using var controller = new PlaybackController(audio, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:track:a", "spotify:track:b"), "us", videoHost: video);
         controller.ShouldPlayAsVideo = _ => true;
-        controller.LoadCurrentVideoAsync = (_, _, _) => Task.FromResult(true);
+        var opened = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task videoLoad = Task.CompletedTask;
+        controller.LoadCurrentVideoAsync = (_, _, _) => opened.Task;
+        controller.VideoLoadSpawnedForTest = task => videoLoad = task;
         controller.OnPlaybackError = e => { lock (errors) errors.Add(e); };
 
         await controller.PlayAsync("spotify:playlist:p");
@@ -336,12 +345,18 @@ public class VideoLoadSupersessionTests
         video.Sig.Emit(AudioHostSignal.Fault(0, AudioKeyFailureReason.None,
             "the video session never started playing (no progress within the start budget)"));
         await WaitUntilAsync(() => { lock (errors) return errors.Count > 0; });
+        opened.SetResult(true);
+        await videoLoad.WaitAsync(TimeSpan.FromSeconds(2));
 
         // The recovery hook is unwired here, so the error path runs — the user gets the error surface (with its retry),
         // never the silent paused-at-0:00 state the wedge produced.
         Assert.Single(errors);
         Assert.Contains("never started playing", errors[0].Detail);
         Assert.False(projection.IsPlaying);
+        Assert.False(projection.IsLoading);
+        Assert.False(projection.IsBuffering);
+        Assert.False(projection.Transport.PlayWhenReady);
+        Assert.Equal(PlaybackPhase.Failed, projection.Transport.Phase);
     }
 
     [Fact]
@@ -349,7 +364,7 @@ public class VideoLoadSupersessionTests
     {
         var audio = new FakeAudioHost();
         var video = new FakeVideoHost();
-        var projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var projection = Catalog.Projection("us", () => 0);
         var errors = new List<PlaybackErrorInfo>();
         using var controller = new PlaybackController(audio, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:track:a", "spotify:track:b"), "us", videoHost: video);
@@ -379,7 +394,7 @@ public class VideoLoadSupersessionTests
     {
         var audio = new FakeAudioHost();
         var video = new FakeVideoHost();
-        var projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var projection = Catalog.Projection("us", () => 0);
         var errors = new List<PlaybackErrorInfo>();
         int loads = 0;
         using var controller = new PlaybackController(audio, new StubTrackResolver(), projection,

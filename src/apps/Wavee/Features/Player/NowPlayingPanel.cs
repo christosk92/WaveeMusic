@@ -10,6 +10,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Features.Video;
 using static FluentGpu.Dsl.Ui;
 
@@ -43,6 +44,9 @@ sealed class NowPlayingPanel : Component
         var svc = UseContext(Services.Slot);
         var go = UseContext(HistoryStore.NavCtx);
         bool showTrackArtwork = !AppearancePrefs.TrackArtworkHidden(svc?.Settings);
+
+        var queueView = QueryHooks.Use(Context, static (page, value) => page.SetReady(value), svc?.Queries, svc is null ? null : new QueueQuery(svc.CatalogScope),
+            new QueueQuerySnapshot([], null, null, null, 0), new QueryDemand(true, QueryPriority.Playback, []));
 
         var track = b?.CurrentTrack.Value;
         string artistUri = track is { Artists.Count: > 0 } ? track.Artists[0].Uri : "";
@@ -79,7 +83,7 @@ sealed class NowPlayingPanel : Component
         var merch = info?.Track?.Merch is { Count: > 0 } tm ? tm : info?.About?.Extras?.Merch;
         if (merch is { Count: > 0 }) sections.Add(Merch(merch));
 
-        var next = NextUp(b.Queue.Value);
+        var next = NextUp(queueView.Loadable.Value.Value.Rows);
         if (next.Count > 0) sections.Add(NextUpSection(next, b, lib, go, showTrackArtwork));
 
         var scrollBody = new BoxEl

@@ -54,18 +54,18 @@ sealed partial class SettingsPage
     bool _metaBudgetSeeded;
     Wavee.Backend.Persistence.EntityCacheStats? _metaStats;
 
-    // The census is a handful of indexed counts + three pragmas on the cold store's WRITER connection, so it rides a
-    // background task exactly like ComputeStorage — never the UI thread.
+    // Maintenance owns the asynchronous database census; the page only publishes its result on the UI thread.
     void RefreshMetadataStats(Services? svc, Action<Action> post)
     {
-        if (svc?.RealCold is not { } cold) return;
-        _ = Task.Run(() =>
+        if (svc?.CacheGc is not { } cache) return;
+        _ = LoadAsync();
+        async Task LoadAsync()
         {
-            Wavee.Backend.Persistence.EntityCacheStats? snap = null;
-            try { snap = cold.GetCacheStats(); }
-            catch { }
-            post(() => { _metaStats = snap; _metaTick.Value = _metaTick.Peek() + 1; });
-        });
+            Wavee.Backend.Persistence.EntityCacheStats? snapshot = null;
+            try { snapshot = await cache.GetStatsAsync().ConfigureAwait(false); }
+            catch (Exception error) { WaveeLog.Instance.Warn("cache", "cache statistics: " + error.Message); }
+            post(() => { _metaStats = snapshot; _metaTick.Value = _metaTick.Peek() + 1; });
+        }
     }
 
     string MetadataCacheDescription()
@@ -101,21 +101,24 @@ sealed partial class SettingsPage
                 if (settings is null || i < 0 || i >= s_metaBudgetBytes.Length) return;
                 long bytes = s_metaBudgetBytes[i];
                 settings.Set(WaveeSettings.MetadataCacheBudgetBytes, bytes);
-                // The GC reads the DB meta row; setting BudgetBytes writes BOTH, so a pass already scheduled picks the
-                // new ceiling up without a restart. With no GC instance (fake backend) the meta row still gets it.
-                if (svc?.CacheGc is { } gc) gc.BudgetBytes = bytes;
-                else svc?.RealCold?.SetCacheBudgetBytes(bytes);
+                if (svc?.CacheGc is { } cache) cache.BudgetBytes = bytes;
                 Bump();
             });
     }
 
     void ClearMetadataCache(Services? svc, Action<Action> post)
     {
-        if (svc?.RealStore is not Wavee.Backend.Persistence.CachedStore store) return;
-        _ = Task.Run(() =>
+        if (svc?.CacheGc is not { } cache) return;
+        _ = ClearAsync();
+        async Task ClearAsync()
         {
-            try { store.ClearMetadataCache(); }
-            catch { }
+            try { await cache.ClearAsync().ConfigureAwait(false); }
+            catch (Exception error)
+            {
+                WaveeLog.Instance.Warn("cache", "clear metadata: " + error.Message);
+                post(() => Toast.Show(error.Message, new ToastOptions { Severity = InfoBarSeverity.Error }));
+                return;
+            }
             post(() =>
             {
                 Toast.Show(Loc.Get(Strings.Settings.Storage.MetadataCleared), new ToastOptions { Severity = InfoBarSeverity.Success });
@@ -123,7 +126,7 @@ sealed partial class SettingsPage
                 RefreshStorage(post);
                 RefreshMetadataStats(svc, post);
             });
-        });
+        }
     }
 
     void RefreshStorage(Action<Action> post)
@@ -174,8 +177,8 @@ sealed partial class SettingsPage
         }
         catch { }
         store += FileSize(Path.Combine(root, "store.json"));
-        store += DirSize(Path.Combine(root, "WaveeMusic"));
-        var cacheSettings = AppDataSettings.ForUnpackaged("Wavee", "Wavee");
+        store += DirSize(Path.Combine(root, UnpackagedAppDataRoot.MusicFolderName));
+        var cacheSettings = AppDataSettings.ForUnpackaged(UnpackagedAppDataRoot.CurrentFolderName, UnpackagedAppDataRoot.CurrentFolderName);
         long audioBody = DirSize(AudioBodyDiskCache.ResolveDirectory(cacheSettings.Get(WaveeSettings.AudioBodyCacheBasePath)));
         long licenseDb = FileSize(LicenseKeyDiskCache.DefaultDbPath());
         // Album art and other remote images, decoded once and kept on disk. Under the app root since the shipping build
@@ -275,21 +278,6 @@ sealed partial class SettingsPage
         });
     }
 
-    static string ResidentCacheDescription(Wavee.Backend.Persistence.CachedStore? cold)
-    {
-        if (cold is null) return Loc.Get(Strings.Settings.Storage.ResidentCacheSub);
-        string membership = Loc.Format("settings.storage.residentCacheStats",
-            ("used", FmtBytes(cold.ResidentMembershipBytes)),
-            ("cap", FmtBytes(cold.MaxResidentBytes)),
-            ("count", cold.ResidentMembershipCount),
-            ("max", cold.MaxResidentPlaylists));
-        // Entity-store census (attribution for the ~92 MB resident-string floor — the residency plan). Compact + diagnostic,
-        // appended on one line; deliberately developer-facing (raw counts), so not routed through the loc tables.
-        var c = cold.EntityCounts;
-        string entities = $" · entities t={c.Tracks} al={c.Albums} ar={c.Artists} pl={c.Playlists} sh={c.Shows} ep={c.Episodes} (~{FmtBytes(cold.EstimatedEntityBytes)})";
-        return membership + entities;
-    }
-
     Element StorageTab(Services? svc, Action<Action> post)
     {
         var storageLoad = _storageLoad.Value;
@@ -299,8 +287,6 @@ sealed partial class SettingsPage
         string playplayDir = Path.Combine(root, "playplay");
         var settings = svc?.Settings;
 
-        var cold = svc?.RealStore as Wavee.Backend.Persistence.CachedStore;
-        string residentCacheDescription = ResidentCacheDescription(cold);
         string audioDir = svc?.AudioBodyCache?.CurrentDirectory
             ?? AudioBodyDiskCache.ResolveDirectory(settings?.Get(WaveeSettings.AudioBodyCacheBasePath));
         string licenseDb = LicenseKeyDiskCache.DefaultDbPath();
@@ -403,13 +389,6 @@ sealed partial class SettingsPage
                         Loc.Get(Strings.Settings.Storage.ClearMetadata),
                         () => ClearMetadataCache(svc, post))), SettingsGlyphs.Row(SettingsTab.Storage, "clearMetadata")),
             SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.Memory), SettingsGlyphs.Section(SettingsTab.Storage, "Memory")),
-            SettingsRow(Loc.Get(Strings.Settings.Storage.ResidentCache), residentCacheDescription,
-                Button.Standard(Loc.Get(Strings.Settings.Storage.ReleaseNow), () =>
-                {
-                    svc?.LibraryStore.ShedDetails(keep: 16);
-                    Toast.Show(Loc.Get(Strings.Settings.Storage.DetailsReleased), new ToastOptions { Severity = InfoBarSeverity.Success });
-                    Bump();
-                }), SettingsGlyphs.Row(SettingsTab.Storage, "residentCache")),
             SettingsSectionHeader(Loc.Get(Strings.Settings.Storage.FactoryReset), SettingsGlyphs.Section(SettingsTab.Storage, "Reset"),
                 Loc.Get(Strings.Settings.Storage.FactoryResetSub)),
             SettingsRow(Loc.Get(Strings.Settings.Storage.FactoryReset), Loc.Get(Strings.Settings.Storage.FactoryResetRowSub),

@@ -17,16 +17,7 @@ using EntityKind = Wavee.Core.EntityKind;
 
 namespace Wavee.SpotifyLive;
 
-// ── The live context resolver (the proto-free IContextResolver impl) ──────────────────────────────────────────────────
-// Maps an opaque context uri → ordered, hydrated tracks via ONE unified server call: GET /context-resolve/v1/{uri}. The
-// FG mapping of WaveeMusic's 700-line ContextResolver:
-//   • its 3 bespoke caches + retry/cooldown dict   → none here: the GET is cheap; the cost is the metadata, and that is
-//                                                     already deduped + sealed by the hydration ledger (design 2.1).
-//   • its protobuf JsonParser.Parse<Context>       → a streaming Utf8JsonReader (proto-free, no full-doc alloc), the same
-//                                                     choice DealerFrameParser makes.
-//   • its bespoke batched-metadata client          → IEntityHydrator.EnsureManyAsync (ledger-deduped, batched, gzipped).
-// The server decides order + sorting; we preserve it and apply skip_to (uid→uri→index) on top. Collections are URI-only
-// on the wire — their sort/filter rides on context.url's query, which we forward verbatim.
+// Ordered context resolution; queue demand schedules missing visible metadata.
 public sealed class LiveContextResolver : IContextResolver
 {
     sealed record ArtistContextWire(List<QueuedRef> Refs, Dictionary<string, string> Metadata);
@@ -35,22 +26,15 @@ public sealed class LiveContextResolver : IContextResolver
     const int MaxEagerPages = 8;
 
     readonly ITransport _transport;
-    readonly IEntityHydrator _hydrator;
-    readonly IStore _store;
+    readonly PlaybackQueueProjection _projection;
     readonly WaveeLogger _log;
     readonly Resource<string, ArtistContextWire> _artistCache;
 
-    /// <param name="hydrator">THE façade — REQUIRED. The resolved order is raised to Identity through it (one catalogue
-    /// POST per 300, deduped session-wide by the ledger) instead of this file owning its own metadata client.</param>
-    /// <param name="store">REQUIRED too (design §3): <c>HydrateAsync</c> reads every resolved row back out of it, so a
-    /// null here is an NRE inside a queue resolve rather than a composition-root failure — the exact asymmetry
-    /// wiring-discipline exists to remove.</param>
-    public LiveContextResolver(ITransport transport, IEntityHydrator hydrator, IStore store,
+    public LiveContextResolver(ITransport transport, PlaybackQueueProjection projection,
         Func<SessionContext> ctx, WaveeLogger log = default)
     {
         _transport = transport;
-        _hydrator = hydrator ?? throw new ArgumentNullException(nameof(hydrator));
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _projection = projection ?? throw new ArgumentNullException(nameof(projection));
         _log = log;
         _artistCache = new Resource<string, ArtistContextWire>(FetchArtistWireAsync,
             new FreshnessPolicy.Etag(TimeSpan.FromMinutes(15)), ctx, maxEntries: 16, name: "connect.context.artist",
@@ -59,6 +43,7 @@ public sealed class LiveContextResolver : IContextResolver
 
     public async Task<ResolvedContext> ResolveAsync(ContextSpec spec, CancellationToken ct = default)
     {
+        long expectedEpoch = _projection.Epoch;
         // 0) NOT OURS TO ANSWER. A context outside Spotify's catalog (a playback module's `wavee:module:…`, a local
         //    folder, a session playlist) and Spotify's own metadata-in-the-uri `spotify:local:*` namespace both resolve
         //    to nothing here — the endpoint answers 400 and the caller logs a warning for a question that never had an
@@ -74,7 +59,7 @@ public sealed class LiveContextResolver : IContextResolver
         // 1) The command embedded a custom-ordered page (a sorted/filtered playlist sent inline) → play it verbatim.
         if (spec.EmbeddedPages is { Count: > 0 } embedded)
         {
-            var hydratedEmbedded = await HydrateAsync(embedded, ct).ConfigureAwait(false);
+            var hydratedEmbedded = await MaterializeAsync(embedded, expectedEpoch, ct).ConfigureAwait(false);
             int s = ContextResolve.ResolveStartIndex(hydratedEmbedded, spec);
             return new ResolvedContext(hydratedEmbedded, s, null, null, ContextResolve.IsInfinite(spec.Uri),
                 spec.Metadata, spec.Uri);
@@ -112,7 +97,7 @@ public sealed class LiveContextResolver : IContextResolver
 
         if (refs.Count == 0) { _log.Warn("context-resolve: 0 tracks for " + spec.Uri); return ResolvedContext.Empty; }
 
-        var tracks = await HydrateAsync(refs, ct).ConfigureAwait(false);
+        var tracks = await MaterializeAsync(refs, expectedEpoch, ct).ConfigureAwait(false);
         int start = ContextResolve.ResolveStartIndex(tracks, spec);
         return new ResolvedContext(tracks, start, sorting, nextPage, ContextResolve.IsInfinite(spec.Uri),
             jsonInfo.Metadata, string.IsNullOrEmpty(jsonInfo.ContextUri) ? null : jsonInfo.ContextUri);
@@ -120,6 +105,7 @@ public sealed class LiveContextResolver : IContextResolver
 
     public async Task<ContextPage> LoadMoreAsync(string nextPageUrl, CancellationToken ct = default)
     {
+        long expectedEpoch = _projection.Epoch;
         if (string.IsNullOrEmpty(nextPageUrl)) return ContextPage.Empty;
         var resp = await _transport.Request(PageChannel(nextPageUrl), PageRoute(nextPageUrl), default, ct).ConfigureAwait(false);
         if (!resp.Ok || resp.Body is null || resp.Body.Length == 0) return ContextPage.Empty;
@@ -127,7 +113,7 @@ public sealed class LiveContextResolver : IContextResolver
         string? _s = null, _n = null;
         ContextJson.Parse(resp.Body, refs, ref _s, ref _n);
         if (refs.Count == 0) return new ContextPage(Array.Empty<QueuedTrack>(), _n);
-        return new ContextPage(await HydrateAsync(refs, ct).ConfigureAwait(false), _n);
+        return new ContextPage(await MaterializeAsync(refs, expectedEpoch, ct).ConfigureAwait(false), _n);
     }
 
     public async Task<ResolvedContext> ResolveAutoplayAsync(string contextUri, IReadOnlyList<string> recentTrackUris,
@@ -168,6 +154,7 @@ public sealed class LiveContextResolver : IContextResolver
     public async Task<ResolvedContext> ResolveAutopodcastAsync(string contextUri, IReadOnlyList<string> recentEpisodeUris,
         CancellationToken ct = default)
     {
+        long expectedEpoch = _projection.Epoch;
         if (string.IsNullOrWhiteSpace(contextUri) || !ContextResolve.IsSpotifyContext(contextUri)) return ResolvedContext.Empty;
         var request = new AutoplayContextRequest { ContextUri = contextUri, IsVideo = false };
         for (int i = 0; i < recentEpisodeUris.Count; i++)
@@ -190,12 +177,13 @@ public sealed class LiveContextResolver : IContextResolver
         string? sorting = null, nextPage = null;
         ContextJson.Parse(resp.Body, refs, ref sorting, ref nextPage, out var info);
         if (refs.Count == 0) return ResolvedContext.Empty;
-        var tracks = Tag(await HydrateAsync(refs, ct).ConfigureAwait(false), "autoplay");
+        var tracks = Tag(await MaterializeAsync(refs, expectedEpoch, ct).ConfigureAwait(false), "autoplay");
         return new ResolvedContext(tracks, 0, sorting, nextPage, true, info.Metadata, info.ContextUri ?? contextUri);
     }
 
     async Task<ResolvedContext> ResolveContextAutoplayAsync(string contextUri, IReadOnlyList<string> recentTrackUris, CancellationToken ct)
     {
+        long expectedEpoch = _projection.Epoch;
         var request = new AutoplayContextRequest { ContextUri = contextUri, IsVideo = false };
         for (int i = 0; i < recentTrackUris.Count; i++)
             if (!string.IsNullOrEmpty(recentTrackUris[i])) request.RecentTrackUri.Add(recentTrackUris[i]);
@@ -217,13 +205,14 @@ public sealed class LiveContextResolver : IContextResolver
         string? sorting = null, nextPage = null;
         ContextJson.Parse(resp.Body, refs, ref sorting, ref nextPage, out var info);
         if (refs.Count == 0) return ResolvedContext.Empty;
-        var tracks = Tag(await HydrateAsync(refs, ct).ConfigureAwait(false), "autoplay");
+        var tracks = Tag(await MaterializeAsync(refs, expectedEpoch, ct).ConfigureAwait(false), "autoplay");
         var stationUri = string.IsNullOrEmpty(info.ContextUri) ? contextUri : info.ContextUri;
         return new ResolvedContext(tracks, 0, sorting, nextPage, true, info.Metadata, stationUri);
     }
 
     async Task<ResolvedContext> ResolveRadioApolloAsync(string seedTrackUri, IReadOnlyList<string> recentTrackUris, CancellationToken ct)
     {
+        long expectedEpoch = _projection.Epoch;
         string seedId = EntityUri.IdOf(seedTrackUri);
         var prev = new List<string>(recentTrackUris.Count);
         for (int i = 0; i < recentTrackUris.Count; i++)
@@ -249,7 +238,7 @@ public sealed class LiveContextResolver : IContextResolver
         string? sorting = null, nextPage = null;
         ContextJson.Parse(resp.Body, refs, ref sorting, ref nextPage);
         if (refs.Count == 0) return ResolvedContext.Empty;
-        var tracks = Tag(await HydrateAsync(refs, ct).ConfigureAwait(false), "autoplay");
+        var tracks = Tag(await MaterializeAsync(refs, expectedEpoch, ct).ConfigureAwait(false), "autoplay");
         return new ResolvedContext(tracks, 0, null, nextPage, true, null, "spotify:station:track:" + seedId);
     }
 
@@ -336,6 +325,7 @@ public sealed class LiveContextResolver : IContextResolver
     // the caller falls back to spec.Uri (resolved.ContextUri ?? spec.Uri), never relabeling to this list uri.
     async Task<ResolvedContext> ResolveArtistAsync(ContextSpec spec, CancellationToken ct)
     {
+        long expectedEpoch = _projection.Epoch;
         string id = EntityUri.IdOf(spec.Uri);
         var loaded = await _artistCache.GetAsync(id, ct).ConfigureAwait(false);
         if (!loaded.IsReady)
@@ -344,7 +334,7 @@ public sealed class LiveContextResolver : IContextResolver
             return ResolvedContext.Empty;
         }
         var wire = loaded.Value!;
-        var tracks = await HydrateAsync(wire.Refs, ct).ConfigureAwait(false);
+        var tracks = await MaterializeAsync(wire.Refs, expectedEpoch, ct).ConfigureAwait(false);
         int start = ContextResolve.ResolveStartIndex(tracks, spec);
         return new ResolvedContext(tracks, start, null, null, false, wire.Metadata, null);
     }
@@ -380,16 +370,18 @@ public sealed class LiveContextResolver : IContextResolver
         return new ArtistContextWire(refs, metadata);
     }
 
-    // Pull display + duration metadata for the resolved order — through THE façade, at Identity (a queue row needs a
-    // title, a duration and an image; it is not a page open). The ledger dedupes across surfaces, so re-resolving the
-    // same context is near-free. Misses become uri-only placeholders (preserving indices so skip_to-by-index stays valid).
-    public async Task<IReadOnlyList<QueuedTrack>> HydrateAsync(IReadOnlyList<QueuedRef> refs, CancellationToken ct = default)
-    {
-        var uris = new string[refs.Count];
-        for (int i = 0; i < refs.Count; i++) uris[i] = refs[i].Uri;
-        try { await _hydrator.EnsureManyAsync(uris, HydrationLevel.Identity, new HydrationOptions(Surface: TraitSurface.Context), ct).ConfigureAwait(false); }
-        catch (Exception ex) { _log.Warn("context hydrate: " + ex.Message, ex); }   // best-effort: placeholders below
+    public Task<IReadOnlyList<QueuedTrack>> HydrateAsync(IReadOnlyList<QueuedRef> refs, CancellationToken ct = default)
+        => MaterializeAsync(refs, _projection.Epoch, ct);
 
+    async Task<IReadOnlyList<QueuedTrack>> MaterializeAsync(IReadOnlyList<QueuedRef> refs, long expectedEpoch, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_projection.Epoch != expectedEpoch) throw new OperationCanceledException("Context belongs to an ended catalog session.");
+        var observations = new List<Track>();
+        foreach (var row in refs)
+            if (PlaybackController.TrackFromWireMetadata(row.Uri, row.Metadata) is { } track) observations.Add(track);
+        if (observations.Count > 0) await _projection.SeedTracksAsync(observations, expectedEpoch, ct).ConfigureAwait(false);
+        if (_projection.Epoch != expectedEpoch) throw new OperationCanceledException("Context belongs to an ended catalog session.");
         var tracks = new QueuedTrack[refs.Count];
         for (int i = 0; i < refs.Count; i++)
         {
@@ -397,16 +389,10 @@ public sealed class LiveContextResolver : IContextResolver
             string provider = string.IsNullOrEmpty(refs[i].Provider) ? "context" : refs[i].Provider;
             // An EPISODE is a playable: a podcast context used to fall through to the uri-only placeholder because the
             // join asked for GetTrack alone (design §1.5 / plan §1.5).
-            var row = _store.GetTrack(uri) ?? EpisodeAsTrack.From(_store.GetEpisode(uri)) ?? Placeholder(uri);
+            var row = _projection.ReadTrack(uri);
             tracks[i] = new QueuedTrack(row, refs[i].Uid, provider, refs[i].Metadata, RowKindOf(uri));
         }
         return tracks;
-    }
-
-    static Track Placeholder(string uri)
-    {
-        string id = EntityUri.IdOf(uri);
-        return new Track(id, uri, uri, Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 0, false, null);
     }
 
     // GET /context-resolve/v1/{escaped uri}. A collection's sort/filter rides on context.url's query string — forward it.

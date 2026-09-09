@@ -1,6 +1,5 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -8,6 +7,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -24,15 +24,6 @@ sealed class EpisodeList : Component
     readonly bool _showToolbar;
     readonly Signal<int> _status = new(0);   // 0 All · 1 Unplayed · 2 In progress · 3 Played
     readonly Signal<int> _order = new(0);    // 0 Newest · 1 Oldest
-    // Paging (design 2.3): the show ladder brings the FIRST page of episodes up on open and pages the rest onto the
-    // pump; this is the foreground "I reached the end of the list" ask for the next one. The flag is re-entrancy
-    // control only — the rows arrive through the store, which re-maps the model this list renders.
-    readonly Signal<bool> _paging = new(false);
-    // The LOCAL half of the paging cursor: the offset the last load-more asked for, per show. The model carries the
-    // authoritative one (Show.PagedThrough), but a page whose members all failed to hydrate writes nothing to the store,
-    // so no re-map happens and the model's cursor never moves — the pill would then re-ask the same page on every tap.
-    // Keyed by show uri so a reused instance (DetailShell swaps content in place) cannot carry one show's cursor to another.
-    readonly Signal<(string Uri, int Through)> _pagedTo = new(("", 0));
 
     public EpisodeList(Loadable<DetailModel> full, DetailHandlers h, bool showToolbar = true)
     { _full = full; _h = h; _showToolbar = showToolbar; }
@@ -58,18 +49,14 @@ sealed class EpisodeList : Component
         }
         if (order == 1) view.Reverse();            // Oldest first (episodes are newest-first by default)
 
-        var svc = UseContext(Services.Slot);
-        var post = Context.UsePost();
-        bool paging = _paging.Value;                                  // subscribe
-        var pagedTo = _pagedTo.Value;                                 // subscribe
-        // THE paging cursor, not a resident-vs-total count. `m.TotalEpisodes > eps.Count` was wrong in both directions:
-        // an episode that cannot hydrate at all (withdrawn, region-locked) keeps the resident count permanently short,
-        // so the pill stayed on screen forever and every tap re-asked the same unanswerable members from `eps.Count`.
-        // PagedThrough is how far we have ASKED (design §2.3), which advances whether or not rows came back.
-        string? showUri = m.ContextUri is { Length: > 0 } ? m.ContextUri : null;
-        int pagedThrough = showUri is not null && pagedTo.Uri == showUri
-            ? Math.Max(m.PagedThrough, pagedTo.Through) : m.PagedThrough;
-        bool hasMore = showUri is not null && pagedThrough < m.TotalEpisodes;
+        var query = UseContext(QueryView.Slot)?.Value as QuerySignalBinding<Show>;
+        UseEffect(() =>
+        {
+            query?.SetDemand(EpisodeDemand());
+        }, DepKey.From(HashCode.Combine(m.ContextUri, query)));
+        bool paging = query?.Snapshot.Value.Status.IsRefreshing ?? false;
+        int pagedThrough = Math.Max(m.PagedThrough, eps.Count);
+        bool hasMore = query is not null && pagedThrough < m.TotalEpisodes;
 
         var children = new List<Element>(view.Count + 5);
         if (_showToolbar) children.Add(Toolbar(status, order));
@@ -86,11 +73,7 @@ sealed class EpisodeList : Component
                 Children = [new TextEl(Loc.Get(Strings.Podcast.NoEpisodes)) { Size = 14f, Color = Tok.TextTertiary }] });
         else foreach (int oi in view) { int idx = oi; children.Add(EpisodeRow(eps[oi], () => _h.Play(idx))); }
         if (hasMore)
-        {
-            string uri = showUri!;
-            int from = pagedThrough;
-            children.Add(LoadMore(paging, () => Page(svc, uri, from, post)));
-        }
+            children.Add(LoadMore(paging, () => Page(query!)));
 
         var body = new BoxEl
         {
@@ -101,29 +84,16 @@ sealed class EpisodeList : Component
         return ScrollView(body) with { Grow = 1f };
     }
 
-    /// <summary>Ask the library for the next page of THIS show's episodes. Fire-and-forget: the rows land in the store,
-    /// which bumps the show and re-maps the model this list renders — so there is nothing to assign back here, only the
-    /// re-entrancy flag to clear (on the UI thread, through the page's post).</summary>
-    void Page(Services? svc, string showUri, int from, Action<Action> post)
+    static QueryDemand EpisodeDemand() => new(true, QueryPriority.Visible, []);
+
+    void Page(QuerySignalBinding<Show> query)
     {
-        if (svc is null || _paging.Value) return;
-        _paging.Value = true;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                // The returned cursor is the load-bearing part: it moves even when the page landed no rows, so a show
-                // with unhydratable members still walks forward instead of re-asking the same block on every tap.
-                int through = await svc.Library.LoadMoreEpisodesAsync(showUri, from).ConfigureAwait(false);
-                post(() => _pagedTo.Value = (showUri, through));
-            }
-            catch { /* a failed page keeps the affordance: the next tap retries */ }
-            finally { post(() => _paging.Value = false); }
-        });
+        if (query.Snapshot.Peek().Status.IsRefreshing) return;
+        query.SetDemand(EpisodeDemand());
+        _ = query.RefreshAsync();
     }
 
-    // A plain standard pill at the end of the list, not an infinite-scroll sentinel: a page is 300 EpisodeV4 rows over
-    // the network, and firing that off a scroll position would page a long back-catalogue the moment a flick overshoots.
+    // Refresh retries a show whose membership is still short of TotalEpisodes. The demand is always the whole show.
     static Element LoadMore(bool paging, Action page) => new BoxEl
     {
         Direction = 0, Justify = FlexJustify.Center, Margin = new Edges4(Spacing.S, 0f, 0f, 0f),

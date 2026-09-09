@@ -1,9 +1,12 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 using Wavee.Backend;
 using Wavee.Backend.MediaSources;
 using Wavee.Core;
+using Wavee.Core.Catalog;
+using Wavee.Backend.Catalog;
 
 namespace Wavee;
 
@@ -243,6 +246,24 @@ public static class VideoOverrideUx
     // ── the attachment-manager flyout (root: recent + search + browse-all; leaf: the full roster) ────────────────────
     // All of it pure, because the flyout is a presentational shell: it renders what these decide and never re-decides.
 
+    /// <summary>Join current catalog labels onto filesystem decisions without re-probing the disk.</summary>
+    public static IReadOnlyList<VideoOverrideRow> WithCatalogLabels(IReadOnlyList<VideoOverrideRow> rows,
+        Func<string, EntityCardSnapshot?> lookup)
+    {
+        VideoOverrideRow[]? changed = null;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var card = lookup(row.Uri);
+            string title = card?.Title is { Length: > 0 } named ? named : row.Uri;
+            string? subtitle = card?.Subtitle;
+            if (row.Title == title && row.Subtitle == subtitle) continue;
+            changed ??= rows.ToArray();
+            changed[i] = row with { Title = title, Subtitle = subtitle };
+        }
+        return changed ?? rows;
+    }
+
     /// <summary>The newest <paramref name="count"/> attachments, newest first — the manager's "Recently added" section.
     /// Re-sorts defensively rather than trusting the caller's order, so a roster built by some other path still yields
     /// a truthful "recent". Never mutates the input.</summary>
@@ -341,11 +362,10 @@ public static class VideoOverrideUx
 public static class VideoPresence
 {
     static VideoOverrideService? _svc;
-    static IStore? _store;
+    static CatalogRepository? _catalog;
 
-    /// <summary>Attach the curation and the store (composition root). Null on a backend without them — every path then
-    /// reports "no video", which is exactly what a backend with no association plane can honestly say.</summary>
-    public static void Attach(VideoOverrideService? svc, IStore? store = null) { _svc = svc; _store = store; }
+    /// <summary>Attach the user curation and canonical catalog at composition. Views subscribe through their queries.</summary>
+    public static void Attach(VideoOverrideService? svc, CatalogRepository? catalog = null) { _svc = svc; _catalog = catalog; }
 
     /// <summary>The attached curation, for surfaces that need more than the predicate.</summary>
     public static VideoOverrideService? Service => _svc;
@@ -365,17 +385,36 @@ public static class VideoPresence
     /// <summary>The same answer for a bare uri — for callers holding a playable rather than a hydrated row.</summary>
     /// <remarks>Three planes, one answer: Spotify's kind-99 association, the user's own attachment, and — for a
     /// playback-module playable — the module's own <c>form: video</c> verdict from its resolve. The third is a
-    /// dictionary probe on the module cache (<see cref="Wavee.Backend.Modules.ModulePlayables"/>), so this stays the
-    /// single allocation-free boolean every row indicator and the player-bar button already call.</remarks>
+    /// dictionary probe on the module cache (<see cref="Wavee.Backend.Modules.ModulePlayables"/>), and the catalog
+    /// plane answers from the repository's LOCK-FREE published view (never from behind its commit gate), so this stays
+    /// the single allocation-free boolean every row indicator and the player-bar button already call. A rendered
+    /// DETAIL row does not even pay this: that table projects the answer once per row from its own publication's
+    /// facts and hands it to <c>TrackRow.Grid</c> as a value.</remarks>
     public static bool HasVideo(string? playableUri)
-        => (playableUri is { Length: > 0 } u && _store?.GetVideoAssociation(u) is { HasVideo: true })
-           || HasOverride(playableUri)
-           || Wavee.Backend.Modules.ModulePlayables.HasVideo(playableUri);
+        => (Association(playableUri) is { HasVideo: true })
+           || HasVideoOutsideCatalog(playableUri);
+
+    /// <summary>The two has-video planes that do NOT travel on a query publication — the user's own attachment and a
+    /// playback module's <c>form: video</c> verdict. A surface that already holds a publication's facts (the detail
+    /// table's <c>PublicationTrackFacts</c>) reads the association from THOSE and folds these two in through here, so
+    /// the catalog plane is consulted exactly once per row, on the publication the row was projected from.</summary>
+    public static bool HasVideoOutsideCatalog(string? playableUri)
+        => HasOverride(playableUri) || Wavee.Backend.Modules.ModulePlayables.HasVideo(playableUri);
 
     /// <summary>DIAGNOSTIC ONLY — the raw association record behind <see cref="HasVideo(string?)"/>, so an off-render-path
     /// sweep can tell "no row at all" (never asked / nothing came back) apart from "a row that says no" (a cached negative
     /// verdict). Never call this from a row or a frame: <see cref="HasVideo(Track)"/> is the render-path answer, and it
     /// stays a single boolean probe precisely so it never has to hand a record out.</summary>
     public static VideoAssociation? Association(string? playableUri)
-        => playableUri is { Length: > 0 } u ? _store?.GetVideoAssociation(u) : null;
+    {
+        if (playableUri is not { Length: > 0 } uri || _catalog is not { } catalog) return null;
+        // PublishedScope + TryPeekPublished, never Scope/TryPeek: this answer is asked once per track by the detail
+        // mappers and by every non-detail row, and the repository's gate is the one a whole-membership join holds for
+        // its whole duration — probing it from a frame put the UI thread behind a 1494-row join.
+        var scope = catalog.PublishedScope;
+        string provider = EntityUri.Parse(uri).Provider;
+        if (provider.Length > 0 && provider != scope.Provider) scope = scope with { Provider = provider };
+        return catalog.TryPeekPublished(new(scope, uri, FacetKind.VideoAssociation), out var snapshot)
+            && snapshot.Value is VideoAssociationValue value ? value.Association : null;
+    }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentGpu.Controls;
@@ -36,6 +36,12 @@ sealed class BrowsePage : Component
         string RouteName,
         string? RouteArg);
     internal static readonly Context<Model?> Props = new(null);
+
+    // The gate key for FlattenBody's Responsive SectionGrid — everything the grid (and the card-open handler it
+    // reconstructs from Model/NavPreview) actually reads.
+    readonly record struct SectionGridState(IReadOnlyList<HomeCard> Cards, string SectionKey, Model? Model,
+        NavPreviewStore? NavPreview, Services? Svc, ActionServices? Acts, IOverlayService Overlay,
+        (Func<FluentGpu.Animation.ScrollGeometry, long> Project, Action<FluentGpu.Animation.ScrollGeometry> Action)? ScrollWatch);
 
     /// <summary>The in-place-paging overlay (T8) for a flattened shelf. <paramref name="Base"/> is the
     /// <see cref="UseResource"/> value this overlay was built against — <see cref="Render"/> compares it by
@@ -440,11 +446,6 @@ sealed class BrowsePage : Component
             }
         }
 
-        void Open(HomeCard card)
-        {
-            if (model is not null) HomeCardNav.Open(card, navPreview, model.Go, model.Play);
-        }
-
         var pinned = new List<Element>(1 + pinnedExtras.Count);
         pinned.AddRange(pinnedExtras);
         pinned.Add(ExploreAll(model));
@@ -469,8 +470,14 @@ sealed class BrowsePage : Component
                     [
                         // grow:1 is LOAD-BEARING. ResponsiveBox defaults grow to 0, which in this COLUMN sizes it to
                         // content. The grid must inherit the slot height above, not hug a zero-height viewport.
-                        Responsive.Of(width => HomeModules.SectionGrid(cards, sectionKey, width, Open, svc, _acts, overlay,
-                            onScrollGeometryChanged: scrollWatch), fallback: HomeModuleLayout.FallbackWidth, grow: 1f),
+                        // Gated on everything SectionGrid (and the reconstructed Open) reads: the card list/key, the
+                        // paging watch, and the model/navPreview pair Open's click actually dispatches through — not
+                        // the Open delegate itself, which is a fresh closure every render.
+                        Responsive.Of(new SectionGridState(cards, sectionKey, model, navPreview, svc, _acts, overlay, scrollWatch),
+                            static (s, width) => HomeModules.SectionGrid(s.Cards, s.SectionKey, width,
+                                card => { if (s.Model is not null) HomeCardNav.Open(card, s.NavPreview, s.Model.Go, s.Model.Play); },
+                                s.Svc, s.Acts, s.Overlay, onScrollGeometryChanged: s.ScrollWatch),
+                            fallback: HomeModuleLayout.FallbackWidth, grow: 1f),
                         preloader ?? new BoxEl(),
                     ],
                 },
@@ -647,10 +654,11 @@ sealed class BrowsePage : Component
         var acts = _acts;
 
         return PagedShelf.Create(
-            cards.Count,
-            cardAt: (i, w) =>
+            cards,
+            cardAt: (item, i, w) =>
             {
-                var c = cards[i];
+
+                var c = item;
                 var card = HomeBrowseCards.Card(c);
                 var drag = card.Kind is HomeCardKind.Track or HomeCardKind.Episode ? null
                     : Drag.Source(WaveeDragKinds.Resource,
@@ -671,19 +679,20 @@ sealed class BrowsePage : Component
             header: s.Title is { Length: > 0 } t ? HomeModules.DrillHeader(t, openHeader) : null,
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => "browse-shelf-card:" + cards[i].Uri)
+            keyOf: (item, i) => "browse-shelf-card:" + item.Uri)
             with { Key = "browse-shelf:" + s.Uri };
     }
 
     static Element CategoryBlock(BrowseSection s, Model? model)
     {
-        var items = new BrowseTileModel[s.Categories.Count];
-        for (int i = 0; i < items.Length; i++)
+        // Gated on (s, model), not the freshly-allocated tile array — s is a record (value equality over its
+        // category list), so an unchanged section+model skips rebuilding the tiles entirely.
+        var grid = Responsive.Of((s, model), static (state, width) =>
         {
-            var c = s.Categories[i];
-            items[i] = ToTile(c, model);
-        }
-        var grid = Responsive.Of(width => BrowseTiles.LinkGrid(items, width), fallback: BrowseLayout.DirectoryFallbackWidth);
+            var items = new BrowseTileModel[state.s.Categories.Count];
+            for (int i = 0; i < items.Length; i++) items[i] = ToTile(state.s.Categories[i], state.model);
+            return BrowseTiles.LinkGrid(items, width);
+        }, fallback: BrowseLayout.DirectoryFallbackWidth);
         if (s.Title is not { Length: > 0 } title) return grid;
         return new BoxEl
         {

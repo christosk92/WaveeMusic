@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Core.Sidebar;
 using Xunit;
 
@@ -98,6 +99,43 @@ public sealed class SidebarProjectionBinderTests
         Assert.Equal(a, b);
         Assert.Equal(a.Fold(), b.Fold());
     }
+
+    // ── the LIBRARY lane: value identity, not Revision (over-triggering fix) ────────────────────────────────────────────
+
+    static QuerySnapshot<LibraryQuerySnapshot> LibrarySnapshot(long revision, LibraryQuerySnapshot value, QueryStatus? status = null)
+        => new(revision, 0, value, status ?? new QueryStatus(true, false, false), Array.Empty<FacetProblem>());
+
+    static LibraryQuerySnapshot EmptyLibraryValue() => new([], [], new LibraryStats(0, 0, 0, 0), new Dictionary<string, long>());
+
+    [Fact]
+    public void Same_library_value_reference_folds_identically_however_far_apart_the_revisions_are()
+    {
+        var value = EmptyLibraryValue();
+        var a = LibrarySnapshot(1, value);
+        var b = LibrarySnapshot(41, value); // an unrelated Resources-dictionary delta bumped Revision 40 times
+        Assert.Equal(SidebarBinderTriggers.LibraryEpochOf(a), SidebarBinderTriggers.LibraryEpochOf(b));
+    }
+
+    [Fact]
+    public void A_different_library_value_instance_folds_differently_even_at_the_same_revision()
+    {
+        var a = LibrarySnapshot(1, EmptyLibraryValue());
+        var b = LibrarySnapshot(1, EmptyLibraryValue());
+        Assert.NotEqual(SidebarBinderTriggers.LibraryEpochOf(a), SidebarBinderTriggers.LibraryEpochOf(b));
+    }
+
+    [Fact]
+    public void A_library_status_change_folds_differently()
+    {
+        var value = EmptyLibraryValue();
+        var a = LibrarySnapshot(1, value, new QueryStatus(true, false, false));
+        var b = LibrarySnapshot(1, value, new QueryStatus(true, true, false));
+        Assert.NotEqual(SidebarBinderTriggers.LibraryEpochOf(a), SidebarBinderTriggers.LibraryEpochOf(b));
+    }
+
+    [Fact]
+    public void A_null_library_snapshot_folds_to_zero()
+        => Assert.Equal(0, SidebarBinderTriggers.LibraryEpochOf(null));
 
     [Fact]
     public void A_pin_mutation_triggers_a_rebuild()
@@ -294,7 +332,7 @@ public sealed class SidebarProjectionBinderTests
         var pin = new SidebarPin(SidebarPinId.PlaylistPrefix + "spotify:playlist:korea",
             SidebarEntryKind.Playlist, "spotify:playlist:korea", "Top Songs - South Korea", AddedAtMs: 1000);
 
-        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null);
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, current: null);
 
         Assert.True(row.IsPinned);
         Assert.Equal(pin.Id, row.Id);
@@ -326,6 +364,21 @@ public sealed class SidebarProjectionBinderTests
         Assert.Equal("https://i.scdn.co/image/korea-cover", row.Cover!.Url);
         Assert.Equal(50, row.TrackCount);
         Assert.Equal("Spotify", row.Creator);                      // the owner name, from the SAME façade the detail page uses
+    }
+
+    [Fact]
+    public void Unlisted_pin_title_tracks_current_metadata_while_retaining_its_navigation_identity()
+    {
+        var pin = new SidebarPin("pl:spotify:playlist:daylist", SidebarEntryKind.Playlist,
+            "spotify:playlist:daylist", "old daylist", 1000);
+        var current = new SidebarLibraryEntry("", SidebarEntryKind.Playlist, "", "new daylist", "Spotify",
+            null, null, ChildCount: 50, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, 0, current);
+        Assert.Equal("new daylist", row.Name);
+        Assert.Equal(pin.Id, row.Id);
+        Assert.Equal(pin.Uri, row.Uri);
+        Assert.True(row.IsPinned);
     }
 
     [Fact]

@@ -73,17 +73,20 @@ static class SidebarBootstrap
     internal static bool IsFreshInstall(IAppSettings settings, string? localAppDataOverride = null, IWaveeLog? log = null)
     {
         log ??= WaveeLog.Instance;
-        string local = localAppDataOverride
-            ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        // The resolved unpackaged root (Wavee vs Wavee-fake), not a hardcoded folder. A --fake run must not
+        // treat the real profile's library.db / history.json as "this fake install has already run".
+        string root = localAppDataOverride is { Length: > 0 } overrideLocal
+            ? UnpackagedAppDataRoot.Resolve(overrideLocal, UnpackagedAppDataRoot.Fake)
+            : UnpackagedAppDataRoot.Current;
 
         // 1 — the backend account database (Services.CreateReal's path, recomputed identically)
-        if (Exists(Path.Combine(local, "Wavee", "library.db"), log, "library_db")) return false;
+        if (Exists(Path.Combine(root, "library.db"), log, "library_db")) return false;
 
-        // 2 — stored Spotify credentials (LocalCredentialStore over %LOCALAPPDATA%\Wavee\store.json)
-        if (HasStoredCredential(Path.Combine(local, "Wavee", "store.json"), log)) return false;
+        // 2 — stored Spotify credentials (LocalCredentialStore over {root}\store.json)
+        if (HasStoredCredential(Path.Combine(root, "store.json"), log)) return false;
 
         // 3 — the navigation log (written on the FIRST launch by WaveeShell's ctor, so absent on a true first run)
-        if (Exists(Path.Combine(local, "Wavee", "WaveeMusic", "history.json"), log, "history")) return false;
+        if (Exists(Path.Combine(root, UnpackagedAppDataRoot.MusicFolderName, "history.json"), log, "history")) return false;
 
         // 4 — any pre-existing sidebar preference from a build that predates this feature
         if (settings.Get(WaveeSettings.SidebarWidthUserSet)) return false;

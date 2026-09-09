@@ -92,7 +92,10 @@ static class SidebarSkeletons
         };
     }
 
-    static Element Bar(float w, float h) => new BoxEl
+    // internal (not private) — SidebarEntityRow's title-skeleton swap (SidebarRowSpec.TitleSkeleton) reuses this exact
+    // bar look for an IN-PLACE title placeholder, so a row that has not resolved its name yet draws the SAME shimmer
+    // shape a whole pending section does, instead of a second hand-rolled bar.
+    internal static BoxEl Bar(float w, float h) => new BoxEl
     {
         Width = w, Height = h, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary,
     };

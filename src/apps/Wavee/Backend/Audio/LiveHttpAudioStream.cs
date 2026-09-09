@@ -265,6 +265,19 @@ internal sealed class LiveHttpAudioStream : Stream, IAsyncDisposable, IAudioRead
     // ── IAudioReadStream ─────────────────────────────────────────────────────────────────────────────────────────────
 
     public Stream AsStream() => this;
+    public long DataVersion => _ring.DataVersion;
+    public void WaitForData(long version, CancellationToken ct) => _ring.WaitForData(version, ct);
+    public int TryRead(Span<byte> buffer, out bool wouldBlock)
+    {
+        int min = _firstRead ? Math.Max(1, Math.Min(_opt.PrefillBytes, buffer.Length)) : 1;
+        int count = _ring.TryRead(buffer, out wouldBlock, min);
+        if (count > 0)
+        {
+            _firstRead = false;
+            Volatile.Write(ref _pos, Volatile.Read(ref _pos) + count);
+        }
+        return count;
+    }
     public long CurrentOffset => Volatile.Read(ref _pos);
     public bool IsBodyAttached => true;
     /// <summary>Always 0 — a live stream has no length, and the engine reads that as "unknown".</summary>

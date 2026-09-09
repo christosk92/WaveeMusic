@@ -66,7 +66,7 @@ namespace Wavee.Tests.Actions
         public Task ResumeAsync(CancellationToken ct = default) => Task.CompletedTask;
         public Task NextAsync(CancellationToken ct = default) => Task.CompletedTask;
         public Task PreviousAsync(CancellationToken ct = default) => Task.CompletedTask;
-        public Task SeekAsync(long positionMs, SeekMode mode, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<PlaybackCommandReceipt> SeekAsync(PlaybackSeekRequest request, CancellationToken ct = default) => Task.FromResult(new PlaybackCommandReceipt(default));
         public Task SetVolumeAsync(double volume01, CancellationToken ct = default) => Task.CompletedTask;
         public Task SetShuffleAsync(bool on, CancellationToken ct = default) => Task.CompletedTask;
         public Task SetRepeatAsync(RepeatMode mode, CancellationToken ct = default) => Task.CompletedTask;
@@ -86,6 +86,7 @@ namespace Wavee.Tests.Actions
         // ── IPlaybackState ─────────────────────────────────────────────────────────────────────────────────────────
         public Track? CurrentTrack => null;
         public string? ContextUri => null;
+        public PlaybackTransportState Transport => new(IsPlaying, IsPlaying ? PlaybackPhase.Playing : PlaybackPhase.Paused, IsPlaying, null);
         public bool IsPlaying => false;
         public bool IsBuffering => false;
         public long PositionMs => 0;

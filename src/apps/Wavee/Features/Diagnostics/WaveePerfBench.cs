@@ -312,7 +312,7 @@ internal static class WaveePerfBench
     {
         string? dir = Environment.GetEnvironmentVariable("WAVEE_BENCH_OUT");
         if (string.IsNullOrWhiteSpace(dir))
-            dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "bench");
+            dir = UnpackagedAppDataRoot.UnderCurrent("bench");
         return dir;
     }
 

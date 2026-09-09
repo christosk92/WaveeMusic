@@ -41,6 +41,10 @@ public sealed class TaskbarBridge : IDisposable
 
     // Resolved once; null = file missing (tooltips still work, glyphs are skipped).
     string? _prevIco, _playIco, _pauseIco, _nextIco;
+    bool _iconsResolved;
+
+    enum Stage : byte { Wire, Apply, Done }
+    Stage _stage;
 
     public TaskbarBridge(PlaybackBridge bridge, IPlaybackPlayer player, Action<Action> post)
     {
@@ -54,27 +58,81 @@ public sealed class TaskbarBridge : IDisposable
     /// the shell click / explorer-restart events. UI-thread only. A zero handle leaves the bridge inert. Idempotent.</summary>
     public void Activate(nint hwnd)
     {
-        if (_active || _disposed || hwnd == 0) return;
-        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) return;
-        _hwnd = hwnd;
+        while (ActivateStep(hwnd)) { }
+    }
+
+    /// <summary>Resolve the four thumb-button <c>.ico</c> PATHS (a <c>File.Exists</c> probe each — plain disk IO, no
+    /// HWND/COM/apartment affinity) so <see cref="ActivateStep"/>'s Window-phase stages have nothing left to do but
+    /// the actual shell calls. Safe to call from the Worker phase; safe to call more than once (a no-op after the
+    /// first). Also called defensively from <c>Wire</c> below in case nobody ran it first (e.g. a direct
+    /// <see cref="Activate"/> call outside the startup schedule).</summary>
+    public void ResolveIcons()
+    {
+        if (_iconsResolved) return;
+        _iconsResolved = true;
         _prevIco = ResolveIcon("prev.ico");
         _playIco = ResolveIcon("play.ico");
         _pauseIco = ResolveIcon("pause.ico");
         _nextIco = ResolveIcon("next.ico");
-        try
+    }
+
+    /// <summary>Advance the activation state machine by one stage; returns true while more remain. UI thread only.
+    /// <list type="bullet">
+    /// <item><c>Wire</c> — assign the HWND, subscribe the shell click / explorer-restart events. Cheap: no shell call
+    /// at all yet.</item>
+    /// <item><c>Apply</c> — the actual shell work: <c>ApplyThumbs</c> (<c>ITaskbarList3::ThumbBarAddButtons</c>, which
+    /// is also where the engine's <c>TaskbarManager</c> calls <c>LoadImageW(LR_LOADFROMFILE)</c> for each icon path —
+    /// that load has no thread affinity of its own per the Win32 contract, but it happens INSIDE the same apartment-
+    /// bound COM call as <c>ThumbBarAddButtons</c>, and the engine's <c>ThumbButton</c> record only accepts a path, not
+    /// a pre-loaded <c>HICON</c> — so there is no lower-level entry point from this file to move the load off the
+    /// Window step on its own; splitting that further needs an engine-side API and is out of scope here), then the
+    /// initial <see cref="OnStateChanged"/> + <see cref="OnPositionChanged"/> seed.</item>
+    /// </list></summary>
+    public bool ActivateStep(nint hwnd)
+    {
+        if (_disposed || _stage == Stage.Done) return false;
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) { _stage = Stage.Done; return false; }
+        switch (_stage)
         {
-            FluentApp.ThumbButtonClicked += OnThumbClick;
-            FluentApp.TaskbarButtonCreated += OnTaskbarCreated;
-            ApplyThumbs(forceAdd: true);
-            _active = true;
-            OnStateChanged();
-            OnPositionChanged(_bridge.PositionMs.Peek());
-        }
-        catch (Exception)
-        {
-            // Shell refused the toolbar — stay inert; playback is unaffected.
-            _active = false;
-            _hwnd = 0;
+            case Stage.Wire:
+                if (hwnd == 0) { _stage = Stage.Done; return false; }
+                _hwnd = hwnd;
+                ResolveIcons();   // defensive — the Worker-phase step normally already did this
+                try
+                {
+                    FluentApp.ThumbButtonClicked += OnThumbClick;
+                    FluentApp.TaskbarButtonCreated += OnTaskbarCreated;
+                    _active = true;
+                }
+                catch (Exception)
+                {
+                    // Shell refused the toolbar — stay inert; playback is unaffected.
+                    _active = false;
+                    _hwnd = 0;
+                    _stage = Stage.Done;
+                    return false;
+                }
+                _stage = Stage.Apply;
+                return true;
+
+            case Stage.Apply:
+                if (!_active || _hwnd == 0) { _stage = Stage.Done; return false; }
+                try
+                {
+                    ApplyThumbs(forceAdd: true);
+                    OnStateChanged();
+                    OnPositionChanged(_bridge.PositionMs.Peek());
+                }
+                catch (Exception)
+                {
+                    _active = false;
+                    _hwnd = 0;
+                }
+                _stage = Stage.Done;
+                return false;
+
+            default:
+                return false;
         }
     }
 
@@ -86,7 +144,7 @@ public sealed class TaskbarBridge : IDisposable
 
         var track = _bridge.CurrentTrack.Peek();
         bool hasTrack = track is not null;
-        bool playing = hasTrack && _bridge.IsPlaying.Peek();
+        bool playing = hasTrack && _bridge.PlayWhenReady.Peek();
         bool canPrev = _bridge.CanSkipPrev.Peek();
         bool canNext = _bridge.CanSkipNext.Peek();
 
@@ -197,7 +255,7 @@ public sealed class TaskbarBridge : IDisposable
         {
             case IdPrev: _ = _player.PreviousAsync(); break;
             case IdPlayPause:
-                if (_bridge.IsPlaying.Peek()) _ = _player.PauseAsync();
+                if (_bridge.PlayWhenReady.Peek()) _ = _player.PauseAsync();
                 else _ = _player.ResumeAsync();
                 break;
             case IdNext: _ = _player.NextAsync(); break;

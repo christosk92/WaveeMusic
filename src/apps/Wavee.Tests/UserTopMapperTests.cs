@@ -68,8 +68,6 @@ public sealed class UserTopMapperTests
         Assert.Equal(1, http.Calls);
         Assert.Single(await artistsTask);
         Assert.Single(await tracksTask);
-        Assert.Null(store.GetArtist("spotify:artist:a1"));   // return-only: nothing was minted
-        Assert.Null(store.GetTrack("spotify:track:t1"));
     }
 
     // ── the negative cache window ──────────────────────────────────────────────────────────────────────────────

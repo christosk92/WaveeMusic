@@ -1,6 +1,9 @@
 using System.Linq;
 using Wavee.Backend;
-using Wavee.Backend.Hydration;
+using Wavee.Backend.Catalog;
+using Wavee.Backend.Persistence;
+using Wavee.Core.Catalog;
+using Wavee.SpotifyLive.Catalog;
 using Wavee.Backend.Metadata;
 using Wavee.Backend.Spotify;
 using Wavee.Core;
@@ -18,36 +21,27 @@ public static class SpotifyMetadataProbe
         var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
         if (live is null) return 1;
 
-        // wire the metadata chain (a one-shot InMemoryStore — no persistence needed for the probe).
-        var store = new InMemoryStore();
-        // The catalogue arm the façade itself uses (XmCatalogFetch over the REQUIRED etag cache) — the probe proves the
-        // production path, not a probe-only transport (hydration-facade-design.md §2.2).
-        var source = new ExtendedMetadataSource(live.Pipeline, () => live.BaseUrl, () => live.Session);
-        var catalog = new XmCatalogFetch(new ExtensionEtagCache(source, () => live.Session, log), store, log);
-
-        log.Info("Fetching extended-metadata for " + uri + " ...");
-        try { await catalog.FetchAsync([EntityUri.Parse(uri)], null, TraitSurface.None, ct).ConfigureAwait(false); }
-        catch (Exception ex) { log.Info("extended-metadata fetch failed: " + ex.Message); return 1; }
-        PrintEntity(uri, store, log);
-        return 0;
-    }
-
-    static void PrintEntity(string uri, IStore store, WaveeLogger log)
-    {
-        switch (EntityUri.KindOf(uri))
+        FacetKind? facet = EntityUri.KindOf(uri) switch
         {
-            case EntityKind.Track when store.GetTrack(uri) is { } t:
-                log.Info("  TRACK: " + t.Title + " - " + string.Join(", ", t.Artists.Select(a => a.Name)) + " [" + t.Album.Name + "] " + t.DurationMs + "ms");
-                break;
-            case EntityKind.Album when store.GetAlbum(uri) is { } al:
-                log.Info("  ALBUM: " + al.Name + " - " + string.Join(", ", al.Artists.Select(a => a.Name)) + " (" + al.Year + ", " + al.TrackCount + " tracks)");
-                break;
-            case EntityKind.Artist when store.GetArtist(uri) is { } ar:
-                log.Info("  ARTIST: " + ar.Name);
-                break;
-            default:
-                log.Info("  (entity not found in the Store after the fetch - unexpected URI kind or empty response)");
-                break;
-        }
+            EntityKind.Track => FacetKind.TrackIdentity, EntityKind.Album => FacetKind.AlbumIdentity,
+            EntityKind.Artist => FacetKind.ArtistIdentity, EntityKind.Episode => FacetKind.EpisodeIdentity,
+            EntityKind.Show => FacetKind.ShowIdentity, EntityKind.Playlist => FacetKind.PlaylistHeader,
+            EntityKind.User => FacetKind.UserIdentity, _ => null,
+        };
+        if (facet is null) { log.Info("Unsupported metadata subject: " + uri); return 2; }
+        var scope = new CatalogScope("spotify", live.Username, live.Session.Locale, live.Session.Market,
+            live.Session.Catalogue, (int)live.Session.Tier, live.Session.ExplicitFilter);
+        var persistence = new MemoryDataPersistence();
+        await using var commits = new DataCommitQueue();
+        var catalog = new CatalogRepository(commits, persistence, TimeProvider.System, scope, live.Username);
+        var metadata = new ExtendedMetadataSource(live.Pipeline, () => live.BaseUrl, () => live.Session);
+        var provider = new SpotifyCatalogResourceProvider(metadata, persistence, new PathfinderClient(live.Pipeline),
+            live.Pipeline, () => live.BaseUrl, () => HomeModuleTitles.Default, TimeProvider.System);
+        await using var resources = new ResourceCoordinator(catalog, [provider], TimeProvider.System);
+        var key = new ResourceKey(scope, uri, facet.Value);
+        await resources.EnsureAsync([key], ct: ct).ConfigureAwait(false);
+        var result = catalog.Peek(key);
+        log.Info($"{uri}: {result.Knowledge}; {result.Error?.Message ?? result.Value?.ToString()}");
+        return result.Knowledge == Knowledge.Present ? 0 : 1;
     }
 }

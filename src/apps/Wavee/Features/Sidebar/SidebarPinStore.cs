@@ -124,14 +124,23 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
 
     /// <summary>Refresh a pin's cached display name (a renamed playlist) from live library data. Returns true when it
     /// actually changed. Deliberately does NOT bump the version or raise <see cref="OnChanged"/>: a cache refresh must
-    /// never commit on its own (commit point #2 folds it into the next real commit) and must never invalidate a render
-    /// mid-projection. Called by the projection, never by rows.</summary>
+    /// never invalidate a render mid-projection (the owner writes through <c>SidebarLayoutStore.Commit</c> instead).
+    /// Called by the projection, never by rows.
+    ///
+    /// <para>The liked-songs route pin never carries a name — its title is <c>ShellNav.Dest("liked").Title</c>. A
+    /// non-empty cache here is always wrong (and was how a <c>--fake</c> session persisted a blank/fake title).</para></summary>
     public bool Touch(string? pinId, string? name)
     {
-        if (string.IsNullOrEmpty(name)) return false;
         int at = IndexOf(pinId);
         if (at < 0) return false;
         var cur = _items[at];
+        if (IsLikedRoute(cur.Id))
+        {
+            if (cur.Name.Length == 0) return false;
+            _items[at] = cur with { Name = "" };
+            return true;
+        }
+        if (string.IsNullOrEmpty(name)) return false;
         if (string.Equals(cur.Name, name, StringComparison.Ordinal)) return false;
         _items[at] = cur with { Name = name };
         return true;
@@ -178,6 +187,10 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
             var p = Canonicalize(serverPins[i]);
             if (string.IsNullOrEmpty(p.Id)) continue;
             keep.Add(p.Id);
+            // Required-change B: a remote (ylpin) pin always arrives with Name == "" (App/SidebarPinSync.cs never
+            // knows the entity's display name, only its id/uri) — an ALREADY-PRESENT pin is skipped entirely rather
+            // than replaced, so a name this store resolved via Touch (from the pin's own header query) can never be
+            // stomped back to "" by a later remote sync of the very same pin.
             if (IndexOf(p.Id) >= 0) continue;
             _index[p.Id] = _items.Count;
             _items.Add(p);
@@ -197,12 +210,24 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
         return changed;
     }
 
+    static bool IsLikedRoute(string? pinId)
+        => string.Equals(pinId, "liked", StringComparison.Ordinal)
+           || string.Equals(SidebarPinId.Canonical(pinId), "liked", StringComparison.Ordinal);
+
     static SidebarPin Canonicalize(SidebarPin pin)
     {
         string? id = SidebarPinId.Canonical(pin.Id);
-        if (id is null || string.Equals(id, pin.Id, StringComparison.Ordinal)) return pin;
-        string uri = pin.Uri.Length > 0 ? pin.Uri : SidebarPinId.UriOf(id);
-        return pin with { Id = id, Uri = uri };
+        if (id is null) return pin;
+        string uri = string.Equals(id, pin.Id, StringComparison.Ordinal)
+            ? pin.Uri
+            : (pin.Uri.Length > 0 ? pin.Uri : SidebarPinId.UriOf(id));
+        // Liked Songs title is ShellNav.Dest("liked").Title — never a paint-before-data cache.
+        string name = string.Equals(id, "liked", StringComparison.Ordinal) ? "" : pin.Name;
+        if (string.Equals(id, pin.Id, StringComparison.Ordinal)
+            && string.Equals(uri, pin.Uri, StringComparison.Ordinal)
+            && string.Equals(name, pin.Name, StringComparison.Ordinal))
+            return pin;
+        return pin with { Id = id, Uri = uri, Name = name };
     }
 
     void Reindex(int from)

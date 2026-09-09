@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 
 namespace Wavee;
 
@@ -28,7 +29,8 @@ public static class WaveeBuiltInDataSources
     public static SidebarDataSourceTable RegisterAll(
         IWaveeExtensionRegistrar? registrar,
         ISidebarProjectionSnapshot snapshot,
-        IMusicLibrary? library = null,
+        IQueryService? queries = null,
+        Func<CatalogScope>? scope = null,
         IWhatsNewService? whatsNew = null,
         IConcertService? concerts = null,
         PlaybackBridge? playback = null)
@@ -40,7 +42,7 @@ public static class WaveeBuiltInDataSources
         Register(registrar, table, new SidebarVisitedSource(snapshot));
         Register(registrar, table, new SidebarPlayedSource(snapshot));
         Register(registrar, table, new SidebarPlaylistTreeSource(snapshot));
-        Register(registrar, table, new SidebarArtistTopTracksSource(library));
+        Register(registrar, table, new SidebarArtistTopTracksSource(queries, scope));
         Register(registrar, table, new SidebarNewReleasesSource(whatsNew, snapshot));
         Register(registrar, table, new SidebarConcertsSource(concerts));
         Register(registrar, table, new SidebarQueueSource(playback));

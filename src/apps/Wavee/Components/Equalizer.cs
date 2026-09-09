@@ -22,13 +22,37 @@ namespace Wavee;
 // FrameRequested (ReactiveCore.Batch), instead of one per bar.
 public static class WaveeEqualizer
 {
+    // Bound-item overloads (Operation ultra-fast GPU engine, P5 slice 5): `playing` is a per-row signal (typically
+    // `item.Signal(p => p.State.IsPlaying)`, BoundItemScope.cs) the host reads directly and toggles its ticker off
+    // via UseInterval(enabled:) — NOT a Key-driven remount. A bound track row that flips play↔pause therefore
+    // patches this component in place (one Visible/props settle) instead of tearing the whole #-cell subtree down
+    // and rebuilding it, which the old `Key = animate ? "eq-play" : "eq-pause"` forced on every transition.
+    public static Element Of(IReadSignal<bool> playing, ColorF color, float height = 13f, IReadSignal<bool>? paused = null)
+        => Embed.Comp(new EqHostProps(playing, static () => default, height, paused, color), () => new EqHost());
+
+    public static Element Of(IReadSignal<bool> playing, Func<ColorF> color, float height = 13f, IReadSignal<bool>? paused = null)
+        => Embed.Comp(new EqHostProps(playing, color, height, paused, null), () => new EqHost());
+
+    // Legacy plain-bool callers (every non-bound row: TrackRow.NumberCell's eager path, card overlays) delegate
+    // through a constant signal — same host, same behaviour, no second implementation to keep in sync.
     public static Element Of(bool animate, ColorF color, float height = 13f, IReadSignal<bool>? paused = null)
-        => Embed.Comp(new EqHostProps(animate, static () => default, height, paused, color), () => new EqHost());
+        => Of(new ConstBoolSignal(animate), color, height, paused);
 
     public static Element Of(bool animate, Func<ColorF> color, float height = 13f, IReadSignal<bool>? paused = null)
-        => Embed.Comp(new EqHostProps(animate, color, height, paused, null), () => new EqHost());
+        => Of(new ConstBoolSignal(animate), color, height, paused);
 
-    sealed record EqHostProps(bool Animate, Func<ColorF> Color, float Height, IReadSignal<bool>? Paused, ColorF? FrozenColor);
+    /// <summary>A non-reactive <see cref="IReadSignal{T}"/> wrapping a fixed value — the plain-<c>bool</c>
+    /// <c>Of</c> overloads' adapter onto the signal-based host, so the eager (non-virtualized) rows keep working
+    /// unchanged while the bound rows drive the SAME host off a real per-row signal.</summary>
+    readonly struct ConstBoolSignal : IReadSignal<bool>
+    {
+        readonly bool _value;
+        public ConstBoolSignal(bool value) => _value = value;
+        public bool Value => _value;
+        public bool Peek() => _value;
+    }
+
+    sealed record EqHostProps(IReadSignal<bool> Playing, Func<ColorF> Color, float Height, IReadSignal<bool>? Paused, ColorF? FrozenColor);
     // The bar is a pure consumer: it binds the signal the host ticks. No timer, no pattern, no phase of its own.
     sealed record EqBarProps(FloatSignal ScaleY, Func<ColorF> Color, float Height, ColorF? FrozenColor);
 
@@ -58,22 +82,25 @@ public static class WaveeEqualizer
         {
             var p = UsePropsOrDefault<EqHostProps>();
             if (p is null) return new BoxEl();
-            bool animate = p.Animate;
+            bool animate = p.Playing.Value;           // subscribe — a bound row's play↔pause flip re-renders THIS host in place
             bool paused = p.Paused?.Value ?? false;   // subscribe — pause without remount
             float scale = UseContext(Viewport.Scale);
             if (scale <= 0f) scale = 1f;
 
+            // Deps-gated on `animate` (not mount-once): the host is now a PERSISTENT component across a track's
+            // play↔pause transitions (no more Key-driven remount — see the type's doc), so the phase/settle reset
+            // has to re-run exactly on the transition, the same moment the old remount used to recreate this
+            // component from scratch.
             UseEffect(() =>
             {
                 if (!animate) { WriteAll(0.4f); return; }
                 _startMs = Environment.TickCount64;
                 Tick(p.Height, scale);
-            });
+            }, animate);
             UseInterval(() => Tick(p.Height, scale), TickMs, enabled: animate && !paused);
 
             return new BoxEl
             {
-                Key = animate ? "eq-play" : "eq-pause",
                 Direction = 0, AlignItems = FlexAlign.End, Justify = FlexJustify.Center, Gap = 2f, Height = p.Height,
                 Children =
                 [

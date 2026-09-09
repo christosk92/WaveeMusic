@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentGpu.Animation;
@@ -9,6 +9,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Features.Browse;
 using Wavee.Features.Detail;
 using static FluentGpu.Dsl.Ui;
@@ -49,9 +50,9 @@ sealed class SearchPage : Component
         UseEffect(() => { if (_chip.Peek() >= facetCount) _chip.Value = 0; }, facetCount);
         var facet = FacetAt(chip);
         var pageScroll = UseSignal(0f);
-        var results = UseResource(ct => q.Length == 0
-            ? System.Threading.Tasks.Task.FromResult(SearchResults.Empty)
-            : svc.Library.SearchAsync(q, facet, 0, SearchPageSize, ct), SearchResults.Empty, (int)facet).Loadable;
+        var results = QueryHooks.Use(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            q.Length == 0 ? null : new Wavee.Core.Catalog.SearchQuery(svc.CatalogScope, q, facet, 0, SearchPageSize),
+            SearchResults.Empty).Loadable;
 
         (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Publish) scrollPub =
             (g => (long)(g.OffsetY / 24f), g => pageScroll.Value = g.OffsetY);
@@ -844,14 +845,11 @@ sealed class SearchHitsGrid : Component
     const int MaxCols = 3;
     const int SingleColRows = 3;
 
-    IReadOnlyList<SearchTopHit> _hits = Array.Empty<SearchTopHit>();
     SearchAllList.Model? _model;
     LibraryBridge? _lib;
     ActionServices? _acts;
     IOverlayService? _overlay;
     bool _hideTrackArtwork;
-    ShelfPager _pager = ShelfPager.Chevrons | ShelfPager.Pips;
-    bool _showHeader = true;
     int _cols = 2;
     bool _colsInit;
 
@@ -864,37 +862,38 @@ sealed class SearchHitsGrid : Component
         _overlay = UseContext(Overlay.Service);
         var svc = UseContext(Services.Slot);
         _hideTrackArtwork = AppearancePrefs.TrackArtworkHidden(svc?.Settings);
-        _pager = p.Pager;
-        _showHeader = p.ShowHeader;
         if (model?.Hits is not { Count: > 0 } hits) return new BoxEl();
-        _hits = hits;
         _model = model;
         // Wrapper: PagedShelf's Key must be a CHILD (ReconcileSingleChild ignores Key on this component's root).
         // Responsive.Of picks the N×N from the measured slot; PagedShelf then self-fits cards inside that grid.
+        // State = the hit list + the two prop-driven display flags: everything the shelf's grid/header/key depend on
+        // besides width. Card/ColsFor stay plain closures (Card reads _model/_lib/_acts/_overlay/_hideTrackArtwork
+        // live off the instance, same as before; those fields are still tracked separately, not through this gate).
+        var state = (hits, showHeader: p.ShowHeader, pager: p.Pager, hideTrackArtwork: _hideTrackArtwork);
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             Children =
             [
-                Responsive.Of(w =>
+                Responsive.Of(state, (s, w) =>
                 {
-                    int n = _hits.Count;
+                    int n = s.hits.Count;
                     int cols = ColsFor(w);
                     int rows = cols <= 1 ? SingleColRows : cols;
                     int maxCols = Math.Min(cols, Math.Max(1, (n + rows - 1) / rows));
-                    string first = n > 0 ? _hits[0].Uri : "";
+
                     // One reservation for the whole page (PagedShelf grids don't measure per cell — see AudiobookRowH
                     // above), so a single audiobook hit anywhere on the page raises every cell's height on it.
                     bool hasAudiobook = false;
-                    for (int i = 0; i < _hits.Count; i++)
-                        if (_hits[i].Kind == SearchHitKind.Audiobook) { hasAudiobook = true; break; }
+                    for (int i = 0; i < s.hits.Count; i++)
+                        if (s.hits[i].Kind == SearchHitKind.Audiobook) { hasAudiobook = true; break; }
                     float rowH = hasAudiobook ? AudiobookRowH : RowH;
                     return PagedShelf.Create(
-                        n,
+                        s.hits,
                         cardAt: Card,
                         cardHeight: _ => rowH,
-                        header: _showHeader ? SearchChrome.TickHeader(Loc.Get(Strings.Search.BestMatches)) : null,
-                        pager: _pager,
+                        header: s.showHeader ? SearchChrome.TickHeader(Loc.Get(Strings.Search.BestMatches)) : null,
+                        pager: s.pager,
                         minCardW: MinCellW,
                         maxCardW: 9999f,
                         gap: CellGap,
@@ -903,9 +902,8 @@ sealed class SearchHitsGrid : Component
                         snap: ShelfSnap.Page,
                         cardWidthAgnostic: true,
                         edgeFade: 16f,
-                        keyOf: i => (uint)i < (uint)_hits.Count ? _hits[i].Uri : i.ToString())
-                        with { Key = "hits-shelf:" + n + ":" + maxCols + ":" + rows + ":" + (int)_pager + ":" +
-                            first + ":" + _hideTrackArtwork };
+                        keyOf: (item, i) => item.Uri)
+                        with { Key = "hits-shelf:" + maxCols + ":" + rows + ":" + (int)s.pager + ":" + s.hideTrackArtwork };
                 }, fallback: 0f),
             ],
         };
@@ -920,10 +918,10 @@ sealed class SearchHitsGrid : Component
         return w < need - DetailLayoutBreakpoints.TierHysteresisDip ? (_cols = nominal) : _cols;
     }
 
-    Element Card(int i, float _)
+    Element Card(SearchTopHit item, int i, float _)
     {
-        if (_model is null || (uint)i >= (uint)_hits.Count) return new BoxEl();
-        return SearchAllList.HitRow(_hits[i], _lib, _model, large: false, _acts, _overlay,
+        if (_model is null) return new BoxEl();
+        return SearchAllList.HitRow(item, _lib, _model, large: false, _acts, _overlay,
             hideTrackArtwork: _hideTrackArtwork);
     }
 }
@@ -953,15 +951,14 @@ sealed class SearchMediaGrid : Component
         _go = p.Go;
         _play = p.Play;
         _pager = p.Pager;
-        int n = _items.Count;
-        string first = n > 0 ? _items[0].Uri : "";
+
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             Children =
             [
                 PagedShelf.Create(
-                    n,
+                    _items,
                     cardAt: Card,
                     cardHeight: MediaCard.ShelfHeight,
                     header: p.Header,
@@ -972,14 +969,14 @@ sealed class SearchMediaGrid : Component
                     snap: ShelfSnap.Page,
                     cardWidthAgnostic: true,
                     edgeFade: HomeModuleLayout.ShelfEdgeFade,
-                    keyOf: i => (uint)i < (uint)_items.Count ? _items[i].Uri : i.ToString())
-                    with { Key = "media-shelf:" + n + ":" + first },
+                    keyOf: (item, i) => item.Uri)
+                    with { Key = "media-shelf:" + (int)_pager },
             ],
         };
     }
 
-    Element Card(int i, float _)
-        => (uint)i >= (uint)_items.Count ? new BoxEl() : CardFor(_items[i], _acts, _overlay, _go, _play);
+    Element Card(Item item, int i, float _)
+        => CardFor(item, _acts, _overlay, _go, _play);
 
     /// <summary>The ONE search card factory — shared with <see cref="SearchFacetGrid"/> so a facet tab's grid card and
     /// this shelf's card cannot drift in artwork, menu or drag payload.</summary>

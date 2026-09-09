@@ -17,7 +17,7 @@ namespace Wavee.Tests;
 /// failure between those three, not a logic error in any one of them: the resolve landing after the track publish, and
 /// a later republish silently dropping an override that had already been stated.</para>
 /// </summary>
-public class ModuleLiveRelayTests
+public class ModuleLiveRelayTests : PlaybackCatalogTestBase
 {
     const string StreamUri = "wavee:module:wavee.youtube:dFJzUXNUTXZQTmc";
     const string OtherUri = "wavee:module:wavee.youtube:b3RoZXI";
@@ -36,6 +36,10 @@ public class ModuleLiveRelayTests
 
     sealed class Host : IAudioHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, _signals.OnNext);
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, _signals.OnNext);
+        public bool PlayIntent => IsPlaying;
+
         readonly SimpleSubject<AudioHostSignal> _signals = new();
         public void Load(in AudioStreamHandle s) { }
         public void LoadFastStart(in AudioFastStart s) { }
@@ -53,8 +57,8 @@ public class ModuleLiveRelayTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    static NowPlayingProjection NewProjection() =>
-        new("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+    NowPlayingProjection NewProjection() =>
+        Catalog.Projection("us", () => 0);
 
     [Fact]
     public async Task AResolvedLivePlayable_IsLIVE_AfterTheStartedFold_AndStaysLiveAcrossAQueueRepublish()
@@ -130,7 +134,7 @@ public class ModuleLiveRelayTests
 /// happened to live-ness (the UI bridge binds to this facade, so the LIVE pill never lit for any broadcast) and,
 /// alongside it, to the recovery kind and the playing stream's identity.
 /// </summary>
-public class SwitchableStateForwardingTests
+public class SwitchableStateForwardingTests : PlaybackCatalogTestBase
 {
     const string StreamUri = "wavee:module:wavee.youtube:dFJzUXNUTXZQTmc";
 
@@ -141,10 +145,10 @@ public class SwitchableStateForwardingTests
     [Fact]
     public void TheFacadeForwardsLiveness()
     {
-        using var projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var projection = Catalog.Projection("us");
         using var facade = new SwitchableState(projection);
 
-        projection.OnEvent(new PlaybackEvent(EvKind.Started, TrackFor(StreamUri, 0), 0));
+        Catalog.Event(projection, new PlaybackEvent(EvKind.Started, TrackFor(StreamUri, 0), 0));
         projection.SetLiveOverride(StreamUri, true);
 
         IPlaybackState published = facade;
@@ -157,10 +161,10 @@ public class SwitchableStateForwardingTests
     [Fact]
     public void TheFacadeForwardsTheDVRWindow()
     {
-        using var projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var projection = Catalog.Projection("us");
         using var facade = new SwitchableState(projection);
 
-        projection.OnEvent(new PlaybackEvent(EvKind.Started, TrackFor(StreamUri, 0), 0));
+        Catalog.Event(projection, new PlaybackEvent(EvKind.Started, TrackFor(StreamUri, 0), 0));
         var window = new LiveWindow(true, 0, 3_600_000, 3_600_000, 3_540_000, IsAtLiveEdge: false);
         projection.SetLiveWindow(StreamUri, window);
 
@@ -172,15 +176,15 @@ public class SwitchableStateForwardingTests
     [Fact]
     public void TheFacadeStaysCorrectAfterAGoLiveSwap()
     {
-        using var pre = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
-        using var live = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var pre = Catalog.Projection("us");
+        using var live = Catalog.Projection("us");
         using var facade = new SwitchableState(pre);
 
         var pushes = new List<bool>();
         using var sub = facade.Changes.Subscribe(ConnectHarness.Obs<IPlaybackState>(s => pushes.Add(s.IsLive)));
 
         facade.SetInner(live);
-        live.OnEvent(new PlaybackEvent(EvKind.Started, TrackFor(StreamUri, 0), 0));
+        Catalog.Event(live, new PlaybackEvent(EvKind.Started, TrackFor(StreamUri, 0), 0));
         live.SetLiveOverride(StreamUri, true);
 
         Assert.True(((IPlaybackState)facade).IsLive);

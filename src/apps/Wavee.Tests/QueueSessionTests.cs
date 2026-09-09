@@ -9,7 +9,7 @@ namespace Wavee.Tests;
 // Foundation — the pure PlaybackSession semantics (queue-rework-proposal §4 + §12 ¶1). No I/O; every §4 numbered
 // semantic is pinned here: id stability, q-uid minting, the three skip-to targets, next-order + delimiter-stop,
 // keepUserQueue matrix, shuffle anchor, revision monotonicity.
-public class QueueSessionTests
+public class QueueSessionTests : PlaybackCatalogTestBase
 {
     static Track T(string id) => new(id, "spotify:track:" + id, "T-" + id,
         System.Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
@@ -25,7 +25,7 @@ public class QueueSessionTests
     [Fact]
     public void SwitchContextAfterCurrent_CurrentInRadio_KeepsCurrent_AndSkipsDuplicateOnAdvance()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b"), 0);   // playing "a"
         var before = s.Current;
 
@@ -44,7 +44,7 @@ public class QueueSessionTests
     [Fact]
     public void SwitchContextAfterCurrent_CurrentNotInRadio_PrependsCurrent_FlowsToRadioZero()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b"), 0);   // playing "a"
 
         var radio = Ctx("x", "y");                               // artist radio: "a" not present
@@ -62,7 +62,7 @@ public class QueueSessionTests
     [Fact]
     public void SkipToUpcoming_KeepsUserQueue_AndDoesNotHistorizeSkipped()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c", "d"), 0);
         s.EnqueueUser(new[] { Q("q1") });
 
@@ -81,7 +81,7 @@ public class QueueSessionTests
     [Fact]
     public void SkipToUserQueueRow_DrainsPredecessors_ContextCursorUnmoved()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b"), 0);
         s.EnqueueUser(new[] { Q("q1"), Q("q2"), Q("q3") });
 
@@ -100,7 +100,7 @@ public class QueueSessionTests
     [Fact]
     public void SkipToHistoryRow_CursorBack_TruncatesHistory_RederivesUpcoming()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 0);
         s.Next();   // a → b, history [a]
         s.Next();   // b → c, history [a,b]
@@ -119,7 +119,7 @@ public class QueueSessionTests
     [Fact]
     public void Next_Order_QueueThenContextThenAutoplayThenDelimiterStop()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b"), 0);
         s.AppendContextPage(new[] { Q("s1", "us1", "autoplay"), Q("s2", "us2", "autoplay") },
             QueueProvider.Autoplay, "spotify:station:x");
@@ -143,7 +143,7 @@ public class QueueSessionTests
     [Fact]
     public void ItemIds_AreStable_AcrossReorderRemoveAppend()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 0);
         var idB = s.Snapshot().Upcoming.Single(e => IsTrack(e, "b")).ItemId;
         Assert.False(idB.IsNone);
@@ -169,7 +169,7 @@ public class QueueSessionTests
     [Fact]
     public void MoveContextItem_IsSectionLocal_AndPersistsAsNaturalOrder()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 0);
         s.AppendContextPage(new[] { Q("s1", "us1", "autoplay"), Q("s2", "us2", "autoplay") },
             QueueProvider.Autoplay, "spotify:station:x");
@@ -195,7 +195,7 @@ public class QueueSessionTests
     [Fact]
     public void MoveAndRemoveAutoplayItem_StayInsideAutoplayTail()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 0);
         s.AppendContextPage(new[] { Q("s1", "us1", "autoplay"), Q("s2", "us2", "autoplay") },
             QueueProvider.Autoplay, "spotify:station:x");
@@ -221,7 +221,7 @@ public class QueueSessionTests
     [Fact]
     public void QueueUids_MintedSequentially_ExistingPreserved()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a"), 0);
         s.EnqueueUser(new[] { Q("q1"), Q("q2") });
 
@@ -240,7 +240,7 @@ public class QueueSessionTests
     [Fact]
     public void Shuffle_AnchorsCurrent_RestoreReturnsNaturalOrder()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c", "d", "e"), 2);   // current = c
         var current = s.Snapshot().Current!.Track.Uri;
 
@@ -259,7 +259,7 @@ public class QueueSessionTests
     [Fact]
     public void KeepUserQueue_DefaultTrue_FalseOnlyClears()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a"), 0);
         s.EnqueueUser(new[] { Q("q1") });
 
@@ -274,7 +274,7 @@ public class QueueSessionTests
     [Fact]
     public void Revision_IsStrictlyMonotonic()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         var revs = new List<long>();
         revs.Add(s.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 0).Revision);
         revs.Add(s.EnqueueUser(new[] { Q("q1") }).Revision);
@@ -288,14 +288,14 @@ public class QueueSessionTests
     [Fact]
     public void SkipToUid_ResolvesByUid_ThenUriFallback()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 0);          // uids u-a, u-b, u-c
 
         var byUid = s.SkipToUid("u-c", null);
         Assert.NotNull(byUid);
         Assert.True(IsTrack(byUid!.Current!, "c"));
 
-        var s2 = new PlaybackSession();
+        var s2 = new PlaybackSession(Catalog.Queue);
         s2.SetContext("spotify:playlist:p", new[] { Q("a", ""), Q("b", ""), Q("c", "") }, 0);   // no uids
         var byUri = s2.SkipToUid("", "spotify:track:b");
         Assert.NotNull(byUri);
@@ -318,7 +318,7 @@ public class QueueSessionTests
     [Fact]
     public void PreviewNext_IsNonMutating_AndMatchesNextIdentity()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 0);
         s.EnqueueUser(new[] { Q("q1") });
         long revision = s.Snapshot().Revision;
@@ -334,19 +334,19 @@ public class QueueSessionTests
     [Fact]
     public void PreviewNext_MirrorsRepeatTrack_RepeatContext_AndPauseDelimiter()
     {
-        var repeatTrack = new PlaybackSession();
+        var repeatTrack = new PlaybackSession(Catalog.Queue);
         repeatTrack.SetContext("spotify:playlist:p", Ctx("a", "b"), 0);
         repeatTrack.SetRepeat(RepeatMode.Track);
         Assert.Equal(repeatTrack.Snapshot().Current!.ItemId, repeatTrack.PreviewNext()!.ItemId);
         Assert.Equal(repeatTrack.PreviewNext()!.ItemId, repeatTrack.Next()!.Current!.ItemId);
 
-        var repeatContext = new PlaybackSession();
+        var repeatContext = new PlaybackSession(Catalog.Queue);
         repeatContext.SetContext("spotify:playlist:p", Ctx("a", "b"), 1);
         repeatContext.SetRepeat(RepeatMode.Context);
         Assert.True(IsTrack(repeatContext.PreviewNext()!, "a"));
         Assert.Equal(repeatContext.PreviewNext()!.ItemId, repeatContext.Next()!.Current!.ItemId);
 
-        var stopped = new PlaybackSession();
+        var stopped = new PlaybackSession(Catalog.Queue);
         stopped.SetContext("spotify:playlist:p", Ctx("a"), 0);
         stopped.AppendContextPage(new[]
         {
@@ -361,7 +361,7 @@ public class QueueSessionTests
     [Fact]
     public void UpdateContext_PreservesCurrentIdentity_AndAcceptsAnyRowCount()
     {
-        var session = new PlaybackSession();
+        var session = new PlaybackSession(Catalog.Queue);
         session.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 1);
         var currentId = session.Snapshot().Current!.ItemId;
         var refreshed = Enumerable.Range(0, 1600)
@@ -378,7 +378,7 @@ public class QueueSessionTests
     [Fact]
     public void UpdateContext_WhenCurrentDisappears_KeepsItExternalUntilAdvance()
     {
-        var session = new PlaybackSession();
+        var session = new PlaybackSession(Catalog.Queue);
         session.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 1);
 
         var snapshot = session.ReplaceContextPreservingCurrent(

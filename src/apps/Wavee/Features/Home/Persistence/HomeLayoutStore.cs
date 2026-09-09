@@ -40,10 +40,8 @@ public sealed class HomeLayoutStore
 
     public static HomeLayoutStore ForApp() => new(DefaultPath());
 
-    /// <summary>%LOCALAPPDATA%\Wavee\WaveeMusic\home-layout.json — BESIDE sidebar-layout.json.</summary>
-    public static string DefaultPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Wavee", "WaveeMusic", "home-layout.json");
+    /// <summary>home-layout.json beside sidebar-layout.json, under the process unpackaged root.</summary>
+    public static string DefaultPath() => UnpackagedAppDataRoot.MusicFile("home-layout.json");
 
     public string FilePath => _path;
     public string BakPath => _path + ".bak";

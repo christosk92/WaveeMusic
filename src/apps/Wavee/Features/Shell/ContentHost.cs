@@ -57,6 +57,7 @@ sealed class ContentHost : Component
         // nothing would write the signal and a stale claim would survive. That is a clear case too.
         UseSignalEffect(() =>
         {
+            NavigationFrameWatch.NoteRoute(_route.Value.Name, _route.Value.Arg);   // attributes the next 4 s of frames to this route
             if (Wavee.Backend.Modules.ModulePages.TryParseRoute(_route.Value.Name, out _, out _)) return;
             if (ui is null || ui.ActiveStagePlayable.Peek().Length == 0) return;   // value-gated: no idle wake-ups
             ui.ActiveStagePlayable.Value = "";
@@ -82,9 +83,12 @@ sealed class ContentHost : Component
                         Flow.KeepAlive(
                             () => new PageSlot(_activeTabId(), _route.Value),
                             PageNavMotion.SlotKey,
-                            s => PageFor(s.Route),
+                            s => Ctx.Provide(PageRevealWatch.Slot, new PageRevealWatch(s.Route.Name, s.Route.Arg), PageFor(s.Route)),
                             new KeepAliveOptions(
-                                MaxEntries: 8,
+                                // Three entries = the live page plus a two-deep back stack. Eight retained every
+                                // tour route (scene 494→15668, components 93→1479) and the working set never came
+                                // back down; parked pages still release image pins (ReleaseInactiveResources default).
+                                MaxEntries: 3,
                                 TransitionFor: PageTransition,
                                 SuppressLayoutTransitionsOnActivation: true)),
                     ],

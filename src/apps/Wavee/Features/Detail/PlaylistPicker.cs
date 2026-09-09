@@ -7,6 +7,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using FluentGpu.Localization;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -38,6 +39,7 @@ internal static class PlaylistPickerLauncher
 /// Runs inside the open thunk, so it mounts fresh each open (always the current list).</summary>
 public sealed class PlaylistPickerPanel : Component
 {
+    readonly Signal<QuerySignalBinding<PlaylistTargetsSnapshot>?> _targets = new(null);
     public required Func<IReadOnlyList<Track>> GetTracks;
     public required Action Close;
     /// <summary>Optional override for what picking a playlist DOES — the MOVE variant deposits into the target and then
@@ -48,20 +50,38 @@ public sealed class PlaylistPickerPanel : Component
 
     public override Element Render()
     {
-        var store = UseContext(LibraryStore.Slot);
+        // Parked-page mount can precede the provider; see findings 4.1. Re-render on un-park so the picker fills in
+        // once the page is reachable again instead of staying empty forever.
+        UseActivation(onActivated: () => Context.RequestRerender());
+        var svc = UseContext(Services.Slot);
+        if (svc is null) return new BoxEl();
         var lib = UseContext(LibraryBridge.Slot);
         var go = UseContext(HistoryStore.NavCtx);
         var acts = UseContext(ActionServices.Slot);
-        store?.EnsurePlaylists();
 
         var query = UseSignal("");
         string q = query.Value;
-        var pls = store?.Playlists.Value.Value ?? Array.Empty<PlaylistSummary>();
         var getTracks = GetTracks;
         var close = Close;
         var deposit = Deposit;
         string? exclude = ExcludeUri;
         var post = UsePost();
+        var scope = svc.CatalogScope;
+        var active = UseIsActive();
+        UseEffect(() =>
+        {
+            var nextBinding = new QuerySignalBinding<PlaylistTargetsSnapshot>(
+                svc.Queries.Acquire(new PlaylistTargetsQuery(scope)), post);
+            _targets.Value = nextBinding;
+            nextBinding.SetDemand(new QueryDemand(true, QueryPriority.Visible, []));
+            nextBinding.SetActive(active.Peek());
+            return (Action?)(() => { nextBinding.Dispose(); _targets.Value = null; });
+        }, DepKey.From(scope.GetHashCode()));
+        UseActivation(onActivated: () => _targets.Peek()?.SetActive(true),
+            onDeactivated: () => _targets.Peek()?.SetActive(false));
+        var binding = _targets.Value;
+        var state = PlaylistPickerState.Read(binding?.Snapshot.Value,
+            acts is not null ? Menus.RecentDeposits(acts) : null, exclude, q);
 
         void AddTo(string uri, string name)
         {
@@ -99,6 +119,7 @@ public sealed class PlaylistPickerPanel : Component
             {
                 try
                 {
+                    await created.Staged.ConfigureAwait(false);
                     if (deposit is not null) { post(() => { deposit(uri, name); close(); }); return; }
                     await lib.AddTracksAsync(uri, getTracks()).ConfigureAwait(false);
                     post(() =>
@@ -117,15 +138,26 @@ public sealed class PlaylistPickerPanel : Component
             }
         }
 
-        // MOST-RECENTLY-FILED FIRST, then rootlist order — the SAME ordering + eligibility the "Add to playlist ▸"
-        // submenu uses, so "More playlists…" continues the list the submenu truncated instead of reshuffling it.
-        var ordered = PlaylistDepositTargets.Order(
-            pls, acts is not null ? Menus.RecentDeposits(acts) : null, exclude, q);
+        // Permission discovery covers the rootlist while this picker is open. Unknown rows stay unresolved,
+        // so a cold cache cannot turn an editable destination into a false "No playlists" result.
+        var ordered = state.Items;
         var rows = new List<Element>(ordered.Count);
         for (int i = 0; i < ordered.Count; i++)
         {
             var p = ordered[i];
             rows.Add(PlaylistRow(p, () => AddTo(p.Uri, p.Name)));
+        }
+        if (state.HasUnresolved || state.Unavailable || binding?.Failure.Value is not null)
+        {
+            bool failed = state.Unavailable || binding?.Failure.Value is not null;
+            rows.Add(new BoxEl
+            {
+                Direction = 1, Gap = Spacing.S, Padding = new Edges4(8f, 8f, 8f, 8f),
+                Children = failed
+                    ? [new TextEl(Loc.Get(Strings.Detail.PlaylistsUnavailable)) { Size = 13f, Color = Tok.TextSecondary },
+                        Button.Standard(Loc.Get(Strings.Common.Retry), () => { if (_targets.Peek() is { } current) _ = current.RefreshAsync(); })]
+                    : [new TextEl(Loc.Get(Strings.Detail.PlaylistsLoading)) { Size = 13f, Color = Tok.TextSecondary }],
+            });
         }
 
         Element list = rows.Count > 0

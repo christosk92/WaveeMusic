@@ -13,16 +13,24 @@ namespace Wavee;
 /// </summary>
 static class FactoryReset
 {
-    const string MarkerFileName = "Wavee.factory-reset.pending";
+    static string MarkerFileName => UnpackagedAppDataRoot.RealFolderName + ".factory-reset.pending";
 
-    /// <summary>Lives in <c>%TEMP%</c>, outside the wipe roots, so deleting <c>%LOCALAPPDATA%\Wavee</c> cannot eat it.</summary>
+    /// <summary>Lives in <c>%TEMP%</c>, outside the wipe roots, so deleting the app-data folder cannot eat it.</summary>
     public static string MarkerPath => Path.Combine(Path.GetTempPath(), MarkerFileName);
 
-    public static IReadOnlyList<string> DefaultDataRoots() =>
-    [
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee"),
-        Path.Combine(Path.GetTempPath(), "Wavee"),
-    ];
+    public static IReadOnlyList<string> DefaultDataRoots()
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string temp = Path.GetTempPath();
+        // Both profiles: a factory reset from either --fake or a real session must not leave the other behind.
+        return
+        [
+            UnpackagedAppDataRoot.Resolve(local, fake: false),
+            UnpackagedAppDataRoot.Resolve(local, fake: true),
+            Path.Combine(temp, UnpackagedAppDataRoot.RealFolderName),
+            Path.Combine(temp, UnpackagedAppDataRoot.FakeFolderName),
+        ];
+    }
 
     /// <summary>Call at the top of <c>Program.Main</c>, before settings / logs / <c>library.db</c> open. (Only the
     /// <c>--relaunch-after</c> broker arm runs ahead of it — that process is a courier and must NOT consume the marker.)</summary>
@@ -87,9 +95,13 @@ static class FactoryReset
     static void WipeSettingsRegistry()
     {
         if (!OperatingSystem.IsWindows()) return;
-        try { AppDataStore.ForUnpackaged("Wavee", "Wavee").Clear(); }
+        try { AppDataStore.ForUnpackaged(UnpackagedAppDataRoot.RealFolderName, UnpackagedAppDataRoot.RealFolderName).Clear(); }
         catch { }
-        try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\Wavee", throwOnMissingSubKey: false); }
+        try { AppDataStore.ForUnpackaged(UnpackagedAppDataRoot.FakeFolderName, UnpackagedAppDataRoot.FakeFolderName).Clear(); }
+        catch { }
+        try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\" + UnpackagedAppDataRoot.RealFolderName, throwOnMissingSubKey: false); }
+        catch { }
+        try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\" + UnpackagedAppDataRoot.FakeFolderName, throwOnMissingSubKey: false); }
         catch { }
     }
 

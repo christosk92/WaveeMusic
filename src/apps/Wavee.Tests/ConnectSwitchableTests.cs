@@ -8,7 +8,7 @@ namespace Wavee.Tests;
 
 // The switchable facade: bind once, swap the backend live — delegates to the current inner and re-emits on swap so the
 // bridge's existing subscriptions keep working against the new (live) backend.
-public class ConnectSwitchableTests
+public class ConnectSwitchableTests : PlaybackCatalogTestBase
 {
     static ClusterDelta C(string trackUri) =>
         new("other", true, new RemoteTrack(trackUri, "T", "A", "spotify:artist:a", "Al", "spotify:album:al", null, 1000),
@@ -18,22 +18,22 @@ public class ConnectSwitchableTests
     [Fact]
     public void SwitchableState_Delegates_ReEmitsOnSwap_AndForwardsInnerChanges()
     {
-        var a = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
-        a.OnCluster(C("spotify:track:a"));
+        var a = Catalog.Projection("us", () => 0);
+        Catalog.Cluster(a, C("spotify:track:a"));
         var sw = new SwitchableState(a);
 
         int changes = 0;
         using var sub = sw.Changes.Subscribe(ConnectHarness.Obs<IPlaybackState>(_ => changes++));
         Assert.Equal("spotify:track:a", sw.CurrentTrack!.Uri);   // delegates to the initial inner
 
-        var b = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
-        b.OnCluster(C("spotify:track:b"));
+        var b = Catalog.Projection("us", () => 0);
+        Catalog.Cluster(b, C("spotify:track:b"));
         sw.SetInner(b);
         Assert.True(changes >= 1);                                // re-emitted on swap
         Assert.Equal("spotify:track:b", sw.CurrentTrack!.Uri);   // now delegates to the live backend
 
         int before = changes;
-        b.OnCluster(C("spotify:track:c"));                       // a change on the NEW inner flows through the switch
+        Catalog.Cluster(b, C("spotify:track:c"));                       // a change on the NEW inner flows through the switch
         Assert.True(changes > before);
         Assert.Equal("spotify:track:c", sw.CurrentTrack!.Uri);
     }

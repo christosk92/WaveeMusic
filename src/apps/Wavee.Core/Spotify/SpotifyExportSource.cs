@@ -22,9 +22,16 @@ public sealed class SpotifyExportSource : ICatalogSource
 
     static Task<T?> Ok<T>(T value) => Task.FromResult<T?>(value);
 
+    public Task<Track?> GetTrackAsync(string uri, CancellationToken ct = default)
+        => Task.FromResult(_x.TryGetTrack(uri, out var track) ? track
+            : FakeData.TrackByUri(uri) is { } fake ? fake with { Uri = uri, Id = EntityUri.IdOf(uri) } : null);
+
     // ── playlists ──────────────────────────────────────────────────────────────────────────────────────────
-    public Task<Playlist?> GetPlaylistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Playlist?> GetPlaylistAsync(string uri, CancellationToken ct = default)
     {
+        // The 1500-track scroll-probe fixture: a fixed, non-numeric id (FakeData.IndexFromUri would read it as 0 —
+        // aliasing pl0), so it is served directly rather than through the export header/card/synth ladder below.
+        if (uri == FakeData.BigPlaylistUri) return Ok(FakeData.PlaylistBig());
         if (_x.TryGetFullPlaylist(uri, out var full)) return Ok(full);   // Iced Americano — real tracks
         Playlist header =
             _x.TryGetHeader(uri, out var h) ? h
@@ -34,12 +41,9 @@ public sealed class SpotifyExportSource : ICatalogSource
         return Ok(header with { Tracks = SynthPlaylistTracks(uri, header.TrackCount) });
     }
 
-    public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Album?> GetAlbumAsync(string uri, CancellationToken ct = default)
         => Ok(AlbumFor(uri));
 
-    // Synchronous album-building shared by GetAlbumAsync and TryPeekAlbum below — this source is complete-at-
-    // construction (every read is already a plain in-memory build, Task.FromResult over it), so a "peek" is simply the
-    // same build without the Task wrapper.
     Album AlbumFor(string uri)
     {
         // A home card → real name/cover + themed synth tracks. No card → FakeData's own album (consistent with the
@@ -56,15 +60,8 @@ public sealed class SpotifyExportSource : ICatalogSource
             fake.TrackCount, fake.Tracks ?? System.Array.Empty<Track>(), fake.Kind);
     }
 
-    // Complete-at-construction, same as FakeSource: a peek always succeeds, so the demo backend's artist-page drawer
-    // never shimmers on a re-open either.
-    public bool TryPeekAlbum(string uri, out Album? album)
-    {
-        album = AlbumFor(uri);
-        return true;
-    }
 
-    public Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Artist?> GetArtistAsync(string uri, CancellationToken ct = default)
     {
         var fake = FakeData.Artist(FakeData.IndexFromUri(uri));
         // A real artist export (artist-*.json) → the full magazine page. The overview query lacks stats / top cities /
@@ -110,6 +107,7 @@ public sealed class SpotifyExportSource : ICatalogSource
 
     IReadOnlyList<Track> ResolveTracks(string uri)
     {
+        if (uri == FakeData.BigPlaylistUri) return FakeData.PlaylistBig().Tracks ?? System.Array.Empty<Track>();
         if (_x.TryGetFullPlaylist(uri, out var full) && full.Tracks is { } t) return t;
         int count = _x.TryGetHeader(uri, out var h) ? h.TrackCount : SynthCount(uri);
         return SynthPlaylistTracks(uri, count);
@@ -136,7 +134,7 @@ public sealed class SpotifyExportSource : ICatalogSource
     public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Artist>>(System.Array.Empty<Artist>());
 
-    public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<IReadOnlyList<Track>> GetLikedSongsAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Track>>(FakeData.LikedSongs(Math.Max(1, _x.LikedCount)));
 
     public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default)

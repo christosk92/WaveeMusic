@@ -1,4 +1,4 @@
-﻿namespace Wavee.Core;
+namespace Wavee.Core;
 
 // Seam-only facet ports (docs/plans/wavee/architecture.md §4.2, §9). A source implements the facets it supports and declares them
 // via SourceCapabilities; the UI and the aggregate do not change shape.
@@ -17,20 +17,11 @@ public interface ISessionSource : ISource
 /// <c>OfCapability(Podcasts)</c>. (The export has no podcast data, so the in-process source synthesizes it.)</summary>
 public interface IPodcastSource : ISource
 {
+    Task<Episode?> GetEpisodeAsync(string uri, CancellationToken ct = default)
+        => Task.FromResult<Episode?>(null);
     Task<IReadOnlyList<Show>> GetShowsAsync(CancellationToken ct = default);
-    Task<Show?> GetShowAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
+    Task<Show?> GetShowAsync(string uri, CancellationToken ct = default);
 
-    /// <summary>Page the NEXT block of episodes of an already-open show into residency, starting at membership index
-    /// <paramref name="from"/> (design 2.3: the show ladder brings the first <c>HydrationLevels.ShowOpenPage</c> up on
-    /// open and pages the rest; this is the explicit "the user scrolled to the end" ask for the next one).
-    /// <para>Returns the NEW paging cursor — the membership offset that has now been asked for (<c>Show.PagedThrough</c>).
-    /// It comes back unchanged (<c>== from</c>) when there was nothing left to ask for, which is what lets the episode
-    /// list drop its load-more affordance. A cursor rather than a bool because a page can legitimately land ZERO rows
-    /// (withdrawn / region-locked episodes): the caller must still advance, or the same unanswerable page is re-asked on
-    /// every tap and the pill never goes away.</para>
-    /// <para>A DEFAULT member returning <paramref name="from"/>: a synthetic source hands back its whole show in one
-    /// read and has no second page to fetch, so it should not be forced to write a stub.</para></summary>
-    Task<int> LoadMoreEpisodesAsync(string showUri, int from, CancellationToken ct = default) => Task.FromResult(from);
 }
 
 /// <summary>The Mutations facet: save / like / follow (saved-state) — optimistic local writes the UI gates on
@@ -140,4 +131,8 @@ public readonly record struct RootlistPlacement(string? ParentFolderId);
 
 /// <summary>The result of a synchronous create: the optimistic row is ALREADY in the store when this returns, and
 /// <see cref="Completion"/> observes the durable outbox drain that makes it real on the server.</summary>
-public readonly record struct PlaylistCreated(string Uri, Task Completion);
+public readonly record struct PlaylistCreated(string Uri, Task Completion)
+{
+    /// <summary>Local header, membership and outbox are durably staged before navigation may open this URI.</summary>
+    public Task Staged { get; init; } = Task.CompletedTask;
+}

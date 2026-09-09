@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentGpu;
 using FluentGpu.Controls;
@@ -11,6 +12,7 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Dialogs;
 using Wavee.Backend;
+using Wavee.Core.Catalog;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -30,7 +32,9 @@ sealed partial class SettingsPage
     readonly Signal<VideoOverrideLoadPhase> _voLoad = new(VideoOverrideLoadPhase.NotStarted);
     readonly Signal<int> _voVersion = new(0);
     IReadOnlyList<VideoOverrideRow> _voRows = Array.Empty<VideoOverrideRow>();
-    bool _voWatchWired;
+    bool _voWatchWired, _voActive = true, _voRefreshAgain, _voMetadataPosted;
+    long _voGeneration;
+    readonly Dictionary<string, QuerySignalBinding<EntityCardSnapshot>> _voQueries = new(StringComparer.Ordinal);
 
     // ── the "Manage" flyout: anchor + handle + the deep-link's deferred open ─────────────────────────────────────────
     OverlayHandle? _voHandle;
@@ -39,18 +43,73 @@ sealed partial class SettingsPage
     Services? _voSvc;
     VideoOverrideService? _voCuration;
 
-    /// <summary>Watch the store's roster sentinel so an attach/remove made anywhere else (the track context menu, an
-    /// undo toast) refreshes this list live. Returns the effect's cleanup, so navigating away disposes it.</summary>
+    /// <summary>Observe durable curation changes; catalog labels are passive typed query projections.</summary>
     Action? WatchVideoOverrides(Services? svc, Action<Action> post)
     {
-        if (_voWatchWired || svc?.RealStore is not { } store) return UnmountVideoOverrides;
+        if (_voWatchWired || svc?.VideoOverrides is not { } curation) return UnmountVideoOverrides;
         _voWatchWired = true;
-        var sub = store.Changes.Subscribe(c => post(() =>
+        long generation = ++_voGeneration;
+        var sub = curation.Changes.Subscribe(_ => post(() =>
         {
-            if (c.IsBulk || string.Equals(c.Uri, VideoOverride.ChangeKey, StringComparison.Ordinal))
-                RefreshVideoOverrides(svc, post, force: true);
+            if (!_voWatchWired || generation != _voGeneration) return;
+            if (_voActive && _tab.Peek() == TabPlayback) RefreshVideoOverrides(svc, post, force: true);
+            else _voRefreshAgain = true;
         }));
-        return () => { _voWatchWired = false; sub.Dispose(); UnmountVideoOverrides(); };
+        RefreshVideoOverrides(svc, post, force: true);
+        return () =>
+        {
+            _voWatchWired = false; _voGeneration++; _voMetadataPosted = false; _voRefreshAgain = false;
+            sub.Dispose();
+            foreach (var query in _voQueries.Values) query.Dispose();
+            _voQueries.Clear(); _voRows = []; _voLoad.Value = VideoOverrideLoadPhase.NotStarted;
+            UnmountVideoOverrides();
+        };
+    }
+
+    void SetVideoRosterActive(bool active, Services? svc, Action<Action> post)
+    {
+        _voActive = active;
+        foreach (var query in _voQueries.Values) query.SetActive(active && _tab.Peek() == TabPlayback);
+        if (active && _tab.Peek() == TabPlayback && _voWatchWired) RefreshVideoOverrides(svc, post, force: _voRefreshAgain);
+        if (!active) CloseVideoManager();
+    }
+
+    void SyncVideoRosterQueries(Services svc, VideoOverrideService curation, Action<Action> post)
+    {
+        var wanted = curation.All().Select(row => row.Uri).ToHashSet(StringComparer.Ordinal);
+        foreach (string uri in _voQueries.Keys.Where(uri => !wanted.Contains(uri)).ToArray())
+        { _voQueries[uri].Dispose(); _voQueries.Remove(uri); }
+        foreach (string uri in wanted)
+        {
+            if (_voQueries.ContainsKey(uri)) continue;
+            var binding = new QuerySignalBinding<EntityCardSnapshot>(
+                svc.Queries.Acquire(new EntityCardQuery(svc.CatalogScope, uri)), post, _ =>
+                {
+                    if (_voMetadataPosted || !_voWatchWired) return;
+                    _voMetadataPosted = true;
+                    long generation = _voGeneration;
+                    post(() =>
+                    {
+                        if (generation != _voGeneration) return;
+                        _voMetadataPosted = false;
+                        if (!_voActive || !_voWatchWired) return;
+                        ApplyVideoRosterLabels();
+                    });
+                });
+            _voQueries.Add(uri, binding);
+            // Curation survives account changes. Labels may use the current account's cold cache, but opening
+            // Settings never fans out provider requests for the device-wide attachment roster.
+            binding.SetDemand(QueryDemand.None);
+            binding.SetActive(_voActive && _tab.Peek() == TabPlayback);
+        }
+    }
+
+    void ApplyVideoRosterLabels()
+    {
+        _voRows = VideoOverrideUx.WithCatalogLabels(_voRows, uri =>
+            _voQueries.TryGetValue(uri, out var binding) && binding.Snapshot.Peek() is { Status.HasPrimaryData: true } snapshot
+                ? snapshot.Value : null);
+        _voVersion.Value = _voVersion.Peek() + 1;
     }
 
     /// <summary>Navigating away from Settings must not leave the roster flyout floating over the next page, and must
@@ -76,23 +135,29 @@ sealed partial class SettingsPage
     {
         if (svc?.VideoOverrides is not { } curation)
         {
-            _voRows = Array.Empty<VideoOverrideRow>();
+            _voRows = [];
             _voLoad.Value = VideoOverrideLoadPhase.Ready;
             return;
         }
-        if (_voLoad.Peek() == VideoOverrideLoadPhase.Loading) return;
+        if (!_voWatchWired || !_voActive || _tab.Peek() != TabPlayback) { _voRefreshAgain |= force; return; }
+        SyncVideoRosterQueries(svc, curation, post);
+        if (_voLoad.Peek() == VideoOverrideLoadPhase.Loading) { _voRefreshAgain |= force; return; }
         if (!force && _voLoad.Peek() == VideoOverrideLoadPhase.Ready) return;
+        _voRefreshAgain = false;
         _voLoad.Value = VideoOverrideLoadPhase.Loading;
+        long generation = _voGeneration;
         _ = Task.Run(() =>
         {
-            IReadOnlyList<VideoOverrideRow> rows;
-            try { rows = VideoOverrideUx.BuildRoster(curation, Directory.Exists, svc.RealStore is { } s ? s.GetTrack : null); }
-            catch { rows = Array.Empty<VideoOverrideRow>(); }
+            IReadOnlyList<VideoOverrideRow>? rows = null;
+            try { rows = VideoOverrideUx.BuildRoster(curation, Directory.Exists); }
+            catch (Exception error) { svc.Log.Event(WaveeLogLevel.Warning, "ui", "override.roster.failed", error.Message); }
             post(() =>
             {
-                _voRows = rows;
+                if (!_voWatchWired || generation != _voGeneration) return;
+                if (rows is not null) _voRows = rows;
                 _voLoad.Value = VideoOverrideLoadPhase.Ready;
-                _voVersion.Value = _voVersion.Peek() + 1;
+                if (_voActive) ApplyVideoRosterLabels();
+                if (_voRefreshAgain) RefreshVideoOverrides(svc, post, force: true);
             });
         });
     }
@@ -232,21 +297,22 @@ sealed partial class SettingsPage
         if (row.CanReveal)
             actions.Add(HyperlinkButton.Create(Loc.Get(Strings.VideoOverride.ShowInExplorer),
                 () => ShellOpen.RevealInExplorer(path)));
-        actions.Add(Button.Standard(Loc.Get(Strings.VideoOverride.Remove), () =>
+        actions.Add(Button.Standard(Loc.Get(Strings.VideoOverride.Remove), async () =>
         {
-            if (!curation.Remove(uri)) return;
+            try { if (!await curation.RemoveAsync(uri).ConfigureAwait(false)) return; }
+            catch (Exception ex) { _voPost?.Invoke(() => Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error })); return; }
             svc?.Log.Event(WaveeLogLevel.Info, "ui", "override.settings.remove", "detached the attached video",
                 fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", path)]);
-            Toast.Show(Loc.Get(Strings.VideoOverride.Removed), new ToastOptions
+            _voPost?.Invoke(() => Toast.Show(Loc.Get(Strings.VideoOverride.Removed), new ToastOptions
             {
                 Severity = InfoBarSeverity.Success,
                 ActionLabel = Loc.Get(Strings.VideoOverride.Undo),
-                OnAction = () =>
+                OnAction = async () =>
                 {
-                    try { curation.Attach(uri, path); }
-                    catch (Exception ex) { Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error }); }
+                    try { await curation.AttachAsync(uri, path).ConfigureAwait(false); }
+                    catch (Exception ex) { _voPost?.Invoke(() => Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error })); }
                 },
-            });
+            }));
         }));
 
         return new BoxEl
@@ -256,7 +322,7 @@ sealed partial class SettingsPage
         };
     }
 
-    void PickForRow(Services? svc, VideoOverrideService curation, string uri, string title, string? start)
+    async void PickForRow(Services? svc, VideoOverrideService curation, string uri, string title, string? start)
     {
         string? picked;
         try
@@ -280,22 +346,26 @@ sealed partial class SettingsPage
             return;
         }
 
-        try { curation.Attach(uri, picked); }
-        catch (Exception ex) { Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error }); return; }
+        try { await curation.AttachAsync(uri, picked).ConfigureAwait(false); }
+        catch (Exception ex) { _voPost?.Invoke(() => Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error })); return; }
         svc?.Log.Event(WaveeLogLevel.Info, "ui", "override.settings.replace", "replaced the attached video",
             fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", picked)]);
-        Toast.Show(Loc.Get(Strings.VideoOverride.Replaced), new ToastOptions { Severity = InfoBarSeverity.Success });
+        _voPost?.Invoke(() => Toast.Show(Loc.Get(Strings.VideoOverride.Replaced), new ToastOptions { Severity = InfoBarSeverity.Success }));
     }
 
-    void ClearAllVideoOverrides(Services? svc, VideoOverrideService curation)
+    async void ClearAllVideoOverrides(Services? svc, VideoOverrideService curation)
     {
         var all = curation.All();
         int removed = 0;
-        for (int i = 0; i < all.Count; i++)
-            if (curation.Remove(all[i].Uri)) removed++;
+        try
+        {
+            for (int i = 0; i < all.Count; i++)
+                if (await curation.RemoveAsync(all[i].Uri).ConfigureAwait(false)) removed++;
+        }
+        catch (Exception ex) { _voPost?.Invoke(() => Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error })); return; }
         svc?.Log.Event(WaveeLogLevel.Info, "ui", "override.settings.clear_all", "detached every attached video",
             fields: [WaveeLogField.Of("count", removed)]);
-        Toast.Show(Loc.Get(Strings.VideoOverride.ClearedAll), new ToastOptions { Severity = InfoBarSeverity.Success });
+        _voPost?.Invoke(() => Toast.Show(Loc.Get(Strings.VideoOverride.ClearedAll), new ToastOptions { Severity = InfoBarSeverity.Success }));
     }
 
     /// <summary>The status chip. Ok is deliberately QUIET (a healthy roster should read as calm); the two repairable

@@ -80,6 +80,8 @@ static class LikedSongsArtwork
     /// <para>Null when this is not the liked collection, so a call site reads exactly like <see cref="For"/>.</para></summary>
     public static Element? Fill(string? uri, float radius, string? morphKey = null, float fallback = 160f)
         => IsLikedUri(uri)
-            ? Responsive.Of(w => Dynamic(w >= 1f ? w : fallback, radius, morphKey), fallback)
+            // Gated on (radius, morphKey, fallback) — Dynamic's only inputs besides the measured width.
+            ? Responsive.Of((radius, morphKey, fallback),
+                static (s, w) => Dynamic(w >= 1f ? w : s.fallback, s.radius, s.morphKey), fallback)
             : null;
 }

@@ -22,13 +22,15 @@ namespace Wavee.Tests.Actions;
 //
 // The tests are one class on purpose: VideoPresence is a process-wide attachment point (row rendering cannot afford a
 // context read per row), and xunit runs the tests INSIDE a class sequentially — so nothing here races it.
-public class VideoOverrideUxTests
+public class VideoOverrideUxTests : IDisposable
 {
-    static VideoOverrideService Svc(params (string Uri, string Path)[] attached)
+    readonly VideoOverrideTestHost _host = new();
+    public void Dispose() => _host.Dispose();
+    VideoOverrideService Svc(params (string Uri, string Path)[] attached)
     {
-        var svc = new VideoOverrideService(new InMemoryStore());
+        var svc = _host.Service();
         svc.FileExists = _ => true;
-        foreach (var (uri, path) in attached) svc.Attach(uri, path);
+        foreach (var (uri, path) in attached) VideoOverrideTestHost.Attach(svc, uri, path);
         return svc;
     }
 
@@ -204,14 +206,13 @@ public class VideoOverrideUxTests
     [Fact]
     public void Roster_ListsEveryAttachment_NewestFirst_WithFileNameAndStatus()
     {
-        var store = new InMemoryStore();
-        var svc = new VideoOverrideService(store) { FileExists = _ => true };
-        svc.Attach("spotify:track:a", @"C:\v\a.mp4");
-        svc.Attach("spotify:track:b", @"C:\v\b.mp4");
-        // AddedAtUnix has 1s resolution, so pin the ordering deterministically through the store rather than by sleeping.
-        store.UpsertVideoOverride(store.GetVideoOverride("spotify:track:b")!.Value with { AddedAtUnix = 5_000 });
-        store.UpsertVideoOverride(store.GetVideoOverride("spotify:track:a")!.Value with { AddedAtUnix = 1_000 });
-        svc.Reload();
+        var svc = _host.Service();
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", @"C:\v\a.mp4");
+        VideoOverrideTestHost.Attach(svc, "spotify:track:b", @"C:\v\b.mp4");
+        // AddedAtUnix has 1s resolution, so pin the ordering deterministically through owned persistence rather than by sleeping.
+        _host.Persistence.WriteAsync(svc.All().Single(row => row.Uri == "spotify:track:b") with { AddedAtUnix = 5_000 }).AsTask().GetAwaiter().GetResult();
+        _host.Persistence.WriteAsync(svc.All().Single(row => row.Uri == "spotify:track:a") with { AddedAtUnix = 1_000 }).AsTask().GetAwaiter().GetResult();
+        VideoOverrideTestHost.Reload(svc);
 
         var rows = VideoOverrideUx.BuildRoster(svc, AllDirs);
 
@@ -242,6 +243,29 @@ public class VideoOverrideUxTests
     }
 
     [Fact]
+    public void RosterCatalogRenameRetainsFileDecisionAndOrdering_AndClearsOldAccountLabels()
+    {
+        var service = Svc(("spotify:track:a", @"C:\v\a.mp4"));
+        int probes = 0;
+        service.FileExists = _ => { probes++; return true; };
+        var rows = VideoOverrideUx.BuildRoster(service, AllDirs);
+        int initialProbes = probes;
+        var renamed = VideoOverrideUx.WithCatalogLabels(rows, uri =>
+            new Wavee.Core.Catalog.EntityCardSnapshot(uri, "Renamed", "Artist", null, null));
+        Assert.Equal("Renamed", renamed[0].Title);
+        Assert.Equal(rows[0].Override, renamed[0].Override);
+        Assert.Equal(rows[0].Status, renamed[0].Status);
+        Assert.Equal(initialProbes, probes);
+        var repeated = VideoOverrideUx.WithCatalogLabels(renamed, uri =>
+            new Wavee.Core.Catalog.EntityCardSnapshot(uri, "Renamed", "Artist", null, null));
+        Assert.Same(renamed, repeated);
+        var newAccount = VideoOverrideUx.WithCatalogLabels(renamed, _ => null);
+        Assert.Equal(rows[0].Uri, newAccount[0].Title);
+        Assert.Null(newAccount[0].Subtitle);
+        Assert.Equal(initialProbes, probes);
+    }
+
+    [Fact]
     public void Roster_IsEmptyWithoutACurationService_AndSurvivesAThrowingResolver()
     {
         Assert.Empty(VideoOverrideUx.BuildRoster(null, AllDirs));
@@ -252,23 +276,19 @@ public class VideoOverrideUxTests
     }
 
     [Fact]
-    public void Roster_RebuildsFromTheStoreSentinel_WhenAnAttachHappensElsewhere()
+    public void Roster_RebuildsAfterDurableChanges_WhenAnAttachHappensElsewhere()
     {
-        var store = new InMemoryStore();
-        var svc = new VideoOverrideService(store) { FileExists = _ => true };
+        var svc = _host.Service();
         int rosterBumps = 0;
-        using var sub = store.Changes.Subscribe(Observers.From<StoreChange>(c =>
-        {
-            if (string.Equals(c.Uri, VideoOverride.ChangeKey, StringComparison.Ordinal)) rosterBumps++;
-        }));
+        using var sub = svc.Changes.Subscribe(Observers.From<string>(_ => rosterBumps++));
 
         Assert.Empty(VideoOverrideUx.BuildRoster(svc, AllDirs));
 
-        svc.Attach("spotify:track:a", @"C:\v\a.mp4");      // e.g. the track context menu, on another page
-        Assert.Equal(1, rosterBumps);                       // the roster sentinel is what Settings subscribes to
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", @"C:\v\a.mp4");      // e.g. the track context menu, on another page
+        Assert.Equal(1, rosterBumps);                       // the durable curation publication is what Settings subscribes to
         Assert.Single(VideoOverrideUx.BuildRoster(svc, AllDirs));
 
-        svc.Remove("spotify:track:a");
+        VideoOverrideTestHost.Remove(svc, "spotify:track:a");
         Assert.Equal(2, rosterBumps);
         Assert.Empty(VideoOverrideUx.BuildRoster(svc, AllDirs));
     }
@@ -410,19 +430,18 @@ public class VideoOverrideUxTests
     [Fact]
     public void ManagerHelpers_ComposeOnARealRoster_FromTheServiceThroughRecentAndSearch()
     {
-        var store = new InMemoryStore();
-        var svc = new VideoOverrideService(store) { FileExists = _ => true };
+        var svc = _host.Service();
         foreach (var (uri, path) in new[]
                  {
                      ("spotify:track:a", @"C:\v\alpha.mp4"),
                      ("spotify:track:b", @"C:\v\beta.mp4"),
                      ("spotify:track:c", @"C:\v\gamma.mp4"),
                  })
-            svc.Attach(uri, path);
-        store.UpsertVideoOverride(store.GetVideoOverride("spotify:track:a")!.Value with { AddedAtUnix = 1 });
-        store.UpsertVideoOverride(store.GetVideoOverride("spotify:track:b")!.Value with { AddedAtUnix = 2 });
-        store.UpsertVideoOverride(store.GetVideoOverride("spotify:track:c")!.Value with { AddedAtUnix = 3 });
-        svc.Reload();
+            VideoOverrideTestHost.Attach(svc, uri, path);
+        _host.Persistence.WriteAsync(svc.All().Single(row => row.Uri == "spotify:track:a") with { AddedAtUnix = 1 }).AsTask().GetAwaiter().GetResult();
+        _host.Persistence.WriteAsync(svc.All().Single(row => row.Uri == "spotify:track:b") with { AddedAtUnix = 2 }).AsTask().GetAwaiter().GetResult();
+        _host.Persistence.WriteAsync(svc.All().Single(row => row.Uri == "spotify:track:c") with { AddedAtUnix = 3 }).AsTask().GetAwaiter().GetResult();
+        VideoOverrideTestHost.Reload(svc);
 
         var roster = VideoOverrideUx.BuildRoster(svc, AllDirs);
 
@@ -442,10 +461,10 @@ public class VideoOverrideUxTests
         var svc = Svc(("spotify:track:a", @"C:\v\first.mp4"));
         svc.TryGetActive("spotify:track:a", out var previous);   // the snapshot the action takes BEFORE mutating
 
-        svc.Attach("spotify:track:a", @"C:\v\second.mp4");
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", @"C:\v\second.mp4");
         Assert.EndsWith("second.mp4", svc.Decide("spotify:track:a").Override.Path, StringComparison.OrdinalIgnoreCase);
 
-        svc.Attach("spotify:track:a", previous.Path);            // the Undo
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", previous.Path);            // the Undo
         Assert.EndsWith("first.mp4", svc.Decide("spotify:track:a").Override.Path, StringComparison.OrdinalIgnoreCase);
         Assert.Single(svc.All());                                 // the uri is the primary key — never two rows
     }
@@ -454,14 +473,14 @@ public class VideoOverrideUxTests
     public void Undo_OfAFirstAttach_DetachesAgain_AndUndoOfARemoveReAttaches()
     {
         var svc = Svc();
-        svc.Attach("spotify:track:a", @"C:\v\a.mp4");
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", @"C:\v\a.mp4");
         Assert.True(svc.Has("spotify:track:a"));
 
-        svc.Remove("spotify:track:a");                            // the Undo of a first attach (no previous path)
+        VideoOverrideTestHost.Remove(svc, "spotify:track:a");                            // the Undo of a first attach (no previous path)
         Assert.False(svc.Has("spotify:track:a"));
         Assert.Empty(svc.All());
 
-        svc.Attach("spotify:track:a", @"C:\v\a.mp4");             // the Undo of a remove
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", @"C:\v\a.mp4");             // the Undo of a remove
         Assert.True(svc.Has("spotify:track:a"));
     }
 
@@ -473,32 +492,33 @@ public class VideoOverrideUxTests
         svc.Quarantine("spotify:track:a", o.SourceKey);
         Assert.Equal(VideoOverrideTier.Quarantined, svc.Decide("spotify:track:a").Tier);
 
-        svc.Attach("spotify:track:a", @"C:\v\a.mp4");             // re-picking the same path IS the repair gesture
+        VideoOverrideTestHost.Attach(svc, "spotify:track:a", @"C:\v\a.mp4");             // re-picking the same path IS the repair gesture
         Assert.Equal(VideoOverrideTier.UseOverride, svc.Decide("spotify:track:a").Tier);
     }
 
     // ── the row indicator / "Videos only" predicate ──────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Indicator_AnswersFromTheAssociationPlaneAndTheOverrides_AndFromNowhereElse()
+    public async System.Threading.Tasks.Task Indicator_AnswersFromTheAssociationPlaneAndTheOverrides_AndFromNowhereElse()
     {
         var plain = new Track("a", "spotify:track:a", "A", Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
         var official = plain with { Uri = "spotify:track:o" };
-        var store = new Wavee.Backend.InMemoryStore();
-        // Spotify's own verdict lives in the association plane, keyed by uri — there is no row field to set.
-        store.UpsertVideoAssociation(new VideoAssociation("spotify:track:o", true, null,
-            VideoAssociation.NoFiles, null, DateTimeOffset.UtcNow, 0));
+        await using var catalog = new CatalogFixture();
+        var association = new VideoAssociation("spotify:track:o", true, null,
+            VideoAssociation.NoFiles, null, DateTimeOffset.UtcNow, 0);
+        await catalog.Repository.SeedManyAsync([new(new(catalog.Scope, official.Uri, Wavee.Core.Catalog.FacetKind.VideoAssociation),
+            new Wavee.Core.Catalog.ReplaceFacetPatch(new Wavee.Core.Catalog.VideoAssociationValue(association)))], catalog.Repository.Epoch);
         var svc = Svc(("spotify:track:a", @"C:\v\a.mp4"));
         try
         {
-            VideoPresence.Attach(svc, store);
+            VideoPresence.Attach(svc, catalog.Repository);
 
             Assert.True(VideoPresence.HasVideo(plain));       // override-only → the row indicator + "Videos only" filter
             Assert.True(VideoPresence.HasVideo(official));    // the source's own video, straight from the plane
             Assert.True(VideoPresence.HasOverride("spotify:track:a"));
             Assert.False(VideoPresence.HasOverride("spotify:track:o"));
 
-            svc.Remove("spotify:track:a");
+            VideoOverrideTestHost.Remove(svc, "spotify:track:a");
             Assert.False(VideoPresence.HasVideo(plain));      // and it goes dark again on a detach
             Assert.True(VideoPresence.HasVideo(official));    // …while the association is untouched by that
         }

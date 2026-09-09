@@ -1,4 +1,5 @@
 using System.Linq;
+using Wavee;
 using Wavee.Backend;
 using Wavee.Backend.Persistence;
 using Wavee.Backend.Spotify;
@@ -144,7 +145,7 @@ public static class SpotifyLiveLogin
         ICredentialProtector protector = new NoOpProtector();
         if (OperatingSystem.IsWindows()) protector = new DpapiProtector();
         else if ((OperatingSystem.IsMacOS() || OperatingSystem.IsLinux()) && KeyringProtector.IsAvailable()) protector = new KeyringProtector();
-        var localStore = FileLocalStore.ForApp("Wavee");
+        var localStore = FileLocalStore.ForApp(UnpackagedAppDataRoot.CurrentFolderName);
         return (new LocalCredentialStore(localStore, protector), GetOrCreateDeviceId(localStore));
     }
 
@@ -157,10 +158,18 @@ public static class SpotifyLiveLogin
     }
 
     /// <summary>Wipe the persisted reusable credential (logout). Opens the store FRESH so it works even when no live session
-    /// captured one, and persists the deletion to disk immediately (so the next login can't silently re-use it).</summary>
+    /// captured one, and persists the deletion to disk immediately (so the next login can't silently re-use it).
+    ///
+    /// <para>The remembered session scope goes with it. It names the account whose cached library the next launch would
+    /// otherwise serve provisionally, so leaving it behind would put a logged-out user's own rows back on screen.</para></summary>
     public static void ClearStoredCredential()
     {
-        try { OpenCredentialStore().Store.Clear(); }
+        try
+        {
+            var credentials = OpenCredentialStore().Store;
+            credentials.Clear();
+            new Wavee.Backend.Persistence.LocalSessionScopeStore(credentials.Store, credentials.Protector).Forget();
+        }
         catch { }
     }
 

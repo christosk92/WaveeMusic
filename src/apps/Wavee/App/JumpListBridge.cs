@@ -49,6 +49,16 @@ public sealed class JumpListBridge
     HistoryStore? _history;
     LibraryStore? _library;
 
+    // §(startup) — the CPU-only half of a rebuild (title/route resolution off PlayLogStore/HistoryStore/LibraryStore,
+    // all plain field reads no different from a signal Peek() anywhere else in the app) done ahead of time on the
+    // Worker phase, so the Window-phase step it precedes has nothing left to do but the one unavoidable COM call
+    // (JumpList.SetCategory — an O(items) CoCreateInstance(ShellLink)+IPropertyStore chain the engine does not expose
+    // a way to spread across multiple drains; see PrepareForActivation's remarks). Stale the moment anything the
+    // build depends on changes, so a rebuild triggered by OnStateChanged/AttachHistory/AttachLibrary between the
+    // prepare and the commit simply falls back to building inline, exactly like before this existed.
+    JumpTask[]? _preparedTasks;
+    JumpListItem[]? _preparedItems;
+
     public JumpListBridge(PlaybackBridge bridge, IPlaybackPlayer player, Action<Action> post)
     {
         _ = player;
@@ -79,10 +89,44 @@ public sealed class JumpListBridge
     void RequestRebuild()
     {
         _dirty = true;
+        _preparedTasks = null; _preparedItems = null;   // whatever was prepared no longer reflects the inputs
         if (_active) _post(_rebuild);
     }
 
-    /// <summary>Publish the standing Tasks (and an empty-or-seeded category). UI/STA thread. Idempotent. Fail-soft.</summary>
+    /// <summary>Worker-phase step: resolve titles/routes and build the tasks + category-item arrays — everything
+    /// <see cref="Rebuild"/> does EXCEPT the actual <c>JumpList.SetCategory</c> call — off the UI thread, ahead of
+    /// <see cref="Activate"/>. Safe to call before <see cref="Activate"/> (this bridge does not need to be active).
+    /// A no-op once the process has no path, and the result is simply not consumed (falls back to an inline build)
+    /// if anything invalidates it (<see cref="RequestRebuild"/>) before <see cref="Activate"/> gets to commit it.</summary>
+    public void PrepareForActivation()
+    {
+        string? exe = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exe)) return;
+        string icon = WaveeAppIcon.Path() ?? exe;
+        try
+        {
+            bool playing = _bridge.CurrentTrack.Peek() is not null && _bridge.IsPlaying.Peek();
+            string playbackIcon = TaskbarGlyph(playing ? "pause.ico" : "play.ico") ?? icon;
+            _preparedTasks =
+            [
+                new(playing ? "Pause" : "Resume", exe,
+                    playing ? "wavee://pause" : "wavee://resume",
+                    playbackIcon, playing ? "Pause playback" : "Resume playback"),
+                new("Search", exe, "wavee://open?route=search", icon, "Search"),
+            ];
+            _preparedItems = BuildCategory(exe, icon);
+        }
+        catch (Exception)
+        {
+            // Best-effort prep; Activate falls back to building inline if this failed to leave anything usable.
+            _preparedTasks = null; _preparedItems = null;
+        }
+    }
+
+    /// <summary>Publish the standing Tasks (and an empty-or-seeded category). UI/STA thread. Idempotent. Fail-soft.
+    /// Commits whatever <see cref="PrepareForActivation"/> already built (the common startup path — the ONE remaining
+    /// cost here is the unavoidable <c>JumpList.SetCategory</c> COM call itself), or builds inline exactly as before
+    /// this existed when nothing was prepared (a runtime rebuild, or a bridge nobody ran the Worker step for).</summary>
     public void Activate()
     {
         if (_active) return;
@@ -122,22 +166,39 @@ public sealed class JumpListBridge
         if (!_active || !_dirty) return;
         _dirty = false;
         _lastRebuildTick = Environment.TickCount64;
-        string? exe = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(exe)) return;
-        string icon = WaveeAppIcon.Path() ?? exe;
+
+        JumpTask[] tasks;
+        JumpListItem[] items;
+        if (_preparedTasks is { } pt && _preparedItems is { } pi)
+        {
+            // The common startup path: PrepareForActivation already did all the CPU work on the Worker phase. This
+            // drain pays for nothing but the one COM call below.
+            tasks = pt; items = pi;
+            _preparedTasks = null; _preparedItems = null;
+        }
+        else
+        {
+            string? exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)) return;
+            string icon = WaveeAppIcon.Path() ?? exe;
+            try
+            {
+                bool playing = _bridge.CurrentTrack.Peek() is not null && _bridge.IsPlaying.Peek();
+                string playbackIcon = TaskbarGlyph(playing ? "pause.ico" : "play.ico") ?? icon;
+                tasks =
+                [
+                    new(playing ? "Pause" : "Resume", exe,
+                        playing ? "wavee://pause" : "wavee://resume",
+                        playbackIcon, playing ? "Pause playback" : "Resume playback"),
+                    new("Search", exe, "wavee://open?route=search", icon, "Search"),
+                ];
+                items = BuildCategory(exe, icon);
+            }
+            catch (Exception) { return; }
+        }
 
         try
         {
-            bool playing = _bridge.CurrentTrack.Peek() is not null && _bridge.IsPlaying.Peek();
-            string playbackIcon = TaskbarGlyph(playing ? "pause.ico" : "play.ico") ?? icon;
-            var tasks = new JumpTask[]
-            {
-                new(playing ? "Pause" : "Resume", exe,
-                    playing ? "wavee://pause" : "wavee://resume",
-                    playbackIcon, playing ? "Pause playback" : "Resume playback"),
-                new("Search", exe, "wavee://open?route=search", icon, "Search"),
-            };
-            JumpListItem[] items = BuildCategory(exe, icon);
             // Pass the AUMID the toast layer actually registered rather than relying on the process default association:
             // the shell keys a custom destination list by AUMID, so if these two ever disagree the list is written for an
             // identity the taskbar button does not have and silently never appears. Empty (Register not called yet) keeps

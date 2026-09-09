@@ -58,23 +58,14 @@ sealed class TrackVersionsPanel : Component
     /// <summary>Version row height — thumb + its padding + the hairline the rail's stub must meet at mid-height.</summary>
     const float RowH = AudioThumb + 2f * Spacing.XS;
 
-    /// <summary>The stable identity of a version ROW — which is deliberately NOT always its uri.
-    ///
-    /// <para>The music-video row is RESERVED before the expansion fetch answers (see <see cref="Render"/>), and at that
-    /// moment its target uri is precisely the thing not yet known. So the video row is keyed by its KIND instead: kind
-    /// 99 yields at most ONE counterpart, so the kind is a complete identity for it. The pending placeholder and the
-    /// hydrated row therefore mint the SAME key, and data landing reconciles that row IN PLACE — no remove+insert, no
-    /// remount flicker, and no height step for the drawer's reflow to chase.</para>
-    ///
-    /// <para>Every other row keeps its uri key, which is what tells several alternate-audio entries apart.</para></summary>
-    const string VideoRowKey = "v:video";
-    static string RowKey(TrackVersion v) => v.Kind == TrackVersionKind.Video ? VideoRowKey : v.Uri;
-
-    /// <summary>The reserved music-video row while the fetch is in flight. The empty uri IS the placeholder flag: it is
-    /// what <see cref="ConnectedRow"/> routes on, and it keeps the reserved row out of the now-playing comparison.</summary>
-    static readonly TrackVersion PendingVideo = new("", TrackVersionKind.Video, "", null);
+    /// <summary>Row identity + the reserved-placeholder rules live in the engine-free <see cref="TrackDrawerRows"/>
+    /// (Features/Detail/TrackDrawerRows.cs) — the drawer's row SET is the drawer's HEIGHT, and that decision has to be
+    /// unit-testable because it is what keeps the virtualized row's reserved band and the painted content in
+    /// agreement. This panel only renders the verdict.</summary>
+    static string RowKey(TrackVersion v) => TrackDrawerRows.KeyOf(v);
 
     readonly Signal<TrackExpansion?> _data = new(null);
+    readonly List<TrackVersion> _rows = new(3);   // reused per render — the row set is rebuilt, never re-allocated
 
     public override Element Render()
     {
@@ -98,26 +89,12 @@ sealed class TrackVersionsPanel : Component
 
         var data = _data.Value;
 
-        // Flat, in order: the GUARANTEED self row, then the music video, then any alternate audio. NO group headings —
-        // each association kind yields at most one row and the thumbnail aspect says which is which.
-        //
-        // The video row is RESERVED up front rather than waited for. This inverts the rule this panel used to state
-        // ("never speculate a row that might collapse"), and the reason is the DRAWER, not the panel: the drawer's
-        // height now animates (SizeMode.Reflow), so a row that mounts 200ms into an opening reflow grows the target
-        // by a whole RowH mid-flight — the animation chases a moving destination and the rows below it jump. A row
-        // whose existence is KNOWABLE before the fetch must therefore be reserved, so the first solved height is the
-        // final height. And it is knowable: `Facts.HasVideo` is the same kind-99 association plane this fetch reads
-        // and folds back (the row's own film lane asks it too), so reserving it is repeating a verdict, not guessing.
-        //
-        // Only the genuinely UNKNOWABLE rows may still arrive late — alternate audio has no pre-fetch predicate at all
-        // — and those the engine now eases into the settled height instead of snapping.
-        var versions = new List<TrackVersion>(3) { SelfVersion(model.Track) };
-        if (data is not null)
-        {
-            foreach (var v in data.Versions) if (v.Kind == TrackVersionKind.Video) versions.Add(v);
-            foreach (var v in data.Versions) if (v.Kind == TrackVersionKind.Audio) versions.Add(v);
-        }
-        else if (model.Facts.HasVideo) versions.Add(PendingVideo);
+        // The row set — and with it the drawer's height — is TrackDrawerRows' verdict: the guaranteed self row, AT MOST
+        // ONE kind-99 video (reserved from the association plane before the fetch answers), then any alternate audio.
+        // See TrackDrawerRows for the full "first solved height is the final height" account; the placeholder and the
+        // hydrated video row share one key, so data landing patches that row in place instead of inserting one.
+        var versions = _rows;
+        TrackDrawerRows.Fill(versions, model.Track, data, model.Facts.HasVideo);
 
         // The facts strip, then a labelled versions section. Two sections, one drawer: the strip states the track and
         // the rows state its FORMS, and the eyebrow is what stops a lone "This track" row reading as a stray list item
@@ -210,18 +187,18 @@ sealed class TrackVersionsPanel : Component
             },
             // The rail and the stub are geometry — they are the same whether the entry is hydrated or reserved, which
             // is exactly why the reserved row can be drawn as a body swap under an unchanged connector.
-            v.Uri.Length == 0 ? PendingVersionRow() : VersionRow(v, model, svc, isSelf, waveform, isNow),
+            TrackDrawerRows.IsPlaceholder(v) ? PendingVersionRow() : VersionRow(v, model, svc, isSelf, waveform, isNow),
         ],
     };
 
     /// <summary>The RESERVED music-video row: the hydrated row's geometry with its content replaced by placeholder
-    /// blocks. Same <c>Height = RowH</c>, same 16:9 thumb slot, same key (<see cref="VideoRowKey"/>) — so when the
+    /// blocks. Same <c>Height = RowH</c>, same 16:9 thumb slot, same key (<see cref="TrackDrawerRows.VideoRowKey"/>) — so when the
     /// expansion lands this node is PATCHED into the real row rather than swapped for it, and the drawer's height
     /// never moves. Deliberately inert: no <c>Interactive</c> recipe, no play affordance, no format button, because a
     /// row that cannot say which video it is must not offer to play one.</summary>
     static Element PendingVersionRow() => new BoxEl
     {
-        Key = "ver:" + VideoRowKey,
+        Key = "ver:" + TrackDrawerRows.VideoRowKey,
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Grow = 1f,
         Height = RowH,
         Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
@@ -252,11 +229,6 @@ sealed class TrackVersionsPanel : Component
         Width = w, Height = h, Shrink = 0f, AlignSelf = FlexAlign.Start,
         Corners = CornerRadius4.All(h / 2f), Fill = Tok.FillSubtleSecondary,
     };
-
-    // The row's own track, projected as a version so ONE row factory renders every entry.
-    static TrackVersion SelfVersion(Track t) => new(
-        t.Uri, TrackVersionKind.Original, t.Title, t.Image, t.DurationMs,
-        t.TempoBpm, t.MusicalKey, t.CamelotCode, t.CamelotColor);
 
     static Element VersionRow(TrackVersion v, Model model, Services? svc, bool isSelf, TrackWaveform? waveform, bool isNow)
     {

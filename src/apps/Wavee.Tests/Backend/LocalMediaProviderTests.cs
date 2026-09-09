@@ -25,7 +25,7 @@ namespace Wavee.Tests;
 //   • Connect masking now that non-publishable uris finally exist,
 //   • the prepared-next gate closing for a local next (a capability answer, not a special case),
 //   • and one end-to-end play: local file → Started → Ended → auto-advance.
-public class LocalMediaProviderTests
+public class LocalMediaProviderTests : PlaybackCatalogTestBase
 {
     static Track T(string uri, long durationMs = 0) => new(uri[(uri.LastIndexOf(':') + 1)..], uri, uri,
         Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), durationMs, false, null);
@@ -377,7 +377,7 @@ public class LocalMediaProviderTests
     public async Task ConnectMask_PublishesSpotifyRowsVerbatim_MasksTheRest_AndKeepsEveryUid()
     {
         var registry = ThreeProviderRegistry(out _);
-        var h = new MaskHarness { Publisher = { } };
+        using var h = new MaskHarness(Catalog) { Publisher = { } };
         h.Publisher.PublishUriMask = ConnectUriMask.For(registry);
 
         string localUri = PlayableUri.ForLocalFile(@"C:\Music\Nightcall.mp3");
@@ -385,12 +385,15 @@ public class LocalMediaProviderTests
             new AlbumRef("", "", "OutRun"), 258_000, false, null);
 
         h.Connect("c1");
-        h.SetQueue(
+        await h.SetQueueAsync(
             new QueueEntry(QueueItemId.None, "now", localTrack, QueueBucket.NowPlaying, QueueProvider.Context, false, "u-now"),
             new QueueEntry(QueueItemId.None, "n0", localTrack, QueueBucket.NextUp, QueueProvider.Context, false, "u-n0"),
             new QueueEntry(QueueItemId.None, "n1", T("spotify:track:b"), QueueBucket.NextUp, QueueProvider.Context, false, "u-n1"));
         h.Play(localTrack);
-        await Task.Delay(20);
+        await QueryPublication.Until(() => h.LastSnapshot is LocalPlaybackSnapshot snapshot
+            && snapshot.Track.Uri == "spotify:local:Kavinsky:OutRun:Nightcall:258"
+            && snapshot.NextTracks.Count > 0
+            && snapshot.NextTracks[0].Uri == "spotify:local:Kavinsky:OutRun:Nightcall:258");
 
         var snap = Assert.IsType<LocalPlaybackSnapshot>(h.LastSnapshot);
         Assert.Equal("spotify:local:Kavinsky:OutRun:Nightcall:258", snap.Track.Uri);
@@ -421,7 +424,7 @@ public class LocalMediaProviderTests
     [Fact]
     public async Task ConnectContextMask_ReachesTheWire_AlongsideTheMaskedRow()
     {
-        var h = new MaskHarness();
+        using var h = new MaskHarness(Catalog);
         h.Publisher.PublishUriMask = ConnectUriMask.For(ThreeProviderRegistry(out _));
         h.Publisher.PublishContextMask = ConnectUriMask.ContextMask;
 
@@ -430,11 +433,11 @@ public class LocalMediaProviderTests
             new AlbumRef("", "", ""), 0, false, null);
 
         // The context arrives the way a real one does — through the projection.
-        h.Proj.OnCluster(new ClusterDelta("", true, new RemoteTrack(moduleUri, "Claude FM", "Claude", "", "", "", null, 0),
+        Catalog.Cluster(h.Proj, new ClusterDelta("", true, new RemoteTrack(moduleUri, "Claude FM", "Claude", "", "", "", null, 0),
             moduleUri, false, true, false, 0, 0, 0, 0, false, RepeatMode.Off,
             Array.Empty<ConnectDeviceRow>(), Array.Empty<RemoteTrack>()));
         h.Connect("c1");
-        h.SetQueue(new QueueEntry(QueueItemId.None, "now", moduleTrack, QueueBucket.NowPlaying, QueueProvider.Context, false, "u-now"));
+        await h.SetQueueAsync(new QueueEntry(QueueItemId.None, "now", moduleTrack, QueueBucket.NowPlaying, QueueProvider.Context, false, "u-now"));
         h.Play(moduleTrack);
         await Task.Delay(20);
 
@@ -452,7 +455,7 @@ public class LocalMediaProviderTests
         var registry = ThreeProviderRegistry(out _);
         string localUri = PlayableUri.ForLocalFile(@"C:\Music\next.mp3");
         var host = new RecordingAudioHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, registry, projection,
             new FakeContextResolver("spotify:track:a", localUri), "dev", fast: registry);
         controller.CanPrepareNext = t => registry.SupportsPreparedNext(t.Uri);
@@ -476,7 +479,7 @@ public class LocalMediaProviderTests
         files.Add(second);
 
         var host = new RecordingAudioHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, registry, projection,
             new FakeContextResolver(), "dev", fast: registry);
 
@@ -509,7 +512,7 @@ public class LocalMediaProviderTests
     {
         var registry = ThreeProviderRegistry(out _);   // the fake disk knows no files
         var host = new RecordingAudioHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, registry, projection, new FakeContextResolver(), "dev", fast: registry);
         AudioKeyFailureReason? reported = null;
         controller.OnPlaybackError = info => reported = info.Reason;
@@ -603,6 +606,10 @@ public class LocalMediaProviderTests
 
     sealed class RecordingAudioHost : IAudioHost, IPreparedAudioHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, _signals.OnNext);
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, _signals.OnNext);
+        public bool PlayIntent => IsPlaying;
+
         readonly SimpleSubject<AudioHostSignal> _signals = new();
         readonly SimpleSubject<AudioTransitionSignal> _transitions = new();
         public ConcurrentQueue<string> Loaded { get; } = new();
@@ -633,7 +640,7 @@ public class LocalMediaProviderTests
             return Task.CompletedTask;
         }
 
-        public Task SupplyNextBodyAsync(string token, AudioStreamHandle body, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<bool> TryPromotePreparedAsync(AudioPromoteRequest request, CancellationToken ct = default) => Task.FromResult(false);
 
         public Task<AudioPrepareCancelResult> CancelPreparedAsync(string token, CancellationToken ct = default)
             => Task.FromResult(AudioPrepareCancelResult.Cancelled);
@@ -654,17 +661,20 @@ public class LocalMediaProviderTests
             => Task.FromResult(new Resp(true, Array.Empty<byte>(), 200));
     }
 
-    sealed class MaskHarness
+    sealed class MaskHarness : IDisposable
     {
+        readonly PlaybackCatalogTestHost Catalog;
         public readonly StubTransport Transport = new();
-        public readonly NowPlayingProjection Proj = new("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        public readonly NowPlayingProjection Proj;
         public readonly SimpleSubject<string?> ConnId = new(null);
         public string? CurrentConnId;
         public LocalPlaybackSnapshot? LastSnapshot;
         public readonly DeviceStatePublisher Publisher;
 
-        public MaskHarness()
+        public MaskHarness(PlaybackCatalogTestHost catalog)
         {
+            Catalog = catalog;
+            Proj = Catalog.Projection("us", () => 0);
             Publisher = new DeviceStatePublisher(Transport, "us", Proj, ConnId, () => CurrentConnId,
                 (reason, snap, mid, active) =>
                 {
@@ -675,12 +685,21 @@ public class LocalMediaProviderTests
         }
 
         public void Connect(string id) { CurrentConnId = id; ConnId.OnNext(id); }
-        public void SetQueue(params QueueEntry[] q) => Proj.SetLocalQueue(q);
+        public async Task SetQueueAsync(params QueueEntry[] q)
+        {
+            // Match PlaybackContextCatalogIngress: known queue metadata reaches the catalog before the projection
+            // materializes its rows. A commit-queue Flush alone cannot await a fire-and-forget seed's preload and
+            // subsequent commit, so publishing Started after that barrier can otherwise permanently serialize blanks.
+            await Proj.ObserveTracksAsync(q.Select(row => row.Track).ToArray());
+            Proj.SetLocalQueue(q);
+        }
+
+        public void Dispose() => Publisher.Dispose(); // Catalog owns and disposes Proj.
 
         public void Play(Track track)
         {
             var e = new PlaybackEvent(EvKind.Started, track, 0);
-            Proj.OnEvent(e);
+            Catalog.Event(Proj, e);
             Publisher.OnEvent(e);
         }
     }

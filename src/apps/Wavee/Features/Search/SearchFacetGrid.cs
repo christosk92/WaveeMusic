@@ -8,20 +8,13 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
-/// <summary>A dedicated search facet (Albums / Playlists / …) as a COMPLETE uniform grid that pages the wire as you
-/// scroll — not a horizontal shelf.
-///
-/// A shelf is the right shape for a curated rail of 5–20 on a composite page; it is the wrong shape for "177 albums",
-/// where it hid 172 of them behind five pips and gave the facet tab's own count nothing to point at. This is the same
-/// pairing the artist discography uses: a <see cref="VirtualCollection{T}"/> over the paged wire call, and a
-/// <see cref="LazyGrid"/> that realizes only the visible window while reserving the full extent from the total.
-///
-/// Page 0 is SEEDED from the search page's own results — that fetch has already happened (it is what fills the facet
-/// chip counts), so mounting this grid costs no extra request; <c>EnsureRange</c> only reaches the wire from page 1 on.</summary>
+/// <summary>A complete virtualized search facet. The viewport retains live query handles for its current pages;
+/// page zero also provides the total extent. Canonical updates change existing cards without reseeding a page cache.</summary>
 sealed class SearchFacetGrid : Component
 {
     /// <summary>Re-pushed props: the seed changes when the page-level resource refreshes (stale-while-revalidate), and a
@@ -38,9 +31,8 @@ sealed class SearchFacetGrid : Component
     const float RowGap = 20f;                       // vertical gutter between card rows
     static readonly float ColGap = Spacing.L;
 
-    VirtualCollection<SearchMediaGrid.Item>? _vc;
+    SearchResultPaging<SearchResults, SearchMediaGrid.Item>? _pages;
     string _key = "";
-    System.Threading.CancellationTokenSource? _cts;   // re-scoped per (query, facet); cancelled on change + unmount
     Action<string, string?> _go = static (_, _) => { };
     Action<string> _play = static _ => { };
     ActionServices? _acts;
@@ -57,35 +49,28 @@ sealed class SearchFacetGrid : Component
         _play = p.Play;
 
         var post = UsePost();
-        string key = (int)p.Facet + ":" + p.Query;
-        if (_vc is null || _key != key)
+        string key = svc.CatalogScope + ":" + (int)p.Facet + ":" + p.Query;
+        if (_pages is null || _key != key)
         {
-            // New (query, facet) → cancel the prior one's in-flight pages, re-scope the CTS, rebuild + seed.
-            _cts?.Cancel(); _cts?.Dispose();
-            _cts = new System.Threading.CancellationTokenSource();
+            _pages?.Dispose();
             _key = key;
-            _vc = MakeVc(svc, p.Query, p.Facet, post, _cts.Token);
-            // The page-0 window the search page already holds. Seed only takes effect while the total is unknown, so a
-            // later props re-push cannot fight a page the wire has since corrected.
-            if (p.Seed.Count > 0)
-                _vc.Seed(Math.Max(p.Total, p.Seed.Count), CollectionsMarshal(p.Seed));
+            var scope = svc.CatalogScope;
+            _pages = new(svc.Queries,
+                (offset, limit) => new Wavee.Core.Catalog.SearchQuery(scope, p.Query, p.Facet, offset, limit),
+                result => ItemsOf(result, p.Facet), result => TotalOf(result, p.Facet), SearchFacetPageSize, post,
+                p.Seed, p.Total);
         }
-        UseSignalEffect(() => Reactive.OnCleanup(() => { _cts?.Cancel(); _cts?.Dispose(); }));
+        var pages = _pages;
+        var active = UseIsActive();
+        UseEffect(() => { pages.SetActive(active.Peek()); return (Action?)pages.Dispose; }, DepKey.From(key.GetHashCode()));
+        UseActivation(onActivated: () => _pages?.SetActive(true), onDeactivated: () => _pages?.SetActive(false));
 
         return Embed.Comp(() => new LazyGrid(
-            count: Count,
+            count: () => _pages!.Count,
             cell: Cell,
-            ensureRange: (first, lastExclusive) => _vc!.EnsureRange(first, lastExclusive - 1),
+            ensureRange: (first, lastExclusive) => _pages!.SetRange(first, lastExclusive),
             minColWidth: MinCol, gap: ColGap, rowExtra: CardChrome + RowGap, overscanRows: 4));
     }
-
-    static VirtualCollection<SearchMediaGrid.Item> MakeVc(Services svc, string query, SearchFacet facet,
-                                                          Action<Action> post, System.Threading.CancellationToken ct)
-        => new(async (off, cnt, c) =>
-        {
-            var r = await svc.Library.SearchAsync(query, facet, off, cnt, c).ConfigureAwait(false);
-            return new PageResult<SearchMediaGrid.Item>(TotalOf(r, facet), ItemsOf(r, facet));
-        }, pageSize: SearchFacetPageSize, post: post, ct: ct);
 
     /// <summary>The wire page size. Matches <c>SearchPage.SearchPageSize</c> so the seeded page-0 window fills chunk 0
     /// exactly — a mismatch would leave a partially-filled page 0 that never refetches.</summary>
@@ -128,19 +113,11 @@ sealed class SearchFacetGrid : Component
         return items;
     }
 
-    static ReadOnlySpan<SearchMediaGrid.Item> CollectionsMarshal(IReadOnlyList<SearchMediaGrid.Item> seed)
-        => seed as SearchMediaGrid.Item[] ?? seed.ToArray();
-
-    int Count()
-    {
-        _ = _vc?.Version.Value;                      // subscribe → the grid re-windows as pages land
-        return _vc?.CountOr0 ?? 0;
-    }
-
     Element Cell(int idx, float cardW)
     {
-        var vc = _vc;
-        if (vc is null || !vc.IsLoaded(idx) || vc[idx] is not { } it) return Placeholder(cardW);
+        if (_pages?.ItemAt(idx) is not { } it)
+            return _pages?.ErrorAt(idx) is { } error
+                ? ErrorState.Compact(error, () => _pages?.RetryAt(idx)) : Placeholder(cardW);
         Element card = SearchMediaGrid.CardFor(it, _acts, _overlay, _go, _play);
         // One height for every cell (square cover + chrome) so the grid's rows are uniform — LazyGrid reserves extent
         // from rowH, so a card that sized itself would desynchronise the spacers from what is painted.

@@ -80,24 +80,25 @@ public class LibrarySyncPhase0Tests
     [Fact]
     public async Task HasPending_TrueAfterSave_FalseAfterDrain_FalseForUnrelated()
     {
-        var store = new InMemoryStore();
-        var eng = new MutationEngine(store, new IMutationStrategy[] { new SetReplayStrategy() });
+        await using var host = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
+        var eng = host.Mut;
 
-        eng.Save("liked", "spotify:track:a", true);
+        await eng.SaveAsync("liked", "spotify:track:a", true);
         Assert.True(eng.HasPending("liked", "spotify:track:a"));
         Assert.False(eng.HasPending("albums", "spotify:track:a"));   // unrelated set
         Assert.False(eng.HasPending("liked", "spotify:track:z"));    // unrelated entity
 
-        await eng.Drain(new StubTransport(), SessionContext.LoggedOut);   // stub replay succeeds → outbox cleared
+        await eng.Drain(host.Transport, host.Host.Context);
         Assert.False(eng.HasPending("liked", "spotify:track:a"));
     }
 
     [Fact]
-    public void HasPending_FalseWhenNothingPending()
+    public async Task HasPending_FalseWhenNothingPending()
     {
         // The rootlist key shape (rootlist|{set}|{uri}) is checked now for Phase 4, but no strategy populates it yet, so an
         // empty outbox reports false for both the "set" and the "rootlist" key shapes.
-        var eng = new MutationEngine(new InMemoryStore(), new IMutationStrategy[] { new SetReplayStrategy() });
+        await using var host = new ReplicaTestHost();
+        var eng = host.Mutations;
         Assert.False(eng.HasPending("playlists", "spotify:playlist:p"));
         Assert.False(eng.HasPending("liked", "spotify:track:a"));
     }

@@ -20,9 +20,9 @@ public class PlaylistFetcherTests
     static byte[] Rev24(byte tag) { var r = new byte[24]; r[3] = tag; r[23] = tag; return r; }
 
     [Fact]
-    public async Task FetchPlaylist_HitsTheRightUrl_StoresThinHeaderAndMembership_AndHydrates()
+    public async Task FetchPlaylist_HitsTheRightUrl_ReturnsHeaderAndOrderedMembership()
     {
-        var store = new InMemoryStore();
+
         var rev24 = Rev24(7);   // I1 — only the 24-byte head is storable
         var slc = new Pl.SelectedListContent { Revision = ByteString.CopyFrom(rev24), Length = 2, OwnerUsername = "bob" };
         slc.Attributes = new Pl.ListAttributes { Name = "My Mix", Description = "d", Collaborative = true };
@@ -34,23 +34,23 @@ public class PlaylistFetcherTests
         var bytes = slc.ToByteArray();
 
         HttpReq? captured = null;
-        var hydrated = new List<string>();
-        var http = new FakeExchange((req, _) => { captured = req; return Ok(bytes); });
-        var fetcher = new PlaylistFetcher(http, () => "https://spclient.test", store, (uris, ct) => { hydrated.AddRange(uris); return Task.CompletedTask; }, () => "");
 
-        await fetcher.FetchPlaylistAsync("spotify:playlist:p", TestContext.Current.CancellationToken);
+        var http = new FakeExchange((req, _) => { captured = req; return Ok(bytes); });
+        var fetcher = new PlaylistFetcher(http, () => "https://spclient.test", () => "");
+
+        var read = await fetcher.FetchPlaylistAsync("spotify:playlist:p", TestContext.Current.CancellationToken);
 
         Assert.NotNull(captured);
         Assert.Equal("GET", captured!.Method);
         Assert.Contains("/playlist/v2/playlist/p?decorate=", captured.Url);
 
-        var m = store.Membership("spotify:playlist:p");
-        Assert.Equal(2, m.Count);
+        var m = read.Members;
+        Assert.Equal(2, m.Length);
         Assert.Equal("spotify:track:a", m[0].ItemUri);
         Assert.Equal("me", m[0].AddedBy);
-        Assert.Equal(rev24, store.PlaylistRevision("spotify:playlist:p"));
+        Assert.Equal(rev24, read.Revision);
 
-        var header = store.GetPlaylist("spotify:playlist:p");
+        var header = read.Header;
         Assert.NotNull(header);
         Assert.Equal("My Mix", header!.Name);
         Assert.Equal("bob", header.OwnerName);
@@ -59,21 +59,21 @@ public class PlaylistFetcherTests
         Assert.True(header.Capabilities.CanEditItems);
         Assert.True(header.Capabilities.CanEditMetadata);
 
-        Assert.Equal(new[] { "spotify:track:a", "spotify:track:b" }, hydrated);   // membership uris handed to the hydrator
     }
 
     [Fact]
     public async Task FetchPlaylist_Throws_OnNon200()
     {
         var http = new FakeExchange((req, _) => new HttpResp(404, new Dictionary<string, string>(), Array.Empty<byte>()));
-        var fetcher = new PlaylistFetcher(http, () => "https://x", new InMemoryStore(), (u, c) => Task.CompletedTask, () => "");
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fetcher.FetchPlaylistAsync("spotify:playlist:p", CancellationToken.None));
+        var fetcher = new PlaylistFetcher(http, () => "https://x", () => "");
+        var error = await Assert.ThrowsAsync<System.Net.Http.HttpRequestException>(() => fetcher.FetchPlaylistAsync("spotify:playlist:p", CancellationToken.None));
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, error.StatusCode);
     }
 
     [Fact]
     public async Task FetchRootlist_ParsesMarkersIntoOrderedEntries()
     {
-        var store = new InMemoryStore();
+
         var slc = new Pl.SelectedListContent();
         var contents = new Pl.ListItems { Pos = 0, Truncated = false };
         contents.Items.Add(new Pl.Item { Uri = "spotify:start-group:g1:Folder" });
@@ -84,13 +84,13 @@ public class PlaylistFetcherTests
 
         HttpReq? captured = null;
         var http = new FakeExchange((req, _) => { captured = req; return Ok(slc.ToByteArray()); });
-        var fetcher = new PlaylistFetcher(http, () => "https://x", store, (u, c) => Task.CompletedTask, () => "");
+        var fetcher = new PlaylistFetcher(http, () => "https://x", () => "");
 
-        await fetcher.FetchRootlistAsync("spotify:user:bob:rootlist", TestContext.Current.CancellationToken);
+        var read = await fetcher.FetchRootlistAsync("spotify:user:bob:rootlist", TestContext.Current.CancellationToken);
 
         Assert.Contains("/playlist/v2/user/bob/rootlist?decorate=", captured!.Url);
-        var rl = store.Rootlist();
-        Assert.Equal(4, rl.Count);
+        var rl = read.Entries;
+        Assert.Equal(4, rl.Length);
         Assert.Equal(1, rl[0].Kind);             // start-group
         Assert.Equal("Folder", rl[0].GroupName);
         Assert.Equal("spotify:playlist:p1", rl[1].Uri);

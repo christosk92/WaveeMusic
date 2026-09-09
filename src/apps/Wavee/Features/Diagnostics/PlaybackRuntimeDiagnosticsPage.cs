@@ -42,8 +42,12 @@ sealed class PlaybackRuntimeDiagnosticsPage : Component
         var provisioner = svc?.PlayPlayProvisioner;
         var diag = provisioner?.GetDiagnostics();
         var status = provisioner?.GetSnapshot() ?? svc?.Playback.RuntimeStatus.Value;
+        var audioHost = svc?.LiveHost?.Connect.Audio?.Host as FluentMediaAudioHost
+            ?? svc?.LocalAudioDsp as FluentMediaAudioHost;
+        var audio = audioHost?.Diagnostics;
 
         var body = new List<Element>(12) { CompiledInCard(diag, provisioner is not null) };
+        if (audio is { } playback) body.Insert(0, AudioSection(playback));
         if (status is { } s) body.Add(StatusSection(s));
         if (diag is { } d)
         {
@@ -53,7 +57,7 @@ sealed class PlaybackRuntimeDiagnosticsPage : Component
         }
         body.Add(ModulesSection(svc?.Modules, () => _refresh.Value = _refresh.Peek() + 1));
         body.Add(UpdatesSection(svc));
-        body.Add(Actions(hooks, diag, status));
+        body.Add(Actions(hooks, diag, status, audio));
         body.Add(Caption("This report is what the provisioner already computed while resolving a runtime — reading it "
                        + "changes nothing. Attach it (or the log folder) to a bug report."));
 
@@ -302,10 +306,22 @@ sealed class PlaybackRuntimeDiagnosticsPage : Component
         return Card(Loc.Get(Strings.Diagnostics.Updates.Title), rows.ToArray());
     }
 
-    Element Actions(InputHooks hooks, PlaybackRuntimeDiagnostics? diag, PlaybackRuntimeStatus? status) => HStack(8f,
+    static Element AudioSection(AudioPlaybackDiagnostics d) => Card("Audio output",
+        Row("Transport", $"{d.Phase} / {(d.PlayWhenReady ? "play requested" : "pause requested")}"),
+        Row("Device format", d.SampleRate > 0 ? $"{d.SampleRate:N0} Hz / {d.Channels} channels" : "No open endpoint"),
+        Row("Device padding", $"{d.DevicePaddingMs} ms"),
+        Row("Current PCM", $"{d.CurrentPcmMs} ms"),
+        Row("Prepared next", $"{d.NextPcmMs} ms / {(d.NextScheduled ? "scheduled" : d.NextReady ? "ready" : "not ready")}"),
+        Row("Frames: rendered / submitted / played", $"{d.RenderedFrames} / {d.SubmittedFrames} / {d.PlayedFrames}"),
+        Row("Render epoch / unexpected underruns", $"{d.RenderEpoch} / {d.UnexpectedUnderruns}"),
+        Row("Last command / application latency", $"{d.LastCommand.ItemGeneration}:{d.LastCommand.Sequence} / {d.LastCommandApplicationMs:F1} ms"),
+        Caption("Snapshot at the last refresh. Copy diagnostics includes these audio counters."));
+
+    Element Actions(InputHooks hooks, PlaybackRuntimeDiagnostics? diag, PlaybackRuntimeStatus? status,
+        AudioPlaybackDiagnostics? audio) => HStack(8f,
         Button.Accent("Copy diagnostics", () =>
         {
-            hooks.Clipboard?.SetText(BuildReport(diag, status));
+            hooks.Clipboard?.SetText(BuildReport(diag, status, audio));
             Toast.Show("Diagnostics copied", new ToastOptions { Severity = InfoBarSeverity.Success });
         }),
         Button.Standard("Open log folder", () =>
@@ -314,12 +330,34 @@ sealed class PlaybackRuntimeDiagnosticsPage : Component
 
     // ── The structured text dump (clipboard + bug reports) ────────────────────────────────────────
 
-    internal static string BuildReport(PlaybackRuntimeDiagnostics? diag, PlaybackRuntimeStatus? status)
+    internal static string BuildReport(PlaybackRuntimeDiagnostics? diag, PlaybackRuntimeStatus? status,
+        AudioPlaybackDiagnostics? audio = null)
     {
         var sb = new StringBuilder(1024);
         sb.Append("Wavee — playback runtime diagnostics\n");
         sb.Append("captured : ").Append(DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture)).Append('\n');
         sb.Append("log file : ").Append(WaveeLog.Instance.FilePath ?? "(none)").Append("\n\n");
+
+        if (audio is { } a)
+        {
+            sb.Append("[audio output]\n");
+            Line(sb, "phase", a.Phase);
+            Line(sb, "playWhenReady", a.PlayWhenReady.ToString());
+            Line(sb, "deviceFormat", $"{a.SampleRate} Hz / {a.Channels} channels");
+            Line(sb, "devicePaddingMs", a.DevicePaddingMs.ToString(CultureInfo.InvariantCulture));
+            Line(sb, "currentPcmMs", a.CurrentPcmMs.ToString(CultureInfo.InvariantCulture));
+            Line(sb, "nextPcmMs", a.NextPcmMs.ToString(CultureInfo.InvariantCulture));
+            Line(sb, "nextReady", a.NextReady.ToString());
+            Line(sb, "nextScheduled", a.NextScheduled.ToString());
+            Line(sb, "renderEpoch", a.RenderEpoch.ToString(CultureInfo.InvariantCulture));
+            Line(sb, "renderedFrames", a.RenderedFrames.ToString(CultureInfo.InvariantCulture));
+            Line(sb, "submittedFrames", a.SubmittedFrames.ToString(CultureInfo.InvariantCulture));
+            Line(sb, "playedFrames", a.PlayedFrames.ToString(CultureInfo.InvariantCulture));
+            Line(sb, "unexpectedUnderruns", a.UnexpectedUnderruns.ToString(CultureInfo.InvariantCulture));
+            Line(sb, "lastCommand", $"{a.LastCommand.ItemGeneration}:{a.LastCommand.Sequence}");
+            Line(sb, "lastCommandApplicationMs", a.LastCommandApplicationMs.ToString("F1", CultureInfo.InvariantCulture));
+            sb.Append('\n');
+        }
 
         if (status is { } s)
         {

@@ -6,6 +6,7 @@ using FluentGpu.Signals;
 using Wavee.Backend;
 using Wavee.Backend.Audio;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using VideoAspectMode = FluentGpu.Media.VideoAspectMode;
 
 namespace Wavee;
@@ -91,9 +92,10 @@ public sealed class PlaybackBridge
     readonly ISpotifySession _session;
     readonly List<IDisposable> _subs = [];
     bool _active;
-    // Optional store probe for async per-track enrichment (the music-video association lands AFTER the track resolves).
-    // Wired by the live bootstrap via AttachStore; null on the fake backend → CurrentTrackHasVideo stays false.
-    IStore? _store;
+    IQueryService? _queueQueries;
+    CatalogScope _queueScope = null!;
+    QuerySignalBinding<QueueQuerySnapshot>? _queueBinding;
+    IReadOnlyDictionary<ResourceKey, ResourceSnapshot> _queueResources = new Dictionary<ResourceKey, ResourceSnapshot>();
     // The user's local video-override curation (warm, synchronous). Wired by the bootstrap via AttachVideoOverrides; null
     // ⇒ every override path below is unreachable, which is the feature's kill switch.
     VideoOverrideService? _overrides;
@@ -101,7 +103,13 @@ public sealed class PlaybackBridge
     // is the sidebar feature's kill switch. Appended ONLY at a real track boundary (see PushState).
     PlayLogStore? _playLog;
     Action<Action>? _post;
-    bool _storeWired;
+    // Intents that reached the bridge before Activate published the poster. A cold launch really can produce them —
+    // a Jump List task or toast argument (wavee://pause) arrives through DeepLinkChannel from Program, and the audio
+    // host can raise an output-device notice while the window is still being created. They are HELD here and released
+    // in arrival order at the end of Activate; the old shape (`if (_post is not { } post) return;`) dropped them, and
+    // CommitSeek/PreviewSeek threw. Shared with StartupActivation so there is one gate, not two that can drift.
+    readonly ActivationCommandQueue _commands = new(ex =>
+        PlaybackBucketDiagnostics.ActivationStepFailed("queued-intent", ex));
     string? _lastQueueDiagSig;
     // Queue-revision content fold (drives QueueRevision — see the signal). Bumps a monotonic counter only when the fold
     // changes, so the queue panel remounts iff its visible set actually differs (no thrash on volume/position/metadata).
@@ -110,14 +118,8 @@ public sealed class PlaybackBridge
     long _queueRev;
     Action? _playbackErrorAction;
     long _playbackErrorActionToken;
-    // Seek latch (#2): a seek is applied by the engine ASYNCHRONOUSLY, so a stale pre-seek PositionTick can land between
-    // the optimistic paint and the engine catching up — snapping the slider back to the old spot for a frame. While the
-    // latch is live we drop incoming position ticks that are still far from the target, and release it once a tick lands
-    // near the target (the seek took) or the window expires. UI-thread only (every writer is post-marshalled).
-    long _seekLatchTargetMs = -1;
-    long _seekLatchDeadlineTick;
-    const long SeekLatchWindowMs = 1200;   // max time to suppress stale ticks after a seek
-    const long SeekLatchToleranceMs = 750;  // a tick within this of the target = the seek landed → release
+    // Requested position stays separate from the device clock until its exact seek operation is acknowledged.
+    readonly PlaybackSeekLatch _seekLatch = new();
     // OS media surfaces (SMTC: lock screen, now-playing flyout, hardware media keys) mirrored from the unified state below.
     // Null when the platform refuses it or before Activate; every push is then a no-op.
     SystemMediaControlsBridge? _smtc;
@@ -149,6 +151,13 @@ public sealed class PlaybackBridge
     /// idle→idle refreshes never notify.</summary>
     public Signal<bool> HasActiveContext { get; } = new(false);
     public Signal<bool> IsPlaying { get; } = new(false);
+    /// <summary>Accepted user intent; unlike IsPlaying it stays true while audio is being prepared.</summary>
+    public Signal<bool> PlayWhenReady { get; } = new(false);
+    public Signal<PlaybackTransportState> Transport { get; } = new(default);
+    /// <summary>A committed target awaiting its exact operation acknowledgement, separate from actual position.</summary>
+    public Signal<long?> SeekTargetMs { get; } = new(null);
+    /// <summary>The pointer-owned position while a seek gesture is active.</summary>
+    public Signal<long?> ScrubTargetMs { get; } = new(null);
     public Signal<bool> IsBuffering { get; } = new(false);
     public Signal<PlaybackRecoveryKind> RecoveryKind { get; } = new(PlaybackRecoveryKind.None);
     // Player-bar display states the IPlaybackState snapshot doesn't carry yet (the real provider drives these; default
@@ -213,6 +222,7 @@ public sealed class PlaybackBridge
     /// re-windows (<c>WindowQueue</c>) into a FRESH list of the SAME <see cref="QueueEntry"/> instances on every structural
     /// push — a seek, a pause, a volume nudge, a cluster heartbeat — so the default comparer notified every subscriber for a
     /// queue that had not changed, re-rendering the whole queue panel (50 rows, each a SwipeControl) for no visual change.</summary>
+    public Signal<string?> CurrentContextName { get; } = new(null);
     public Signal<IReadOnlyList<QueueEntry>> Queue { get; } = new(Array.Empty<QueueEntry>(), QueueListIdentityComparer.Instance);
     /// <summary>A monotonic queue revision — bumped only when the published queue's CONTENT changes (count/identity/bucket/
     /// provider), not on metadata enrichment or unrelated state ticks. The queue-panel keys its bound-list remount on this
@@ -282,7 +292,7 @@ public sealed class PlaybackBridge
 
     /// <summary>The now-playing track has an accompanying music video (the <c>VideoService</c> association, detected
     /// asynchronously after the track resolves). Drives the player-bar video button's visibility. Fed by the optional
-    /// store probe (<see cref="AttachStore"/>); the fake backend has none, so it stays false.</summary>
+    /// catalog queue query; unknown association data stays false.</summary>
     public Signal<bool> CurrentTrackHasVideo { get; } = new(false);
     /// <summary>
     /// THE complete state of the now-playing video surface — intent (<c>Requested</c>/<c>Preferred</c>), reality
@@ -894,7 +904,7 @@ public sealed class PlaybackBridge
 
     /// <summary>Local (this-computer) audio outputs — the picker's "This computer" section. Null on fake/pre-login backends
     /// that genuinely have no local audio stack (the UI hides the section, never fakes success). Wired via
-    /// <see cref="AttachLocalOutputs"/> (the AttachStore precedent).</summary>
+    /// <see cref="AttachLocalOutputs"/> (the composition-root attachment pattern).</summary>
     public LocalAudioDeviceService? LocalOutputs { get; private set; }
     /// <summary>Whether local playback is actually supported (an audio stack is wired) — flips the picker's local rows from
     /// the stale unconditional "Unavailable" to truthful/enabled.</summary>
@@ -906,11 +916,11 @@ public sealed class PlaybackBridge
     public void AttachLocalOutputs(LocalAudioDeviceService? service) => LocalOutputs = service;
 
     /// <summary>A device-topology notice (loss / fallback / auto-return / output-failed) → a caution toast whose action
-    /// opens the device picker. Marshalled to the UI thread; no-op before <see cref="Activate"/>.</summary>
+    /// opens the device picker. Marshalled to the UI thread; HELD (not dropped) until <see cref="Activate"/> publishes
+    /// the poster — see <see cref="PostOrQueue"/>.</summary>
     public void NotifyOutputDeviceNotice(OutputDeviceNotice n)
     {
-        if (_post is not { } post) return;
-        post(() =>
+        PostOrQueue(() =>
         {
             string name = string.IsNullOrEmpty(n.DeviceName) ? Loc.Get(Strings.Player.SystemDefault) : n.DeviceName;
             string msg = n.Kind switch
@@ -960,14 +970,51 @@ public sealed class PlaybackBridge
             static s => PlacementCore.Resolve(s) == SurfacePlacement.Fullscreen);
     }
 
-    /// <summary>Subscribe Core observables → signals. Idempotent. Call once from a mount effect with <c>Context.UsePost()</c>.</summary>
+    /// <summary>The pre-activation intent gate (see <see cref="_commands"/>). Handed to <see cref="StartupActivation"/>
+    /// so the schedule and the bridge open the SAME gate — the "core before commands" invariant has one owner.</summary>
+    public ActivationCommandQueue Commands => _commands;
+
+    /// <summary>Marshal <paramref name="action"/> onto the UI thread — or HOLD it until <see cref="Activate"/> publishes
+    /// the poster. Replaces the old <c>if (_post is not { } post) return;</c> shape on every notice path: a notice that
+    /// arrived a few milliseconds before the mount effect was silently dropped, and the cold-launch case (a Jump List
+    /// task, a toast argument, an output-device failure during window creation) is exactly the one worth reporting.
+    /// Allocates a closure ONLY on the cold pre-activation path.</summary>
+    void PostOrQueue(Action action)
+    {
+        if (_post is { } poster) { poster(action); return; }
+        _commands.Submit(() =>
+        {
+            // Re-read at RELEASE time: Activate assigns _post immediately before opening the gate.
+            if (_post is { } released) released(action);
+            else action();   // headless/CLI: no poster was ever published, so there is no thread to hop to
+        });
+    }
+
+    /// <summary>Subscribe Core observables → signals, bind the queue query and the restore seam, then release any
+    /// intent that arrived before the poster existed. Idempotent. Call once from a mount effect with
+    /// <c>Context.UsePost()</c>; this is the <see cref="StartupAffinity.Core"/> step of the startup schedule.
+    ///
+    /// <para><b>What is deliberately NOT here any more.</b> The OS shell surfaces — SMTC, the taskbar thumb bar, the
+    /// toast activator's registry identity and the Jump List — used to be created inline at the end of this method, and
+    /// they were the bulk of a 106-143 ms first frame: a WinRT activation, a <c>CoCreateInstance</c> + four synchronous
+    /// <c>.ico</c> loads, ~9 HKCU writes plus <c>CoRegisterClassObject</c>, and an O(items) chain of
+    /// <c>CoCreateInstance(CLSID_ShellLink)</c> ending in a <c>.customDestinations-ms</c> disk write. None of it can go
+    /// on a worker — every one of those wrappers caches raw, un-marshalled COM pointers and issues an unbalanced
+    /// <c>CoInitializeEx(APARTMENTTHREADED)</c>, which on a pool thread flips a shared thread to a non-pumping STA — so
+    /// they became <see cref="StartupAffinity.Window"/> steps instead: same UI thread, handed out one per posted drain
+    /// (<see cref="ActivateMediaControls"/>, <see cref="ActivateTaskbar"/>, <see cref="ActivateJumpList"/>).</para>
+    ///
+    /// <para>Nothing this method does may touch the disk, the registry, COM, WinRT or a credential store. That is the
+    /// whole point of the split, and <c>[playback.buckets] startup.step</c> logs a WARNING if this step ever exceeds the
+    /// frame budget again.</para></summary>
     public void Activate(Action<Action> post)
     {
         if (_active) return;
+        if (_queueQueries is null) throw new InvalidOperationException("Attach the catalog queue query before activating playback.");
         _active = true;
         _post = post;
         _subs.Add(_state.Changes.Subscribe(s => post(() => PushState(s))));
-        _subs.Add(_state.PositionTicks.Subscribe(ms => post(() => PushPosition(ms))));
+        _subs.Add(_state.PositionTicks.Subscribe(_ => post(() => PushPosition(_state.PositionMs))));
         _subs.Add(_devices.DevicesChanged.Subscribe(d => post(() => Devices.Value = d)));
         _subs.Add(_session.StatusChanged.Subscribe(st => post(() =>
         {
@@ -978,40 +1025,117 @@ public sealed class PlaybackBridge
             // guarantee AuthState is recomputed on every event that could move it, from either side.
             AuthState.Value = ProjectAuthState(st, Login.Peek());
         })));
-        WireStore();   // if a store was attached before mount, start observing it now
+        WireQueueQuery();
         WireRestoreSeam();   // playback restore (§8): reader hook onto the live controller; re-checked on every push
-        // Mirror the unified now-playing state onto the OS media surfaces (SMTC). UI-thread + the real top-level HWND
-        // (FluentApp.WindowHandle); fail-soft if the platform refuses. Enabled for every backend (fake/offline included) —
-        // it reflects whatever the bridge is showing, and transport buttons route back through _player like the on-screen ones.
-        if (OperatingSystem.IsWindowsVersionAtLeast(8, 0))
-        {
-            _smtc = new SystemMediaControlsBridge(this, _player, post);
-            _smtc.Activate(FluentApp.WindowHandle);
-            _taskbar = new TaskbarBridge(this, _player, post);
-            _taskbar.Activate(FluentApp.WindowHandle);
-            _jumpList = new JumpListBridge(this, _player, post);
-            _jumpList.Activate();
-            WaveeNativeBoot.Install(post);
-            // The app-update poll (30 s after launch, then daily). Started from here rather than from the composition
-            // root so it never runs in a headless/CLI process: Activate is the moment a real UI session exists.
-            // The updater is app-scoped (one per process) and `Settings` was seeded by the composition root before
-            // this bridge was ever activated.
-            if (AppInstallerUpdateService.Instance is { } updater && Settings is { } updateSettings)
-                AppUpdateScheduler.Start(updater, updateSettings);
-        }
-        PlaybackBucketDiagnostics.Startup("bridge", "activated");
+        // The poster exists ⇒ anything that arrived too early can run now, in arrival order, before this method returns
+        // and therefore before any later phase can observe a half-applied transport.
+        int released = _commands.Release();
+        PlaybackBucketDiagnostics.Startup("bridge", "activated",
+            WaveeLogField.Of("queuedIntents", released));
         PlaybackBucketDiagnostics.QueueIfChanged(ref _lastQueueDiagSig, "bridge.activate.initial",
             _state.Queue, _state.ContextUri, _state.CurrentTrack?.Uri);
+    }
+
+    /// <summary>Window-phase step: mirror the unified now-playing state onto the OS media surface (SMTC — lock screen,
+    /// the now-playing flyout, hardware media keys). Enabled for every backend (fake/offline included): it reflects
+    /// whatever the bridge is showing, and its transport buttons route back through <c>_player</c> like the on-screen
+    /// ones. Fail-soft if the platform refuses.
+    ///
+    /// <para>UI thread ONLY, and specifically the thread that owns <c>FluentApp.WindowHandle</c> — the engine's wrapper
+    /// keys the SMTC session off the window, caches the returned <c>ISystemMediaTransportControls*</c> as a raw
+    /// un-marshalled pointer and holds <c>RoInitialize</c> per instance, so an acquisition from a pool thread binds the
+    /// object to an ephemeral apartment. Idempotent, and SAFE TO CALL REPEATEDLY: each call advances
+    /// <see cref="SystemMediaControlsBridge.ActivateStep"/> by exactly one stage (acquire / enable / seed / timeline),
+    /// so the startup schedule hands it four separate posted drains instead of one 40+ ms one — see the "smtc-*"
+    /// Window steps in <c>WaveeApp</c>. A call past the last stage is a no-op.</para></summary>
+    public void ActivateMediaControls()
+    {
+        if (_post is not { } post) return;   // Activate has not run (headless/CLI) - nothing to mirror onto
+        if (!OperatingSystem.IsWindowsVersionAtLeast(8, 0)) return;
+        _smtc ??= new SystemMediaControlsBridge(this, _player, post);
+        _smtc.ActivateStep(FluentApp.WindowHandle);
+    }
+
+    /// <summary>Worker-phase step: resolve the four thumb-button <c>.ico</c> file paths — plain <c>File.Exists</c>
+    /// disk IO, no HWND/COM affinity — off the UI thread and ahead of <see cref="ActivateTaskbar"/>, so the Window
+    /// step that follows has nothing left to do but the actual shell calls. Safe to call before <see cref="Activate"/>
+    /// (headless/CLI: builds the bridge early, resolves into it, and <see cref="ActivateTaskbar"/> reuses it).</summary>
+    public void PrepareTaskbarIcons()
+    {
+        // The Core phase (which sets _post) always runs before any Worker step is even scheduled, so this is null
+        // only in the headless/CLI case that never activates a taskbar at all; ActivateTaskbar resolves them itself
+        // (defensively, inside TaskbarBridge.ActivateStep) if this genuinely never ran first.
+        if (_post is not { } post) return;
+        _taskbar ??= new TaskbarBridge(this, _player, post);
+        _taskbar.ResolveIcons();
+    }
+
+    /// <summary>Window-phase step: the taskbar thumbnail toolbar + overlay/progress. UI thread only — the engine keeps
+    /// ONE process-wide <c>ITaskbarList3*</c> created in "the apartment of whatever thread first calls in", behind an
+    /// unbalanced <c>CoInitializeEx(APARTMENTTHREADED)</c>. Idempotent, and SAFE TO CALL REPEATEDLY: each call advances
+    /// <see cref="TaskbarBridge.ActivateStep"/> by one stage (wire the shell events, then apply the actual thumb
+    /// buttons + overlay + progress) — see the "taskbar-wire" / "taskbar-apply" Window steps in <c>WaveeApp</c>.</summary>
+    public void ActivateTaskbar()
+    {
+        if (_post is not { } post) return;
+        if (!OperatingSystem.IsWindowsVersionAtLeast(8, 0)) return;
+        _taskbar ??= new TaskbarBridge(this, _player, post);
+        _taskbar.ActivateStep(FluentApp.WindowHandle);
+    }
+
+    /// <summary>Window-phase step: publish the Jump List (standing Tasks + the "Jump back in" category). The most
+    /// expensive surface in the set — a <c>CoCreateInstance</c> per item and a <c>.customDestinations-ms</c> disk write
+    /// — and the least urgent, since it is only observable once the user right-clicks the taskbar button. UI (STA)
+    /// thread only.
+    ///
+    /// <para>ORDERING: must run AFTER the toast activator registered, because the shell keys a custom destination list
+    /// by AUMID and <c>ToastNotifier.Default.Aumid</c> is the empty string until then — a list written for an identity
+    /// the taskbar button does not have simply never appears. The startup schedule encodes that order.</para>
+    ///
+    /// <para>Everything BEFORE this — building the tasks array and resolving the "Jump back in" titles/routes off the
+    /// play log / history / library — is plain C#, no COM, no HWND affinity, so <see cref="PrepareJumpList"/> does it
+    /// on the Worker phase first (see the "jumplist-prep" Worker step in <c>WaveeApp</c>): by the time this step runs,
+    /// the ONE thing left to pay for on the UI thread is the unavoidable <c>JumpList.SetCategory</c> COM call itself —
+    /// an O(items) <c>CoCreateInstance(ShellLink)</c>+<c>IPropertyStore</c> chain the engine's Jump List API does not
+    /// expose a way to spread across multiple posted drains (there is no incremental append/commit entry point below
+    /// <c>SetCategory</c> to call into from here).</para></summary>
+    public void ActivateJumpList()
+    {
+        if (_post is not { } post) return;
+        if (!OperatingSystem.IsWindowsVersionAtLeast(8, 0)) return;
+        // ??=, NOT "if (_jumpList is not null) return" — PrepareJumpList (the Worker step just above) may already have
+        // constructed the sibling to hold its prepared items; JumpListBridge.Activate() is itself idempotent (guards
+        // on its own _active), so reusing an already-built-but-not-yet-activated instance here is correct, whereas the
+        // old null check would have skipped calling Activate() entirely once a prepare had run first.
+        _jumpList ??= new JumpListBridge(this, _player, post);
+        if (_jumpListHistory is { } history) _jumpList.AttachHistory(history);
+        if (_jumpListLibrary is { } library) _jumpList.AttachLibrary(library);
+        _jumpList.Activate();
+    }
+
+    /// <summary>Worker-phase step: the CPU-only half of the Jump List build (see <see cref="ActivateJumpList"/>'s
+    /// remarks) — title/route resolution off whatever history/library are already attached, done ahead of the Window
+    /// step so it has nothing left to pay for but the one COM call. Safe even though <see cref="_jumpList"/> does not
+    /// exist yet: it constructs the sibling early (mirroring <see cref="PrepareTaskbarIcons"/>) and
+    /// <see cref="ActivateJumpList"/> reuses the same instance.</summary>
+    public void PrepareJumpList()
+    {
+        if (_post is not { } post) return;   // see PrepareTaskbarIcons's remark — Core always runs before any Worker step
+        if (!OperatingSystem.IsWindowsVersionAtLeast(8, 0)) return;
+        _jumpList ??= new JumpListBridge(this, _player, post);
+        if (_jumpListHistory is { } history) _jumpList.AttachHistory(history);
+        if (_jumpListLibrary is { } library) _jumpList.AttachLibrary(library);
+        _jumpList.PrepareForActivation();
     }
 
     /// <summary>Surface the standard "local playback isn't supported yet — choose a remote device" notice: a critical toast
     /// whose <em>Choose device</em> action opens the device picker. Marshalled onto the UI thread via the post delegate, so
     /// it is safe to call from a dealer/background thread (the live <c>PlaybackController</c> rejection hook) or from a UI
-    /// intent (the pre-login <see cref="UnsupportedPlaybackPlayer"/>). No-op before <see cref="Activate"/> (headless CLI).</summary>
+    /// intent (the pre-login <see cref="UnsupportedPlaybackPlayer"/>). HELD until <see cref="Activate"/> rather than
+    /// dropped: a cold-launch play intent that lands a few milliseconds early must still produce its toast.</summary>
     public void NotifyLocalPlaybackUnsupported()
     {
-        if (_post is not { } post) return;
-        post(() => Toast.Show(
+        PostOrQueue(() => Toast.Show(
             Loc.Get(Strings.Player.LocalPlaybackUnsupported),
             new ToastOptions
             {
@@ -1022,21 +1146,19 @@ public sealed class PlaybackBridge
     }
 
     /// <summary>An outbound Connect command (transfer / play) to the active remote device failed — surface it as a critical
-    /// toast instead of failing silently. Marshalled to the UI thread; no-op before <see cref="Activate"/>.</summary>
+    /// toast instead of failing silently. Marshalled to the UI thread; held until <see cref="Activate"/>.</summary>
     public void NotifyRemoteCommandFailed()
     {
-        if (_post is not { } post) return;
-        post(() => Toast.Show(Loc.Get(Strings.Player.RemoteCommandFailed), new ToastOptions { Severity = InfoBarSeverity.Error }));
+        PostOrQueue(() => Toast.Show(Loc.Get(Strings.Player.RemoteCommandFailed), new ToastOptions { Severity = InfoBarSeverity.Error }));
     }
 
     /// <summary>A LOCAL playback attempt failed (key/CDN/decode/provisioning) — surface a typed, user-facing message as a
     /// critical toast AND drive the player-bar into its Error state (retry offered on the primary). Marshalled to the UI
-    /// thread; no-op before <see cref="Activate"/>. The optional retry action (e.g. re-provision + reset latch) becomes the
+    /// thread; held until <see cref="Activate"/>. The optional retry action (e.g. re-provision + reset latch) becomes the
     /// toast's CTA. Cleared automatically when a track next plays (see <see cref="PushState"/>).</summary>
     public void NotifyPlaybackError(string message, string? retryLabel = null, Action? retry = null)
     {
-        if (_post is not { } post) return;
-        post(() =>
+        PostOrQueue(() =>
         {
             Error.Value = message;      // → PlayerBar PlayerState.Error (primary becomes Play/retry)
             IsLoading.Value = false;
@@ -1073,8 +1195,7 @@ public sealed class PlaybackBridge
     /// <summary>Clear a surfaced playback error (e.g. the user picked a working device / a retry succeeded).</summary>
     public void ClearPlaybackError()
     {
-        if (_post is not { } post) return;
-        post(() =>
+        PostOrQueue(() =>
         {
             Error.Value = null;
             _playbackErrorAction = null;
@@ -1091,13 +1212,43 @@ public sealed class PlaybackBridge
         post(() => RuntimeStatus.Value = status);
     }
 
-    /// <summary>Attach the persistent store so the bridge can reflect async per-track enrichment (music video). Wired by
-    /// the live bootstrap; safe to call before or after <see cref="Activate"/> (the store subscription is added once the
-    /// post delegate is known). The fake backend never calls this, so the video signal stays false.</summary>
-    public void AttachStore(IStore store)
+    /// <summary>Required data wiring. Replacing the scope releases the prior account's lease before publication.</summary>
+    public void AttachQueueQueries(IQueryService queries, CatalogScope scope)
     {
-        _store = store;
-        WireStore();
+        ArgumentNullException.ThrowIfNull(queries);
+        if (ReferenceEquals(queries, _queueQueries) && scope == _queueScope) return;
+        _queueBinding?.Dispose(); _queueBinding = null;
+        _queueQueries = queries; _queueScope = scope;
+        _queueResources = new Dictionary<ResourceKey, ResourceSnapshot>();
+        _hasVideoLatchedUri = null;
+        Queue.Value = [];
+        CurrentContextName.Value = null;
+        if (_active) WireQueueQuery();
+    }
+
+    void WireQueueQuery()
+    {
+        if (_queueBinding is not null) return;
+        var queries = _queueQueries ?? throw new InvalidOperationException("The catalog queue query is not attached.");
+        var post = _post ?? throw new InvalidOperationException("Activate playback before attaching its query binding.");
+        _queueBinding = new QuerySignalBinding<QueueQuerySnapshot>(queries.Acquire(new QueueQuery(_queueScope)), post, snapshot =>
+        {
+            _queueResources = snapshot.Resources;
+            Queue.Value = snapshot.Value.Rows;
+            CurrentContextName.Value = snapshot.Value.ContextName;
+            BumpQueueRevision(snapshot.Value.Rows);
+            RecomputeHasVideo(commitUpgrade: false);
+        });
+        _queueBinding.SetDemand(new QueryDemand(true, QueryPriority.Playback, [FacetKind.VideoAssociation, FacetKind.VisualIdentity]));
+        _queueBinding.SetActive(true);
+    }
+
+    VideoAssociation? CatalogVideoAssociation(string uri)
+    {
+        foreach (var pair in _queueResources)
+            if (pair.Key.Subject == uri && pair.Key.Facet == FacetKind.VideoAssociation && pair.Value.Value is VideoAssociationValue value)
+                return value.Association;
+        return null;
     }
 
     /// <summary>Attach the user's local video-override curation (the warm, synchronous roster). Safe before or after
@@ -1116,9 +1267,33 @@ public sealed class PlaybackBridge
     /// <see cref="JumpListBridge"/> on a track-boundary rebuild.</summary>
     internal PlayLogStore? PlayLog => _playLog;
 
-    /// <summary>The Jump List sibling (null before <see cref="Activate"/> / non-Windows). The shell can
-    /// <see cref="JumpListBridge.AttachHistory"/> once it has a <see cref="HistoryStore"/>.</summary>
+    /// <summary>The Jump List sibling (null until the window phase reaches <see cref="ActivateJumpList"/>, and on
+    /// non-Windows). Read-only: attach through <see cref="AttachJumpListHistory"/> /
+    /// <see cref="AttachJumpListLibrary"/>, which hold their argument until the sibling exists.</summary>
     public JumpListBridge? JumpList => _jumpList;
+
+    // Held so the shell's two Jump List inputs are not lost to ORDERING. The Jump List is no longer built inside
+    // Activate — it is a window-phase step a few posted drains later — so a shell that hands over its history while
+    // `_jumpList` is still null would previously have had its attach silently skipped. These remember it instead, and
+    // ActivateJumpList applies them the moment it builds the sibling.
+    HistoryStore? _jumpListHistory;
+    LibraryStore? _jumpListLibrary;
+
+    /// <summary>Give the Jump List the shell's navigation recents, so "Jump back in" can print real names. Safe at any
+    /// time, before or after the sibling exists; the last value wins.</summary>
+    public void AttachJumpListHistory(HistoryStore? history)
+    {
+        _jumpListHistory = history;
+        _jumpList?.AttachHistory(history);
+    }
+
+    /// <summary>Give the Jump List the warm library, so it can resolve a playlist/album/artist name the play log never
+    /// persisted. Safe at any time, before or after the sibling exists; the last value wins.</summary>
+    public void AttachJumpListLibrary(LibraryStore? library)
+    {
+        _jumpListLibrary = library;
+        _jumpList?.AttachLibrary(library);
+    }
 
     /// <summary>Opens the video-override management surface (Settings → Playback). Wired by the shell; null (e.g. a
     /// headless/test bridge) means the override toasts below simply carry no action button rather than a dead one.</summary>
@@ -1181,8 +1356,7 @@ public sealed class PlaybackBridge
     /// playable (the service gates it) — never the player-bar Error state: the music is already playing the original.</summary>
     public void NotifyVideoOverrideMissing(string playableUri)
     {
-        if (_post is not { } post) return;
-        post(() => Toast.Show(Loc.Get(Strings.VideoOverride.MissingToast), new ToastOptions
+        PostOrQueue(() => Toast.Show(Loc.Get(Strings.VideoOverride.MissingToast), new ToastOptions
         {
             Severity = InfoBarSeverity.Warning,
             ActionLabel = OpenVideoOverrideManager is null ? null : Loc.Get(Strings.VideoOverride.Manage),
@@ -1194,8 +1368,7 @@ public sealed class PlaybackBridge
     /// (retrying the same unplayable file is not a fix) — the fallback to the original has already been scheduled.</summary>
     public void NotifyVideoOverrideUnplayable(string playableUri)
     {
-        if (_post is not { } post) return;
-        post(() => Toast.Show(Loc.Get(Strings.VideoOverride.UnplayableToast), new ToastOptions
+        PostOrQueue(() => Toast.Show(Loc.Get(Strings.VideoOverride.UnplayableToast), new ToastOptions
         {
             Severity = InfoBarSeverity.Error,
             ActionLabel = OpenVideoOverrideManager is null ? null : Loc.Get(Strings.VideoOverride.Manage),
@@ -1224,21 +1397,6 @@ public sealed class PlaybackBridge
     /// outgoing session's transport can never be handed to the next session (a re-login, or a different account).</summary>
     public void ClearVideoResolveMemo() => _videoResolveMemo.Clear();
 
-    // Observe store changes for the CURRENT track's uri (or a bulk sync) and recompute the has-video signal. Detection is
-    // fire-and-forget, so the association lands after the track is already playing — this is what lights the button up.
-    void WireStore()
-    {
-        if (_storeWired || _store is not { } store || _post is not { } post) return;
-        _storeWired = true;
-        _subs.Add(store.Changes.Subscribe(c => post(() =>
-        {
-            // commitUpgrade: false is THE no-mid-track-auto-swap rule — an association landing under a playing track
-            // lights the badge and nothing else (see RecomputeHasVideo).
-            if (c.IsBulk || (CurrentTrack.Value is { } t && c.Uri == t.Uri)) RecomputeHasVideo(commitUpgrade: false);
-        })));
-        post(() => RecomputeHasVideo(commitUpgrade: false));   // initial compute for whatever is playing now
-    }
-
     // The has-video LATCH: once a track uri is known to have a video, a later transient false for the SAME track must
     // not commit an availability downgrade. The association store is never evicted, so true→false for an unchanged uri
     // is always a read glitch (CurrentTrack momentarily null/other mid-push) — and committing it costs a full
@@ -1265,7 +1423,7 @@ public sealed class PlaybackBridge
         bool has = false;
         if (!string.IsNullOrEmpty(uri))
         {
-            if (_store is { } store) has = store.GetVideoAssociation(uri)?.HasVideo ?? false;
+            has = CatalogVideoAssociation(uri)?.HasVideo ?? false;
             // A user attachment makes ANY playable a video playable — including one the source serves no video for, and
             // including on a backend with no store at all (overrides work without Spotify).
             if (!has && _overrides is { } ov) has = ov.Has(uri);
@@ -1285,7 +1443,7 @@ public sealed class PlaybackBridge
         // precisely the case where no host swap (and therefore no playback event, and therefore no PutState) happens, yet
         // the state a remote controller sees changed — it gained an associated_video_id + a switch-to-video offer.
         if (!string.IsNullOrEmpty(uri)
-            && _connectVideoFacts.Observe(uri, has, _store?.GetVideoAssociation(uri)?.VideoGidHex))
+            && _connectVideoFacts.Observe(uri, has, CatalogVideoAssociation(uri)?.VideoGidHex))
             RepublishConnectState?.Invoke();
         // AVAILABILITY is the one channel through which "this track has no video" reaches the surfaces: it hides them and
         // routes the media back to audio WITHOUT touching the user's standing intent, so the next track that DOES have a
@@ -1317,7 +1475,7 @@ public sealed class PlaybackBridge
             && _videoDiagHas == afterLatches) return;
         _videoDiagUri = uri; _videoDiagHas = afterLatches; _videoDiagSeen = true;
         if (!WaveeLog.Instance.IsEnabled(WaveeLogLevel.Debug)) return;
-        var assoc = string.IsNullOrEmpty(uri) ? null : _store?.GetVideoAssociation(uri);
+        var assoc = string.IsNullOrEmpty(uri) ? null : CatalogVideoAssociation(uri);
         WaveeLog.Instance.Event(WaveeLogLevel.Debug, "playback", "video.assoc.nowplaying",
             "now-playing video affordance evaluated",
             fields:
@@ -1403,13 +1561,25 @@ public sealed class PlaybackBridge
         // which is false when both context and track are empty). Equality-gated by the setter, so an idle→idle push is free.
         HasActiveContext.Value = !string.IsNullOrEmpty(s.ContextUri) || s.CurrentTrack is not null;
         IsPlaying.Value = s.IsPlaying;
+        PlayWhenReady.Value = s.Transport.PlayWhenReady;
+        bool wasLocalOwner = Transport.Peek().ItemGeneration > 0;
+        bool isLocalOwner = s.Transport.ItemGeneration > 0;
+        bool playbackOwnerChanged = wasLocalOwner != isLocalOwner || !isLocalOwner
+            && !string.Equals(ActiveDeviceId.Peek(), s.ActiveDeviceId, StringComparison.Ordinal);
+        Transport.Value = s.Transport;
+        if (trackBoundary || playbackOwnerChanged)
+        {
+            _seekLatch.Clear();
+            ScrubTargetMs.Value = null;
+        }
+        _seekLatch.Observe(s.Transport.Seek, s.Transport.ItemGeneration);
+        SeekTargetMs.Value = _seekLatch.TargetMs;
         IsBuffering.Value = s.IsBuffering;
         RecoveryKind.Value = s.RecoveryKind;
         IsShuffle.Value = s.IsShuffle;
         Repeat.Value = s.Repeat;
         Volume.Value = (float)s.Volume;
         DurationMs.Value = s.DurationMs;
-        Queue.Value = s.Queue;
         bool queueChanged = BumpQueueRevision(s.Queue);
         PlaybackBucketDiagnostics.QueueIfChanged(ref _lastQueueDiagSig, "bridge.ui.push-state",
             s.Queue, s.ContextUri, s.CurrentTrack?.Uri);
@@ -1491,82 +1661,8 @@ public sealed class PlaybackBridge
         _haveQueueFold = true;
         _queueContentFold = fold;
         QueueRevision.Value = ++_queueRev;
-        // The queue is the one surface whose rows come from the player, not from a container read, so nothing else ever
-        // asks for its traits. Firing off the content-CHANGED branch (PushState calls this on every push) is the
-        // dedupe; the façade's own ledger + marks make the repeat asks free.
-        if (queue.Count > 0)
-        {
-            var uris = new List<string>(queue.Count);
-            for (int i = 0; i < queue.Count; i++)
-                if (queue[i].Track?.Uri is { Length: > 0 } u) uris.Add(u);
-            if (uris.Count > 0) { try { _ = _hydrator.EnsureTraitsAsync(uris, TraitSurface.Queue); } catch { } }
-
-            // TraitPolicy.For(Queue) is RowBundle-only (saved/explicit/video/colour) — it never asks for a name, so a
-            // row an inbound set_queue rebuilt as a bare-uri placeholder (PlaybackSession.ApplySetQueue's Synthetic
-            // fallback for a uri we never held before) would sit unhydrated forever; this is the missing Identity ask.
-            // Capped, and gated on the same content-CHANGED branch as the traits ask above (never a volume/position
-            // heartbeat), so a big wire set_queue costs one bounded POST here, not one per push.
-            List<string>? thin = null;
-            for (int i = 0; i < queue.Count && (thin is null || thin.Count < QueueIdentityAskCap); i++)
-            {
-                var t = queue[i].Track;
-                if (HydrationLevels.TitleMissing(t.Title, t.Uri)) (thin ??= new List<string>()).Add(t.Uri);
-            }
-            if (thin is { Count: > 0 }) _ = ResolveQueueIdentityAsync(thin);
-        }
         return true;
     }
-
-    /// <summary>Bound on how many still-unnamed queue rows one queue-content change asks to identify. Not a display
-    /// cap (the published <c>queue</c> here is already <c>WindowQueue</c>'s bounded shape) — it exists so a large wire
-    /// set_queue turns into one modestly-sized catalogue POST instead of an upfront burst; anything past the cap picks
-    /// up on the NEXT content change (a page-in, a skip) the same way.</summary>
-    const int QueueIdentityAskCap = 50;
-
-    // Best-effort identity pass for the queue rows a set_queue rebuilt thin. Fire-and-forget, same shape as the traits
-    // ask above; failure just leaves the row thin for the next content change to retry.
-    async System.Threading.Tasks.Task ResolveQueueIdentityAsync(List<string> uris)
-    {
-        try
-        {
-            await _hydrator.EnsureManyAsync(uris, HydrationLevel.Identity, new HydrationOptions(Surface: TraitSurface.Queue))
-                .ConfigureAwait(false);
-        }
-        catch { return; }
-        if (_post is not { } post) return;
-        post(ReprojectQueueIdentity);
-    }
-
-    // Nothing else re-reads the store for queue rows, so an identity hit sitting there would go unseen until some
-    // UNRELATED structural push happened to rebuild the same uri fresh. Patch resolved titles onto the CURRENTLY
-    // published queue by uri (not the snapshot ResolveQueueIdentityAsync was fired for — the queue may have moved on);
-    // only rows still thin are touched, so a re-publish in between costs nothing here.
-    void ReprojectQueueIdentity()
-    {
-        if (_store is not { } store) return;
-        var current = Queue.Peek();
-        List<QueueEntry>? next = null;
-        for (int i = 0; i < current.Count; i++)
-        {
-            var row = current[i];
-            if (!HydrationLevels.TitleMissing(row.Track.Title, row.Track.Uri)) continue;
-            var resolved = store.GetTrack(row.Track.Uri) ?? EpisodeAsTrack.From(store.GetEpisode(row.Track.Uri));
-            if (resolved is not { } r || HydrationLevels.TitleMissing(r.Title, r.Uri)) continue;
-            (next ??= new List<QueueEntry>(current))[i] = row with { Track = r };
-        }
-        // A NEW QueueEntry per enriched row is exactly what QueueListIdentityComparer (its own remarks) treats as a
-        // real change — this is the "metadata enrichment … a NEW instance" case it was built to republish.
-        if (next is not null) Queue.Value = next;
-    }
-
-    /// <summary>THE hydration façade — never null (the fake backend gets <see cref="CompleteEntityHydrator"/>, the real
-    /// one its switchable). Attached by the composition root because the bridge is built in the Services ctor, before
-    /// the store and the hydrator exist — the same reason <c>AttachMutations</c>/<c>AttachStore</c> exist.</summary>
-    IEntityHydrator _hydrator = NotOwnedEntityHydrator.Instance;
-
-    public void AttachHydrator(IEntityHydrator hydrator) => _hydrator = hydrator ?? NotOwnedEntityHydrator.Instance;
-
-    // ── playback session snapshot: reader wiring + the debounced writer (playback-restore fix §8) ───────────────────────
 
     // Wire the restore READER onto the concrete controller behind the switchable facade. Idempotent per inner instance;
     // re-run on every push because the fake→live swap replaces the inner player without re-pointing this bridge.
@@ -1646,32 +1742,71 @@ public sealed class PlaybackBridge
         return second > first + 1 ? contextUri[(first + 1)..second] : null;
     }
 
-    /// <summary>Arm the seek latch (#2): call the instant a seek is issued from the UI so stale pre-seek position ticks are
-    /// suppressed until the engine catches up. UI-thread only. The caller also optimistically writes PositionMs/Frac.</summary>
-    public void NoteSeek(long targetMs)
-    {
-        _seekLatchTargetMs = targetMs;
-        _seekLatchDeadlineTick = Environment.TickCount64 + SeekLatchWindowMs;
-    }
-
-    /// <summary>THE single commit path for a real (non-preview) seek: arms the latch, optimistically publishes the
-    /// new position, and issues the accurate <see cref="SeekAsync"/>. Every committed seek — the seek bar's drag-end,
-    /// SMTC's OS scrub bar, a lyrics line tap — must route through this one method rather than calling
-    /// <c>Player.SeekAsync</c> directly, or it silently drops the latch and a paused scrub snaps back to the pre-seek
-    /// position for the ~1 s it takes the next authoritative tick to arrive (the SMTC defect this closes).
-    /// <para>Deliberately narrow: only <see cref="NoteSeek"/> + the optimistic <see cref="PositionMs"/> write + the
-    /// call. A caller with a richer optimistic paint (the seek bar's own scrub fraction, which is not always
-    /// <c>ms / DurationMs</c> — see the DVR rail) still writes that itself, right after calling this.</para></summary>
+    /// <summary>Commit an accurate seek. Requested and acknowledged positions are separate; only this operation's
+    /// acknowledgement releases the target, including for OS scrubbing and lyrics-line seeks.
+    ///
+    /// <para>A seek that arrives before <see cref="Activate"/> is QUEUED, not thrown: the OS scrub bar and a
+    /// <c>wavee://</c> launch argument can both reach the bridge before the mount effect, and an
+    /// <c>InvalidOperationException</c> out of an OS callback is not a diagnosis, it is a crash. The hot path (a scrub
+    /// drag, once activated) still allocates nothing.</para></summary>
     public void CommitSeek(long ms)
     {
-        NoteSeek(ms);
-        PositionMs.Value = ms;
-        _ = Player.SeekAsync(ms, SeekMode.Accurate);
+        if (_post is not { } post) { _commands.Submit(() => CommitSeek(ms)); return; }
+        long revision = _seekLatch.Begin(ms);
+        SeekTargetMs.Value = ms;
+        _ = SubmitSeekAsync(new(ms, SeekMode.Accurate, PlaybackSeekKind.Commit), revision, post);
     }
 
-    /// <summary>Is a committed seek still in flight (the latch armed and not yet expired)? While it is, every position
-    /// the source reports — including the one inside <see cref="LiveWindow"/> — describes where playback WAS.</summary>
-    bool SeekLatchArmed => _seekLatchTargetMs >= 0 && Environment.TickCount64 < _seekLatchDeadlineTick;
+    /// <summary>Audible scrub preview. Queued rather than thrown before <see cref="Activate"/>, exactly as
+    /// <see cref="CommitSeek"/>.</summary>
+    public void PreviewSeek(long ms)
+    {
+        if (!CanPreviewSeek) return;
+        if (_post is not { } post) { _commands.Submit(() => PreviewSeek(ms)); return; }
+        _ = SubmitSeekAsync(new(ms, SeekMode.Keyframe, PlaybackSeekKind.Preview), 0, post);
+    }
+
+    /// <summary>Audible previews belong to the locally owned pipeline; remote playback commits on release.</summary>
+    public bool CanPreviewSeek
+    {
+        get
+        {
+            string? active = ActiveDeviceId.Peek();
+            if (string.IsNullOrEmpty(active)) return true;
+            var devices = Devices.Peek();
+            for (int i = 0; i < devices.Count; i++)
+                if (devices[i].Id == active) return devices[i].Kind == DeviceKind.ThisDevice;
+            return false;
+        }
+    }
+
+    async Task SubmitSeekAsync(PlaybackSeekRequest request, long revision, Action<Action> post)
+    {
+        try
+        {
+            var receipt = await Player.SeekAsync(request).ConfigureAwait(false);
+            if (request.Kind == PlaybackSeekKind.Commit)
+                post(() =>
+                {
+                    _seekLatch.Accept(revision, receipt);
+                    SeekTargetMs.Value = _seekLatch.TargetMs;
+                });
+        }
+        catch (Exception ex)
+        {
+            post(() =>
+            {
+                if (request.Kind == PlaybackSeekKind.Commit)
+                {
+                    _seekLatch.Reject(revision);
+                    SeekTargetMs.Value = _seekLatch.TargetMs;
+                }
+                WaveeLog.Instance.Event(WaveeLogLevel.Warning, "audio", "audio.seek.rejected", ex.Message);
+            });
+        }
+    }
+
+    bool SeekLatchArmed => _seekLatch.TargetMs is not null;
 
     /// <summary>Jump to the live edge — the "GO LIVE −m:ss" button's whole verb.
     /// <para>Expressed as the ordinary committed seek (to <see cref="LiveWindow.LiveEdgeMs"/>) rather than a new
@@ -1685,24 +1820,19 @@ public sealed class PlaybackBridge
     {
         LiveWindow w = Live.Peek();
         if (!w.IsLive || w.LiveEdgeMs <= 0) return;
-        NoteSeek(w.LiveEdgeMs);
         // The user asked to be AT the edge, so the machine is AT the edge from this instant — the in-flight seek's own
         // pre-seek window reports still describe the position it has already left, and letting them answer "still
         // behind" would leave the GO LIVE button on screen for the seconds it takes the edge to land.
         _liveEdge = Wavee.Backend.Playback.LiveEdgeState.AtEdge;
         IsBehindLive.Value = false;
-        _ = Player.SeekAsync(w.LiveEdgeMs, SeekMode.Accurate);
+        CommitSeek(w.LiveEdgeMs);
     }
 
     void PushPosition(long ms)
     {
-        if (_seekLatchTargetMs >= 0)
-        {
-            bool landed = Math.Abs(ms - _seekLatchTargetMs) <= SeekLatchToleranceMs;
-            bool expired = Environment.TickCount64 >= _seekLatchDeadlineTick;
-            if (!landed && !expired) return;   // stale pre-seek tick → keep the optimistic target on screen
-            _seekLatchTargetMs = -1;           // seek took (or gave up waiting) → resume normal position flow
-        }
+        // Capacity changes on ordinary clock ticks, too. Read the current authority when this UI post runs so a
+        // queued tick from the outgoing item cannot repaint its position over a newer selection.
+        Transport.Value = _state.Transport;
         PositionMs.Value = ms;
         long dur = DurationMs.Value;
         PositionFrac.Value = dur > 0 ? Math.Clamp(ms / (float)dur, 0f, 1f) : 0f;

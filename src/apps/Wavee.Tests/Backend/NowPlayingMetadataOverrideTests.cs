@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Wavee.Backend;
 using Wavee.Core;
 using Xunit;
@@ -11,25 +12,28 @@ namespace Wavee.Tests;
 /// BROADCAST, not about a catalogue entity, so it is never written into the store), scoped to one playable uri, and
 /// dropped the moment the track changes.
 /// </summary>
-public class NowPlayingMetadataOverrideTests
+public class NowPlayingMetadataOverrideTests : PlaybackCatalogTestBase
 {
     const string RadioUri = "wavee:module:wavee.radio:aGVsbG8";
     const string SongUri = "spotify:track:abc";
 
-    static NowPlayingProjection New() => new("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+    NowPlayingProjection New() => Catalog.Projection("dev");
 
     static Track TrackFor(string uri, string title = "Some station") => new(
         Id: uri, Uri: uri, Title: title, Artists: [new ArtistRef("", "", "Original artist")],
         Album: new AlbumRef("", "", ""), DurationMs: 0, IsExplicit: false, Image: null);
 
-    static void Start(NowPlayingProjection p, string uri, string title = "Some station")
-        => p.OnEvent(new PlaybackEvent(EvKind.Started, TrackFor(uri, title), 0));
+    async Task Start(NowPlayingProjection p, string uri, string title = "Some station")
+    {
+        Catalog.Event(p, new PlaybackEvent(EvKind.Started, TrackFor(uri, title), 0));
+        await QueryPublication.Until(() => p.CurrentTrack?.Uri == uri && p.CurrentTrack.Title == title);
+    }
 
     [Fact]
-    public void Override_ReplacesTheTitleAndArtistOfItsOwnPlayable()
+    public async Task Override_ReplacesTheTitleAndArtistOfItsOwnPlayable()
     {
         using var p = New();
-        Start(p, RadioUri);
+        await Start(p, RadioUri);
 
         p.SetMetadataOverride(RadioUri, "A Song", "A Band");
 
@@ -39,41 +43,41 @@ public class NowPlayingMetadataOverrideTests
     }
 
     [Fact]
-    public void Override_KeepsTheUri_SoNothingDownstreamReidentifiesTheRow()
+    public async Task Override_KeepsTheUri_SoNothingDownstreamReidentifiesTheRow()
     {
         using var p = New();
-        Start(p, RadioUri);
+        await Start(p, RadioUri);
         p.SetMetadataOverride(RadioUri, "A Song", "A Band");
         Assert.Equal(RadioUri, p.CurrentTrack?.Uri);
     }
 
     [Fact]
-    public void Override_ForAnotherPlayable_DoesNotApply()
+    public async Task Override_ForAnotherPlayable_DoesNotApply()
     {
         using var p = New();
-        Start(p, SongUri, "Real title");
+        await Start(p, SongUri, "Real title");
         p.SetMetadataOverride(RadioUri, "A Song", "A Band");
         Assert.Equal("Real title", p.CurrentTrack?.Title);
     }
 
     [Fact]
-    public void Override_IsDroppedAtTheNextTrackChange()
+    public async Task Override_IsDroppedAtTheNextTrackChange()
     {
         using var p = New();
-        Start(p, RadioUri);
+        await Start(p, RadioUri);
         p.SetMetadataOverride(RadioUri, "A Song", "A Band");
 
-        Start(p, SongUri, "Real title");
+        await Start(p, SongUri, "Real title");
 
         Assert.Equal("Real title", p.CurrentTrack?.Title);
         Assert.Equal((null, null), p.MetadataOverride);
     }
 
     [Fact]
-    public void NullTitle_LeavesTheCatalogueTitleAlone_ButStillSetsTheArtist()
+    public async Task NullTitle_LeavesTheCatalogueTitleAlone_ButStillSetsTheArtist()
     {
         using var p = New();
-        Start(p, RadioUri, "Some station");
+        await Start(p, RadioUri, "Some station");
 
         p.SetMetadataOverride(RadioUri, null, "A Band");
 
@@ -82,10 +86,10 @@ public class NowPlayingMetadataOverrideTests
     }
 
     [Fact]
-    public void ClearingIt_RestoresTheCatalogueRow()
+    public async Task ClearingIt_RestoresTheCatalogueRow()
     {
         using var p = New();
-        Start(p, RadioUri, "Some station");
+        await Start(p, RadioUri, "Some station");
         p.SetMetadataOverride(RadioUri, "A Song", "A Band");
         p.SetMetadataOverride(RadioUri, null, null);
 
@@ -94,10 +98,10 @@ public class NowPlayingMetadataOverrideTests
     }
 
     [Fact]
-    public void SettingTheSameValueTwice_FiresOnce()
+    public async Task SettingTheSameValueTwice_FiresOnce()
     {
         using var p = New();
-        Start(p, RadioUri);
+        await Start(p, RadioUri);
         int changes = 0;
         using IDisposable sub = p.Changes.Subscribe(Observers.From<IPlaybackState>(_ => changes++));
 
@@ -109,13 +113,13 @@ public class NowPlayingMetadataOverrideTests
     }
 
     [Fact]
-    public void Override_SurvivesAPositionFold()
+    public async Task Override_SurvivesAPositionFold()
     {
         using var p = New();
-        Start(p, RadioUri);
+        await Start(p, RadioUri);
         p.SetMetadataOverride(RadioUri, "A Song", "A Band");
 
-        p.OnEvent(new PlaybackEvent(EvKind.Resumed, null, 4321));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Resumed, null, 4321));
 
         Assert.Equal("A Song", p.CurrentTrack?.Title);
     }

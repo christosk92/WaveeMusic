@@ -152,12 +152,12 @@ public class DealerReplayTests
 
     // Replay the whole capture. `seed` primes the store before the first push; `beforeEach` observes store state between
     // frames (that is how the "after EVERY rootlist frame" invariant is sampled).
-    static async Task<Replayed> ReplayAllAsync(Action<SyncHarness>? seed = null,
+    static async Task<Replayed> ReplayAllAsync(Func<SyncHarness, Task>? seed = null,
                                                Action<SyncHarness, WireEvent>? beforeEach = null)
     {
         var server = new ReplayServer();
         var h = new SyncHarness(server.Respond);
-        seed?.Invoke(h);
+        if (seed is not null) await seed(h);
         var router = new DealerRouter(h.Dealer, h.Sync);
         foreach (var e in DealerArchiveReplay.Frames())
         {
@@ -239,9 +239,9 @@ public class DealerReplayTests
         }
 
         // OPEN: with P1 on screen and a resident baseline, its 11 pushes must not cost a full GET each.
-        await using var open = await ReplayAllAsync(seed: h =>
+        await using var open = await ReplayAllAsync(seed: async h =>
         {
-            h.Store.SetMembership(P1, new[]
+            await h.Host.SeedPlaylistAsync(P1, new[]
             {
                 new PlaylistMember("i1", "spotify:track:t1", null, 0),
                 new PlaylistMember("i2", "spotify:track:t2", null, 0),
@@ -259,18 +259,18 @@ public class DealerReplayTests
     [Fact]
     public async Task Replay_P3Tombstone_RemovesP3()
     {
-        await using var r = await ReplayAllAsync(seed: h =>
+        await using var r = await ReplayAllAsync(seed: async h =>
         {
-            h.Store.UpsertPlaylist(new Playlist("4vkIrispQ6gcMNIojGPd0L", P3, "Doomed", null,
+            await h.Host.SeedHeaderAsync(new Playlist("4vkIrispQ6gcMNIojGPd0L", P3, "Doomed", null,
                 "31testuser000000000000000000", null, 1));
-            h.Store.SetMembership(P3, new[] { new PlaylistMember("i1", "spotify:track:t1", null, 0) }, Rev24(1));
-            h.Store.SetSaved("playlists", P3, true, SyncState.Confirmed);
+            await h.Host.SeedPlaylistAsync(P3, new[] { new PlaylistMember("i1", "spotify:track:t1", null, 0) }, Rev24(1));
+            await h.Host.SeedSavedAsync("playlists", P3, true);
         });
 
         Assert.DoesNotContain(r.H.Store.Rootlist(), e => e.Uri == P3);   // gone from the rootlist entries …
         Assert.Empty(r.H.Store.Membership(P3));                          // … and from membership
         Assert.False(r.H.Store.IsSaved("playlists", P3));
-        Assert.True(r.H.Store.GetPlaylist(P3)!.DeletedByOwner);   // the header latches so an open page can say so
+        Assert.True(r.H.Host.Replicas.ReadConfirmedPlaylist(P3).Header!.DeletedByOwner);   // the header latches so an open page can say so
     }
 
     // ── P1-dependent: permission/state pushes flip IsPublic with ZERO permission GETs ────────────────────────────────
@@ -278,10 +278,10 @@ public class DealerReplayTests
     public async Task Replay_P1PermissionFlips_BlockedThenViewer_NoGet()
     {
         await using var r = await ReplayAllAsync(seed: h =>
-            h.Store.UpsertPlaylist(new Playlist("6EVbQZBiAg9zHzMjChxvRd", P1, "Daily Mix 1 (2)", null,
+            h.Host.SeedHeaderAsync(new Playlist("6EVbQZBiAg9zHzMjChxvRd", P1, "Daily Mix 1 (2)", null,
                 "31testuser000000000000000000", null, 0, IsPublic: false)));
 
         Assert.Equal(0, r.Server.PermissionGets);                 // the pushes alone carry the state
-        Assert.True(r.H.Store.GetPlaylist(P1)!.IsPublic);         // BLOCKED then VIEWER: the LAST push wins
+        Assert.True(r.H.Host.Replicas.ReadConfirmedPlaylist(P1).Header!.IsPublic);         // BLOCKED then VIEWER: the LAST push wins
     }
 }

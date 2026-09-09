@@ -59,7 +59,6 @@ public sealed class SidebarPreferences
     // PublishFirstSeen below is the seam it writes through.
     SidebarFirstSeenDto[]? _firstSeen;
     float _viewportWidth;                                          // last seen; written by the shell's tier effect
-    bool _pinNamesDirty;                                           // a TouchPin refresh waiting to ride the next commit
     bool _loaded;                                                  // Load() ran; before that no mutation may commit
     Action<Action>? _post;
     SidebarWriteResult _pendingPersistenceHealth;
@@ -429,11 +428,17 @@ public sealed class SidebarPreferences
 
     public void MovePin(int fromIndex, int toIndex) => Pins.Move(fromIndex, toIndex);
 
-    /// <summary>Refresh a pin's cached display name from live library data (a renamed playlist). No-op when unchanged;
-    /// coalesced into the next commit — it never commits alone. Called by the projection, never by rows.</summary>
+    /// <summary>Refresh a pin's cached display name from live library data (a renamed playlist, or a catalog identity
+    /// that replaced a stale FakeData title). No-op when unchanged. Write-through: a change commits immediately via
+    /// <see cref="SidebarLayoutStore.Commit"/>, which last-wins-coalesces a burst of identities on the pool so five
+    /// pins resolving in one rebuild produce one file write. Called by the projection, never by rows.
+    ///
+    /// <para>WHY WRITE THROUGH. The previous contract folded the refresh into "the next real commit" and never issued
+    /// one on its own. Real launches after a <c>--fake</c> session then never edited the layout, so the poisoned
+    /// names flashed for ~150 ms on every start and the file sat a day old.</para></summary>
     public void TouchPin(string? pinId, string? name)
     {
-        if (Pins.Touch(pinId, name)) _pinNamesDirty = true;
+        if (Pins.Touch(pinId, name)) Commit();
     }
 
     // ─────────────────────── the entry projection cell ───────────────────────
@@ -745,7 +750,10 @@ public sealed class SidebarPreferences
                 Id = p.Id,
                 Kind = SidebarLayoutWire.LegacyPinKindInt(p.Kind),
                 EntityKind = SidebarLayoutWire.PinKindName(p.Kind),
-                Uri = p.Uri, Name = p.Name, AddedAtMs = p.AddedAtMs,
+                Uri = p.Uri,
+                // Liked Songs title is ShellNav.Dest("liked").Title — never persist a paint-before-data cache.
+                Name = string.Equals(p.Id, "liked", StringComparison.Ordinal) ? "" : p.Name,
+                AddedAtMs = p.AddedAtMs,
             };
         }
         return arr;
@@ -794,16 +802,15 @@ public sealed class SidebarPreferences
     {
         if (!_loaded || Fault != SidebarLoadFault.None) return;
         _commitPending = false;   // any commit absorbs a coalesced one
-        _pinNamesDirty = false;
         _store.Commit(BuildSnapshot());
     }
 
     /// <summary>Force any pending write to be issued now (called by <see cref="SwitchDesign"/> and by the customizer on
-    /// close). Never blocks on the pool write. Also the one path that flushes a name-cache refresh, which by contract
-    /// never commits on its own.</summary>
+    /// close). Never blocks on the pool write. Pin-name write-through already commits from <see cref="TouchPin"/>;
+    /// this only drains a coalesced folder-expansion snapshot.</summary>
     public void Flush()
     {
-        if (!_pinNamesDirty && !_commitPending) return;
+        if (!_commitPending) return;
         Commit();
     }
 

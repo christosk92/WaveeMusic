@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using FluentGpu.Animation;
@@ -9,7 +9,6 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Render;
 using FluentGpu.Signals;
-using Wavee.Backend;
 using Wavee.Core;
 using static FluentGpu.Dsl.Ui;
 
@@ -82,6 +81,17 @@ sealed class LikedFactsPanel : Component
     /// never re-renders; <c>DetailHandlers</c> is the shell's ONE mount-stable instance, so it compares equal too.</summary>
     internal sealed record Props(IReadOnlyList<Track> Tracks, string? ContextUri, DetailHandlers Handlers, bool OuterPadding);
 
+    /// <summary>A mount-stable box for the current track list, handed to the cards that need the raw list only for
+    /// LATER work (click handlers, flyouts) rather than to decide what they paint this frame. <c>.Current</c> is
+    /// reassigned on every panel render, so a card holding this reference always sees the newest list on its NEXT
+    /// render — but the reference itself never changes, so a card whose Props are otherwise unchanged (a publication
+    /// that altered nothing this card cares about) is not forced to re-render just because the panel got a fresh
+    /// list instance with the same content.</summary>
+    internal sealed class TrackListSource
+    {
+        public IReadOnlyList<Track> Current = Array.Empty<Track>();
+    }
+
     // ── The prototype's numbers (docs/plans/wavee/liked-songs-cover-mica.html, `.fact` / `.spark` / `.bar`) ──────────
     const int SparkWeeks = 12;
     /// <summary>The strips are the kit's <see cref="SparkBars"/> (38 DIP, gap 3, 3 DIP floor — the prototype's numbers
@@ -120,16 +130,37 @@ sealed class LikedFactsPanel : Component
         // published as a Loadable. Until then the region below shows a shimmer derived from the cards' own shells; on
         // Ready the real cards blur-reveal ONCE. A straggler batch republishes Ready→Ready (no shimmer), and the shape
         // latch keeps a card from folding back into a pill.
-        var box = UseRef<IReadOnlyList<Track>>(tracks);
-        box.Value = tracks;
+        var listSource = UseRef(new TrackListSource());
+        listSource.Value.Current = tracks;
         var facts = UseLoadable<LikedFactsRules.FactsSummary>();
         var latch = UseRef(new ShapeLatch(p.ContextUri));
         if (!string.Equals(latch.Value.ContextUri, p.ContextUri, StringComparison.Ordinal)) latch.Value = new ShapeLatch(p.ContextUri);
-        UseTimeout(() => facts.SetReady(LikedFactsRules.Summarize(box.Value, SparkWeeks, BlendSlices, ArtistFlyoutCap)),
-                   SettleMs, DepKey.FromRef(tracks));
+        // Bug 6 (Top artists settles, then Years pops in later): the background prefetch sweep (bug 1) keeps
+        // resolving off-screen rows' identities for several seconds AFTER this list last changed shape, well past
+        // the page's own reveal. A plain DepKey.FromRef(tracks) restarts the quiet timer on every list swap the
+        // rejoin publishes — which already covers most of this — but folding in how much of the list is actually
+        // resolved (known titles + known release years) makes the restart depend on the ANSWER, not just on the
+        // query node happening to hand back a fresh array instance, so a straggler wave can never be missed. Still
+        // one 250 ms quiet timer — a resolution count that stops moving stops restarting it — so this does not
+        // spam re-summarize on every single row, only on net new resolved facts.
+        long resolved = 0;
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            var t = tracks[i];
+            if (t.Title.Length > 0) resolved++;
+            if (t.Year > 0) resolved++;
+        }
+        UseTimeout(() => facts.SetReady(LikedFactsRules.Summarize(listSource.Value.Current, SparkWeeks, BlendSlices, ArtistFlyoutCap)),
+                   SettleMs, DepKey.Combine(DepKey.FromRef(tracks), DepKey.From(resolved)));
 
         // The Content thunk is rebuilt on every panel render, so the lit lens states (filters, read above) stay live
         // without re-summarising; the shimmer source is the SAME card shells with placeholder rows — one UI, not two.
+        //
+        // The cards' own Props are CONTENT-EQUAL (TempoCard, LikedArtistsCard, LikedBlendCard: see each Props' Equals),
+        // and the raw track list itself is never a card's Props member — cards that only need it for later work
+        // (a click handler's play-ordered call, a flyout) get the mount-stable TrackListSource above instead, so a
+        // publication that changed nothing a card cares about re-renders nothing, and a settled summary re-renders
+        // only the cards whose facts actually moved.
         var handlers = p.Handlers;
         var contextUri = p.ContextUri;
         bool outerPadding = p.OuterPadding;
@@ -137,11 +168,10 @@ sealed class LikedFactsPanel : Component
         var f = filters;
         return Skel.Region(facts,
             shimmerSource: () => Stack(SkeletonCards(liked), outerPadding),
-            content: s => Stack(Cards(s, box.Value, now, culture, in f, handlers, liked, svc, contextUri, shapes), outerPadding));
+            content: s => Stack(Cards(s, tracks, listSource.Value, now, culture, in f, handlers, liked, svc, contextUri, shapes), outerPadding));
     }
 
-    /// <summary>Five refresh cooldowns (<c>DetailLiveRefresh.SettleMs</c> = 50) of quiet before the facts are decided —
-    /// every hydration batch of a normal open lands well inside it.</summary>
+    /// <summary>Brief presentation settle before choosing the initial fact-card shapes.</summary>
     const float SettleMs = 250f;
 
     /// <summary>Per-page shape memory: a fact may UPGRADE while the page is open (Absent → Label → Graph), never
@@ -169,7 +199,8 @@ sealed class LikedFactsPanel : Component
     }
 
     /// <summary>The real cards, all decided from ONE settled summary.</summary>
-    static Element[] Cards(LikedFactsRules.FactsSummary s, IReadOnlyList<Track> tracks, DateTimeOffset now, CultureInfo culture,
+    static Element[] Cards(LikedFactsRules.FactsSummary s, IReadOnlyList<Track> tracks, TrackListSource trackSource,
+        DateTimeOffset now, CultureInfo culture,
         in TrackFilterState filters, DetailHandlers h, bool liked, Services? svc, string? contextUri, ShapeLatch latch)
     {
         var cards = new List<Element>(7);
@@ -199,7 +230,7 @@ sealed class LikedFactsPanel : Component
         // (a′) Tempo — its own slot. GRAPH when the four filter bands have a shape (kind-222 tempo on ≥ 60 % of the rows
         // and no band holding ≥ 70 %); LABEL falls to a pill; ABSENT says nothing.
         if (tempoShape == LikedFactsRules.FactShape.Graph && s.Tempo.Stats.Known > 0)
-            cards.Add(TempoCard.Create(s.Tempo, tracks, h));
+            cards.Add(TempoCard.Create(s.Tempo, trackSource, h));
 
         // (b) Most liked / top artists — every credit counts, stamps or not. Own component: ArtistV4 Identity for
         // portraits is a hook, and a hook under this `if` would shift every later slot the first time credits land.
@@ -210,7 +241,7 @@ sealed class LikedFactsPanel : Component
         // the card owns an open/closed state. A blend one descriptor owns ("K-Pop 98 %") — or one that no descriptor
         // leads — is a pill, not a bar with one colour.
         if (s.BlendShares.Count > 0 && blendShape == LikedFactsRules.FactShape.Graph)
-            cards.Add(LikedBlendCard.Create(tracks, s.BlendShares, h));
+            cards.Add(LikedBlendCard.Create(trackSource, s.BlendShares, h));
 
         // (d) Rediscover — Liked URI only. The same seven weekdays a year ago; mounted only when that window holds.
         if (liked)
@@ -562,7 +593,26 @@ sealed class LikedFactsPanel : Component
 /// answer itself here.</summary>
 sealed class LikedArtistsCard : Component
 {
-    internal sealed record Props(IReadOnlyList<LikedFactsRules.ArtistCount> Ranked, DetailHandlers Handlers, bool Liked);
+    /// <summary>Re-pushed by the panel every render (the deferred summary lands as a NEW <c>Ranked</c> list instance
+    /// even when nothing about the ranking changed), so <c>Equals</c> is CONTENT equality — same count, same artists
+    /// and counts in order — rather than the record default's reference compare on the list. <c>Handlers</c> is a
+    /// <c>readonly record struct</c>, so its own value equality (which the record default would already call) is
+    /// what decides it here too.</summary>
+    internal sealed record Props(IReadOnlyList<LikedFactsRules.ArtistCount> Ranked, DetailHandlers Handlers, bool Liked)
+    {
+        public bool Equals(Props? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+            if (!Handlers.Equals(other.Handlers) || Liked != other.Liked) return false;
+            if (Ranked.Count != other.Ranked.Count) return false;
+            for (int i = 0; i < Ranked.Count; i++)
+                if (!Ranked[i].Equals(other.Ranked[i])) return false;
+            return true;
+        }
+
+        public override int GetHashCode() => HashCode.Combine(Ranked.Count, Liked);
+    }
 
     internal static Element Create(IReadOnlyList<LikedFactsRules.ArtistCount> ranked, DetailHandlers h, bool liked)
         => Embed.Comp(new Props(ranked, h, liked), static () => new LikedArtistsCard()) with { Key = "fact:artists" };
@@ -579,25 +629,7 @@ sealed class LikedArtistsCard : Component
         var ranked = p.Ranked ?? Array.Empty<LikedFactsRules.ArtistCount>();
         var culture = CultureInfo.CurrentCulture;
         var filters = p.Handlers.Filters?.Value ?? TrackFilterState.Default;
-        var store = svc?.RealStore;
-
-        string faceKey = UriKey(ranked);
-        var portraits = UseResource(async ct =>
-        {
-            var seed = Resolve(ranked, store);
-            if (svc is null) return 0;
-            var uris = UrisNeedingPortrait(seed);
-            if (uris.Count == 0) return 0;
-            // A name-only artist stub already satisfies Identity, so a default Ensure no-ops and the pile stays on
-            // initials. Revalidate is the designed "ignore the seal" path — ArtistV4 is where PortraitGroup lives.
-            await svc.Hydrator.EnsureManyAsync(uris, HydrationLevel.Identity,
-                    new HydrationOptions(Revalidate: true), ct)
-                .ConfigureAwait(false);
-            return 1;
-        }, 0, faceKey);
-        _ = portraits.Loadable.Value.Value;
-
-        var resolved = Resolve(ranked, store);
+        var resolved = Resolve(ranked);
         int nameCount = Math.Min(LikedFactsPanel.TopArtistCount, ranked.Count);
         float inner = measuredW.Value > 0f
             ? MathF.Max(0f, measuredW.Value - Spacing.M * 2f)
@@ -624,7 +656,7 @@ sealed class LikedArtistsCard : Component
             moreOpen.Value = true;
             handle.Value = overlay.Open(
                 () => anchor.Value,
-                () => Flyout(ranked, Resolve(ranked, svc?.RealStore), culture,
+                () => Flyout(ranked, Resolve(ranked), culture,
                     p.Handlers.Filters?.Peek() ?? TrackFilterState.Default, p.Handlers,
                     () => handle.Value?.Close()),
                 FlyoutPlacement.BottomEdgeAlignedLeft,
@@ -653,7 +685,7 @@ sealed class LikedArtistsCard : Component
             string tip = p.Liked
                 ? Strings.Detail.LikedFacts.ArtistTip(name, ranked[i].Count)
                 : Strings.Detail.LikedFacts.ArtistTipAdded(name, ranked[i].Count);
-            if (i < faceCount) faces[i] = new FacePiles.Face(name, resolved[i].Image?.Url, click, lit, tip);
+            if (i < faceCount) faces[i] = new FacePiles.Face(name, resolved[i].Image?.Url, click, lit, tip, ArtistPortrait.Create(resolved[i], FacePiles.Avatar));
             if (i < nameCount) rows.Add(NameRow(name, ranked[i].Count.ToString(culture), lit, click, tip, "who:" + i));
         }
         if (nameExtra > 0) rows.Add(MoreRow(nameExtra, () => moreOpen.Value, ToggleMore, MoreKey));
@@ -769,7 +801,7 @@ sealed class LikedArtistsCard : Component
                 OnClick = click,
                 Children =
                 [
-                    PersonPicture.Create("", 32f, displayName: name, imageSourcePath: a.Image?.Url),
+                    ArtistPortrait.Create(a, 32f),
                     Caption(name) with
                     {
                         Weight = 600, Color = lit ? Tok.AccentTextPrimary : Tok.TextPrimary,
@@ -794,45 +826,18 @@ sealed class LikedArtistsCard : Component
         };
     }
 
-    static IReadOnlyList<Artist> Resolve(IReadOnlyList<LikedFactsRules.ArtistCount> ranked, IStore? store)
+    static IReadOnlyList<Artist> Resolve(IReadOnlyList<LikedFactsRules.ArtistCount> ranked)
     {
         var result = new Artist[ranked.Count];
         for (int i = 0; i < ranked.Count; i++)
         {
             var ar = ranked[i].Artist;
-            var fromStore = ar.Uri.Length > 0 ? store?.GetArtist(ar.Uri) : null;
-            string name = ar.Name.Length > 0 ? ar.Name : fromStore?.Name ?? "";
-            result[i] = fromStore is not null
-                ? fromStore with { Name = name.Length > 0 ? name : fromStore.Name }
-                : new Artist(ar.Id, ar.Uri, name, null);
+            result[i] = new Artist(ar.Id, ar.Uri, ar.Name, null);
         }
         return result;
     }
 
-    static List<string> UrisNeedingPortrait(IReadOnlyList<Artist> billed)
-    {
-        var uris = new List<string>(billed.Count);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (int i = 0; i < billed.Count; i++)
-        {
-            string uri = billed[i].Uri;
-            if (billed[i].Image is null && uri.Length > 0 && seen.Add(uri)) uris.Add(uri);
-        }
-        return uris;
-    }
 
-    static string UriKey(IReadOnlyList<LikedFactsRules.ArtistCount> ranked)
-    {
-        if (ranked.Count == 0) return "";
-        var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < ranked.Count; i++)
-        {
-            if (i > 0) sb.Append('\n');
-            string uri = ranked[i].Artist.Uri;
-            sb.Append(uri.Length > 0 ? uri : ranked[i].Artist.Name);
-        }
-        return sb.ToString();
-    }
 }
 
 
@@ -859,13 +864,33 @@ sealed class LikedArtistsCard : Component
 /// component also scopes the re-render: a lens click repaints the bar, not the whole bento.</para></summary>
 sealed class LikedBlendCard : Component
 {
-    /// <summary>Re-pushed by the panel every render. <c>Shares</c> is rebuilt each time so the props never compare
-    /// equal — which is what we want here: the card must recompute when a like/unlike changes the partition, and the
-    /// panel itself only re-renders when ITS props or the filter signal changed.</summary>
-    internal sealed record Props(IReadOnlyList<Track> Tracks, IReadOnlyList<LikedFactsRules.TagShare> Shares,
-                                 DetailHandlers Handlers);
+    /// <summary>Re-pushed by the panel every render. <c>Shares</c> comes from the settled summary and is CONTENT
+    /// compared (same count, same title/count/fraction in order) rather than by the record default's reference
+    /// compare, so a publication that rebuilds the same shares as a new list instance does not force a re-render.
+    /// <c>Tracks</c> is the panel's mount-stable <see cref="LikedFactsPanel.TrackListSource"/> (compared by
+    /// reference — it never changes instance), NOT the raw list: the raw list is used here only to compute the
+    /// TAIL (<see cref="LikedFactsRules.BlendOther"/>), which is not part of the settled summary, so a change that
+    /// moves only the tail (some track outside the top five named descriptors) without moving <c>Shares</c> will NOT
+    /// re-render this card and the "N more" tail can go briefly stale until a change that also moves <c>Shares</c>
+    /// lands. <c>Handlers</c> is a <c>readonly record struct</c>, compared by its own value equality.</summary>
+    internal sealed record Props(LikedFactsPanel.TrackListSource Tracks, IReadOnlyList<LikedFactsRules.TagShare> Shares,
+                                 DetailHandlers Handlers)
+    {
+        public bool Equals(Props? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+            if (!ReferenceEquals(Tracks, other.Tracks) || !Handlers.Equals(other.Handlers)) return false;
+            if (Shares.Count != other.Shares.Count) return false;
+            for (int i = 0; i < Shares.Count; i++)
+                if (!Shares[i].Equals(other.Shares[i])) return false;
+            return true;
+        }
 
-    internal static Element Create(IReadOnlyList<Track> tracks, IReadOnlyList<LikedFactsRules.TagShare> shares,
+        public override int GetHashCode() => HashCode.Combine(Tracks, Shares.Count, Handlers);
+    }
+
+    internal static Element Create(LikedFactsPanel.TrackListSource tracks, IReadOnlyList<LikedFactsRules.TagShare> shares,
                                    DetailHandlers h)
         => Embed.Comp(new Props(tracks, shares, h), static () => new LikedBlendCard()) with { Key = "fact:blend" };
 
@@ -972,7 +997,7 @@ sealed class LikedBlendCard : Component
 
         // The FULL tail: same partition, same denominator, every remaining descriptor named (detail unbounded ⇒
         // MoreTags == 0), so the ticks account for the whole remainder with nothing pooled behind them.
-        var tail = LikedFactsRules.BlendOther(p.Tracks, shares.Count, int.MaxValue);
+        var tail = LikedFactsRules.BlendOther(p.Tracks.Current, shares.Count, int.MaxValue);
         // The tail is drawn only when it is actually there: at five slices covering everything, a phantom sliver would
         // be a lie the bar tells at one pixel wide.
         bool hasTail = other > 0.005f && tail.Named.Count > 0;
@@ -1529,11 +1554,19 @@ internal static class TempoBandText
 /// plot's value arrays stay reference-stable across a lit change (the plot's geometry memo keys on them).</para></summary>
 sealed class TempoCard : Component
 {
-    /// <summary>The list's tempo summary comes in PRE-COMPUTED (one pass per list, in the panel); the tracks are here
-    /// only to fill the plot's value array when the tempos actually change.</summary>
-    internal sealed record Props(LikedFactsRules.TempoSummary Tempo, IReadOnlyList<Track> Tracks, DetailHandlers Handlers);
+    /// <summary>The list's tempo summary comes in PRE-COMPUTED (one pass per list, in the panel); <c>Tracks</c> is
+    /// the panel's mount-stable <see cref="LikedFactsPanel.TrackListSource"/>, read only to fill the plot's value
+    /// array (see the <c>UseMemo</c> below, keyed on <c>Tempo.Fingerprint</c> — the CONTENT, not the list instance).
+    /// The default record equality is correct as-is and needs no override: <c>Tempo</c> is a readonly record struct
+    /// built entirely of value-equatable members (see <see cref="LikedFactsRules.TempoSummary"/>) so two Props with
+    /// an unchanged tempo distribution compare equal by VALUE; <c>Tracks</c> is a mount-stable reference (the
+    /// default's reference compare on it is already right) and <c>Handlers</c> is a <c>readonly record struct</c>
+    /// (the default's member-wise value compare on it is already right too). A real change in the tempo
+    /// distribution always changes <c>Tempo</c> (and therefore re-renders this card) by the time the memo needs the
+    /// fresh list, because the panel writes <c>TrackListSource.Current</c> before publishing a new summary.</summary>
+    internal sealed record Props(LikedFactsRules.TempoSummary Tempo, LikedFactsPanel.TrackListSource Tracks, DetailHandlers Handlers);
 
-    internal static Element Create(in LikedFactsRules.TempoSummary tempo, IReadOnlyList<Track> tracks, DetailHandlers h)
+    internal static Element Create(in LikedFactsRules.TempoSummary tempo, LikedFactsPanel.TrackListSource tracks, DetailHandlers h)
         => Embed.Comp(new Props(tempo, tracks, h), static () => new TempoCard()) with { Key = "fact:tempo" };
 
     internal const float DomainMin = 60f, DomainMax = 200f;
@@ -1556,7 +1589,7 @@ sealed class TempoCard : Component
     public override Element Render()
     {
         var p = UseProps<Props>();
-        var tracks = p.Tracks;
+        var tracks = p.Tracks.Current;
         var t = p.Tempo;
         var stats = t.Stats;
         var culture = CultureInfo.CurrentCulture;

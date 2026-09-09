@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -247,11 +247,11 @@ public class ActivityUndoTests
     sealed class FakeLibrary : IMusicLibrary
     {
         public Playlist Playlist { get; set; } = new("p", "spotify:playlist:p", "P", null, "me", null, 0, new List<Track>());
-        public Task<Playlist> GetPlaylistAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => Task.FromResult(Playlist);
+        public Task<Playlist> GetPlaylistAsync(string id, CancellationToken ct = default) => Task.FromResult(Playlist);
 
         // Unused by the undo path.
-        public Task<Album> GetAlbumAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<Artist> GetArtistAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Album> GetAlbumAsync(string id, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Artist> GetArtistAsync(string id, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<DiscographyPage> GetDiscographyAsync(string artistUri, DiscographyKind kind, int offset, int limit, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<LibraryItem>> GetLibraryAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default) => throw new NotSupportedException();
@@ -260,13 +260,13 @@ public class ActivityUndoTests
         public Task<SearchSuggestions> SuggestRichAsync(string query, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<Album>> GetAlbumsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<Track>> GetLikedSongsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<PlaylistSummary>> GetPlaylistsAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<HomeFeed> GetHomeAsync(string? facet, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<Show>> GetShowsAsync(CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<Show?> GetShowAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Show?> GetShowAsync(string uri, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<int> LoadMoreEpisodesAsync(string showUri, int from, CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

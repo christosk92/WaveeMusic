@@ -18,19 +18,14 @@ public sealed class FakeSource : ICatalogSource
     public bool Owns(string uri) => EntityUri.Parse(uri).Provider == EntityProviders.Fake;
     public SourceCapabilities Capabilities => SourceCapabilities.Catalog | SourceCapabilities.Fallback;
 
-    public Task<Playlist?> GetPlaylistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Track?> GetTrackAsync(string uri, CancellationToken ct = default)
+        => Task.FromResult<Track?>(FakeData.Track(FakeData.IndexFromUri(uri)) with { Uri = uri, Id = EntityUri.IdOf(uri) });
+
+    public Task<Playlist?> GetPlaylistAsync(string uri, CancellationToken ct = default)
         => Task.FromResult<Playlist?>(FakeData.Playlist(FakeData.IndexFromUri(uri)));
-    public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Album?> GetAlbumAsync(string uri, CancellationToken ct = default)
         => Task.FromResult<Album?>(FakeData.Album(FakeData.IndexFromUri(uri)));
-    // Complete-at-construction (Hydrator => CompleteEntityHydrator, see the class doc): every fake album is already
-    // fully resident, so the artist page's inline drawer peek always succeeds here too — the demo backend never
-    // shimmers on a re-open any more than the real, warm-store path does.
-    public bool TryPeekAlbum(string uri, out Album? album)
-    {
-        album = FakeData.Album(FakeData.IndexFromUri(uri));
-        return true;
-    }
-    public Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Artist?> GetArtistAsync(string uri, CancellationToken ct = default)
         => Task.FromResult<Artist?>(FakeData.Artist(FakeData.IndexFromUri(uri)));
 
     public async IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, [EnumeratorCancellation] CancellationToken ct = default)
@@ -52,7 +47,7 @@ public sealed class FakeSource : ICatalogSource
     /// structure <c>FakeData.UserPlaylists</c> flattens, so the leaves and the flat list agree by construction.</summary>
     public Task<IReadOnlyList<PlaylistNode>> GetPlaylistTreeAsync(CancellationToken ct = default)
         => Task.FromResult(FakeData.PlaylistTree());
-    public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<IReadOnlyList<Track>> GetLikedSongsAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Track>>(System.Array.Empty<Track>());
     public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default)
         => Task.FromResult(new SearchResults(System.Array.Empty<Track>(), System.Array.Empty<Album>(), System.Array.Empty<Artist>(), System.Array.Empty<Playlist>()));

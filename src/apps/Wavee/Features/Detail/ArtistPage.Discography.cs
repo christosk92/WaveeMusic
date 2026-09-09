@@ -23,15 +23,15 @@ sealed partial class ArtistPage : Component
         Direction = 1,
         Children =
         [
-            PagedShelf.Create(
-                albums.Count,
-                cardAt: (i, w) => MediaCard.Shelf(albums[i].Cover, albums[i].Name,
-                    albums[i].Year > 0 ? albums[i].Year.ToString() : KindLabel(albums[i].Kind), albums[i].Uri,
-                    () => go("album:" + albums[i].Uri, albums[i].Name), () => play(albums[i].Uri), w,
-                    menu: CardMenu(albums[i].Uri, albums[i].Name, albums[i].Cover,
-                        albums[i].Artists.Count > 0 ? albums[i].Artists[0].Name : null),
-                    drag: CardDrag(WaveeResourceKind.Album, albums[i].Uri, albums[i].Name, albums[i].Cover)),
-                measured: true, header: AccentHeader(Loc.Get(Strings.Artist.AppearsOn))),
+                PagedShelf.Create(
+                albums,
+                cardAt: (item, i, w) => MediaCard.Shelf(item.Cover, item.Name,
+                    item.Year > 0 ? item.Year.ToString() : KindLabel(item.Kind), item.Uri,
+                    () => go("album:" + item.Uri, item.Name), () => play(item.Uri), w,
+                    menu: CardMenu(item.Uri, item.Name, item.Cover,
+                        item.Artists.Count > 0 ? item.Artists[0].Name : null),
+                    drag: CardDrag(WaveeResourceKind.Album, item.Uri, item.Name, item.Cover)),
+                cardHeight: MediaCard.ShelfHeight, header: AccentHeader(Loc.Get(Strings.Artist.AppearsOn)), keyOf: (item, i) => item.Uri),
         ],
     };
 }

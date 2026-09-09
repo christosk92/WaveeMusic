@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
@@ -81,19 +81,6 @@ static class PlaylistInlineEdit
     /// <summary>The shared half of both gates, for the two OWNER affordances whose capability is neither items nor
     /// metadata (the overflow's Delete, the invite control's permission administration): the page is not under a notice.</summary>
     internal static bool Live(DetailModel m) => m.Notice == DetailNotice.None;
-
-    static void PatchDetail(Loadable<DetailModel> full, Func<DetailModel, DetailModel> patch)
-    {
-        if ((LoadState)full.State.Peek() != LoadState.Ready) return;
-        full.SetReady(patch(full.Value.Peek()));
-    }
-
-    static async Task RefreshPlaylistDetailAsync(Services? svc, Loadable<DetailModel> full, string uri, CancellationToken ct = default)
-    {
-        if (svc is null || !SpotifyEditsLive(svc)) return;
-        var fresh = await DetailPage.ReloadPlaylistDetailAsync(svc, uri, ct).ConfigureAwait(false);
-        if (fresh is not null) full.SetReady(fresh);
-    }
 
     // ── save plumbing ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -463,8 +450,6 @@ static class PlaylistInlineEdit
                 async () =>
                 {
                     bool saved = await TryCoverPathAsync(lib, uri, path).ConfigureAwait(false);
-                    if (saved && svc?.RealStore?.GetPlaylist(uri) is { } header)
-                        PatchDetail(_full, m => m with { Cover = header.Cover });
                     return saved;
                 },
                 _status, () => ++_saveEpoch, () => _saveEpoch).ConfigureAwait(false);
@@ -637,7 +622,6 @@ static class PlaylistInlineEdit
             _ = RunSaveAsync(async () =>
             {
                 bool saved = await SaveDetailsAsync(lib, uri, next, null, null, _titleAtEditStart).ConfigureAwait(false);
-                if (saved) PatchDetail(_full, m => m with { Title = next });
                 return saved;
             }, _status, () => ++_saveEpoch, () => _saveEpoch);
         }
@@ -768,7 +752,6 @@ static class PlaylistInlineEdit
             _ = RunSaveAsync(async () =>
             {
                 bool saved = await SaveDetailsAsync(lib, uri, null, next, null).ConfigureAwait(false);
-                if (saved) PatchDetail(_full, m => m with { Description = next.Length == 0 ? null : next });
                 return saved;
             }, _status, () => ++_saveEpoch, () => _saveEpoch);
         }
@@ -872,7 +855,6 @@ static class PlaylistInlineEdit
                 InputHooks.Current.Default.Announce?.Invoke(Loc.Get(Strings.Auth.Copied), false);
             }
             else InputHooks.Current.Default.OpenUri?.Invoke(url);
-            if (full is not null) await RefreshPlaylistDetailAsync(svc, full, uri).ConfigureAwait(false);
             return copied;
         }
         catch (Exception ex) { PlaylistEditErrors.Toast(ex); return false; }
@@ -887,7 +869,6 @@ static class PlaylistInlineEdit
     static async Task<bool> SetCollaborativeAsync(LibraryBridge lib, Loadable<DetailModel> full, string uri, bool collaborative)
     {
         if (!await SaveDetailsAsync(lib, uri, null, null, collaborative).ConfigureAwait(false)) return false;
-        PatchDetail(full, m => m with { Capabilities = m.Capabilities with { IsCollaborative = collaborative } });
         return true;
     }
 
@@ -896,7 +877,6 @@ static class PlaylistInlineEdit
         try
         {
             await lib.SetPlaylistVisibilityAsync(uri, isPublic).ConfigureAwait(false);
-            PatchDetail(full, m => m with { IsPublic = isPublic });
             return true;
         }
         catch (Exception ex) { PlaylistEditErrors.Toast(ex); return false; }
@@ -976,7 +956,7 @@ static class PlaylistInlineEdit
 
     /// <summary>The "Invite &amp; access" flyout body: copy-invite CTA + collaborative/public toggles. A Component that
     /// reads live state from the <see cref="Loadable{T}"/> (component props freeze at mount), so the controlled toggles
-    /// re-render when the optimistic <c>PatchDetail</c> lands. <paramref name="lib"/>/<paramref name="svc"/> are stable
+    /// re-render when the catalog query publishes the staged edit. <paramref name="lib"/>/<paramref name="svc"/> are stable
     /// service instances — safe to capture at mount.</summary>
     sealed class PlaylistAccessFlyout : Component
     {

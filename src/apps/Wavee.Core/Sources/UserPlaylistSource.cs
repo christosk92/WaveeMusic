@@ -110,7 +110,7 @@ public sealed class UserPlaylistSource : ICatalogSource
     void Bump() { _version++; _changed.OnNext(_version); }
 
     // ── ICatalogSource: only the playlist reads are non-empty ──
-    public Task<Playlist?> GetPlaylistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Playlist?> GetPlaylistAsync(string uri, CancellationToken ct = default)
     {
         if (!_playlists.TryGetValue(uri, out var e)) return Task.FromResult<Playlist?>(null);
         return Task.FromResult<Playlist?>(new Playlist("up", uri, e.Name, "Created on this device", "You", null,
@@ -133,12 +133,12 @@ public sealed class UserPlaylistSource : ICatalogSource
         yield return new TrackPage(t, t.Length, t.Length);
     }
 
-    public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => Task.FromResult<Album?>(null);
-    public Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => Task.FromResult<Artist?>(null);
+    public Task<Album?> GetAlbumAsync(string uri, CancellationToken ct = default) => Task.FromResult<Album?>(null);
+    public Task<Artist?> GetArtistAsync(string uri, CancellationToken ct = default) => Task.FromResult<Artist?>(null);
     public Task<IReadOnlyList<LibraryItem>> GetLibraryAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<LibraryItem>>(System.Array.Empty<LibraryItem>());
     public Task<IReadOnlyList<Album>> GetAlbumsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Album>>(System.Array.Empty<Album>());
     public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Artist>>(System.Array.Empty<Artist>());
-    public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Track>>(System.Array.Empty<Track>());
+    public Task<IReadOnlyList<Track>> GetLikedSongsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Track>>(System.Array.Empty<Track>());
     public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default) => Task.FromResult(SearchResults.Empty);
     public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default) => Task.FromResult(new HomeContribution(System.Array.Empty<HomeGroup>(), 60));
     public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default) => Task.FromResult(new LibraryStats(0, 0, 0, 0));

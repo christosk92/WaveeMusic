@@ -22,7 +22,7 @@ readonly record struct RecentsFlatItem(
     int MonthIndex);
 
 /// <summary>A filtered row vector with one synthetic header before each calendar day. All maps are indexed by the
-/// FLAT list, so the virtual list, sticky-header observer, calendar anchor and hydration pump share one projection.</summary>
+/// FLAT list, so the virtual list, sticky-header observer, calendar anchor and viewport query demand share one projection.</summary>
 sealed record RecentsSections(
     RecentsFlatItem[] Items,
     int[] HeaderIndices,
@@ -86,7 +86,7 @@ sealed record RecentsCalendar(RecentsCalendarMonth[] Months, int MaximumDayPlays
 /// (<c>ChildCount</c>, <c>PlayedAtMs</c>, <c>ContentType</c>) or from the culture's own date/number tables.</summary>
 static class RecentsView
 {
-    /// <summary>How many URIs one viewport-driven hydration request may carry. The realized window (rows + overscan) is
+    /// <summary>How many entity query leases one viewport demand pass may retain. The realized window (rows + overscan) is
     /// a few dozen rows; the cap only bounds a pathological jump-scroll that realizes a very tall window at once.</summary>
     public const int BatchCap = 64;
 
@@ -97,7 +97,7 @@ static class RecentsView
     /// <summary>Stored <see cref="RecentsRow.ContentType"/> suffix for podcasts (wire key
     /// <c>content_type_podcasts</c>).</summary>
     public const string PivotPodcasts = "podcasts";
-    /// <summary>The one pivot with no wire <c>content_type_*</c> counterpart — decided from the hydration uri.</summary>
+    /// <summary>The one pivot with no wire <c>content_type_*</c> counterpart — decided from the target URI.</summary>
     public const string PivotArtists = "kind:artist";
 
     /// <summary>The distinct <c>content_type_*</c> tokens present in the list, in FIRST-SEEN (wire) order.
@@ -126,13 +126,13 @@ static class RecentsView
     /// content type at all); a selected token matches only rows carrying it.
     ///
     /// <c>"kind:artist"</c> is the one pivot with no wire <c>content_type_*</c> counterpart — the server never marks a
-    /// row "this is an artist", so it is decided from the same uri the row would be hydrated from, the same way a
-    /// header with no uri of its own resolves its kind from its first child (<see cref="HydrationUri"/>). Every other
+    /// row "this is an artist", so it is decided from the same URI the row observes, the same way a
+    /// header with no uri of its own resolves its kind from its first child (<see cref="TargetUri"/>). Every other
     /// token is still matched against <c>ContentType</c> unchanged.</summary>
     public static bool Matches(RecentsRow row, string? token)
         => token is null
             || (string.Equals(token, PivotArtists, StringComparison.OrdinalIgnoreCase)
-                ? RecentsList.EntityKindOf(HydrationUri(row) ?? row.Uri) == RecentsEntityKind.Artist
+                ? RecentsList.EntityKindOf(TargetUri(row) ?? row.Uri) == RecentsEntityKind.Artist
                 : string.Equals(row.ContentType, token, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Whether the fixed pivot strip should enable <paramref name="token"/> for this snapshot.
@@ -291,13 +291,13 @@ static class RecentsView
     }
 
     // ── hydration targets ─────────────────────────────────────────────────────────────────────────────────────────────
-    /// <summary>The ONE uri a row is hydrated from, or null when it names nothing fetchable.
+    /// <summary>The ONE URI a row observes, or null when it names nothing fetchable.
     ///
     /// <c>ContextUri</c> first — that is the entity the card stands for and the thing opening the row navigates to. A
     /// single-context group header carries no uri of its own (the wire leaves it empty), and those rows are rendered
     /// from their <c>group_metadata</c> children, so the first child is what the network is asked for. <c>Uri</c> is
     /// the last resort for an ungrouped single.</summary>
-    public static string? HydrationUri(RecentsRow row)
+    public static string? TargetUri(RecentsRow row)
     {
         if (row.ContextUri is { Length: > 0 } ctx) return ctx;
         var kids = row.ChildUris;
@@ -307,43 +307,32 @@ static class RecentsView
         return row.Uri.Length > 0 ? row.Uri : null;
     }
 
-    /// <summary>The entity kind the hydration uri points at — what decides whether a row is asked for the entity-header
-    /// trait bundle or for the track bundle.</summary>
+    /// <summary>The entity kind the target URI points at — what decides which identity projection the row uses.</summary>
     public static RecentsEntityKind TargetKind(RecentsRow row)
     {
-        string? uri = HydrationUri(row);
+        string? uri = TargetUri(row);
         return uri is null ? RecentsEntityKind.Unknown : RecentsList.EntityKindOf(uri);
     }
 
-    /// <summary>Collect the URIs a realized window still owes the network.
-    ///
-    /// <paramref name="lastExclusive"/> matches the engine's contract (<c>VirtualListEl.OnVisibleRange</c> reports the
-    /// realized window with an EXCLUSIVE end, overscan halo included). <paramref name="pending"/> answers "does this uri
-    /// still need a request?" — it is what makes the rule request MISSES ONLY: a uri already hydrated, already in flight,
-    /// or already answered-with-nothing is never asked for twice. Duplicates inside one window collapse too, which
-    /// matters because ~1,388 uris repeat across a real recents list.
-    ///
-    /// Returns the number appended to <paramref name="into"/>; the range is clamped, so a stale range from a list that
-    /// has since shrunk can never index out of bounds.</summary>
-    public static int CollectRange(IReadOnlyList<RecentsRow> rows, IReadOnlyList<int> map, int first, int lastExclusive,
-                                   Func<string, bool> pending, List<string> into, int cap = BatchCap)
+    /// <summary>Collect every distinct queryable target in the list, plus every child uri of those rows.
+    /// Demand is the whole model — never a realized window.</summary>
+    public static int CollectAll(IReadOnlyList<RecentsRow> rows, IReadOnlyList<int> map,
+                                Func<string, bool> pending, List<string> into)
     {
         int added = 0;
-        if (cap <= 0) return 0;
-        int lo = Math.Max(0, first);
-        int hi = Math.Min(map.Count, lastExclusive);
-        for (int i = lo; i < hi && added < cap; i++)
+        for (int i = 0; i < map.Count; i++)
         {
             int r = map[i];
             if ((uint)r >= (uint)rows.Count) continue;
-            string? uri = HydrationUri(rows[r]);
-            if (uri is null || !pending(uri)) continue;
-            bool dup = false;
-            for (int j = 0; j < into.Count; j++)
-                if (string.Equals(into[j], uri, StringComparison.Ordinal)) { dup = true; break; }
-            if (dup) continue;
-            into.Add(uri);
-            added++;
+            string? uri = TargetUri(rows[r]);
+            if (uri is not null && pending(uri))
+            {
+                bool dup = false;
+                for (int j = 0; j < into.Count; j++)
+                    if (string.Equals(into[j], uri, StringComparison.Ordinal)) { dup = true; break; }
+                if (!dup) { into.Add(uri); added++; }
+            }
+            added += CollectChildUris(rows[r], pending, into, int.MaxValue);
         }
         return added;
     }
@@ -390,7 +379,7 @@ static class RecentsView
     /// <summary>Append the usable uris of one expandable row — the same members-first source <see cref="DrawerEntries"/>
     /// lists, read in place so the viewport pump (which calls this per realized saved row) never materialises the
     /// fallback. Empty entries and duplicates collapse; <paramref name="pending"/> lets the page share the same
-    /// misses-only rule as viewport hydration.</summary>
+    /// distinct-target rule as viewport query demand.</summary>
     public static int CollectChildUris(RecentsRow row, Func<string, bool> pending, List<string> into,
                                        int cap = BatchCap)
     {
@@ -533,7 +522,7 @@ static class RecentsView
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < rows.Count; i++)
         {
-            string? uri = HydrationUri(rows[i]);
+            string? uri = TargetUri(rows[i]);
             if (uri is null) continue;
             flags[i] = seen.Add(uri);
         }
@@ -599,7 +588,7 @@ static class RecentsView
     /// <c>Loc</c> table.</para>
     ///
     /// <para><paramref name="countPhrase"/> is the seam for the one AUTHORED word on this line ("1,708 items"). It is a
-    /// delegate rather than a string constant for the same reason <c>CollectRange</c> takes <c>pending</c>: this file
+    /// delegate rather than a string constant for the same reason <c>CollectAll</c> takes <c>pending</c>: this file
     /// owns no localized copy and must stay engine-free, so the page supplies <c>Strings.Recents.ItemCount</c> and the
     /// tests supply nothing at all. Omitted ⇒ the bare culture-formatted number, which is what the wire alone can
     /// vouch for. <paramref name="groupedPhrase"/> is the matching seam for the third segment ("grouped from 9,446

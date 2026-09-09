@@ -128,22 +128,28 @@ static class HomeModules
     // ── A2 · the weekly pair ───────────────────────────────────────────────────────────────────────────────────
     public static Element WeeklyPair(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, HomeCardChrome> chrome,
                                      Action<HomeGroup>? openSection = null)
-        => Responsive.Of(width =>
+        // Gate key: g. HomeGroup is a sealed record whose only non-scalar field (Cards) compares by REFERENCE (arrays/
+        // lists don't override Equals), so this Equals is a handful of cheap field compares, not a deep card-by-card
+        // scan — and g is typically the SAME instance across re-renders until the underlying feed actually changes, so
+        // the very first ReferenceEquals check records emit short-circuits it entirely. nav/chrome/openSection stay
+        // captured directly (stable per-card behaviour keyed off c.Uri, not visual state) rather than joining the gate.
+        => Responsive.Of(g, (state, width) =>
         {
-            var cards = g.Cards.Select(c => Keyed(HomeCards.WeeklyCard(c, nav(c)), g.Kind, c.Uri, chrome(c))).ToArray();
-            return Module(g, g.Subtitle, null,
-                Grid(HomeModuleLayout.Columns(g.Kind, width), Spacing.M, Spacing.M, cards), openSection);
+            var cards = state.Cards.Select(c => Keyed(HomeCards.WeeklyCard(c, nav(c)), state.Kind, c.Uri, chrome(c))).ToArray();
+            return Module(state, state.Subtitle, null,
+                Grid(HomeModuleLayout.Columns(state.Kind, width), Spacing.M, Spacing.M, cards), openSection);
         }, fallback: HomeModuleLayout.FallbackWidth);
 
     // ── B · jump back in ───────────────────────────────────────────────────────────────────────────────────────
     public static Element Quick(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
                                 Func<HomeCard, HomeCardChrome> chrome, Action<HomeGroup>? openSection = null)
-        => Responsive.Of(width =>
+        // Gate key: g — see WeeklyPair's comment. nav/play/chrome/openSection stay captured behaviour.
+        => Responsive.Of(g, (state, width) =>
         {
-            int shown = Math.Min(g.Cards.Count, HomeModuleLayout.QuickShown);
-            var cards = g.Cards.Take(shown).Select(c => Keyed(HomeCards.QuickTile(c, nav(c), play(c)), g.Kind, c.Uri, chrome(c))).ToArray();
-            return Module(g, Strings.Home.MostOpenedOf(shown, g.Cards.Count),
-                null, Grid(HomeModuleLayout.Columns(g.Kind, width), Spacing.M, Spacing.M, cards), openSection);
+            int shown = Math.Min(state.Cards.Count, HomeModuleLayout.QuickShown);
+            var cards = state.Cards.Take(shown).Select(c => Keyed(HomeCards.QuickTile(c, nav(c), play(c)), state.Kind, c.Uri, chrome(c))).ToArray();
+            return Module(state, Strings.Home.MostOpenedOf(shown, state.Cards.Count),
+                null, Grid(HomeModuleLayout.Columns(state.Kind, width), Spacing.M, Spacing.M, cards), openSection);
         }, fallback: HomeModuleLayout.FallbackWidth);
 
     // ── C · the recents rail ───────────────────────────────────────────────────────────────────────────────────
@@ -162,12 +168,13 @@ static class HomeModules
     /// report, on exactly the rail with the round artist cards.</para></summary>
     public static Element Recents(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
                                   Func<HomeCard, string> kindLabel, Func<HomeCard, HomeCardChrome> chrome,
-                                  Action? openAll = null)
+                                  Action? openAll = null, Action<int, int>? onVisibleRange = null)
     {
-        var shelf = PagedShelf.Create(g.Cards.Count,
-            (i, cardW) =>
+        var shelf = PagedShelf.Create(g.Cards,
+            (item, i, cardW) =>
             {
-                var c = g.Cards[i];
+
+                var c = item;
                 var ch = chrome(c);
                 return MediaCard.Shelf(c.Image, c.Title, kindLabel(c), c.Uri, nav(c), play(c), cardW,
                     circular: c.Kind == HomeCardKind.Artist, menu: ch.Menu, drag: ch.Drag);
@@ -176,7 +183,7 @@ static class HomeModules
             header: g.Title is { Length: > 0 } title ? ModuleHeader(title, null, null, openAll) : new BoxEl(),
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => HomeModuleLayout.SourceCardKey(g, g.Cards[i]));
+            keyOf: (item, i) => HomeModuleLayout.SourceCardKey(g, item), onVisibleRange: onVisibleRange);
         // No subtitle: the prototype's is "Shape shows the type — artists are round", which explains the design to a
         // reviewer rather than telling the user anything. The shape does the explaining on its own.
         return shelf;
@@ -187,21 +194,22 @@ static class HomeModules
     /// hairline between wrapped rows. That is what makes it read as a numbered series rather than six adjacent cards.</summary>
     public static Element MixBand(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, HomeCardChrome> chrome,
                                   Action<HomeGroup>? openSection = null)
-        => Responsive.Of(width =>
+        // Gate key: g — see WeeklyPair's comment. nav/chrome/openSection stay captured behaviour.
+        => Responsive.Of(g, (state, width) =>
         {
-            int columns = HomeModuleLayout.Columns(g.Kind, width);
+            int columns = HomeModuleLayout.Columns(state.Kind, width);
             // ONE grid, gap 0, dividers drawn INSIDE each cell. A grid cannot take a separator element between its rows,
             // and it must be a grid rather than stacked flex rows for the measurement reason in Grid() — a band of six
             // growable cells in a flex row is exactly the shape that reported a one-line height and clipped its seeds.
-            var cells = new Element[g.Cards.Count];
+            var cells = new Element[state.Cards.Count];
             for (int i = 0; i < cells.Length; i++)
             {
-                var c = g.Cards[i];
+                var c = state.Cards[i];
                 // The ordinal is the card's POSITION, 1-based — never parsed out of "Daily Mix 3", which is localized and
                 // would number the band wrongly in any other language.
                 cells[i] = Keyed(
                     HomeCards.MixSegment(c, i + 1, nav(c), leading: i % columns != 0, above: i >= columns),
-                    g.Kind, c.Uri, chrome(c));
+                    state.Kind, c.Uri, chrome(c));
             }
             var band = new BoxEl
             {
@@ -211,7 +219,7 @@ static class HomeModules
                 BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
                 Children = [Ui.Grid(StarTracks(columns), 0f, 0f, float.NaN, cells)],
             };
-            return Module(g, Strings.Home.OneSeries(g.Cards.Count), null, band, openSection);
+            return Module(state, Strings.Home.OneSeries(state.Cards.Count), null, band, openSection);
         }, fallback: HomeModuleLayout.FallbackWidth);
 
     static TrackSize[] StarTracks(int columns)
@@ -224,12 +232,13 @@ static class HomeModules
     // ── F · chip cards ─────────────────────────────────────────────────────────────────────────────────────────
     public static Element ChipCards(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, HomeCardChrome> chrome,
                                     Action<string> onNavUri, Action<HomeGroup>? openSection = null)
-        => Responsive.Of(width =>
+        // Gate key: g — see WeeklyPair's comment. nav/chrome/onNavUri/openSection stay captured behaviour.
+        => Responsive.Of(g, (state, width) =>
         {
-            int shown = Math.Min(g.Cards.Count, HomeModuleLayout.ChipCardsShown);
-            var cards = g.Cards.Take(shown).Select(c => Keyed(HomeCards.ChipCard(c, nav(c), onNavUri), g.Kind, c.Uri, chrome(c))).ToArray();
-            return Module(g, Strings.Home.MixesFromArtists(g.Cards.Count),
-                null, Grid(HomeModuleLayout.Columns(g.Kind, width), Spacing.M, Spacing.M, cards), openSection);
+            int shown = Math.Min(state.Cards.Count, HomeModuleLayout.ChipCardsShown);
+            var cards = state.Cards.Take(shown).Select(c => Keyed(HomeCards.ChipCard(c, nav(c), onNavUri), state.Kind, c.Uri, chrome(c))).ToArray();
+            return Module(state, Strings.Home.MixesFromArtists(state.Cards.Count),
+                null, Grid(HomeModuleLayout.Columns(state.Kind, width), Spacing.M, Spacing.M, cards), openSection);
         }, fallback: HomeModuleLayout.FallbackWidth);
 
     // ── G · the radio dial ─────────────────────────────────────────────────────────────────────────────────────
@@ -237,12 +246,13 @@ static class HomeModules
     /// folded in half, which a row gap would break into ten separate pairs.</summary>
     public static Element Radio(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
                                 Func<HomeCard, HomeCardChrome> chrome, Action<HomeGroup>? openSection = null)
-        => Responsive.Of(width =>
+        // Gate key: g — see WeeklyPair's comment. nav/play/chrome/openSection stay captured behaviour.
+        => Responsive.Of(g, (state, width) =>
         {
-            int shown = Math.Min(g.Cards.Count, HomeModuleLayout.RadioShown);
-            var cards = g.Cards.Take(shown).Select(c => Keyed(HomeCards.RadioRow(c, nav(c), play(c)), g.Kind, c.Uri, chrome(c))).ToArray();
-            int columns = HomeModuleLayout.Columns(g.Kind, width);
-            return Module(g, Strings.Home.StationCount(g.Cards.Count),
+            int shown = Math.Min(state.Cards.Count, HomeModuleLayout.RadioShown);
+            var cards = state.Cards.Take(shown).Select(c => Keyed(HomeCards.RadioRow(c, nav(c), play(c)), state.Kind, c.Uri, chrome(c))).ToArray();
+            int columns = HomeModuleLayout.Columns(state.Kind, width);
+            return Module(state, Strings.Home.StationCount(state.Cards.Count),
                 null, Grid(columns, Spacing.XXL, 0f, cards) with { Key = "radio-grid:" + columns }, openSection);
         }, fallback: HomeModuleLayout.FallbackWidth);
 
@@ -278,17 +288,22 @@ static class HomeModules
 
     /// <summary>The `split even` pairing: episodes and audiobooks SIDE BY SIDE at width, stacked below ~1020px. Two
     /// tabular modules of the same density read as a pair; stacked they read as two more shelves.</summary>
+    // Gate key: (left, right) — the only two values the builder reads besides width. Element is a record, so this
+    // Equals walks both elements' scalar fields (Children compares by reference, not by deep tree walk); still far
+    // cheaper than always rebuilding this wrapper, and there is no smaller key available at this call site — left/
+    // right already ARE the two already-built module subtrees.
     public static Element SplitEven(Element left, Element right)
-        => Responsive.Of(width => width >= HomeModuleLayout.SplitEvenMin
-            ? TwoColumn(1f, Spacing.XXL, left, right)
-            : new BoxEl { Direction = 1, Gap = HomeModuleLayout.Gap(width), MinWidth = 0f, Children = [left, right] },
+        => Responsive.Of((left, right), (state, width) => width >= HomeModuleLayout.SplitEvenMin
+            ? TwoColumn(1f, Spacing.XXL, state.left, state.right)
+            : new BoxEl { Direction = 1, Gap = HomeModuleLayout.Gap(width), MinWidth = 0f, Children = [state.left, state.right] },
             fallback: HomeModuleLayout.FallbackWidth);
 
     /// <summary>A degraded split keeps the surviving module in its original half-column above the split threshold.</summary>
+    // Gate key: survivor — the only value the builder reads besides width.
     public static Element SplitSingle(Element survivor)
-        => Responsive.Of(width => width >= HomeModuleLayout.SplitEvenMin
-            ? TwoColumn(1f, Spacing.XXL, survivor, new BoxEl())
-            : survivor,
+        => Responsive.Of(survivor, (state, width) => width >= HomeModuleLayout.SplitEvenMin
+            ? TwoColumn(1f, Spacing.XXL, state, new BoxEl())
+            : state,
             fallback: HomeModuleLayout.FallbackWidth);
 
     // ── J · editors' picks ─────────────────────────────────────────────────────────────────────────────────────
@@ -297,35 +312,38 @@ static class HomeModules
     public static Element Editorial(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
                                     Func<HomeCard, string> meta, Func<HomeCard, HomeCardChrome> chrome,
                                     Action<string> onNavUri, Action<HomeGroup>? openSection = null)
-        => Responsive.Of(width =>
+        // Gate key: g — see WeeklyPair's comment. nav/play/meta/chrome/onNavUri/openSection stay captured behaviour.
+        => Responsive.Of(g, (state, width) =>
         {
-            var feature = g.Cards[0];
+            var feature = state.Cards[0];
             // The prototype shows one feature and three companions. Everything editorial that home returns lands in this
             // bucket though — 18 cards on a real payload — so the rest is reachable through the header drill-in.
             int companions = HomeModuleLayout.EditorialCompanions;
-            var rest = g.Cards.Skip(1).Take(companions).ToList();
-            Element left = Keyed(HomeCards.FeatureCard(feature, meta(feature), nav(feature), play(feature), onNavUri), g.Kind, feature.Uri, chrome(feature));
+            var rest = state.Cards.Skip(1).Take(companions).ToList();
+            Element left = Keyed(HomeCards.FeatureCard(feature, meta(feature), nav(feature), play(feature), onNavUri), state.Kind, feature.Uri, chrome(feature));
             Element right = new BoxEl
             {
                 Direction = 1, Gap = Spacing.S, MinWidth = 0f,
-                Children = [.. rest.Select(c => Keyed(HomeCards.CrowdRow(c, nav(c), play(c), onNavUri), g.Kind, c.Uri, chrome(c)))],
+                Children = [.. rest.Select(c => Keyed(HomeCards.CrowdRow(c, nav(c), play(c), onNavUri), state.Kind, c.Uri, chrome(c)))],
             };
             Element content = width >= HomeModuleLayout.EditorialMin && rest.Count > 0
                 // 1.08 : 1 — the feature is given a hair more room so its 148px art and three lines of blurb are not
                 // fighting the column beside it.
                 ? TwoColumn(1.08f, Spacing.L, left, right)
                 : new BoxEl { Direction = 1, Gap = Spacing.L, MinWidth = 0f, Children = rest.Count > 0 ? [left, right] : [left] };
-            return Module(g, Loc.Get(Strings.Home.EditorsPicksSub), null, content, openSection);
+            return Module(state, Loc.Get(Strings.Home.EditorsPicksSub), null, content, openSection);
         }, fallback: HomeModuleLayout.FallbackWidth);
 
     /// <summary>A source-owned show shelf. Podcasts are destinations, so the card and module title drill rather than
     /// being flattened into QuickGrid tiles.</summary>
     public static Element Podcasts(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
-                                   Func<HomeCard, HomeCardChrome> chrome, Action<HomeGroup>? openSection = null)
-        => PagedShelf.Create(g.Cards.Count,
-            (i, cardW) =>
+                                   Func<HomeCard, HomeCardChrome> chrome, Action<HomeGroup>? openSection = null,
+                                   Action<int, int>? onVisibleRange = null)
+        => PagedShelf.Create(g.Cards,
+            (item, i, cardW) =>
             {
-                var c = g.Cards[i];
+
+                var c = item;
                 var ch = chrome(c);
                 return MediaCard.Shelf(c.Image, c.Title, c.Subtitle ?? "", c.Uri, nav(c), play(c), cardW,
                     menu: ch.Menu, drag: ch.Drag);
@@ -334,7 +352,7 @@ static class HomeModules
             header: ModuleHeader(g, g.Subtitle, null, openSection),
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => HomeModuleLayout.SourceCardKey(g, g.Cards[i]));
+            keyOf: (item, i) => HomeModuleLayout.SourceCardKey(g, item), onVisibleRange: onVisibleRange);
 
     /// <summary>The facet page's "any server section" shelf: ONE paged shelf for a section whose cards name no single
     /// module — mixed playlists and albums, an artist row, a section type this build has never seen. A facet renders
@@ -344,11 +362,13 @@ static class HomeModules
     /// <para>Mixed entities is the whole point, so ARTIST cards stay circular the way the recents rail's do: the shape
     /// names the entity type, and a square artist beside a square album says nothing.</para></summary>
     public static Element Shelf(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
-                                Func<HomeCard, HomeCardChrome> chrome, Action<HomeGroup>? openSection = null)
-        => PagedShelf.Create(g.Cards.Count,
-            (i, cardW) =>
+                                Func<HomeCard, HomeCardChrome> chrome, Action<HomeGroup>? openSection = null,
+                                Action<int, int>? onVisibleRange = null)
+        => PagedShelf.Create(g.Cards,
+            (item, i, cardW) =>
             {
-                var c = g.Cards[i];
+
+                var c = item;
                 var ch = chrome(c);
                 return MediaCard.Shelf(c.Image, c.Title, c.Subtitle ?? "", c.Uri, nav(c), play(c), cardW,
                     circular: c.Kind == HomeCardKind.Artist, menu: ch.Menu, drag: ch.Drag);
@@ -357,7 +377,7 @@ static class HomeModules
             header: ModuleHeader(g, g.Subtitle, null, openSection),
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => HomeModuleLayout.SourceCardKey(g, g.Cards[i]));
+            keyOf: (item, i) => HomeModuleLayout.SourceCardKey(g, item), onVisibleRange: onVisibleRange);
 
     /// <summary>THE Fold deck. Home's section directory, Home's Charts row and Browse's Charts band are the SAME one row —
     /// one factory, one card height, one key shape. rows:1, no tile chevron; pager chevrons stay on PagedShelf.
@@ -366,15 +386,15 @@ static class HomeModules
     public static Element FoldDeck(IReadOnlyList<HomeSection> sections, string title, Action<HomeSection> openTile,
                                    Action? openHeader = null, string? tileEyebrow = null,
                                    Func<HomeSection, string?>? eyebrowOf = null)
-        => PagedShelf.Create(sections.Count,
-            (i, cardW) => HomeFoldTile.Create(sections[i], cardW,
-                eyebrowOf?.Invoke(sections[i]) ?? tileEyebrow, openTile),
+        => PagedShelf.Create(sections,
+            (item, i, cardW) => HomeFoldTile.Create(item, cardW,
+                eyebrowOf?.Invoke(item) ?? tileEyebrow, openTile),
             cardHeight: static _ => HomeModuleLayout.FoldCardHeight,
             header: ModuleHeader(title, null, null, openHeader),
             minCardW: HomeModuleLayout.FoldCardMin, maxCardW: HomeModuleLayout.FoldCardMax,
             gap: Spacing.M, rows: 1, maxColumns: 2, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => "home-fold-tile:" + (sections[i].Uri ?? i.ToString(System.Globalization.CultureInfo.InvariantCulture)))
-           with { Key = HomeModuleLayout.SectionSetKey(sections) + ":fold" };
+            keyOf: (item, i) => "home-fold-tile:" + (item.Uri ?? i.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+           with { Key = "home-fold-deck" };
 
     /// <summary>The chevron header FoldDeck and BrowsePage shelves share. Open-null is a label, not a second grammar.
     /// Blank title ⇒ no header — an empty box, not an empty row that still pays the band's height.</summary>
@@ -400,12 +420,13 @@ static class HomeModules
     /// the section directory rather than becoming one chevron-bearing header per server section.</summary>
     public static Element Feed(HomeGroup group, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
                                Func<HomeCard, HomeCardChrome> chrome, Action<string> onNavUri,
-                               Action<HomeGroup>? openSection = null)
+                               Action<HomeGroup>? openSection = null, Action<int, int>? onVisibleRange = null)
     {
-        return PagedShelf.Create(group.Cards.Count,
-            (i, cardW) =>
+        return PagedShelf.Create(group.Cards,
+            (item, i, cardW) =>
             {
-                var card = group.Cards[i];
+
+                var card = item;
                 var ch = chrome(card);
                 string subtitle = card.Subtitle ?? card.Eyebrow ?? "";
                 return MediaCard.Shelf(card.Image, card.Title, subtitle, card.Uri, nav(card), play(card), cardW,
@@ -415,8 +436,8 @@ static class HomeModules
             header: ModuleHeader(group, Strings.Home.RecommendationsWithReason(group.Cards.Count), null, openSection),
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => HomeModuleLayout.SourceCardKey(group, group.Cards[i]))
-            with { Key = HomeModuleLayout.SourceGroupKey(group) + ":feed" };
+            keyOf: (item, i) => HomeModuleLayout.SourceCardKey(group, item), onVisibleRange: onVisibleRange)
+            with { Key = "home-feed:" + group.Uri + ":" + group.Kind };
     }
 
     /// <summary>The drill-in card grid — HomeSectionPage's, and (via this promotion) a Browse category page's. Fit
@@ -725,88 +746,14 @@ static class HomeModuleLayout
 
     public static string RowKey(HomeGroupKind kind, string uri) => "home-" + kind + ":" + uri;
     public static string SourceCardKey(HomeGroup group, HomeCard card)
-        => (group.Uri ?? group.Title ?? group.Kind.ToString()) + "\u001F" + card.Uri;
+        => (group.Uri ?? group.Kind.ToString()) + "\u001F" + card.Uri;
 
-    // PagedShelf is a Component: its card factory/data are mount-time configuration. These stable fingerprints are the
-    // responsive-key rule applied to data refreshes — unchanged groups retain pager position, while any rendered field
-    // changing remounts the shelf instead of leaving frozen constructor data on screen.
-    //
-    // MEMOIZED on the group instance. Fingerprint(group) is a deep FNV over every card and every card's meta (seeds,
-    // mosaic tiles, the lot), and SourceGroupKey is asked for on the scroll-hot path: HomePage's KeyAt runs it for every
-    // realized row AND again for the virtual list's own key lookup, so a 200-card discover feed was being re-hashed
-    // several times per realization. A HomeGroup is an immutable record, so the key it produces can never go stale for
-    // that instance; the table holds only weak references, so a swapped-out feed's groups fall out of it with the feed.
-    // (Reference identity is what a ConditionalWeakTable keys on — the record's value-based Equals is not consulted.)
-    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<HomeGroup, string> SourceGroupKeys = new();
-
+    // Document/section identity is independent of mutable title, artwork, counts and facet results.
     public static string SourceGroupKey(HomeGroup group)
-        => SourceGroupKeys.GetValue(group, static g =>
-            "home-source:" + Fingerprint(g).ToString("X16", System.Globalization.CultureInfo.InvariantCulture));
+        => "home-source:" + group.Kind + ":" + group.Uri;
 
-    // Memoized for the same reason and on the same terms as SourceGroupKey: the section deck asks for this key on every
-    // render of the Sections row, and the answer is a deep FNV over every section's every card. The landing projection
-    // hands out ONE directory instance per feed, so the list reference is a stable, immutable cache key.
-    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IReadOnlyList<HomeSection>, string> SectionSetKeys = new();
-
+    // This is a navigation identity for a local section preview, not a subtree remount key. The server URI wins;
+    // an unnamed local section falls back to its authored title because that feed supplied no occurrence URI.
     public static string SectionSetKey(IReadOnlyList<HomeSection> sections)
-        => SectionSetKeys.GetValue(sections, static s => ComputeSectionSetKey(s));
-
-    static string ComputeSectionSetKey(IReadOnlyList<HomeSection> sections)
-    {
-        ulong h = Text(Offset, "sections");
-        for (int i = 0; i < sections.Count; i++)
-        {
-            var s = sections[i];
-            h = Text(Text(Text(h, s.Uri), s.Title), s.Subtitle);
-            h = Value(Value(h, unchecked((ulong)s.TotalCount)), unchecked((ulong)s.Cards.Count));
-            for (int c = 0; c < s.Cards.Count; c++) h = Value(h, Fingerprint(s.Cards[c]));
-        }
-        return "home-section-set:" + h.ToString("X16", System.Globalization.CultureInfo.InvariantCulture);
-    }
-
-    const ulong Offset = 14695981039346656037UL;
-    const ulong Prime = 1099511628211UL;
-
-    static ulong Value(ulong h, ulong value)
-    {
-        for (int i = 0; i < 8; i++) { h ^= (byte)(value >> (i * 8)); h *= Prime; }
-        return h;
-    }
-
-    static ulong Text(ulong h, string? value)
-    {
-        h = Value(h, unchecked((ulong)(value?.Length ?? -1)));
-        if (value is null) return h;
-        for (int i = 0; i < value.Length; i++) h = Value(h, value[i]);
-        return h;
-    }
-
-    static ulong Fingerprint(HomeGroup group)
-    {
-        ulong h = Value(Offset, (ulong)group.Kind);
-        h = Text(Text(Text(h, group.Title), group.Subtitle), group.Uri);
-        h = Value(Value(h, unchecked((ulong)group.TotalCount)), unchecked((ulong)group.Cards.Count));
-        for (int i = 0; i < group.Cards.Count; i++) h = Value(h, Fingerprint(group.Cards[i]));
-        return h;
-    }
-
-    static ulong Fingerprint(HomeCard card)
-    {
-        ulong h = Value(Offset, (ulong)card.Kind);
-        h = Text(Text(Text(Text(h, card.Uri), card.Title), card.Subtitle), card.Eyebrow);
-        h = Text(Text(Text(h, card.Image?.Url), card.Image?.LargestUrl), card.Image?.BlurHash);
-        if (card.MosaicTiles is { } mosaic)
-            for (int i = 0; i < mosaic.Count; i++) h = Text(h, mosaic[i]);
-        if (card.Meta is { } m)
-        {
-            h = Text(Text(Text(Text(Text(h, m.Format), m.OwnerName), m.Author), m.Signifier), m.GenericTitle);
-            h = Value(Value(Value(Value(Value(h, m.Accent), unchecked((ulong)m.TrackCount)),
-                unchecked((ulong)m.DurationMs)), unchecked((ulong)m.ResumeMs)), m.HasVideo ? 1UL : 0UL);
-            h = Value(h, m.NeedsHydration ? 1UL : 0UL);
-            h = Value(h, unchecked((ulong)BitConverter.DoubleToInt64Bits(m.Rating)));
-            if (m.Seeds is { } seeds)
-                for (int i = 0; i < seeds.Count; i++) h = Text(h, seeds[i]);
-        }
-        return h;
-    }
+        => string.Join("/", sections.Select(static section => Uri.EscapeDataString(section.Uri ?? section.Title ?? "")));
 }

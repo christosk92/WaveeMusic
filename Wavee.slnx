@@ -13,6 +13,7 @@
     <Project Path="src/apps/Wavee.Core/Wavee.Core.csproj" />
     <Project Path="src/apps/Wavee.Sdk/Wavee.Sdk.csproj" />
     <Project Path="src/apps/Wavee.Tests/Wavee.Tests.csproj" />
+    <Project Path="src/apps/Wavee.Playback.IntegrationTests/Wavee.Playback.IntegrationTests.csproj" />
     <Project Path="src/apps/Wavee.ReleaseTool/Wavee.ReleaseTool.csproj" />
   </Folder>
   <Folder Name="/Playback-Modules/">

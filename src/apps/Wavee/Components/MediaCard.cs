@@ -211,6 +211,16 @@ public static class MediaCard
     /// Home passes this same delegate to the shelf and its initial extent table.</summary>
     internal static float ShelfHeight(float cardW) => cardW + 72f;
 
+    /// <summary>Reserved height of <see cref="VideoCard"/> at <paramref name="cardW"/>: pad + 16:9 thumb + title +
+    /// duration. Artist magazine shelves pass this instead of <c>measured: true</c> so the viewport gate can reserve
+    /// the box without mounting probe cards.</summary>
+    internal static float VideoCardHeight(float cardW)
+    {
+        float inner = MathF.Max(64f, cardW - 2f * Pad);
+        float thumb = inner * 9f / 16f;
+        return Pad + thumb + Spacing.S + 20f + Spacing.S + 16f + Spacing.M;
+    }
+
     // ── Grid card: fills the grid cell width (no cardW), square or circular cover. For AutoGrid/UniformGrid cells. ──
     // Mirrors the Shelf card but is width-AGNOSTIC: the cover fills the cell (Surfaces.ArtworkFill, CSS aspect-ratio 1)
     // and the labels truncate to the engine-measured slot width (the proven NavCardContent pattern) — so it drops into a
@@ -590,22 +600,18 @@ public static class MediaCard
                     new Keyframe[] { new(0f, 0f, Easing.Linear), new(1f, 1f, Easing.Linear) }, CountdownMs, false);
             }, (_hoverEpoch, counting));
 
-            // ResponsiveBox owns the live fitted width. Its retained delegate reads the same state signals, so hover /
-            // preview changes and shelf refits rebuild only this card's content without remounting EditorialCardCore.
-            return Responsive.Of(BuildAtWidth, fallback: _cardW);
+            // ResponsiveBox owns the live fitted width. Gated on (hovered, counting, peek) — the ONLY things that vary
+            // across renders of a mounted card; every other Build input (_cover, _title, _menu, _drag, ...) is a
+            // frozen ctor field for this component's whole lifetime, so it needs no place in the gate key.
+            var peek = revealed && hasPeek ? previews : null;
+            return Responsive.Of((hovered, counting, peek), (s, cardW) => BuildAtWidth(s.hovered, s.counting, s.peek, cardW), fallback: _cardW);
         }
 
-        Element BuildAtWidth(float cardW)
+        Element BuildAtWidth(bool hovered, bool counting, IReadOnlyList<HomePreviewTrack>? peek, float cardW)
         {
             _liveCardW = cardW;
-            bool hovered = _hovered.Value;
-            bool revealed = _revealed.Value;
-            _ = _previewsEpoch?.Value;
-            var previews = _previewsOf?.Invoke(_uri);
-            bool hasPeek = previews is { Count: > 0 };
-            bool counting = hovered && !revealed && hasPeek;
             return Build(_cover, _eyebrow, _title, _subtitle, _uri, _kind, _onClick, _onPlay, cardW, _menu,
-                hovered, revealed && hasPeek ? previews : null, counting,
+                hovered, peek, counting,
                 arcCapture: h => _arcNode = h, spotlightCenter: Prop<Point2>.FromSignal(_spotlightCenter),
                 pointerMove: PointerMove, pointerExit: HoverEnd, drag: _drag);
         }

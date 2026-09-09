@@ -129,11 +129,11 @@ public class RecentsViewTests
     }
 
     [Fact]
-    public void Matches_KindArtistToken_IsDecidedFromTheHydrationUri_NotContentType()
+    public void Matches_KindArtistToken_IsDecidedFromTheTargetUri_NotContentType()
     {
         var artistGroup = Group("a", "spotify:artist:1", contentType: null);
         var musicPlaylist = Group("b", "spotify:playlist:2");
-        // A headless header (no uri of its own) resolves "kind:artist" the same way HydrationUri does — from the
+        // A headless header (no uri of its own) resolves "kind:artist" the same way TargetUri does — from the
         // first decoded child, exactly like a header with no uri resolves ITS EntityKind at grouping time.
         var headlessArtist = new RecentsRow(RecentsRowKind.Group, "c", "", null, null, null, null, 2, 1,
             RecentsEntityKind.Artist, RecentsReason.Played, null, ["spotify:artist:9"]);
@@ -490,84 +490,22 @@ public class RecentsViewTests
     // ── hydration targets ─────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void HydrationUri_PrefersTheContextUri_ThenTheFirstChild_ThenTheRowsOwnUri()
+    public void TargetUri_PrefersTheContextUri_ThenTheFirstChild_ThenTheRowsOwnUri()
     {
-        Assert.Equal("spotify:playlist:1", RecentsView.HydrationUri(Group("a", "spotify:playlist:1")));
+        Assert.Equal("spotify:playlist:1", RecentsView.TargetUri(Group("a", "spotify:playlist:1")));
 
         // A single-context group header carries no uri of its own — those rows render from group_metadata's children.
         var headless = new RecentsRow(RecentsRowKind.Group, "b", "", null, null, null, null, 3, 1,
             RecentsEntityKind.Track, RecentsReason.Played, "music", ["", "spotify:track:9", "spotify:track:8"]);
-        Assert.Equal("spotify:track:9", RecentsView.HydrationUri(headless));
+        Assert.Equal("spotify:track:9", RecentsView.TargetUri(headless));
 
         var single = new RecentsRow(RecentsRowKind.Single, "c", "spotify:track:7", null, null, null, null, 0, 1,
             RecentsEntityKind.Track);
-        Assert.Equal("spotify:track:7", RecentsView.HydrationUri(single));
+        Assert.Equal("spotify:track:7", RecentsView.TargetUri(single));
 
         var nothing = new RecentsRow(RecentsRowKind.Group, "d", "", null, null, null, null, 0, 1,
             RecentsEntityKind.Unknown);
-        Assert.Null(RecentsView.HydrationUri(nothing));
-    }
-
-    [Fact]
-    public void CollectRange_TakesOnlyTheRealizedWindow_WithAnExclusiveEnd()
-    {
-        var rows = new RecentsRow[6];
-        for (int i = 0; i < rows.Length; i++) rows[i] = Group("id" + i, "spotify:playlist:" + i);
-        int[] map = RecentsView.Filter(rows, null);
-
-        var into = new List<string>();
-        RecentsView.CollectRange(rows, map, 1, 4, static _ => true, into);
-        Assert.Equal(["spotify:playlist:1", "spotify:playlist:2", "spotify:playlist:3"], into);
-    }
-
-    [Fact]
-    public void CollectRange_RequestsMissesOnly_AndCollapsesTheRepeatedUrisARecentsListIsFullOf()
-    {
-        // ~1,388 uris repeat across a real recents list: play one playlist on three days and it heads three groups.
-        RecentsRow[] rows =
-        [
-            Group("a", "spotify:playlist:1"),
-            Group("b", "spotify:playlist:1"),
-            Group("c", "spotify:album:2"),
-            Group("d", "spotify:playlist:3"),
-        ];
-        int[] map = RecentsView.Filter(rows, null);
-        var have = new HashSet<string> { "spotify:album:2" };
-
-        var into = new List<string>();
-        int added = RecentsView.CollectRange(rows, map, 0, 4, u => !have.Contains(u), into);
-        Assert.Equal(2, added);
-        Assert.Equal(["spotify:playlist:1", "spotify:playlist:3"], into);
-    }
-
-    [Fact]
-    public void CollectRange_ClampsAStaleRange_AndHonoursTheCap()
-    {
-        RecentsRow[] rows = [Group("a", "spotify:playlist:1"), Group("b", "spotify:playlist:2")];
-        int[] map = RecentsView.Filter(rows, null);
-
-        var into = new List<string>();
-        // A range from a list that has since shrunk must clamp, never throw.
-        Assert.Equal(2, RecentsView.CollectRange(rows, map, -5, 900, static _ => true, into));
-
-        into.Clear();
-        Assert.Equal(1, RecentsView.CollectRange(rows, map, 0, 2, static _ => true, into, cap: 1));
-        Assert.Equal(["spotify:playlist:1"], into);
-    }
-
-    [Fact]
-    public void CollectRange_FollowsTheFilterMap_NotTheRawRowOrder()
-    {
-        RecentsRow[] rows =
-        [
-            Group("a", "spotify:playlist:1"),
-            Group("b", "spotify:show:2", "podcasts"),
-            Group("c", "spotify:album:3"),
-        ];
-        int[] podcasts = RecentsView.Filter(rows, "podcasts");
-        var into = new List<string>();
-        RecentsView.CollectRange(rows, podcasts, 0, podcasts.Length, static _ => true, into);
-        Assert.Equal(["spotify:show:2"], into);
+        Assert.Null(RecentsView.TargetUri(nothing));
     }
 
     [Fact]

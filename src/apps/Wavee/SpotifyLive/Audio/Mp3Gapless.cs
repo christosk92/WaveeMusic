@@ -6,8 +6,9 @@ namespace Wavee.SpotifyLive.Audio;
 /// <summary>
 /// Xing/LAME gapless header probe for the MP3 decode edge (W2 gapless fix §3). LAME writes the encoder delay and end
 /// padding into the first (info) frame; without applying them the decoder emits ~576–1105 samples of priming silence at
-/// the start and up to a frame of pad at the end, which a butt-join then plays as audio. NLayer does not read the tag,
-/// so this probe does — header bytes only, no audio decode. It runs ONLY on a seekable stream (local file / buffered
+/// the start and up to a frame of pad at the end, which a butt-join then plays as audio. NLayer 3 reads valid LAME tags;
+/// this probe also recognizes other compatible writers and reports whether the decoder already owns the trim.
+/// It reads header bytes only, with no audio decode, and runs only on seekable streams (local file / buffered
 /// HTTP) and restores <see cref="Stream.Position"/>; a live forward-only stream skips the probe (GaplessInfo.None)
 /// rather than buffer an unbounded ID3v2 block. All values are SOURCE-rate samples; the decoder converts to mix frames.
 /// </summary>
@@ -19,7 +20,10 @@ internal static class Mp3GaplessProbe
 
     /// <summary>Parsed source-rate gapless values. <see cref="TotalSamples"/> is the LAME-accounted total
     /// (<c>frames × spf − delay − padding</c>), or −1 when the Xing frame count was absent.</summary>
-    public readonly record struct Result(int DelaySamples, int PaddingSamples, long TotalSamples);
+    public readonly record struct Result(int DelaySamples, int PaddingSamples, long TotalSamples)
+    {
+        public bool DecoderAppliesTrim { get; init; }
+    }
 
     /// <summary>Probe <paramref name="stream"/> for a Xing/Info + LAME tag. Returns false (and leaves the position
     /// untouched beyond a restore) when the stream is not seekable, carries no tag, or the tag fails sanity checks.</summary>
@@ -100,7 +104,11 @@ internal static class Mp3GaplessProbe
         if (delay > 4096 || padding > 4608) return false;          // outside any real encoder's range → distrust the block
 
         long total = frames > 0 ? frames * samplesPerFrame - delay - padding : -1;
-        result = new Result(delay, padding, total > 0 ? total : -1);
+        result = new Result(delay, padding, total > 0 ? total : -1)
+        {
+            // NLayer 3 reads valid LAME headers itself. Other Xing-compatible writers still need app trim.
+            DecoderAppliesTrim = h.Slice(cursor, 4).SequenceEqual("LAME"u8) && (h[cursor + 9] & 0xF0) <= 0x10
+        };
         return true;
     }
 

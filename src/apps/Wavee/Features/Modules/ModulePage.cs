@@ -573,8 +573,10 @@ sealed class ModulePage : Component
 
         budget -= rows.Count;
         if (rows.Count == 0) return null;
-        return Section(key, section.Title, Embed.Comp(() => new RampedRows(rows.ToArray()))
-            with { Key = key + ":rows" });
+        return Section(key, section.Title, new BoxEl
+        {
+            Key = key + ":rows", Direction = 1, Gap = 2f, MinWidth = 0f, Children = rows.ToArray(),
+        });
     }
 
     // cards — the shared shelf card, wrapped rather than virtualized: the document is budget-capped, so the row count
@@ -664,40 +666,6 @@ sealed class ModulePage : Component
     }
 
     static Image? ImageOf(string? url) => url is { Length: > 0 } ? new Image(url) : null;
-
-    // ── the progressive reveal ──────────────────────────────────────────────────────────────────────────────────────
-    /// <summary>A row list that reveals in <see cref="DetailRevealRamp.Chunk"/>-sized slices over a few frames rather
-    /// than mounting a hundred rows in one. The ramp math is the pure, unit-tested <see cref="DetailRevealRamp"/>; the
-    /// clock is mounted only while it runs, so the frame loop quiesces the moment the list is whole.</summary>
-    sealed class RampedRows : Component
-    {
-        readonly Element[] _rows;
-        public RampedRows(Element[] rows) => _rows = rows;
-
-        public override Element Render()
-        {
-            // A short list is never worth a ramp: it costs a frame of clock to save nothing.
-            if (_rows.Length <= DetailRevealRamp.Chunk)
-                return new BoxEl { Direction = 1, Gap = 2f, MinWidth = 0f, Children = _rows };
-
-            var reveal = UseSignal(DetailRevealRamp.Chunk);
-            int shown = Math.Min(_rows.Length, reveal.Value == DetailRevealRamp.Done ? _rows.Length : reveal.Value);
-            var slice = new Element[shown];
-            Array.Copy(_rows, slice, shown);
-
-            Element clock = new BoxEl
-            {
-                HitTestVisible = false, Width = 0f, Height = 0f,
-                Children = [Flow.Show(() => reveal.Value != DetailRevealRamp.Done,
-                    Embed.Comp(() => new TickerClock { OnFrame = _ => reveal.Value = DetailRevealRamp.Next(reveal.Peek(), _rows.Length) }))],
-            };
-            return new BoxEl
-            {
-                Direction = 1, Gap = 2f, MinWidth = 0f,
-                Children = [new BoxEl { Direction = 1, Gap = 2f, MinWidth = 0f, Children = slice }, clock],
-            };
-        }
-    }
 
     // ── the subtitle link ───────────────────────────────────────────────────────────────────────────────────────────
     /// <summary>The hero's subtitle: the player bar's now-playing meta-link grammar (hover recolours THIS word, not the

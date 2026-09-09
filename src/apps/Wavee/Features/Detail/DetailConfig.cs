@@ -268,13 +268,6 @@ internal static class DetailFormat
         return h >= 1 ? Strings.Detail.DurationHrMin(h, m) : Strings.Detail.DurationMin(Math.Max(1, m));
     }
 
-    public static long TotalMs(IReadOnlyList<Track> tracks)
-    {
-        long ms = 0;
-        for (int i = 0; i < tracks.Count; i++) ms += tracks[i].DurationMs;
-        return ms;
-    }
-
     /// <summary>The Date-added column label: relative for the last week ("Today" / "3 days ago"), else an absolute
     /// date — same calendar year omits the year ("MMM d") so the narrowed Date track stays readable.</summary>
     public static string DateAddedLabel(DateTimeOffset? at)

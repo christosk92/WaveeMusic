@@ -8,6 +8,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -161,13 +162,13 @@ sealed class LikedCoverStyleFlyout : Component
     public override Element Render()
     {
         var svc = UseContext(Services.Slot);
-        var store = UseContext(LibraryStore.Slot);
 
-        // E4: the picker is the SECOND thing that charges the liked-list warm (the first is a non-Stock cover). A user
-        // who opened this flyout has asked to see their likes arranged nine ways; a user who never opens it, and never
-        // leaves Stock, still pays nothing. Idempotent and asynchronous — a guarded one-shot, not a write during render.
-        store?.EnsureLiked();
-        var tracks = store?.Liked.Value.Value ?? (IReadOnlyList<Track>)Array.Empty<Track>();
+
+        // Visible cover styles demand only the newest rows needed to compose their artwork.
+        var likes = QueryHooks.Use<IReadOnlyList<Track>>(Context, static (page, value) => page.SetReady(value), svc?.Queries,
+            svc is not null ? new LikedSongsQuery(svc.CatalogScope) : null, Array.Empty<Track>(),
+            new QueryDemand(true, QueryPriority.Visible, []));
+        var tracks = likes.Loadable.Value.Value;
         var tiles = LikedCoverRules.Tiles(tracks);
         var cells = tiles as string[] ?? ToArray(tiles);
         // The content key the treatment leaves compare on (an array compares by reference — see LikedCoverArt).

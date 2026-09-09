@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Core;
@@ -61,6 +62,10 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     // "transfer to this computer" must land on the audibly-local playback, not the phone that hasn't heard the
     // transfer request. Cleared the instant a fold does name us active.
     const long PendingOwnershipWindowMs = 5000;
+    // Finding #9 (library-v3-1): the remote device may clamp or ignore a seek_to target outright — the cluster never
+    // reports a rejection, it just settles somewhere else. Give it this long to catch up to the exact target before
+    // the seek bar settles at wherever the device actually landed instead of freezing at Accepted forever.
+    const long RemoteSeekSettleTimeoutMs = 2000;
 
     readonly string _ourDeviceId;
     readonly Func<long> _now;
@@ -73,15 +78,11 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
 
     // ── the slab (mutated in place under _gate; coarse Changes fired outside) ─────────────────────────────────────────
     Track? _track;
-    // Live enrichment: the cluster's player_state metadata is often THIN (title + album only, no artist name, no album
-    // art). It is raised to the playable's Open rung through THE façade and re-read from the store — the same call any
-    // page open makes, so a track the user just opened is already there and this costs nothing. The bespoke
-    // TrackResolver Func (and its own divergent "is it thin?" predicate) are gone: HydrationLevels.Of IS the predicate,
-    // and the ledger's Exhausted seal is what stops a genuinely thin row re-firing every heartbeat (design §1.5).
-    readonly IEntityHydrator _hydrator;
-    readonly IStore _store;
-    string? _resolvingUri;   // de-dupe: at most one in-flight resolve per uri (guarded by _gate)
-    string? _warmedUri;      // de-dupe: the NowPlaying trait warm fires once per uri (guarded by _gate)
+    readonly PlaybackQueueProjection _catalog;
+    readonly long _queueOwner;
+    readonly IDisposable _catalogSubscription;
+    QueueItemId _currentOccurrence;
+    public PlaybackQueueProjection QueueProjection => _catalog;
     string? _contextUri;
     long _localRevision;     // the session's monotonic revision (from the last ApplyLocalSnapshot) — for diagnostics / UI keying
     // Viewer-row ids live in a DISJOINT high range (ViewerIdBase+seq) so they can NEVER collide with the local session's
@@ -89,7 +90,7 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     // session after a device-role flip finds no match (safe no-op) instead of hitting an unrelated track.
     const ulong ViewerIdBase = 1UL << 62;
     int _viewerIdSeq;        // mints per-row ids for the viewer queue so a viewer row-click can be targeted (F5)
-    readonly Dictionary<ulong, QueueEntry> _viewerRows = new();
+    readonly Dictionary<ulong, QueueOccurrence> _viewerRows = new();
     bool _hasLocalContext;
     IReadOnlyDictionary<string, string> _contextMetadata = new Dictionary<string, string>();
     string _activeDeviceId = "";
@@ -107,6 +108,13 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     // overridden Playing edge leaves the player bar stuck (position keeps flowing, play-state doesn't). See OnHostSignal.
     bool _lastPubPlaying, _lastPubBuffering;
     PlaybackRecoveryKind _recoveryKind;
+    PlaybackTransportState _transport;
+    bool _transportManaged;
+    long _transportGeneration;
+    PlaybackSeekState? _remoteSeek;
+    string? _remoteSeekTrack;
+    string? _remoteSeekDevice;
+    long _remoteSeekIssuedWall;   // Finding #9: when the remote seek was accepted, for RemoteSeekSettleTimeoutMs below
     public bool IsPrivateSession { get; set; }
 
     RepeatMode _repeat;
@@ -148,18 +156,12 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     // Set by NoteLocalPlaybackStarted; long.MinValue = no pending window. See PendingOwnershipWindowMs.
     long _localOwnershipPendingWall = long.MinValue;
 
-    /// <param name="hydrator">THE metadata façade. REQUIRED and positional (wiring-discipline: no nullable seams, no
-    /// defaulted ones either). A default was worse than a null check: "no backend" is a real, nameable configuration —
-    /// <see cref="NotOwnedEntityHydrator.Instance"/> — and defaulting to it meant a half-wired composition root that
-    /// simply forgot to pass the live façade compiled, ran, and silently never upgraded a thin now-playing row. Passing
-    /// it is now the only way to build one, so "nothing to upgrade" is always something a call site CHOSE.</param>
-    /// <param name="store">Where the upgraded row is READ BACK from (the hydrator writes the store, never returns rows).
-    /// Same rule: a no-backend caller passes <c>new InMemoryStore()</c> and says so.</param>
-    public NowPlayingProjection(string ourDeviceId, IEntityHydrator hydrator, IStore store,
+    public NowPlayingProjection(string ourDeviceId, PlaybackQueueProjection catalog,
         Func<long>? clock = null, Func<long>? serverNowUnixMs = null, double initialVolume01 = 0.7)
     {
-        _hydrator = hydrator ?? throw new ArgumentNullException(nameof(hydrator));
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        _queueOwner = catalog.ActivateOwner();
+        _catalogSubscription = catalog.CatalogChanges.Subscribe(Observers.From<Wavee.Core.Catalog.CatalogChangeSet>(_ => RefreshCatalog()));
         _ourDeviceId = ourDeviceId;
         _volume = Math.Clamp(initialVolume01, 0, 1);   // the announce + local host reconcile follow this (remember-volume seed)
         _now = clock ?? (() => Environment.TickCount64);
@@ -201,7 +203,13 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     /// <summary>Resolve a viewer-queue row by the id minted in <see cref="MapQueue"/> — the viewer path of a queue-row click
     /// (the controller forwards next_track for the row). Best-effort: the id is valid against the most-recent cluster push.</summary>
     public bool TryGetViewerRow(QueueItemId id, out QueueEntry row)
-    { lock (_gate) return _viewerRows.TryGetValue(id.Value, out row!); }
+    {
+        lock (_gate)
+        {
+            if (_viewerRows.TryGetValue(id.Value, out var occurrence)) { row = _catalog.Materialize(occurrence); return true; }
+            row = null!; return false;
+        }
+    }
 
     /// <summary>The controller calls this the instant it issues a local optimistic command, so a stale cluster echo
     /// arriving just after does not revert the optimistic play-state.</summary>
@@ -229,7 +237,12 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     // ── IPlaybackState ────────────────────────────────────────────────────────────────────────────────────────────────
     public Track? CurrentTrack { get { lock (_gate) return TrackWithOverridesLocked(); } }
     public string? ContextUri { get { lock (_gate) return _contextUri; } }
-    public bool IsPlaying { get { lock (_gate) return _isPlaying; } }
+    public PlaybackTransportState Transport { get { lock (_gate) return _transportManaged ? _transport
+        : new(_isPlaying, _remoteSeek is { Status: PlaybackOperationStatus.Accepted } ? PlaybackPhase.Seeking
+            : _isPlaying ? (_isBuffering ? PlaybackPhase.Buffering : PlaybackPhase.Playing)
+            : (_track is null ? PlaybackPhase.Idle : PlaybackPhase.Paused), _isPlaying && !_isBuffering, _remoteSeek); } }
+    public bool IsPlaying { get { lock (_gate) return _transportManaged ? _transport.OutputAdvancing : _isPlaying; } }
+    public bool IsLoading { get { lock (_gate) return _transportManaged && _transport.PlayWhenReady && _transport.Phase == PlaybackPhase.Resolving; } }
     // Prebuffering (playing the clear head while key+body resolve) reads as "buffering" to the UI so the player-bar's
     // indeterminate edge shows during the instant-start window without a new interface member.
     public bool IsBuffering { get { lock (_gate) return _isBuffering || _isPrebuffering; } }
@@ -290,6 +303,8 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     {
         long dur = EffectiveDurationLocked();   // a live broadcast has no ceiling to clamp the playhead against
         long cap = dur <= 0 ? long.MaxValue : dur;
+        if (_transportManaged && _transport.PositionUpperBoundMs is { } submitted)
+            cap = Math.Min(cap, Math.Max(0, submitted));
         // The paused/buffering branch used to return _posMs RAW — no clamp at all, not even the [0, duration] one the
         // playing branch below already had. _posMs is folded from several places (a remote cluster snapshot aged
         // forward from ITS OWN timestamp, a host signal, a restored launch snapshot) and none of them is guaranteed to
@@ -298,7 +313,7 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
         // reached the player bar verbatim: a 2:54 track paused at "35:32 / −0:00". Clamping on EVERY read, playing or
         // not, means the bar can never show a position outside the track's own length regardless of how _posMs got
         // corrupted upstream.
-        if (!_isPlaying || _isBuffering || _isPrebuffering) return Math.Clamp(_posMs, 0, cap);
+        if ((_transportManaged ? !_transport.OutputAdvancing : !_isPlaying) || _isBuffering || _isPrebuffering) return Math.Clamp(_posMs, 0, cap);
         return Math.Clamp(_posMs + (long)((_now() - _posAnchorWall) * _speed), 0, cap);
     }
 
@@ -421,7 +436,7 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     /// mid-stream, or a module's <c>playback/metadata</c>. Same scoping rules as the duration override — one uri,
     /// dropped at the next track change — and folded into <see cref="CurrentTrack"/> on read rather than written into
     /// the store, because it is a fact about the BROADCAST, not about a catalogue entity (the store has no row for it,
-    /// which is also why <c>MaybeEnrichCurrent</c> can never clobber it).</summary>
+    /// which is also why catalog changes cannot clobber it).</summary>
     /// <param name="playableUri">The playable the correction is about; null/empty clears it.</param>
     /// <param name="title">The new title, or null to leave the catalogue title alone.</param>
     /// <param name="artist">The new artist/attribution line, or null to leave it alone.</param>
@@ -568,7 +583,8 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
         string? ctx, current;
         lock (_gate)
         {
-            _queue = queue;
+            _queue = queue.Select(_catalog.Materialize).ToArray();
+            SetCurrentOccurrenceLocked(_queue.FirstOrDefault(row => row.Bucket == QueueBucket.NowPlaying)?.ItemId ?? QueueItemId.None);
             ctx = _contextUri;
             current = _track?.Uri;
         }
@@ -590,15 +606,15 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     /// <summary>The ONE atomic local publish (F3/F4/F6, §5): while WE are the active device, the session's snapshot AND the
     /// playback event fold under a single lock with a single FireChanges — the track, the display-windowed queue, the
     /// context, the options and the revision can never self-contradict for a frame. <paramref name="ev"/> null = a pure
-    /// queue/options change (no play-state fold). Display windowing (history tail 16, next 50) lives here, never in the
-    /// session core. A DEBUG assert fires if the published NowPlaying row's uri diverges from the current track.</summary>
+    /// queue/options change (no play-state fold). The full ordered queue is exposed to query demand windows. A DEBUG assert fires if the published NowPlaying row's uri diverges from the current track.</summary>
     public void ApplyLocalSnapshot(QueueSnapshot snap, PlaybackEvent? ev = null)
     {
-        IReadOnlyList<QueueEntry> windowed;
+        snap = _catalog.Materialize(snap);
         lock (_gate)
         {
             string? prevUri = _track?.Uri;
-            _track = snap.Current?.Track ?? ev?.Track;   // the single source of "current" while we're active
+            SetCurrentOccurrenceLocked(snap.Current?.ItemId ?? QueueItemId.None);
+            _track = snap.Current?.Track ?? (ev?.Track is { } eventTrack ? _catalog.ReadTrack(eventTrack.Uri) : null);   // the single source of "current" while we're active
             FoldDurationLocked(prevUri, _track?.DurationMs ?? -1);
             SyncDurationOverrideLocked();   // a media-authoritative length outranks the catalog one (and survives republishes)
             SyncPlayableOverridesLocked();  // …and a track change ends the live / now-playing overrides
@@ -672,27 +688,22 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
             _shuffle = snap.Shuffle;
             _repeat = snap.Repeat;
             _localRevision = snap.Revision;
-            windowed = _queue = WindowQueue(snap);
+            _queue = FlattenQueue(snap);
             AssertCurrentMatchesNowPlaying();
         }
         FireChanges();
         RestartTicker();
-        MaybeEnrichCurrent();
     }
 
-    // Display windowing (§5): history tail (≤16), current, user queue (uncapped), upcoming (≤50). History is local-only
-    // and listed first so any consumer walking the flat queue sees buckets in panel order.
-    static IReadOnlyList<QueueEntry> WindowQueue(in QueueSnapshot s)
+    // Preserve the complete ordered session view. Query leases decide which rows need metadata.
+    static IReadOnlyList<QueueEntry> FlattenQueue(in QueueSnapshot s)
     {
-        const int NextCap = 50, HistoryTail = 16;
-        int nUp = Math.Min(s.Upcoming.Length, NextCap);
-        int firstH = Math.Max(0, s.History.Length - HistoryTail);
-        var list = new List<QueueEntry>((s.History.Length - firstH) + 1 + s.UserQueue.Length + nUp);
-        for (int h = firstH; h < s.History.Length; h++) list.Add(s.History[h]);
-        if (s.Current is { } cur) list.Add(cur);
-        for (int i = 0; i < s.UserQueue.Length; i++) list.Add(s.UserQueue[i]);
-        for (int i = 0; i < nUp; i++) list.Add(s.Upcoming[i]);
-        return list;
+        var rows = new List<QueueEntry>(s.History.Length + 1 + s.UserQueue.Length + s.Upcoming.Length);
+        rows.AddRange(s.History);
+        if (s.Current is { } current) rows.Add(current);
+        rows.AddRange(s.UserQueue);
+        rows.AddRange(s.Upcoming);
+        return rows;
     }
 
     // DEBUG tripwire (§5): the log contradiction (Queue[NowPlaying].uri ≠ CurrentTrack.uri) that motivated the rework is
@@ -736,6 +747,7 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     {
         PlaybackBucketDiagnostics.RemoteClusterIfChanged(ref _lastRemoteClusterDiagSig, "projection.cluster.raw", c);
         IReadOnlyList<QueueEntry>? viewerQueue = null;
+        bool observeInline;
         string? ctxForLog = null, currentForLog = null;
         lock (_gate)
         {
@@ -750,6 +762,7 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
                 return;
             }
             _lastFoldedServerTs = Math.Max(_lastFoldedServerTs, c.ServerTimestampMs);
+            observeInline = _lastCluster is not { } previous || !SameInlineMetadata(c, previous);
             _lastCluster = c;
             string? prevUri = _track?.Uri;   // the duration fold's reference — captured BEFORE the track merge below
             // ANOTHER DEVICE TOOK OVER ⇒ we know nothing about what is decoding. This clear is the load-bearing half of
@@ -789,16 +802,13 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
             bool localOwnsTrack = localSessionOwns;
             if (c.HasTrack && !suppressPlayState && !localOwnsTrack)
             {
-                var mapped = MapTrack(c.Track);
-                _track = _track is { } cur && cur.Uri == mapped.Uri
-                    ? StoreEntityMerge.Track(cur, mapped)
-                    : mapped;
+                _track = _catalog.ReadTrack(c.Track.Uri);
             }
             if (!localSessionOwns)
             {
                 _contextUri = c.ContextUri;
                 _hasLocalContext = false;
-                _contextMetadata = new Dictionary<string, string>();
+                if (_contextMetadata.Count > 0) _contextMetadata = new Dictionary<string, string>();
             }
             FoldDurationLocked(prevUri, c.DurationMs > 0 ? c.DurationMs : (c.HasTrack ? c.Track.DurationMs : -1));
             SyncDurationOverrideLocked();   // …unless the media reported this playable's real length (a video is its own edit)
@@ -810,6 +820,7 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
                 // "not playing" over media this machine is decoding right now (observed as put-state playing=False one
                 // announce-response after starting a module video).
                 bool active = !string.IsNullOrEmpty(c.ActiveDeviceId);
+                _transportManaged = false;
                 _isPlaying = active && c.IsPlaying && !c.IsPaused;
                 _isBuffering = c.IsBuffering;
             }
@@ -852,104 +863,47 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
             {
                 viewerQueue = MapQueue(c.NextTracks, c.PrevTracks, c.HasTrack ? c.Track : null);
                 _queue = viewerQueue;
+                SetCurrentOccurrenceLocked(viewerQueue.FirstOrDefault(row => row.Bucket == QueueBucket.NowPlaying)?.ItemId ?? QueueItemId.None);
+            }
+            if (_remoteSeek is { Status: PlaybackOperationStatus.Accepted } remoteSeek)
+            {
+                if (!string.Equals(_remoteSeekDevice, c.ActiveDeviceId, StringComparison.Ordinal)
+                    || !string.Equals(_remoteSeekTrack, _track?.Uri, StringComparison.Ordinal))
+                    _remoteSeek = remoteSeek with { Status = PlaybackOperationStatus.Superseded };
+                else if (!c.IsBuffering)
+                {
+                    // Finding #9: the device may clamp/ignore the target outright — settle on the first non-buffering
+                    // fold that either lands close enough OR has had a fair chance (RemoteSeekSettleTimeoutMs) to get
+                    // there, reporting wherever the device actually is rather than leaving the seek bar frozen at
+                    // Accepted (and the target) forever.
+                    bool closeEnough = Math.Abs(_posMs - remoteSeek.TargetMs) <= 500;
+                    bool settleTimedOut = _now() - _remoteSeekIssuedWall > RemoteSeekSettleTimeoutMs;
+                    if (closeEnough || settleTimedOut)
+                        _remoteSeek = remoteSeek with { Status = PlaybackOperationStatus.Applied, ActualPositionMs = _posMs };
+                }
             }
             ctxForLog = _contextUri;
             currentForLog = _track?.Uri;
             if (weActive) AssertCurrentMatchesNowPlaying();   // the tripwire runs on the active cluster path too (F4) — local owns _track, so it can't diverge
+        }
+        if (observeInline)
+        {
+            var seeds = new List<Track>();
+            if (c.HasTrack) seeds.Add(MapTrack(c.Track));
+            foreach (var row in c.NextTracks) if (row.Uri.Length > 0 && row.Uri != "spotify:delimiter") seeds.Add(MapTrack(row));
+            foreach (var row in c.PrevTracks ?? []) if (row.Uri.Length > 0 && row.Uri != "spotify:delimiter") seeds.Add(MapTrack(row));
+            _ = SeedInputAsync(seeds);
         }
         if (viewerQueue is not null)
             PlaybackBucketDiagnostics.QueueIfChanged(ref _lastViewerQueueDiagSig, "projection.viewer.mapped",
                 viewerQueue, ctxForLog, currentForLog);
         FireChanges();
         RestartTicker();
-        MaybeEnrichCurrent();   // the cluster track may be thin (no artist/art) → resolve + fold in the full metadata
     }
 
-    /// <summary>The now-playing row's own hydration: a cluster <c>player_state</c> is routinely THIN (no artist name,
-    /// no album art, sometimes an album uri with no name), and the bar cannot paint from it. ONE predicate decides —
-    /// <c>HydrationLevels.Of(track) &lt; Open</c>, the same rung every other surface uses — and at most one ask per uri
-    /// is in flight; the answer is applied only if that uri is STILL current (the user didn't skip on).</summary>
-    void MaybeEnrichCurrent()
-    {
-        string uri;
-        string? warm = null;
-        lock (_gate)
-        {
-            if (_track is not { } t) return;
-            // The now-playing VIDEO warm (design §3): the badge + the switch-to-video affordance need the kind-99
-            // association for the row that is playing, and that is true whether or not the row is thin — a fully
-            // hydrated track still has to be asked about its video exactly once. Separate from the ladder ask below,
-            // which returns early for anything already at Open.
-            if (t.Uri.Length > 0 && _warmedUri != t.Uri) { _warmedUri = warm = t.Uri; }
-            // Album identity is part of Open (Album.Name != ""), so the old extra "empty Album.Uri" term is subsumed
-            // EXCEPT for the uri itself, which Of() cannot see — a cluster row can carry a named album with no uri, and
-            // without it the player-bar title can never become an album hyperlink.
-            //
-            // An EPISODE is measured against the EPISODE rung, not the track one. Of(Track) demands named artists and an
-            // album URI; a podcast row has neither by construction (a podcast has a show, not artists, and the show uri
-            // is only there when the catalogue answered), so read through the track predicate a podcast is thin
-            // FOREVER. Every cluster push, local snapshot and playback event calls this, so "resolve once" became
-            // "resolve, and re-publish Changes, on every heartbeat" for the whole episode. These three terms are
-            // HydrationLevels.Of(Episode) spelled against the slab row, with the show name in the album slot — minus
-            // its duration term, deliberately: the fold below never writes DurationMs (the cluster's own length wins,
-            // and a user-attached media override outranks both), so a term the resolve cannot move would only put the
-            // loop back for a row the wire happened to send without one.
-            bool thin = EntityUri.KindOf(t.Uri) == EntityKind.Episode
-                ? HydrationLevels.TitleMissing(t.Title, t.Uri) || t.Album.Name.Length == 0
-                  || !ImageSource.IsUsable(t.Image)
-                : HydrationLevels.Of(t) < HydrationLevel.Open || string.IsNullOrEmpty(t.Album.Uri);
-            uri = !thin || t.Uri.Length == 0 || _resolvingUri == t.Uri ? "" : (_resolvingUri = t.Uri);
-        }
-        // Outside the lock: both of these start work synchronously up to their first await.
-        if (warm is not null) _ = _hydrator.EnsureTraitsAsync([warm], TraitSurface.NowPlaying);
-        if (uri.Length > 0) _ = ResolveAsync(uri);
-    }
-
-    async Task ResolveAsync(string uri)
-    {
-        Track? enriched = null;
-        try
-        {
-            // Priority 1: the user is LOOKING at this row, so it outranks every prefetch on the pump. The video warm
-            // that used to be a separate fire-and-forget service call is the NowPlaying trait surface now.
-            await _hydrator.EnsureAsync(uri, HydrationLevel.Open,
-                new HydrationOptions(Surface: TraitSurface.NowPlaying, Priority: 1)).ConfigureAwait(false);
-            enriched = _store.GetTrack(uri) ?? EpisodeAsTrack.From(_store.GetEpisode(uri));
-        }
-        catch { /* best-effort: the bar keeps the cluster snapshot */ }
-        bool changed = false;
-        lock (_gate)
-        {
-            if (_resolvingUri == uri) _resolvingUri = null;
-            if (enriched is { } e && _track is { } cur && cur.Uri == uri)
-            {
-                // Keep the cluster's title (+ duration/position state); fill artist + album + art from the resolved track.
-                var next = cur with
-                {
-                    Title = StoreEntityMerge.TitleMissing(cur.Title, cur.Uri) ? e.Title : cur.Title,
-                    Artists = e.Artists.Count > 0 ? e.Artists : cur.Artists,
-                    // NEVER trade a linked album ref for an unlinked one. The episode projection carries the show NAME
-                    // and, whenever the catalogue write did not carry the show's gid, no show uri — so taking it
-                    // wholesale erased the album/show link the cluster row already had, and the player-bar subtitle
-                    // stopped being clickable.
-                    Album = e.Album.Uri.Length == 0 && cur.Album.Uri.Length > 0
-                        ? e.Album with { Id = cur.Album.Id, Uri = cur.Album.Uri }
-                        : e.Album,
-                    Image = ImageSource.ChooseBetter(e.Image, cur.Image),
-                    Isrc = e.Isrc ?? cur.Isrc,   // carry the resolved ISRC onto the now-playing track (cluster track has none)
-                };
-                // Publish only a REAL change. A row the ladder cannot lift (an episode, a track the catalogue has no
-                // better answer for) resolves to exactly what is already on the slab, and firing Changes for it woke
-                // every player-bar/queue consumer on every cluster push for as long as it played.
-                if (next != cur) { _track = next; changed = true; SyncPlayableOverridesLocked(); }
-            }
-        }
-        if (changed) FireChanges();
-    }
-
-    // ── Local fold — when WE are the active device (Stage E controller + Stage H host) ───────────────────────────────
     public void OnEvent(in PlaybackEvent e)
     {
+        if (e.Track is { } seed) _ = SeedInputAsync([seed]);
         lock (_gate)
         {
             // Computed against _track BEFORE this event's own track fold below, and reused by the Paused/Ended/
@@ -961,7 +915,7 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
             if (e.Track is not null && !staleForCurrentTrack)
             {
                 string? prevUri = _track?.Uri;
-                _track = e.Track;
+                _track = _catalog.ReadTrack(e.Track.Uri);
                 // Local events are authoritative while we're the active device — fold the duration too. Without this,
                 // _durMs keeps the PREVIOUS track's length until a cluster echo arrives (never, when playing offline):
                 // the player-bar label shows the old duration AND the seek bar scales scrub fractions by the wrong
@@ -1012,7 +966,6 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
         }
         FireChanges();
         RestartTicker();
-        MaybeEnrichCurrent();
     }
 
     /// <summary>Retire a BUFFERING state that can no longer be cleared by the host that raised it. The controller swaps
@@ -1033,13 +986,71 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
         FireChanges();
     }
 
+    public void SetTransportIntent(PlaybackCommandId command, bool playWhenReady, PlaybackPhase phase,
+        PlaybackSeekRequest? seek = null)
+    {
+        lock (_gate)
+        {
+            if (command.ItemGeneration < _transportGeneration) return;
+            bool changedItem = command.ItemGeneration != _transportGeneration;
+            _transportGeneration = command.ItemGeneration;
+            _transportManaged = true;
+            _remoteSeek = null;
+            var pending = changedItem ? null : _transport.Seek;
+            if (seek is { } request)
+                pending = new PlaybackSeekState(command, request.PositionMs, null, PlaybackOperationStatus.Accepted);
+            bool terminal = phase is PlaybackPhase.Idle or PlaybackPhase.Ended or PlaybackPhase.Failed;
+            if (terminal) { _isPlaying = _isBuffering = _isPrebuffering = false; _recoveryKind = PlaybackRecoveryKind.None; }
+            _transport = new(playWhenReady, phase, !changedItem && !terminal && _transport.OutputAdvancing, pending)
+            {
+                ItemGeneration = command.ItemGeneration,
+                PositionUpperBoundMs = changedItem || seek is not null ? null : _transport.PositionUpperBoundMs
+            };
+        }
+        FireChanges();
+    }
+
+    public void BeginRemoteSeek(PlaybackCommandId id, PlaybackSeekRequest request, string targetDevice)
+    {
+        lock (_gate)
+        {
+            _remoteSeek = new(id, request.PositionMs, null, PlaybackOperationStatus.Accepted);
+            _remoteSeekTrack = _track?.Uri;
+            _remoteSeekDevice = targetDevice;
+            _remoteSeekIssuedWall = _now();   // Finding #9: starts the settle-timeout clock
+        }
+        FireChanges();
+    }
+
+    public void CompleteSeek(PlaybackCommandId id, PlaybackOperationStatus status, long? actualPositionMs = null)
+    {
+        lock (_gate)
+        {
+            if (_remoteSeek is { } remote && remote.Id == id)
+                _remoteSeek = remote with { Status = status, ActualPositionMs = actualPositionMs };
+            else
+            {
+                if (_transport.Seek is not { } seek || seek.Id != id) return;
+                _transport = _transport with { Seek = seek with { Status = status, ActualPositionMs = actualPositionMs } };
+            }
+            if (status == PlaybackOperationStatus.Applied && actualPositionMs is { } position)
+            { _posMs = position; _posAnchorWall = _now(); }
+        }
+        FireChanges();
+    }
+
     public void OnHostSignal(in AudioHostSignal s)
     {
-        bool structural = s.Kind != AudioHostSignalKind.PositionTick;
+        // Acceptance describes command ownership, not output readiness. In particular the host may already expose
+        // false play intent while the pause envelope is still draining submitted frames.
+        if (s.OperationStatus == PlaybackOperationStatus.Accepted) return;
+        bool structural = s.Kind != AudioHostSignalKind.PositionTick || s.OperationStatus is not null;
         bool stateFlipped;
         long clampedPos;
         lock (_gate)
         {
+            if (_transportManaged && s.Command.ItemGeneration != 0 && s.Command.ItemGeneration != _transportGeneration) return;
+            if (s.OperationStatus is not null && _transport.Seek is { } pendingSeek && s.Command.Sequence < pendingSeek.Id.Sequence) return;
             if (s.Kind == AudioHostSignalKind.Ended)
             {
                 _isPlaying = false;
@@ -1061,6 +1072,30 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
                 _isPrebuffering = s.IsPrebuffering;
                 _recoveryKind = s.RecoveryKind;
             }
+            if (_transportManaged)
+            {
+                if (s.Command.ItemGeneration != 0 && s.Command.ItemGeneration != _transportGeneration) return;
+                var pending = _transport.Seek;
+                if (pending is { } seek && seek.Id == s.Command && s.OperationStatus is { } status)
+                    pending = seek with { Status = status, ActualPositionMs = status == PlaybackOperationStatus.Applied ? s.PositionMs : null };
+                bool playIntent = _transport.PlayWhenReady;
+                var phase = s.Kind switch
+                {
+                    AudioHostSignalKind.Ended => PlaybackPhase.Ended,
+                    AudioHostSignalKind.Error => PlaybackPhase.Failed,
+                    AudioHostSignalKind.Recovering => PlaybackPhase.Recovering,
+                    _ when !playIntent && _transport.Phase is PlaybackPhase.Failed or PlaybackPhase.Ended => _transport.Phase,
+                    _ when pending is { Status: PlaybackOperationStatus.Accepted } => PlaybackPhase.Seeking,
+                    _ when !playIntent => s.IsPlaying ? PlaybackPhase.Pausing : PlaybackPhase.Paused,
+                    _ when s.IsPlaying => PlaybackPhase.Playing,
+                    _ => PlaybackPhase.Buffering
+                };
+                _transport = new(playIntent, phase, _isPlaying && !_isBuffering && phase is not (PlaybackPhase.Failed or PlaybackPhase.Ended), pending)
+                {
+                    ItemGeneration = _transportGeneration,
+                    PositionUpperBoundMs = s.PositionUpperBoundMs
+                };
+            }
             _speed = 1.0; _posMs = s.PositionMs; _posAnchorWall = _now();
             // Detect whether this signal changes the EFFECTIVE published play/buffering state. A PositionTick carries the
             // live IsPlaying/IsBuffering, so if the one-shot Playing edge was missed or overridden (e.g. a Connect-cluster
@@ -1080,7 +1115,86 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
         if (!structural) _positionTicks.OnNext(clampedPos);
     }
 
-    void FireChanges() { if (_disposed) return; _changes.OnNext(this); PropertyChanged?.Invoke(this, AllChanged); }
+    void FireChanges()
+    {
+        if (_disposed) return;
+        IReadOnlyList<QueueEntry> rows;
+        string? context;
+        QueueRuntimeOverride? runtime;
+        lock (_gate)
+        {
+            rows = _queue; context = _contextUri;
+            runtime = _currentOccurrence == QueueItemId.None || (!MetadataOverrideAppliesLocked() && !DurationOverrideAppliesLocked()) ? null : new QueueRuntimeOverride(_currentOccurrence,
+                MetadataOverrideAppliesLocked() ? _metaTitle : null,
+                MetadataOverrideAppliesLocked() ? _metaArtist : null,
+                DurationOverrideAppliesLocked() ? _durOverrideMs : null);
+        }
+        _catalog.Publish(_queueOwner, rows, context, runtime);
+        _changes.OnNext(this);
+        PropertyChanged?.Invoke(this, AllChanged);
+    }
+
+    void SetCurrentOccurrenceLocked(QueueItemId current)
+    {
+        if (current == _currentOccurrence) return;
+        if (_currentOccurrence != QueueItemId.None)
+        {
+            _durOverrideUri = null; _durOverrideMs = 0;
+            _metaUri = _metaTitle = _metaArtist = _liveUri = _liveWindowUri = null;
+            _liveWindow = default;
+        }
+        _currentOccurrence = current;
+    }
+
+    void RefreshCatalog()
+    {
+        if (_disposed || !_catalog.IsOwner(_queueOwner)) return;
+        bool changed = false;
+        lock (_gate)
+        {
+            if (_track is { } current)
+            {
+                var updated = _catalog.ReadTrack(current.Uri);
+                if (!ReferenceEquals(current, updated))
+                {
+                    if (_durMs == current.DurationMs) _durMs = updated.DurationMs;
+                    _track = updated; changed = true;
+                    SyncDurationOverrideLocked();
+                }
+            }
+            List<QueueEntry>? rows = null;
+            for (int i = 0; i < _queue.Count; i++)
+            {
+                var row = _queue[i];
+                var track = _catalog.ReadTrack(row.Track.Uri);
+                if (ReferenceEquals(track, row.Track)) continue;
+                (rows ??= new List<QueueEntry>(_queue))[i] = row with { Track = track };
+            }
+            if (rows is not null) { _queue = rows; changed = true; }
+            if (_durMs == 0 && _track is { DurationMs: > 0 } known) _durMs = known.DurationMs;
+        }
+        if (changed) FireChanges();
+    }
+
+    public Task ObserveTracksAsync(IReadOnlyList<Track> tracks, CancellationToken ct = default)
+    {
+        if (_disposed || !_catalog.IsOwner(_queueOwner)) throw new OperationCanceledException("The playback owner changed.");
+        return _catalog.SeedTracksAsync(tracks, _catalog.Epoch, ct);
+    }
+
+    public Task ObserveOwnerTrackAsync(Track track, CancellationToken ct = default)
+    {
+        if (_disposed || !_catalog.IsOwner(_queueOwner)) throw new OperationCanceledException("The playback owner changed.");
+        return _catalog.ObserveOwnerTrackAsync(track, _catalog.Epoch, ct);
+    }
+
+    async Task SeedInputAsync(IReadOnlyList<Track> tracks)
+    {
+        if (_disposed || !_catalog.IsOwner(_queueOwner)) return;
+        try { await ObserveTracksAsync(tracks).ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { System.Diagnostics.Trace.TraceError("Playback catalog observation failed: " + error.Message); }
+    }
 
     // A 1 Hz tick re-anchors the UI position WHILE PLAYING only (zero ticks when paused — the guardrail).
     void RestartTicker()
@@ -1096,18 +1210,35 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
         if (playing) _positionTicks.OnNext(pos);
     }
 
+    static bool SameInlineMetadata(in ClusterDelta left, in ClusterDelta right)
+        => left.HasTrack == right.HasTrack && (!left.HasTrack || SameInlineTrack(left.Track, right.Track))
+            && SameInlineRows(left.NextTracks, right.NextTracks) && SameInlineRows(left.PrevTracks, right.PrevTracks);
+    static bool SameInlineRows(IReadOnlyList<RemoteTrack>? left, IReadOnlyList<RemoteTrack>? right)
+    {
+        if (ReferenceEquals(left, right)) return true;
+        if ((left?.Count ?? 0) != (right?.Count ?? 0)) return false;
+        for (int i = 0; i < (left?.Count ?? 0); i++) if (!SameInlineTrack(left![i], right![i])) return false;
+        return true;
+    }
+    static bool SameInlineTrack(in RemoteTrack left, in RemoteTrack right)
+        => left.Uri == right.Uri && left.Title == right.Title && left.ArtistName == right.ArtistName && left.ArtistUri == right.ArtistUri
+            && left.AlbumName == right.AlbumName && left.AlbumUri == right.AlbumUri && left.ImageUrl == right.ImageUrl && left.DurationMs == right.DurationMs
+            && InlineExplicit(left) == InlineExplicit(right);
+    static bool InlineExplicit(in RemoteTrack track)
+        => track.Metadata is { } metadata && metadata.TryGetValue("is_explicit", out var value) && value == "true";
+
     static Track MapTrack(in RemoteTrack r)
     {
         // An ArtistRef with BOTH name and uri empty isn't an artist — it's the absence of one. Cluster next_tracks
         // routinely carry no artist at all, and allocating one anyway made the classic queue row paint
         // "" + "  ·  " + "": a stray dot with nothing on either side (visible in screenshots). An empty Artists list
-        // instead lets HydrationLevels.TitleMissing (Wavee.Core/Hydration/HydrationLevel.cs) skeletonise the row.
+        // instead preserves unknown artist identity for the catalog query.
         var artists = r.ArtistName.Length == 0 && r.ArtistUri.Length == 0
             ? Array.Empty<ArtistRef>()
             : new ArtistRef[] { new(EntityUri.IdOf(r.ArtistUri), r.ArtistUri, r.ArtistName) };
         var album = new AlbumRef(EntityUri.IdOf(r.AlbumUri), r.AlbumUri, r.AlbumName);
         Image? img = string.IsNullOrEmpty(r.ImageUrl) ? null : new Image(r.ImageUrl!);
-        return new Track(EntityUri.IdOf(r.Uri), r.Uri, r.Title, artists, album, r.DurationMs, HasVideoMetadata(r), img);
+        return new Track(EntityUri.IdOf(r.Uri), r.Uri, r.Title, artists, album, r.DurationMs, InlineExplicit(r), img);
     }
 
     // Viewer-mode queue: the active device's next_tracks split by provider, PRECEDED by its prev_tracks as a History tail
@@ -1115,49 +1246,69 @@ public sealed class NowPlayingProjection : IPlaybackProjection, IPlaybackState, 
     // them was the same bug as ReplaceFromCluster's cleared History).
     IReadOnlyList<QueueEntry> MapQueue(IReadOnlyList<RemoteTrack> next, IReadOnlyList<RemoteTrack>? prev, RemoteTrack? current = null)
     {
-        const int HistoryTail = 16;   // mirrors WindowQueue's display cap
+        // Repeated position/volume clusters preserve occurrence rows and their current catalog joins.
+        if (MatchesViewerQueue(next, prev, current)) return _queue;
+        var available = _viewerRows.Values.GroupBy(row => (row.Uid, row.EntityUri))
+            .ToDictionary(group => group.Key, group => new Queue<QueueOccurrence>(group));
         _viewerRows.Clear();
+        QueueEntry Entry(in RemoteTrack remote, QueueBucket bucket, string provider)
+        {
+            QueueItemId id = available.TryGetValue((remote.Uid, remote.Uri), out var prior) && prior.TryDequeue(out var matched)
+                ? matched.ItemId : new QueueItemId(ViewerIdBase + (ulong)(++_viewerIdSeq));
+            var row = new QueueEntry(id, "i" + id.Value, _catalog.ReadTrack(remote.Uri), bucket,
+                QueueProviderExtensions.FromWire(provider), provider == "autoplay", remote.Uid, remote.Metadata);
+            _viewerRows[id.Value] = new QueueOccurrence(id, remote.Uid, remote.Uri, bucket, row.Provider,
+                QueueRowKind.Playable, null, remote.Metadata);
+            return row;
+        }
         int prevCount = prev?.Count ?? 0;
         if (next.Count == 0 && prevCount == 0 && current is null) return Array.Empty<QueueEntry>();
-        var list = new List<QueueEntry>(Math.Min(prevCount, HistoryTail) + 1 + next.Count);
+        var list = new List<QueueEntry>(prevCount + 1 + next.Count);
         if (prev is not null)
         {
-            for (int i = Math.Max(0, prevCount - HistoryTail); i < prevCount; i++)
+            for (int i = 0; i < prevCount; i++)
             {
                 if (string.IsNullOrEmpty(prev[i].Uri) || prev[i].Uri == "spotify:delimiter") continue;
                 string provider = string.IsNullOrEmpty(prev[i].Provider) ? "context" : prev[i].Provider;
-                list.Add(ViewerEntry(prev[i], QueueBucket.History, provider));
+                list.Add(Entry(prev[i], QueueBucket.History, provider));
             }
         }
         if (current is { Uri: { Length: > 0 } uri } cur && uri != "spotify:delimiter")
         {
             string provider = string.IsNullOrEmpty(cur.Provider) ? "context" : cur.Provider;
-            list.Add(ViewerEntry(cur, QueueBucket.NowPlaying, provider));
+            list.Add(Entry(cur, QueueBucket.NowPlaying, provider));
         }
         for (int i = 0; i < next.Count; i++)
         {
             if (next[i].Uri == "spotify:delimiter") continue;   // queue/context boundary marker
             string provider = string.IsNullOrEmpty(next[i].Provider) ? "context" : next[i].Provider;
-            list.Add(ViewerEntry(next[i], provider == "queue" ? QueueBucket.UserQueue : QueueBucket.NextUp, provider));
+            list.Add(Entry(next[i], provider == "queue" ? QueueBucket.UserQueue : QueueBucket.NextUp, provider));
         }
         return list;
     }
 
-    QueueEntry ViewerEntry(in RemoteTrack r, QueueBucket bucket, string provider)
+    bool MatchesViewerQueue(IReadOnlyList<RemoteTrack> next, IReadOnlyList<RemoteTrack>? prev, RemoteTrack? current)
     {
-        var id = new QueueItemId(ViewerIdBase + (ulong)(++_viewerIdSeq));
-        var entry = new QueueEntry(id, "i" + id.Value, MapTrack(r), bucket,
-            QueueProviderExtensions.FromWire(provider), provider == "autoplay", r.Uid, r.Metadata);
-        _viewerRows[id.Value] = entry;
-        return entry;
+        int at = 0;
+        bool Match(in RemoteTrack remote, QueueBucket bucket)
+        {
+            if (string.IsNullOrEmpty(remote.Uri) || remote.Uri == "spotify:delimiter") return true;
+            if (at >= _queue.Count) return false;
+            var row = _queue[at++];
+            var provider = string.IsNullOrEmpty(remote.Provider) ? "context" : remote.Provider;
+            return _viewerRows.ContainsKey(row.ItemId.Value) && row.Track.Uri == remote.Uri && row.Uid == remote.Uid
+                && row.Bucket == bucket && row.Provider == QueueProviderExtensions.FromWire(provider)
+                && ReferenceEquals(row.Metadata, remote.Metadata);
+        }
+        if (prev is not null)
+            for (int i = 0; i < prev.Count; i++) if (!Match(prev[i], QueueBucket.History)) return false;
+        if (current is { } now && !Match(now, QueueBucket.NowPlaying)) return false;
+        for (int i = 0; i < next.Count; i++)
+            if (!Match(next[i], next[i].Provider == "queue" ? QueueBucket.UserQueue : QueueBucket.NextUp)) return false;
+        return at == _queue.Count;
     }
 
-    // Shared with the inbound-transfer video restore (PlaybackController.HandleInboundTransferAsync) — see
-    // MediaSwitchLogic.HasVideoMetadata for the one key list both readers check.
-    static bool HasVideoMetadata(in RemoteTrack r) => MediaSwitchLogic.HasVideoMetadata(r.Metadata);
-
-
-    public void Dispose() { _disposed = true; _ticker?.Dispose(); _ticker = null; }
+    public void Dispose() { _disposed = true; _catalogSubscription.Dispose(); _catalog.ReleaseOwner(_queueOwner); _ticker?.Dispose(); _ticker = null; }
 }
 
 // IConnectDevices backed by the cluster device roster. TransferAsync is wired to the controller in Stage E.

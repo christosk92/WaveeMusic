@@ -9,6 +9,7 @@ namespace Wavee.Core;
 /// degrade to empty so the app still runs (docs/plans/wavee/architecture.md §4.4).</summary>
 public sealed class SpotifyExport
 {
+    readonly Dictionary<string, Track> _tracks = new(StringComparer.Ordinal);
     readonly List<PlaylistSummary> _summaries = new();
     readonly Dictionary<string, Playlist> _headers = new();        // uri → header (Tracks empty)
     readonly Dictionary<string, Playlist> _fullPlaylists = new();  // uri → header + REAL tracks (the Iced detail)
@@ -23,6 +24,8 @@ public sealed class SpotifyExport
     public bool TryGetHeader(string uri, out Playlist p) => _headers.TryGetValue(uri, out p!);
     public bool TryGetCard(string uri, out HomeCard c) => _cards.TryGetValue(uri, out c!);
     public bool TryGetArtist(string uri, out Artist a) => _artists.TryGetValue(uri, out a!);
+    public bool TryGetTrack(string uri, out Track? track)
+        => _tracks.TryGetValue(uri, out track);
     public IReadOnlyCollection<Artist> Artists => _artists.Values;
 
     public static SpotifyExport Load(string? dir = null)
@@ -34,6 +37,9 @@ public sealed class SpotifyExport
         LoadIced(Path.Combine(dir, "icedamericano.json"));
         LoadHome(Path.Combine(dir, "home.json"));
         LoadArtists(dir);
+        foreach (var track in _fullPlaylists.Values.SelectMany(playlist => playlist.Tracks ?? [])
+            .Concat(_artists.Values.SelectMany(artist => artist.TopTracks ?? [])))
+            _tracks.TryAdd(track.Uri, track);
     }
 
     // Every artist-*.json holds a full `data.artistUnion` overview (the magazine page), keyed by the artist uri.

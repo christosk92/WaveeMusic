@@ -1,5 +1,6 @@
 using System;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -15,6 +16,22 @@ public class TrackFilterModelTests
             [new ArtistRef("a", "spotify:artist:a", artist)],
             new AlbumRef("b", "spotify:album:b", album),
             duration, explicitTrack, null, added, Origin: origin, Availability: availability);
+
+    [Fact]
+    public void TextQueryWaitsForItsReferencedNamesWithoutBlockingTitleOnlySearch()
+    {
+        var song = Song();
+        var known = new System.Collections.Generic.HashSet<(string, FacetKind)> { (song.Uri, FacetKind.TrackIdentity) };
+        bool Has(string uri, FacetKind facet) => known.Contains((uri, facet));
+        Assert.True(TrackFilterModel.QueryFieldsKnown(song, TrackSearchScope.Title, Has));
+        Assert.False(TrackFilterModel.QueryFieldsKnown(song, TrackSearchScope.Artist, Has));
+        Assert.False(TrackFilterModel.QueryFieldsKnown(song, TrackSearchScope.Album, Has));
+        known.Add((song.Artists[0].Uri, FacetKind.ArtistIdentity));
+        Assert.True(TrackFilterModel.QueryFieldsKnown(song, TrackSearchScope.Artist, Has));
+        Assert.False(TrackFilterModel.QueryFieldsKnown(song, TrackSearchScope.Everything, Has));
+        known.Add((song.Album.Uri, FacetKind.AlbumIdentity));
+        Assert.True(TrackFilterModel.QueryFieldsKnown(song, TrackSearchScope.Everything, Has));
+    }
 
     [Fact]
     public void SearchScope_UsesOnlySelectedMetadata()

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Signals;
+using Wavee;
 using Wavee.Core;
 
 namespace Wavee.SpotifyLive;
@@ -126,8 +127,7 @@ public sealed class CoverColorPlane
 
     public static string DefaultPath()
     {
-        try { return Path.Combine(FluentGpu.WindowsApi.Storage.AppDataStore.ForUnpackaged("Wavee", "Wavee").CacheFolder, "cover-colors.json"); }
-        catch { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "Cache", "cover-colors.json"); }
+        return UnpackagedAppDataRoot.UnderCurrent("Cache", "cover-colors.json");
     }
 
     // ── keys ────────────────────────────────────────────────────────────────────────────────────────────────────

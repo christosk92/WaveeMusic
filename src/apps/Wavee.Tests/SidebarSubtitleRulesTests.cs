@@ -177,6 +177,44 @@ public sealed class SidebarSubtitleRulesTests
         Assert.Equal(SidebarSubtitleShape.Items(SidebarSubtitleKind.Folder, 4), SidebarSubtitleRules.For(in folder));
     }
 
+    // ── the "unknown header" arm (Required change A / problem 1) ────────────────────────────────────────────────────
+    // A row whose NAME has not resolved yet must never print "· 0 songs"/"· 0 items" — that reads as a confirmed fact
+    // ("this playlist has zero tracks") rather than as the loading state it actually is. Only once the name is known
+    // does a genuine zero become a real count.
+
+    [Fact]
+    public void Playlist_UnknownHeader_ZeroCount_IsTheBareKind_NeverZeroSongs()
+    {
+        var unresolved = Entry(SidebarEntryKind.Playlist, name: "", creator: "", childCount: 0, isOwner: true);
+        var shape = SidebarSubtitleRules.For(in unresolved);
+        Assert.Equal(SidebarSubtitleKind.Playlist, shape.Kind);
+        Assert.Equal(SidebarSubtitleDetail.None, shape.Detail);
+    }
+
+    [Fact]
+    public void Playlist_ResolvedHeader_GenuineZeroSongs_StillShowsTheCount()
+    {
+        // The exact case the unknown arm must NOT swallow: a real playlist that really has 0 tracks.
+        var resolved = Entry(SidebarEntryKind.Playlist, name: "Empty Playlist", creator: "", childCount: 0, isOwner: true);
+        Assert.Equal(SidebarSubtitleShape.Songs(SidebarSubtitleKind.Playlist, 0), SidebarSubtitleRules.For(in resolved));
+    }
+
+    [Fact]
+    public void Folder_UnknownHeader_ZeroCount_IsTheBareKind()
+    {
+        var unresolved = Entry(SidebarEntryKind.Folder, name: "", childCount: 0);
+        var shape = SidebarSubtitleRules.For(in unresolved);
+        Assert.Equal(SidebarSubtitleKind.Folder, shape.Kind);
+        Assert.Equal(SidebarSubtitleDetail.None, shape.Detail);
+    }
+
+    [Fact]
+    public void Folder_ResolvedHeader_GenuineZeroItems_StillShowsTheCount()
+    {
+        var resolved = Entry(SidebarEntryKind.Folder, name: "Empty Folder", childCount: 0);
+        Assert.Equal(SidebarSubtitleShape.Items(SidebarSubtitleKind.Folder, 0), SidebarSubtitleRules.For(in resolved));
+    }
+
     // ── track / app route ────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

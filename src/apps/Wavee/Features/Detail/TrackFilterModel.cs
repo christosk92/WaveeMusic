@@ -1,5 +1,6 @@
 using System;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 
 namespace Wavee;
 
@@ -159,6 +160,22 @@ public static class TrackFilterModel
         if (!MatchesDuration(track.DurationMs, filter.Duration)) return false;
         if (!MatchesAdded(track.AddedAt, filter.Added, now)) return false;
         return query.Length == 0 || MatchesQuery(track, query, filter.SearchScope);
+    }
+
+    /// <summary>Unknown referenced names cannot exclude a row from a global text query while demand is loading.</summary>
+    public static bool QueryFieldsKnown(Track track, TrackSearchScope scope, Func<string, FacetKind, bool> known)
+    {
+        var identity = EntityUri.KindOf(track.Uri) == EntityKind.Episode ? FacetKind.EpisodeIdentity : FacetKind.TrackIdentity;
+        if (!known(track.Uri, identity)) return false;
+        if (scope is TrackSearchScope.Everything or TrackSearchScope.Artist)
+            foreach (var artist in track.Artists)
+                if (!string.IsNullOrEmpty(artist.Uri) && !known(artist.Uri, FacetKind.ArtistIdentity)) return false;
+        if ((scope is TrackSearchScope.Everything or TrackSearchScope.Album) && !string.IsNullOrEmpty(track.Album.Uri))
+        {
+            var albumIdentity = EntityUri.KindOf(track.Album.Uri) == EntityKind.Show ? FacetKind.ShowIdentity : FacetKind.AlbumIdentity;
+            if (!known(track.Album.Uri, albumIdentity)) return false;
+        }
+        return true;
     }
 
     public static bool MatchesQuery(Track track, string query, TrackSearchScope scope) => scope switch

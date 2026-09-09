@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using Wavee;
 using Wavee.Backend;
 using Wavee.Backend.Metadata;
 
@@ -43,11 +44,10 @@ public static class SpotifyVideoManifestProbe
         // The metadata chain wired exactly like SpotifyMetadataProbe (a one-shot InMemoryStore — the probe persists
         // nothing), plus the app's own spclient transport. The dealer socket is never Start()ed: LiveDealerTransport.Request
         // is plain spclient HTTP under the bearer + client-token middleware, which is all the manifest GET needs.
-        var store = new InMemoryStore();
         var source = new ExtendedMetadataSource(live.Pipeline, () => live.BaseUrl, () => live.Session);
         using var transport = new LiveDealerTransport(Array.Empty<string>(), live.TokenProvider, live.Pipeline,
             () => live.BaseUrl, log, forceRefreshToken: live.ForceTokenProvider);
-        var video = new SpotifyVideoManifestResolver(source, store, log);
+        var video = new SpotifyVideoManifestResolver(source, static _ => null, log);
 
         log.Info("Resolving the music-video manifest id for " + uri + " ...");
         var (manifestId, idSource) = await video.ResolveManifestIdAsync(uri, ct).ConfigureAwait(false);
@@ -73,7 +73,7 @@ public static class SpotifyVideoManifestProbe
     {
         try
         {
-            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "diag");
+            string dir = UnpackagedAppDataRoot.UnderCurrent("diag");
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, "video-manifest-" + manifestId + ".json");
             File.WriteAllText(path, json);

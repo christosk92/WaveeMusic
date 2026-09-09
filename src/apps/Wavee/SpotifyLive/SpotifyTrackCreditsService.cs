@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Google.Protobuf;
 using System.Threading;
 using System.Threading.Tasks;
-using Wavee.Backend.Hydration;
+using Wavee.Backend.Catalog;
 using Wavee.Core;
 using Ca = Wavee.Protocol.ContentAgnostic;
 using Xm = Wavee.Protocol.ExtendedMetadata;
@@ -19,21 +19,17 @@ namespace Wavee.SpotifyLive;
 // attribution line prints. NPV keeps running for About / TopCities / merch — its credits are now the FALLBACK, taken
 // only when 186 has nothing to say.
 //
-// THIN OVER IExtensionReader (design §2.5). Everything this file used to own — the answers-including-negatives table,
-// the in-flight coalescing slot, the etag-cache-or-raw-source fork, the "which token cancels the shared load" rule and
-// the client-feature-id constant — is the reader's, once, for all four display-only readers. What is LEFT is the only
-// part that is about credits: which uris are worth asking, and how the payload projects. That is the whole point of
-// the split; four copies of a cache is how the two arms drifted (only the raw arm ever stamped the attribution header).
+// Finite document projection; the catalog owns status, freshness, coalescing and retained bytes.
 sealed class SpotifyTrackCreditsService : ITrackCreditsService
 {
     // Unknown fields are discarded rather than retained: nothing here round-trips a payload back to the server, and the
     // corpus already shows Spotify adding fields to these trait payloads over time.
     static readonly MessageParser<Ca.CreditsTrait> PayloadParser = Ca.CreditsTrait.Parser.WithDiscardUnknownFields(true);
 
-    readonly IExtensionReader _reader;
+    readonly CatalogExtensionReader _reader;
     readonly WaveeLogger _log;
 
-    public SpotifyTrackCreditsService(IExtensionReader reader, WaveeLogger log = default)
+    public SpotifyTrackCreditsService(CatalogExtensionReader reader, WaveeLogger log = default)
     {
         _reader = reader ?? throw new ArgumentNullException(nameof(reader));
         _log = log;
@@ -50,15 +46,13 @@ sealed class SpotifyTrackCreditsService : ITrackCreditsService
             return null;
 
         var credits = await _reader.ReadAsync(trackUri, Xm.ExtensionKind.CreditsV2Trait, ProjectCredits,
-                                              TraitSurface.Credits, ct).ConfigureAwait(false);
+                                              ct).ConfigureAwait(false);
         if (credits is not null)
             _log.Debug($"credits resolved {trackUri} -> {credits.Credits.Count} rows, sources [{string.Join(", ", credits.Sources)}]");
         return credits;
     }
 
-    /// <summary>The reader's parse hook: bytes → the drawer's shape, or null for "no usable rows" (which the reader
-    /// caches and memoizes exactly like a 404 — for the surface they are the same answer). A malformed payload throws
-    /// out of here on purpose: the reader logs it and treats undecodable as the same null, in ONE place.</summary>
+    // Malformed protobuf propagates as a read error; empty credits remain a successful empty document.
     static TrackCredits? ProjectCredits(ByteString payload) => Project(PayloadParser.ParseFrom(payload));
 
     /// <summary>Projects the wire payload onto <see cref="TrackCredits"/>, or null when it carries no usable row. Wire

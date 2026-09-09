@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to **Wavee** are documented here.
 
@@ -31,6 +31,116 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- A pinned playlist that's already in your own library could show its correct mosaic cover and subtitle but a
+  blank name: the cover/child-count resolve off the playlist's replica independent of the `PlaylistHeader` facet
+  that carries the name, and the pinned row rendered that partially-resolved entry as-is instead of falling back to
+  the pin's own cached display name the way an unlisted pin already did. The listed branch now shares the same
+  offline-first fallback.
+- Scrolling an artist page's discography grid (Compilations/Albums/Singles), "Fans also like", or top-tracks chart
+  no longer left many visible cells blank while the demanded band lagged behind what was actually on screen. Below
+  ~50 items a shelf now demands its whole item set in one go instead of a narrow visible-range window — windowing
+  that small a shelf bought nothing and left it exposed to any mismatch between the shelf's reported range and the
+  items it actually needed.
+- A cover that hasn't decoded yet now always shows its tinted placeholder tile instead of the flat neutral grey:
+  sidebar rows, pins and the artist page's discography grid computed their placeholder colour once at mount and
+  never repainted when the cover's colour later landed, even though grading it had already been requested. Both
+  now bind through the same live signal the app's other art slots use, so the tint appears the moment it's ready.
+- Scrolling a long playlist no longer re-joins every track against the catalog on every row crossed, and a fact
+  arriving for one row no longer re-renders the whole list: the query re-plans its demand without re-reading,
+  activity-only changes publish nothing, unchanged reads keep their instances, rows read facts from their own
+  publication without taking the catalog lock on the render path, and deliveries coalesce at 50 ms. The
+  1494-track playlist's worst navigation frame went from 122 ms to 10 ms.
+- Scrolling past the rows the last join ever observed no longer forces a full re-join of the whole membership on
+  every row crossed — a viewport move onto never-fetched rows now plans demand for them (and waits for the catalog
+  change that lands them) instead, and re-joins once, not once per row. A full re-join also allocates far less: it
+  reuses the previous read's own resource map instead of building a second copy when nothing's error overlay moved,
+  presizes its dictionary from the prior join, and repeated catalog misses for the same never-fetched key now share
+  one cached snapshot instead of allocating a fresh one per lookup, and the node's dependency set is the pass's own
+  resource map instead of a second 10k-entry set rebuilt per pass (a large-object-heap allocation per arrival wave,
+  which is what scheduled gen2 collections in the middle of a scroll).
+- A recycled track row re-renders only its content: the two wrapper components around it (the row-or-recommendation
+  slot and the expandable drawer slot) now re-render only when their own answer changes — which branch the slot is
+  in, whether its drawer is open — instead of rebuilding the bound row skin on every row crossed. A publication that
+  changes nothing for the playlist's facts side panel re-renders none of its cards: the cards' props compare their
+  content (ranked artists, tag shares, tempo) rather than list identity, and the track list they consult on click is
+  a mount-stable holder instead of a prop, so a settled summary no longer re-renders every portrait and tooltip in the
+  middle of a scroll. Artist portraits compare their seed by uri, name and image, not by record identity.
+- Engine: the DirectWrite shape cache holds 2048 runs (was 256 — less than one screen of track rows), with batched
+  eviction, so scrolling back over rows seen a moment ago no longer re-shapes every string. The render census
+  (`FG_RENDER_CENSUS=1`, `FG_RENDER_CENSUS_MIN=<n>`) now reports render vs reconcile time, bytes and the scene nodes a
+  frame touched per component type.
+- The sidebar no longer rebuilds itself on every catalog publication, and artist pages no longer re-render the whole
+  magazine when a shelf scrolls.
+- The renderer no longer falls into full re-record and full-screen repaint whenever it skips a UI publication, the
+  reactive budget no longer starves the rebinds that must land in the same frame, popup flyouts no longer park the
+  render thread on every move, and per-frame scene capture no longer copies every cached image or string.
+- Scrolling a long playlist or an artist page no longer drops frames once other pages are kept alive behind it.
+  Every published frame copied the whole scene store up to its slot high-water mark, including parked pages and
+  parked rows, into the render snapshot; capture now walks only what the recorder can draw, so a 1494-track
+  playlist's worst navigation frame fell from 122 ms to 54 ms and an artist open from 130 ms to 17 ms.
+- The artist page no longer reveals on a partial, library-cached value and then re-lays its hero, swaps its
+  artwork and leaves rows on placeholders: it keeps its skeleton until everything its initial demand asked for has
+  a terminal answer, reveals once, and treats later publications as background data.
+- Playlist, album, liked and show pages no longer show a partly filled list (blank bands and "Track details
+  unavailable" flashing on rows whose titles were still landing): the page keeps its skeleton until the membership
+  and every row identity in the first window have answered, then reveals once. A row also reads its facts from the
+  same publication its track came from, a failed local-cache read on a still-unknown track keeps loading instead of
+  reading as unavailable, and that failure is logged.
+- The app no longer crashes a few seconds after launch when a kept-alive page's section finishes loading while the
+  page is parked behind another. The engine now marks every node mounted under a parked page as parked (not only
+  components), so the deferred render replays once the page is shown again and its contexts resolve; the three
+  related-sections/picker components also read their services tolerantly and re-render on activation.
+- The library no longer shows raw Spotify ids for its rows, and a restored album page no longer reports "No saved
+  copy is available offline" while the app is still connecting. The UI's catalog scope now follows the catalog's own
+  session publication instead of a one-shot callback at the end of go-live that could be skipped, a query left on a
+  superseded scope is reported as superseded rather than offline, and the scope flip is logged.
+- Clicking a track on an album, playlist or artist page plays it again. The live now-playing projection read the
+  catalog epoch captured before the session installed, so every resolved track was rejected as belonging to a previous
+  session and the play intent was silently retired; it now reads the current epoch, and a failed play intent is logged.
+- Opening an artist no longer issues one metadata request per discography page (18 sequential round trips for the
+  same document): all offset-addressable pages are requested in one wave once the total is known, one decoded
+  document serves every page, and the discography sections demand only what is visible. The Top tracks chart shows a
+  shimmer or an "unavailable, Retry" row instead of blank titles and "—" durations, the artist overview's popular
+  tracks seed the chart's first paint, chart rows beyond the first ten get their identities, a nameless inline seed
+  no longer counts as known metadata, and a superseded fetch no longer leaves a row stuck as queued.
+- Seeking while the next track is still loading no longer reopens and audibly plays the previous track; a seek with
+  no session or on a live stream completes without an error toast instead of stopping playback; an output-device
+  rebuild keeps the current session playing when the source cannot be reopened; a seek parked during resolve followed
+  by a pause no longer leaves the load silently dropped; and a remote Connect seek settles at the device's actual
+  position instead of freezing the seek bar at the target.
+- A like, follow or playlist edit queued while offline is retried with backoff and sent on reconnect instead of being
+  parked as needing attention after three failed verification attempts, and one unreachable playlist no longer
+  aborts the whole outbox drain for every other pending edit. An edit that cannot be encoded for the wire is
+  rejected with its reason and logged, instead of being retried ten times as if the network were down.
+- The artist hero no longer clips its action row when the biography wraps to two lines: the copy budget matches the
+  real display-size name and two-line bio, and the hero's height is floored at the measured copy block.
+- Followed playlists' tracks are pinned in the catalog cache again, so they survive the 30-day sweep offline and stay
+  searchable, and the relation hop that pins an artist's or album's children is bounded per root instead of by one
+  global limit, so one huge root cannot starve the others. A catalog row that cannot be decoded, or was written by
+  another payload version, now reads as a miss and is purged on the next write instead of failing every read that
+  touches its key. The fetch coordinator no longer holds its admission permit across persistence round trips.
+- Every NativeAOT publish, not only a scripted release, now carries a matching `Wavee.pdb` beside the exe with a
+  CodeView entry that binds to it, so a crash report from a developer build symbolizes; the publish props had
+  disabled native debug symbols for any runtime-specific publish. The crash report's hint names both PDB sources.
+- Rows on an album, playlist or artist page get their titles in one wave instead of trickling in or never arriving.
+  Measured on 2026-09-07: a page's first request asked for every row, the reveal ramp then shrank the demand to the
+  few rows realized so far, the queued requests were cancelled, and rows past the window were never asked again
+  (20 of 50 playlist rows, 18 of 31 album rows). Row identity demand now looks 300 rows ahead of the visible window
+  (one metadata request either way), and a window move never cancels a queued request; only leaving the page does.
+  With that, pages settle in 44 to 115 ms once the catalog is warm.
+- Navigation cost is logged, always on: one `nav.frames` line per route change (frames, fps, worst frame with its
+  phase split, counts over 33 and 100 ms, time to first frame), a `frame.stall` line for any frame over 100 ms, a
+  `catalog.demand.wave` line per query wave (what a page asked for and how it came back), and `hydration.gaps` /
+  `hydration.settled` lines per page (rows without titles and the state of their identity resources, and the time to
+  a fully titled page). The engine relays every rendered frame's stats through a new `FluentApp.FrameCompleted`
+  event. `ops/tools/nav-measure.ps1` drives ten navigations by deep link and collects those lines.
+- Page navigation stalls less: the catalog fetches with four workers and per-facet batches, album documents and
+  envelopes are fetched in parallel within a batch, every page model is projected on the thread pool instead of the
+  UI thread, and each fetch batch is logged with its cost.
+- Local audio preserves its played position and pause intent across output-device changes, rebuilds prepared PCM
+  for the negotiated format, and keeps transition timing aligned with submitted audio. Transport fades, real PCM
+  readiness and acknowledged seeks reduce discontinuities around pause, resume and track changes. MP3 playback uses
+  the corrected decoder frame parser and seek units, and gapless trimming is applied once. (#65)
 - The Home daylist hero no longer keeps yesterday's title under a dead 00:00:00 countdown. A cached Home body whose
   daylist window has already closed is never trusted: the card is re-hydrated, its header re-read and the body
   requeried the moment the window is seen to have expired (retried at most every five minutes while Spotify has not
@@ -47,6 +157,21 @@ versions separately under `v*` and is not tracked in this file.)
   healthy policy. The reserve is now capped at 20 GB (an unclamped twentieth would have demanded 200 GB on a 4 TB
   drive), the refusal is logged once per transition, the cache evicts its own oldest bytes and retries instead of
   giving up forever, and Settings › Storage says plainly that caching is paused and why. (#95)
+- A query's projection pass no longer copies a fresh resource map or rescans every dependency to notice a durable
+  catalog change: the node's catalog resource map is a chunked copy-on-write structure a pass touches through a
+  reused builder, and a Durable/ColdRead publication now carries its own changed-key set into the next pass instead
+  of forcing a full re-Peek of everything the node depends on — a Session or scope-replace publication (or a change
+  set that names no keys) still falls back to a full refresh. Facts consumed off that map read through a thin view
+  instead of a materialized copy. Scheduling a pass (an acquire, a demand change, a replica landing, a catalog
+  publication) no longer risks blocking on the projection lock a parked or long-running join is holding — the
+  pending-refresh bookkeeping that used to share that lock now has its own, so the full test suite no longer
+  deadlocks when a demand change lands while a join is parked mid-read.
+- An artist page's Top Tracks rows could show a bare video-camera badge with nothing in front of it — "🎬 · 605.1M
+  plays" — on any solo hit that also carries an official Spotify video: the subline never had a baseline identity
+  segment of its own, so a track with neither the Explicit flag nor a featured co-artist left the video badge
+  standing alone as the line's leading element. Each row now leads with its album name (synchronous off the track's
+  own record, no new fetch), matching Spotify's own "Album · plays" shape and keeping the video badge from ever
+  reading as a substitute for missing text.
 
 ### Changed
 
@@ -63,6 +188,9 @@ versions separately under `v*` and is not tracked in this file.)
   navigation surface: it was never a real Spotify collection, so it no longer appears in Classic, the customizer,
   the pin picker or any deep link; a persisted layout is migrated on load and a stale "Local files" pin is quietly
   dropped, while local file playback itself keeps working exactly as before. (#104)
+- **Upgrading clears the local catalog cache and library replicas once.** The on-disk schema moved to v12; a
+  database from an older version is reset instead of converted, and the sidebar, playlists, albums and artists
+  re-sync from Spotify on the first launch after the upgrade.
 
 ## [0.2.8] - 2026-09-04
 

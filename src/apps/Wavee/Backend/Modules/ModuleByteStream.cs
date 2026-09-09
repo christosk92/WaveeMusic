@@ -38,7 +38,11 @@ public sealed class ModuleByteStream : Stream, IAudioReadStream
     int _bufferLength;
     long _knownSize;
     bool _eofSeen;
-    bool _primed;
+    readonly AudioDataAvailability _availability = new();
+    readonly CancellationTokenSource _lifetime = new();
+    bool _fetching;
+    Exception? _readError;
+    long _cursorRevision;
     int _disposed;
 
     ModuleByteStream(ModuleProcess process, string handle, StreamOpenResult open)
@@ -146,21 +150,42 @@ public sealed class ModuleByteStream : Stream, IAudioReadStream
     /// <inheritdoc/>
     public override int Read(Span<byte> destination)
     {
-        if (destination.Length == 0) return 0;
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        while (true)
+        {
+            long version = DataVersion;
+            int count = TryRead(destination, out bool wouldBlock);
+            if (count > 0 || !wouldBlock) return count;
+            WaitForData(version, _lifetime.Token);
+        }
+    }
 
+    public long DataVersion => _availability.Version;
+    public void WaitForData(long observedVersion, CancellationToken cancellationToken)
+        => _availability.Wait(observedVersion, cancellationToken);
+
+    public int TryRead(Span<byte> destination, out bool wouldBlock)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        wouldBlock = false;
+        if (destination.IsEmpty) return 0;
         lock (_gate)
         {
-            if (!TryServeFromBuffer(destination, out int served))
+            if (_readError is not null) throw new IOException("module stream read failed", _readError);
+            if (TryServeFromBuffer(destination, out int count))
             {
-                // Nothing buffered for this offset: fetch a fresh window starting exactly where the decoder is.
-                if (!FillAsync(_position, CancellationToken.None).ConfigureAwait(false).GetAwaiter().GetResult())
-                    return 0;
-                if (!TryServeFromBuffer(destination, out served)) return 0;
+                _position += count;
+                return count;
             }
-
-            _position += served;
-            return served;
+            if (_eofSeen && _position >= _bufferStart + _bufferLength) return 0;
+            if (!_fetching)
+            {
+                _fetching = true;
+                long position = _position;
+                long revision = _cursorRevision;
+                _ = Task.Run(() => FillAsync(position, revision, _lifetime.Token));
+            }
+            wouldBlock = true;
+            return 0;
         }
     }
 
@@ -185,7 +210,10 @@ public sealed class ModuleByteStream : Stream, IAudioReadStream
                 throw new NotSupportedException(_process.Module.Id + " serves this stream forward-only");
 
             _position = target;
+            _cursorRevision++;
             _eofSeen = false;
+            _readError = null;
+            _availability.Pulse();
             return _position;
         }
     }
@@ -205,50 +233,44 @@ public sealed class ModuleByteStream : Stream, IAudioReadStream
         return served > 0;
     }
 
-    /// <summary>
-    /// Refill the window at <paramref name="offset"/>. A short read is NORMAL on this wire (the module answers with
-    /// whatever it has), so the fill keeps asking until the window is full, the module reports EOF, or it answers an
-    /// empty non-EOF frame ("nothing right now" — one more ask would just spin).
-    /// <para>The FIRST fill stops after the first non-empty chunk: instant start beats read-ahead exactly once, and the
-    /// module's own head buffer is what makes that first chunk immediate.</para>
-    /// </summary>
-    async Task<bool> FillAsync(long offset, CancellationToken ct)
+    // Exactly one RPC read is in flight. Empty non-EOF frames remain temporary starvation;
+    // subsequent requests are paced on this cold producer, never on the host control reader.
+    async Task FillAsync(long offset, long revision, CancellationToken ct)
     {
-        if (_eofSeen && offset >= _knownSize && _knownSize > 0) return false;
-        _bufferStart = offset;
-        _bufferLength = 0;
-        bool first = !_primed;
-
-        while (_bufferLength < ReadAheadBytes)
+        try
         {
-            int want = Math.Min(ChunkBytes, ReadAheadBytes - _bufferLength);
-            BinaryPayload payload = await _process.RequestBinaryAsync(ModuleMethods.StreamRead,
-                new StreamReadParams(_handle, offset + _bufferLength, want),
-                SdkJsonContext.Default.StreamReadParams, ModuleTimeouts.StreamRead, ct).ConfigureAwait(false);
-
-            ReadOnlySpan<byte> bytes = payload.Bytes.Span;
-            if (bytes.Length > 0)
+            while (true)
             {
-                int copy = Math.Min(bytes.Length, ReadAheadBytes - _bufferLength);
-                bytes[..copy].CopyTo(_buffer.AsSpan(_bufferLength));
-                _bufferLength += copy;
-                // The module served past a length it never declared — learn the real one.
-                if (offset + _bufferLength > _knownSize) _knownSize = offset + _bufferLength;
+                BinaryPayload payload = await _process.RequestBinaryAsync(ModuleMethods.StreamRead,
+                    new StreamReadParams(_handle, offset, ChunkBytes),
+                    SdkJsonContext.Default.StreamReadParams, ModuleTimeouts.StreamRead, ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                lock (_gate)
+                {
+                    if (revision != _cursorRevision) return;
+                    if (!payload.Bytes.IsEmpty || payload.Eof)
+                    {
+                        _bufferStart = offset;
+                        _bufferLength = Math.Min(payload.Bytes.Length, _buffer.Length);
+                        payload.Bytes.Span[.._bufferLength].CopyTo(_buffer);
+                        _eofSeen = payload.Eof;
+                        if (payload.Eof) _knownSize = offset + _bufferLength;
+                        return;
+                    }
+                }
+                await Task.Delay(10, ct).ConfigureAwait(false);
             }
-
-            if (payload.Eof)
-            {
-                _eofSeen = true;
-                if (_knownSize <= 0) _knownSize = offset + _bufferLength;
-                break;
-            }
-
-            if (bytes.Length == 0) break;
-            if (first && _bufferLength > 0) break;
         }
-
-        _primed = true;
-        return _bufferLength > 0;
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception error)
+        {
+            lock (_gate) { if (revision == _cursorRevision) _readError = error; }
+        }
+        finally
+        {
+            lock (_gate) _fetching = false;
+            _availability.Pulse();
+        }
     }
 
     /// <inheritdoc/>
@@ -256,6 +278,8 @@ public sealed class ModuleByteStream : Stream, IAudioReadStream
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0 && disposing)
         {
+            _lifetime.Cancel();
+            _availability.Pulse();
             _ = CloseAsync(_process, _handle);
             _lease.Dispose();
         }

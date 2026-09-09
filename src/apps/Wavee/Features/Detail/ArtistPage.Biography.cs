@@ -27,9 +27,14 @@ sealed partial class ArtistPage : Component
     }
 
     // ── biography + profile facts + listened-most-in (2-column band) ─────────────────────────────────────
-    Element BiographyBand(Artist a, int albums, int singles, ArtistExtras? extras, int relatedCount, Action<string, string?> go) =>
-        Responsive.Of(w =>
+    Element BiographyBand(Artist a, int albums, int singles, ArtistExtras? extras, int relatedCount, Action<string, string?> go)
+    {
+        // State = every value the band's painted content depends on besides width. `go` is left a plain closure —
+        // it's stable navigate behaviour, not band data, matching Responsive's "capture only stable behaviour" rule.
+        var state = (a, albums, singles, extras, relatedCount);
+        return Responsive.Of(state, (s, w) =>
         {
+            var (artist, albumCount, singleCount, artistExtras, related) = s;
             bool wide = BiographyWide(w);
             var left = new BoxEl
             {
@@ -41,23 +46,23 @@ sealed partial class ArtistPage : Component
                 Children =
                 [
                     AccentHeader(Loc.Get(Strings.Artist.Biography)),
-                    a.Bio is { Length: > 0 }
-                        ? RichText.Of(a.Bio, 14f, Tok.TextSecondary, Tok.AccentTextPrimary, w * (wide ? 0.62f : 1f) - 60f, 14, key => go(key, null))
+                    artist.Bio is { Length: > 0 }
+                        ? RichText.Of(artist.Bio, 14f, Tok.TextSecondary, Tok.AccentTextPrimary, w * (wide ? 0.62f : 1f) - 60f, 14, key => go(key, null))
                         : new BoxEl(),
-                    extras?.ExternalLinks is { Count: > 0 } links ? ExternalLinkPills(links) : new BoxEl(),
-                    extras?.TopCities is { Count: > 0 } cities ? TopCitiesList(cities) : new BoxEl(),
+                    artistExtras?.ExternalLinks is { Count: > 0 } links ? ExternalLinkPills(links) : new BoxEl(),
+                    artistExtras?.TopCities is { Count: > 0 } cities ? TopCitiesList(cities) : new BoxEl(),
                 ],
             };
             // Profile-facts tiles — a zero/absent stat drops its WHOLE tile (never "0 Albums" / "0 Upcoming concerts"); if
             // none survive, the whole column is dropped so the biography takes the full width.
             var tiles = new List<Element>(7);
             void Tile(long value, string label) { if (value > 0) tiles.Add(StatTile(Count(value), label)); }
-            Tile(a.MonthlyListeners, Loc.Get(Strings.Artist.Stat.Monthly));
-            Tile(a.Followers, Loc.Get(Strings.Artist.Stat.Followers));
-            Tile(albums, Loc.Get(Strings.Artist.Stat.Albums));
-            Tile(singles, Loc.Get(Strings.Artist.Stat.Singles));
-            Tile(extras?.Concerts?.Count ?? 0, Loc.Get(Strings.Artist.Stat.Concerts));
-            Tile(relatedCount, Loc.Get(Strings.Artist.Stat.Related));
+            Tile(artist.MonthlyListeners, Loc.Get(Strings.Artist.Stat.Monthly));
+            Tile(artist.Followers, Loc.Get(Strings.Artist.Stat.Followers));
+            Tile(albumCount, Loc.Get(Strings.Artist.Stat.Albums));
+            Tile(singleCount, Loc.Get(Strings.Artist.Stat.Singles));
+            Tile(artistExtras?.Concerts?.Count ?? 0, Loc.Get(Strings.Artist.Stat.Concerts));
+            Tile(related, Loc.Get(Strings.Artist.Stat.Related));
             var right = new BoxEl
             {
                 Direction = 1, Gap = Spacing.M, Grow = wide ? 1f : 0f, Basis = wide ? 0f : float.NaN,
@@ -76,6 +81,7 @@ sealed partial class ArtistPage : Component
                 Children = tiles.Count > 0 ? new Element[] { left, right } : new Element[] { left },
             };
         }, fallback: 900f);
+    }
 
     static Element ExternalLinkPills(IReadOnlyList<ExternalLink> links) => new BoxEl
     {

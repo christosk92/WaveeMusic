@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using Wavee.Core;
 using Wavee.Core.Sidebar;
 using Xunit;
 
@@ -543,5 +544,54 @@ public class SidebarLayoutStoreTests : IDisposable
         Assert.True(observed[^1].Success);
         Assert.Equal(SidebarSaveFault.None, store.SaveFault);
         Assert.Single(log.Snapshot(), e => e.EventId == "sidebar.layout.save_recovered");
+    }
+
+    // ── pin-name write-through (paint-before-data cache) ─────────────────────────────────────────────────────────────
+
+    static SidebarLayoutDocDto SnapshotOf(SidebarPinStore pins)
+    {
+        var arr = new SidebarPinDto[pins.Count];
+        for (int i = 0; i < pins.Count; i++)
+        {
+            var p = pins[i];
+            arr[i] = new SidebarPinDto
+            {
+                Id = p.Id,
+                Kind = SidebarLayoutWire.LegacyPinKindInt(p.Kind),
+                EntityKind = SidebarLayoutWire.PinKindName(p.Kind),
+                Uri = p.Uri,
+                Name = string.Equals(p.Id, "liked", StringComparison.Ordinal) ? "" : p.Name,
+                AddedAtMs = p.AddedAtMs,
+            };
+        }
+        return new SidebarLayoutDocDto { Version = SidebarLayoutStore.CurrentVersion, Pins = arr };
+    }
+
+    [Fact]
+    public void PinNameWriteThrough_PersistsResolvedIdentity_AndSkipsIdenticalRewrite()
+    {
+        // The layout document's per-pin name is a paint-before-data cache. When the projection resolves a real
+        // identity that differs from the cached one (Björk → Michael Jackson), the store must persist it through
+        // its existing coalescing Commit. A second identical identity must not rewrite the file — that is what
+        // kept a day-old sidebar-layout.json from ever refreshing after --fake poisoned it.
+        var store = Store();
+        var pins = new SidebarPinStore();
+        const string id = "artist:spotify:artist:3fMbdgg4jU18AjLCKBhRSm";
+        pins.LoadFrom([new SidebarPin(id, SidebarEntryKind.Artist, SidebarPinId.UriOf(id), "Björk", 1)]);
+        CommitAndWait(store, SnapshotOf(pins));
+
+        Assert.True(pins.Touch(id, "Michael Jackson"));
+        CommitAndWait(store, SnapshotOf(pins));
+
+        var loaded = new SidebarLayoutStore(_path).Load();
+        Assert.Equal(SidebarLoadFault.None, loaded.Fault);
+        Assert.NotNull(loaded.Doc?.Pins);
+        Assert.Equal("Michael Jackson", loaded.Doc!.Pins![0].Name);
+
+        byte[] afterFirst = File.ReadAllBytes(_path);
+
+        Assert.False(pins.Touch(id, "Michael Jackson"));
+        // No second Commit — identical identity is not a rewrite. The file bytes stay exactly as the first write left them.
+        Assert.Equal(afterFirst, File.ReadAllBytes(_path));
     }
 }

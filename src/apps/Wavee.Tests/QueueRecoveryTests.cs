@@ -10,7 +10,7 @@ using Xunit;
 namespace Wavee.Tests;
 
 // FIXTURE-A (cluster-complex-queue.json) — full session restore semantics (§8, §12).
-public class QueueRecoveryTests
+public class QueueRecoveryTests : PlaybackCatalogTestBase
 {
     static string FixturePath(string name) =>
         Path.Combine(AppContext.BaseDirectory, "Fixtures", name);
@@ -84,7 +84,7 @@ public class QueueRecoveryTests
     public void ReplaceFromCluster_FixtureA_MatchesSemantics()
     {
         var delta = LoadFixtureA();
-        var session = new PlaybackSession();
+        var session = new PlaybackSession(Catalog.Queue);
         var snap = session.ReplaceFromCluster(delta, Hydrate(delta.Track));
 
         Assert.Equal("spotify:track:3ySSbGT5BepfePnva86js7", snap.Current?.Track.Uri);
@@ -121,7 +121,7 @@ public class QueueRecoveryTests
     public void ReplaceFromCluster_ImportsPrevTracksIntoHistory()
     {
         var delta = LoadFixtureA();
-        var session = new PlaybackSession();
+        var session = new PlaybackSession(Catalog.Queue);
         var snap = session.ReplaceFromCluster(delta, Hydrate(delta.Track));
 
         Assert.Equal(2, snap.History.Length);
@@ -152,7 +152,7 @@ public class QueueRecoveryTests
                 new RemoteTrack("spotify:track:c", "C", "", "", "", "", null, 1000, "c1", "context"),
             });
 
-        var snap = new PlaybackSession().ReplaceFromCluster(delta, null);
+        var snap = new PlaybackSession(Catalog.Queue).ReplaceFromCluster(delta, null);
 
         Assert.Equal("spotify:track:q", Assert.Single(snap.UserQueue).Track.Uri);
         Assert.Equal("spotify:track:c", Assert.Single(snap.Upcoming).Track.Uri);

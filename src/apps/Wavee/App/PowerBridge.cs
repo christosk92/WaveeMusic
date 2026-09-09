@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using FluentGpu.WindowsApi.Power;
 using Wavee.Core;
 using Wavee.SpotifyLive;
@@ -28,8 +28,12 @@ static class PowerBridge
     static bool _awake;
     static bool _keepDisplay;
     static bool _attached;
+    static bool _osHooksInstalled;   // UI-thread only (the window-phase ladder walks one step per drain)
 
-    /// <summary>Composition-root install. Idempotent. Call from <see cref="WaveeApp"/> after <c>PlaybackBridge.Activate</c>.</summary>
+    /// <summary>Composition-root install — the CHEAP half. Idempotent. Runs in the startup schedule's core phase,
+    /// right after <c>PlaybackBridge.Activate</c>: four field writes under a lock plus the initial keep-awake
+    /// evaluation, so a suspend arriving immediately still finds a wired bridge. The OS registrations it used to do
+    /// inline moved to <see cref="InstallOsHooks"/>.</summary>
     public static void Attach(PlaybackBridge bridge, Action<Action> post, Services services)
     {
         ArgumentNullException.ThrowIfNull(bridge);
@@ -45,6 +49,33 @@ static class PowerBridge
             _services = services;
         }
 
+        try
+        {
+            bool playing = bridge.IsPlaying.Peek();
+            ApplyKeepAwake(playing, playing && IsActiveVideo(bridge, subscribe: false));
+        }
+        catch { }
+    }
+
+    /// <summary>The OS half of the install: the network-cost policy and the suspend/resume registration. Idempotent
+    /// (latched with <see cref="Attach"/>'s own <c>_attached</c>, and a no-op when <see cref="Attach"/> has not run).
+    ///
+    /// <para>UI THREAD, in its own posted drain — a window-phase startup step, NOT a worker one. <c>NetworkPolicy</c>
+    /// subscribes the Network List Manager through <c>NetworkStatus.Subscribe</c>/<c>SubscribeCost</c>, which the engine
+    /// documents as requiring a COM-initialized, message-pumping thread and which returns a silently INERT subscription
+    /// on a bare pool thread — the worst possible failure mode, a feature that stops working with no error. (The cost
+    /// READ underneath it is already off-thread on the engine's dedicated MTA reader, so nothing here blocks on NCSI.)
+    /// <c>PowerSession.Subscribe</c> would itself be safe anywhere, but it rides along so the two OS registrations stay
+    /// one ordered step.</para></summary>
+    public static void InstallOsHooks()
+    {
+        Action<Action>? post;
+        Services? services;
+        lock (Gate) { post = _post; services = _services; }
+        if (post is null || services is null) return;   // Attach never ran (headless/CLI) — nothing to install onto
+        if (_osHooksInstalled) return;
+        _osHooksInstalled = true;
+
         NetworkPolicy.Install(services.Settings, post);
 
         try
@@ -53,6 +84,8 @@ static class PowerBridge
             {
                 PowerSession.Suspending += OnSuspending;
                 PowerSession.Resumed += OnResumed;
+                // ONE subscription, ever: the engine's thunk raises the STATIC Suspending/Resumed events, so a second
+                // registration would fire every handler twice per transition.
                 _subscription = PowerSession.Subscribe();
             }
         }
@@ -61,13 +94,6 @@ static class PowerBridge
             // Registration failed — playback still works; we just will not see suspend/resume.
             _subscription = null;
         }
-
-        try
-        {
-            bool playing = bridge.IsPlaying.Peek();
-            ApplyKeepAwake(playing, playing && IsActiveVideo(bridge, subscribe: false));
-        }
-        catch { }
     }
 
     /// <summary>No-op when <see cref="Attach"/> already ran (the WaveeApp composition root). Parameterless fallback.</summary>

@@ -109,11 +109,10 @@ public sealed class SidebarLayoutStore
 
     public static SidebarLayoutStore ForApp() => new(DefaultPath());
 
-    /// <summary>%LOCALAPPDATA%\Wavee\WaveeMusic\sidebar-layout.json — BESIDE history.json (locked decision 8). Mirrors
-    /// <c>WaveeShell.HistoryFilePath()</c>. No directory is created here; the first write creates it.</summary>
-    public static string DefaultPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Wavee", "WaveeMusic", "sidebar-layout.json");
+    /// <summary>%LOCALAPPDATA%\{Wavee|Wavee-fake}\WaveeMusic\sidebar-layout.json — BESIDE history.json (locked
+    /// decision 8). Goes through <see cref="UnpackagedAppDataRoot"/> so a <c>--fake</c> run cannot write FakeData
+    /// titles into the real user's layout document. No directory is created here; the first write creates it.</summary>
+    public static string DefaultPath() => UnpackagedAppDataRoot.MusicFile("sidebar-layout.json");
 
     public string FilePath => _path;
     public string BakPath => _path + ".bak";

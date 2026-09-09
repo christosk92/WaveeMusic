@@ -174,6 +174,28 @@ public class SidebarPinStoreTests
     }
 
     [Fact]
+    public void Touch_LikedRoute_NeverCarriesAName()
+    {
+        // Title is ShellNav.Dest("liked").Title — a cached name is always wrong (and was how --fake persisted "").
+        var s = new SidebarPinStore();
+        Assert.True(s.Pin(Pin("liked", SidebarEntryKind.AppRoute, "spotify:collection:tracks", "Liked Songs")));
+        Assert.Equal("", s[0].Name);                  // Pin/LoadFrom strip on the way in
+
+        Assert.False(s.Touch("liked", "Liked Songs"));
+        Assert.False(s.Touch("liked", "daylist"));
+        Assert.Equal("", s[0].Name);
+    }
+
+    [Fact]
+    public void LoadFrom_StripsALikedPinName()
+    {
+        var s = new SidebarPinStore();
+        s.LoadFrom([Pin("liked", SidebarEntryKind.AppRoute, "spotify:collection:tracks", "daylist")]);
+        Assert.Equal("liked", s[0].Id);
+        Assert.Equal("", s[0].Name);
+    }
+
+    [Fact]
     public void LoadFrom_DropsIdlessAndDuplicateRows()
     {
         // A hand-edited document must never produce two rows with one identity.
@@ -461,6 +483,16 @@ public class SidebarPinStoreTests
         s.Touch(id, "Peaceful Piano (2026)");
         Assert.True(s.IsPinned(id));
         Assert.Equal(0, s.IndexOf(id));
+    }
+
+    [Fact]
+    public void Canonical_CollapsesAStalePlaylistPrefixedLikedCollectionOntoTheRoutePin()
+    {
+        // Persisted before the liked spellings were unified: the collection under the playlist prefix.
+        Assert.Equal("liked", SidebarPinId.Canonical("pl:spotify:user:31abc:collection"));
+        Assert.Equal("liked", SidebarPinId.Canonical("pl:spotify:collection:tracks"));
+        Assert.Equal("liked", SidebarPinId.Canonical("spotify:user:31abc:collection"));
+        Assert.Equal("pl:spotify:user:31abc:playlist:p", SidebarPinId.Canonical("pl:spotify:user:31abc:playlist:p"));
     }
 
     [Fact]

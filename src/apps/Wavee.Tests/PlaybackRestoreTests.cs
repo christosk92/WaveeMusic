@@ -10,7 +10,7 @@ namespace Wavee.Tests;
 // The restore/identity-miss ladder and the queue-content fold — the two pure pieces of the playback-restore rework
 // (docs/plans/wavee/playback-restore-findings.md §6 and test 23/24). No engine, no host, no cluster: these pin the
 // decision rules the controller's three restore callers (transfer, recovery heal, local snapshot) all share.
-public class PlaybackRestoreTests
+public class PlaybackRestoreTests : PlaybackCatalogTestBase
 {
     static Track T(string uri) =>
         new(uri[(uri.LastIndexOf(':') + 1)..], uri, uri, Array.Empty<ArtistRef>(),
@@ -93,7 +93,7 @@ public class PlaybackRestoreTests
     [Fact]
     public void QueueContentFold_IsStableAcrossARepublishOfTheSameEntries()
     {
-        var session = new PlaybackSession();
+        var session = new PlaybackSession(Catalog.Queue);
         var snapA = session.SetContext("spotify:playlist:p",
             [Row("spotify:track:a", "u1"), Row("spotify:track:b", "u2"), Row("spotify:track:c", "u3")], 0);
         var snapB = session.Snapshot();   // a pause/seek/volume republish re-windows the SAME rows
@@ -104,7 +104,7 @@ public class PlaybackRestoreTests
     [Fact]
     public void QueueContentFold_ChangesWhenTheQueueContentChanges()
     {
-        var session = new PlaybackSession();
+        var session = new PlaybackSession(Catalog.Queue);
         var seeded = session.SetContext("spotify:playlist:p",
             [Row("spotify:track:a", "u1"), Row("spotify:track:b", "u2")], 0);
         ulong before = QueueContentFold.Fold(seeded.Upcoming);
@@ -122,12 +122,12 @@ public class PlaybackRestoreTests
     {
         // The fold keys on the session's MINTED item ids (not uris), so order-sensitivity has to be shown inside one
         // session's id space: enqueue-at-tail and enqueue-next mint the same two ids in the opposite row order.
-        var tail = new PlaybackSession();
+        var tail = new PlaybackSession(Catalog.Queue);
         tail.SetContext("spotify:playlist:p", [Row("spotify:track:a", "u1")], 0);
         tail.EnqueueUser([Row("spotify:track:q1", "q1")]);
         var tailSnap = tail.EnqueueUser([Row("spotify:track:q2", "q2")]);          // → [q1, q2]
 
-        var head = new PlaybackSession();
+        var head = new PlaybackSession(Catalog.Queue);
         head.SetContext("spotify:playlist:p", [Row("spotify:track:a", "u1")], 0);
         head.EnqueueUser([Row("spotify:track:q1", "q1")]);
         var headSnap = head.EnqueueNextUser([Row("spotify:track:q2", "q2")]);      // → [q2, q1]

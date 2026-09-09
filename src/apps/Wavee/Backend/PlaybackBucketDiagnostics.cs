@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -17,6 +17,60 @@ internal static class PlaybackBucketDiagnostics
 
     public static void Startup(string source, string message, params WaveeLogField[] fields)
         => WaveeLog.Instance.Info(Category, "startup", source + " - " + message, fields);
+
+    /// <summary>The frame budget the whole app is held to (60 Hz + headroom). A <c>Core</c> startup step over this is a
+    /// frame-budget violation by construction, because the core phase runs inside the mount frame — hence the level
+    /// escalation in <see cref="ActivationStep"/>.</summary>
+    const double FrameBudgetMs = 8.3;
+
+    /// <summary>Always-on per-step startup accounting (<c>StartupActivation</c>'s <c>measured</c> hook). One line per
+    /// activation step, naming the phase it ACTUALLY ran in — so a step that was moved off the UI thread reports its
+    /// cost under <c>Worker</c> instead of appearing to have become free.
+    ///
+    /// <para><paramref name="phase"/> is a plain string on purpose: this file is source-included by the tests as part
+    /// of <c>Backend/**</c>, and the phase enum lives in the app's <c>App/</c> layer. Nothing here may reach upward.</para>
+    ///
+    /// <para>A <c>Core</c> step over <see cref="FrameBudgetMs"/> logs at WARNING: the core phase is the one phase a
+    /// frame pays for, so a slow one is the regression this whole split exists to prevent, and it must be visible in a
+    /// default-level log without anybody turning anything on. A <c>Window</c> step over the same budget ALSO warns —
+    /// it is not inside a frame, but it is still one posted drain paying for one OS surface, and a single step eating
+    /// a whole drain is exactly the "ladder collapsed back into one stall" regression this whole split guards
+    /// against.</para></summary>
+    public static void ActivationStep(string step, string phase, double ms)
+    {
+        var level = (phase == "Core" || phase == "Window") && ms > FrameBudgetMs ? WaveeLogLevel.Warning : WaveeLogLevel.Info;
+        WaveeLog.Instance.Event(level, Category, "startup.step",
+            "activation step " + step + " ran on " + phase + " in "
+            + ms.ToString("0.0", CultureInfo.InvariantCulture) + " ms",
+            fields:
+            [
+                WaveeLogField.Of("step", step),
+                WaveeLogField.Of("phase", phase),
+                WaveeLogField.Of("ms", ms),
+            ]);
+    }
+
+    /// <summary>A whole startup phase finished: the rollup that makes the split auditable in one grep. Expect
+    /// <c>Core</c> to be a fraction of a millisecond (it may not touch disk, registry, COM, WinRT or DPAPI), the
+    /// worker's total to carry what used to be on the UI thread, and the window ladder to be the small residue of
+    /// genuinely HWND-affine OS surfaces spread one per drain.</summary>
+    public static void ActivationPhase(string phase, int steps, double ms)
+        => WaveeLog.Instance.Event(phase == "Core" && ms > FrameBudgetMs ? WaveeLogLevel.Warning : WaveeLogLevel.Info,
+            Category, "startup.phase",
+            "activation phase " + phase + " completed steps=" + steps.ToString(CultureInfo.InvariantCulture)
+            + " ms=" + ms.ToString("0.0", CultureInfo.InvariantCulture),
+            fields:
+            [
+                WaveeLogField.Of("phase", phase),
+                WaveeLogField.Of("steps", steps),
+                WaveeLogField.Of("ms", ms),
+            ]);
+
+    /// <summary>An activation step threw. Always on and never swallowed silently: a fail-soft OS surface that quietly
+    /// stopped working is exactly the kind of thing that is only ever noticed months later.</summary>
+    public static void ActivationStepFailed(string step, Exception error)
+        => WaveeLog.Instance.Event(WaveeLogLevel.Warning, Category, "startup.step.failed",
+            "activation step " + step + " failed", ex: error, fields: [WaveeLogField.Of("step", step)]);
 
     /// <summary>Info-level shuffle-toggle attribution (lands in the log file): the surface that flipped it, whether the
     /// state actually changed, the anchor row's provider, and the session context.</summary>

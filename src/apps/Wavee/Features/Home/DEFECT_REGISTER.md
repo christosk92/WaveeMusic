@@ -1,5 +1,10 @@
 # Wavee Home defect register
 
+Architecture note (2026-09-06): the hydration and Home cache mechanisms described
+in historical entries were replaced by catalog queries and shared active
+demand. See [the implemented catalog design](../../../../../docs/plans/wavee/catalog-state-replacement-implementation.md).
+Those entries retain the original bug evidence; they do not describe current ownership.
+
 This is the implementation-side status register for the redesign handoff. “Build/test verified” is intentionally
 separate from “manually observed”; the app is run by the user, so visual/input acceptance remains explicit.
 

@@ -59,17 +59,30 @@ public static class SidebarSubtitleRules
     /// (someone else's — <see cref="ShowsOwner"/>); an album's detail is its billed artist (a LIBRARY album carries
     /// it in <c>FirstArtistName</c>, a FEED album — a new release — only in <c>Creator</c>); an artist/show/folder
     /// follow the landed table verbatim (bare / publisher / item count); a track and a non-Liked app route have no
-    /// KIND word at all — just their creator text (a concert's venue rides <c>Creator</c>, unchanged from Cluster).</summary>
+    /// KIND word at all — just their creator text (a concert's venue rides <c>Creator</c>, unchanged from Cluster).
+    ///
+    /// <para>An UNKNOWN header (<see cref="IsUnknown"/> — the entity's name has not resolved yet, e.g. a remote pin
+    /// still on its base entry, or an unresolved projection row) never prints a count: a playlist whose
+    /// <c>TrackCount</c> defaults to 0 before its header lands used to render "Playlist · 0 songs", which reads as
+    /// fact rather than as the loading state it is. It gets the bare kind word instead — the same shape a resolved
+    /// playlist with genuinely zero tracks does NOT get (that one still shows "0 songs", a real fact). A folder's
+    /// item count is guarded the same way; an album/show's TEXT detail already collapses to the bare kind when its
+    /// artist/publisher string is empty (<see cref="SidebarSubtitleShape.Of(SidebarSubtitleKind, string?)"/>), which
+    /// is exactly true while its header is unresolved too — so those two kinds need no extra arm.</para></summary>
     public static SidebarSubtitleShape For(in SidebarLibraryEntry e) => e.Kind switch
     {
         SidebarEntryKind.Playlist => ShowsOwner(in e)
             ? SidebarSubtitleShape.Of(SidebarSubtitleKind.Playlist, e.OwnerName)
-            : SidebarSubtitleShape.Songs(SidebarSubtitleKind.Playlist, e.TrackCount),
+            : IsUnknown(in e)
+                ? SidebarSubtitleShape.Of(SidebarSubtitleKind.Playlist)
+                : SidebarSubtitleShape.Songs(SidebarSubtitleKind.Playlist, e.TrackCount),
         SidebarEntryKind.Album => SidebarSubtitleShape.Of(SidebarSubtitleKind.Album,
             e.FirstArtistName.Length > 0 ? e.FirstArtistName : e.Creator),
         SidebarEntryKind.Artist => SidebarSubtitleShape.Of(SidebarSubtitleKind.Artist),
         SidebarEntryKind.Show => SidebarSubtitleShape.Of(SidebarSubtitleKind.Show, e.Publisher),
-        SidebarEntryKind.Folder => SidebarSubtitleShape.Items(SidebarSubtitleKind.Folder, e.ChildCount),
+        SidebarEntryKind.Folder => IsUnknown(in e)
+            ? SidebarSubtitleShape.Of(SidebarSubtitleKind.Folder)
+            : SidebarSubtitleShape.Items(SidebarSubtitleKind.Folder, e.ChildCount),
         SidebarEntryKind.Track => SidebarSubtitleShape.Of(SidebarSubtitleKind.None, e.Creator),
         // A concert's venue rides Creator (§C1.8.5), same as Cluster; every other route has no subtitle at all.
         SidebarEntryKind.AppRoute => string.Equals(e.Id, LikedRouteKey, StringComparison.Ordinal)
@@ -77,6 +90,11 @@ public static class SidebarSubtitleRules
             : SidebarSubtitleShape.Of(SidebarSubtitleKind.None, e.Creator),
         _ => SidebarSubtitleShape.Empty,
     };
+
+    /// <summary>An unresolved header: the entity's display name has not arrived yet (a remote pin still on its base
+    /// entry — <c>Name == ""</c> per <c>App/SidebarPinSync.cs</c> — or any other row whose identity facet is still
+    /// pending). A count/child-count of 0 here is "not known yet", never "confirmed zero".</summary>
+    static bool IsUnknown(in SidebarLibraryEntry e) => e.Name.Length == 0;
 
     /// <summary>Someone else's playlist leads with its owner ("Playlist · Spotify"); mine leads with its song count.
     /// <c>IsOwner</c> is the authority (a stale/unknown <c>Flavor</c> never overrides it); <c>ByYou</c> is the second

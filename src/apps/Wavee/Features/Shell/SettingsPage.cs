@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu;
@@ -136,8 +136,13 @@ sealed partial class SettingsPage : Component
         }, tab);
 
         // Live roster refresh: the curation also changes from the track context menu (and from an undo toast raised
-        // anywhere), so the section watches the store's roster sentinel rather than only its own mutations.
-        UseEffect(() => WatchVideoOverrides(svc, post), DepKey.Empty);
+        // anywhere), so the section observes the durable curation stream and current account's query scope.
+        var videoScope = svc?.CatalogScope;
+        UseEffect(() => WatchVideoOverrides(svc, post), DepKey.From(videoScope?.GetHashCode() ?? 0));
+        var settingsActive = UseIsActive();
+        UseEffect(() => SetVideoRosterActive(settingsActive.Peek(), svc, post), tab);
+        UseActivation(onActivated: () => SetVideoRosterActive(true, svc, post),
+            onDeactivated: () => SetVideoRosterActive(false, svc, post));
 
         Element body = tab switch
         {

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentGpu.Controls;
@@ -6,6 +7,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 
 namespace Wavee;
 
@@ -46,8 +48,6 @@ namespace Wavee;
 // owner menu keep every command they had, and Rename stays a top-level row on all three so the three read alike.
 public static class Menus
 {
-    const int MaxInlinePlaylists = 10;   // Add-to-playlist submenu cap; the rest via "More playlists…" → the picker
-
     // ── Track set (detail rows, batch bar, eager lists, queue, now-playing) ─────────────────────────────────────────
     /// <summary>The track(s) menu. Primary strip [Play · Play next · Play after · Save]; rows per the grammar above.
     /// <paramref name="showGoToAlbum"/> is false on album detail pages (you are already there); <paramref name="extras"/>
@@ -275,7 +275,6 @@ public static class Menus
         bool canAdd = s.Library is not null && tracks.Count > 0;
         return PlaylistDepositItem(s, Loc.Get(Strings.Detail.AddToPlaylist), Icons.Add, canAdd,
             deposit: (uri, name) => AddTo(s, uri, name, tracks),
-            createAndDeposit: () => CreateAndAdd(s, tracks),
             excludeUri: null, pickerTracks: tracks);
     }
 
@@ -293,43 +292,16 @@ public static class Menus
         string? exclude = ctx.Target.Kind == TargetKind.Playlist ? ctx.Target.Uri : null;
         return PlaylistDepositItem(s, Loc.Get(Strings.Detail.AddToPlaylist), Icons.Add, canAdd,
             deposit: (uri, name) => ContainerTracks.AddTo(s, uri, name, resolve),
-            createAndDeposit: () => CreateAndDeposit(s, (uri, name) => ContainerTracks.AddTo(s, uri, name, resolve)),
             excludeUri: exclude, pickerTracks: Array.Empty<Track>());
     }
 
-    /// <summary>The ONE playlist-deposit submenu shape behind Add-to-playlist (tracks), Add-to-playlist (container) and
-    /// Move-to-playlist: New playlist + up to <see cref="MaxInlinePlaylists"/> editable playlists + "More playlists…" →
-    /// the full picker. Only what a pick DOES differs, so only that is a parameter — the row filter (editable, real
-    /// <c>spotify:playlist:*</c>, the same one <c>PlaylistPickerPanel</c> applies) lives here once.</summary>
+    /// <summary>Add and Move open the same retained target query. A synchronous context-menu snapshot cannot know
+    /// every rootlist entry's permission state, so it must not filter a warm-cache subset into a target submenu.</summary>
     static MenuFlyoutItem PlaylistDepositItem(ActionServices s, string title, IconRef icon, bool canAdd,
-                                              Action<string, string> deposit, Action createAndDeposit,
+                                              Action<string, string> deposit,
                                               string? excludeUri, IReadOnlyList<Track> pickerTracks)
-    {
-        var items = new List<MenuFlyoutItem>(MaxInlinePlaylists + 3)
-        {
-            new(Loc.Get(Strings.Detail.NewPlaylist), Icons.Add, canAdd, createAndDeposit),
-        };
-
-        s.Store?.EnsurePlaylists();
-        // MOST-RECENTLY-FILED FIRST. The inline rows used to be rootlist order truncated to ten, which for anyone with
-        // more than ten playlists is the same ten forever — very often not the one they are reaching for, so the common
-        // case degraded into "More playlists… → type the name". PlaylistDepositTargets owns the order AND the eligibility
-        // filter, shared with the picker and the tab drop rules (they used to be three separate copies).
-        var ordered = PlaylistDepositTargets.Order(s.Store?.Playlists.Value.Peek(), RecentDeposits(s), excludeUri);
-        int inline = Math.Min(ordered.Count, MaxInlinePlaylists);
-        for (int i = 0; i < inline; i++)
-        {
-            var uri = ordered[i].Uri;
-            var name = ordered[i].Name;
-            items.Add(new MenuFlyoutItem(name, null, canAdd, () => deposit(uri, name)));
-        }
-
-        items.Add(MenuFlyoutItem.Separator);
-        items.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.MorePlaylists), null,
-            canAdd && s.Overlay is not null, () => OpenPicker(s, pickerTracks, title, deposit, excludeUri)));
-
-        return MenuFlyoutItem.SubMenu(title, items, icon, enabled: canAdd);
-    }
+        => new(title, icon, canAdd && s.Overlay is not null,
+            () => OpenPicker(s, pickerTracks, title, deposit, excludeUri));
 
     /// <summary>The persisted most-recently-filed-into playlist uris (newest first), or empty when there is no settings
     /// seam — the ordering then falls back to plain rootlist order, which is exactly the previous behaviour.</summary>
@@ -352,7 +324,7 @@ public static class Menus
     /// "Open": the user is mid-flow on the page they filed from and rarely wants to leave it, whereas the recoverable
     /// mistake — wrong playlist, wrong row, a multi-selection they had forgotten about — is both common and, until now,
     /// only recoverable by going to find the notification panel. A create-then-add toasts <b>Open</b> instead
-    /// (see <see cref="CreateAndAdd"/>): you just made a playlist and probably want to name it.</summary>
+    /// in the target picker: you just made a playlist and probably want to name it.</summary>
     internal static void ToastDeposited(ActionServices s, string name, long activityId)
     {
         var nc = s.Svc?.Notifications;
@@ -378,16 +350,6 @@ public static class Menus
         });
     }
 
-    /// <summary>"New playlist" for a deposit whose payload is not in hand (a container): create, then run the same
-    /// deposit the named rows run. The track path keeps <see cref="CreateAndAdd"/>, which can add inside one flow.</summary>
-    static void CreateAndDeposit(ActionServices s, Action<string, string> deposit)
-    {
-        // SYNCHRONOUS create (PlaylistCreateFlow): the optimistic row is in the store the instant this returns, so the
-        // deposit runs in the same gesture instead of waiting on a round trip that may never come back.
-        if (PlaylistCreateFlow.Create(s, default, navigate: false, out string name) is not { } created) return;
-        deposit(created.Uri, name);
-    }
-
     // ── Move to playlist ▸ (same picker, MOVE semantics: deposit into the target, then drop the source rows) ────────
     /// <summary>The menu equivalent of dragging these rows into another playlist — the a11y/Pragmatic answer to a drag
     /// (an outcome-equivalent command, never a simulated one). Offered only when the tracks sit in an editable playlist
@@ -404,7 +366,6 @@ public static class Menus
         // moving into the source playlist is a no-op → it is excluded from the list entirely.
         return PlaylistDepositItem(s, Loc.Get(Strings.Menu.MoveToPlaylist), Icons.Forward, canAdd: true,
             deposit: (uri, name) => MoveTo(s, uri, name, tracks, host),
-            createAndDeposit: () => CreateAndMove(s, tracks, host),
             excludeUri: host.PlaylistUri, pickerTracks: tracks);
     }
 
@@ -439,13 +400,6 @@ public static class Menus
         }
     }
 
-    static void CreateAndMove(ActionServices s, IReadOnlyList<Track> tracks, PlaylistHost host)
-    {
-        if (s.Library is null || tracks.Count == 0) return;
-        if (PlaylistCreateFlow.Create(s, default, navigate: false, out string name) is not { } created) return;
-        MoveTo(s, created.Uri, name, tracks, host);
-    }
-
     /// <summary>Add to an existing playlist. AWAITED, then confirmed — the old shape fired the write and toasted
     /// "Added to X" unconditionally, so a failed add (offline, revoked permissions, a rejected revision) reported
     /// SUCCESS and the only trace was an entry flipped to Failed in a panel nobody was looking at. That is a trust bug in
@@ -465,36 +419,6 @@ public static class Menus
                 {
                     RememberDeposit(s, uri);
                     ToastDeposited(s, name, id);
-                });
-            }
-            catch (Exception ex) { ContainerActions.Post(post, () => PlaylistEditErrors.Toast(ex)); }
-        }
-    }
-
-    /// <summary>"New playlist" for tracks in hand: create with the next unused "<c>My Playlist #N</c>" name, add, then
-    /// toast with <b>Open</b> — the one deposit where leaving IS what the user wants next (the new playlist needs a name,
-    /// and inline rename lives on its page). Every "New playlist" used to create another playlist literally called
-    /// "New playlist", so a few of them were indistinguishable in the sidebar.</summary>
-    static void CreateAndAdd(ActionServices s, IReadOnlyList<Track> tracks)
-    {
-        if (s.Library is not { } lib || tracks.Count == 0) return;
-        if (PlaylistCreateFlow.Create(s, default, navigate: false, out string name) is not { } created) return;
-        string uri = created.Uri;
-        var post = s.Post;
-        _ = Run();
-        async Task Run()
-        {
-            try
-            {
-                await lib.AddTracksAsync(uri, tracks).ConfigureAwait(false);
-                ContainerActions.Post(post, () =>
-                {
-                    RememberDeposit(s, uri);
-                    Toast.Show(Strings.Detail.AddedToPlaylist(name), new ToastOptions
-                    {
-                        Severity = InfoBarSeverity.Success,
-                        ActionLabel = Loc.Get(Strings.Detail.GoToPlaylist), OnAction = () => s.Go?.Invoke("pl:" + uri, name),
-                    });
                 });
             }
             catch (Exception ex) { ContainerActions.Post(post, () => PlaylistEditErrors.Toast(ex)); }
@@ -1054,10 +978,13 @@ public static class Menus
     static MenuFlyoutItem AccessItem(in ActionContext ctx, string uri)
     {
         var s = ctx.S;
-        var header = s.Svc?.RealStore?.GetPlaylist(uri);
-        bool known = header is not null;
+        var data = s.Svc?.Data;
+        // Menu-open needs one cached permission fact, not an asynchronously projected playlist or a fetch.
+        var header = data?.Catalog.Peek(new(data.ScopeForSubject(uri), uri, FacetKind.PlaylistHeader)).Value
+            as PlaylistHeaderValue;
+        bool known = header?.IsPublic is not null;
         bool isPublic = header?.IsPublic ?? false;
-        bool collaborative = header?.Capabilities.IsCollaborative ?? false;
+        bool collaborative = header?.Capabilities?.IsCollaborative ?? false;
         var items = new List<MenuFlyoutItem>(6)
         {
             MenuFlyoutItem.RadioItem(Loc.Get(Strings.Menu.MakePublic), known && isPublic, () => ContainerActions.SetVisibility(s, uri, true)),

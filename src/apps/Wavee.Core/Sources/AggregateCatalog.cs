@@ -1,303 +1,135 @@
-﻿using System.Linq;
 using System.Runtime.CompilerServices;
+using Wavee.Core.Catalog;
 
 namespace Wavee.Core;
 
-/// <summary>The source-agnostic façade the UI binds against (docs/plans/wavee/architecture.md §4.3). Implements the UI-facing
-/// <see cref="IMusicLibrary"/> by federating over a <see cref="SourceRegistry"/>: single-item reads route to the first
-/// owning source; collection reads MERGE (concat) across catalog sources — each source contributes only what it has,
-/// so the union is clean. Provider-mappings / dedup / fallback chains are the documented extension point (trivial with
-/// one real source today). This is the layer Connect/playback federation (FederatedPlayback/Remote) will sit beside.</summary>
-public sealed class AggregateCatalog : IMusicLibrary, ICollectionEvents
+/// <summary>Task/stream boundary for non-mounted consumers. Public reads use normalized query projections.</summary>
+public sealed class AggregateCatalog(SourceRegistry registry, IQueryService queries,
+    Func<string, CatalogScope> scopeForSubject) : IMusicLibrary
 {
-    readonly SourceRegistry _reg;
-    readonly ICatalogSource? _fallback;
-    readonly SimpleSubject<CollectionKind> _collections = new();
-
-    public AggregateCatalog(SourceRegistry registry)
+    CatalogScope LibraryScope => scopeForSubject(CatalogSubjects.Home);
+    async Task<T> Read<T>(QuerySpec<T> query, CancellationToken ct, QueryDemand? demand = null)
     {
-        _reg = registry;
-        // The EXPLICIT last-resort step (design §2.1): the first source declaring SourceCapabilities.Fallback answers a
-        // single-item read that no source OWNS (or whose owner had no data). Ownership stayed with the real owners when
-        // FakeSource stopped claiming "everything that isn't spotify:", so this is what keeps an unrecognized uri
-        // opening a populated page in the demo backend — and its ABSENCE in the real backend is deliberate: a real
-        // account must not invent an entity.
-        _fallback = registry.OfCapability(SourceCapabilities.Fallback).OfType<ICatalogSource>().FirstOrDefault();
-        // Fan-in: any source that emits its own collection deltas forwards into the ONE aggregate stream the cache
-        // subscribes to (off-page library freshness, docs/plans/wavee/architecture.md §6). No source raises it today → neutral seam.
-        foreach (var s in registry.All.OfType<ISourceCollectionEvents>())
-            s.CollectionsChanged.Subscribe(new ActionObserver<CollectionKind>(k => _collections.OnNext(k)));
+        var snapshot = await queries.ReadOnceAsync(query, demand, ct).ConfigureAwait(false);
+        if (!snapshot.Status.HasPrimaryData) throw new InvalidOperationException("The requested catalog data is unavailable.");
+        return snapshot.Value;
     }
-
-    /// <summary>The aggregated library-delta stream — the cache refreshes the named collection in place, even off-page.</summary>
-    public IObservable<CollectionKind> CollectionsChanged => _collections;
-
-    // ── single-item reads: first owning source that returns non-null wins; else a minimal empty shape ──
-    public async Task<Playlist> GetPlaylistAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-    {
-        foreach (var s in _reg.CatalogSources)
-            if (s.Owns(id) && await s.GetPlaylistAsync(id, level, ct).ConfigureAwait(false) is { } p) return p;
-        if (Fallback(id) is { } fb && await fb.GetPlaylistAsync(id, level, ct).ConfigureAwait(false) is { } fp) return fp;
-        return new Playlist(id, id, "", null, "", null, 0, System.Array.Empty<Track>());
-    }
-
-    public async Task<Album> GetAlbumAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-    {
-        foreach (var s in _reg.CatalogSources)
-            if (s.Owns(id) && await s.GetAlbumAsync(id, level, ct).ConfigureAwait(false) is { } a) return a;
-        if (Fallback(id) is { } fb && await fb.GetAlbumAsync(id, level, ct).ConfigureAwait(false) is { } fa) return fa;
-        return new Album(id, id, "", null, System.Array.Empty<ArtistRef>(), 0, 0, System.Array.Empty<Track>());
-    }
-
-    public async Task<Artist> GetArtistAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-    {
-        foreach (var s in _reg.CatalogSources)
-            if (s.Owns(id) && await s.GetArtistAsync(id, level, ct).ConfigureAwait(false) is { } a) return a;
-        if (Fallback(id) is { } fb && await fb.GetArtistAsync(id, level, ct).ConfigureAwait(false) is { } fa) return fa;
-        return new Artist(id, id, "", null);
-    }
-
-    // Same owner → fallback routing as GetAlbumAsync, but SYNCHRONOUS end to end (IMusicLibrary.TryPeekAlbum's whole
-    // point is a click-frame answer with no await) — the owning source decides whether it has anything warm to report.
+    public Task<Playlist> GetPlaylistAsync(string id, CancellationToken ct = default)
+        => Read(new PlaylistDetailQuery(scopeForSubject(id), id), ct);
+    public Task<Album> GetAlbumAsync(string id, CancellationToken ct = default)
+        => Read(new AlbumDetailQuery(scopeForSubject(id), id), ct);
+    public Task<Artist> GetArtistAsync(string id, CancellationToken ct = default)
+        => Read(new ArtistDetailQuery(scopeForSubject(id), id), ct);
     public bool TryPeekAlbum(string uri, out Album? album)
     {
-        foreach (var s in _reg.CatalogSources)
-            if (s.Owns(uri) && s.TryPeekAlbum(uri, out album)) return true;
-        if (Fallback(uri) is { } fb && fb.TryPeekAlbum(uri, out album)) return true;
-        album = null;
-        return false;
+        using var handle = queries.Acquire(new AlbumDetailQuery(scopeForSubject(uri), uri));
+        album = handle.Current.Status.HasPrimaryData ? handle.Current.Value : null;
+        return album is not null;
     }
-
-    // Same three-step shape as the single-item reads: owner → fallback → empty. The fallback step is what keeps a
-    // context nobody owns (a synthetic podcast, an unrecognized uri) playable in the demo backend.
-    public IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, CancellationToken ct = default)
-        => _reg.OwnerOf(contextUri)?.StreamTracksAsync(contextUri, ct)
-           ?? Fallback(contextUri)?.StreamTracksAsync(contextUri, ct)
-           ?? EmptyPages(ct);
-
-    // Paged discography window + facet total — routed to the owning source (mirrors GetArtistAsync). The live source
-    // (StoreLibrarySource) owns paging + the real facet total; the DIM on non-paging sources serves the overview slice.
-    public async Task<DiscographyPage> GetDiscographyAsync(string artistUri, DiscographyKind kind, int offset, int limit, CancellationToken ct = default)
-    {
-        foreach (var s in _reg.CatalogSources)
-            if (s.Owns(artistUri)) return await s.GetDiscographyAsync(artistUri, kind, offset, limit, ct).ConfigureAwait(false);
-        if (Fallback(artistUri) is { } fb) return await fb.GetDiscographyAsync(artistUri, kind, offset, limit, ct).ConfigureAwait(false);
-        return new DiscographyPage(System.Array.Empty<Album>(), 0);
-    }
-
-    /// <summary>The fallback source for a uri — null when there is none, or when it already had its turn in the loop
-    /// above (it OWNS the uri), so the last resort is never asked the same question twice.</summary>
-    ICatalogSource? Fallback(string uri) => _fallback is { } f && !f.Owns(uri) ? f : null;
-
-    /// <summary>The one discography kind↔AlbumKind filter (Singles ⇒ Single OR EP), shared by the overview-slice DIM
-    /// (<see cref="ICatalogSource"/>) and the live source so the offline count matches the live facet grouping.</summary>
-    public static bool KindMatches(AlbumKind ak, DiscographyKind dk) => dk switch
-    {
-        DiscographyKind.Singles => ak is AlbumKind.Single or AlbumKind.EP,
-        DiscographyKind.Compilations => ak == AlbumKind.Compilation,
-        _ => ak == AlbumKind.Album,
-    };
-
-    // ── merged collections (each source returns EMPTY where it has no data → clean union, no dups) ──
+    public Task<DiscographyPage> GetDiscographyAsync(string artistUri, DiscographyKind kind, int offset, int limit, CancellationToken ct = default)
+        => Read(new ArtistDiscographyQuery(scopeForSubject(artistUri), artistUri, kind, offset, limit), ct);
+    Task<LibraryQuerySnapshot> Library(CancellationToken ct) => Read(new SidebarLibraryQuery(LibraryScope), ct);
     public async Task<IReadOnlyList<LibraryItem>> GetLibraryAsync(CancellationToken ct = default)
-    {
-        var r = new List<LibraryItem>();
-        foreach (var s in _reg.CatalogSources) r.AddRange(await s.GetLibraryAsync(ct).ConfigureAwait(false));
-        return r;
-    }
-
+        => (await Library(ct).ConfigureAwait(false)).Entries;
     public async Task<IReadOnlyList<PlaylistSummary>> GetPlaylistsAsync(CancellationToken ct = default)
-    {
-        var r = new List<PlaylistSummary>();
-        foreach (var s in _reg.CatalogSources) r.AddRange(await s.GetPlaylistsAsync(ct).ConfigureAwait(false));
-        return r;
-    }
-
-    /// <summary>The folder-capable tree, CONCATENATED in source-registration order (the same merge shape as
-    /// <see cref="GetPlaylistsAsync"/>), so a source's user-created <c>wavee:playlist:*</c> leaves federate in alongside
-    /// another source's folder tree. Nothing is re-nested across sources — a source owns its own folder structure.</summary>
+        => (await Library(ct).ConfigureAwait(false)).Playlists;
     public async Task<IReadOnlyList<PlaylistNode>> GetPlaylistTreeAsync(CancellationToken ct = default)
-    {
-        var r = new List<PlaylistNode>();
-        foreach (var s in _reg.CatalogSources) r.AddRange(await s.GetPlaylistTreeAsync(ct).ConfigureAwait(false));
-        return r;
-    }
-
-    /// <summary>Merged uri → added-at map. First writer wins per uri (registration order), matching the "first owning
-    /// source answers" rule for single-item reads; a later source never overwrites an earlier source's timestamp.</summary>
+        => (await Library(ct).ConfigureAwait(false)).Tree;
     public async Task<IReadOnlyDictionary<string, long>> GetLibraryAddedAtAsync(CancellationToken ct = default)
-    {
-        Dictionary<string, long>? merged = null;
-        foreach (var s in _reg.CatalogSources)
-        {
-            var part = await s.GetLibraryAddedAtAsync(ct).ConfigureAwait(false);
-            if (part.Count == 0) continue;
-            merged ??= new Dictionary<string, long>(part.Count, StringComparer.Ordinal);
-            foreach (var kv in part) merged.TryAdd(kv.Key, kv.Value);
-        }
-        return merged ?? SidebarTree.NoAddedAt;
-    }
-
-    public async Task<IReadOnlyList<Album>> GetAlbumsAsync(CancellationToken ct = default)
-    {
-        var r = new List<Album>();
-        foreach (var s in _reg.CatalogSources) r.AddRange(await s.GetAlbumsAsync(ct).ConfigureAwait(false));
-        return r;
-    }
-
-    public async Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default)
-    {
-        var r = new List<Artist>();
-        foreach (var s in _reg.CatalogSources) r.AddRange(await s.GetArtistsAsync(ct).ConfigureAwait(false));
-        return r;
-    }
-
-    public async Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-    {
-        var r = new List<Track>();
-        foreach (var s in _reg.CatalogSources) r.AddRange(await s.GetLikedSongsAsync(level, ct).ConfigureAwait(false));
-        return r;
-    }
-
+        => (await Library(ct).ConfigureAwait(false)).AddedAt;
+    public async Task<LibraryStats> GetStatsAsync(CancellationToken ct = default)
+        => (await Library(ct).ConfigureAwait(false)).Stats;
+    public Task<IReadOnlyList<Album>> GetAlbumsAsync(CancellationToken ct = default) => Read(new SavedAlbumsQuery(LibraryScope), ct);
+    public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default) => Read(new SavedArtistsQuery(LibraryScope), ct);
+    public Task<IReadOnlyList<Show>> GetShowsAsync(CancellationToken ct = default) => Read(new SavedShowsQuery(LibraryScope), ct);
+    public Task<IReadOnlyList<Track>> GetLikedSongsAsync(CancellationToken ct = default) => Read(new LikedSongsQuery(LibraryScope), ct);
+    public Task<LibrarySearchResults> SearchLibraryAsync(string query, LibrarySearchScope scope, CancellationToken ct = default)
+        => Read(new LibrarySearchQuery(LibraryScope, query, scope), ct);
     public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default)
         => SearchAsync(query, SearchFacet.All, 0, 30, ct);
-
     public async Task<SearchResults> SearchAsync(string query, SearchFacet facet, int offset, int limit, CancellationToken ct = default)
     {
-        var t = new List<Track>(); var al = new List<Album>(); var ar = new List<Artist>(); var pl = new List<Playlist>();
-        IReadOnlyList<SearchTopHit>? topHits = null;
-        IReadOnlyList<SearchChip>? chipOrder = null;
-        IReadOnlyList<Show>? shows = null;
-        IReadOnlyList<Episode>? episodes = null;
-        IReadOnlyList<SearchTopHit>? audiobooks = null;
-        IReadOnlyList<SearchTopHit>? profiles = null;
-        IReadOnlyList<SearchGenre>? genres = null;
-        IReadOnlyList<SearchTopHit>? authors = null;
-        int tt = 0, at = 0, art = 0, pt = 0;
-        int showsT = -1, epT = -1, booksT = -1, profT = -1, genT = -1, authT = -1;
-        foreach (var s in _reg.CatalogSources)
+        var parts = new List<SearchResults>();
+        foreach (var source in registry.OfCapability(SourceCapabilities.Search))
         {
-            var x = await s.SearchAsync(query, facet, offset, limit, ct).ConfigureAwait(false);
-            t.AddRange(x.Tracks); al.AddRange(x.Albums); ar.AddRange(x.Artists); pl.AddRange(x.Playlists);
-            topHits ??= x.TopHits;
-            chipOrder ??= x.ChipOrder;
-            shows ??= x.Shows;
-            episodes ??= x.Episodes;
-            audiobooks ??= x.Audiobooks;
-            profiles ??= x.Profiles;
-            genres ??= x.Genres;
-            authors ??= x.Authors;
-            tt += x.TracksTotal >= 0 ? x.TracksTotal : x.Tracks.Count;
-            at += x.AlbumsTotal >= 0 ? x.AlbumsTotal : x.Albums.Count;
-            art += x.ArtistsTotal >= 0 ? x.ArtistsTotal : x.Artists.Count;
-            pt += x.PlaylistsTotal >= 0 ? x.PlaylistsTotal : x.Playlists.Count;
-            if (showsT < 0 && x.ShowsTotal >= 0) showsT = x.ShowsTotal;
-            if (epT < 0 && x.EpisodesTotal >= 0) epT = x.EpisodesTotal;
-            if (booksT < 0 && x.AudiobooksTotal >= 0) booksT = x.AudiobooksTotal;
-            if (profT < 0 && x.ProfilesTotal >= 0) profT = x.ProfilesTotal;
-            if (genT < 0 && x.GenresTotal >= 0) genT = x.GenresTotal;
-            if (authT < 0 && x.AuthorsTotal >= 0) authT = x.AuthorsTotal;
+            var snapshot = await queries.ReadOnceAsync(new SearchQuery(LibraryScope with { Provider = source.Id }, query, facet, offset, limit), cancellationToken: ct).ConfigureAwait(false);
+            if (snapshot.Status.HasPrimaryData) parts.Add(snapshot.Value);
         }
-        return new SearchResults(t, al, ar, pl, topHits, tt, at, art, pt,
-            Shows: shows, ShowsTotal: showsT,
-            Episodes: episodes, EpisodesTotal: epT,
-            Audiobooks: audiobooks, AudiobooksTotal: booksT,
-            Profiles: profiles, ProfilesTotal: profT,
-            ChipOrder: chipOrder,
-            Genres: genres, GenresTotal: genT,
-            Authors: authors, AuthorsTotal: authT);
-    }
-
-    // Offline library search: the first source that has cached data wins (the store-backed source); others default empty.
-    public async Task<LibrarySearchResults> SearchLibraryAsync(string query, LibrarySearchScope scope, CancellationToken ct = default)
-    {
-        foreach (var s in _reg.CatalogSources)
+        if (parts.Count == 0) return SearchResults.Empty;
+        return parts[0] with
         {
-            var x = await s.SearchLibraryAsync(query, scope, ct).ConfigureAwait(false);
-            if (!x.IsEmpty) return x;
-        }
-        return LibrarySearchResults.Empty;
+            Tracks = parts.SelectMany(part => part.Tracks).DistinctBy(track => track.Uri).ToArray(),
+            Albums = parts.SelectMany(part => part.Albums).DistinctBy(album => album.Uri).ToArray(),
+            Artists = parts.SelectMany(part => part.Artists).DistinctBy(artist => artist.Uri).ToArray(),
+            Playlists = parts.SelectMany(part => part.Playlists).DistinctBy(playlist => playlist.Uri).ToArray(),
+            TracksTotal = parts.Sum(part => part.TotalFor(SearchFacet.Tracks)), AlbumsTotal = parts.Sum(part => part.TotalFor(SearchFacet.Albums)),
+            ArtistsTotal = parts.Sum(part => part.TotalFor(SearchFacet.Artists)), PlaylistsTotal = parts.Sum(part => part.TotalFor(SearchFacet.Playlists)),
+        };
     }
-
     public async Task<IReadOnlyList<string>> SuggestAsync(string query, CancellationToken ct = default)
-    {
-        var x = await SuggestRichAsync(query, ct).ConfigureAwait(false);
-        return x.Queries;
-    }
-
+        => (await SuggestRichAsync(query, ct).ConfigureAwait(false)).Queries;
     public async Task<SearchSuggestions> SuggestRichAsync(string query, CancellationToken ct = default)
     {
-        // First source that returns suggestions wins (the online source); offline sources default to empty.
-        foreach (var s in _reg.CatalogSources)
+        foreach (var source in registry.OfCapability(SourceCapabilities.Search))
         {
-            var x = await s.SuggestRichAsync(query, ct).ConfigureAwait(false);
-            if (x.Queries.Count + x.Items.Count > 0) return x;
+            var snapshot = await queries.ReadOnceAsync(new SearchSuggestionsQuery(LibraryScope with { Provider = source.Id }, query), cancellationToken: ct).ConfigureAwait(false);
+            if (snapshot.Status.HasPrimaryData && snapshot.Value is { } value && value.Queries.Count + value.Items.Count > 0) return value;
         }
         return SearchSuggestions.Empty;
     }
-
-    public async Task<LibraryStats> GetStatsAsync(CancellationToken ct = default)
-    {
-        int al = 0, ar = 0, lk = 0, pod = 0;
-        foreach (var s in _reg.CatalogSources)
-        {
-            var st = await s.GetStatsAsync(ct).ConfigureAwait(false);
-            al += st.Albums; ar += st.Artists; lk += st.LikedSongs; pod += st.Podcasts;
-        }
-        return new LibraryStats(al, ar, lk, pod);
-    }
-
     public async Task<HomeFeed> GetHomeAsync(string? facet, CancellationToken ct = default)
     {
-        var contribs = new List<HomeContribution>();
-        foreach (var s in _reg.CatalogSources)
+        var parts = new List<HomeFeed>();
+        foreach (var source in registry.OfCapability(SourceCapabilities.Home))
         {
-            var c = await s.GetHomeAsync(facet, ct).ConfigureAwait(false);
-            if (c.Groups.Count > 0 || c.Sections is { Count: > 0 }) contribs.Add(c);
+            var snapshot = await queries.ReadOnceAsync(new HomeQuery(LibraryScope with { Provider = source.Id }, facet), cancellationToken: ct).ConfigureAwait(false);
+            if (snapshot.Status.HasPrimaryData) parts.Add(snapshot.Value);
         }
-        contribs.Sort((a, b) => a.Priority.CompareTo(b.Priority));
-        var groups = contribs.SelectMany(c => c.Groups).ToList();
-        var sections = contribs.Where(c => c.Sections is { Count: > 0 }).SelectMany(c => c.Sections!).ToList();
-        // The facet row belongs to whichever source actually publishes one (only the streaming source does). First
-        // non-empty wins by priority order, so a local-library contribution can never blank out Spotify's chips.
-        var chips = contribs.FirstOrDefault(c => c.Chips is { Count: > 0 })?.Chips;
-        // The greeting is the SERVER's, by the same first-non-empty-wins rule as the chips: it arrives already localized
-        // for the account, so it is right even when the machine clock and the account locale disagree. Sources that
-        // publish none (local library, fakes) leave it empty and the view shows the bare page — deliberately NOT a
-        // client-side one synthesised from DateTime.Now, which is what this used to do and got wrong for anyone
-        // travelling or running a differently-localized OS.
-        var greeting = contribs.FirstOrDefault(c => c.Greeting is { Length: > 0 })?.Greeting ?? "";
-        // The feed carries the question back. The page compares it against the chip row's current selection before it
-        // renders, so a slow answer for a facet the user has already left is dropped instead of overwriting a newer one.
-        return new HomeFeed(greeting, groups, chips, sections, Facet: facet ?? "");
+        return new(parts.FirstOrDefault(part => part.Greeting.Length > 0)?.Greeting ?? "",
+            parts.SelectMany(part => part.Groups).ToArray(), parts.FirstOrDefault(part => part.Chips is { Count: > 0 })?.Chips,
+            parts.SelectMany(part => part.Sections ?? []).ToArray(), facet ?? "");
     }
-
-    // ── podcasts: federated to the Podcasts-capable sources (route single-show reads to the owner; merge the grid) ──
-    public async Task<IReadOnlyList<Show>> GetShowsAsync(CancellationToken ct = default)
+    public async Task<Show?> GetShowAsync(string uri, CancellationToken ct = default)
     {
-        var r = new List<Show>();
-        foreach (var s in _reg.OfCapability(SourceCapabilities.Podcasts).OfType<IPodcastSource>())
-            r.AddRange(await s.GetShowsAsync(ct).ConfigureAwait(false));
-        return r;
+        var snapshot = await queries.ReadOnceAsync(new ShowDetailQuery(scopeForSubject(uri), uri), cancellationToken: ct).ConfigureAwait(false);
+        return snapshot.Status.HasPrimaryData ? snapshot.Value : null;
     }
-
-    public async Task<Show?> GetShowAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-    {
-        foreach (var s in _reg.OfCapability(SourceCapabilities.Podcasts).OfType<IPodcastSource>())
-            if (s.Owns(uri) && await s.GetShowAsync(uri, level, ct).ConfigureAwait(false) is { } show) return show;
-        return null;
-    }
-
     public async Task<int> LoadMoreEpisodesAsync(string showUri, int from, CancellationToken ct = default)
     {
-        foreach (var s in _reg.OfCapability(SourceCapabilities.Podcasts).OfType<IPodcastSource>())
-            if (s.Owns(showUri)) return await s.LoadMoreEpisodesAsync(showUri, from, ct).ConfigureAwait(false);
-        return from;   // nobody owns it ⇒ the cursor did not move
+        var snapshot = await queries.ReadOnceAsync(new ShowDetailQuery(scopeForSubject(showUri), showUri),
+            QueryDemand.Initial, ct).ConfigureAwait(false);
+        return snapshot.Status.HasPrimaryData ? Math.Max(from, snapshot.Value.PagedThrough) : from;
     }
-
-    static async IAsyncEnumerable<TrackPage> EmptyPages([EnumeratorCancellation] CancellationToken ct = default)
+    public async IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        await Task.CompletedTask;
-        yield break;
+        var scope = scopeForSubject(contextUri);
+        var demand = QueryDemand.Initial;
+        IReadOnlyList<Track> tracks;
+        int total;
+        switch (EntityUri.Parse(contextUri).Kind)
+        {
+            case EntityKind.Album:
+                var album = await Read(new AlbumDetailQuery(scope, contextUri), ct, demand).ConfigureAwait(false);
+                tracks = album.Tracks ?? []; total = album.TrackCount; break;
+            case EntityKind.Artist:
+                var artist = await Read(new ArtistDetailQuery(scope, contextUri), ct, demand).ConfigureAwait(false);
+                tracks = artist.TopTracks ?? []; total = tracks.Count; break;
+            case EntityKind.Show:
+                var show = await Read(new ShowDetailQuery(scope, contextUri), ct, demand).ConfigureAwait(false);
+                tracks = (show.Episodes ?? []).Select(episode => EpisodeAsTrack.From(episode, contextUri)!).ToArray(); total = show.TotalEpisodes; break;
+            default:
+                if (contextUri.EndsWith(":collection:tracks", StringComparison.Ordinal))
+                { tracks = await Read(new LikedSongsQuery(scope), ct, demand).ConfigureAwait(false); total = tracks.Count; }
+                else
+                { var playlist = await Read(new PlaylistDetailQuery(scope, contextUri), ct, demand).ConfigureAwait(false); tracks = playlist.Tracks ?? []; total = playlist.TrackCount; }
+                break;
+        }
+        yield return new(tracks, tracks.Count, total);
     }
+    public static bool KindMatches(AlbumKind album, DiscographyKind kind) => kind switch
+    {
+        DiscographyKind.Singles => album is AlbumKind.Single or AlbumKind.EP,
+        DiscographyKind.Compilations => album == AlbumKind.Compilation,
+        _ => album == AlbumKind.Album,
+    };
 }

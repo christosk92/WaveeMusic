@@ -56,7 +56,8 @@ sealed class AppInstallerUpdateService : IAppUpdateService
     /// <summary>The process-wide updater instance, published by the composition root's construction of it.
     /// <see cref="IAppUpdateService"/> is app-scoped by contract (one updater per process, a plain field on
     /// <c>Services</c> with no switchable wrapper), so surfaces that cannot reach the service bag —
-    /// <c>PlaybackBridge.Activate</c>, which starts the poll — resolve it here. Null until <c>Services</c> is built.</summary>
+    /// the startup schedule's <c>update-poll</c> step, which starts the poll — resolve it here. Null until
+    /// <c>Services</c> is built.</summary>
     public static AppInstallerUpdateService? Instance { get; private set; }
 
     public AppUpdateSnapshot Current { get; private set; } = AppUpdateSnapshot.Idle;

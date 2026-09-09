@@ -31,7 +31,7 @@ public sealed partial class FluentMediaAudioHost
         if (!ModuleUri.TryDecode(body.TrackUri, out string moduleId, out _))
         {
             _log.Info($"module stream body has a non-module uri: {body.TrackUri}");
-            _signals.OnNext(AudioHostSignal.Fault(0, AudioKeyFailureReason.Restricted,
+            PublishSignal(AudioHostSignal.Fault(0, AudioKeyFailureReason.Restricted,
                 "this playable is not owned by a playback module"));
             return;
         }
@@ -40,7 +40,7 @@ public sealed partial class FluentMediaAudioHost
         if (process is null)
         {
             _log.Info($"no installed module named '{moduleId}' to serve stream {body.CdnUrl}");
-            _signals.OnNext(AudioHostSignal.Fault(0, AudioKeyFailureReason.Restricted,
+            PublishSignal(AudioHostSignal.Fault(0, AudioKeyFailureReason.Restricted,
                 "the module that owns this track is not installed"));
             return;
         }
@@ -48,14 +48,14 @@ public sealed partial class FluentMediaAudioHost
         ModuleByteStream stream;
         try
         {
-            stream = await ModuleByteStream.OpenAsync(process, body.CdnUrl, CancellationToken.None).ConfigureAwait(false);
+            stream = await ModuleByteStream.OpenAsync(process, body.CdnUrl, _loadCancellation.Token);
         }
         catch (Exception ex)
         {
             // ONE open attempt, then a typed failure: the module has already done its own retrying upstream, and a
             // silent nothing here would leave the session in a permanent "loading" state with no way to tell why.
             _log.Info($"module stream open failed module={moduleId} stream={body.CdnUrl}: {ex.GetType().Name}: {ex.Message}");
-            _signals.OnNext(AudioHostSignal.Fault(0, ReasonFor(ex), ex.Message));
+            PublishSignal(AudioHostSignal.Fault(0, ReasonFor(ex), ex.Message));
             return;
         }
 
@@ -64,27 +64,27 @@ public sealed partial class FluentMediaAudioHost
         WaveeDecoderKind kind;
         try
         {
-            kind = SniffExternalKind(stream.ContentType) ?? SniffModuleKind(stream) ?? KindOf(body.Format);
+            kind = SniffExternalKind(stream.ContentType) ?? await Task.Run(() => SniffModuleKind(stream), _loadCancellation.Token) ?? KindOf(body.Format);
         }
         catch (Exception ex)
         {
             _log.Info($"module stream sniff failed module={moduleId}: {ex.GetType().Name}: {ex.Message}");
             stream.Dispose();
-            _signals.OnNext(AudioHostSignal.Fault(0, AudioKeyFailureReason.Network, ex.Message));
+            PublishSignal(AudioHostSignal.Fault(0, AudioKeyFailureReason.Network, ex.Message));
             return;
         }
 
         if (kind == WaveeDecoderKind.Aac && !MfAacDecoder.IsAvailable())
         {
             stream.Dispose();
-            _signals.OnNext(AudioHostSignal.Fault(0, AudioKeyFailureReason.ArchUnsupported,
+            PublishSignal(AudioHostSignal.Fault(0, AudioKeyFailureReason.ArchUnsupported,
                 "this Windows edition has no AAC decoder (install the Media Feature Pack)"));
             return;
         }
 
-        var bytes = new SpotifyMediaByteSource(stream, 0, kind, body.DurationMs, DbToLinear(body.NormalizationGainDb));
+        var bytes = new SpotifyMediaByteSource(stream, 0, kind, body.DurationMs, DbToLinear(body.NormalizationGainDb)) { ReopenBody = body };
         _activeStream = null;
-        await OpenSessionAsync(bytes, epoch).ConfigureAwait(false);
+        await OpenSessionAsync(bytes, epoch);
     }
 
     /// <summary>Codec from the first bytes of a module stream, for the (common) case where the module named no content

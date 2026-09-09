@@ -129,27 +129,22 @@ public class TrackAdornmentTests
     // Adornments arrive on their OWN pass, long after the thin cluster/library upsert that created the row. A later
     // thin write must never blank them — that would make tints and tempo flicker away during playback.
     [Fact]
-    public void StoreMerge_ThinUpsertDoesNotClobberAdornments()
+    public async System.Threading.Tasks.Task IdentityObservation_DoesNotOverwriteOwnedAdornmentFacet()
     {
-        var store = new Wavee.Backend.InMemoryStore();
-        var baseTrack = new Track("t1", "spotify:track:t1", "Title",
-            System.Array.Empty<ArtistRef>(), new AlbumRef("a", "spotify:album:a", "Album"),
-            DurationMs: 1000, IsExplicit: false, Image: null);
-
-        store.UpsertTrack(baseTrack);
-        store.UpsertTrack(baseTrack with
-        {
-            TempoBpm = 101.0099, MusicalKey = "A", CamelotCode = "11B", CamelotColor = 0xFF56D9F8u,
-        });
-        // A later thin write (e.g. a cluster projection) that knows nothing about adornments.
-        store.UpsertTrack(baseTrack);
-
-        var t = store.GetTrack("spotify:track:t1")!;
-        Assert.Equal("A", t.MusicalKey);
-        Assert.Equal("11B", t.CamelotCode);
-        Assert.Equal(0xFF56D9F8u, t.CamelotColor);
-        Assert.NotNull(t.TempoBpm);
+        await using var host = new CatalogQueryTestHost(new QueryTestProvider(r => new(r,
+            new Wavee.Core.Catalog.ResourceFetchResult(Wavee.Core.Catalog.ResourceFetchStatus.Unsupported))));
+        var uri = "spotify:track:t1";
+        await host.AcceptAsync(new(host.Scope, uri, Wavee.Core.Catalog.FacetKind.AudioAttributes),
+            new Wavee.Core.Catalog.AudioAttributesValue(101.0099, "A", "11B", 0xFF56D9F8u));
+        await host.SeedAsync(new Track("t1", uri, "Title", [], new AlbumRef("a", "spotify:album:a", "Album"), 1000, false, null));
+        var value = Assert.IsType<Wavee.Core.Catalog.AudioAttributesValue>(host.Data.Catalog.Peek(
+            new(host.Scope, uri, Wavee.Core.Catalog.FacetKind.AudioAttributes)).Value);
+        Assert.Equal("A", value.MusicalKey);
+        Assert.Equal("11B", value.CamelotCode);
+        Assert.Equal(0xFF56D9F8u, value.CamelotColor);
+        Assert.NotNull(value.TempoBpm);
     }
+
 }
 
 public class BrowseTaxonomyTests

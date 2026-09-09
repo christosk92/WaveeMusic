@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 
 namespace Wavee;
 
@@ -58,11 +59,13 @@ internal static class TrackExpandedFacts
         // Released fact below answers the question such a row actually raises.
         if (!notYetOut)
         {
-            if (track.PlayCount > 0)
+            if (options.PlaysState == TrackFactState.Present)
                 facts.Add(new TrackFact(TrackFactKind.Plays, TrackFactForm.Value,
                                         track.PlayCount.ToString("N0", culture)));
-            else if (options.PlaysPending)
+            else if (options.PlaysState == TrackFactState.Pending)
                 facts.Add(new TrackFact(TrackFactKind.Plays, TrackFactForm.Pending, Dash));
+            else if (options.PlaysState is TrackFactState.Failed or TrackFactState.Offline)
+                facts.Add(new TrackFact(TrackFactKind.Plays, TrackFactForm.Value, Dash));
         }
 
         if (track.TempoBpm is { } bpm && bpm > 0d)
@@ -344,7 +347,8 @@ internal readonly record struct TrackFact(
 internal readonly record struct TrackFactSplit(string Value, string? Unit);
 
 /// <summary>Everything the fact list needs that a <see cref="Track"/> does not carry.
-/// <para><paramref name="TempoPending"/> / <paramref name="PlaysPending"/>: "this surface ASKED for the column".
+/// <para><paramref name="TempoPending"/>: "this surface ASKED for the column".
+/// <paramref name="PlaysState"/> comes from resource knowledge, so an authoritative zero remains a value.
 /// Caller-derived from the same gating the lanes use — <c>Config.ShowTempo &amp;&amp; TempoColumn</c> and
 /// <c>Config.ShowPlays || (Config.PlaysColumnOptIn &amp;&amp; PlaysColumn)</c> — so the strip's honest "not enriched
 /// yet" dash appears exactly where the table would have reserved a lane for the same fact.</para>
@@ -352,7 +356,7 @@ internal readonly record struct TrackFactSplit(string Value, string? Unit);
 /// tests ALWAYS inject both, which is what makes the exact-date format pinnable at all.</para></summary>
 internal readonly record struct TrackFactsOptions(
     bool TempoPending = false,
-    bool PlaysPending = false,
+    TrackFactState PlaysState = TrackFactState.Absent,
     bool HasVideo = false,
     string? AddedByName = null,
     CultureInfo? Culture = null,

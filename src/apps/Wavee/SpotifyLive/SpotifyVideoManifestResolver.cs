@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Wavee.Backend;
 using Wavee.Backend.Metadata;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using M = Wavee.Protocol.Metadata;
 using Xm = Wavee.Protocol.ExtendedMetadata;
 
@@ -30,7 +31,7 @@ namespace Wavee.SpotifyLive;
 sealed class SpotifyVideoManifestResolver
 {
     readonly ExtendedMetadataSource _metadata;
-    readonly IStore _store;
+    readonly Func<string, VideoAssociation?> _association;
     readonly WaveeLogger _log;
 
     /// <param name="metadata">The shared extended-metadata transport. This resolver is deliberately STATELESS (no
@@ -41,10 +42,10 @@ sealed class SpotifyVideoManifestResolver
     /// kind-99 read that IS worth caching independently of a play still goes through the trait pipeline.</param>
     /// <param name="store">Read-only here — the last two tiers read the VideoAssociation the projector wrote. Required:
     /// without it a relinked (alias) track resolves to nothing and plays as audio while showing a video badge.</param>
-    public SpotifyVideoManifestResolver(ExtendedMetadataSource metadata, IStore store, WaveeLogger log = default)
+    public SpotifyVideoManifestResolver(ExtendedMetadataSource metadata, Func<string, VideoAssociation?> association, WaveeLogger log = default)
     {
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _association = association ?? throw new ArgumentNullException(nameof(association));
         _log = log;
     }
 
@@ -163,7 +164,7 @@ sealed class SpotifyVideoManifestResolver
         }
 
         // The relink tiers. Read the plane ONCE; a record only exists here if some fetch already landed one.
-        var stored = _store.GetVideoAssociation(trackUri);
+        var stored = _association(trackUri);
         if (stored is not { HasVideo: true })
         {
             _log.Debug($"[video] manifest none track={trackUri} stored={(stored is null ? "no-row" : "no-video")} elapsed={sw.ElapsedMilliseconds}ms");

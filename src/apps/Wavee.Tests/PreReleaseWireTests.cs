@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Wavee.Backend;
-using Wavee.Backend.Hydration;
+using Wavee.Backend.Catalog;
 using Wavee.Backend.Metadata;
 using Wavee.Backend.Spotify;
 using Wavee.Core;
@@ -20,8 +20,12 @@ namespace Wavee.Tests;
 // Their ids differ (spotify:prerelease:0iqKCC… IS spotify:album:0qi1ztU…), so neither uri can be computed from the
 // other. The wire serves the SAME payload under either entity_uri, and SpotifyPreReleaseService exploits that with a
 // three-key cache: one round trip resolves both directions. These drive the real service over crafted protobuf.
-public class PreReleaseWireTests
+public class PreReleaseWireTests : IAsyncLifetime
 {
+    readonly List<CatalogResourceWireFixture> _fixtures = new();
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync() { foreach (var fixture in _fixtures) await fixture.DisposeAsync(); }
+
     const string PreUri = "spotify:prerelease:0iqKCCqFwlqzSnJgV22Nmh";
     const string AlbumUri = "spotify:album:0qi1ztU4S08zA1FsP1DUaY";
     const long ReleaseSeconds = 1788472800;   // the captured vaultboy instant
@@ -64,7 +68,7 @@ public class PreReleaseWireTests
         public int Posts;
     }
 
-    static (SpotifyPreReleaseService Svc, Wire Log) Build(Func<string, Pb.Prerelease?> answers)
+    (SpotifyPreReleaseService Svc, Wire Log) Build(Func<string, Pb.Prerelease?> answers)
     {
         var log = new Wire();
         var http = new FakeExchange((req, _) =>
@@ -77,12 +81,11 @@ public class PreReleaseWireTests
             {
                 log.Requested.Add(er.EntityUri);
                 foreach (var q in er.Query) log.Kinds.Add(q.ExtensionKind);
-                if (answers(er.EntityUri) is { } payload)
-                    array.ExtensionData.Add(new Xm.EntityExtensionData
-                    {
-                        EntityUri = er.EntityUri,
-                        ExtensionData = new Any { Value = payload.ToByteString() },
-                    });
+                var payload = answers(er.EntityUri);
+                var row = new Xm.EntityExtensionData { EntityUri = er.EntityUri,
+                    Header = new Xm.EntityExtensionDataHeader { StatusCode = payload is null ? 404 : 200 } };
+                if (payload is not null) row.ExtensionData = new Any { Value = payload.ToByteString() };
+                array.ExtensionData.Add(row);
             }
             if (array.ExtensionData.Count > 0) resp.ExtendedMetadata.Add(array);
             return new HttpResp(200, new Dictionary<string, string>(), resp.ToByteArray());
@@ -93,9 +96,12 @@ public class PreReleaseWireTests
     /// <summary>The service is THIN over this reader (design §2.5): the answers-including-negatives table, the
     /// coalescing slot and the etag cache all live below it now, so these tests drive the REAL read path — only the
     /// three-key seed and the half-link rejection are still this file's own code.</summary>
-    static ExtensionReader Reader(IHttpExchange http)
-        => new(new ExtensionEtagCache(new ExtendedMetadataSource(http, () => "https://spclient.test", () => Ctx), () => Ctx),
-               new NegativeMemo());
+    CatalogExtensionReader Reader(IHttpExchange http)
+    {
+        var fixture = new CatalogResourceWireFixture(http, Ctx);
+        _fixtures.Add(fixture);
+        return fixture.Reader;
+    }
 
     // Answers under BOTH keys, which is what the real wire does.
     static Func<string, Pb.Prerelease?> Both(Pb.Prerelease msg) =>
@@ -134,7 +140,7 @@ public class PreReleaseWireTests
     }
 
     [Fact]
-    public async Task OneRoundTrip_ServesBOTHDirections()
+    public async Task BothDirectionsResolve_AndRepeatedReadsReuseTheirOwnResource()
     {
         // The three-key cache is the whole point: the artist masthead resolves an ALBUM uri and the pre-save heart
         // later asks with the PRERELEASE uri (or the reverse, from a bio link) — neither pays a second request.
@@ -146,25 +152,20 @@ public class PreReleaseWireTests
         var second = await svc.ResolveAsync(PreUri, CT);
         var third = await svc.ResolveAsync(AlbumUri, CT);
 
-        Assert.Equal(1, log.Posts);                          // no second fetch, in either direction
-        Assert.Same(first, second);
-        Assert.Same(first, third);
+        Assert.Equal(2, log.Posts);                          // each subject owns its own provider observation
+        Assert.Equal(first, second);
+        Assert.Equal(first, third);
     }
 
     [Fact]
-    public async Task ThePayloadsOwnUris_AreCachedEvenWhenTheQueryUriDiffers()
+    public async Task AliasPayload_DoesNotInventAuthorityUnderUnrequestedSubjects()
     {
-        // The query uri is cached too, and it is NOT assumed to be one of the pair — a caller can hold a third
-        // spelling (an alias) and still get the link, then the pair resolves free.
         const string alias = "spotify:album:aliasedEdition";
         var (svc, log) = Build(uri => uri == alias ? Message() : null);
-
         Assert.NotNull(await svc.ResolveAsync(alias, CT));
-        Assert.Equal(1, log.Posts);
-
-        Assert.NotNull(await svc.ResolveAsync(PreUri, CT));
-        Assert.NotNull(await svc.ResolveAsync(AlbumUri, CT));
-        Assert.Equal(1, log.Posts);
+        Assert.Null(await svc.ResolveAsync(PreUri, CT));
+        Assert.Null(await svc.ResolveAsync(AlbumUri, CT));
+        Assert.Equal(3, log.Posts);
     }
 
     // ── half-links ────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -50,11 +50,12 @@ public class MutationConcurrencyRegressionTests
     static SessionContext Ctx => new("me", "US", "premium", "en", Tier.Premium, false);
 
     [Fact]
-    public void SameUri_InTwoDifferentSets_DoNotCollide()
+    public async Task SameUri_InTwoDifferentSets_DoNotCollide()
     {
-        var m = new MutationEngine(new InMemoryStore(), new IMutationStrategy[] { new SetReplayStrategy() });
-        m.Save("liked", "spotify:track:1", true);
-        m.Save("rock", "spotify:track:1", true);
+        await using var host = new ReplicaTestHost(account: "me");
+        var m = host.Mutations;
+        await m.SaveAsync("liked", "spotify:track:1", true);
+        await m.SaveAsync("rock", "spotify:track:1", true);
         Assert.Equal(2, m.Pending);   // pre-fix: keyed by (type, uri) → the two sets collided into one row
     }
 
@@ -63,11 +64,14 @@ public class MutationConcurrencyRegressionTests
     {
         var store = new InMemoryStore();
         var gate = new TaskCompletionSource();
-        var m = new MutationEngine(store, new IMutationStrategy[] { new GatedSetStrategy(gate.Task) });
+        await using var host = new ReplicaTestHost(account: "me", store: store);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var m = new MutationEngine(host.Replicas, [new GatedSetStrategy(gate.Task, entered)]);
 
-        m.Save("liked", "spotify:track:1", true);          // op A: save
+        await m.SaveAsync("liked", "spotify:track:1", true);          // op A: save
         var drain = m.Drain(null!, Ctx);                   // snapshots [A], then blocks in Replay on the gate
-        m.Save("liked", "spotify:track:1", false);         // op B: unsave — coalesces in DURING the in-flight replay
+        await entered.Task;
+        await m.SaveAsync("liked", "spotify:track:1", false);         // op B: unsave — coalesces in DURING the in-flight replay
         gate.SetResult();                                  // let Replay(A) succeed
         await drain;
 
@@ -76,12 +80,11 @@ public class MutationConcurrencyRegressionTests
         Assert.Equal(1, m.Pending);                                // B is still Pending, not clobbered
     }
 
-    sealed class GatedSetStrategy(Task gate) : IMutationStrategy
+    sealed class GatedSetStrategy(Task gate, TaskCompletionSource entered) : IMutationStrategy
     {
         public string Type => "set";
-        public bool OfflineQueueable => true;
-        public void ApplyOptimistic(OutboxOp op, IStore store) => store.SetSaved(op.SetId, op.EntityKey, op.TargetSaved, SyncState.Pending);
-        public async Task<bool> Replay(OutboxOp op, ITransport t, SessionContext ctx, CancellationToken ct) { await gate; return true; }
-        public void Rollback(OutboxOp op, IStore store) => store.SetSaved(op.SetId, op.EntityKey, !op.TargetSaved, SyncState.Confirmed);
+        public OutboxOp Prepare(OutboxOp op) => op;
+        public async Task<MutationReplayResult> Replay(OutboxOp op, ITransport t, SessionContext ctx, CancellationToken ct)
+        { entered.TrySetResult(); await gate; return new(MutationReplayDisposition.Applied); }
     }
 }

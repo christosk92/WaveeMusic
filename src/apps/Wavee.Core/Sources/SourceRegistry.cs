@@ -12,6 +12,7 @@ public sealed class SourceRegistry
     /// hands it a fixed list), and <see cref="OwnerOf"/> is on the hot path of every hydration route — a per-call
     /// <c>OfType/Where/FirstOrDefault</c> chain allocated three iterators and a closure for a walk over ~3 sources.</summary>
     readonly ICatalogSource[] _catalog;
+    readonly ISource[] _catalogOwners;
 
     public SourceRegistry(IReadOnlyList<ISource> sources)
     {
@@ -21,6 +22,7 @@ public sealed class SourceRegistry
             if (sources[i] is ICatalogSource c && (c.Capabilities & SourceCapabilities.Catalog) != 0)
                 catalog.Add(c);
         _catalog = catalog.ToArray();
+        _catalogOwners = sources.Where(source => (source.Capabilities & (SourceCapabilities.Catalog | SourceCapabilities.Podcasts)) != 0).ToArray();
     }
 
     public IReadOnlyList<ISource> All => _sources;
@@ -29,10 +31,10 @@ public sealed class SourceRegistry
     public IReadOnlyList<ICatalogSource> CatalogSources => _catalog;
 
     /// <summary>The first catalog source that owns <paramref name="uri"/> (null if none — the aggregate then falls back).</summary>
-    public ICatalogSource? OwnerOf(string uri)
+    public ISource? OwnerOf(string uri)
     {
-        for (int i = 0; i < _catalog.Length; i++)
-            if (_catalog[i].Owns(uri)) return _catalog[i];
+        for (int i = 0; i < _catalogOwners.Length; i++)
+            if (_catalogOwners[i].Owns(uri)) return _catalogOwners[i];
         return null;
     }
 

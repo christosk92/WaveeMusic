@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
@@ -222,16 +222,15 @@ sealed class ConcertHubPage : Component
     Element ConcertShelf(ConcertFeedSection section, Action<string, string?> go)
     {
         var concerts = section.Concerts;
-        int n = Math.Min(concerts.Count, 16);
         return PagedShelf.Create(
-            n,
-            cardAt: (i, w) => ConcertUi.VerticalCard(concerts[i],
-                () => go(ConcertRoutes.Detail(concerts[i].Uri), concerts[i].Title ?? concerts[i].Venue)),
+            concerts,
+            cardAt: (item, i, w) => ConcertUi.VerticalCard(item,
+                () => go(ConcertRoutes.Detail(item.Uri), item.Title ?? item.Venue)),
             header: SectionCaption(section.Kind == ConcertFeedSectionKind.Nearby
                 ? Loc.Get(Strings.Concerts.NearYou)
                 : Loc.Get(Strings.Concerts.RecommendedForYou)),
             headerGap: Spacing.S,
-            measured: true, keyOf: i => concerts[i].Uri) with { Key = "hub-shelf:" + section.Key };
+            measured: true, keyOf: (item, i) => item.Uri, maxItems: 16) with { Key = "hub-shelf:" + section.Key };
     }
 
     // EventTile is uniform-height (every text line is single-line clamped): art = cellW − 16 (the card's side padding),
@@ -292,14 +291,13 @@ sealed class ConcertHubPage : Component
     Element PromoShelf(string sectionKey, IReadOnlyList<PlaylistRef> promos, Action<string, string?> go)
     {
         var acts = _acts;
-        int n = Math.Min(promos.Count, 16);
         return PagedShelf.Create(
-            n,
-            cardAt: (i, w) => PlaylistPromoCard(promos[i],
-                () => go("pl:" + promos[i].Uri, promos[i].Name), w, acts),
+            promos,
+            cardAt: (item, i, w) => PlaylistPromoCard(item,
+                () => go("pl:" + item.Uri, item.Name), w, acts),
             header: SectionCaption(Loc.Get(Strings.Concerts.PlaylistsForScene)),
             headerGap: Spacing.S,
-            measured: true, keyOf: i => promos[i].Uri) with { Key = "hub-promos:" + sectionKey };
+            measured: true, keyOf: (item, i) => item.Uri, maxItems: 16) with { Key = "hub-promos:" + sectionKey };
     }
 
     // The promo card keeps the existing playlist-card look (cover + title + source) WITHOUT the play FAB: every

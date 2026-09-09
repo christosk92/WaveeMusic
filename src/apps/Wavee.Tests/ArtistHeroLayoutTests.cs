@@ -192,4 +192,82 @@ public class ArtistHeroLayoutTests
         Assert.Equal(h + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(1440f, 520f));
         Assert.Equal(h / (h + ArtistHeroLayout.ContentBlendTail), ArtistHeroLayout.BlendBoundaryFor(1440f, 520f));
     }
+
+    // ── the artist-hero-clip fix (library-v3-1 findings, Part 3/Part 5 §7) ──────────────────────────────────────────
+
+    /// <summary>Pins the corrected Wide budget to real numbers instead of the old borrowed-from-a-different-tier
+    /// guess: WaveeType.ArtistDisplay is 84/96/700 (one name line = 96, not the old 40-DIP-rung-based 80 for TWO
+    /// lines), and ArtistPage.Hero.cs:72 grants the bio MaxLines = 2 on Wide (two lines of Ui.Body's 14/20 = 40, not
+    /// the old one-line 20). Padding(48) + verified(16) + name(96) + bio(40) + meta(20) + actions(36) + gaps(48).</summary>
+    [Fact]
+    public void WideCopyBudget_CoversATwoLineBioAtTheRealNameLineHeight()
+    {
+        const float expected = 48f + 16f + 96f + 40f + 20f + 36f + 48f;
+        Assert.Equal(expected, ArtistHeroLayout.WideCopyBudget);
+        // The pre-fix constant (268 = 48+16+80+20+20+36+48) silently undercounted both the name face and the second
+        // bio line — this is the regression guard: any future edit that quietly shrinks the budget back towards it
+        // fails here before a two-line bio ever gets a chance to clip the actions row again.
+        Assert.True(ArtistHeroLayout.WideCopyBudget > 268f);
+    }
+
+    /// <summary>Medium's name face is WaveeType.ArtistTitle (48/60/700) and its bio never exceeds one line (only
+    /// Wide's <c>MaxLines</c> is 2) — its own budget, no longer silently aliased to Wide's.</summary>
+    [Fact]
+    public void MediumCopyBudget_UsesItsOwnSmallerNameFaceAndOneLineBio()
+    {
+        const float expected = 48f + 16f + 60f + 20f + 20f + 36f + 48f;
+        Assert.Equal(expected, ArtistHeroLayout.MediumCopyBudget);
+        Assert.NotEqual(ArtistHeroLayout.WideCopyBudget, ArtistHeroLayout.MediumCopyBudget);
+    }
+
+    /// <summary>The corrected budget must still fit inside the tier's own unclamped fixed height (diagnosis: the
+    /// undercount only ever surfaced through the viewport clamp's floor on an ordinary window — WideHeight/MediumHeight
+    /// themselves were never too small once the budget they are compared against tells the truth).</summary>
+    [Fact]
+    public void TierHeights_AlreadyCoverTheCorrectedBudgetUnclamped()
+    {
+        Assert.True(ArtistHeroLayout.WideHeight >= ArtistHeroLayout.WideCopyBudget);
+        Assert.True(ArtistHeroLayout.MediumHeight >= ArtistHeroLayout.MediumCopyBudget);
+    }
+
+    [Fact]
+    public void MeasuredCopyHeightFrom_ZeroIsZero_PositiveAddsThePadding()
+    {
+        Assert.Equal(0f, ArtistHeroLayout.MeasuredCopyHeightFrom(0f));
+        Assert.Equal(200f + ArtistHeroLayout.CopyPadding, ArtistHeroLayout.MeasuredCopyHeightFrom(200f));
+    }
+
+    /// <summary>The structural half of the fix: whatever the analytical budget above predicts, a horizontal tier's
+    /// hero can never end up SHORTER than what the copy block actually measured last frame.</summary>
+    [Fact]
+    public void MeasuredCopyHeight_FloorsAHorizontalTierAboveEveryOtherFloor()
+    {
+        float measured = ArtistHeroLayout.WideHeight + 100f;   // deliberately past the tier height AND the budget
+        var m = ArtistHeroLayout.For(1440f, pageViewportHeight: 0f, ArtistHeroTier.Wide, measured);
+        Assert.Equal(measured, m.MinHeight);
+
+        // And it still wins under the viewport clamp — measured content is ground truth over the analytical floor.
+        var clamped = ArtistHeroLayout.For(1440f, pageViewportHeight: 520f, ArtistHeroTier.Wide, measured);
+        Assert.Equal(measured, clamped.MinHeight);
+    }
+
+    /// <summary>A measured height smaller than what the tier/clamp already computed changes nothing — it is a FLOOR,
+    /// never a ceiling, and the pre-settle value (0, "not yet measured") must be a complete no-op.</summary>
+    [Fact]
+    public void MeasuredCopyHeight_NeverLowersTheResult()
+    {
+        var unmeasured = ArtistHeroLayout.For(1440f, pageViewportHeight: 520f, ArtistHeroTier.Wide, measuredCopyHeight: 0f);
+        var smallMeasured = ArtistHeroLayout.For(1440f, pageViewportHeight: 520f, ArtistHeroTier.Wide, measuredCopyHeight: 1f);
+        Assert.Equal(unmeasured.MinHeight, smallMeasured.MinHeight);
+    }
+
+    /// <summary>Stacked tiers have no fixed inner box for a copy-height floor to protect (the identity column is
+    /// Grow = 1 below the photo) — the measured-height parameter is a deliberate no-op there.</summary>
+    [Fact]
+    public void MeasuredCopyHeight_IsIgnoredOnStackedTiers()
+    {
+        var unmeasured = ArtistHeroLayout.For(320f, pageViewportHeight: 0f, ArtistHeroTier.Narrow, measuredCopyHeight: 0f);
+        var measured = ArtistHeroLayout.For(320f, pageViewportHeight: 0f, ArtistHeroTier.Narrow, measuredCopyHeight: 5000f);
+        Assert.Equal(unmeasured.MinHeight, measured.MinHeight);
+    }
 }

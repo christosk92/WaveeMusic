@@ -40,6 +40,13 @@ static class ToastEscalator
     {
         if (settings is null || items.Count == 0) return 0;
         if (!ToastNotifier.IsSupported) return 0;
+        // The AUMID is empty until WaveeNativeBoot.Register has run — a WINDOW-phase startup step, so it lands a drain
+        // or two after the notification centre's own activation rebuild. Escalating before that would advance the
+        // watermark below for banners the OS silently refuses, which loses them rather than delaying them. Return
+        // WITHOUT touching the watermark; the very next rebuild (any feed arrival, any read/dial change) re-considers
+        // the same rows with an identity in place. Packaged builds get the manifest AUMID from the same call, so this
+        // is a "have we registered yet" witness on both flavours, not an unpackaged-only quirk.
+        if (ToastNotifier.Default.Aumid is not { Length: > 0 }) return 0;
 
         var policy = NotificationPrefs.Policy(settings);
         long watermark = settings.Get(WaveeSettings.NotifyLastToastedMs);

@@ -7,6 +7,7 @@ using Google.Protobuf;
 using Wavee.Backend;
 using Wavee.Backend.Playlists;
 using Wavee.Backend.Spotify;
+using Wavee.Backend.Sync;
 using Wavee.Core;
 using Xunit;
 using Pl = Wavee.Protocol.Playlist;
@@ -52,26 +53,30 @@ public class PlaylistCreateTests
         && Pl.ListChanges.Parser.ParseFrom(body).BaseRevision.Length == 8;
     static bool IsRootlist(string route) => route.EndsWith("/rootlist/changes", StringComparison.Ordinal);
 
-    static (InMemoryStore Store, MutationEngine Engine, PlaylistMutationSource Source) Harness(ITransport transport)
+    sealed class Fixture(ReplicaTestHost host, LibrarySync sync, PlaylistMutationSource source,
+        TaskCompletionSource release) : IAsyncDisposable
     {
-        var store = new InMemoryStore();
-        store.SetRootlist(Array.Empty<RootlistEntry>(), Rev24(9));   // a stored rev → the rootlist op needs no bootstrap
-        var lane = new RootlistLane();
-        var resync = new PlaylistResyncQueue();
-        var engine = new MutationEngine(store, new IMutationStrategy[]
-        {
-            new OpRebaseStrategy(store, () => "https://spclient.wg.spotify.com", resync),
-            new CreatePlaylistStrategy(store, () => "https://spclient.wg.spotify.com", resync),
-            new RootlistFollowStrategy(store, lane),
-        });
-        var http = new FakeExchange((_, _) => new HttpResp(500, new Dictionary<string, string>(), Array.Empty<byte>()));
-        var source = new PlaylistMutationSource(engine, transport, http, () => Ctx,
-            () => "https://spclient.wg.spotify.com", new UserPlaylistSource(), lane, store)
-        {
-            // The seam kicks a detached drain; tests drive the drain themselves so the assertions are deterministic.
-            ScheduleDrain = _ => Task.CompletedTask,
-        };
-        return (store, engine, source);
+        public ReplicaTestHost Host => host;
+        public void Deconstruct(out InMemoryStore store, out MutationEngine engine, out PlaylistMutationSource value)
+        { store = (InMemoryStore)host.Store; engine = host.Mutations; value = source; }
+        public void ReleaseDrain() => release.TrySetResult();
+        public Task DrainAsync() { ReleaseDrain(); return sync.DrainWritesAsync(Ct); }
+        public ValueTask DisposeAsync() => host.DisposeAsync();
+    }
+
+    static async Task<Fixture> Harness(ITransport transport)
+    {
+        var host = new ReplicaTestHost();
+        await host.SeedRootlistAsync([], Rev24(9));
+        var http = new FakeExchange((_, _) => new HttpResp(500, new Dictionary<string, string>(), []));
+        var sync = host.AttachSync(http, transport);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = sync.ExecuteRootlistAsync(async ct => { entered.TrySetResult(); await release.Task.WaitAsync(ct); });
+        await entered.Task;
+        var source = new PlaylistMutationSource(host.Mutations, transport, http, () => host.Context,
+            () => "https://spclient.wg.spotify.com", new UserPlaylistSource(), host.Store, host.Replicas, sync);
+        return new Fixture(host, sync, source, release);
     }
 
     // ── 1. the wire ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -102,16 +107,18 @@ public class PlaylistCreateTests
 
     // ── 2. the optimistic row is complete before anything is sent ────────────────────────────────────────────────────
     [Fact]
-    public void Create_OptimisticRowVisibleImmediately()
+    public async Task Create_OptimisticRowVisibleAfterDurableStaging()
     {
         var t = new RecTransport((_, _, _, _) => new Resp(true, Array.Empty<byte>(), 200));
-        var (store, engine, source) = Harness(t);
+        await using var fixture = await Harness(t);
+        var (store, engine, source) = fixture;
 
         var created = source.CreatePlaylist("Road trip", default);
+        await created.Staged;
 
         Assert.Empty(t.Sent);                                        // nothing on the wire yet
         Assert.StartsWith("spotify:playlist:", created.Uri, StringComparison.Ordinal);
-        var header = Assert.IsType<Playlist>(store.GetPlaylist(created.Uri));
+        var header = Assert.IsType<Playlist>(fixture.Host.ReadHeader(created.Uri));
         Assert.Equal("Road trip", header.Name);
         Assert.Equal("bob", header.Owner!.Id);
         Assert.True(header.Capabilities is { IsOwner: true, CanEditItems: true, CanEditMetadata: true, CanAdministratePermissions: true });
@@ -127,11 +134,13 @@ public class PlaylistCreateTests
     [Fact]
     public async Task Create_PostsChangesToTheMintedId_ThenTheRootlistAdd()
     {
-        var t = new RecTransport((route, _, _, _) => new Resp(true, IsRootlist(route) ? Array.Empty<byte>() : SlcRev(Rev24(1)), 200));
-        var (store, engine, source) = Harness(t);
+        var t = new RecTransport((route, _, _, _) => new Resp(true, IsRootlist(route) ? SlcRev(Rev24(10)) : SlcRev(Rev24(1)), 200));
+        await using var fixture = await Harness(t);
+        var (store, engine, source) = fixture;
 
         var created = source.CreatePlaylist("Road trip", default);
-        await engine.Drain(t, Ctx, Ct);
+        await created.Staged;
+        await fixture.DrainAsync();
         await created.Completion;
 
         string id = created.Uri["spotify:playlist:".Length..];
@@ -163,16 +172,18 @@ public class PlaylistCreateTests
         var t = new RecTransport((route, _, _, _) => IsRootlist(route)
             ? new Resp(false, Array.Empty<byte>(), 503)              // transient: the op is still valid
             : new Resp(true, SlcRev(Rev24(1)), 200));
-        var (store, engine, source) = Harness(t);
+        await using var fixture = await Harness(t);
+        var (store, engine, source) = fixture;
 
         var created = source.CreatePlaylist("Road trip", default);
-        await engine.Drain(t, Ctx, Ct);
+        await created.Staged;
+        await fixture.DrainAsync();
         await created.Completion;                                    // the CREATE itself landed
 
         Assert.Equal(1, engine.PendingFor(created.Uri));             // …and the rootlist ADD is still queued
         Assert.Empty(engine.DeadLetter);
         Assert.Equal(created.Uri, Assert.Single(store.Rootlist()).Uri);   // the optimistic row survives (no orphan)
-        Assert.NotNull(store.GetPlaylist(created.Uri));
+        Assert.NotNull(fixture.Host.ReadHeader(created.Uri));
         Assert.True(store.IsSaved("playlists", created.Uri));
     }
 
@@ -183,10 +194,12 @@ public class PlaylistCreateTests
         var t = new RecTransport((route, _, _, _) => IsRootlist(route)
             ? new Resp(true, Array.Empty<byte>(), 200)
             : new Resp(false, Array.Empty<byte>(), 400));
-        var (store, engine, source) = Harness(t);
+        await using var fixture = await Harness(t);
+        var (store, engine, source) = fixture;
 
         var created = source.CreatePlaylist("Road trip", default);
-        await engine.Drain(t, Ctx, Ct);
+        await created.Staged;
+        await fixture.DrainAsync();
 
         var ex = await Assert.ThrowsAsync<PlaylistMutationException>(() => created.Completion);
         Assert.Equal(PlaylistMutationFailure.Unknown, ex.Kind);
@@ -202,9 +215,10 @@ public class PlaylistCreateTests
     [Fact]
     public async Task Create_InFolder_PlacesAfterStartGroup()
     {
-        var t = new RecTransport((route, _, _, _) => new Resp(true, IsRootlist(route) ? Array.Empty<byte>() : SlcRev(Rev24(1)), 200));
-        var (store, engine, source) = Harness(t);
-        store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[]
+        var t = new RecTransport((route, _, _, _) => new Resp(true, IsRootlist(route) ? SlcRev(Rev24(10)) : SlcRev(Rev24(1)), 200));
+        await using var fixture = await Harness(t);
+        var (store, engine, source) = fixture;
+        await fixture.Host.SeedRootlistAsync(RootlistTreeBuilder.EntriesFromUris(new[]
         {
             "spotify:playlist:before",
             "spotify:start-group:g1:Trips",
@@ -213,12 +227,13 @@ public class PlaylistCreateTests
         }), Rev24(9));
 
         var created = source.CreatePlaylist("Road trip", new RootlistPlacement("g1"));
+        await created.Staged;
 
         // optimistic: directly after the start marker (index 2), i.e. the folder's first child
         Assert.Equal(created.Uri, store.Rootlist()[2].Uri);
         Assert.Equal(1, store.Rootlist()[2].Depth);
 
-        await engine.Drain(t, Ctx, Ct);
+        await fixture.DrainAsync();
         await created.Completion;
 
         var add = Assert.Single(Assert.Single(Pl.ListChanges.Parser.ParseFrom(t.Sent[1].Body).Deltas).Ops);
@@ -228,14 +243,16 @@ public class PlaylistCreateTests
     [Fact]
     public async Task Create_InFolder_FolderVanishedBeforeReplay_AddsAtTheTop()
     {
-        var t = new RecTransport((route, _, _, _) => new Resp(true, IsRootlist(route) ? Array.Empty<byte>() : SlcRev(Rev24(1)), 200));
-        var (store, engine, source) = Harness(t);
-        store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[] { "spotify:start-group:g1:Trips", "spotify:end-group:g1" }), Rev24(9));
+        var t = new RecTransport((route, _, _, _) => new Resp(true, IsRootlist(route) ? SlcRev(Rev24(10)) : SlcRev(Rev24(1)), 200));
+        await using var fixture = await Harness(t);
+        var (store, engine, source) = fixture;
+        await fixture.Host.SeedRootlistAsync(RootlistTreeBuilder.EntriesFromUris(new[] { "spotify:start-group:g1:Trips", "spotify:end-group:g1" }), Rev24(9));
 
         var created = source.CreatePlaylist("Road trip", new RootlistPlacement("g1"));
+        await created.Staged;
         // someone deletes the folder while the create is queued
-        store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[] { created.Uri }), Rev24(9));
-        await engine.Drain(t, Ctx, Ct);
+        await fixture.Host.SeedRootlistAsync(RootlistTreeBuilder.EntriesFromUris(Array.Empty<string>()), Rev24(10));
+        await fixture.DrainAsync();
         await created.Completion;
 
         var add = Assert.Single(Assert.Single(Pl.ListChanges.Parser.ParseFrom(t.Sent[1].Body).Deltas).Ops);
@@ -246,12 +263,14 @@ public class PlaylistCreateTests
     [Fact]
     public async Task Create_ThenSeedTracks_OrderedInOutbox()
     {
-        var t = new RecTransport((route, _, _, _) => new Resp(true, IsRootlist(route) ? Array.Empty<byte>() : SlcRev(Rev24(1)), 200));
-        var (store, engine, source) = Harness(t);
+        var t = new RecTransport((route, _, _, _) => new Resp(true, IsRootlist(route) ? SlcRev(Rev24(10)) : SlcRev(Rev24(1)), 200));
+        await using var fixture = await Harness(t);
+        var (store, engine, source) = fixture;
 
         var created = source.CreatePlaylist("Road trip", default);
+        await created.Staged;
         var track = new Track("t1", "spotify:track:t1", "Seed", Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
-        source.ScheduleDrain = c => engine.Drain(t, Ctx, c);              // from here the seam's own drain is live
+        fixture.ReleaseDrain();
         await source.AddTracksAsync(created.Uri, new[] { track }, Ct);   // enqueues behind the create, then drains
 
         await created.Completion;
@@ -273,11 +292,13 @@ public class PlaylistCreateTests
         var t = new RecTransport((route, _, _, _) => IsCreateRoute(route)
             ? new Resp(false, Array.Empty<byte>(), 503)
             : new Resp(true, Array.Empty<byte>(), 200));
-        var (store, engine, source) = Harness(t);
+        await using var fixture = await Harness(t);
+        var (store, engine, source) = fixture;
 
         var created = source.CreatePlaylist("Road trip", default);
+        await created.Staged;
         var track = new Track("t1", "spotify:track:t1", "Seed", Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
-        source.ScheduleDrain = c => engine.Drain(t, Ctx, c);
+        fixture.ReleaseDrain();
         var pending = await Assert.ThrowsAsync<PlaylistMutationException>(() => source.AddTracksAsync(created.Uri, new[] { track }, Ct));
 
         Assert.Equal(PlaylistMutationFailure.Pending, pending.Kind);

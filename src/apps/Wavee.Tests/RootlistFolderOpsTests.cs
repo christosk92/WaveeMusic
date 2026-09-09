@@ -17,7 +17,7 @@ namespace Wavee.Tests;
 // A folder is a balanced marker pair in the flat rootlist item stream, so every folder op is an index ADD/REM. The three
 // builders are pinned BYTE-EXACT against the desktop captures (a164 create, b037/b128 rename); the delete shape is
 // reference-inferred (no capture exists) and is pinned behaviourally instead: end marker first, children untouched.
-public class RootlistFolderOpsTests
+public class RootlistFolderOpsTests : IAsyncLifetime
 {
     static readonly SessionContext Ctx = new("bob", "US", "premium", "en", Tier.Premium, false);
     static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -36,20 +36,24 @@ public class RootlistFolderOpsTests
         public IObservable<WireRequest> Requests(string identPrefix) => new SimpleSubject<WireRequest>();
         public Task Reply(string requestId, RequestResult result) => Task.CompletedTask;
         public Task<Resp> Publish(string deviceId, string connectionId, ReadOnlyMemory<byte> putState, CancellationToken ct = default)
-            => Task.FromResult(new Resp(true, Array.Empty<byte>(), 200));
+            => Task.FromResult(new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
     }
 
     static byte[] Rev24(byte tag) { var r = new byte[24]; r[3] = tag; r[23] = tag; return r; }
 
-    static PlaylistMutationSource Source(IStore store, ITransport transport)
+    readonly List<ReplicaTestHost> _hosts = [];
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync() { foreach (var host in _hosts) await host.DisposeAsync(); }
+
+    async Task<PlaylistMutationSource> Source(IStore store, ITransport transport)
     {
-        var engine = new MutationEngine(store, new IMutationStrategy[]
-        {
-            new OpRebaseStrategy(store, () => "https://spclient.wg.spotify.com", new PlaylistResyncQueue()),
-        });
+        var host = new ReplicaTestHost(store: store);
+        _hosts.Add(host);
+        await host.SeedRootlistAsync(store.Rootlist(), store.RootlistRevision());
         var http = new FakeExchange((_, _) => new HttpResp(500, new Dictionary<string, string>(), Array.Empty<byte>()));
-        return new PlaylistMutationSource(engine, transport, http, () => Ctx,
-            () => "https://spclient.wg.spotify.com", new UserPlaylistSource(), new RootlistLane(), store);
+        var sync = host.AttachSync(http, transport);
+        return new PlaylistMutationSource(host.Mutations, transport, http, () => host.Context,
+            () => "https://spclient.wg.spotify.com", new UserPlaylistSource(), store, host.Replicas, sync);
     }
 
     static IReadOnlyList<RootlistEntry> Entries(params (string Uri, long Ts)[] rows)
@@ -209,8 +213,8 @@ public class RootlistFolderOpsTests
     {
         var store = new InMemoryStore();
         store.SetRootlist(Entries(("spotify:playlist:a", 0)), Rev24(1));
-        var t = new RecTransport((_, _, _) => new Resp(true, Array.Empty<byte>(), 200));
-        var source = Source(store, t);
+        var t = new RecTransport((_, _, _) => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
+        var source = await Source(store, t);
 
         string groupId = await source.CreateFolderAsync("Trips", default, Ct);
 
@@ -227,7 +231,7 @@ public class RootlistFolderOpsTests
         Assert.True(rows[0].AddedAtMs > 0);
         Assert.Equal(2, rows[1].Kind);
         Assert.Equal("spotify:playlist:a", rows[2].Uri);
-        Assert.Equal(Rev24(1), store.RootlistRevision());                  // the reply advanced nothing; the rev stands
+        Assert.Equal(Rev24(2), store.RootlistRevision());                  // the acknowledged head advances atomically with the rows
     }
 
     [Fact]
@@ -235,8 +239,8 @@ public class RootlistFolderOpsTests
     {
         var store = new InMemoryStore();
         store.SetRootlist(Entries(("spotify:start-group:outer:Outer", 5), ("spotify:end-group:outer", 5)), Rev24(1));
-        var t = new RecTransport((_, _, _) => new Resp(true, Array.Empty<byte>(), 200));
-        var source = Source(store, t);
+        var t = new RecTransport((_, _, _) => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
+        var source = await Source(store, t);
 
         string groupId = await source.CreateFolderAsync("Inner", new RootlistPlacement("outer"), Ct);
 
@@ -267,9 +271,9 @@ public class RootlistFolderOpsTests
         {
             1 => new Resp(false, Array.Empty<byte>(), 409),
             2 => new Resp(true, bootstrap.ToByteArray(), 200),        // the bootstrap GET
-            _ => new Resp(true, Array.Empty<byte>(), 200),
+            _ => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200),
         });
-        var source = Source(store, t);
+        var source = await Source(store, t);
 
         await source.RenameFolderAsync("g1", "New", Ct);
 
@@ -297,8 +301,8 @@ public class RootlistFolderOpsTests
         });
         var t = new RecTransport((route, body, call) => call == 1
             ? new Resp(true, bootstrap.ToByteArray(), 200)
-            : new Resp(true, Array.Empty<byte>(), 200));
-        var source = Source(store, t);
+            : new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
+        var source = await Source(store, t);
 
         await source.RenameFolderAsync("g1", "New", Ct);
 
@@ -317,8 +321,8 @@ public class RootlistFolderOpsTests
             ("spotify:start-group:g1:Trips", 9),
             ("spotify:playlist:inside", 0),
             ("spotify:end-group:g1", 9)), Rev24(1));
-        var t = new RecTransport((_, _, _) => new Resp(true, Array.Empty<byte>(), 200));
-        var source = Source(store, t);
+        var t = new RecTransport((_, _, _) => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
+        var source = await Source(store, t);
 
         await source.DeleteFolderAsync("g1", Ct);
 
@@ -333,7 +337,7 @@ public class RootlistFolderOpsTests
     {
         var store = new InMemoryStore();
         store.SetRootlist(Entries(("spotify:start-group:g1:Trips", 9), ("spotify:end-group:g1", 9)), Rev24(1));
-        var source = Source(store, new StubTransport());   // the named offline stand-in
+        var source = await Source(store, new StubTransport());   // the named offline stand-in
 
         var create = await Assert.ThrowsAsync<PlaylistMutationException>(() => source.CreateFolderAsync("x", default, Ct));
         var rename = await Assert.ThrowsAsync<PlaylistMutationException>(() => source.RenameFolderAsync("g1", "x", Ct));
@@ -349,8 +353,8 @@ public class RootlistFolderOpsTests
     {
         var store = new InMemoryStore();
         store.SetRootlist(Entries(("spotify:playlist:a", 0)), Rev24(1));
-        var t = new RecTransport((_, _, _) => new Resp(true, Array.Empty<byte>(), 200));
-        var source = Source(store, t);
+        var t = new RecTransport((_, _, _) => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
+        var source = await Source(store, t);
 
         var ex = await Assert.ThrowsAsync<PlaylistMutationException>(() => source.RenameFolderAsync("gone", "x", Ct));
 
@@ -376,7 +380,7 @@ public class RootlistFolderOpsTests
         public IObservable<WireRequest> Requests(string identPrefix) => new SimpleSubject<WireRequest>();
         public Task Reply(string requestId, RequestResult result) => Task.CompletedTask;
         public Task<Resp> Publish(string deviceId, string connectionId, ReadOnlyMemory<byte> putState, CancellationToken ct = default)
-            => Task.FromResult(new Resp(true, Array.Empty<byte>(), 200));
+            => Task.FromResult(new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
     }
 
     [Fact]
@@ -385,7 +389,7 @@ public class RootlistFolderOpsTests
         var store = new InMemoryStore();
         store.SetRootlist(Entries(("spotify:playlist:a", 0)), Rev24(1));
         var t = new ParkedTransport();
-        var source = Source(store, t);
+        var source = await Source(store, t);
 
         var create = source.CreateFolderAsync("Trips", default, Ct);
         await t.Posted.Task;
@@ -395,51 +399,54 @@ public class RootlistFolderOpsTests
         Assert.Equal("Trips", store.Rootlist()[0].GroupName);
         Assert.Equal(Rev24(1), store.RootlistRevision());         // …with the revision we still trust
 
-        t.Answer.SetResult(new Resp(true, Array.Empty<byte>(), 200));
+        t.Answer.SetResult(new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
         await create;
         Assert.Equal(3, store.Rootlist().Count);
     }
 
     [Fact]
-    public async Task CreateFolder_TransportFault_RollsTheTreeBack()
+    public async Task CreateFolder_TransportFault_KeepsPendingOverlayAndConfirmedBaseline()
     {
         var store = new InMemoryStore();
         store.SetRootlist(Entries(("spotify:playlist:a", 0)), Rev24(1));
         var t = new RecTransport((_, _, _) => new Resp(false, Array.Empty<byte>(), 503));   // valid op, dead wire
-        var source = Source(store, t);
+        var source = await Source(store, t);
 
         var ex = await Assert.ThrowsAsync<PlaylistMutationException>(() => source.CreateFolderAsync("Trips", default, Ct));
 
-        Assert.Equal(PlaylistMutationFailure.Unknown, ex.Kind);
-        Assert.Equal("spotify:playlist:a", Assert.Single(store.Rootlist()).Uri);   // no phantom folder left behind
+        Assert.Equal(PlaylistMutationFailure.Pending, ex.Kind);
+        Assert.Equal(3, store.Rootlist().Count);
+        Assert.Single(_hosts[^1].Replicas.ReadConfirmedRootlist().Entries);
+        Assert.Single(_hosts[^1].Replicas.Intents);
         Assert.Equal(Rev24(1), store.RootlistRevision());
     }
 
     [Fact]
-    public async Task DeleteFolder_TransportFault_PutsTheFolderBack()
+    public async Task DeleteFolder_TransportFault_KeepsPendingRemovalAndConfirmedBaseline()
     {
         var store = new InMemoryStore();
         store.SetRootlist(Entries(
             ("spotify:start-group:g1:Trips", 9),
             ("spotify:playlist:inside", 0),
             ("spotify:end-group:g1", 9)), Rev24(1));
-        var source = Source(store, new RecTransport((_, _, _) => new Resp(false, Array.Empty<byte>(), 503)));
+        var source = await Source(store, new RecTransport((_, _, _) => new Resp(false, Array.Empty<byte>(), 503)));
 
         await Assert.ThrowsAsync<PlaylistMutationException>(() => source.DeleteFolderAsync("g1", Ct));
 
-        Assert.Equal(3, store.Rootlist().Count);
-        Assert.Equal(1, store.Rootlist()[0].Kind);
+        Assert.Equal("spotify:playlist:inside", Assert.Single(store.Rootlist()).Uri);
+        Assert.Equal(3, _hosts[^1].Replicas.ReadConfirmedRootlist().Entries.Length);
+        Assert.Single(_hosts[^1].Replicas.Intents);
     }
 
     // ── 6. deleting a playlist takes its rootlist row with it, locally ──────────────────────────────────────────────
     [Fact]
-    public async Task DeletePlaylist_RemovesTheRootlistRowLocally_AndRestoresItOnFailure()
+    public async Task DeletePlaylist_AmbiguousFailure_KeepsPendingRemoval()
     {
         var store = new InMemoryStore();
         store.SetRootlist(Entries(("spotify:playlist:keep", 0), ("spotify:playlist:doomed", 0)), Rev24(1));
-        var ok = new RecTransport((_, _, _) => new Resp(true, Array.Empty<byte>(), 200));
+        var ok = new RecTransport((_, _, _) => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
 
-        await Source(store, ok).DeletePlaylistAsync("spotify:playlist:doomed", Ct);
+        await (await Source(store, ok)).DeletePlaylistAsync("spotify:playlist:doomed", Ct);
 
         // The reply has no contents, so the row can only leave the tree because WE removed it.
         Assert.Equal("spotify:playlist:keep", Assert.Single(store.Rootlist()).Uri);
@@ -450,9 +457,11 @@ public class RootlistFolderOpsTests
         var dead = new RecTransport((_, _, _) => new Resp(false, Array.Empty<byte>(), 503));
 
         await Assert.ThrowsAsync<PlaylistMutationException>(
-            () => Source(store2, dead).DeletePlaylistAsync("spotify:playlist:doomed", Ct));
+            async () => await (await Source(store2, dead)).DeletePlaylistAsync("spotify:playlist:doomed", Ct));
 
-        Assert.Equal(2, store2.Rootlist().Count);                  // the row is back — nothing was deleted anywhere
+        Assert.Single(store2.Rootlist());
+        Assert.Equal(2, _hosts[^1].Replicas.ReadConfirmedRootlist().Entries.Length);
+        Assert.Single(_hosts[^1].Replicas.Intents);
     }
 
     [Fact]

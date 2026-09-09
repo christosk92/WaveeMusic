@@ -21,14 +21,18 @@ public sealed class LocalSource : ICatalogSource
 
     static Task<T?> Ok<T>(T value) => Task.FromResult<T?>(value);
 
+    public Task<Track?> GetTrackAsync(string uri, CancellationToken ct = default)
+        => Task.FromResult(FakeData.LocalTracks().FirstOrDefault(track => track.Uri == uri));
+
     // W7: the "Local Files" collection playlist is retired (no page opens it any more) — this source has no playlist
     // to hand back, like every other single-item read below with nothing to serve.
-    public Task<Playlist?> GetPlaylistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Playlist?> GetPlaylistAsync(string uri, CancellationToken ct = default)
         => Task.FromResult<Playlist?>(null);
 
-    public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Album?> GetAlbumAsync(string uri, CancellationToken ct = default)
     {
         var tracks = FakeData.LocalTracks().Where(t => t.Album.Uri == uri).ToArray();
+        if (tracks.Length == 0) return Task.FromResult<Album?>(null);
         string name = tracks.Length > 0 ? tracks[0].Album.Name : "Local Album";
         var artists = tracks.Length > 0
             ? tracks[0].Artists.Select(a => new ArtistRef(a.Id, a.Uri, a.Name)).ToArray()
@@ -36,9 +40,10 @@ public sealed class LocalSource : ICatalogSource
         return Ok(new Album("localal", uri, name, null, artists, 0, tracks.Length, tracks, AlbumKind.Album));
     }
 
-    public Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<Artist?> GetArtistAsync(string uri, CancellationToken ct = default)
     {
         var tracks = FakeData.LocalTracks().Where(t => t.Artists.Any(a => a.Uri == uri)).ToArray();
+        if (tracks.Length == 0) return Task.FromResult<Artist?>(null);
         string name = tracks.Length > 0 ? tracks[0].Artists.First(a => a.Uri == uri).Name : "Local Artist";
         return Ok(new Artist("localar", uri, name, null));
     }
@@ -60,7 +65,7 @@ public sealed class LocalSource : ICatalogSource
         => Task.FromResult<IReadOnlyList<Album>>(System.Array.Empty<Album>());
     public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Artist>>(System.Array.Empty<Artist>());
-    public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
+    public Task<IReadOnlyList<Track>> GetLikedSongsAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Track>>(System.Array.Empty<Track>());
 
     public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default)

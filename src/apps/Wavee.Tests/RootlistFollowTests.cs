@@ -18,7 +18,7 @@ namespace Wavee.Tests;
 // Phase 4 (§2.5–§2.8, RC3) — following a playlist is a rootlist ADD/REM, not a collection write. Routing, per-uri
 // coalescing, the rootlist /changes wire body (Delta.Info + want-flags + nonce + ADD item attributes), the 409 rebase, the
 // bootstrap GET, the Saved-union fold, the OpRebase response capture (incl. zstd), and durable round-trip.
-public class RootlistFollowTests
+public class RootlistFollowTests : IAsyncLifetime
 {
     static SessionContext Ctx => new("bob", "US", "premium", "en", Tier.Premium, false);
     static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -41,13 +41,25 @@ public class RootlistFollowTests
         public Task<Resp> Publish(string deviceId, string connectionId, ReadOnlyMemory<byte> putState, CancellationToken ct = default) => Task.FromResult(new Resp(true, Array.Empty<byte>(), 200));
     }
 
-    static Resp Ok200(string route, string method, byte[] body, int call) => new(true, Array.Empty<byte>(), 200);
+    static Resp Ok200(string route, string method, byte[] body, int call) => new(true, SlcRev(Rev24((byte)(call + 10))), 200);
     static byte[] SlcRev(byte[] rev) => new Pl.SelectedListContent { Revision = ByteString.CopyFrom(rev) }.ToByteArray();
     // I1: a revision only enters the store when it is the real 24-byte playlist4 head, so every response fixture
     // that is meant to be ADOPTED has to carry one (a short stand-in is now refused and the old value kept).
     static byte[] Rev24(byte tag) { var r = new byte[24]; r[3] = tag; r[23] = tag; return r; }
-    static MutationEngine RootlistEngine(IStore store, Func<DateTime>? now = null)
-        => new(store, new IMutationStrategy[] { new SetReplayStrategy(), new RootlistFollowStrategy(store, new RootlistLane()) }, null, now);
+    readonly List<ReplicaTestHost> _hosts = [];
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync() { foreach (var host in _hosts) await host.DisposeAsync(); }
+    async Task<ReplicaTestHost> RootlistHost(IStore store, Func<DateTime>? now = null)
+    {
+        var host = new ReplicaTestHost(store: store, clock: now);
+        _hosts.Add(host);
+        if (store.RootlistRevision() is { } revision) await host.SeedRootlistAsync(store.Rootlist(), revision);
+        return host;
+    }
+    static FakeExchange NoReads() => new((_, _) => new HttpResp(500, new Dictionary<string, string>(), []));
+    static byte[] RootSnapshot(byte[] revision) => new Pl.SelectedListContent
+        { Revision = ByteString.CopyFrom(revision), Contents = new Pl.ListItems { Pos = 0, Truncated = false } }.ToByteArray();
+
 
     static string TempDb() => System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wavee-test-" + Guid.NewGuid().ToString("N") + ".db");
     static void TryDelete(string p) { foreach (var f in new[] { p, p + "-wal", p + "-shm" }) { try { System.IO.File.Delete(f); } catch { } } }
@@ -57,13 +69,14 @@ public class RootlistFollowTests
     public async Task Follow_RoutesToRootlistOp_NeverLikedSet_AndAppliesOptimistically()
     {
         var store = new InMemoryStore();
-        store.SetRootlist(Array.Empty<RootlistEntry>(), new byte[] { 9 });   // seed a rev so drain needs no bootstrap
-        var eng = RootlistEngine(store);
+        store.SetRootlist(Array.Empty<RootlistEntry>(), Rev24(9));   // seed a rev so drain needs no bootstrap
+        var host = await RootlistHost(store);
+        var eng = host.Mutations;
         var t = new RecTransport(Ok200);
-        var src = new EngineMutationSource(store, eng, t, () => Ctx);
+        using var src = new EngineMutationSource(store, eng, host.AttachSync(NoReads(), t));
 
         // optimistic (no drain): a "rootlist"-typed pending op, the pill flips, the entry lands at position 0 — NOT the liked set.
-        eng.Follow("spotify:playlist:x", true);
+        await eng.FollowAsync("spotify:playlist:x", true);
         Assert.True(eng.HasPending("playlists", "spotify:playlist:x"));       // rootlist|playlists|{uri} key
         Assert.True(store.IsSaved("playlists", "spotify:playlist:x"));        // pill on (Pending)
         Assert.False(store.IsSaved("liked", "spotify:playlist:x"));           // never the liked set
@@ -83,13 +96,14 @@ public class RootlistFollowTests
 
     // ── 2. follow → unfollow before drain coalesces to ONE op (latest end-state) ─────────────────────────────────────
     [Fact]
-    public void FollowThenUnfollow_BeforeDrain_CoalescesToOneOp_LatestWins()
+    public async Task FollowThenUnfollow_BeforeDrain_CoalescesToOneOp_LatestWins()
     {
         var store = new InMemoryStore();
-        var eng = RootlistEngine(store);
+        var host = await RootlistHost(store);
+        var eng = host.Mutations;
 
-        eng.Follow("spotify:playlist:x", true);
-        eng.Follow("spotify:playlist:x", false);   // toggle back before any drain
+        await eng.FollowAsync("spotify:playlist:x", true);
+        await eng.FollowAsync("spotify:playlist:x", false);   // toggle back before any drain
 
         Assert.Equal(1, eng.Pending);                                         // coalesced — toggles don't stack
         Assert.False(store.IsSaved("playlists", "spotify:playlist:x"));       // latest end-state = unfollowed (optimistic)
@@ -100,13 +114,14 @@ public class RootlistFollowTests
     public async Task Replay_Follow_PostsRootlistChanges_WithHeadersAndBody()
     {
         var store = new InMemoryStore();
-        store.SetRootlist(Array.Empty<RootlistEntry>(), new byte[] { 9, 9 });   // rev present → single POST, no bootstrap
-        var strat = new RootlistFollowStrategy(store, new RootlistLane());
+        store.SetRootlist(Array.Empty<RootlistEntry>(), Rev24(9));   // rev present → single POST, no bootstrap
+        var host = await RootlistHost(store);
+        var strat = new RootlistFollowStrategy(host.Replicas, () => "https://spclient.test");
         var t = new RecTransport(Ok200);
 
-        var ok = await strat.Replay(new OutboxOp(1, "rootlist", "spotify:playlist:x", "playlists", true, 1, 0), t, Ctx, Ct);
+        var ok = await strat.Replay(strat.Prepare(new OutboxOp(1, "rootlist", "spotify:playlist:x", "playlists", true, 1, 0, CreatedAtMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())), t, Ctx, Ct);
 
-        Assert.True(ok);
+        Assert.Equal(MutationReplayDisposition.Applied, ok.Disposition);
         var req = Assert.Single(t.Sent);
         Assert.Equal("/playlist/v2/user/bob/rootlist/changes", req.Route);
         Assert.Equal("POST", req.Method);
@@ -116,7 +131,7 @@ public class RootlistFollowTests
         Assert.Equal("false", req.Headers!["spotify-dsa-mode-enabled"]);
 
         var lc = Pl.ListChanges.Parser.ParseFrom(req.Body);
-        Assert.Equal(new byte[] { 9, 9 }, lc.BaseRevision.ToByteArray());     // base_revision = the stored rootlist rev
+        Assert.Equal(Rev24(9), lc.BaseRevision.ToByteArray());     // base_revision = the stored rootlist rev
         Assert.True(lc.WantResultingRevisions);
         Assert.True(lc.WantSyncResult);
         Assert.Single(lc.Nonces);
@@ -142,12 +157,13 @@ public class RootlistFollowTests
     public async Task Unfollow_EngineOrder_PostsKeyedRem()
     {
         var store = new InMemoryStore();
-        store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[] { "spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:x" }), new byte[] { 1 });
+        store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[] { "spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:x" }), Rev24(1));
         store.SetSaved("playlists", "spotify:playlist:x", true, SyncState.Confirmed);
-        var eng = RootlistEngine(store);
+        var host = await RootlistHost(store);
+        var eng = host.Mutations;
         var t = new RecTransport(Ok200);
 
-        eng.Follow("spotify:playlist:x", false);                              // optimistic: the local row is removed HERE
+        await eng.FollowAsync("spotify:playlist:x", false);                              // optimistic: the local row is removed HERE
         Assert.DoesNotContain(store.Rootlist(), e => e.Uri == "spotify:playlist:x");
         await eng.Drain(t, Ctx);                                              // replay AFTER the optimistic edit — must still post
 
@@ -166,13 +182,14 @@ public class RootlistFollowTests
     public async Task FollowThenUnfollow_EndToEnd_BothPost()
     {
         var store = new InMemoryStore();
-        store.SetRootlist(Array.Empty<RootlistEntry>(), new byte[] { 1 });
-        var eng = RootlistEngine(store);
+        store.SetRootlist(Array.Empty<RootlistEntry>(), Rev24(1));
+        var host = await RootlistHost(store);
+        var eng = host.Mutations;
         var t = new RecTransport(Ok200);
 
-        eng.Follow("spotify:playlist:x", true);
+        await eng.FollowAsync("spotify:playlist:x", true);
         await eng.Drain(t, Ctx);
-        eng.Follow("spotify:playlist:x", false);
+        await eng.FollowAsync("spotify:playlist:x", false);
         await eng.Drain(t, Ctx);
 
         Assert.Equal(2, t.Sent.Count);
@@ -187,7 +204,7 @@ public class RootlistFollowTests
 
     // ── 4c. keyed REM applies locally by uri (applier stays total); positions renumber contiguously on optimistic edits ──
     [Fact]
-    public void KeyedRem_AppliesByUri_And_OptimisticEditsRenumber()
+    public async Task KeyedRem_AppliesByUri_And_OptimisticEditsRenumber()
     {
         var list = new List<PlaylistMember> { new("i1", "spotify:playlist:a", null, 0), new("i2", "spotify:playlist:x", null, 0), new("i3", "spotify:playlist:b", null, 0) };
         PlaylistDiffApplier.Apply(list, new[] { new PlaylistOp(PlaylistOpKind.Remove, Items: new[] { new PlaylistMember("", "spotify:playlist:x", null, 0) }, ItemsAsKey: true) });
@@ -198,61 +215,65 @@ public class RootlistFollowTests
 
         // optimistic follow/unfollow keep rootlist positions contiguous
         var store = new InMemoryStore();
-        store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[] { "spotify:playlist:a", "spotify:playlist:b" }), new byte[] { 1 });
-        var eng = RootlistEngine(store);
-        eng.Follow("spotify:playlist:x", true);
+        store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[] { "spotify:playlist:a", "spotify:playlist:b" }), Rev24(1));
+        var host = await RootlistHost(store);
+        var eng = host.Mutations;
+        await eng.FollowAsync("spotify:playlist:x", true);
         var rl = store.Rootlist();
         for (int i = 0; i < rl.Count; i++) Assert.Equal(i, rl[i].Position);
-        eng.Follow("spotify:playlist:a", false);
+        await eng.FollowAsync("spotify:playlist:a", false);
         rl = store.Rootlist();
         for (int i = 0; i < rl.Count; i++) Assert.Equal(i, rl[i].Position);
     }
 
     // ── 5. 409 → refetch base + leave pending; the next drain rebases + succeeds ──────────────────────────────────────
     [Fact]
-    public async Task Replay_409_RefetchesBase_ThenNextDrainSucceeds()
+    public async Task Replay_409_RefetchesConfirmedBase_BeforeNextAttempt()
     {
         var store = new InMemoryStore();
-        store.SetRootlist(Array.Empty<RootlistEntry>(), new byte[] { 1 });   // stale base
+        store.SetRootlist([], Rev24(1));
         var clock = DateTime.UtcNow;
-        var eng = RootlistEngine(store, () => clock);
+        var host = await RootlistHost(store, () => clock);
+        var eng = host.Mutations;
         int posts = 0, gets = 0;
-        var t = new RecTransport((route, method, body, n) =>
-        {
-            if (method == "GET") { gets++; return new Resp(true, SlcRev(Rev24(2)), 200); }   // refetch → fresh 24-B rev
-            posts++;
-            return posts == 1 ? new Resp(false, Array.Empty<byte>(), 409) : new Resp(true, Array.Empty<byte>(), 200);
-        });
-
-        eng.Follow("spotify:playlist:x", true);
-        await eng.Drain(t, Ctx);                                   // POST→409 → GET refetch → false; op stays pending
+        var transport = new RecTransport((_, _, _, _) => ++posts == 1
+            ? new Resp(false, [], 409) : new Resp(true, SlcRev(Rev24(3)), 200));
+        var http = new FakeExchange((_, _) => { gets++; return SyncHarness.Ok(RootSnapshot(Rev24(2))); });
+        var sync = host.AttachSync(http, transport);
+        await eng.FollowAsync("spotify:playlist:x", true);
+        await sync.DrainWritesAsync(Ct);
         Assert.Equal(1, eng.Pending);
+        Assert.Equal(0, gets);
+        Assert.Equal(Rev24(1), store.RootlistRevision());
+        clock = clock.AddSeconds(2);
+        await sync.DrainWritesAsync(Ct);
         Assert.Equal(1, gets);
-        Assert.Equal(Rev24(2), store.RootlistRevision());          // base advanced to the fresh rev
-
-        clock = clock.AddSeconds(2);                               // past the §8.3 backoff
-        await eng.Drain(t, Ctx);                                   // POST(base {2})→200 → success
         Assert.Equal(0, eng.Pending);
         Assert.Equal(2, posts);
-        var last = Pl.ListChanges.Parser.ParseFrom(t.Sent[^1].Body);
-        Assert.Equal(Rev24(2), last.BaseRevision.ToByteArray());   // rebased against the fresh base
+        Assert.Equal(Rev24(2), Pl.ListChanges.Parser.ParseFrom(transport.Sent[1].Body).BaseRevision.ToByteArray());
+        Assert.Equal(Rev24(3), store.RootlistRevision());
     }
 
     // ── 6. no stored rootlist revision → Replay bootstraps via GET first ─────────────────────────────────────────────
     [Fact]
     public async Task Replay_NoStoredRevision_BootstrapsViaGetFirst()
     {
-        var store = new InMemoryStore();   // no rootlist revision
-        var strat = new RootlistFollowStrategy(store, new RootlistLane());
-        var t = new RecTransport((route, method, body, n) => method == "GET" ? new Resp(true, SlcRev(Rev24(5)), 200) : new Resp(true, Array.Empty<byte>(), 200));
-
-        await strat.Replay(new OutboxOp(1, "rootlist", "spotify:playlist:x", "playlists", true, 1, 0), t, Ctx, Ct);
-
-        Assert.Equal(2, t.Sent.Count);
-        Assert.Equal("GET", t.Sent[0].Method);                              // bootstrap first
-        Assert.Contains("/playlist/v2/user/bob/rootlist?decorate=revision", t.Sent[0].Route);
-        Assert.Equal("POST", t.Sent[1].Method);
-        Assert.Equal(Rev24(5), Pl.ListChanges.Parser.ParseFrom(t.Sent[1].Body).BaseRevision.ToByteArray());   // used the bootstrapped base
+        var store = new InMemoryStore();
+        var host = await RootlistHost(store);
+        var order = new List<string>();
+        var transport = new RecTransport((route, method, body, call) =>
+        { order.Add(method); return Ok200(route, method, body, call); });
+        var http = new FakeExchange((request, _) =>
+        {
+            Assert.Contains("/rootlist", request.Url);
+            order.Add("GET"); return SyncHarness.Ok(RootSnapshot(Rev24(5)));
+        });
+        var sync = host.AttachSync(http, transport);
+        await host.Mutations.FollowAsync("spotify:playlist:x", true);
+        await sync.DrainWritesAsync(Ct);
+        Assert.Equal(["GET", "POST"], order);
+        Assert.Equal(Rev24(5), Pl.ListChanges.Parser.ParseFrom(Assert.Single(transport.Sent).Body).BaseRevision.ToByteArray());
+        Assert.Equal(0, host.Mutations.Pending);
     }
 
     // ── 7. Saved union fold: Bulk (rootlist fold) + incremental single-uri ───────────────────────────────────────────
@@ -260,7 +281,7 @@ public class RootlistFollowTests
     public async Task SavedUnion_IncludesFollowedPlaylists_BulkAndIncremental()
     {
         await using var h = new SyncHarness(RootlistFoldResponder);
-        var src = new EngineMutationSource(h.Store, h.Mut, h.Dealer, () => Ctx);   // subscribed BEFORE the fold (Bulk path)
+        using var src = new EngineMutationSource(h.Store, h.Mut, h.Sync);   // subscribed BEFORE the fold (Bulk path)
 
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Sync.Enqueue(new SyncCommand(SyncKind.InitialHydrate, Done: done));
@@ -269,7 +290,7 @@ public class RootlistFollowTests
         Assert.Contains("spotify:playlist:p1", src.Saved);                 // folded via the Bulk StoreChange
         Assert.Contains("spotify:playlist:p2", src.Saved);
 
-        h.Store.SetSaved("playlists", "spotify:playlist:p3", true, SyncState.Confirmed);   // single-uri change
+        await h.Host.SeedRootlistAsync(RootlistTreeBuilder.EntriesFromUris(["spotify:playlist:p1", "spotify:playlist:p2", "spotify:playlist:p3"]), Rev24(2));   // single-uri change
         Assert.Contains("spotify:playlist:p3", src.Saved);                 // incremental path
     }
 
@@ -295,22 +316,21 @@ public class RootlistFollowTests
     {
         var slc = new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) };
         var contents = new Pl.ListItems { Pos = 0, Truncated = false };
-        contents.Items.Add(new Pl.Item { Uri = "spotify:track:new" });
+        contents.Items.Add(new Pl.Item { Uri = "spotify:track:new", Attributes = new Pl.ItemAttributes { ItemId = ByteString.CopyFrom(Convert.FromHexString("0102030405060708")) } });
         slc.Contents = contents;
         var respBytes = slc.ToByteArray();
 
         foreach (var (label, body) in new[] { ("plain", respBytes), ("zstd", Zstd(respBytes)) })
         {
             var store = new InMemoryStore();
-            store.SetMembership("spotify:playlist:p", new[] { new PlaylistMember("old", "spotify:track:old", null, 0) }, new byte[] { 1 });
-            var strat = new OpRebaseStrategy(store, () => "https://spclient.wg.spotify.com", new PlaylistResyncQueue());
-            var t = new RecTransport((route, method, b, n) => new Resp(true, body, 200));
-            var op = new OutboxOp(1, "oprebase", "spotify:playlist:p", "spotify:playlist:p", false, 1, 0,
-                new[] { new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: new[] { new PlaylistMember("", "spotify:track:new", null, 0) }) }, new byte[] { 1 });
-
-            var ok = await strat.Replay(op, t, Ctx, Ct);
-
-            Assert.True(ok);
+            store.SetMembership("spotify:playlist:p", new[] { new PlaylistMember("1112131415161718", "spotify:track:old", null, 0) }, Rev24(1));
+            var host = await RootlistHost(store);
+            await host.SeedPlaylistAsync("spotify:playlist:p", store.Membership("spotify:playlist:p"), Rev24(1));
+            var transport = new RecTransport((_, _, _, _) => new Resp(true, body, 200));
+            await host.Mutations.EditAsync("spotify:playlist:p",
+                [new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: [new PlaylistMember("0102030405060708", "spotify:track:new", null, 0)])], Rev24(1));
+            await host.Mutations.Drain(transport, host.Context, Ct);
+            Assert.Equal(0, host.Mutations.Pending);
             Assert.Equal("spotify:track:new", Assert.Single(store.Membership("spotify:playlist:p")).ItemUri);   // response replaced membership (" + label + ")
             Assert.Equal(Rev24(2), store.PlaylistRevision("spotify:playlist:p"));                               // + advanced the revision
             Assert.True(label == "plain" || body[0] == 0x28);   // the zstd fixture really is a zstd frame
@@ -324,15 +344,16 @@ public class RootlistFollowTests
     public async Task DeadLetter_RollsBackPill_AndOptimisticRootlistEntry()
     {
         var store = new InMemoryStore();
-        store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[] { "spotify:playlist:a" }), new byte[] { 1 });
+        store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[] { "spotify:playlist:a" }), Rev24(1));
         var clock = DateTime.UtcNow;
-        var eng = RootlistEngine(store, () => clock);
+        var host = await RootlistHost(store, () => clock);
+        var eng = host.Mutations;
 
-        eng.Follow("spotify:playlist:x", true);
+        await eng.FollowAsync("spotify:playlist:x", true);
         Assert.True(store.IsSaved("playlists", "spotify:playlist:x"));                 // optimistic pill
         Assert.Equal("spotify:playlist:x", store.Rootlist()[0].Uri);                    // optimistic entry at 0
 
-        var t = new RecTransport((route, method, body, n) => new Resp(false, Array.Empty<byte>(), 500));   // always fails (not 409)
+        var t = new RecTransport((route, method, body, n) => new Resp(false, Array.Empty<byte>(), 429));   // explicitly retryable rate limit
         for (int i = 0; i < 12 && eng.Pending > 0; i++) { await eng.Drain(t, Ctx); clock = clock.AddSeconds(120); }
 
         Assert.Equal(0, eng.Pending);
@@ -343,24 +364,26 @@ public class RootlistFollowTests
 
     // ── 10. SqliteColdStore round-trips a "rootlist" op (Load after Save) ────────────────────────────────────────────
     [Fact]
-    public void SqliteColdStore_RoundTrips_RootlistOp()
+    public async Task SqliteColdStore_RoundTrips_RootlistOp()
     {
         var path = TempDb();
         try
         {
             using (var cold = new SqliteColdStore(path))
             {
-                var store = new CachedStore(cold);
-                var eng = new MutationEngine(store, new IMutationStrategy[] { new SetReplayStrategy(), new RootlistFollowStrategy(store, new RootlistLane()) }, cold);
-                eng.Follow("spotify:playlist:x", true);
-                Assert.Equal(1, eng.Pending);
+                await using var host = new ReplicaTestHost(persistence: cold);
+                await host.SeedRootlistAsync([], Rev24(1));
+                await host.Mutations.FollowAsync("spotify:playlist:x", true);
+                Assert.Equal(1, host.Mutations.Pending);
             }
-            using (var cold2 = new SqliteColdStore(path))
+            using (var cold = new SqliteColdStore(path))
             {
-                var store2 = new CachedStore(cold2);
-                var eng2 = new MutationEngine(store2, new IMutationStrategy[] { new SetReplayStrategy(), new RootlistFollowStrategy(store2, new RootlistLane()) }, cold2);
-                Assert.Equal(1, eng2.Pending);                                     // the rootlist op restored from SQLite
-                Assert.True(eng2.HasPending("playlists", "spotify:playlist:x"));   // with the rootlist|playlists|{uri} shape intact
+                var persisted = await ((IReplicaPersistence)cold).LoadAsync(new ReplicaScope("bob", 1), Ct);
+                await using var host = new ReplicaTestHost(persistence: cold, bootstrap: persisted);
+                await host.Replicas.PublishInitialAsync(Ct);
+                Assert.Equal(1, host.Mutations.Pending);
+                Assert.True(host.Mutations.HasPending("playlists", "spotify:playlist:x"));
+                Assert.Contains(host.Store.Rootlist(), entry => entry.Uri == "spotify:playlist:x");
             }
         }
         finally { TryDelete(path); }
@@ -369,22 +392,24 @@ public class RootlistFollowTests
     // ── 11. I2: the outbox replay takes the SAME rootlist lane as the direct ops (move/delete/visibility/create) ──────
     // Two writers on the rootlist is how a positional MOV gets rebased against marker indices that moved underneath it.
     [Fact]
-    public async Task RootlistFollow_TakesRootlistLane()
+    public async Task RootlistFollow_SharesTheProtocolQueueWithDirectCommands()
     {
         var store = new InMemoryStore();
-        store.SetRootlist(Array.Empty<RootlistEntry>(), Rev24(1));
-        var lane = new RootlistLane();
-        var strat = new RootlistFollowStrategy(store, lane);
-        var t = new RecTransport(Ok200);
-
-        await lane.WaitAsync(Ct);                                   // a direct rootlist op holds the lane
-        var replay = strat.Replay(new OutboxOp(1, "rootlist", "spotify:playlist:x", "playlists", true, 1, 0), t, Ctx, Ct);
-        await Task.Delay(50, Ct);
-        Assert.False(replay.IsCompleted);                            // blocked — no interleaved write
-        Assert.Empty(t.Sent);
-
-        lane.Release();
-        Assert.True(await replay);                                   // released → the POST goes out
-        Assert.Single(t.Sent);
+        store.SetRootlist([], Rev24(1));
+        var host = await RootlistHost(store);
+        var transport = new RecTransport(Ok200);
+        var sync = host.AttachSync(NoReads(), transport);
+        await host.Mutations.FollowAsync("spotify:playlist:x", true);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var direct = sync.ExecuteRootlistAsync(async _ => { entered.TrySetResult(); await release.Task; }, Ct);
+        await entered.Task;
+        var drain = sync.DrainWritesAsync(Ct);
+        Assert.False(drain.IsCompleted);
+        Assert.Empty(transport.Sent);
+        release.TrySetResult();
+        await Task.WhenAll(direct, drain);
+        Assert.Single(transport.Sent);
+        Assert.Equal(0, host.Mutations.Pending);
     }
 }

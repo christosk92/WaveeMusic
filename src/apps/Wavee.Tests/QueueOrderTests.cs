@@ -11,7 +11,7 @@ namespace Wavee.Tests;
 // it mirrors (PlaybackSession.MoveItem / InsertUserQueue). The panel used to apply a two-element SWAP while the session
 // removed + inserted: identical for the ±1 context-menu verbs it was written for, wrong for every multi-slot drag —
 // the row appeared to land somewhere the server never put it, then snapped. These pin both halves of that equivalence.
-public class QueueOrderTests
+public class QueueOrderTests : PlaybackCatalogTestBase
 {
     static Track T(string id) => new(id, "spotify:track:" + id, "T-" + id,
         Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
@@ -63,7 +63,7 @@ public class QueueOrderTests
         {
             for (int to = 0; to < 5; to++)
             {
-                var s = new PlaybackSession();
+                var s = new PlaybackSession(Catalog.Queue);
                 s.SetContext("spotify:playlist:p", new[] { new QueuedTrack(T("cur"), "u-cur", "context", null, QueueRowKind.Playable) }, 0);
                 s.EnqueueUser(Enumerable.Range(1, 5)
                     .Select(i => new QueuedTrack(T("t" + i), "", "queue", null, QueueRowKind.Playable)).ToList());
@@ -144,7 +144,7 @@ public class QueueOrderTests
     [Fact]
     public void InsertUserQueue_PutsTheBlockAtTheSlot_AndClamps()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", new[] { new QueuedTrack(T("cur"), "u-cur", "context", null, QueueRowKind.Playable) }, 0);
         s.EnqueueUser(new[] { "a", "b", "c" }
             .Select(i => new QueuedTrack(T(i), "", "queue", null, QueueRowKind.Playable)).ToList());

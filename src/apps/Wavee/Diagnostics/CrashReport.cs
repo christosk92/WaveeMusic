@@ -33,8 +33,7 @@ static class CrashReport
     /// <summary>The reports folder — the SAME lowercase <c>logs</c> directory Program.cs configures the app log into, so
     /// "open the report folder" lands on the logs the report quotes rather than a sibling folder Windows created for
     /// a differently-cased path on a case-sensitive volume.</summary>
-    public static string DefaultDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "logs");
+    public static string DefaultDirectory => UnpackagedAppDataRoot.UnderCurrent("logs");
 
     /// <summary>The path the FIRST successful <see cref="Write"/> of this process produced. Both process-level handlers
     /// fire for one crash (the app-loop catch rethrows into AppDomain.UnhandledException); the second call returns this
@@ -112,7 +111,7 @@ static class CrashReport
             sb.AppendLine("Frames (RVA)");
             sb.AppendLine("------------");
             sb.AppendLine("# offsets from the module base above, in stack-trace order (innermost first);");
-            sb.AppendLine("# resolve each with `ln Wavee+0x<rva>` against the release's Wavee-<quad>-<rid>-symbols.zip");
+            sb.AppendLine("# resolve each with `ln Wavee+0x<rva>` against Wavee.pdb: the release's Wavee-<quad>-<rid>-symbols.zip, or a dev publish's own bin/.../publish/Wavee.pdb");
             foreach (long rva in rvas)
                 sb.AppendLine("0x" + rva.ToString("x", CultureInfo.InvariantCulture));
         }

@@ -33,6 +33,7 @@ internal sealed class AacSampleSource : ISampleSource
     int _primedStart;
     int _primedCount;
     bool _eof;
+    long _samplePosition;
 
     public AacSampleSource(Stream stream)
     {
@@ -90,11 +91,22 @@ internal sealed class AacSampleSource : ISampleSource
                 _decoder.TryPushFrame(frame);
             }
         }
+        _samplePosition += produced;
         return produced;
     }
 
     /// <summary>A live stream has no timeline to seek on; the transport refuses repositioning and this mirrors it.</summary>
-    public void SeekTo(TimeSpan position) { }
+    public long SeekTo(TimeSpan position)
+    {
+        long target = Math.Max(0, (long)(position.TotalSeconds * SampleRate)) * Channels;
+        if (target < _samplePosition) throw new NotSupportedException("AAC backward seeks require a fresh decoder.");
+        while (_samplePosition < target)
+        {
+            int count = (int)Math.Min(_scratch.Length, target - _samplePosition);
+            if (ReadSamples(_scratch, 0, count) == 0) break;
+        }
+        return _samplePosition / Channels;
+    }
 
     public void Dispose() => _decoder.Dispose();
 

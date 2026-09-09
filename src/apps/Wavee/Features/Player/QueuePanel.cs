@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -11,6 +11,7 @@ using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -30,6 +31,7 @@ namespace Wavee;
 //     the source of the frozen-bind/wrong-track corruption.
 sealed class QueuePanel : Component
 {
+    QuerySignalBinding<QueueQuerySnapshot>? _query;
     const float QueueArt = 34f;
     const float RowExtent = 44f;   // the queue row's resting main-axis extent (its MinHeight) — the reorder slot pitch
     const int PageSize = 100;   // rows REALIZED per visual page — the underlying queue is never truncated; the section
@@ -94,7 +96,24 @@ sealed class QueuePanel : Component
         UseEffect(() => setAutoplay(svc?.Settings.Get(WaveeSettings.AutoplayEnabled) ?? true), prefsEpoch);
 
         string ctxUri = b?.CurrentContext.Value ?? "";
-        var ctxName = UseResource(ct => ResolveContextNameAsync(svc, ctxUri, ct), (string?)null, ctxUri).Loadable;
+        var scope = svc?.CatalogScope;
+        var post = UsePost();
+        var active = UseIsActive();
+        UseEffect(() =>
+        {
+            if (svc is null || scope is null) return (Action?)null;
+            var binding = new QuerySignalBinding<QueueQuerySnapshot>(svc.Queries.Acquire(new QueueQuery(scope)), post);
+            _query = binding;
+            binding.SetDemand(new QueryDemand(true, QueryPriority.Playback, []));
+            binding.SetActive(active.Peek());
+            return () => { if (ReferenceEquals(_query, binding)) _query = null; binding.Dispose(); };
+        }, DepKey.From(HashCode.Combine(svc, scope)));
+        UseSignalEffect(() =>
+        {
+            _ = PlaybackPrefs.Epoch.Value;
+            _query?.SetDemand(new QueryDemand(true, QueryPriority.Playback, []));
+            _query?.SetActive(active.Value);
+        });
         var uiLogSig = UseRef<string?>(null);
         // New context ⇒ collapse the visual pagination back to the first page of each section.
         UseEffect(() => { _queuePages.Value = 1; _upPages.Value = 1; _autoPages.Value = 1; }, ctxUri);
@@ -123,7 +142,6 @@ sealed class QueuePanel : Component
         string? curUri = track?.Uri;
         foreach (var e in queue)
         {
-            if (curUri is { Length: > 0 } && e.Track.Uri == curUri) continue;   // never show the current track as a row
             switch (e.Bucket)
             {
                 case QueueBucket.UserQueue: userQueue.Add(e); break;
@@ -143,7 +161,7 @@ sealed class QueuePanel : Component
         // Classic owns identity chrome, not just density: like the detail table it suppresses cell artwork even when
         // the independent generic artwork preference is off. TrackArtworkHidden's Epoch read makes both settings live.
         bool showTrackArtwork = !classic && !artworkHidden;
-        string? source = ctxName.Value.Value is { Length: > 0 } rn ? rn : ImmediateContextName(ctxUri);
+        string? source = b.CurrentContextName.Value is { Length: > 0 } rn ? rn : ImmediateContextName(ctxUri);
         string? sourceHref = source is { Length: > 0 } ? RichText.RouteForUri(ctxUri) : null;
 
         // The upcoming list as reorder SLOTS — headers, realized rows and "Show more" rows in render order. Built from
@@ -572,7 +590,7 @@ sealed class QueuePanel : Component
         var st = TrackRow.StateOf(b, lib, t);
         // A row this thin (ApplySetQueue's Synthetic fallback for a uri we didn't already hold, or a set_queue that
         // outran BumpQueueRevision's identity pass) has a bare spotify:track:… uri sitting in Title — never paint that.
-        bool titleThin = HydrationLevels.TitleMissing(t.Title, t.Uri);
+        bool titleThin = (string.IsNullOrWhiteSpace(t.Title) || string.Equals(t.Title, t.Uri, StringComparison.Ordinal));
         Action? like = t.Uri.Length > 0 && lib is not null ? () => lib.ToggleSaved(t.Uri, t.Title) : null;
 
         void Remove()
@@ -748,7 +766,7 @@ sealed class QueuePanel : Component
         ColorF secondary = nowPlaying ? Tok.AccentTextPrimary : Tok.TextSecondary;
 
         Element identity;
-        if (HydrationLevels.TitleMissing(t.Title, t.Uri))
+        if ((string.IsNullOrWhiteSpace(t.Title) || string.Equals(t.Title, t.Uri, StringComparison.Ordinal)))
         {
             // Classic folds title+artist into one span run — there is no separate slot to skeletonize, so the whole
             // identity becomes one placeholder bar (same fill as the modern row's two-bar shape above) instead of
@@ -868,23 +886,7 @@ sealed class QueuePanel : Component
         return null;
     }
 
-    static async Task<string?> ResolveContextNameAsync(Services? svc, string uri, CancellationToken ct)
-    {
-        if (svc is null || uri.Length == 0) return null;
-        try
-        {
-            switch (EntityUri.KindOf(uri))   // the ONE parser decides which read answers the context name
-            {
-                case EntityKind.Collection: return Loc.Get(Strings.Player.LikedSongs);
-                case EntityKind.Playlist: return (await svc.Library.GetPlaylistAsync(uri, HydrationLevel.Identity, ct).ConfigureAwait(false))?.Name;
-                case EntityKind.Album: return (await svc.Library.GetAlbumAsync(uri, HydrationLevel.Identity, ct).ConfigureAwait(false))?.Name;
-                case EntityKind.Artist: return (await svc.Library.GetArtistAsync(uri, HydrationLevel.Identity, ct).ConfigureAwait(false))?.Name;
-            }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch { }
-        return null;
-    }
+
 
     // Skip-in-place to the clicked row within the live session by its stable id (F1): a cursor move, never a rebuild.
     // The PlayTrackAsync fallback fires only when the row carries no stable id (ItemId.IsNone — a degenerate snapshot).

@@ -82,12 +82,16 @@ public readonly record struct AudioHostSignal
 {
     public AudioHostSignalKind Kind { get; init; }
     public long PositionMs { get; init; }
+    public long? PositionUpperBoundMs { get; init; }
     public bool IsPlaying { get; init; }
     public bool IsBuffering { get; init; }
     public bool IsPrebuffering { get; init; }
     public PlaybackRecoveryKind RecoveryKind { get; init; }
     public AudioKeyFailureReason FailureReason { get; init; }
     public string? Detail { get; init; }
+    public PlaybackCommandId Command { get; init; }
+    public PlaybackOperationStatus? OperationStatus { get; init; }
+    public bool? PlayWhenReady { get; init; }
 
     public AudioHostSignal(AudioHostSignalKind kind, long positionMs)
     {
@@ -124,8 +128,15 @@ public readonly record struct AudioHostSignal
 /// is kind-specific and deliberately NOT here — audio loads via <see cref="IAudioHost"/> (<see cref="IAudioHost.Load"/> /
 /// <see cref="IAudioHost.LoadFastStart"/> / <see cref="IAudioHost.SupplyBody"/>), video via its own host's video load.
 /// Both hosts report on the same <see cref="AudioHostSignal"/> channel so the source-agnostic projection is unchanged.</summary>
+public enum AudioTransportAction : byte { Play, Pause, Stop, Seek, Skip, Adopt }
+public readonly record struct AudioTransportRequest(PlaybackCommandId Command, AudioTransportAction Action, bool PlayWhenReady, long PositionMs = 0, SeekMode Mode = SeekMode.Accurate, PlaybackSeekKind SeekKind = PlaybackSeekKind.Commit);
+public readonly record struct AudioItemIdentity(long Generation, QueueItemId QueueItemId);
+public readonly record struct AudioLoadRequest(PlaybackCommandId Command, AudioItemIdentity Item, FastStartPlan Source, long StartPositionMs, bool PlayWhenReady);
+public readonly record struct AudioPromoteRequest(string Token, PlaybackCommandId Command, QueueItemId TargetItem, bool PlayWhenReady);
+
 public interface IMediaHost : IAsyncDisposable
 {
+    PlaybackCommandReceipt Submit(AudioTransportRequest request);
     void Play();
     void Pause();
     void Stop();
@@ -152,6 +163,7 @@ public interface IMediaHost : IAsyncDisposable
 /// <see cref="IMediaHost"/> with the AUDIO-specific loading verbs (the video host does not have these).</summary>
 public interface IAudioHost : IMediaHost
 {
+    void Load(AudioLoadRequest request);
     void Load(in AudioStreamHandle stream);
     void LoadFastStart(in AudioFastStart start);
     void SupplyBody(in AudioStreamHandle body);
@@ -162,10 +174,8 @@ public interface IAudioHost : IMediaHost
     /// it stays whatever it already was — false for a fresh host. The controller reads it (never <see cref="IMediaHost.IsPlaying"/>,
     /// which lags behind while genuinely buffering) to decide whether a stray transient-buffering flag is safe to
     /// clear (PlaybackController.SupplyBodyWhenReadyAsync) — see the buffering-bar-on-a-paused-restored-track fix.
-    /// Defaults false (the conservative "OK to clear" answer) so every existing <see cref="IAudioHost"/> fake that has
-    /// no reason to track it — none of them drive the one call site that reads this through a real Play() — keeps
-    /// compiling untouched; the two real hosts and the shared test recorder override it properly.</summary>
-    bool PlayIntent => false;
+    /// Every host explicitly reports its accepted intent.</summary>
+    bool PlayIntent { get; }
 }
 
 public interface IAudioDspControl
@@ -188,8 +198,13 @@ public interface ILiveMetadataSource
 /// <summary>A stable, controller-minted description of the exact session item prepared after the active track.</summary>
 public readonly record struct AudioPrepareRequest(
     string Token,
-    AudioFastStart Start,
-    bool AllowOverlap);
+    AudioItemIdentity Owner,
+    QueueItemId TargetItem,
+    FastStartPlan Source,
+    bool AllowOverlap)
+{
+    public AudioFastStart Start => Source.Start;
+}
 
 /// <summary><see cref="Invalidated"/> (device-reopen gapless fix, A2): the prepared-next slot was built for a mixer
 /// rate that no longer matches the live session (a mid-track output-device/format soft reload rebuilt the session at a
@@ -210,13 +225,13 @@ public readonly record struct AudioTransitionSignal(
 public enum AudioPrepareCancelResult { Cancelled, AlreadyStarted, NotFound }
 
 /// <summary>
-/// Optional prepared-next capability. Manual next/row-click continues to use the active load API and stays immediate;
-/// this seam is consumed only for a natural-end hand-off.
+/// Prepared-next capability. A plan owns concurrent head decoding/body attachment and becomes ready only with PCM.
+/// Manual navigation can promote the exact prepared target; natural transitions announce their token once.
 /// </summary>
 public interface IPreparedAudioHost
 {
     Task PrepareNextAsync(AudioPrepareRequest request, CancellationToken ct = default);
-    Task SupplyNextBodyAsync(string token, AudioStreamHandle body, CancellationToken ct = default);
+    Task<bool> TryPromotePreparedAsync(AudioPromoteRequest request, CancellationToken ct = default);
     Task<AudioPrepareCancelResult> CancelPreparedAsync(string token, CancellationToken ct = default);
     IObservable<AudioTransitionSignal> Transitions { get; }
 }
@@ -265,6 +280,55 @@ public sealed class SilentAudioHost : IAudioHost
     public bool PlayIntent { get { lock (_gate) return _playing; } }
     public IObservable<AudioHostSignal> Signals => _signals;
 
+    PlaybackCommandId _command;
+
+    public PlaybackCommandReceipt Submit(AudioTransportRequest request)
+    {
+        _command = request.Command;
+        switch (request.Action)
+        {
+            case AudioTransportAction.Play: Play(); break;
+            case AudioTransportAction.Pause: Pause(); break;
+            case AudioTransportAction.Stop: Stop(); break;
+            case AudioTransportAction.Skip: Pause(); break;
+            case AudioTransportAction.Seek: Seek(request.PositionMs, request.Mode); break;
+            case AudioTransportAction.Adopt: break;
+            default: throw new ArgumentOutOfRangeException(nameof(request));
+        }
+        _signals.OnNext(new AudioHostSignal(IsPlaying ? AudioHostSignalKind.Playing : AudioHostSignalKind.Paused,
+            PositionMs, IsPlaying, IsBuffering, false)
+        { Command = request.Command, OperationStatus = PlaybackOperationStatus.Applied, PlayWhenReady = request.PlayWhenReady });
+        return new(request.Command);
+    }
+
+    public void Load(AudioLoadRequest request)
+    {
+        _command = request.Command;
+        LoadFastStart(request.Source.Start);
+        if (request.StartPositionMs > 0) Seek(request.StartPositionMs, SeekMode.Accurate);
+        if (request.PlayWhenReady) Play();
+        _signals.OnNext(new AudioHostSignal(IsPlaying ? AudioHostSignalKind.Playing : AudioHostSignalKind.Paused,
+            PositionMs, IsPlaying, false, false)
+        { Command = request.Command, OperationStatus = PlaybackOperationStatus.Applied, PlayWhenReady = request.PlayWhenReady });
+        _ = AttachBodyAsync(request);
+    }
+
+    async Task AttachBodyAsync(AudioLoadRequest request)
+    {
+        try
+        {
+            var body = await request.Source.Body.ConfigureAwait(false);
+            if (_command.ItemGeneration == request.Item.Generation) SupplyBody(body);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (_command.ItemGeneration != request.Item.Generation) return;
+            Stop();
+            _signals.OnNext(AudioHostSignal.Fault(PositionMs, AudioKeyFailureReason.None, ex.Message) with { Command = request.Command });
+        }
+    }
+
     long Pos() => _playing ? Math.Min(_durationMs <= 0 ? long.MaxValue : _durationMs, _anchorPos + (_now() - _anchorWall)) : _anchorPos;
 
     public void Load(in AudioStreamHandle s)
@@ -282,8 +346,9 @@ public sealed class SilentAudioHost : IAudioHost
 
     public void SupplyBody(in AudioStreamHandle body)
     {
-        _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Buffering, 0));
         lock (_gate) _buffering = false;
+        _signals.OnNext(new AudioHostSignal(IsPlaying ? AudioHostSignalKind.Playing : AudioHostSignalKind.Paused,
+            PositionMs, IsPlaying, false, false) { Command = _command });
     }
 
     public void Play()

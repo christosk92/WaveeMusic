@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Backend;
@@ -111,6 +112,41 @@ public class LyricsDiskCacheTests : IDisposable
 
         Assert.True(File.Exists(Cache().PathFor("t1")));
         Assert.Equal(LyricsCacheOutcome.Hit, (await Cache().TryLoadAsync("t1")).Outcome);
+    }
+
+    [Fact]
+    public async Task OpenReader_DoesNotBlockAnAtomicUpgrade_AndKeepsItsOriginalEnvelope()
+    {
+        var cache = Cache();
+        var original = LineDoc();
+        var upgraded = WordDoc();
+        await cache.SaveAsync("t1", original);
+
+        // Hold the exact production reader open across replacement: no scheduler race, polling or sleep is needed.
+        await using var reader = cache.OpenRead("t1");
+        await cache.SaveAsync("t1", upgraded);
+
+        var fresh = await cache.TryLoadAsync("t1");
+        Assert.Equal(LyricsCacheOutcome.Hit, fresh.Outcome);
+        AssertSameDocument(upgraded, fresh.Document!);
+
+        // The existing handle still reads a complete old document; the writer never modifies its bytes in place.
+        var retained = await JsonSerializer.DeserializeAsync(reader, LyricsCacheJson.Default.LyricsCacheEnvelope);
+        Assert.NotNull(retained);
+        AssertSameDocument(original, retained.Doc!);
+    }
+
+    [Fact]
+    public async Task CancelledRead_PropagatesCancellation_AndPreservesTheEnvelope()
+    {
+        var cache = Cache();
+        var doc = WordDoc();
+        await cache.SaveAsync("t1", doc);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cache.TryLoadAsync("t1", cancellation.Token));
+        AssertSameDocument(doc, (await cache.TryLoadAsync("t1")).Document!);
     }
 
     [Fact]

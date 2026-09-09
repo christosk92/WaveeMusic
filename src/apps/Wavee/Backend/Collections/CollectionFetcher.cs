@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using Wavee.Backend.Sync;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
@@ -46,223 +48,69 @@ public enum CollectionReconcileOutcome : byte
 // a shadow walk compared against the local set, repaged only on verified drift.
 public sealed class CollectionFetcher
 {
-    // The collection2v2 route only accepts its vendor media type — `application/protobuf` is the extended-metadata type and
-    // the gateway 400s on it at the media-type layer before it ever reads the body (confirmed against the reference client).
     const string ContentType = "application/vnd.collection-v2.spotify.proto";
-
     readonly IHttpExchange _http;
     readonly Func<string> _baseUrl;
     readonly Func<string> _username;
-    readonly IStore _store;
-    readonly Func<string, string?> _getRevision;
-    readonly Action<string, string?> _setRevision;
-    readonly Func<IReadOnlyList<string>, CancellationToken, Task> _hydrate;
-    // §7.2 pending-op shield: (setId, uri) → true when a local intent is in flight, so neither an inbound apply nor the
-    // mark-and-sweep may touch it.
-    readonly Func<string, string, bool>? _hasPending;
     readonly WaveeLogger _log;
     readonly Func<long> _nowMs;
 
-    public CollectionFetcher(IHttpExchange http, Func<string> baseUrl, Func<string> username, IStore store,
-        Func<string, string?> getRevision, Action<string, string?> setRevision,
-        Func<IReadOnlyList<string>, CancellationToken, Task> hydrate, Func<string, string, bool>? hasPending = null,
+    public CollectionFetcher(IHttpExchange http, Func<string> baseUrl, Func<string> username,
         WaveeLogger log = default, Func<long>? nowMs = null)
+        => (_http, _baseUrl, _username, _log, _nowMs) =
+            (http, baseUrl, username, log, nowMs ?? (static () => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+
+    public async Task<CollectionReadResult> FetchWireSetAsync(string wireSet, string? token, CancellationToken ct = default)
     {
-        _http = http;
-        _baseUrl = baseUrl;
-        _username = username;
-        _store = store;
-        _getRevision = getRevision;
-        _setRevision = setRevision;
-        _hydrate = hydrate;
-        _hasPending = hasPending;
-        _log = log;
-        _nowMs = nowMs ?? (static () => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-    }
-
-    /// <summary>Converge one wire set: delta when a token is held and the server can honour it, else a verified full walk.</summary>
-    public async Task<CollectionFetchOutcome> FetchWireSetAsync(string wireSet, CancellationToken ct = default)
-    {
-        var logical = RequireLogicalSets(wireSet);
-        string key = CollectionSets.RevisionKey(wireSet);
-        var token = _getRevision(key);
-
-        // Legacy-db self-heal: a set synced before added_at was persisted has EVERY member timestamp-less (the old writer
-        // always stored 0), and the delta path would never refresh them (deltas carry only changes). Ignore the token
-        // once and full-page — timestamps land, the condition stops firing. (Live rows always carry a timestamp: server
-        // items ship added_at; optimistic likes stamp local now.)
-        if (!string.IsNullOrEmpty(token) && AnyTimestampless(logical)) { LogTokenReset(wireSet, "timestampless"); token = null; }
-
+        RequireWireSet(wireSet);
         if (!string.IsNullOrEmpty(token))
         {
-            var delta = await DeltaAsync(wireSet, token!, ct).ConfigureAwait(false);
-            if (delta.DeltaUpdatePossible)
+            var response = await DeltaAsync(wireSet, token, ct).ConfigureAwait(false);
+            if (response.DeltaUpdatePossible)
             {
-                // One parse, fanned out by prefix. DeltaResponse has no pagination, so a very large delta is whatever the
-                // server chose to cap it at — the reconcile pass is what catches a capped one.
-                var d = CollectionWireMapper.ParseDelta(wireSet, delta);
-                using (_store.BeginBulk())
-                    foreach (var set in logical) CollectionDeltaApplier.Apply(_store, ForLogicalSet(d, set));
-                await HydrateAsync(d.Items, ct).ConfigureAwait(false);
-                _setRevision(key, d.NewRevision);
-                _log.Event(WaveeLogLevel.Debug, "collection.delta", "Collection delta applied",
-                    fields: [WaveeLogField.Of("wireSet", wireSet), WaveeLogField.Of("items", d.Items.Count), WaveeLogField.Of("hasToken", d.NewRevision is not null)]);
-                return CollectionFetchOutcome.Delta;
+                var delta = CollectionWireMapper.ParseDelta(wireSet, response);
+                return new CollectionReadResult(wireSet, false, true, _nowMs(), token, delta.NewRevision, delta.Items.ToImmutableArray());
             }
-            LogTokenReset(wireSet, "delta-not-possible");   // token too stale for the server → fall through to a full snapshot
         }
-
-        bool verified;
-        using (_store.BeginBulk())   // coalesce the multi-page snapshot + its sweep into one change signal
-        {
-            var ledger = await WalkAsync(wireSet, apply: true, ct).ConfigureAwait(false);
-            verified = FinishSnapshot(ledger);
-        }
-        return verified ? CollectionFetchOutcome.Snapshot : CollectionFetchOutcome.SnapshotUnverified;
+        return await WalkAsync(wireSet, ct).ConfigureAwait(false);
     }
 
-    /// <summary>The drift check: shadow-walk the wire set (nothing written), compare per logical set, and repage — apply
-    /// + sweep + token, off the SAME walk, not a second one — only when drift was found AND the walk verified.</summary>
-    public async Task<CollectionReconcileOutcome> ReconcileWireSetAsync(string wireSet, string trigger, CancellationToken ct = default)
+    public Task<CollectionReadResult> ReconcileWireSetAsync(string wireSet, string trigger, CancellationToken ct = default)
     {
-        var logical = RequireLogicalSets(wireSet);
-        var ledger = await WalkAsync(wireSet, apply: false, ct).ConfigureAwait(false);
-
-        var reports = new List<CollectionDriftReport>(logical.Count);
-        bool drift = false;
-        var hasPending = _hasPending;
-        foreach (var set in logical)
-        {
-            Func<string, bool>? pending = hasPending is null ? null : uri => hasPending(set, uri);
-            var report = CollectionDrift.Compare(set, _store.SavedItems(set), ledger.UrisFor(CollectionSets.UriPrefix(set), set), pending, ledger.StartedAtMs);
-            reports.Add(report);
-            drift |= report.HasDrift;
-        }
-
-        if (!drift)
-        {
-            _log.Event(WaveeLogLevel.Info, "collection.reconcile.pass", "Collection matches the server",
-                fields: [WaveeLogField.Of("wireSet", wireSet), WaveeLogField.Of("trigger", trigger), WaveeLogField.Of("pages", ledger.Pages),
-                         WaveeLogField.Of("items", ledger.ItemCount), WaveeLogField.Of("verdict", ledger.Verdict.ToString())]);
-            return CollectionReconcileOutcome.NoDrift;
-        }
-
-        string action = ledger.IsVerified ? "repage" : "skip-unverified";
-        foreach (var r in reports)
-        {
-            if (!r.HasDrift) continue;
-            _log.Event(WaveeLogLevel.Warning, "collection.reconcile.drift", "Collection drifted from the server",
-                fields: [WaveeLogField.Of("wireSet", wireSet), WaveeLogField.Of("setId", r.SetId), WaveeLogField.Of("local", r.Local),
-                         WaveeLogField.Of("server", r.Server), WaveeLogField.Of("missing", r.Missing.Count), WaveeLogField.Of("extra", r.Extra.Count),
-                         WaveeLogField.Of("action", action), WaveeLogField.Of("trigger", trigger)]);
-        }
-
-        // Unlike FetchWireSetAsync, an unverified reconcile walk applies NOTHING: the local set is a converged baseline
-        // here, not an empty one, and a walk that cannot prove itself is not a better authority than the delta stream.
-        if (!ledger.IsVerified) { FinishSnapshot(ledger); return CollectionReconcileOutcome.SkippedUnverified; }
-
-        using (_store.BeginBulk())
-        {
-            foreach (var set in logical) ApplyItems(set, ledger.Items);
-            FinishSnapshot(ledger);
-        }
-        // Only the members we did not have need metadata; everything else was hydrated when it first landed.
-        var missing = new List<string>();
-        foreach (var r in reports) missing.AddRange(r.Missing);
-        await HydrateUrisAsync(missing, ct).ConfigureAwait(false);
-        return CollectionReconcileOutcome.Repaged;
+        RequireWireSet(wireSet);
+        return WalkAsync(wireSet, ct);
     }
 
-    // The page loop. With apply=true every page's adds land as they arrive (under the caller's BeginBulk) and are
-    // hydrated; with apply=false it is a pure shadow walk. Either way the ledger records what every page said. An
-    // exception mid-loop propagates: the ledger never reaches FinishSnapshot, so a partial walk can neither sweep nor
-    // store a token (and with apply=true the pages that did land stay — they are real).
-    async Task<CollectionSnapshotLedger> WalkAsync(string wireSet, bool apply, CancellationToken ct)
+    async Task<CollectionReadResult> WalkAsync(string wireSet, CancellationToken ct)
     {
         var ledger = new CollectionSnapshotLedger(wireSet, _nowMs());
-        string? pageToken = null;
-        do
+        var tokens = new HashSet<string>(StringComparer.Ordinal);
+        string? next = null;
+        try
         {
-            var page = await PageAsync(wireSet, pageToken, ct).ConfigureAwait(false);
-            var d = CollectionWireMapper.ParsePage(wireSet, page);
-            ledger.AddPage(d.Items, page.NextPageToken, d.NewRevision);
-            if (apply)
+            do
             {
-                foreach (var set in CollectionSets.LogicalSetsForWireSet(wireSet)) ApplyItems(set, d.Items);
-                await HydrateAsync(d.Items, ct).ConfigureAwait(false);
-            }
-            pageToken = string.IsNullOrEmpty(page.NextPageToken) ? null : page.NextPageToken;
-        } while (pageToken is not null);
-        return ledger;
-    }
-
-    // THE ONLY sweep and THE ONLY walk-sourced token advance. Returns whether the walk was verified (and so acted on).
-    // An unverified walk logs and leaves the set exactly as the applied pages left it: nothing removed, token untouched.
-    bool FinishSnapshot(CollectionSnapshotLedger ledger)
-    {
-        string wireSet = ledger.WireSet;
-        var verdict = ledger.Verdict;
-        _log.Event(WaveeLogLevel.Info, "collection.snapshot.pages", "Collection snapshot walked",
-            fields: [WaveeLogField.Of("wireSet", wireSet), WaveeLogField.Of("pages", ledger.Pages), WaveeLogField.Of("items", ledger.ItemCount),
-                     WaveeLogField.Of("duplicates", ledger.Duplicates), WaveeLogField.Of("emptyNonTerminal", ledger.EmptyNonTerminalPages),
-                     WaveeLogField.Of("verdict", verdict.ToString()), WaveeLogField.Of("tokenSource", ledger.TokenSource)]);
-        if (verdict != SnapshotVerdict.Verified)
-        {
-            _log.Event(WaveeLogLevel.Warning, "collection.snapshot.unverified", "Collection snapshot could not be verified; adds kept, nothing swept, token untouched",
-                fields: [WaveeLogField.Of("wireSet", wireSet), WaveeLogField.Of("verdict", verdict.ToString()), WaveeLogField.Of("pages", ledger.Pages),
-                         WaveeLogField.Of("duplicates", ledger.Duplicates)]);
-            return false;
+                var response = await PageAsync(wireSet, next, ct).ConfigureAwait(false);
+                var page = CollectionWireMapper.ParsePage(wireSet, response);
+                ledger.AddPage(page.Items, response.NextPageToken, page.NewRevision);
+                next = string.IsNullOrEmpty(response.NextPageToken) ? null : response.NextPageToken;
+                if (next is not null && !tokens.Add(next)) break;
+            } while (next is not null);
         }
-
-        foreach (var set in CollectionSets.LogicalSetsForWireSet(wireSet))
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
         {
-            var snapshot = ledger.UrisFor(CollectionSets.UriPrefix(set), set);
-            var existing = _store.SavedItems(set);
-            int removed = 0, shieldedPending = 0, shieldedRecent = 0;
-            for (int i = 0; i < existing.Count; i++)
-            {
-                var item = existing[i];
-                bool pending = _hasPending is not null && _hasPending(set, item.Uri);
-                switch (CollectionSweepPolicy.Decide(snapshot.Contains(item.Uri), pending, item.AddedAtMs, ledger.StartedAtMs))
-                {
-                    case CollectionSweepPolicy.Keep.Remove: _store.SetSaved(set, item.Uri, false, SyncState.Confirmed); removed++; break;
-                    case CollectionSweepPolicy.Keep.Pending: shieldedPending++; break;
-                    case CollectionSweepPolicy.Keep.Recent: shieldedRecent++; break;
-                }
-            }
-            _log.Event(WaveeLogLevel.Info, "collection.snapshot.sweep", "Collection snapshot swept",
-                fields: [WaveeLogField.Of("wireSet", wireSet), WaveeLogField.Of("setId", set), WaveeLogField.Of("removed", removed),
-                         WaveeLogField.Of("shieldedPending", shieldedPending), WaveeLogField.Of("shieldedRecent", shieldedRecent)]);
+            _log.Info("collection snapshot interrupted; observed adds retained, no sweep or token advance: " + ex.Message);
         }
-        _setRevision(CollectionSets.RevisionKey(wireSet), ledger.Token);
-        return true;
+        return new CollectionReadResult(wireSet, true, ledger.IsVerified, ledger.StartedAtMs,
+            null, ledger.Token, ledger.Items.ToImmutableArray());
     }
 
-    // Fold a page's (or a ledger's) items onto ONE logical set: prefix-filtered for the shared "collection" wire set,
-    // shielded (§7.2) like the dealer direct-apply, Confirmed with the server's add timestamp (0 preserves the stored one).
-    void ApplyItems(string setId, IReadOnlyList<CollectionItem> items)
+    static void RequireWireSet(string wireSet)
     {
-        string? prefix = CollectionSets.UriPrefix(setId);
-        for (int i = 0; i < items.Count; i++)
-        {
-            var it = items[i];
-            if (prefix is not null && !it.Uri.StartsWith(prefix, StringComparison.Ordinal)) continue;
-            if (!CollectionSets.AcceptsUri(setId, it.Uri)) continue;
-            if (_hasPending is not null && _hasPending(setId, it.Uri)) continue;
-            _store.SetSaved(setId, it.Uri, !it.Removed, SyncState.Confirmed, it.AddedAt);
-        }
+        if (CollectionSets.LogicalSetsForWireSet(wireSet).Count == 0)
+            throw new ArgumentException("Unknown collection wire set: " + wireSet, nameof(wireSet));
     }
-
-    static IReadOnlyList<string> RequireLogicalSets(string wireSet)
-    {
-        var logical = CollectionSets.LogicalSetsForWireSet(wireSet);
-        if (logical.Count == 0) throw new ArgumentException($"'{wireSet}' is not a collection wire set (see CollectionSets.WireSets).", nameof(wireSet));
-        return logical;
-    }
-
-    void LogTokenReset(string wireSet, string reason)
-        => _log.Event(WaveeLogLevel.Info, "collection.token.reset", "Collection sync token discarded; walking the full set",
-            fields: [WaveeLogField.Of("wireSet", wireSet), WaveeLogField.Of("reason", reason)]);
 
     async Task<Col.DeltaResponse> DeltaAsync(string wireSet, string lastToken, CancellationToken ct)
     {
@@ -287,50 +135,4 @@ public sealed class CollectionFetcher
         return resp;
     }
 
-    // Any logical set of the wire set whose members are ALL timestamp-less (see FetchWireSetAsync).
-    bool AnyTimestampless(IReadOnlyList<string> logicalSets)
-    {
-        foreach (var set in logicalSets)
-        {
-            var items = _store.SavedItems(set);
-            if (items.Count == 0) continue;
-            bool all = true;
-            for (int i = 0; i < items.Count; i++) if (items[i].AddedAtMs != 0) { all = false; break; }
-            if (all) return true;
-        }
-        return false;
-    }
-
-    Task HydrateAsync(IReadOnlyList<CollectionItem> items, CancellationToken ct)
-    {
-        var uris = new List<string>(items.Count);
-        for (int i = 0; i < items.Count; i++)
-            if (!items[i].Removed) uris.Add(items[i].Uri);
-        return HydrateUrisAsync(uris, ct);
-    }
-
-    async Task HydrateUrisAsync(IReadOnlyList<string> candidates, CancellationToken ct)
-    {
-        var uris = new List<string>(candidates.Count);
-        for (int i = 0; i < candidates.Count; i++)
-            if (EntityUri.Parse(candidates[i]).Provider == EntityProviders.Spotify) uris.Add(candidates[i]);
-        if (uris.Count > 0) await _hydrate(uris, ct).ConfigureAwait(false);
-    }
-
-    // The wire delta re-labelled for ONE logical set: only the items whose entity URI matches the set's prefix (the
-    // "collection"-shared sets); every item for a prefix-less set. The token is the wire set's — it is not per set.
-    static CollectionDelta ForLogicalSet(CollectionDelta d, string setId)
-    {
-        string? prefix = CollectionSets.UriPrefix(setId);
-        if (prefix is null && setId != "pins") return d with { SetId = setId };
-        var kept = new List<CollectionItem>(d.Items.Count);
-        for (int i = 0; i < d.Items.Count; i++)
-        {
-            var it = d.Items[i];
-            if (prefix is not null && !it.Uri.StartsWith(prefix, StringComparison.Ordinal)) continue;
-            if (!CollectionSets.AcceptsUri(setId, it.Uri)) continue;
-            kept.Add(it);
-        }
-        return d with { SetId = setId, Items = kept };
-    }
 }

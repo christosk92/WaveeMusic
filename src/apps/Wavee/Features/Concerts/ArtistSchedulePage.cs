@@ -54,7 +54,6 @@ sealed class ArtistSchedulePage : Component
         var underBand = UseSignal(false);   // the body's ClipBelow edge: feather only while the cut is live
         _reloadSignal = reload;
         int gen = reload.Value;
-        var now = DateTimeOffset.Now;
 
         _location.Attach(svc, overlay, post, onSaved: place =>
         {
@@ -75,12 +74,17 @@ sealed class ArtistSchedulePage : Component
             : locationLabel.Value.Value?.Name is { Length: > 0 } nm ? nm : Loc.Get(Strings.Concerts.Location.Set);
         var region = Skel.Region(
             schedule,
-            content: s => Responsive.Of(width =>
+            // State = (s, locLabel): the schedule data + the location label string (compared by value, so an
+            // unchanged label doesn't force a rebuild even though it's recomputed every render). `now` is
+            // deliberately NOT in the key — it ticks every render and would defeat the gate entirely — so it's read
+            // fresh inside the builder instead, exactly like a signal, giving an equally-live clock only when the
+            // box actually rebuilds (a width or data change). go and the hysteresis fields are stable members.
+            content: s => Responsive.Of((s, locLabel), (state, width) =>
             {
                 bool wide = ConcertLayout.ScheduleWide(width, _wasWide, _wideInit);
                 _wasWide = wide;
                 _wideInit = true;
-                return BuildBody(s!, wide, go, locLabel, now);
+                return BuildBody(state.s!, wide, go, state.locLabel, DateTimeOffset.Now);
             }, fallback: 900f),
             reveal: SkelReveal.Soft,
             onFailed: () => ErrorState.Build(schedule.Error, onRetry: () => reload.Value++),

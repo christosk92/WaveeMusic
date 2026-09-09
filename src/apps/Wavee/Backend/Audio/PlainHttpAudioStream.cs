@@ -9,6 +9,7 @@ namespace Wavee.Backend.Audio;
 public sealed class PlainHttpAudioStream : Stream, IAsyncDisposable, IAudioReadStream, IAudioNetworkRecoverySource
 {
     readonly RangedHttpSource _source;
+    readonly AudioDataAvailability _availability = new();
     readonly long _headHintSize;   // from the opening HEAD; the source refines it from the first response
     long _pos;
     bool _disposed;
@@ -26,6 +27,31 @@ public sealed class PlainHttpAudioStream : Stream, IAsyncDisposable, IAudioReadS
 
     // IAudioReadStream — a plain stream has no clear head and no separate "body attach" step.
     public Stream AsStream() => this;
+    public long DataVersion => _availability.Version;
+    public void WaitForData(long observedVersion, CancellationToken cancellationToken) => _availability.Wait(observedVersion, cancellationToken);
+    public int TryRead(Span<byte> destination, out bool wouldBlock)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        wouldBlock = false;
+        if (destination.IsEmpty) return 0;
+        _source.ThrowIfFailed();
+        long position = CurrentOffset;
+        long size = _source.KnownSize;
+        if (size > 0 && position >= size) return 0;
+        long available = _source.ContainedLengthFrom(position);
+        if (size > 0) available = Math.Min(available, size - position);
+        if (available <= 0)
+        {
+            _source.RequestAsyncPrefetch(position, Math.Max(destination.Length, RangedHttpSource.CdnChunkBytes));
+            wouldBlock = true;
+            return 0;
+        }
+        int count = (int)Math.Min(destination.Length, available);
+        _source.ReadRaw(position, destination[..count], count);
+        Volatile.Write(ref _pos, position + count);
+        _source.MarkProgress(position + count);
+        return count;
+    }
     public long CurrentOffset => Volatile.Read(ref _pos);
     public bool IsBodyAttached => true;
     public long KnownSize => _source.KnownSize;
@@ -41,7 +67,7 @@ public sealed class PlainHttpAudioStream : Stream, IAsyncDisposable, IAudioReadS
         _headHintSize = knownSize;
         ContentType = contentType;
         // requireRange:false → tolerate a 200 (server ignored Range) by buffering the whole body once.
-        _source = new RangedHttpSource(http, url, log, headFloor: 0, onRangeAvailable: null, requireRange: false,
+        _source = new RangedHttpSource(http, url, log, headFloor: 0, onRangeAvailable: _availability.Pulse, requireRange: false,
             onRecovery: e => NetworkRecovery?.Invoke(e));
         _source.Configure([url], knownSize > 0 ? knownSize : null);
         _source.StartReadAhead();
@@ -64,6 +90,7 @@ public sealed class PlainHttpAudioStream : Stream, IAsyncDisposable, IAudioReadS
             }
             log.Info($"external audio HEAD {url}: len={size} type={contentType ?? "?"}");
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch { /* HEAD optional */ }
         return new PlainHttpAudioStream(http, url, size, contentType, log);
     }
@@ -136,6 +163,7 @@ public sealed class PlainHttpAudioStream : Stream, IAsyncDisposable, IAudioReadS
         if (disposing && !_disposed)
         {
             _disposed = true;
+            _availability.Pulse();
             _source.Dispose();
         }
         base.Dispose(disposing);

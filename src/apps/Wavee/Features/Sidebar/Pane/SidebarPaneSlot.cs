@@ -324,20 +324,32 @@ sealed class SidebarPaneSlot : Component
     Element EntryRow(SidebarSectionSpec section, in SidebarLibraryEntry entry, in SidebarRow row, string sel,
                      SidebarItemSpec? item, int index)
     {
-        bool named = entry.Name.Length > 0;
-        // "A row whose entry Name.Length == 0 renders dimmed from the uri" — the entity exists but has not resolved a
-        // display name yet, which is honest as a dimmed row and never as a blank one.
-        string label = item?.LabelOverride is { Length: > 0 } alias ? alias
-            : named ? entry.Name
-            : SidebarPaneText.ShortUri(entry.Uri);
+        // A raw uri/id is never a useful title. SidebarRowTitlePresentation is the ONE pure decision every "no title
+        // yet" row shares — also the pin band / unlisted-pin rows, which ride this SAME entries list (see
+        // SidebarBinderPipeline.ResolveUnlistedPin / SidebarRowPlanner.PlanPinned): an authored alias always wins, a
+        // resolved entity name renders as text, and anything else — the entity exists (this method only runs for a
+        // resolved EntryIndex) but its identity facet is still Unknown — renders the sidebar's own loading skeleton in
+        // the title's place, never SidebarPaneText.ShortUri.
+        // A ROUTE entry (the pinned Liked Songs row, a pinned Home/Search) has no identity facet to wait for: its name
+        // is the destination's own title (ShellNav.Dest — the one owner of "what this page is called"), exactly as the
+        // rail's tile and RouteRow resolve it. Without this arm a route pin whose display cache is empty (a remote
+        // pin arrives with Name == "") wore the loading skeleton forever.
+        string resolvedName = entry.Kind == SidebarEntryKind.AppRoute && entry.Name.Length == 0
+            ? ShellNav.Dest(entry.Id).Title : entry.Name;
+        var titlePresentation = SidebarRowTitlePresentation.Resolve(item?.LabelOverride, resolvedName);
+        bool titleSkeleton = titlePresentation.IsSkeleton;
+        // ShortUri survives only as the row's ACCESSIBILITY-fallback Label while the skeleton bar is what actually
+        // draws (SidebarEntityRow.TitleElement/ClusterTextColumn ignore Label when TitleSkeleton is set).
+        string label = titleSkeleton ? SidebarPaneText.ShortUri(entry.Uri) : titlePresentation.Text;
         // W8 — a search FLATTENS the tree into one EntityList section, so a nested playlist ("Savannah", inside the
         // "Road trips" folder) would otherwise read as a top-level entry with no folder at all. Restore it as a
         // "Folder / name" prefix — PlaylistTree already shows the real tree (folder rows and indentation), Pinned
         // floats matches to the top of the pin band, and neither ever has a non-root FLATTENED row, so this is scoped
         // to the one section kind that actually flattens. `entry.FolderName` is populated for exactly this case
         // (`SidebarProjection.Build`'s `includeFolderChildren: searching`), and the highlight range below is computed
-        // on the COMBINED string, so a query that matches inside the folder name highlights there too.
-        if (Style == SidebarRowStyle.Slot && section.Kind == SidebarSectionKind.EntityList
+        // on the COMBINED string, so a query that matches inside the folder name highlights there too. Skipped while
+        // the title itself is still a skeleton — there is no real label to prefix yet.
+        if (!titleSkeleton && Style == SidebarRowStyle.Slot && section.Kind == SidebarSectionKind.EntityList
             && entry.Depth == 0 && entry.FolderName.Length > 0)
             label = entry.FolderName + " / " + label;
         bool track = entry.IsTrack;
@@ -434,7 +446,7 @@ sealed class SidebarPaneSlot : Component
         // (SidebarPaneConfig.ModeEpoch), so there is nothing to gain from binding it and a bound thunk would be wired
         // at MOUNT ONLY (pitfalls.md "Bind wiring is MOUNT-ONLY") and go stale on a recycle.
         int highlightStart = -1, highlightLength = 0;
-        if (Style == SidebarRowStyle.Slot
+        if (!titleSkeleton && Style == SidebarRowStyle.Slot
             && SidebarSearch.Normalize(_o.Config.SearchQuery?.Invoke()) is { Length: > 0 } query)
             (highlightStart, highlightLength) = SidebarSearch.Find(label, query);
 
@@ -442,9 +454,13 @@ sealed class SidebarPaneSlot : Component
         {
             Key = row.Key,
             Label = label,
+            TitleSkeleton = titleSkeleton,
             Subtitle = section.Opts.Subtitles ? SidebarPaneText.SubtitleOf(in snapshot, Style) : null,
             Selected = selected,
-            Enabled = named || track,
+            // The entity exists (EntryRow only runs for a resolved EntryIndex) whether or not its name has arrived
+            // yet, so it stays interactive — clicking a skeleton-titled row still navigates/plays by uri — never
+            // gated on `named` (that used to leave an unresolved row neither clickable nor focusable).
+            Enabled = true,
             Depth = baseDepth,
             TreeNode = treeNode,
             TreeDepth = treeDepth,

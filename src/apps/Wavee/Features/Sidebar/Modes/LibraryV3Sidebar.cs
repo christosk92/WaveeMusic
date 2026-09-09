@@ -87,20 +87,6 @@ sealed class LibraryV3Sidebar : Component
         session.Library = lib;
         session.Acts = UseContext(ActionServices.Slot);
 
-        // The projection's INPUTS. The binder reads LibraryStore's cells but does not warm them, and V3 shows every kind in
-        // one list, so all five warmers plus the tree and the added-at side-channel are armed here. Each Ensure is
-        // idempotent (a latched bool), so this is one call per process, not per render.
-        if (store is { } s)
-        {
-            s.EnsurePlaylistTree();
-            s.EnsurePlaylists();
-            s.EnsureAlbums();
-            s.EnsureArtists();
-            s.EnsureShows();
-            s.EnsureAddedAt();
-            s.EnsureStats();
-        }
-
         // MEMOS, not raw width reads: a seam drag writes the width every frame, and a memo's equality cut-off means the
         // document epoch moves only when the derived INTEGER (or boolean) does.
         var columns = UseComputed(ComputeColumns);

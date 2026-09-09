@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Wavee;
 using Wavee.Core;
 
 namespace Wavee.Backend.Lyrics;
@@ -22,8 +23,7 @@ public static class LyricsInspectionExport
 {
     /// <summary>%LOCALAPPDATA%\Wavee\diag\lyrics — beside the existing diag\ folder, not inside the lyrics CACHE (this is
     /// evidence, and a cache sweep must never delete it).</summary>
-    public static string DefaultDirectory() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "diag", "lyrics");
+    public static string DefaultDirectory() => UnpackagedAppDataRoot.UnderCurrent("diag", "lyrics");
 
     /// <summary>Write the whole bundle and return the folder. Never throws — an export failure must not take down the
     /// dialog or, worse, a lyrics fetch. Returns null when there was nothing to write.</summary>

@@ -61,10 +61,11 @@ sealed class MergedChromeRow
         // running behind the cache-first shell is Connecting, and AuthStatus stays LoggedOut for its whole
         // duration), so the memo key has to move on the same value the chip does.
         int auth = (int)(Bridge?.AuthState.Value ?? ShellAuthState.SignInRequired);
+        var login = auth == (int)ShellAuthState.Connecting ? Bridge?.Login.Value : null;
         int flags = (l.ShowName ? 1 : 0) | (l.ShowActions ? 2 : 0) | (l.ShowForward ? 4 : 0)
                   | (l.SearchMode == MergedSearchMode.Icon ? 8 : 0) | (l.ShowBack ? 16 : 0)
                   | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0);
-        return HashCode.Combine(flags, (int)l.SearchWidth, epoch, auth);
+        return HashCode.Combine(flags, (int)l.SearchWidth, epoch, auth, login?.Phase, login?.Step);
     }
 
     // Issue #88: the tabs island used to HUG (Shrink=1, MinWidth=0), so its width tracked the tab strip's own
@@ -208,7 +209,8 @@ sealed class MergedChromeRow
             return new BoxEl
             {
                 Height = 32f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
-                Children = [Caption(Loc.Get(Strings.Shell.Connecting)).Secondary()],
+                Children = [Caption(Loc.Get(b?.Login.Value is { Phase: LoginPhase.Finalizing, Step: LoginStep.Metadata }
+                    ? Strings.Auth.StepMetadata : Strings.Shell.Connecting)).Secondary()],
             };
         // Offline = a credential is still on disk but the resume failed (a network drop, not a rejection), so the verb
         // is "try again", not "sign in" — the account is not in question. SignInRequired is unreachable from the shell

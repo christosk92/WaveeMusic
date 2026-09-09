@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -14,27 +14,15 @@ using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Backend;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
 // ── The Recents page ──────────────────────────────────────────────────────────────────────────────────────────────────
-// One virtualized list over the WHOLE grouped recents snapshot (~1,708 rows on a real account) plus a viewport-driven
-// hydration pump, under a Zune-ish typographic masthead and a Mica wash.
-//
-// THE ONE FACT THE WHOLE PAGE IS SHAPED BY: recents is a POINTER LIST. `GET /playlist/v2/list/recents/page` returns item
-// ids, uris, timestamps and group child-counts and NOT ONE readable string — Title/Subtitle/Image are null on every
-// freshly fetched row BY DESIGN. So the page owns three things the other list pages do not:
-//   1. it never pages the wire (the whole list arrives at once → VirtualCollection.FromSnapshot, no remote paging);
-//   2. it HYDRATES the entities the user actually realized, and only those (OnVisibleRange);
-//   3. it re-renders exactly the realized slots when hydration lands, never rebuilding a 1,708-row list.
-//
-// HYDRATION GOES THROUGH THE FAÇADE. `Services.Hydrator` is the app's ONE metadata entry
-// point: SWR cache, in-flight dedup, partial-cache skip (a fresh uri never hits the network), ETag/304 conditional
-// reads, and — the part that matters most here — PROJECTION INTO THE STORE, which is how every other surface shares the
-// same facts and how they survive a restart via CachedStore. The rows therefore hold NO copied strings: a row renders by
-// resolving its uri against the store, and a store change re-skins the realized window. A page-local metadata cache
-// would have been thrown away on navigate-away and shared with nobody.
+// One virtualized grouped history list. The wire snapshot owns occurrence identity and timestamps;
+// visible parent/preview/expanded rows declare EntityCardQuery demand. Metadata publications repaint those
+// retained rows without replacing the grouped layout, scroll anchor, or disclosure state.
 //
 // Filtering is CLIENT-SIDE, always: the official client hits /recents/page/diff on a chip click, but those bodies
 // are the same items with only the list-level filters attribute permuted. A chip change re-cuts the loaded snapshot
@@ -75,10 +63,10 @@ sealed class RecentsPage : Component
     static readonly RecentsFlatItem EmptyFlat = new(RecentsFlatItemKind.Row, -1, -1, -1);
 
     // ── reactive surface (three signals; everything else is a plain field the slots read at render time) ──────────────
-    /// <summary>Bumped when hydration lands in the STORE (or a snapshot is adopted). The bound projection carries it, so
+    /// <summary>Bumped when entity queries publish (or a history snapshot is adopted). The bound projection carries it, so
     /// exactly the realized slots re-render — the DetailTracks mechanism.</summary>
     readonly Signal<int> _epoch = new(0);
-    /// <summary>Snapshot/filter shape only. Metadata hydration must never replace the stateful grouped layout.</summary>
+    /// <summary>Snapshot/filter shape only. Metadata publications must never replace the stateful grouped layout.</summary>
     readonly Signal<int> _shapeEpoch = new(0);
     /// <summary>The selected content-type TOKEN (wire spelling), null = "All". Never a label — the label is derived.</summary>
     readonly Signal<string?> _chip = new(null);
@@ -174,21 +162,14 @@ sealed class RecentsPage : Component
     /// <summary>Integration seam for SemanticZoom: inline and overlay day headers share this callback.</summary>
     internal Action<DateOnly>? DateHeaderInvoked { get; set; }
 
-    // ── hydration bookkeeping. UI-THREAD ONLY: every mutation happens in Render, in Pump, or in a posted continuation. ─
-    // NOTE this is NOT a metadata cache — that is the chokepoint's job. It only stops the SAME uri being handed to
-    // the facade twice while one call is still in flight; freshness, dedup and skipping belong to the hydration ledger.
-    readonly HashSet<string> _inflight = new(StringComparer.Ordinal);
+    // View-owned query lifetimes and coalesced publication/demand work; UI thread only.
     readonly List<string> _batch = new(RecentsView.BatchCap);
-    /// <summary>W2.8: reused across pumps like <see cref="_batch"/> — the realized window's unresolved playlist owner
-    /// uris, asked through the façade's User ladder each pump. A different LADDER from the entity uris
-    /// <see cref="_batch"/> feeds, so it gets its own scratch list rather than sharing one.</summary>
-    readonly List<string> _ownerBatch = new(16);
-    int _rangeFirst, _rangeEnd;
-    bool _pumpArmed;
-    bool _storeDirty;
-    /// <summary>W2.9: the LATEST day <see cref="UpdateSticky"/> has seen this turn — mirrors <see cref="_rangeFirst"/>/
-    /// <see cref="_rangeEnd"/>'s role for <see cref="Pump"/>: recorded immediately (never captured by the arm site),
-    /// read fresh by the posted <see cref="ResolveAccentDay"/>.</summary>
+    readonly HashSet<string> _changedEntities = new(StringComparer.Ordinal);
+    RecentsEntityQueries? _entityQueries;
+    CatalogScope? _entityScope, _snapshotScope;
+    bool _pumpArmed, _entitiesArmed, _queriesActive;
+    /// <summary>W2.9: the LATEST day <see cref="UpdateSticky"/> has seen this turn — recorded immediately
+    /// (never captured by the arm site), read fresh by the posted <see cref="ResolveAccentDay"/>.</summary>
     int _pendingAccentDay = -1;
     bool _accentArmed;
     /// <summary>Pre-created once (constructor) — never a per-frame closure — so <c>_post(_resolveAccentDay)</c> costs
@@ -197,12 +178,9 @@ sealed class RecentsPage : Component
 
     // Services + callbacks, refreshed at the top of every render so a bound slot never holds a mount-time instance.
     Services? _svc;
-    IStore? _store;
-    IEntityHydrator? _hydrator;
     Action<Action> _post = static a => a();
     Action<string, string?> _go = static (_, _) => { };
     NavPreviewStore? _preview;
-    CancellationTokenSource? _cts;
     CultureInfo _culture = CultureInfo.CurrentCulture;
     DateTimeOffset _now = DateTimeOffset.Now;
 
@@ -211,7 +189,7 @@ sealed class RecentsPage : Component
     /// rather than reading mutable page fields.</summary>
     readonly record struct RowsView(int Epoch, int Version, VirtualCollection<RecentsFlatItem> Rows);
 
-    /// <summary>What a row displays, resolved from the STORE at render time. Never stored on the row.</summary>
+    /// <summary>What a row displays, resolved from its query snapshot at render time. Never stored on the row.</summary>
     readonly record struct RowFacts(string? Title, string? Subtitle, Image? Cover);
 
     static RecentsRow[] CopyRows(IReadOnlyList<RecentsRow> incoming)
@@ -251,14 +229,34 @@ sealed class RecentsPage : Component
         _go = go;
         _preview = preview;
         _svc = svc;
-        _store = svc?.RealStore;
-        _hydrator = svc?.Hydrator;
         _culture = CultureInfo.CurrentCulture;
         _now = DateTimeOffset.Now;
         if (svc is null) return new BoxEl { Grow = 1f };
 
         // ── the cold read. One page-scoped CTS also cancels every hydration batch on unmount. ─────────────────────────
-        var recents = UseResource(ct => FetchResourceAsync(svc.Recents, ct), _pendingSeed);
+        var scope = svc.CatalogScope;
+        var active = UseIsActive();
+        UseEffect(() =>
+        {
+            _entityQueries?.Dispose();
+            _entityScope = scope;
+            _queriesActive = active.Peek();
+            _entityQueries = new(svc.Queries, scope, post, EntityChanged);
+            _entityQueries.SetActive(_queriesActive);
+            if (_snapshotScope is not null && _snapshotScope != scope)
+            {
+                _hasSnapshot = false; _revision = null;
+                BuildShape(_pendingShape.Rows, _pendingShape.Morphable, null);
+            }
+            ArmDemand();
+            return (Action?)(() =>
+            {
+                _entityQueries?.Dispose(); _entityQueries = null; _entityScope = null;
+                _queriesActive = false; _changedEntities.Clear();
+            });
+        }, DepKey.From(scope.GetHashCode()));
+        var recents = UseResource(ct => FetchResourceAsync(svc.Recents, scope, ct), _pendingSeed,
+            DepKey.From(scope.GetHashCode()));
 
         // ── W1.6 midnight rollover. Keyed on the current LOCAL day number so the timer re-arms once per day instead of
         //    drifting; the callback re-reads the clock itself, so the exact ms computed here only has to land sometime
@@ -274,31 +272,6 @@ sealed class RecentsPage : Component
         string playUri = svc.Playback.CurrentTrack.Value?.Uri ?? "";
         UseTimeout(() => { if (_hasSnapshot) recents.Refresh(); }, DiffAfterPlayMs,
             DepKey.From(playUri.GetHashCode(), playUri.Length));
-
-        UseEffect(() =>
-        {
-            var cts = new CancellationTokenSource();
-            _cts = cts;
-            return (Action?)(() =>
-            {
-                _cts = null;
-                try { cts.Cancel(); cts.Dispose(); } catch { }
-            });
-        }, DepKey.Empty);
-
-        // ── the store is the row model, so a store WRITE is what makes rows readable. Subscribe once and coalesce: the
-        //    playback path writes tracks constantly, and one epoch bump per write would re-render the realized window on
-        //    every heartbeat. One posted bump per turn is enough — the rows re-read the store when they re-render.
-        var store = svc.RealStore;
-        UseEffect(() =>
-        {
-            if (store is null) return (Action?)null;
-            var sub = store.Changes.Subscribe(Observers.From<StoreChange>(_ => MarkStoreDirty()));
-            return (Action?)(() => sub.Dispose());
-        }, DepKey.FromRef(store));
-
-        // (W2.8's second subscription is gone: an owner profile resolving IS a store write now — UserHydration
-        //  upserts the Owner — so the one subscription above already marks the window dirty for it.)
 
         int epoch = _epoch.Value;          // subscribe: hydration re-renders the chrome (summary + wash) too
         int shapeEpoch = _shapeEpoch.Value;
@@ -341,6 +314,7 @@ sealed class RecentsPage : Component
                 // scene. Deactivation below only normalizes the measured table; writing the signal after parking would
                 // defer row reconciliation behind the page replay budget.
                 CollapseExpanded(_shape);
+                SetQueriesActive(true);
                 SetWash(wash);
                 // Revision sync on REACTIVATION (and, separately, after a now-playing identity change — see the
                 // DiffAfterPlayMs timeout in Render). A null diff answer means "unchanged": do nothing at all.
@@ -348,6 +322,7 @@ sealed class RecentsPage : Component
             },
             onDeactivated: () =>
             {
+                SetQueriesActive(false);
                 ClearWash();
                 // KeepAlive has begun parking by the time this callback runs. Erase the cached geometry now, but leave
                 // the disclosure signal for onActivated to clear after the subtree is live again (see above).
@@ -1214,8 +1189,6 @@ sealed class RecentsPage : Component
                 // The engine's own cold-realize stagger: bounded to the REALIZED window by construction, which is the
                 // only kind of entrance a 1,708-row list may have.
                 Entrance = new EntranceOptions { StaggerColdRealize = true },
-                // The point of the page: the realized window moved → hydrate what it still misses.
-                OnVisibleRange = _page.OnVisibleRange,
             }) with { Key = "recents-list:" + (_token ?? "all") + ":" + _shapeEpoch };
 
             Element overlay = Embed.Comp(() => new StickyDayHeader(_page)) with
@@ -1507,11 +1480,11 @@ sealed class RecentsPage : Component
             // a component's single root child is paired by ElementTypeId alone (Reconciler.ReconcileSingleChild), which
             // is exactly what the ReuseGuard.KeyIgnoredInSingleChildSlot tripwire documents. Props are the mechanism the
             // component-props contract reserves for "same instance, changed data".
-            return Embed.Comp(new HydratedRecentsRow.Props(_page, row, rowIndex), () => new HydratedRecentsRow());
+            return Embed.Comp(new RecentEntityRow.Props(_page, row, rowIndex), () => new RecentEntityRow());
         }
     }
 
-    sealed class HydratedRecentsRow : Component
+    sealed class RecentEntityRow : Component
     {
         /// <summary>The live row this slot currently stands for. An immutable record so an unchanged re-push is
         /// equality-coalesced (no child re-render) while a REBIND — always a changed <see cref="RowIndex"/> — pushes
@@ -1547,11 +1520,11 @@ sealed class RecentsPage : Component
         }
     }
 
-    /// <summary>Resolve a row's display facts FROM THE STORE. Liked Songs is answered locally — the app ships that cover
+    /// <summary>Resolve a row's display facts from the canonical query projection. Liked Songs is answered locally — the app ships that cover
     /// and that name, so the one entity kind the catalogue kinds cannot address costs no request at all.</summary>
     RowFacts FactsFor(RecentsRow row)
     {
-        if (RecentsView.HydrationUri(row) is not { Length: > 0 } uri) return default;
+        if (RecentsView.TargetUri(row) is not { Length: > 0 } uri) return default;
         return FactsFor(uri);
     }
 
@@ -1560,35 +1533,8 @@ sealed class RecentsPage : Component
         var kind = RecentsList.EntityKindOf(uri);
         if (kind == RecentsEntityKind.Collection)
             return new RowFacts(Loc.Get(Strings.Detail.LikedSongs), null, null);
-        if (_store is not { } store) return default;
-        return kind switch
-        {
-            RecentsEntityKind.Playlist => store.GetPlaylist(uri) is { } p
-                ? new RowFacts(NullIfEmpty(p.Name), OwnerSubtitleFor(p), p.Cover) : default,
-            RecentsEntityKind.Album => store.GetAlbum(uri) is { } a
-                ? new RowFacts(NullIfEmpty(a.Name), ArtistNames(a.Artists), a.Cover) : default,
-            RecentsEntityKind.Artist => store.GetArtist(uri) is { } ar
-                ? new RowFacts(NullIfEmpty(ar.Name), null, ar.Image) : default,
-            RecentsEntityKind.Show => store.GetShow(uri) is { } sh
-                ? new RowFacts(NullIfEmpty(sh.Name), NullIfEmpty(sh.Publisher), sh.Cover) : default,
-            RecentsEntityKind.Episode => store.GetEpisode(uri) is { } ep
-                ? new RowFacts(NullIfEmpty(ep.Title), NullIfEmpty(ep.ShowName), ep.Image) : default,
-            RecentsEntityKind.Track => store.GetTrack(uri) is { } t
-                ? new RowFacts(NullIfEmpty(t.Title), ArtistNames(t.Artists), t.Image) : default,
-            _ => default,
-        };
-    }
-
-    /// <summary>W2.8 (C1): never a raw base62 owner id. Resolves the SAME way <see cref="StoreLibrarySource.OverlayOwner"/>
-    /// already does for the Library surface — <c>Owner.Id</c> first, the store's own <c>OwnerName</c> as the raw-id
-    /// fallback — then hands the store's own name, the raw id, and whatever <c>IStore.GetOwner</c> has
-    /// already resolved to <see cref="RecentsView.OwnerSubtitle"/>, which owns the actual decision (resolved name wins;
-    /// the store name shows only when it is more than the id parroted back; otherwise null, never the bare id).</summary>
-    string? OwnerSubtitleFor(Playlist p)
-    {
-        string? rawOwnerId = p.Owner?.Id is { Length: > 0 } id ? id : NullIfEmpty(p.OwnerName);
-        string? resolvedName = rawOwnerId is { Length: > 0 } raw ? _store?.GetOwner(raw)?.Name : null;
-        return RecentsView.OwnerSubtitle(NullIfEmpty(p.OwnerName), rawOwnerId, resolvedName);
+        return _entityQueries?.Read(uri) is { } card
+            ? new RowFacts(NullIfEmpty(card.Title), NullIfEmpty(card.Subtitle), card.Image) : default;
     }
 
     // TWO specs on TWO nodes — the DetailTracks.ExpandableRowSlot split (its comment is the full account). The ONE spec
@@ -1637,7 +1583,7 @@ sealed class RecentsPage : Component
         if (row.ItemId.Length == 0) return new BoxEl { Height = RowHeight };
         // Unhydrated: the REAL row geometry with neutral placeholder tiles. Never empty space, and never an invented
         // string — the wire genuinely does not know this row's name yet.
-        string uri = RecentsView.HydrationUri(row) ?? row.Uri;
+        string uri = RecentsView.TargetUri(row) ?? row.Uri;
         var kind = RecentsList.EntityKindOf(uri);
         // Liked Songs: the app's own cover art keys off the canonical collection uri, and `spotify:user:{id}:collection`
         // is the SAME entity under the recents surface's spelling. Handing the canonical one to the card is what makes
@@ -1781,7 +1727,7 @@ sealed class RecentsPage : Component
             ResetExpandedExtent(shape, _expandedOriginalRow);
         _expandedOriginalRow = closing ? -1 : originalRowIndex;
         _expandedRow.Value = closing ? "" : liveRow.ItemId;
-        if (!closing) HydrateChildren(liveRow, RecentsView.BatchCap);
+        ArmDemand();
     }
 
     void CollapseExpanded(Shape shape)
@@ -1789,6 +1735,7 @@ sealed class RecentsPage : Component
         ResetExpandedExtent(shape, _expandedOriginalRow);
         _expandedOriginalRow = -1;
         if (_expandedRow.Peek().Length > 0) _expandedRow.Value = "";
+        ArmDemand();
     }
 
     void ResetExpandedExtent(Shape shape, int originalRowIndex)
@@ -1837,7 +1784,7 @@ sealed class RecentsPage : Component
                 Animate = ChildReveal with { DelayMs = WaveeEntrance.DelayMs(slot) },
                 Children =
                 [
-                    Embed.Comp(() => new HydratedChildRow(this, uri, slot, playedAt)) with
+                    Embed.Comp(() => new RecentChildRow(this, uri, slot, playedAt)) with
                     { Key = "child:" + row.ItemId + ":" + i },
                 ],
             });
@@ -1890,13 +1837,13 @@ sealed class RecentsPage : Component
         };
     }
 
-    sealed class HydratedChildRow : Component
+    sealed class RecentChildRow : Component
     {
         readonly RecentsPage _page;
         readonly string _initialUri;
         readonly int _index;
         readonly long _playedAtMs;
-        public HydratedChildRow(RecentsPage page, string initialUri, int index, long playedAtMs)
+        public RecentChildRow(RecentsPage page, string initialUri, int index, long playedAtMs)
         {
             _page = page; _initialUri = initialUri; _index = index; _playedAtMs = playedAtMs;
         }
@@ -1961,8 +1908,7 @@ sealed class RecentsPage : Component
 
     Element SavedArtwork(RecentsRow row, Element context)
     {
-        // The same members-first source the pump's cap-2 CollectChildUris hydrates, so the two covers it asked for are
-        // the two it paints.
+        // The same members-first source the page demands identities for, so the two covers it paints are already leased.
         var children = RecentsView.DrawerEntries(row);
         var layers = new List<Element>(3);
         int shown = 0;
@@ -2017,11 +1963,9 @@ sealed class RecentsPage : Component
 
     Track ResolveTrack(string uri, RowFacts facts)
     {
-        if (_store?.GetTrack(uri) is { } track) return track;
-        var episode = _store?.GetEpisode(uri);
-        return new Track(HomeCardNav.Id(uri), uri, facts.Title ?? episode?.Title ?? "", Array.Empty<ArtistRef>(),
-            new AlbumRef("", "", facts.Subtitle ?? episode?.ShowName ?? ""),
-            episode?.DurationMs ?? 0L, false, facts.Cover ?? episode?.Image);
+        if (_entityQueries?.Track(uri) is { } track) return track;
+        return new Track(HomeCardNav.Id(uri), uri, facts.Title ?? "", Array.Empty<ArtistRef>(),
+            new AlbumRef("", "", facts.Subtitle ?? ""), 0L, false, facts.Cover);
     }
 
     BoxEl BindTrackRow(Track track, int displayIndex, ColumnSet cols, TrackSize[] sizes, float rowH, bool showTrackArtist,
@@ -2125,7 +2069,7 @@ sealed class RecentsPage : Component
     /// two surfaces that already own one drifted apart over exactly this (the Liked branch).</summary>
     void Open(RecentsRow row)
     {
-        if (RecentsView.HydrationUri(row) is not { Length: > 0 } uri) return;
+        if (RecentsView.TargetUri(row) is not { Length: > 0 } uri) return;
         var facts = FactsFor(row);
         var card = new HomeCard(uri, facts.Title ?? "", facts.Subtitle, facts.Cover,
             CardKindOf(RecentsList.EntityKindOf(uri)),
@@ -2156,13 +2100,13 @@ sealed class RecentsPage : Component
     };
 
     // ── snapshot lifecycle ────────────────────────────────────────────────────────────────────────────────────────────
-    async Task<RecentsSnapshot> FetchResourceAsync(IRecentsSource source, CancellationToken ct)
+    async Task<RecentsSnapshot> FetchResourceAsync(IRecentsSource source, CatalogScope scope, CancellationToken ct)
     {
-        if (!_hasSnapshot)
+        if (!_hasSnapshot || _snapshotScope != scope)
         {
             var initial = await source.FetchAsync(ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
-            _post(() => Adopt(initial));
+            _post(() => { if (!ct.IsCancellationRequested && _entityScope == scope) Adopt(initial, scope); });
             return initial;
         }
         byte[]? revision = null;
@@ -2174,17 +2118,16 @@ sealed class RecentsPage : Component
         var fresh = await source.FetchDiffAsync(revision, rows, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         if (fresh is null) return new RecentsSnapshot(_revision, rows);
-        _post(() => Adopt(fresh));
+        _post(() => { if (!ct.IsCancellationRequested && _entityScope == scope) Adopt(fresh, scope); });
         return fresh;
     }
 
-    /// <summary>Install a snapshot. Hydration SURVIVES for free: the display facts live in the store, keyed by entity
-    /// uri, so a diff that reorders or extends the list re-renders instantly against what is already resident and asks
-    /// the network only for the genuinely new pointers.</summary>
-    void Adopt(RecentsSnapshot snapshot)
+    /// <summary>Install wire history facts. Visible identities retain their shared query resources across recuts.</summary>
+    void Adopt(RecentsSnapshot snapshot, CatalogScope scope)
     {
         var rows = CopyRows(snapshot.Rows);
         var morphable = RecentsView.FirstOccurrence(rows);
+        _snapshotScope = scope;
         _revision = snapshot.Revision;
         _hasSnapshot = true;
 
@@ -2196,7 +2139,6 @@ sealed class RecentsPage : Component
         // W2.3: the pivot set is now FIXED (All/Music/Podcasts/Artists), so unlike the old wire-derived chip bar there
         // is no "this token no longer exists" case to guard — every selectable token is always one of the four, and
         // PivotTabs itself disables whichever ones this snapshot has zero rows for.
-        _inflight.Clear();
         BuildShape(rows, morphable, _chip.Peek());
         _epoch.Value++;
     }
@@ -2272,6 +2214,7 @@ sealed class RecentsPage : Component
         UpdateSticky(new ScrollGeometry(0f, offset, viewport, viewport, 0f, 0f, 0f, 0f, 0));
         _calendarDay.Value = DateOnly.FromDateTime(_now.LocalDateTime);
         _shapeEpoch.Value++;
+        ArmDemand();
     }
 
     /// <summary>W1.6 midnight rollover, armed by <see cref="Render"/> via <c>UseTimeout</c> keyed on the local day
@@ -2297,14 +2240,10 @@ sealed class RecentsPage : Component
         _epoch.Value++;
     }
 
-    // ── viewport hydration ────────────────────────────────────────────────────────────────────────────────────────────
-    /// <summary>The realized window moved. Called from the reconciler's realize path, so it does the cheapest possible
-    /// thing: record the range and arm ONE pump. The pump then reads the LATEST range — which is how work for a range
-    /// that has already scrolled away is dropped before it is ever started.</summary>
-    void OnVisibleRange(int first, int end)
+    // ── entity demand ─────────────────────────────────────────────────────────────────────────────────────────────────
+    // List identity is demanded for every row on mount / shape change. Metadata publications only repaint.
+    void ArmDemand()
     {
-        _rangeFirst = first;
-        _rangeEnd = end;
         if (_pumpArmed) return;
         _pumpArmed = true;
         _post(Pump);
@@ -2313,122 +2252,41 @@ sealed class RecentsPage : Component
     void Pump()
     {
         _pumpArmed = false;
-        if (_storeDirty) { _storeDirty = false; _epoch.Value++; }
-        var s = _shape;
-        // W2.8: owner resolution is a different LADDER from the entity hydration below (User vs Track/Album/…), and it
-        // reads its own residency (IStore.GetOwner), so it runs on every pump regardless of whether there is anything
-        // left for the entity batch.
-        CollectUnresolvedOwners(s.Sections.FlatToRow, s.Rows, _rangeFirst, _rangeEnd);
-        if (_hydrator is not { } hydrator || _cts is not { } cts) return;
+        if (!_queriesActive || _entityQueries is null) return;
+        var shape = _shape;
         _batch.Clear();
-        RecentsView.CollectRange(s.Rows, s.Sections.FlatToRow, _rangeFirst, _rangeEnd, Pending, _batch);
-        int hi = Math.Min(_rangeEnd, s.Sections.FlatToRow.Length);
-        for (int i = Math.Max(0, _rangeFirst); i < hi && _batch.Count < RecentsView.BatchCap; i++)
-        {
-            int rowIndex = s.Sections.FlatToRow[i];
-            if ((uint)rowIndex >= (uint)s.Rows.Length || s.Rows[rowIndex].Reason != RecentsReason.Saved) continue;
-            RecentsView.CollectChildUris(s.Rows[rowIndex], Pending, _batch,
-                Math.Min(2, RecentsView.BatchCap - _batch.Count));
-        }
-        if (_batch.Count == 0) return;
-        var uris = _batch.ToArray();
-        for (int i = 0; i < uris.Length; i++) _inflight.Add(uris[i]);
-        _ = HydrateAsync(hydrator, uris, cts.Token);
+        RecentsView.CollectAll(shape.Rows, shape.Sections.FlatToRow, Queryable, _batch);
+        _entityQueries.SetUris(_batch);
     }
 
-    /// <summary>W2.8: the realized window's playlist rows whose owner has no resident <c>Owner</c> row yet, asked
-    /// through the SAME façade every other hydration goes through (the User ladder, background mode — a byline never
-    /// blocks a pump). Mirrors <see cref="StoreLibrarySource.OverlayOwner"/>'s raw-id derivation (<c>Owner.Id</c>
-    /// first, the store's own <c>OwnerName</c> as the fallback) and canonicalizes it, so the uri asked for is the exact
-    /// one <see cref="OwnerSubtitleFor"/> will later look up with. Reuses <see cref="_ownerBatch"/> across pumps —
-    /// bounded to the realized range, never the whole snapshot.</summary>
-    void CollectUnresolvedOwners(int[] flatToRow, RecentsRow[] rows, int first, int end)
+    static bool Queryable(string uri) => RecentsList.EntityKindOf(uri) is RecentsEntityKind.Track
+        or RecentsEntityKind.Album or RecentsEntityKind.Artist or RecentsEntityKind.Show
+        or RecentsEntityKind.Episode or RecentsEntityKind.Playlist;
+
+    void SetQueriesActive(bool active)
     {
-        if (_store is not { } store || _hydrator is not { } hydrator || _cts is not { } cts) return;
-        _ownerBatch.Clear();
-        int hi = Math.Min(end, flatToRow.Length);
-        for (int i = Math.Max(0, first); i < hi; i++)
-        {
-            int rowIndex = flatToRow[i];
-            if ((uint)rowIndex >= (uint)rows.Length) continue;
-            if (RecentsView.HydrationUri(rows[rowIndex]) is not { Length: > 0 } uri
-                || RecentsList.EntityKindOf(uri) != RecentsEntityKind.Playlist) continue;
-            if (store.GetPlaylist(uri) is not { } p) continue;
-            string? raw = p.Owner?.Id is { Length: > 0 } id ? id : NullIfEmpty(p.OwnerName);
-            if (raw is null || UserProfileIds.Normalize(raw) is not { } canonical) continue;
-            if (store.GetOwner(canonical) is not null) continue;
-            _ownerBatch.Add(canonical);
-        }
-        if (_ownerBatch.Count > 0)
-            _ = hydrator.EnsureManyAsync(_ownerBatch.ToArray(), HydrationLevel.Identity,
-                new HydrationOptions(HydrationMode.Background, Surface: TraitSurface.UserProfiles), cts.Token);
+        _queriesActive = active;
+        _entityQueries?.SetActive(active);
+        if (active) ArmDemand();
     }
 
-    void HydrateChildren(RecentsRow row, int cap)
+    void EntityChanged(string uri)
     {
-        if (_hydrator is not { } hydrator || _cts is not { } cts || cap <= 0) return;
-        var pending = new List<string>(Math.Min(cap, RecentsView.BatchCap));
-        RecentsView.CollectChildUris(row, Pending, pending, Math.Min(cap, RecentsView.BatchCap));
-        if (pending.Count == 0) return;
-        var uris = pending.ToArray();
-        for (int i = 0; i < uris.Length; i++) _inflight.Add(uris[i]);
-        _ = HydrateAsync(hydrator, uris, cts.Token);
+        if (!_queriesActive || _entityQueries is null) return;
+        _changedEntities.Add(uri);
+        if (_entitiesArmed) return;
+        _entitiesArmed = true;
+        _post(PublishEntities);
     }
 
-    /// <summary>Which URIs this window still owes the chokepoint. Freshness/dedup/skip belong to the hydration ledger —
-    /// this only avoids handing the same uri to two overlapping facade calls, and skips the kinds that resolve
-    /// LOCALLY: Liked Songs ships with the app, and an uri whose kind the catalogue cannot address would be dropped by
-    /// KindFor anyway.</summary>
-    bool Pending(string uri)
+    void PublishEntities()
     {
-        if (_inflight.Contains(uri)) return false;
-        return RecentsList.EntityKindOf(uri) is RecentsEntityKind.Track or RecentsEntityKind.Album
-            or RecentsEntityKind.Artist or RecentsEntityKind.Show or RecentsEntityKind.Episode
-            or RecentsEntityKind.Playlist;
-    }
-
-    async Task HydrateAsync(IEntityHydrator hydrator, string[] uris, CancellationToken ct)
-    {
-        try
-        {
-            // TWO asks, concurrently, because they are two different things (design §1.5):
-            //   • IDENTITY for the entity pointers themselves — a recents window is pointers, not a tracklist, so this
-            //     is the catalogue rung and nothing more (no ref-closure, no second transport).
-            //   • the Recents TRAIT surface — 178/220 for wire fidelity plus 179, the tint that lets a card paint in
-            //     its own colour before an image byte arrives. TraitSurfaces.ClientFeatureId maps this surface (and
-            //     only this surface) to `mdata_esperanto`, which is the attribution the census tied that bundle to.
-            await Task.WhenAll(
-                hydrator.EnsureManyAsync(uris, HydrationLevel.Identity, new HydrationOptions(Surface: TraitSurface.Recents), ct),
-                hydrator.EnsureTraitsAsync(uris, TraitSurface.Recents, ct)).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException) { /* best-effort: rows keep their skeleton */ }
-        if (ct.IsCancellationRequested) return;
-        _post(() =>
-        {
-            for (int i = 0; i < uris.Length; i++) _inflight.Remove(uris[i]);
-            // A recents row only ever carries a track's own uri, never its album/artists — those live on the resident
-            // Track once identity hydration lands, which is exactly what just happened for `uris`. Resolving them here
-            // (never at read time — see RecentsRecency) is what lets a cross-device TRACK play move that track's
-            // artist/album in the library panes too, not just its own row in this page.
-            if (_store is { } st) _svc?.PlayLog.MergeRecency(RecentsRecency.TrackStamps(_shape.Rows, uris, st.GetTrack));
-            // The store's own change signal usually beats us here; the bump is what guarantees the realized window
-            // re-reads even when the projection wrote nothing new.
-            _epoch.Value++;
-        });
-    }
-
-    /// <summary>A store write landed. Coalesced onto the existing pump so a burst (a bulk projection, a playback
-    /// heartbeat) costs ONE epoch bump and therefore one re-render of the realized window.</summary>
-    void MarkStoreDirty()
-    {
-        _post(() =>
-        {
-            if (_shape.Rows.Length == 0) return;   // nothing realized to re-skin — a parked/empty page ignores the churn
-            _storeDirty = true;
-            if (_pumpArmed) return;
-            _pumpArmed = true;
-            _post(Pump);
-        });
+        _entitiesArmed = false;
+        if (!_queriesActive || _entityQueries is null) { _changedEntities.Clear(); return; }
+        var uris = new string[_changedEntities.Count];
+        _changedEntities.CopyTo(uris); _changedEntities.Clear();
+        _svc?.PlayLog.MergeRecency(RecentsRecency.TrackStamps(_shape.Rows, uris, _entityQueries.Track));
+        _epoch.Value++;
     }
 
     /// <summary>W2.9 fallback accent: identical to what every consumer painted before this page had a dynamic one
@@ -2450,7 +2308,7 @@ sealed class RecentsPage : Component
             var sourceFacts = FactsFor(s.Rows[sourceRow]);
             if (sourceFacts.Cover?.Url is { Length: > 0 })
             {
-                string sourceUri = RecentsView.HydrationUri(s.Rows[sourceRow]) ?? s.Rows[sourceRow].Uri;
+                string sourceUri = RecentsView.TargetUri(s.Rows[sourceRow]) ?? s.Rows[sourceRow].Uri;
                 return new HomeCard(sourceUri, sourceFacts.Title ?? "", sourceFacts.Subtitle, sourceFacts.Cover,
                     CardKindOf(RecentsList.EntityKindOf(sourceUri)));
             }
@@ -2461,7 +2319,7 @@ sealed class RecentsPage : Component
         {
             var facts = FactsFor(rows[i]);
             if (facts.Cover?.Url is not { Length: > 0 }) continue;
-            string uri = RecentsView.HydrationUri(rows[i]) ?? rows[i].Uri;
+            string uri = RecentsView.TargetUri(rows[i]) ?? rows[i].Uri;
             return new HomeCard(uri, facts.Title ?? "", facts.Subtitle, facts.Cover,
                 CardKindOf(RecentsList.EntityKindOf(uri)));
         }

@@ -10,6 +10,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Features.Browse;
 using static FluentGpu.Dsl.Ui;
 
@@ -53,6 +54,10 @@ sealed class HomeSectionPage : Component
     static readonly string[] NoSuggest = [];
 
     readonly Route _route;
+    QuerySignalBinding<HomeSectionPageResult?>? _homeQuery;
+    bool _homeAppendFailed;
+    CatalogScope? _homeScope;
+
     /// <summary>Identity for race-free last-writer-wins on <see cref="ShellMaterial"/> (see <c>ShellMaterialState</c>):
     /// a page clears the material only while it is still the owner.</summary>
     readonly object _washOwner = new();
@@ -69,6 +74,8 @@ sealed class HomeSectionPage : Component
         var shellMaterial = UseContext(ShellMaterial.Slot);
         var mastheadStore = UseContext(ShellMasthead.Slot);
         var post = UsePost();
+        var active = UseIsActive();
+        var scope = svc?.CatalogScope;
         // The PREFIX selects the API — never the uri, which a hardcoded browse chart section can share the shape of
         // with a Home section (see the class doc-comment). An unrecognised route is a routing bug, not a data problem,
         // so it throws here rather than falling through to either endpoint by default.
@@ -134,9 +141,39 @@ sealed class HomeSectionPage : Component
             if (walkCts.Value is { } c) { c.Cancel(); c.Dispose(); walkCts.Value = null; }
         }), DepKey.Empty);
 
-        Context.UseSignalEffect(() =>
+        UseEffect(() =>
         {
-            if (expired || svc is null || sectionUri.Length == 0) return;
+            if (expired || svc is null || scope is null || sectionUri.Length == 0) return (Action?)null;
+            if (!browse)
+            {
+                if (HomeSectionRoutes.IsLocal(sectionUri)) return (Action?)null;
+                if (_homeScope is not null && _homeScope != scope)
+                    section.SetPending(new HomeSection(sectionUri, _route.Arg, null, BlankCards(), 8, 8));
+                _homeScope = scope;
+                var binding = new QuerySignalBinding<HomeSectionPageResult?>(
+                    svc.Queries.Acquire(new HomeSectionQuery(scope, sectionUri)), post, snapshot =>
+                    {
+                        loadingMore.Value = snapshot.Status.IsRefreshing;
+                        _homeAppendFailed = !snapshot.Status.IsRefreshing && snapshot.Problems.Any(problem =>
+                            problem.Resource.Facet == FacetKind.HomeSection);
+                        if (snapshot.Failure is { } failure)
+                        {
+                            if (!section.IsReady) section.SetFailed(new InvalidOperationException(failure.Message));
+                            return;
+                        }
+                        if (snapshot.Value is { } result)
+                        {
+                            section.SetReady(Identify(result.Section, sectionUri, _route.Arg));
+                            cursor.Value = result.NextOffset;
+                            exhausted.Value = !HomeSectionPaging.CanAdvance(0, result.NextOffset);
+                            if (!snapshot.Status.IsRefreshing) nearTail.Value = false;
+                        }
+                    }, failed: error => { loadingMore.Value = false; if (!section.IsReady) section.SetFailed(error); });
+                _homeQuery = binding;
+                binding.SetDemand(new QueryDemand(true, QueryPriority.Visible, []));
+                binding.SetActive(active.Peek());
+                return (Action?)(() => { binding.Dispose(); _homeQuery = null; });
+            }
             if (charts)
             {
                 walking.Value = true;
@@ -144,21 +181,25 @@ sealed class HomeSectionPage : Component
                 walkCts.Value = cts;
                 _ = WalkChartsAsync(svc, sectionUri, _route.Arg, seeded, section, cursor, exhausted, walking, walkFrac,
                                     post, cts.Token);
-                return;
+                // Whichever cleanup runs first owns the cancel: the unmount effect above runs before this one at
+                // KeepAlive eviction and has already cancelled + disposed this source, so cancelling it again here
+                // threw ObjectDisposedException on the UI thread and took the app loop down (native tour, 2026-09-09).
+                return (Action?)(() =>
+                {
+                    if (!ReferenceEquals(walkCts.Value, cts)) return;
+                    walkCts.Value = null; cts.Cancel(); cts.Dispose();
+                });
             }
-            // A Fold-tile drill stashes the first page in the preview store, so LoadInitial is skipped. Arm the
-            // paging cursor from that seed (Total vs raw count) or a 74-item Weekly section would show ten cards
-            // with no way to get the rest.
             if (seeded is not null)
             {
-                if (HomeSectionPaging.HasMore(seeded))
-                    cursor.Value = HomeSectionPaging.NextOffset(seeded);
-                else
-                    exhausted.Value = true;
-                return;
+                if (HomeSectionPaging.HasMore(seeded)) cursor.Value = HomeSectionPaging.NextOffset(seeded);
+                else exhausted.Value = true;
+                return (Action?)null;
             }
-            _ = LoadInitialAsync(svc, sectionUri, _route.Arg, browse, section, cursor, exhausted, post);
-        });
+            _ = LoadInitialBrowseAsync(svc, sectionUri, _route.Arg, section, cursor, exhausted, post);
+            return (Action?)null;
+        }, DepKey.From(HashCode.Combine(scope, sectionUri, browse, charts)));
+        UseActivation(onActivated: () => _homeQuery?.SetActive(true), onDeactivated: () => _homeQuery?.SetActive(false));
 
         // ── the shell MATERIAL (Mica wash) ────────────────────────────────────────────────────────────────────────
         // The SAME one-leg publication and the SAME owner-gated lifecycle RecentsPage uses, deliberately not a second
@@ -204,7 +245,14 @@ sealed class HomeSectionPage : Component
         {
             if (svc is null || !CanPage(current) || loadingMore.Peek()) return;
             loadingMore.Value = true;
-            _ = LoadMoreAsync(svc, current, browse, section, loadingMore, cursor, exhausted, nearTail, post);
+            if (!browse)
+            {
+                if (_homeQuery is not { } query) { loadingMore.Value = false; return; }
+                if (_homeAppendFailed) _ = query.RefreshAsync();
+                else loadingMore.Value = false;
+                return;
+            }
+            _ = LoadMoreBrowseAsync(svc, current, section, loadingMore, cursor, exhausted, nearTail, post);
         }
 
         // The near-tail scroll-geometry watch for the grid below: fed straight from the SELF-SCROLLING Virtual.Custom
@@ -221,7 +269,7 @@ sealed class HomeSectionPage : Component
         // while the page box still fills the pane (empty mica down to the player).
         Element GridBody(HomeSection current)
         {
-            bool canAutoPage = !charts && CanPage(current) && !exhausted.Value && HomeSectionPaging.HasMore(current, cursor.Value);
+            bool canAutoPage = browse && !charts && CanPage(current) && !exhausted.Value && HomeSectionPaging.HasMore(current, cursor.Value);
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -231,29 +279,26 @@ sealed class HomeSectionPage : Component
                     // which in this COLUMN sizes it to content. The virtual grid's natural height is 0, so without
                     // inherit-the-slot the viewport realizes 0 rows and the pane is empty mica under the masthead.
                     //
-                    // The card list is derived INSIDE this closure, off SIGNALS, and that placement is load-bearing.
-                    // Responsive.Of FREEZES its build closure: ResponsiveBox takes it as a constructor argument, so
-                    // Embed.Comp runs the factory once and a parent re-render reuses the propless component WITHOUT
-                    // re-running it (the reconciler's "the component is AUTONOMOUS" reuse path — SelectionCommandBar
-                    // carries the same scar). A list computed in GridBody's own scope therefore paints ONCE and never
-                    // changes again: the Charts filter did nothing at all, and an appended page only ever appeared
-                    // because an unrelated unkeyed child-index shift happened to remount the grid. Reading the section
-                    // and the filter in HERE subscribes ResponsiveBox itself, so it re-renders on its own — the
-                    // component-props-contract rule (data reaches a frozen child through a Signal that child reads).
-                    Responsive.Of(width =>
+                    // Live section/filter signals keep the virtual grid current while its viewport remains mounted.
+                    // Gate key: `charts` alone — it's the only page-identity flag the builder reads besides width;
+                    // the actual content (section/filter) is read straight off `section`/`filter` signals INSIDE the
+                    // builder, which independently re-subscribes this ResponsiveBox's own Render() to a landed page
+                    // or a keystroke regardless of the props gate. `Open`/`svc`/`acts`/`overlay`/`GridScrollWatch`
+                    // are stable page-scoped callbacks/services, the sanctioned "capture directly" case.
+                    Responsive.Of(charts, (isCharts, width) =>
                     {
                         var live = section.Value.Value;                    // subscribe: a landed/appended page repaints
-                        string lq = charts ? filter.Value.Trim() : "";     // subscribe: a keystroke repaints
-                        var shown = charts ? ChartTitleMatch.Filter(live.Cards, lq) : live.Cards;
+                        string lq = isCharts ? filter.Value.Trim() : "";   // subscribe: a keystroke repaints
+                        var shown = isCharts ? ChartTitleMatch.Filter(live.Cards, lq) : live.Cards;
                         if (lq.Length > 0 && shown.Count == 0)
                             return new BoxEl { Grow = 1f, MinHeight = 0f, Children = [EmptyState.Compact(Loc.Get(Strings.Library.NoMatch))] };
                         return HomeModules.SectionGrid(shown, live.Uri, width, Open, svc, acts, overlay,
-                            onScrollGeometryChanged: charts ? null : GridScrollWatch(),
+                            onScrollGeometryChanged: isCharts ? null : GridScrollWatch(),
                             highlightQuery: lq.Length > 0 ? lq : null,
                             // Charts cards carry no subtitle (SectionGrid blanks it) and their names run long
                             // ("Top Songs - Netherlands"), so the freed metadata rung pays for the second title line.
                             // Every other section keeps its single ellipsized line.
-                            titleLines: charts ? ChartsTitleLines : 1);
+                            titleLines: isCharts ? ChartsTitleLines : 1);
                     }, fallback: HomeModuleLayout.FallbackWidth, grow: 1f),
                     canAutoPage
                         ? Embed.Comp(() => new HomeSectionAppendPreloader
@@ -274,7 +319,7 @@ sealed class HomeSectionPage : Component
         // content(seed) derivation) shimmers.
         string title = SectionTitle(currentSection);
         _ = section.State.Value;
-        bool canLoadMore = !charts && CanPage(currentSection) && !exhausted.Value && HomeSectionPaging.HasMore(currentSection, cursor.Value);
+        bool canLoadMore = browse && !charts && CanPage(currentSection) && !exhausted.Value && HomeSectionPaging.HasMore(currentSection, cursor.Value);
 
         // One deps-leg publication. Cursor is a dep: the Show-all action closes over it.
         UseEffect(() =>
@@ -508,31 +553,12 @@ sealed class HomeSectionPage : Component
         }
     }
 
-    static async Task LoadInitialAsync(Services svc, string uri, string? routeTitle, bool browse,
+    static async Task LoadInitialBrowseAsync(Services svc, string uri, string? routeTitle,
                                        Loadable<HomeSection> target, Signal<int?> cursor, Signal<bool> exhausted,
                                        Action<Action> post)
     {
         try
         {
-            if (!browse)
-            {
-                // No browseSection fallback on failure — a null here is a 400 on a stale persisted hash (PathfinderClient
-                // logs it as such) or a dead session, and quietly re-asking the wrong endpoint is what hid this for so
-                // long. Fail loudly: Skel.Region paints ErrorState from the SetFailed below.
-                var result = await svc.HomeSections.GetHomeSectionAsync(uri, 0).ConfigureAwait(false);
-                if (result is null) throw new InvalidOperationException("homeSection returned no section for " + uri + ".");
-                var first = Identify(result.Section, uri, routeTitle);
-                bool hasMore = HomeSectionPaging.CanAdvance(0, result.NextOffset);
-                post(() =>
-                {
-                    if (hasMore) cursor.Value = result.NextOffset; else exhausted.Value = true;
-                    target.SetReady(first);
-                });
-                return;
-            }
-
-            // Same rule, the other endpoint: no homeSection fallback on failure — a browse-routed section is never
-            // legal input to homeSection, so a null here fails loudly instead of quietly reading the wrong endpoint.
             var page = await svc.Browse.GetSectionAsync(uri, 0).ConfigureAwait(false);
             if (page is null) throw new InvalidOperationException("browseSection returned no section for " + uri + ".");
             var mapped = HomeBrowseCards.Section(page, routeTitle);
@@ -547,7 +573,7 @@ sealed class HomeSectionPage : Component
         catch (Exception ex) { post(() => target.SetFailed(ex)); }
     }
 
-    static async Task LoadMoreAsync(Services svc, HomeSection current, bool browse, Loadable<HomeSection> target,
+    static async Task LoadMoreBrowseAsync(Services svc, HomeSection current, Loadable<HomeSection> target,
                                     Signal<bool> loading, Signal<int?> cursor, Signal<bool> exhausted,
                                     Signal<bool> nearTail, Action<Action> post)
     {
@@ -561,16 +587,7 @@ sealed class HomeSectionPage : Component
         Exception? error = null;
         try
         {
-            if (!browse)
-            {
-                if (await svc.HomeSections.GetHomeSectionAsync(uri, offset).ConfigureAwait(false) is { } result)
-                {
-                    cards = result.Section.Cards;
-                    total = result.Section.TotalCount;
-                    nextOffset = result.NextOffset;
-                }
-            }
-            else if (await svc.Browse.GetSectionAsync(uri, offset).ConfigureAwait(false) is { } page)
+            if (await svc.Browse.GetSectionAsync(uri, offset).ConfigureAwait(false) is { } page)
             {
                 var mapped = new HomeCard[page.Cards.Count];
                 for (int i = 0; i < mapped.Length; i++) mapped[i] = HomeBrowseCards.Card(page.Cards[i]);

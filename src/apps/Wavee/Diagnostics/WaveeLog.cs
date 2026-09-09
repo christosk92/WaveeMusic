@@ -24,6 +24,25 @@ public sealed class WaveeLog : IWaveeLog
     public static readonly string SessionId = Guid.NewGuid().ToString("N")[..8];
     static readonly int ProcessId = Environment.ProcessId;
 
+    // The one baseline every startup-timeline line reports (sinceStartMs=). Anchored to the REAL process start where
+    // the OS will tell us, so a line written before the first paint reports how long the user has been waiting rather
+    // than how long ago the logger happened to be touched.
+    static readonly long StartTicks = Environment.TickCount64 - ProcessUptimeMs();
+
+    /// <summary>Milliseconds since this process started.</summary>
+    public static long SinceStartMs => Environment.TickCount64 - StartTicks;
+
+    static long ProcessUptimeMs()
+    {
+        try
+        {
+            using var self = System.Diagnostics.Process.GetCurrentProcess();
+            long ms = (long)(DateTime.Now - self.StartTime).TotalMilliseconds;
+            return ms is >= 0 and < 24L * 60 * 60 * 1000 ? ms : 0;   // a nonsense clock is no anchor at all
+        }
+        catch { return 0; }
+    }
+
     public static WaveeLog Instance { get; } = new();
 
     readonly object _ringGate = new();

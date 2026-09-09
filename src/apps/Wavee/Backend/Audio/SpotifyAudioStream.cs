@@ -28,6 +28,9 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
     readonly ChunkDiskCache? _bodyDisk;
     readonly RangedHttpRecoveryPolicy? _recoveryPolicy;
     readonly object _stateGate = new();
+    readonly AudioDataAvailability _availability = new();
+    public long DataVersion => _availability.Version;
+    public void WaitForData(long observedVersion, CancellationToken cancellationToken) => _availability.Wait(observedVersion, cancellationToken);
 
     byte[] _key = [];
     CdnDecryptor? _decryptor;
@@ -156,6 +159,7 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
             }
             _bodyAttached = true;
             Monitor.PulseAll(_stateGate);
+            _availability.Pulse();
         }
         _log.Info($"stream {_name}: body attach accepted headBoundary={_headLen}B knownSize={(knownSize ?? 0)} mirrors={cdnUrls.Length} mode={(eagerFetch ? "eager" : "lazy")}");
 
@@ -265,7 +269,8 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
             if (wanted <= 0) return 0;
             EnsureRangeAvailable(pos, wanted);
 
-            var available = _ranged!.ContainedLengthFrom(pos);
+            _ranged!.ThrowIfFailed();
+        var available = _ranged.ContainedLengthFrom(pos);
             size = Size;
             if (size > 0) available = Math.Min(available, size - pos);
             if (available <= 0) return 0;
@@ -319,7 +324,8 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
         var wanted = size > 0 ? (int)Math.Min(dst.Length, size - pos) : dst.Length;
         if (wanted <= 0) return 0;
 
-        var available = _ranged!.ContainedLengthFrom(pos);
+        _ranged!.ThrowIfFailed();
+        var available = _ranged.ContainedLengthFrom(pos);
         if (size > 0) available = Math.Min(available, size - pos);
         if (available <= 0)
         {
@@ -420,6 +426,7 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
     void WakeReaders()
     {
         lock (_stateGate) Monitor.PulseAll(_stateGate);
+        _availability.Pulse();
     }
 
     void Fail(Exception ex)
@@ -429,6 +436,7 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
             _error = ex;
             _failed = true;
             Monitor.PulseAll(_stateGate);
+            _availability.Pulse();
         }
         ReleaseBandwidthShapePauseIfArmed();   // a failed attach must not leave read-ahead paused forever
         _ranged?.Stop();
@@ -459,6 +467,7 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
         {
             Volatile.Write(ref _pos, Math.Max(0, value));
             lock (_stateGate) Monitor.PulseAll(_stateGate);
+        _availability.Pulse();
         }
     }
 
@@ -473,6 +482,7 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
         };
         Volatile.Write(ref _pos, Math.Max(0, next));
         lock (_stateGate) Monitor.PulseAll(_stateGate);
+        _availability.Pulse();
         return Volatile.Read(ref _pos);
     }
 
@@ -493,6 +503,7 @@ public sealed class SpotifyAudioStream : Stream, IAsyncDisposable, IAudioReadStr
             attachedPause = _attachedReadAheadPause;
             _attachedReadAheadPause = null;
             Monitor.PulseAll(_stateGate);
+            _availability.Pulse();
         }
         attachedPause?.Dispose();
         ranged?.Dispose();   // owns the read-ahead task + fetch resources lifecycle

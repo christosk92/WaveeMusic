@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Localization;
@@ -52,18 +53,7 @@ public static class VideoActions
         Id = ActionId.RemoveVideo, IconKey = ActionIcons.Remove, Destructive = true,
         Label = static c => Loc.Get(Strings.VideoOverride.Remove),
         IsEnabled = static c => Svc(in c) is { } svc && Uri(in c) is { } uri && svc.Has(uri),
-        Execute = static c =>
-        {
-            if (Svc(in c) is not { } svc || Uri(in c) is not { } uri) return;
-            if (!svc.TryGetActive(uri, out var previous) || !svc.Remove(uri)) return;
-            Log(in c, "override.menu.remove", "detached the attached video", uri, previous.Path);
-            Toast.Show(Loc.Get(Strings.VideoOverride.Removed), new ToastOptions
-            {
-                Severity = InfoBarSeverity.Success,
-                ActionLabel = Loc.Get(Strings.VideoOverride.Undo),
-                OnAction = () => Restore(svc, uri, previous.Path),
-            });
-        },
+        Execute = static c => _ = RemoveAsync(c),
     };
 
     public static readonly AppAction ShowVideoInExplorer = new()
@@ -144,6 +134,9 @@ public static class VideoActions
     /// <summary>Validate → attach → toast (with Undo) → make it visible. The ONE entry point the menu picker, the
     /// "Locate…" repair and the row drag-drop all share, so those three can never drift apart.</summary>
     public static void Apply(ActionServices s, VideoOverrideService svc, string uri, string path, bool replace)
+        => _ = ApplyAsync(s, svc, uri, path, replace);
+
+    public static async Task<bool> ApplyAsync(ActionServices s, VideoOverrideService svc, string uri, string path, bool replace)
     {
         var rejection = VideoOverrideUx.Validate(path, File.Exists);
         if (rejection != VideoAttachRejection.None)
@@ -154,16 +147,16 @@ public static class VideoActions
             s.Svc?.Log.Event(WaveeLogLevel.Warning, LogCategory, "override.attach.rejected",
                 "the picked file was refused",
                 fields: [WaveeLogField.Of("path", path), WaveeLogField.Of("reason", rejection.ToString())]);
-            return;
+            return false;
         }
 
         // Snapshot BEFORE the mutation — the uri is the primary key, so a replace overwrites the row we would restore.
         bool had = svc.TryGetActive(uri, out var previous);
-        try { svc.Attach(uri, path); }
+        try { await svc.AttachAsync(uri, path).ConfigureAwait(false); }
         catch (Exception ex)
         {
-            Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error });
-            return;
+            Post(s, () => Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error }));
+            return false;
         }
 
         s.Svc?.Log.Event(WaveeLogLevel.Info, LogCategory, had ? "override.menu.replace" : "override.menu.attach",
@@ -171,29 +164,44 @@ public static class VideoActions
             fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", path)]);
 
         string previousPath = had ? previous.Path : "";
-        Toast.Show(Loc.Get(had || replace ? Strings.VideoOverride.Replaced : Strings.VideoOverride.Attached), new ToastOptions
+        Post(s, () => Toast.Show(Loc.Get(had || replace ? Strings.VideoOverride.Replaced : Strings.VideoOverride.Attached), new ToastOptions
         {
             Severity = InfoBarSeverity.Success,
             ActionLabel = Loc.Get(Strings.VideoOverride.Undo),
             // Undo restores the PREVIOUS state exactly: the prior attachment on a replace, no attachment on a first attach.
-            OnAction = () => Restore(svc, uri, previousPath),
-        });
+            OnAction = () => _ = RestoreAsync(s, svc, uri, previousPath),
+        }));
+        return true;
         // Reveal is owned by PlaybackBridge.ApplyVideoOverrideChanged (after has-video commit) — calling ShowVideoAt
         // here raced the posted mutation and opened with Available=None, which double-fired Audio→Video + forced reload.
     }
 
     /// <summary>Undo: re-attach the previous file, or detach when there was none. Both directions run through the same
     /// service mutations, so the bridge's latch/cache/reload flow fires for the undo exactly as it did for the change.</summary>
-    static void Restore(VideoOverrideService svc, string uri, string previousPath)
+    static async Task RestoreAsync(ActionServices s, VideoOverrideService svc, string uri, string previousPath)
     {
         try
         {
-            if (previousPath is { Length: > 0 }) svc.Attach(uri, previousPath);
-            else svc.Remove(uri);
+            if (previousPath is { Length: > 0 }) await svc.AttachAsync(uri, previousPath).ConfigureAwait(false);
+            else await svc.RemoveAsync(uri).ConfigureAwait(false);
         }
-        catch (Exception ex) { Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error }); return; }
-        Toast.Show(Loc.Get(Strings.VideoOverride.Restored), new ToastOptions { Severity = InfoBarSeverity.Informational });
+        catch (Exception ex) { Post(s, () => Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error })); return; }
+        Post(s, () => Toast.Show(Loc.Get(Strings.VideoOverride.Restored), new ToastOptions { Severity = InfoBarSeverity.Informational }));
     }
+
+    static async Task RemoveAsync(ActionContext c)
+    {
+        if (Svc(in c) is not { } svc || Uri(in c) is not { } uri || !svc.TryGetActive(uri, out var previous)) return;
+        try { if (!await svc.RemoveAsync(uri).ConfigureAwait(false)) return; }
+        catch (Exception ex) { Post(c.S, () => Toast.Show(ex.Message, new ToastOptions { Severity = InfoBarSeverity.Error })); return; }
+        Log(in c, "override.menu.remove", "detached the attached video", uri, previous.Path);
+        Post(c.S, () => Toast.Show(Loc.Get(Strings.VideoOverride.Removed), new ToastOptions
+        {
+            Severity = InfoBarSeverity.Success, ActionLabel = Loc.Get(Strings.VideoOverride.Undo),
+            OnAction = () => _ = RestoreAsync(c.S, svc, uri, previous.Path),
+        }));
+    }
+    static void Post(ActionServices s, Action action) => s.Post?.Invoke(action);
 
     // ── shared gates ─────────────────────────────────────────────────────────────────────────────────────────────────
 

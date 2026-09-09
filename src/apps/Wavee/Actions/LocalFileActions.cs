@@ -85,7 +85,7 @@ public static class LocalFileActions
         _ = s.Svc!.Player.PlayTrackAsync(track);
     }
 
-    static void PlayVideoFile(ActionServices s, string path, string via)
+    static async void PlayVideoFile(ActionServices s, string path, string via)
     {
         // No curation service ⇒ the whole override feature is off (its kill switch), and an mp4 has no audio-host path.
         if (s.VideoOverrides is not { } svc)
@@ -98,7 +98,7 @@ public static class LocalFileActions
         // 1. Self-attach: the file becomes its own playable's video override, through the one shared attach entry point
         //    (validation + persistence + the undo toast all come from there). It is not "current" yet, so Apply's
         //    reveal-if-current step is a no-op — step 2 does that job explicitly for the track we are about to start.
-        VideoActions.Apply(s, svc, track.Uri, path, replace: svc.Has(track.Uri));
+        if (!await VideoActions.ApplyAsync(s, svc, track.Uri, path, replace: svc.Has(track.Uri)).ConfigureAwait(false)) return;
         if (!svc.Has(track.Uri)) return;   // Apply refused it (validation) and has already explained why
 
         // 2. Play it AS VIDEO. Dropping a video file to play is an explicit "show me this", which is one of the
@@ -106,7 +106,7 @@ public static class LocalFileActions
         //    play (the intent is scoped to the dropped track and expires when playback moves on; only the real
         //    toggles change the standing state). PlayAs owns the ordering that makes it apply to this track.
         Log(s, "localfile.play.video", "playing a dropped video with its own audio", path, via, track.Uri);
-        VideoActions.PlayAs(s.Svc!.Player, s.Playback, track, MediaForm.Video);
+        s.Post?.Invoke(() => VideoActions.PlayAs(s.Svc!.Player, s.Playback, track, MediaForm.Video));
     }
 
     static void Log(ActionServices s, string eventId, string message, string path, string via, string uri)

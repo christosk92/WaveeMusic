@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using Wavee.Backend.Sync;
 using Wavee.Backend.Persistence;
 using Wavee.Core;
 using Xunit;
@@ -83,11 +86,12 @@ public class SqliteActivityStoreTests : IDisposable
     }
 
     [Fact]
-    public void Coexists_WithSqliteColdStore_OnSameFile()
+    public async Task Coexists_WithSqliteColdStore_OnSameFile()
     {
         // The cold store owns its own tables + schema-version key; the activity store owns only activity_log.
-        var cold = new SqliteColdStore(_path);
-        _ = cold.GetRootlistRevision();   // exercise a cold read (its schema is intact)
+        using var cold = new SqliteColdStore(_path);
+        var scope = new ReplicaScope("alice", 1);
+        var baseline = await cold.LoadAsync(scope, CancellationToken.None);
 
         using var store = new SqliteActivityStore(_path);
         store.Append(Entry(1, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
@@ -95,7 +99,8 @@ public class SqliteActivityStoreTests : IDisposable
         Assert.Single(store.LoadRecent(10));
 
         // The cold store keeps working after the activity store wrote to the same file.
-        Assert.Null(cold.GetRootlistRevision());
+        var after = await cold.LoadAsync(scope, CancellationToken.None);
+        Assert.Equal(baseline.Rootlist, after.Rootlist);
     }
 
     public void Dispose()
