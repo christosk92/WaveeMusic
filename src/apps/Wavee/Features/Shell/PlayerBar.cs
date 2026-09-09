@@ -1119,8 +1119,6 @@ sealed class TimeText : Component
         // Either surface bumps PlayerBarPrefs after writing the setting → re-seed the mounted label live.
         int prefsEpoch = PlayerBarPrefs.Epoch.Value;
         UseEffect(() => setShowRemaining(svc?.Settings.Get(WaveeSettings.PlayerBarShowRemaining) ?? true), prefsEpoch);
-        long pos = _b.PositionMs.Value;          // subscribe → 1 Hz tick
-        long dur = _b.DurationMs.Value;
         bool rightDuration = _remaining;
         // LIVE. Both halves of the row change, and both changes are the same idea: state what IS true instead of
         // dressing a broadcast up as a track.
@@ -1138,11 +1136,34 @@ sealed class TimeText : Component
         bool behindLive = _b.IsBehindLive.Value;
         if (rightDuration && isLive) return LiveSlot(_b, live, behindLive, _ink);
         bool remainingMode = rightDuration && showRemaining;
-        long ms = rightDuration ? (remainingMode ? Math.Max(0, dur - pos) : dur) : pos;
-        if (!rightDuration && isLive) ms = ElapsedSinceTuneIn(_b, pos);
-        // ms == 0 in remaining mode means "there is nothing left" (paused exactly at/after the end) — "-0:00" reads as
-        // a negative countdown that never resolves; the sign belongs only to an ACTUAL remainder.
-        string s = (remainingMode && ms > 0 ? "-" : "") + PlayerBarContent.Fmt(ms);
+        // ── the playhead is a BOUND CHANNEL, never a component subscription ────────────────────────────────────────
+        // Reading PositionMs in Render subscribes this COMPONENT to a signal that moves every playback tick, so the
+        // whole label — box, hover/pressed fills, click handler, caption — was rebuilt at tick rate for a string that
+        // changes once a second. Two of these are mounted, and they showed up in the steady-churn census on
+        // essentially every in-budget frame. Read inside a Prop instead: a tick re-evaluates ONE text channel and
+        // writes it, and nothing re-renders.
+        //
+        // The structural reads (isLive, showRemaining, ink) stay in Render — they change rarely and they change the
+        // element SHAPE, which a bound channel cannot express.
+        //
+        // FGRP002: every value the thunk depends on is read INSIDE it. A replacement thunk is ignored after mount, so
+        // a captured local would freeze at its mount-time value. `_remaining` is a readonly field, read live through
+        // `this`; the show-remaining preference is read from Settings rather than the UseState above, which exists
+        // only to drive the toggle's own re-render.
+        Prop<string> label = Prop.Of(() =>
+        {
+            long pos = _b.PositionMs.Value;
+            // `svc` is the render-time context value, not a signal: it is fixed for this component's life, so
+            // capturing it is safe (and a hook may not be called from inside a thunk). The PREFERENCE is read live
+            // off it, so the toggle lands on the next tick without needing a replacement thunk.
+            bool showRemainingNow = svc?.Settings.Get(WaveeSettings.PlayerBarShowRemaining) ?? true;
+            bool remainingNow = _remaining && showRemainingNow;
+            long ms = _remaining ? (remainingNow ? Math.Max(0, _b.DurationMs.Value - pos) : _b.DurationMs.Value) : pos;
+            if (!_remaining && (_b.Live.Value.IsLive || _b.IsLive.Value)) ms = ElapsedSinceTuneIn(_b, pos);
+            // ms == 0 in remaining mode means "there is nothing left" (paused exactly at/after the end) — "-0:00"
+            // reads as a negative countdown that never resolves; the sign belongs only to an ACTUAL remainder.
+            return (remainingNow && ms > 0 ? "-" : "") + PlayerBarContent.Fmt(ms);
+        });
         void ToggleDuration()
         {
             if (!rightDuration) return;
@@ -1167,8 +1188,8 @@ sealed class TimeText : Component
             Children =
             [
                 _ink is { } ink
-                    ? Caption(s) with { Color = ink, Wrap = TextWrap.NoWrap }
-                    : Caption(s).Secondary() with { Wrap = TextWrap.NoWrap },
+                    ? Caption("") with { Text = label, Color = ink, Wrap = TextWrap.NoWrap }
+                    : Caption("").Secondary() with { Text = label, Wrap = TextWrap.NoWrap },
             ],
         };
     }
