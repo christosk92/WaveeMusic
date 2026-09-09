@@ -890,7 +890,7 @@ sealed class SearchHitsGrid : Component
                         if (_hits[i].Kind == SearchHitKind.Audiobook) { hasAudiobook = true; break; }
                     float rowH = hasAudiobook ? AudiobookRowH : RowH;
                     return PagedShelf.Create(
-                        n,
+                        _hits,
                         cardAt: Card,
                         cardHeight: _ => rowH,
                         header: _showHeader ? SearchChrome.TickHeader(Loc.Get(Strings.Search.BestMatches)) : null,
@@ -903,7 +903,7 @@ sealed class SearchHitsGrid : Component
                         snap: ShelfSnap.Page,
                         cardWidthAgnostic: true,
                         edgeFade: 16f,
-                        keyOf: i => (uint)i < (uint)_hits.Count ? _hits[i].Uri : i.ToString())
+                        keyOf: (item, i) => item.Uri)
                         with { Key = "hits-shelf:" + n + ":" + maxCols + ":" + rows + ":" + (int)_pager + ":" +
                             first + ":" + _hideTrackArtwork };
                 }, fallback: 0f),
@@ -920,10 +920,10 @@ sealed class SearchHitsGrid : Component
         return w < need - DetailLayoutBreakpoints.TierHysteresisDip ? (_cols = nominal) : _cols;
     }
 
-    Element Card(int i, float _)
+    Element Card(SearchTopHit hit, int i, float _)
     {
-        if (_model is null || (uint)i >= (uint)_hits.Count) return new BoxEl();
-        return SearchAllList.HitRow(_hits[i], _lib, _model, large: false, _acts, _overlay,
+        if (_model is null) return new BoxEl();
+        return SearchAllList.HitRow(hit, _lib, _model, large: false, _acts, _overlay,
             hideTrackArtwork: _hideTrackArtwork);
     }
 }
@@ -961,7 +961,7 @@ sealed class SearchMediaGrid : Component
             Children =
             [
                 PagedShelf.Create(
-                    n,
+                    _items,
                     cardAt: Card,
                     cardHeight: MediaCard.ShelfHeight,
                     header: p.Header,
@@ -972,14 +972,13 @@ sealed class SearchMediaGrid : Component
                     snap: ShelfSnap.Page,
                     cardWidthAgnostic: true,
                     edgeFade: HomeModuleLayout.ShelfEdgeFade,
-                    keyOf: i => (uint)i < (uint)_items.Count ? _items[i].Uri : i.ToString())
+                    keyOf: (item, i) => item.Uri)
                     with { Key = "media-shelf:" + n + ":" + first },
             ],
         };
     }
 
-    Element Card(int i, float _)
-        => (uint)i >= (uint)_items.Count ? new BoxEl() : CardFor(_items[i], _acts, _overlay, _go, _play);
+    Element Card(Item it, int i, float _) => CardFor(it, _acts, _overlay, _go, _play);
 
     /// <summary>The ONE search card factory — shared with <see cref="SearchFacetGrid"/> so a facet tab's grid card and
     /// this shelf's card cannot drift in artwork, menu or drag payload.</summary>

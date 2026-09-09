@@ -144,7 +144,7 @@ sealed class ArtistPopular : Component
             Children =
             [
                 PagedShelf.Create(
-                    total,
+                    _live,
                     cardAt: Card,
                     cardHeight: _ => rowH,
                     header: Surfaces.AccentHeader(_title, accent),
@@ -168,6 +168,7 @@ sealed class ArtistPopular : Component
                     edgeFade: 16f,
                     keyOf: RowKey,
                     maxColumns: maxCols,
+                    maxItems: MaxTracks,
                     snap: ShelfSnap.Page)
                     // PagedShelf freezes its ctor props at mount (component-props contract), so every input that can
                     // still change belongs in this key: the count (the extended list revalidates 10 → ≤50 in place), the
@@ -212,11 +213,8 @@ sealed class ArtistPopular : Component
     // ── one chart row, at the fitted column width ───────────────────────────────────────────────────────────
     // The pressure tiers derive from THAT width — never from a captured measurement: this closure is frozen at the
     // shelf's mount, so a render-time local would be the mount-time width forever.
-    Element Card(int i, float cellW)
+    Element Card(Track t, int i, float cellW)
     {
-        var list = _live;
-        if ((uint)i >= (uint)list.Count) return new BoxEl();
-        var t = list[i];
         // Pressure tiers (prototype): shrink art < 220, drop duration < 200; full play counts from 300.
         // Below 340 the subtitle stacks (feat / plays on their own lines) so the feat name isn't crushed.
         float art = _classic ? 40f : cellW < 220f ? 40f : 44f;
@@ -304,11 +302,7 @@ sealed class ArtistPopular : Component
     // The realized cell's identity is the TRACK, not its ordinal: that is what lets a page flip slide the window
     // instead of remounting every row in it. An empty uri (a local/synthetic track) falls back to the ordinal, the only
     // thing that keeps such a row's key unique.
-    string RowKey(int i)
-    {
-        var list = _live;
-        return (uint)i < (uint)list.Count && list[i].Uri.Length > 0 ? "chart:" + list[i].Uri : "chart#" + i;
-    }
+    string RowKey(Track t, int i) => t.Uri.Length > 0 ? "chart:" + t.Uri : "chart#" + i;
 
     public static Element SkeletonShape(IReadOnlyList<Track> tracks, string title, bool showArtwork = true,
                                         bool classic = false)

@@ -351,18 +351,15 @@ static class WatchPageView
     {
         WatchItem[] items = model.Shelf;
         if (items.Length == 0) return null;
-        int count = Math.Min(items.Length, ShelfMax);
-
         return new BoxEl
         {
             Key = "watch:shelf", Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             Children =
             [
                 PagedShelf.Create(
-                    count,
-                    cardAt: (i, w) =>
+                    items,
+                    cardAt: (item, i, w) =>
                     {
-                        WatchItem item = items[i];
                         string uri = item.PlayableId is { Length: > 0 } p ? ModuleUri.Encode(moduleId, p) : "";
                         string? route = ModulePages.RouteForEntity(moduleId, item.EntityId);
                         void Play()
@@ -382,7 +379,9 @@ static class WatchPageView
                             Open, Play, w);
                     },
                     measured: true,
-                    header: model.ShelfTitle is { Length: > 0 } t ? Surfaces.SectionHeader(t) : null),
+                    header: model.ShelfTitle is { Length: > 0 } t ? Surfaces.SectionHeader(t) : null,
+                    keyOf: (item, i) => item.EntityId ?? item.PlayableId ?? i.ToString(),
+                    maxItems: ShelfMax),
             ],
         };
     }
