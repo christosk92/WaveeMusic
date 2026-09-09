@@ -1,5 +1,10 @@
 # Wavee — one hydration entry point (centralize all metadata fetching/enrichment)
 
+> **Historical document, superseded 2026-09.** Its old implementation instructions and status matrix do not describe
+> the current tree. Use [architecture.md](architecture.md) and
+> [catalog-state-replacement-implementation.md](catalog-state-replacement-implementation.md). Preserve this document
+> as evidence of the earlier design; do not restore its facade, ladders, mutable store or UI repair paths.
+
 ## Status (2026-08-16)
 
 | Phase | State |

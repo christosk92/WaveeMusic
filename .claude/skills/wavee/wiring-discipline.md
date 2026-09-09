@@ -42,5 +42,13 @@ Optional nullable deps + `?? Task.CompletedTask` / `?? ""` produce **silent fals
 
 1. Is every `IPlaylistMutationSource` / `IMutationSource` / transport dependency **required** in the bridge/composition root?
 2. Does the fake backend use a **named** stub (`LocalPlaylistMutationSource`), not `null`?
-3. Are go-live hooks (`ScheduleDrain`, `SetHttp`, `SpclientBaseUrlHolder`) set in `LiveSessionHost` and cleared in `GoOffline`?
+3. Are live resource providers and protocol command transports installed symmetrically in `LiveSessionHost` and detached on offline/session teardown? Catalog scope/epoch changes must fence old requests before UI authentication is published.
 4. Do tests pass an explicit spclient base URL to `OpRebaseStrategy`, not an empty default?
+
+## Catalog/query composition
+
+`Services.Data` owns catalog, replicas, resource coordination and typed queries. Required consumers receive these
+ports explicitly. Source provider registration declares capability/URI ownership; offline is catalog session state,
+not a null dependency that silently returns empty data. The effective replica projection is not a metadata store.
+Account/context changes update canonical scope/epoch first, then post `CatalogScopeSignal` and rebind mounted query
+owners. Use [catalog-state.md](catalog-state.md) for the current read/write/lifetime contracts.

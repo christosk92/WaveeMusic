@@ -11,5 +11,6 @@ the short form for agents that do not load `CLAUDE.md` automatically.
 - **Out of scope (never read/edit):** `src/apps/.native/**`, `src/apps/Wavee.PlayPlay/**`, `private-runtimes/**`,
   `src/apps/tmp_*`, `ops/tools/playplay_*`, `ops/tools/x64_*`, `ops/*/pyghidra*`, `docs/plans/wavee/{wavee-playplay*,playplay-*,spotiload-offline-path}.md`,
   `**/playplay-runtime.json` — the private PlayPlay workspace, fenced by `.githooks/pre-commit`.
-- **Rules:** component props freeze at mount (data flows through signals/context/keys); no source-text tests;
+- **Rules:** plain component factory fields freeze at mount; use signals/context, explicit re-pushed props or
+  reactive bound items for updates (keys express identity); no source-text tests;
   no env-var switches; no legacy paths; plans carry real code; only the orchestrator builds/tests/launches.

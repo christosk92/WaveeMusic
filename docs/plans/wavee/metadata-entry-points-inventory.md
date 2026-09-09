@@ -1,5 +1,10 @@
 # Wavee — metadata entry-point inventory (research only, 2026-08-15)
 
+> **Historical document, superseded 2026-09.** Its old implementation instructions and status matrix do not describe
+> the current tree. Use [architecture.md](architecture.md) and
+> [catalog-state-replacement-implementation.md](catalog-state-replacement-implementation.md). Preserve this document
+> as evidence of the earlier design; do not restore its facade, ladders, mutable store or UI repair paths.
+
 Scope: `src/apps/Wavee`, `Wavee.Core`, `Wavee.Tests`, `docs/`. Every path that **fetches, hydrates, enriches or writes**
 catalog metadata (album · artist · track · playlist · show/episode · user), the layers around them, and where they overlap.
 Line numbers are from the working tree at the time of the sweep (includes today's 185/183/186 work). Kinds are

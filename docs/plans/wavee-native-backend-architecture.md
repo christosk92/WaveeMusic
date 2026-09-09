@@ -1,5 +1,9 @@
 # Wavee backend — technical architecture (five engines over a queryable store)
 
+> **Historical backend proposal.** The catalog store/resource/mutation shapes below are superseded by
+> [the current architecture](wavee/architecture.md) and [catalog replacement implementation](wavee/catalog-state-replacement-implementation.md).
+> Consult current source for transport/audio/session implementation; this proposal's roadmap is not a live status report.
+
 > **Supersedes** the earlier port-shaped draft. That version mirrored WaveeMusic's subsystem list (download manager,
 > play-history store, gabo subsystem, client-token subsystem, rootlist tree…) — a 1:1 transcription of Spotify's protocol
 > layering. This version asks what those subsystems *do* and collapses them into **five general engines over one queryable
