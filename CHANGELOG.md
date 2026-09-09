@@ -8,6 +8,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.2.9] - unreleased
+
+A performance release: no new features. The engine underneath it is FluentGpu's "Operation ultra-fast" work, and
+the app-side changes below are what that engine exposed — retained pages, per-frame component churn and art
+slots that never repainted. It also lands the always-on frame instrumentation, without which none of it could be
+measured.
+
+### Changed
+
+- **The app measures its own frames.** `frame.slow` writes one line per frame over the panel's refresh interval
+  — rate-limited but counted — with the phase split, GC deltas and, when the render census fired, which
+  components rendered and which allocated. `nav.frames` rolls the four seconds after a route change up into fps,
+  counts over budget / 33 ms / 100 ms, missed vblanks, time to first frame and the worst frame; `scroll.frames`
+  does the same for a wheel or drag burst; `mem.sample` records the working set at each window close and at
+  process end. The census is on unconditionally: a slow frame that cannot be attributed is a slow frame that does
+  not get fixed. `ops/tools` gains the readers — perf-tour, perf-tour-analysis, nav-measure, nav-live-check,
+  scroll-measure, perf-profile and perf-ws-attribution.
+- Startup lines read as a timeline: `WaveeLog` anchors `SinceStartMs` to the real process start, and a Core or
+  Window activation step that exceeds the 8.3 ms frame budget logs at Warning instead of passing unremarked.
+- **The shell keeps three pages alive instead of eight.** A parked page holds its whole element tree and signal
+  graph, so eight of them was most of a session's navigation history resident at once — over one perf tour that
+  took scene nodes from 494 to 15668 and live components from 93 to 1479, with the working set never coming back
+  down. Three is the live page plus a two-deep back stack. Parked pages already release their image pins, so a
+  deeper back-navigation costs one rebuild, never a re-download.
+- The player's elapsed-time label no longer re-renders its component on every playback tick. Reading the playhead
+  in `Render` subscribed the whole component — box, hover and pressed fills, click handler and caption — to a
+  signal that moves at tick rate, to produce a string that changes once a second, and two of these are mounted at
+  all times. The label is now a bound channel: a tick writes one text value and nothing re-renders.
+- Every shelf passes its collection rather than a count, following the engine's retained-shelf rework (21 call
+  sites across 9 files). A shelf now does its own capping, so a card callback can no longer be handed an index
+  past the end. Mechanical port: no shelf changes its reserved height, page size or measurement mode.
+
+### Fixed
+
+- **Syllable-synced (karaoke) lyrics played a whole track with no wipe and no held-note glow, then worked on the
+  next play.** A lyric row freezes its line at mount, and the upgrade gate compared the per-line text alone — so
+  when the aggregator answered with Spotify's line-synced transcription first and published the word-synced
+  document a second later with byte-identical text (`text=1.00 lcs=69/69` in one capture), the rows were kept
+  holding a line that had no syllables at all. The next play worked only because the disk cache then held the
+  word-synced document. Keeping the rows now requires every field a row actually freezes to match: the text, the
+  word timing, and both secondary layers. (#125)
+- The profile chip and flyout header rendered the avatar's URL as text inside the circle instead of showing the
+  picture — the photo was passed where the control expects initials, which outrank everything but a group icon.
+  An account with no photo still falls through to its generated initials. (#111)
+- A rename or a new profile picture made anywhere else — the web player, the phone, the account page — now
+  reaches a running client instead of waiting for the next sign-in. Spotify pushes these over the dealer and
+  nothing subscribed, so every one was logged unhandled. The apply is coalesced, because the service pushes per
+  keystroke: the first push lands immediately and the rest collapse into one trailing apply, so the chip never
+  spells out a half-typed name. It also updates playlist owners, collaborator piles and the added-by column. A
+  push carrying no image updates the name and leaves the picture standing — several pushes during a rename have
+  no image yet, and assigning them wholesale would blank the avatar for the length of the rename. (#126)
+- Art slots that paint their neutral tile directly — sidebar rows and pins, every artwork grid cell, the mosaic
+  cells — stayed flat grey no matter how correctly the cover plane graded them. The placeholder colour was
+  evaluated once at mount and frozen; a landed grading now repaints exactly that tile, never a component
+  re-render and never a global fan-out. (#127)
+- Play and pause no longer tear down and rebuild the entire equalizer subtree. The element keyed itself on the
+  animating flag, so a transition that should only start or stop an animation changed the key and made the
+  reconciler rebuild everything under it. (#128)
+- A detail page's track list could re-render every mounted row for no reason: the row shape is a record struct
+  holding an array, and a record struct compares an array by reference, so an otherwise identical shape compared
+  unequal whenever the backing array instance changed. It is compared by value now. The array is usually
+  reference-stable today, so this closes a latent bug rather than winning back a measurable cost — it matters
+  when the cache misses, which is exactly when the list is already busy.
+
 ## [0.2.8] - 2026-09-04
 
 ### Fixed

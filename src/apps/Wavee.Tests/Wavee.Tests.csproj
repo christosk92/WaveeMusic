@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Unit tests for the Wavee backend core. Source-includes src/apps/Wavee/Backend (which is engine-independent: deps =
        Wavee.Core + BCL only), so the test assembly stays lean — no FluentGpu/TerraFX/GPU. Honors "no separate backend
@@ -397,6 +397,7 @@
     <!-- pure media host-swap decision rules (System + the PlayableKind enum only) — MediaSwitchLogicTests -->
     <Compile Include="..\Wavee\App\MediaSwitchLogic.cs" Link="MediaSwitchLogic.cs" />
     <Compile Include="..\Wavee\App\LyricsSyncGate.cs" Link="LyricsSyncGate.cs" />
+    <Compile Include="..\Wavee\App\LyricsRowShape.cs" Link="LyricsRowShape.cs" />
     <!-- pure override-mutation / track-boundary / reveal / stage-mount rules — VideoOverrideMutationCoreTests -->
     <Compile Include="..\Wavee\App\VideoOverrideMutationCore.cs" Link="VideoOverrideMutationCore.cs" />
     <Compile Include="..\Wavee\App\VideoSurfaceMount.cs" Link="VideoSurfaceMount.cs" />

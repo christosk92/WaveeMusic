@@ -86,6 +86,7 @@ sealed class LyricsView : Component
     internal NodeHandle ProbeLineNode(int i) => _lineNodes is { } ln && (uint)i < (uint)ln.Length ? ln[i] : default;
     internal NodeHandle ProbeGlowNode(int i) => _glowNodes is { } gn && (uint)i < (uint)gn.Length ? gn[i] : default;
     internal NodeHandle ProbeDofNode(int i) => _dofNodes is { } dn && (uint)i < (uint)dn.Length ? dn[i] : default;
+    internal bool ProbeLineIsWordByWord(int i) => _doc is { } d && (uint)i < (uint)d.Lines.Count && d.Lines[i].IsWordByWord && d.Lines[i].Syllables.Count > 0;
     // Cascade internals the reworked advance probe asserts on: the compensating dy per line, its remaining stagger, and
     // whether ANY line is still in flight (the self-quiesce flag — the settle-wall-time stop condition).
     internal float ProbeCascadeComp(int i) => (uint)i < (uint)_casComp.Length ? _casComp[i] : 0f;
@@ -962,22 +963,24 @@ sealed class LyricsView : Component
         HideInterludeDots();
 
         var previous = _doc;
-        // THE upgrade question, asked ONCE. SameLineShape guarantees same TrackId, same line count and identical
-        // per-line text — which is exactly the condition under which the virtual list does NOT remount its rows (same
+        // THE upgrade question, asked ONCE. LyricsRowShape.SameRows guarantees same TrackId, same line count and
+        // identical per-line ROW STATE (text, word timing, secondary layers) — the condition under which the virtual list
+        // does NOT remount its rows (same
         // keys, same count), so every mounted LyricLineView survives the swap still holding the props it FROZE at
         // mount: its own `_lineEmphasis[i]` signal and `_glowAlpha[i]` signal (LyricLineView ctor). Reallocating those
         // arrays here therefore left every mounted row subscribed to an ORPHANED signal — the emphasis sweep and the
-        // glow froze for the rest of the track after any same-shape upgrade (a disk-cached line-synced doc upgraded to
-        // word-synced, a provider re-fetch). So a same-shape upgrade REUSES the per-line state in place, and only a
-        // genuine document change rebuilds it. The rest of PrepareDocument runs identically on both paths.
+        // glow froze for the rest of the track after any same-shape upgrade (a provider re-fetch with identical
+        // content). So a same-shape upgrade REUSES the per-line state in place, and only a genuine document change
+        // rebuilds it. The rest of PrepareDocument runs identically on both paths.
         //
-        // NOTE — ACCEPTED RESIDUAL (campaign decision; this is not an undiagnosed mystery). A row also freezes its
-        // `LyricLine` at mount, and nothing reachable from here can replace it. So a same-shape upgrade that changes
-        // only the WORD TIMINGS (line-synced → word-synced with identical text, a richer syllable split) does not reach
-        // an already-mounted row's karaoke wipe data until those rows are rebuilt at the next track: post-fix such rows
-        // are LIVE on emphasis + glow, but still wipe on the pre-upgrade timing. Closing that too would mean a
-        // props-channel restructure of LyricLineView, which is deliberately out of scope.
-        bool sameShape = previous is not null && SameLineShape(previous, doc);
+        // "SAME SHAPE" IS EVERYTHING A ROW FREEZES — the text AND the word timing AND the secondary layers
+        // (LyricsRowShape). It used to be the text alone, and that was the syllable-lyrics "works sometimes and
+        // sometimes not" report: the aggregator returns Spotify's LINE-synced transcription first and publishes the
+        // WORD-synced upgrade a second later with byte-identical text, so the rows were kept holding a frozen
+        // `LyricLine` with no syllables — no karaoke wipe, no held-note glow, for the whole track — while the next
+        // play (disk cache now word-synced) worked. A timing change now rebuilds the rows through the epoch bump
+        // below, the path that was always correct for a genuine document change.
+        bool sameShape = previous is not null && LyricsRowShape.SameRows(previous, doc);
         // A genuine document change must REMOUNT the rows, and only the key can force that (see RowKey). The
         // reallocation below is safe exactly when the rows are rebuilt to pick the new objects up.
         if (!sameShape) { _layout = null; _docEpoch++; }
@@ -1106,14 +1109,6 @@ sealed class LyricsView : Component
         bool timed = _doc is { } d && IsTimed(d);
         LyricsPrefs.Available.Value = !timed ? 0
             : (HasTranslation ? LyricsPrefs.HasTranslation : 0) | (HasRomanization ? LyricsPrefs.HasRomanization : 0);
-    }
-
-    static bool SameLineShape(LyricsDocument a, LyricsDocument b)
-    {
-        if (!StringComparer.Ordinal.Equals(a.TrackId, b.TrackId) || a.Lines.Count != b.Lines.Count) return false;
-        for (int i = 0; i < a.Lines.Count; i++)
-            if (!StringComparer.Ordinal.Equals(a.Lines[i].Text, b.Lines[i].Text)) return false;
-        return true;
     }
 
     // Packed per-line emphasis: bucket (distance from active, clamped 0..6) in bits 0-2, INTERLUDE RESERVE in bit 3 (it
@@ -1779,9 +1774,19 @@ sealed class LyricsView : Component
     // declared-static → declared-identity transition, which a node that never declares one cannot make. So nothing else
     // ever stomps this write, and an emphasis re-render mid-cascade leaves the in-flight translate alone.
     //
-    // A PURE TRANSLATION of a blurred node is a blur-pin cache HIT: BlurPinKey is position-independent by construction
-    // (BlurPinKey.cs:7-16 — σ + integer layer size + every op's position REBASED to the layer origin), so the DoF layer
-    // is not re-Gaussian'd for any frame of the cascade.
+    // This is a TRANSFORM change and nothing else, so it is marked TransformDirty ONLY. It used to mark PaintDirty as
+    // well, which flags the row's recorded span as CONTENT-dirty: that refuses both of the recorder's span-reuse paths
+    // and re-records every in-flight row's glyph runs from scratch on every frame of the 0.48 s settle — up to
+    // 2·CascadeWriteBand rows per frame — where a transform-only mark lets the recorder copy the prior span and patch
+    // the translation (the path the scroll kernel's own content moves take). Nothing here reads PaintDirty: a paint
+    // write is what changes bytes, and no byte of this node changes.
+    //
+    // What a pure translation does NOT buy, measured (lyrics-advance probe, 2026-09-10, same track, before/after): the
+    // blurred rows still MISS their blur pin on ~4.5 of ~9 layers per frame for the whole flight, and only hit again at
+    // rest. That is the compositor's own rule — a region-clamped strip (a lyric row clipped by the viewport) never hits
+    // while `InMotion` is set (D3D12Device's pin-hit gate: "a clamped strip in motion re-blurs") — plus the σ ramp
+    // re-keying the incoming rows for its first ~200 ms. Quantizing this translate to whole device pixels was tried
+    // and changed nothing; the remaining per-frame Gaussians during a handoff are an engine question, not this file's.
     void WriteCascade(SceneStore scene, int index, float comp, bool landed)
     {
         var h = (uint)index < (uint)_dofNodes.Length ? _dofNodes[index] : NodeHandle.Null;
@@ -1791,7 +1796,7 @@ sealed class LyricsView : Component
         ref NodePaint p = ref scene.Paint(h);
         if (MathF.Abs(p.LocalTransform.Dy - comp) < (landed ? 0.0005f : CascadeWriteEps)) return;
         p.LocalTransform = comp == 0f ? Affine2D.Identity : Affine2D.Translation(0f, comp);
-        scene.Mark(h, NodeFlags.TransformDirty | NodeFlags.PaintDirty);
+        scene.Mark(h, NodeFlags.TransformDirty);
     }
 
     // Cancel the cascade and put every line back on its true scroll position (identity transform for every line whose

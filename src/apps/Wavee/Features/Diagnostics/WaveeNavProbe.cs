@@ -2063,6 +2063,10 @@ internal static class WaveeNavProbe
         // (stable two-child) tree its node identity must NOT change (no remount → no re-bake flicker), and the karaoke
         // wipe/glow must still be present on every voice line (guards against the restructure breaking the feature).
         int p4Frames = 0, p4VoiceTransitions = 0, p4Remounts = 0, p4WipeMissing = 0, p4GlowDead = 0;
+        // Voice frames whose row is NOT word-by-word (a line-synced document, or a mixed one). Those rows have no wipe
+        // and report no glow node BY DESIGN, so they are counted here and excluded from the integrity verdict — the old
+        // probe folded them into "missing wipe" and called a line-synced document a LyricLineView regression.
+        int p4LineSyncedVoiceFrames = 0;
         if (lineCount >= 4)
         {
             view.ProbeForceSnapped();
@@ -2087,7 +2091,8 @@ internal static class WaveeNavProbe
                         var leaving = view.ProbeLineNode(prevVoice);   // the line that just left the voice slot (now dimmed)
                         if (!prevVoiceHandle.IsNull && !leaving.IsNull && !leaving.Equals(prevVoiceHandle)) p4Remounts++;
                     }
-                    if (!ld.VoiceChanged && vln >= 0)   // integrity on a STABLE voice frame (the enter frame adds the wipe one frame later)
+                    if (!ld.VoiceChanged && vln >= 0 && !view.ProbeLineIsWordByWord(vln)) p4LineSyncedVoiceFrames++;
+                    else if (!ld.VoiceChanged && vln >= 0)   // integrity on a STABLE word-by-word voice frame (the enter frame adds the wipe one frame later)
                     {
                         var wn = view.ProbeLineNode(vln);
                         if (wn.IsNull || !host.Scene.IsLive(wn) || !host.Scene.TryGetGlyphWipe(wn, out _)) p4WipeMissing++;
@@ -2127,7 +2132,7 @@ internal static class WaveeNavProbe
         sb.AppendLine($"  >>> BUG1 {(bug1Fixed ? "FIXED" : "PRESENT")} — lyric DoF was {(bug1Fixed ? "NEVER" : "STILL")} dropped while advancing (a pure translation of the DoF layer is a blur-pin HIT, so a live blur candidate is expected on every content frame).");
         sb.AppendLine();
         sb.AppendLine("P2 main-scroll sibling isolation:");
-        sb.AppendLine($"  frames={p2Frames}; frames where lyrics were user-scrolling/content-dirty during a MAIN scroll={p2LyricsTouched} (expect 0); frames the stationary lyrics DoF was HELD (served by its pin)={p2LyricsHeld} (expect >0 while the main page moves; 0 = the sibling-defer path is dead)");
+        sb.AppendLine($"  frames={p2Frames}; frames where lyrics were user-scrolling/content-dirty during a MAIN scroll={p2LyricsTouched} (expect 0); frames the recorder gated a lyrics blur to its hold policy (BlurHoldCandidateCount>0)={p2LyricsHeld} (informational: the counter increments only on the full-record path inside a USER-scroll hold window, so 0 is the expected reading when the untouched lyrics subtree replays its cached span — it is NOT evidence that the pin cache is dead; pin hits/misses are the d3dBlurMiss column)");
         sb.AppendLine();
         sb.AppendLine("P3 skip-submit / present (BUG3 mechanism):");
         string p3rate = p3Frames > 0 ? $"{100.0 * p3Presented / p3Frames:0}%" : "n/a";
@@ -2136,8 +2141,11 @@ internal static class WaveeNavProbe
         sb.AppendLine();
         bool wipeGlowIntact = p4WipeMissing == 0 && p4GlowDead == 0;
         sb.AppendLine("P4 BUG2 voice-transition (remount + wipe/glow integrity):");
-        sb.AppendLine($"  frames={p4Frames}; voice transitions={p4VoiceTransitions}; leaving-line REMOUNTS={p4Remounts} (expect 0); voice-frames missing wipe={p4WipeMissing}; voice-frames dead glow={p4GlowDead}");
-        sb.AppendLine($"  >>> BUG2 remount {(p4Remounts == 0 ? "GONE" : "STILL PRESENT")}; karaoke wipe/glow {(wipeGlowIntact ? "INTACT" : "BROKEN — REGRESSION, revert the LyricLineView restructure")}.");
+        sb.AppendLine($"  frames={p4Frames}; voice transitions={p4VoiceTransitions}; leaving-line REMOUNTS={p4Remounts} (expect 0); word-by-word voice-frames missing wipe={p4WipeMissing}; word-by-word voice-frames dead glow={p4GlowDead}; voice-frames on LINE-SYNCED rows={p4LineSyncedVoiceFrames} (no wipe/glow by design — a line-synced or mixed document, or rows mounted before a word-synced upgrade)");
+        string wipeVerdict = p4LineSyncedVoiceFrames > 0 && p4WipeMissing == 0 && p4GlowDead == 0 && p4Frames > 0 && p4LineSyncedVoiceFrames >= p4Frames - p4VoiceTransitions - 1
+            ? "NOT MEASURABLE — every voice frame landed on a line-synced row (check the [lyrics] winner/upgrade lines for this track)"
+            : wipeGlowIntact ? "INTACT" : "BROKEN on word-by-word rows — a LyricLineView regression";
+        sb.AppendLine($"  >>> BUG2 remount {(p4Remounts == 0 ? "GONE" : "STILL PRESENT")}; karaoke wipe/glow {wipeVerdict}.");
         sb.AppendLine();
         sb.AppendLine("CSV per-frame columns: lyMode/lyPrevMode/lyUserScroll/lyContentDirty (record-time DoF-defer inputs), blurCandidates/blurGroups/blurSuppressed, presented, per-phase timing.");
         sb.AppendLine("Note: in Following mode the lyrics viewport no longer runs a programmatic spring — lyOff jumps once per handoff and lyMode stays 0 (Idle). A WheelAnimating lyrics mode now means a RESYNC glide (ζ=1, 110 ms half-life) or a user fling.");
