@@ -40,14 +40,17 @@ static class SidebarPaneText
     public static SidebarItemSpec? ItemOf(SidebarSectionSpec section, string key)
         => SidebarRowResolve.ItemOf(section, key);
 
-    /// <summary>The per-kind subtitle (§3.1.3's table): playlist → song count · album → "Album · first artist" ·
-    /// artist → "Artist" · show → "Podcast · publisher" · folder → item count · track → its artist.</summary>
-    public static string? SubtitleOf(in SidebarLibraryEntry e) => e.Kind switch
+    /// <summary>Cluster style's per-kind subtitle (§3.1.3's table): playlist → song count · album → "Album · first
+    /// artist" · artist → "Artist" · show → "Podcast · publisher" · folder → item count · track → its artist. Kept
+    /// verbatim under its own name (W4) so the byte-identical Cluster path survives Slot's redraw untouched — the two
+    /// callers with no <see cref="SidebarRowStyle"/> to pass (<c>SidebarRailFolderFlyout.cs</c>, <c>Menus.cs</c>) keep
+    /// calling the 1-arg <see cref="SubtitleOf(in SidebarLibraryEntry)"/> overload below, which is this rule exactly.</summary>
+    public static string? ClusterSubtitleOf(in SidebarLibraryEntry e) => e.Kind switch
     {
         SidebarEntryKind.Playlist => Strings.Sidebar.SongCount(e.TrackCount),
         // A LIBRARY album carries its billed artist in FirstArtistName; a FEED album (a new release) carries it in
         // Creator, because the notification names one creator and never a full billing list.
-        SidebarEntryKind.Album => Artist(in e) is { Length: > 0 } artist
+        SidebarEntryKind.Album => ClusterArtist(in e) is { Length: > 0 } artist
             ? Loc.Get(Strings.Sidebar.V3.Kind.Album) + " · " + artist
             : Loc.Get(Strings.Sidebar.V3.Kind.Album),
         SidebarEntryKind.Artist => Loc.Get(Strings.Sidebar.V3.Kind.Artist),
@@ -63,8 +66,70 @@ static class SidebarPaneText
         _ => null,
     };
 
-    static string Artist(in SidebarLibraryEntry e)
+    /// <summary>Cluster style, for a caller with no <see cref="SidebarRowStyle"/> to pass
+    /// (<c>SidebarRailFolderFlyout.cs</c>, <c>Menus.cs</c>) — both build rows outside the config-driven pipeline, so
+    /// they stay on the landed anatomy by construction rather than by remembering to pass <c>Cluster</c>.</summary>
+    public static string? SubtitleOf(in SidebarLibraryEntry e) => ClusterSubtitleOf(in e);
+
+    /// <summary>W4 — the config-driven pair: Slot style renders the "Kind · detail" grammar
+    /// (<see cref="SidebarSubtitleRules.For"/>, formatted by <see cref="Format"/>); Cluster style is exactly
+    /// <see cref="ClusterSubtitleOf"/>. <c>SidebarPaneSlot</c>'s row builders call this one, passing the pane's
+    /// <c>Style</c> accessor, so a Cluster-configured pane (Classic, Curated) renders byte-identically to before W4.</summary>
+    public static string? SubtitleOf(in SidebarLibraryEntry e, SidebarRowStyle style)
+        => style == SidebarRowStyle.Slot ? Format(SidebarSubtitleRules.For(in e)) : ClusterSubtitleOf(in e);
+
+    static string ClusterArtist(in SidebarLibraryEntry e)
         => e.FirstArtistName.Length > 0 ? e.FirstArtistName : e.Creator;
+
+    /// <summary>The separator every Slot subtitle joins its kind word and its detail with.</summary>
+    public const string Separator = " · ";
+
+    /// <summary>W4 — the ONE place a <see cref="SidebarSubtitleShape"/> becomes a localized string. Bare kind (no
+    /// detail) ⇒ just the kind word; no kind (a track/route's creator text) ⇒ just the detail; both ⇒ joined by
+    /// <see cref="Separator"/>; <see cref="SidebarSubtitleShape.IsEmpty"/> ⇒ null (no subtitle line at all).</summary>
+    public static string? Format(in SidebarSubtitleShape shape)
+    {
+        if (shape.IsEmpty) return null;
+        string? kind = shape.Kind == SidebarSubtitleKind.None ? null : Loc.Get(KindLocKey(shape.Kind));
+        string? detail = shape.Detail switch
+        {
+            SidebarSubtitleDetail.Text => shape.Text,
+            SidebarSubtitleDetail.SongCount => Strings.Sidebar.SongCount(shape.Count),
+            SidebarSubtitleDetail.ItemCount => Strings.Sidebar.V3.ItemCount(shape.Count),
+            _ => null,
+        };
+        if (kind is null) return detail;
+        return detail is null ? kind : kind + Separator + detail;
+    }
+
+    static string KindLocKey(SidebarSubtitleKind kind) => kind switch
+    {
+        SidebarSubtitleKind.Playlist => Strings.Sidebar.V3.Kind.Playlist,
+        SidebarSubtitleKind.Album => Strings.Sidebar.V3.Kind.Album,
+        SidebarSubtitleKind.Artist => Strings.Sidebar.V3.Kind.Artist,
+        SidebarSubtitleKind.Show => Strings.Sidebar.V3.Kind.Show,
+        SidebarSubtitleKind.Folder => Strings.Sidebar.V3.Kind.Folder,
+        _ => Strings.Sidebar.V3.Kind.Playlist,   // unreachable: Format guards None before calling this
+    };
+
+    /// <summary>W4 — the Liked Songs SYSTEM ROW's Slot subtitle (<c>SidebarPaneSlot.RouteRow</c>). Mirrors
+    /// <see cref="LikedSongsCount"/>'s read of the same stats resource <c>CountBadge</c> already reads, so reading it
+    /// here subscribes the calling slot exactly like the count badge does.</summary>
+    public static string? RouteSubtitle(string routeKey, LibraryStore? store)
+        => Format(SidebarSubtitleRules.ForRoute(routeKey, LikedSongsCount(store)));
+
+    /// <summary>Live liked-song count, or null while it has not resolved (Pending/Failed, or no store at all) — the
+    /// same three-way read <c>SidebarPaneSlot.CountBadge</c> performs for the "liked" route's count pill. The cast is
+    /// to <c>FluentGpu.Signals.LoadState</c> — the <c>Loadable&lt;T&gt;.State</c> signal's own tri-state enum, not
+    /// <c>Wavee.Backend.LoadState</c> (a different, similarly-named enum with the same "Ready" ordinal).</summary>
+    static int? LikedSongsCount(LibraryStore? store)
+    {
+        if (store is null) return null;
+        var stats = store.Stats;
+        if ((FluentGpu.Signals.LoadState)stats.State.Value != FluentGpu.Signals.LoadState.Ready || stats.Value.Value is not { } s)
+            return null;
+        return s.LikedSongs;
+    }
 
     /// <summary>§C1.8.4's age badge ("3d") — how long ago a release landed, in the most useful unit. DIGITS + a unit
     /// letter, deliberately: no loc key exists for the compact form and this wave may not add one (see the HANDOFF).</summary>

@@ -329,7 +329,7 @@ public class PlaylistHydrationTests
 
         Assert.Equal(2, h.Hydrator.Batches.Count);
         Assert.Equal(300, h.Hydrator.Batches[0].Uris.Count);
-        Assert.Equal(1, h.Hydrator.Batches[1].Uris.Count);
+        Assert.Single(h.Hydrator.Batches[1].Uris);
     }
 
     // ── RootlistOpenPlan: a restored header can be non-null AND have a baseline while still reading back below

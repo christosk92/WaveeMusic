@@ -317,8 +317,8 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
 
     /// <summary>The uri → added-at side-channel for the timestamped saved sets. These are the very timestamps
     /// <see cref="JoinSet"/> reads for ordering and then discards (the read-model records have nowhere to carry them), so
-    /// the sidebar's "Recently added" sort gets a REAL server stamp for albums/artists/shows. Playlists are absent by
-    /// construction: the rootlist is an ordered marker stream with no per-item date.</summary>
+    /// the sidebar's "Recently added" sort gets a REAL server stamp for albums/artists/shows. Playlists get their stamp
+    /// from the rootlist row itself (RootlistTreeBuilder → PlaylistLeaf.AddedAtMs), not from this map.</summary>
     public Task<IReadOnlyDictionary<string, long>> GetLibraryAddedAtAsync(CancellationToken ct = default)
     {
         var map = new Dictionary<string, long>(StringComparer.Ordinal);

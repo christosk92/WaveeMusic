@@ -222,43 +222,44 @@ public class SidebarShortcutsSectionTests
         var bare = LibraryV3Document.Build(in state);
 
         Assert.DoesNotContain(doc.Sections, s => s.Id == SidebarIds.TopBarSection);
-        Assert.Equal(LibraryV3Document.PinsId, doc.Sections[0].Id);
-        Assert.Equal(LibraryV3Document.PinsId, bare.Sections[0].Id);
+        // DefaultTopBar carries only Home, so the system row still leads (ContainsRoute never fires for "liked").
+        Assert.Equal(LibraryV3Document.SystemId, doc.Sections[0].Id);
+        Assert.Equal(LibraryV3Document.SystemId, bare.Sections[0].Id);
         Assert.Equal(bare.Sections.Count, doc.Sections.Count);
     }
 
-    /// <summary>THE DROP RULE, both directions. V3's own <c>v3.liked</c> row is dropped exactly when the band already
-    /// carries a <c>liked</c> ROUTE item — two rows to the same destination a hand apart is the duplication Decision A
-    /// exists to remove. It is NOT dropped unconditionally: a user who removed Liked from their shortcuts still gets
-    /// V3's own row, which is the §3.0 obligation.</summary>
+    /// <summary>THE DROP RULE, both directions. The document's own <c>v3.system</c> row is dropped exactly when the
+    /// band already carries a <c>liked</c> ROUTE item — two rows to the same destination a hand apart is the
+    /// duplication Decision A exists to remove. It is NOT dropped unconditionally: a user who removed Liked from
+    /// their shortcuts still gets the system row, which is the §3.0 obligation — and with no band at all, the row is
+    /// what makes Liked Songs reachable on a fresh install.</summary>
     [Fact]
-    public void LibraryV3_NoLongerEmitsItsOwnLikedRow_TheChromeStripOwnsEveryDestination()
+    public void LibraryV3_EmitsLikedAsASystemRow_UnlessTheBandAlreadyCarriesIt()
     {
         var state = new LibraryV3DocState();                 // LikedVisible: not pinned, not searching, not drilled
         Assert.True(state.LikedVisible);
 
-        // This used to be conditional on the band: v3.liked was dropped only when the shortcut band already carried
-        // the "liked" ROUTE. The condition is gone because the thing it deferred to stopped being optional —
-        // LibraryV3NavBand now draws Liked Songs, Albums, Artists, Podcasts and Local files as one always-present
-        // strip (#85 H4). So the row is absent with the band, without it, and with no band at all.
-        Assert.True(LibraryV3Document.ChromeCarriesDestinations);
-
         var withLiked = LibraryV3Document.Build(in state,
             new[] { Route("home", "itm_home"), Route(LibraryV3Document.LikedRouteKey, "itm_liked") });
-        Assert.Null(withLiked.Find(LibraryV3Document.LikedId));
+        Assert.Null(withLiked.Find(LibraryV3Document.SystemId));
 
         var withoutLiked = LibraryV3Document.Build(in state, new[] { Route("home", "itm_home") });
-        Assert.Null(withoutLiked.Find(LibraryV3Document.LikedId));
+        Assert.NotNull(withoutLiked.Find(LibraryV3Document.SystemId));
 
-        Assert.Null(LibraryV3Document.Build(in state).Find(LibraryV3Document.LikedId));
+        Assert.NotNull(LibraryV3Document.Build(in state).Find(LibraryV3Document.SystemId));
 
         // ContainsRoute itself is untouched — it is still the one owner of "is this destination already a shortcut",
-        // and Classic/Curated still ask it. Only V3's use of it went away.
+        // and Classic/Curated ask it too.
         Assert.True(SidebarShortcutsSection.ContainsRoute(
             new[] { Route(LibraryV3Document.LikedRouteKey, "itm_liked") }, LibraryV3Document.LikedRouteKey));
         Assert.False(SidebarShortcutsSection.ContainsRoute(
             new[] { Route(LibraryV3Document.LikedRouteKey, "itm_liked", hidden: true) },
             LibraryV3Document.LikedRouteKey));
+
+        // A HIDDEN shortcut does not render, so it cannot be the reason the system row drops out either.
+        var withHiddenLiked = LibraryV3Document.Build(in state,
+            new[] { Route(LibraryV3Document.LikedRouteKey, "itm_liked", hidden: true) });
+        Assert.NotNull(withHiddenLiked.Find(LibraryV3Document.SystemId));
     }
 
     // ── sentinel-id dispatch routing ─────────────────────────────────────────────────────────────────────────────────

@@ -52,7 +52,6 @@ public class PlayableHydrationTests
         await DrainAsync(h.Pump);
 
         Assert.Equal(HydrationStatus.Reached, first.Status);
-        Assert.Equal(1, h.Envelopes.TrackCalls.Count);
         Assert.Equal("spotify:track:t1", Assert.Single(h.Envelopes.TrackCalls));
 
         // The heartbeat: the projection re-asks on every cluster update and must cost nothing.
@@ -61,7 +60,7 @@ public class PlayableHydrationTests
         await h.Hydrator.EnsureAsync("spotify:track:t1", HydrationLevel.Open);
         await DrainAsync(h.Pump);
 
-        Assert.Equal(1, h.Envelopes.TrackCalls.Count);
+        Assert.Single(h.Envelopes.TrackCalls);
         Assert.Equal(catalogCalls, h.Catalog.Calls);
     }
 
@@ -79,7 +78,7 @@ public class PlayableHydrationTests
         // An episode's ladder is EpisodeV4 and nothing else — there is no second transport for it, so a level it
         // cannot reach seals Partial rather than firing a track envelope at a podcast uri.
         Assert.Equal(HydrationStatus.Partial, outcome.Status);
-        Assert.Equal(0, h.Envelopes.TrackCalls.Count);
+        Assert.Empty(h.Envelopes.TrackCalls);
     }
 
     // Mixed playables ride ONE catalogue POST — the whole point of registering the same ladder twice is that an episode
@@ -120,7 +119,7 @@ public class PlayableHydrationTests
         await DrainAsync(h.Pump);
 
         // A list-scale Identity wave must cost exactly its catalogue POST: getTrack is a single-entity envelope.
-        Assert.Equal(0, h.Envelopes.TrackCalls.Count);
+        Assert.Empty(h.Envelopes.TrackCalls);
         Assert.Equal(1, h.Catalog.Calls);
     }
 

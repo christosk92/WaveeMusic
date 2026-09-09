@@ -45,6 +45,10 @@ sealed class SidebarPaneSlot : Component
 
     public SidebarPaneSlot(SidebarPane owner, RowScope scope) { _o = owner; _scope = scope; }
 
+    /// <summary>W4 — THE MODE SEAM read once per row build. Every <c>new SidebarRowSpec</c> below stamps
+    /// <c>Style = Style</c> so <c>SidebarEntityRow.Create</c> never has to ask which mode is rendering (rule 1).</summary>
+    SidebarRowStyle Style => _o.Config.RowStyle;
+
     public override Element Render()
     {
         int index = _scope.Index.Value;        // a recycle writes this → exactly this row re-renders
@@ -78,6 +82,7 @@ sealed class SidebarPaneSlot : Component
                 heightOverride: SidebarPaneMetrics.RowHeight(section),
                 artOverride: SidebarPaneMetrics.ArtSize(section)),
             SidebarRowKind.TreeEnd => TreeEndRow(section, row, index),
+            SidebarRowKind.PinEnd => PinEndRow(section, row, index),
             SidebarRowKind.EntityCard => Card(section, row, sel, index),
             SidebarRowKind.PromptRow => Prompt(section),
             // PHASE 2 / Decision B — the customize canvas. Only `SidebarRowPlanner.BuildEdit` emits this kind, so the
@@ -325,6 +330,16 @@ sealed class SidebarPaneSlot : Component
         string label = item?.LabelOverride is { Length: > 0 } alias ? alias
             : named ? entry.Name
             : SidebarPaneText.ShortUri(entry.Uri);
+        // W8 — a search FLATTENS the tree into one EntityList section, so a nested playlist ("Savannah", inside the
+        // "Road trips" folder) would otherwise read as a top-level entry with no folder at all. Restore it as a
+        // "Folder / name" prefix — PlaylistTree already shows the real tree (folder rows and indentation), Pinned
+        // floats matches to the top of the pin band, and neither ever has a non-root FLATTENED row, so this is scoped
+        // to the one section kind that actually flattens. `entry.FolderName` is populated for exactly this case
+        // (`SidebarProjection.Build`'s `includeFolderChildren: searching`), and the highlight range below is computed
+        // on the COMBINED string, so a query that matches inside the folder name highlights there too.
+        if (Style == SidebarRowStyle.Slot && section.Kind == SidebarSectionKind.EntityList
+            && entry.Depth == 0 && entry.FolderName.Length > 0)
+            label = entry.FolderName + " / " + label;
         bool track = entry.IsTrack;
         string? route = entry.RouteKey;
         // Through the pane, which resolves it with SidebarRowResolve — the SAME rule its selection sweep uses, so the
@@ -401,14 +416,33 @@ sealed class SidebarPaneSlot : Component
                 snapshot.Name, resource, index, isPlaylistRow: playlistRow,
                 // The row's STRUCTURAL facts. The payload-dependent half (self / ancestor / whether the centre takes
                 // this payload's tracks) is folded in at hover, where the payload first exists.
-                rootFacts: TreeRowFacts(index, in snapshot))
+                rootFacts: TreeRowFacts(index, in snapshot),
+                pinBandDisabled: section.Kind == SidebarSectionKind.Pinned
+                    && PinSlot(row.SectionId, index) < 0 && _o.PinBandDisabled(row.SectionId))
             : PinSpec(section, row.SectionId, index);
+
+        bool pinned = SidebarRowGeometry.ShowsPinGlyph(snapshot.IsPinned, track);
+        // W8 — the Cluster hover UNPIN button. `_o.Prefs` is the same pin-store owner NavExtras/the entity menu's
+        // Unpin verb already mutate through (PinActions.RowForEntry → RowForId), so this is the SAME mutation path,
+        // never a second one: SidebarPinId.FromEntry refuses a Track (never pinnable) the same way ShowsPinGlyph does.
+        Action? onUnpin = pinned && _o.Prefs is { } unpinPrefs && SidebarPinId.FromEntry(in snapshot) is { } pinId
+            ? () => PinActions.Unpin(unpinPrefs, pinId, snapshot.Name)
+            : null;
+
+        // W8 — the search-match highlight. SLOT ONLY (Cluster never highlights): a static per-row read of the live
+        // query, never a bound thunk — a keystroke bumps the mode epoch, which re-renders this row's slot anyway
+        // (SidebarPaneConfig.ModeEpoch), so there is nothing to gain from binding it and a bound thunk would be wired
+        // at MOUNT ONLY (pitfalls.md "Bind wiring is MOUNT-ONLY") and go stale on a recycle.
+        int highlightStart = -1, highlightLength = 0;
+        if (Style == SidebarRowStyle.Slot
+            && SidebarSearch.Normalize(_o.Config.SearchQuery?.Invoke()) is { Length: > 0 } query)
+            (highlightStart, highlightLength) = SidebarSearch.Find(label, query);
 
         var spec = new SidebarRowSpec
         {
             Key = row.Key,
             Label = label,
-            Subtitle = section.Opts.Subtitles ? SidebarPaneText.SubtitleOf(in snapshot) : null,
+            Subtitle = section.Opts.Subtitles ? SidebarPaneText.SubtitleOf(in snapshot, Style) : null,
             Selected = selected,
             Enabled = named || track,
             Depth = baseDepth,
@@ -422,9 +456,12 @@ sealed class SidebarPaneSlot : Component
             Leading = LeadingArt(section, in snapshot, item),
             Glyph = section.Opts.Artwork ? null : SidebarPaneText.Glyph(item, SidebarPaneText.EntryGlyph(snapshot.Kind)),
             Trailing = TrailingBadge(section, in snapshot),
+            HighlightStart = highlightStart,
+            HighlightLength = highlightLength,
             // H1 (#85) — SidebarProjection.PinsFirst stamps IsPinned on every entry it floats, in every sort mode,
             // but nothing rendered it. ShowsPinGlyph is the pure (and therefore unit-tested) half of this decision.
-            Pinned = SidebarRowGeometry.ShowsPinGlyph(snapshot.IsPinned, track),
+            Pinned = pinned,
+            OnUnpin = onUnpin,
             Playing = playing,
             PlayingAnimated = animated,
             Track = track,
@@ -436,6 +473,7 @@ sealed class SidebarPaneSlot : Component
             OnMove = move,
             Drag = drag,
             DropTarget = drop,
+            Style = Style,
         };
         // MULTI-SELECT (tree rows outside a reorder band only). Ctrl/Shift reach the row through `OnActivate`, which
         // REPLACES `OnClick`; the check lane and the plate read the pane's live selection.
@@ -504,7 +542,10 @@ sealed class SidebarPaneSlot : Component
         {
             Key = row.Key,
             Label = entry.Name.Length > 0 ? entry.Name : SidebarPaneText.ShortUri(entry.Id),
-            Subtitle = section.Opts.Subtitles ? Strings.Sidebar.V3.ItemCount(entry.ChildCount) : null,
+            // Under Cluster style this equals the old bare `Strings.Sidebar.V3.ItemCount(entry.ChildCount)` string —
+            // SidebarSubtitleRules.For's Folder arm returns exactly that shape — so Cluster stays byte-identical
+            // through the SAME table Slot uses, rather than a second copy of the item-count string.
+            Subtitle = section.Opts.Subtitles ? SidebarPaneText.SubtitleOf(in entry, Style) : null,
             Depth = baseDepth,
             TreeNode = treeNode,
             TreeDepth = treeDepth,
@@ -529,6 +570,7 @@ sealed class SidebarPaneSlot : Component
             OnMove = move,
             Drag = reordering ? null : (rootlistItem ? _o.TreeDragPayload(in snapshot) : resource),
             DropTarget = drop,
+            Style = Style,
         };
         if (rootlistItem) ApplyTreeSelection(ref spec, folderId.Length > 0 ? snapshot.Id : "", activate);
         // A folder row carries no selection pill (it has no route), but it still needs both drop cues: the bottom band
@@ -576,6 +618,7 @@ sealed class SidebarPaneSlot : Component
         float height = SidebarPaneMetrics.RowHeight(section);
         string key = item.Key;
         string title = item.LabelOverride is { Length: > 0 } alias ? alias : dest.Title;
+        string glyph = SidebarIcons.For(item, dest.Glyph);
 
         // A route row is a pin drag source when it is a durable application destination and a Reorderable is not
         // already the drag owner. SidebarPinId centrally excludes editor/tooling routes.
@@ -587,22 +630,43 @@ sealed class SidebarPaneSlot : Component
         }
         var drop = PinSpec(section, section.Id, index);
 
+        // W4 (Slot only) — a SYSTEM route row now earns real chrome: the Liked collection's dynamic cover (or a
+        // glyph tile) instead of a bare 16-DIP glyph, the "Kind · detail" subtitle grammar, and the now-playing
+        // equalizer, so Liked Songs reads like the library entity it is rather than a nav shortcut. Cluster's route
+        // rows keep the bare glyph + no subtitle + no play state they always had — RouteRow never read play state
+        // under Cluster, and this keeps it that way.
+        bool slot = Style == SidebarRowStyle.Slot;
+        float artSize = SidebarPaneMetrics.ArtSize(section);
+        Element? leading = slot && section.Opts.Artwork
+            ? (string.Equals(key, SidebarSubtitleRules.LikedRouteKey, StringComparison.Ordinal)
+                ? SidebarCover.Liked(artSize)
+                : SidebarCover.Glyph(glyph, artSize))
+            : null;
+        string? subtitle = slot && section.Opts.Subtitles ? SidebarPaneText.RouteSubtitle(key, _o.Store) : null;
+        var (playing, animated) = slot ? _o.RowPlayState(index) : default;
+
         var spec = new SidebarRowSpec
         {
             Key = key,
             Label = title,
+            Subtitle = subtitle,
             Selected = selected,
             Depth = 0,
             Density = section.Opts.Density,
             Height = height,
-            Glyph = SidebarIcons.For(item, dest.Glyph),
+            ArtSize = artSize,
+            Leading = leading,
+            Glyph = leading is null ? glyph : null,
             Trailing = CountBadge(section, key),
+            Playing = playing,
+            PlayingAnimated = animated,
             OnClick = () => _o.Navigate(key, null),
             Overflow = _o.Acts is not null && _o.MenuOverlay is not null,
             MenuOverlay = _o.MenuOverlay,
             Menu = RouteMenu(section, item, index),
             Drag = drag,
             DropTarget = drop,
+            Style = Style,
         };
         return Indicator(SidebarEntityRow.Create(spec), selected, 0, height, key);
     }
@@ -646,6 +710,7 @@ sealed class SidebarPaneSlot : Component
             OnClick = () => _o.Play(uri, asTrack: true),
             MenuOverlay = _o.MenuOverlay,
             Menu = LayoutOnlyMenu(section, item, index, uri),
+            Style = Style,
         };
         return SidebarEntityRow.WithPlayTrackHint(SidebarEntityRow.Create(spec));
     }
@@ -707,6 +772,7 @@ sealed class SidebarPaneSlot : Component
             OnClick = click,
             MenuOverlay = _o.MenuOverlay,
             Menu = LayoutOnlyMenu(section, item, index, item.Key),
+            Style = Style,
         };
         Element row = SidebarEntityRow.Create(spec);
         // grow: 1f — the tooltip wrapper is a flex ROW, so without it the DISABLED arm of this row (the only arm that
@@ -760,6 +826,7 @@ sealed class SidebarPaneSlot : Component
             Glyph = section.Opts.Artwork ? null : SidebarPaneText.Glyph(item, Icons.MusicNote),
             MenuOverlay = _o.MenuOverlay,
             Menu = menu,
+            Style = Style,
         };
         // grow: 1f — see WithPlayTrackHint. A retention row is ALWAYS tooltip-wrapped, so without it the missing-entity
         // row was the one row in a section that never filled: dimmed AND narrow, which reads as broken rather than as
@@ -786,7 +853,7 @@ sealed class SidebarPaneSlot : Component
             : resolved && entry.Name.Length > 0 ? entry.Name
             : item?.FallbackTitle is { Length: > 0 } cached ? cached
             : SidebarPaneText.ShortUri(row.Key);
-        string? subtitle = resolved ? SidebarPaneText.SubtitleOf(in entry) : Loc.Get(SidebarPaneLoc.MissingEntity);
+        string? subtitle = resolved ? SidebarPaneText.SubtitleOf(in entry, Style) : Loc.Get(SidebarPaneLoc.MissingEntity);
         bool circular = resolved
             ? entry.Circular || entry.Kind == SidebarEntryKind.Artist
             : item?.EntityKind == SidebarEntityKind.Artist;
@@ -941,19 +1008,36 @@ sealed class SidebarPaneSlot : Component
         var snapshot = entry;
         float artEdge = MathF.Max(SidebarCover.S40, edge - Spacing.S);
 
+        TextEl labelText = new TextEl(label)
+        {
+            Size = 12f, Weight = (ushort)(selected ? 600 : 400), Color = selected ? Tok.AccentTextPrimary : Tok.TextPrimary,
+            MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+        };
+        // W4 (Slot only) — a pinned grid cell (H1, #85) gets the same 10-DIP mark the list rows do, ahead of the
+        // label. Cluster grid cells never carried a pin mark at all, so this is purely additive under Slot.
+        // Typed separately from the TextEl: the abstract Element record carries no flex members, and the pin wrapper
+        // needs Grow/Shrink/MinWidth on the concrete TextEl it wraps.
+        Element labelLine = labelText;
+        if (Style == SidebarRowStyle.Slot && SidebarRowGeometry.ShowsPinGlyph(entry.IsPinned, entry.IsTrack))
+            labelLine = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.PinMarkSubtitleGap,
+                Children =
+                [
+                    Icon(Icons.Pin, SidebarRowGeometry.PinMarkSize, Tok.AccentTextPrimary) with { Shrink = 0f },
+                    labelText with { Grow = 1f, Shrink = 1f, MinWidth = 0f },
+                ],
+            };
+
         var kids = new List<Element>(3)
         {
             // ForEntry, not Art: a grid cell is an art slot like every other one, and calling the raw cover factory
             // skipped the KIND dispatch — so an app-route entry (Liked Songs, Albums, Podcasts) lost its glyph tile
             // and painted a bare seeded tint, and Liked lost its dynamic cover with it.
             SidebarCover.ForEntry(in entry, artEdge),
-            new TextEl(label)
-            {
-                Size = 12f, Weight = (ushort)(selected ? 600 : 400), Color = selected ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            },
+            labelLine,
         };
-        if (section.Opts.Subtitles && SidebarPaneText.SubtitleOf(in entry) is { Length: > 0 } sub)
+        if (section.Opts.Subtitles && SidebarPaneText.SubtitleOf(in entry, Style) is { Length: > 0 } sub)
             kids.Add(new TextEl(sub) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
 
         Action? click = null;
@@ -1023,6 +1107,7 @@ sealed class SidebarPaneSlot : Component
                 Density = section.Opts.Density,
                 Height = SidebarPaneMetrics.RowHeight(section),
                 Glyph = section.Kind == SidebarSectionKind.Concerts ? Icons.Calendar : Icons.Grid,
+                Style = Style,
             });
 
         return new BoxEl
@@ -1469,6 +1554,24 @@ sealed class SidebarPaneSlot : Component
             InsertionLine());
     }
 
+    /// <summary>The pinned band's closing gutter — the <see cref="TreeEndRow"/> idea for pins: 24 DIP at rest that owns
+    /// the one "append at the end" slot, and the compact form of the empty-state card while a compatible drag is live,
+    /// so a band that already has pins still SHOWS where a new one goes.</summary>
+    Element PinEndRow(SidebarSectionSpec section, in SidebarRow row, int index)
+    {
+        string sectionId = row.SectionId;
+        var owner = _o;
+        // The zone component owns its own UseDragState (re-renders itself, never the pane) and the accept → AcceptPinDrop
+        // at band.Count. The insertion line beneath it is the same bound caret every row carries, lit by the EndOfList
+        // slot this row publishes on hover.
+        return ZStack(
+            Embed.Comp(() => new SidebarPinDropZone(
+                (p, _) => owner.AcceptPinDrop(p, owner.BandCountOf(sectionId)),
+                compact: true,
+                onHover: over => owner.PublishPinEndSlot(index, over))) with { Key = "pin-end" },
+            InsertionLine());
+    }
+
     /// <summary>THE PILL'S ONE LIVE READ. The indicator's opacity is BOUND to this (never a mount-time literal), so it is
     /// re-derived by the row's own epoch on every edge that can change it — a navigation, a republish, a recycle — with
     /// no re-render and no dependence on whether the pane's motion transaction ran.
@@ -1496,9 +1599,10 @@ sealed class SidebarPaneSlot : Component
     {
         if (section.Kind != SidebarSectionKind.Pinned) return null;
         int slot = PinSlot(sectionId, index);
-        return slot >= 0
-            ? _o.ResourceDropSpec(sectionId, slot, null, null, rootPlanIndex: index, onSpringLoad: onSpringLoad)
-            : null;
+        // slot < 0 with pins present = the band is disabled by an expanded pinned folder. The row still owns a target so
+        // the drag chip can SAY why ("Collapse the pinned folder to pin here") instead of showing a bare glyph.
+        return _o.ResourceDropSpec(sectionId, slot, null, null, rootPlanIndex: index, onSpringLoad: onSpringLoad,
+                                   pinBandDisabled: slot < 0 && _o.PinBandDisabled(sectionId));
     }
 
     int PinSlot(string sectionId, int index)

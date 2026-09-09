@@ -121,7 +121,7 @@ public class HydrationLedgerTests
 
         Assert.Equal(1, a.ClaimedCount);      // the first caller owns the fetch…
         Assert.Equal(0, b.ClaimedCount);      // …and the second only waits for it
-        Assert.Equal(1, b.Waits.Count);   // (Count, not Assert.Single: the element IS a Task, and an unawaited one reads as a bug)
+        _ = Assert.Single(b.Waits);   // (the element IS a Task, and an unawaited one reads as a bug)
         Assert.Equal(1, ledger.InFlight);
 
         a.Publish(_ => new HydrationOutcome(HydrationLevel.Open, HydrationStatus.Reached), static _ => false);

@@ -908,5 +908,9 @@ Every phase: builds clean, `Wavee.Tests` green, independently shippable. Live ve
 - No background TTL sweep over playlists (event-driven + on-open only — the anti-herd contract).
 - No UI for pending/dead-letter sync state (the store's `SyncState` rows are the future hook).
 - No playlist *edit* UX changes (OpRebase gets protocol fixes in passing; add/remove/reorder UI is out of scope).
-- No `ylpin` (pinned) / `ban` / `enhanced` sets — the 5 existing logical sets only; the set list is one
-  constant + one WireSet row away when wanted.
+- ~~No `ylpin` (pinned) / `ban` / `enhanced` sets — the 5 existing logical sets only; the set list is one
+  constant + one WireSet row away when wanted.~~ `ylpin` shipped — see
+  `docs/plans/wavee/pin-spotify-sync-implementation.md`: a sixth wire set (`CollectionSets.WireSets`), mapped to the
+  logical set `"pins"`, read-hydrated (boot/reconnect/reconcile + settled dealer push, never direct-applied) and
+  write-backed through the same `/collection/v2/write` plumbing every other set uses. `ban`/`enhanced` remain out of
+  scope.

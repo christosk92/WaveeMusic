@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Wavee.Backend;
 using Wavee.Backend.Metadata;
@@ -223,7 +224,7 @@ public class PersistenceWaveFTests
     // ── 3. the fat migrated artist core heals on the warm replay (K2) ────────────────────────────────────────────────
 
     [Fact]
-    public void WarmReplay_SplitsAFatMigratedArtistCore_WithoutANetworkFetch()
+    public async Task WarmReplay_SplitsAFatMigratedArtistCore_WithoutANetworkFetch()
     {
         string path = TempDb();
         const string uri = "spotify:artist:fat";
@@ -253,7 +254,7 @@ public class PersistenceWaveFTests
             using (var cold = new SqliteColdStore(path, SqliteColdStore.DefaultAccount, Locale))
             using (var store = new CachedStore(cold))
             {
-                Assert.True(store.WarmComplete.Wait(TimeSpan.FromSeconds(30)));
+                await store.WarmComplete.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
                 store.Flush();
 
                 // The HOT record is still the whole artist — the split is a persist-time projection, nothing more.
@@ -270,7 +271,7 @@ public class PersistenceWaveFTests
             using (var cold = new SqliteColdStore(path, SqliteColdStore.DefaultAccount, Locale))
             using (var store = new CachedStore(cold))
             {
-                Assert.True(store.WarmComplete.Wait(TimeSpan.FromSeconds(30)));
+                await store.WarmComplete.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
                 var again = store.GetArtist(uri)!;
                 Assert.Equal("Fat Artist", again.Name);
                 Assert.Equal(24, again.TopAlbums!.Count);

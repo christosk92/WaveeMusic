@@ -73,9 +73,11 @@ public readonly record struct SidebarWriteResult(
 // _seq, so a burst of editor commands produces ONE file write.
 public sealed class SidebarLayoutStore
 {
-    /// <summary>2 = LAYOUT V2 (extension refs, action bindings, query uri sets). v1 upgrades by IDENTITY, so an existing
-    /// document loads unchanged and re-stamps itself on the next ordinary commit — see <see cref="SidebarLayoutMigrations"/>.</summary>
-    public const int CurrentVersion = 2;
+    /// <summary>3 = LAYOUT V3 (W7: the retired "local" route is pruned from every section, every child section and the
+    /// top bar). 2 = LAYOUT V2 (extension refs, action bindings, query uri sets); v1 upgrades by IDENTITY. Both steps
+    /// run automatically on load — see <see cref="SidebarLayoutMigrations"/> — so an existing document loads unchanged
+    /// apart from that one prune and re-stamps itself on the next ordinary commit.</summary>
+    public const int CurrentVersion = 3;
 
     /// <summary>The whole-document budget (the platform doc's 2 MiB). Checked against the SERIALIZED bytes, before any
     /// file is created: an over-budget snapshot is dropped whole and classified as

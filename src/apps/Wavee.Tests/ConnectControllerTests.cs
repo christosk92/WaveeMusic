@@ -60,7 +60,7 @@ public class ConnectControllerTests
 
     sealed class FakeDeviceMonitor : Wavee.SpotifyLive.Audio.IAudioDeviceMonitor
     {
-        public event Action<Wavee.SpotifyLive.Audio.AudioDeviceEvent>? Changed;
+        event Action<Wavee.SpotifyLive.Audio.AudioDeviceEvent>? Wavee.SpotifyLive.Audio.IAudioDeviceMonitor.Changed { add { } remove { } }
         public IReadOnlyList<Wavee.SpotifyLive.Audio.AudioEndpointInfo> EnumerateRenderEndpoints() =>
             System.Array.Empty<Wavee.SpotifyLive.Audio.AudioEndpointInfo>();
         public string? GetDefaultRenderId() => null;

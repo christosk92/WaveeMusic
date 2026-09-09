@@ -58,7 +58,6 @@ public sealed class SidebarProjectionBinderTests
     sealed class StubSource : SidebarDataSourceBase
     {
         readonly List<SidebarLibraryEntry> _rows = new();
-        public bool Throw;
         public bool PartialThenThrow;
         public int SchemaVersion = 1;
 
@@ -77,7 +76,6 @@ public sealed class SidebarProjectionBinderTests
 
         public override int Fill(List<SidebarLibraryEntry> into, in SidebarSourceRequest request)
         {
-            if (Throw) throw new InvalidOperationException("boom");
             if (PartialThenThrow)
             {
                 into.Add(Playlist("partial", "Partial"));

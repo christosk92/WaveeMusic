@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Wavee.Core;
 using Xunit;
 
@@ -72,17 +73,17 @@ public class StoreVersionTests
     }
 
     [Fact]
-    public void StoreUpdateService_NeverStages_AndApplyOpensTheStorePage()
+    public async Task StoreUpdateService_NeverStages_AndApplyOpensTheStorePage()
     {
         string? opened = null;
         var svc = new StoreUpdateService("9NJPVWTQPT9H", url => opened = url);
 
         Assert.Equal(AppUpdateState.None, svc.Current.State);
-        svc.CheckAsync(UpdateCheckOrigin.User, CancellationToken.None).GetAwaiter().GetResult();
+        await svc.CheckAsync(UpdateCheckOrigin.User, CancellationToken.None);
         Assert.Equal(AppUpdateState.None, svc.Current.State);   // a check is not a feed poll here
         Assert.Null(opened);
 
-        svc.ApplyAsync(CancellationToken.None).GetAwaiter().GetResult();
+        await svc.ApplyAsync(CancellationToken.None);
         Assert.Equal("ms-windows-store://pdp/?productid=9NJPVWTQPT9H", opened);
         // Idle on quit means the install-on-quit path never runs for a Store build.
         Assert.False(ShutdownUpdatePolicy.ShouldApply(installOnQuit: true, svc.Current.State));

@@ -14,6 +14,17 @@ namespace Wavee;
 // F.1.4 — THE ONE sidebar entity row. Classic's pinned rows, Library V3's list rows and Curated's entity rows all come
 // out of Create(in SidebarRowSpec) so the three designs cannot drift apart visually.
 //
+// W4 — TWO ANATOMIES BEHIND ONE FACTORY, never a Design branch (SidebarPaneConfig.RowStyle is the mode seam):
+//   • CLUSTER (SidebarRowStyle.Cluster, the struct default — the polarity rule): the landed shape. A trailing
+//     CLUSTER (chevron · now-playing equalizer · 12-DIP pin glyph · Trailing) folded behind a ZStack "…" overlay when
+//     the row carries one. Kept byte-identical behind Cluster*-named helpers so it can be deleted in one sweep once
+//     V3.1 ships everywhere.
+//   • SLOT (SidebarRowStyle.Slot): V3.1's redraw. ONE 28-DIP trailing slot (chevron | now-playing equalizer | the
+//     hover-revealed "…", never more than one at a time — SidebarRowGeometry.TrailingAtRest/HoverShowsOverflow) and a
+//     pin MARK folded into the title/subtitle line instead of the cluster (SidebarRowGeometry.PinMarkPlacement).
+// Only Library V3's config sets Slot; every other caller — Classic, Curated, and the two callers that build a spec
+// with no config at all (LibraryV3NavBand, SidebarRailFolderFlyout) — stays on the Cluster default.
+//
 // WHAT IT OWNS (and why nothing else may re-implement it):
 //
 //  • The 4-STATE SELECTION-AWARE HOVER/PRESS RAMP — the stock NavigationViewItem backplate ladder
@@ -110,6 +121,10 @@ struct SidebarRowSpec
         OnMove = null;
         OnActivate = null;
         OnEscape = null;
+        Style = SidebarRowStyle.Cluster;
+        HighlightStart = -1;
+        HighlightLength = 0;
+        OnUnpin = null;
     }
 
     // ── identity ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -123,6 +138,17 @@ struct SidebarRowSpec
 
     /// <summary>The second line (track count / kind · creator / item count). Ignored at <see cref="SidebarDensity.Compact"/>.</summary>
     public string? Subtitle;
+
+    /// <summary>W8 — the UTF-16 offset of a live search match inside <see cref="Label"/> (already folded with a
+    /// flattened search's "Folder / name" prefix, when one applies), or <c>-1</c> for no highlight. STATIC per render,
+    /// like every other field here — <c>SidebarPaneSlot.EntryRow</c> stamps it once per row build from
+    /// <c>SidebarSearch.Find</c>, never as a bound thunk. Cluster style ignores it: only <see cref="Style"/> ==
+    /// <see cref="SidebarRowStyle.Slot"/> ever reads it (rule 1 — a mode seam, never a caller branch on Design).</summary>
+    public int HighlightStart;
+
+    /// <summary>The length of the highlighted run starting at <see cref="HighlightStart"/>. Ignored when
+    /// <see cref="HighlightStart"/> is negative.</summary>
+    public int HighlightLength;
 
     // ── state ────────────────────────────────────────────────────────────────────────────────────────────────────────
     /// <summary>Drives the 4-state ramp (rest/hover/pressed all shift when selected). Compute it from the live route.</summary>
@@ -172,19 +198,37 @@ struct SidebarRowSpec
 
     /// <summary>A folder row's disclosure chevron. W7 moved it OUT of the leading cluster (it used to sit before the
     /// leading visual, reserving a fixed cell every tree row paid for even when it was not a folder) and INTO the
-    /// TRAILING cluster instead — the FIRST element there, ahead of the now-playing equalizer and <see cref="Trailing"/>.
-    /// Build it with <c>SidebarChevron.Disclosure(open)</c> (the rotating glyph), not a hand-rolled swap.</summary>
+    /// TRAILING position instead — under Cluster style, the FIRST element of the trailing cluster, ahead of the
+    /// now-playing equalizer and <see cref="Trailing"/>; under Slot style, it is what the ONE trailing slot shows at
+    /// rest (<c>SidebarRowGeometry.TrailingAtRest</c>), and it never yields to the "…" overflow button
+    /// (<c>SidebarRowGeometry.HoverShowsOverflow</c>). Build it with <c>SidebarChevron.Disclosure(open)</c> (the
+    /// rotating glyph), not a hand-rolled swap.</summary>
     public Element? DisclosureChevron;
 
-    /// <summary>Issue #85 (H1) — this row is a PINNED library entry (<c>SidebarLibraryEntry.IsPinned</c>). Renders a
-    /// quiet 12-DIP pin glyph in the trailing cluster, beside the count badge — a per-row marker rather than a
-    /// section header, so it keeps working when a pin is filtered into the middle of a lens (Library V3 renders no
-    /// section headers at all — see <c>LibraryV3Document.cs</c> — and the pinned band itself, <c>v3.pins</c>, floats
-    /// pins to the top of every sort mode but has never actually MARKED the rows it floats). Never true for a
-    /// <see cref="Track"/> row (a track cannot be pinned).</summary>
+    /// <summary>Issue #85 (H1) — this row is a PINNED library entry (<c>SidebarLibraryEntry.IsPinned</c>). Under
+    /// Cluster style, renders a quiet 12-DIP pin glyph in the trailing cluster, beside the count badge — or, when
+    /// <see cref="OnUnpin"/> is set (W8), a live 24×24 hover unpin button in its place. Under Slot style (W4), it
+    /// instead folds a smaller 10-DIP mark into the TEXT column — ahead of the subtitle when one is
+    /// visible, else right after the title (<c>SidebarRowGeometry.PinMarkPlacement</c>) — because Slot's trailing
+    /// slot has no room for a fourth glyph, and unpins through its "…" menu instead (<see cref="OnUnpin"/> is
+    /// ignored there). Either way it is a per-row marker rather than a section header, so it
+    /// keeps working when a pin is filtered into the middle of a lens (Library V3 renders no section headers at all —
+    /// see <c>LibraryV3Document.cs</c> — and the pinned band itself, <c>v3.pins</c>, floats pins to the top of every
+    /// sort mode but has never actually MARKED the rows it floats). Never true for a <see cref="Track"/> row (a track
+    /// cannot be pinned).</summary>
     public bool Pinned;
 
-    /// <summary>Trailing content (a count badge, a "new" dot, a state glyph). Placed before the overflow affordance.</summary>
+    /// <summary>W8 — the hover UNPIN button. Under Cluster style ONLY: when set, the trailing cluster's static 12-DIP
+    /// pin glyph (<see cref="Pinned"/>'s Cluster rendering) becomes a 24×24 hover button that calls this and carries an
+    /// "Unpin from sidebar" tooltip; when null, the glyph stays exactly the static, non-interactive mark it always was
+    /// — byte-identical for a row that cannot be unpinned this way. Slot style never reads this: a Slot row's pin mark
+    /// is a plain subtitle/title glyph (see <see cref="SidebarRowGeometry.PinMarkPlacement"/>) and unpins through its
+    /// "…" menu instead, same as every other Slot verb.</summary>
+    public Action? OnUnpin;
+
+    /// <summary>Trailing content (a count badge, a "new" dot, a state glyph). Under Cluster style, placed before the
+    /// overflow affordance in the trailing cluster. Under Slot style, placed as its OWN flex child ahead of the one
+    /// trailing slot — the slot itself is reserved for the chevron/equalizer/"…" triad only.</summary>
     public Element? Trailing;
 
     /// <summary>Show the now-playing equalizer in the trailing column (this row's context is the one playing).</summary>
@@ -197,9 +241,12 @@ struct SidebarRowSpec
     /// navigates. Tracks are never pinnable; callers may still supply a drag payload for playlist deposit/reorder.</summary>
     public bool Track;
 
-    /// <summary>Render the hover-revealed 26-DIP "…" that re-enters the context-request funnel
-    /// (<c>ClickRequestsContext</c>), so the trailing button and right-click open the SAME menu. Requires
-    /// <see cref="MenuOverlay"/> + <see cref="Menu"/>, else it is omitted rather than rendered dead.</summary>
+    /// <summary>Render the hover-revealed "…" that re-enters the context-request funnel (<c>ClickRequestsContext</c>),
+    /// so the trailing button and right-click open the SAME menu. Requires <see cref="MenuOverlay"/> +
+    /// <see cref="Menu"/>, else it is omitted rather than rendered dead. Under Cluster style it is a 26-DIP ZStack
+    /// overlay on the whole row (never a disclosure chevron's row — a folder's menu stays right-click/Menu-key only);
+    /// under Slot style it swaps INTO the one trailing slot on row hover, same exclusion
+    /// (<see cref="SidebarRowGeometry.HoverShowsOverflow"/>).</summary>
     public bool Overflow;
 
     // ── wiring ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -294,6 +341,13 @@ struct SidebarRowSpec
     /// modifier on <see cref="OnActivate"/> — "cancel" is not an activation, and encoding it as one is how one chord
     /// ends up meaning two things.</summary>
     public Action? OnEscape;
+
+    /// <summary>W4 — THE MODE SEAM (<c>SidebarPaneConfig.RowStyle</c>). Cluster (the default, and the struct default —
+    /// the polarity rule) is the landed anatomy, kept byte-identical; Slot is V3.1's one-trailing-slot / pin-in-text
+    /// redraw. Stamped by every <c>SidebarPaneSlot</c> row builder from <c>_o.Config.RowStyle</c> — a caller with no
+    /// config to read (<c>LibraryV3NavBand</c>, <c>SidebarRailFolderFlyout</c>) leaves it at the default and renders
+    /// Cluster, by construction rather than by remembering to set it.</summary>
+    public SidebarRowStyle Style;
 }
 
 static class SidebarEntityRow
@@ -392,68 +446,13 @@ static class SidebarEntityRow
         if (spec.Track && spec.Leading is not null)
             leading = TrackArt(leading, art, spec.Density);
 
+        bool slot = spec.Style == SidebarRowStyle.Slot;
+        bool overflow = ShowsOverflow(in spec);
+
         // ── text column ─────────────────────────────────────────────────────────────────────────────────────────────
-        Element text;
-        if (!hasSubtitle && spec.Caption is null)
-        {
-            // Shrink + MinWidth 0, like the stacked arm below: a Grow-only TextEl keeps its intrinsic width and runs
-            // under the trailing cluster instead of ellipsizing when the pane is narrower than the title.
-            text = Body(spec.Label) with { Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
-        }
-        else
-        {
-            int lines = 1 + (hasSubtitle ? 1 : 0) + (spec.Caption is { Length: > 0 } ? 1 : 0);
-            var stack = new Element[lines];
-            int n = 0;
-            stack[n++] = Body(spec.Label) with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
-            if (hasSubtitle)
-                stack[n++] = Caption(spec.Subtitle!).Secondary() with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
-            if (spec.Caption is { Length: > 0 } cap)
-                stack[n++] = new TextEl(cap) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
-            text = new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 1f, Children = stack };
-        }
+        Element text = slot ? SlotTextColumn(in spec, hasSubtitle) : ClusterTextColumn(in spec, hasSubtitle);
 
         // ── children ────────────────────────────────────────────────────────────────────────────────────────────────
-        // The trailing "…" is NOT a flex sibling of the text any more (see OverflowButton()): reserving its 26-DIP
-        // width + gap UNCONDITIONALLY — even though HoverOpacity keeps it invisible at rest — is exactly the bug this
-        // shape fixes (a title ellipsized well before the pane's free space ran out). It is composed as a ZSTACK
-        // OVERLAY on top of the row instead, so it costs the text lane ZERO width whether or not the row is hovered:
-        // no reserved-vs-revealed toggle, and therefore no reflow/re-trim on hover either.
-        bool overflow = ShowsOverflow(in spec);
-        // W7: the folder disclosure chevron moved OUT of the leading cluster and into the TRAILING one — it is the
-        // FIRST trailing element (ahead of the now-playing equalizer, ahead of Trailing's count badge / "+"), because a
-        // folder is never `Playing` and the chevron reads as "this row has children", which belongs beside the other
-        // row-state glyphs rather than mixed into the leading art column. Built as ONE grouped element (not up to three
-        // loose flex children) so the overflow padding below applies once, to the whole cluster.
-        Element? trailingCluster = null;
-        {
-            int trailingCount = (spec.DisclosureChevron is null ? 0 : 1) + (spec.Playing ? 1 : 0)
-                              + (spec.Pinned ? 1 : 0) + (spec.Trailing is null ? 0 : 1);
-            if (trailingCount > 0)
-            {
-                var parts = new Element[trailingCount];
-                int t = 0;
-                if (spec.DisclosureChevron is { } chevron) parts[t++] = chevron;
-                if (spec.Playing) parts[t++] = WaveeEqualizer.Of(spec.PlayingAnimated, Tok.AccentDefault, 12f);
-                // H1 (#85) — the pin marker sits right beside the count badge (SidebarPaneSlot.TrailingBadge / the
-                // library-shortcut count), ahead of whichever one this row also carries.
-                if (spec.Pinned) parts[t++] = Icon(Icons.Pin, 12f, Tok.TextTertiary);
-                if (spec.Trailing is { } trailingContent) parts[t++] = trailingContent;
-                trailingCluster = new BoxEl
-                {
-                    Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = gap,
-                    // The hover-revealed "…" is a 26-DIP ZSTACK overlay parked at the row's trailing edge (see
-                    // OverflowButton()); without this reserve a chevron or count badge sits UNDER it on hover. Only
-                    // reserved when the row actually carries the affordance — most rows do not pay for it.
-                    Padding = overflow ? new Edges4(0f, 0f, OverflowWidth, 0f) : default,
-                    Children = parts,
-                };
-            }
-        }
-        int count = 2                                                   // leading cluster + text
-                  + (trailingCluster is null ? 0 : 1);
-        var kids = new Element[count];
-        int k = 0;
         Element leadingCluster = spec.TreeNode
             ? TreeLeading(leading, spec.TreeDepth, spec.TreeContinuationMask, height)
             : StandardLeading(leading, gap);
@@ -468,14 +467,19 @@ static class SidebarEntityRow
                 Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
                 Children = [checkLane, leadingCluster],
             };
-        kids[k++] = leadingCluster;
-        kids[k++] = text;
-        if (trailingCluster is not null) kids[k++] = trailingCluster;
 
-        // Without the overflow affordance, the row stays the plain flex row it always was — no extra node, no ZStack
+        // Cluster keeps the ZStack "…" overlay (the trailing cluster has no fixed width to swap inside); Slot never
+        // uses it — its "…" swaps INTO the one trailing slot instead (see SlotTrailing), so the row stays a plain flex
+        // row whether or not it carries the affordance.
+        bool overlay = !slot && overflow;
+        Element[] kids = slot
+            ? SlotChildren(leadingCluster, text, in spec, overflow)
+            : ClusterChildren(leadingCluster, text, in spec, gap, overflow);
+
+        // Without the overlay, the row stays the plain flex row it always was — no extra node, no ZStack
         // measure/arrange cost for the vast majority of non-menu rows (a folder end-cap, a disabled retention row, …).
         Element[] rowChildren;
-        if (overflow)
+        if (overlay)
         {
             var content = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = gap, Children = kids };
             // The button is a ZSTACK OVERLAY, never a flex sibling: it must cost the title NO width, or the title
@@ -484,7 +488,7 @@ static class SidebarEntityRow
             // live Mica, so there is no opaque tone to fade or clip into (see the WaveeTokens.cs tombstone on why a
             // constant material over Mica reads as a slab), and a hover-conditional width would re-render and
             // relayout the row on every pointer enter/exit.
-            rowChildren = [content, OverflowButton()];
+            rowChildren = [content, ClusterOverflowButton()];
         }
         else
         {
@@ -499,11 +503,11 @@ static class SidebarEntityRow
             // ZStack only when the button exists: `content` then fills the row exactly like the plain flex children
             // did (its own AlignSelf/JustifySelf are unset ⇒ Auto ⇒ inherit this row's AlignItems/Justify, so the whole
             // content cluster shrinks-to-fit and centers vertically the same way each flex child used to individually
-            // — see the file-level remarks above OverflowButton()). Padding stays HERE (not innermost), so the fill
-            // ramp below still paints the row's FULL bleed and only the CONTENT is inset by it, exactly as before.
-            ZStack = overflow,
+            // — see the file-level remarks above ClusterOverflowButton()). Padding stays HERE (not innermost), so the
+            // fill ramp below still paints the row's FULL bleed and only the CONTENT is inset by it, exactly as before.
+            ZStack = overlay,
             Direction = 0, Height = height, AlignItems = FlexAlign.Center, Gap = gap,
-            Padding = new Edges4(SidebarRowMetrics.IndentFor(spec.Depth), 0f, 8f, 0f),
+            Padding = new Edges4(SidebarRowMetrics.IndentFor(spec.Depth), 0f, SidebarRowGeometry.RowInsetRight, 0f),
             Corners = CornerRadius4.All(4f),
             // THE 4-STATE SELECTION-AWARE RAMP (F.1.4). Defined here, once, for every sidebar row in every design.
             // Selected takes the accent plate and its states only ever go UP — see WaveeColors.SelectedRest for the
@@ -652,9 +656,87 @@ static class SidebarEntityRow
     static bool ShowsOverflow(in SidebarRowSpec spec)
         => spec.Overflow && spec.Enabled && spec.MenuOverlay is not null && spec.Menu is not null;
 
-    /// <summary>The hover overlay's box (26 DIP) — shared with the trailing cluster's own reserve in <c>Create</c>, so a
-    /// chevron or a count badge can never sit under it whichever this changes to.</summary>
-    const float OverflowWidth = 26f;
+    // ── CLUSTER region (SidebarRowStyle.Cluster) — the landed anatomy, moved here VERBATIM (W4) so it can be deleted
+    // in one sweep once every mode is on Slot. Nothing below this banner changes behaviour.
+
+    /// <summary>Cluster's plain (no pin-mark-in-text) text column — today's shape, unchanged.</summary>
+    static Element ClusterTextColumn(in SidebarRowSpec spec, bool hasSubtitle)
+    {
+        if (!hasSubtitle && spec.Caption is null)
+            // Shrink + MinWidth 0, like the stacked arm below: a Grow-only TextEl keeps its intrinsic width and runs
+            // under the trailing cluster instead of ellipsizing when the pane is narrower than the title.
+            return Body(spec.Label) with { Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+
+        int lines = 1 + (hasSubtitle ? 1 : 0) + (spec.Caption is { Length: > 0 } ? 1 : 0);
+        var stack = new Element[lines];
+        int n = 0;
+        stack[n++] = Body(spec.Label) with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+        if (hasSubtitle)
+            stack[n++] = Caption(spec.Subtitle!).Secondary() with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+        if (spec.Caption is { Length: > 0 } cap)
+            stack[n++] = new TextEl(cap) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+        return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 1f, Children = stack };
+    }
+
+    /// <summary>Cluster's trailing cluster (chevron · now-playing equalizer · 12-DIP pin glyph · <c>Trailing</c>) plus
+    /// the leading cluster and the text, exactly as <c>Create</c> used to assemble them inline. W7: the folder
+    /// disclosure chevron is the FIRST trailing element (ahead of the now-playing equalizer, ahead of Trailing's count
+    /// badge / "+"), because a folder is never <c>Playing</c> and the chevron reads as "this row has children", which
+    /// belongs beside the other row-state glyphs rather than mixed into the leading art column. Built as ONE grouped
+    /// element (not up to three loose flex children) so the overflow padding below applies once, to the whole
+    /// cluster.</summary>
+    static Element[] ClusterChildren(Element leadingCluster, Element text, in SidebarRowSpec spec, float gap, bool overflow)
+    {
+        Element? trailingCluster = null;
+        int trailingCount = (spec.DisclosureChevron is null ? 0 : 1) + (spec.Playing ? 1 : 0)
+                          + (spec.Pinned ? 1 : 0) + (spec.Trailing is null ? 0 : 1);
+        if (trailingCount > 0)
+        {
+            var parts = new Element[trailingCount];
+            int t = 0;
+            if (spec.DisclosureChevron is { } chevron) parts[t++] = chevron;
+            if (spec.Playing) parts[t++] = WaveeEqualizer.Of(spec.PlayingAnimated, Tok.AccentDefault, 12f);
+            // H1 (#85) — the pin marker sits right beside the count badge (SidebarPaneSlot.TrailingBadge / the
+            // library-shortcut count), ahead of whichever one this row also carries. W8 — a row that CAN be unpinned
+            // this way (spec.OnUnpin set) gets a live hover button instead of the bare glyph; every other pinned row
+            // (OnUnpin null) keeps the exact static mark it always drew.
+            if (spec.Pinned)
+                parts[t++] = spec.OnUnpin is { } onUnpin ? ClusterUnpinButton(onUnpin) : Icon(Icons.Pin, 12f, Tok.TextTertiary);
+            if (spec.Trailing is { } trailingContent) parts[t++] = trailingContent;
+            trailingCluster = new BoxEl
+            {
+                Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = gap,
+                // The hover-revealed "…" is a 26-DIP ZSTACK overlay parked at the row's trailing edge (see
+                // ClusterOverflowButton()); without this reserve a chevron or count badge sits UNDER it on hover. Only
+                // reserved when the row actually carries the affordance — most rows do not pay for it.
+                Padding = overflow ? new Edges4(0f, 0f, ClusterOverflowWidth, 0f) : default,
+                Children = parts,
+            };
+        }
+        var kids = new Element[2 + (trailingCluster is null ? 0 : 1)];
+        int k = 0;
+        kids[k++] = leadingCluster;
+        kids[k++] = text;
+        if (trailingCluster is not null) kids[k++] = trailingCluster;
+        return kids;
+    }
+
+    /// <summary>W8 — the Cluster pin glyph's live form: a 24×24 hover UNPIN button, wrapped with an "Unpin from
+    /// sidebar" tooltip (the row itself carries no automation-name channel beyond its title, same reasoning as
+    /// <see cref="WithPlayTrackHint"/>). <c>BlocksDragArm</c> keeps a press here from arming the row's own resource
+    /// drag; <c>ClickRequestsContext</c> is deliberately NOT set — this is a plain click verb, not a second way into
+    /// the row's context menu.</summary>
+    static Element ClusterUnpinButton(Action onUnpin) => ToolTip.Wrap(new BoxEl
+    {
+        Width = 24f, Height = 24f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Corners = CornerRadius4.All(12f), HoverFill = Tok.FillSubtleTertiary,
+        Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = onUnpin, BlocksDragArm = true,
+        Children = [Icon(Icons.Pin, 12f, Tok.TextTertiary)],
+    }, Loc.Get(Strings.Sidebar.Pin.Unpin));
+
+    /// <summary>The hover overlay's box (26 DIP) — shared with the trailing cluster's own reserve in
+    /// <c>ClusterChildren</c>, so a chevron or a count badge can never sit under it whichever this changes to.</summary>
+    const float ClusterOverflowWidth = 26f;
 
     /// <summary>The hover-revealed trailing "…", as a ZSTACK OVERLAY (a sized layer inside the row's outer
     /// <c>ZStack = true</c> — see <c>Create</c>) rather than a flex sibling of the text: <c>JustifySelf = End</c> +
@@ -666,19 +748,167 @@ static class SidebarEntityRow
     /// re-trims/reflows the title (a reserve-toggle would). <c>ClickRequestsContext</c> re-enters the context-request
     /// funnel, so the walk finds the row's own <c>OnContextRequested</c> (the <c>WithContextMenu</c> attach) and the
     /// button and the right-click open the same menu anchored at the button.</summary>
-    static Element OverflowButton() => new BoxEl
+    static Element ClusterOverflowButton() => new BoxEl
     {
-        Width = OverflowWidth, Height = OverflowWidth, JustifySelf = FlexAlign.End, AlignSelf = FlexAlign.Center,
+        Width = ClusterOverflowWidth, Height = ClusterOverflowWidth, JustifySelf = FlexAlign.End, AlignSelf = FlexAlign.Center,
         Opacity = 0f, HoverOpacity = 1f,
         Children =
         [
             new BoxEl
             {
-                Width = OverflowWidth, Height = OverflowWidth, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Width = ClusterOverflowWidth, Height = ClusterOverflowWidth, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Corners = CornerRadius4.All(13f),
                 HoverFill = Tok.FillSubtleTertiary,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand,
                 ClickRequestsContext = true,
+                Children = [Icon(Icons.More, 14f, Tok.TextSecondary)],
+            },
+        ],
+    };
+
+    // ── SLOT region (SidebarRowStyle.Slot) — V3.1's redraw: one trailing slot, the pin mark folded into the text.
+
+    /// <summary>Slot's text column: the pin mark rides ahead of the subtitle when one is visible, else right after
+    /// the title — never both, and never mounted as a hidden zero-size sibling when the row is not pinned (the
+    /// zero-size-still-collects-Gap pitfall).</summary>
+    static Element SlotTextColumn(in SidebarRowSpec spec, bool hasSubtitle)
+    {
+        SidebarPinMark pinMark = SidebarRowGeometry.PinMarkPlacement(spec.Pinned, hasSubtitle);
+        // W8 — a live search match paints as a SpanTextEl (three runs); no match is the plain TextEl it always was.
+        // The abstract Element record carries no flex members (Grow/Shrink/MinWidth live on each concrete record), so
+        // the pinned wrapper is typed separately and the "no subtitle" Grow arm below goes through GrowTitle rather
+        // than a shared `with`.
+        Element titleText = TitleElement(in spec);
+        BoxEl? titleRow = pinMark == SidebarPinMark.AfterTitle
+            ? new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.PinMarkTitleGap,
+                Shrink = 1f, MinWidth = 0f, Children = [titleText, PinMark()],
+            }
+            : null;
+        Element title = titleRow ?? titleText;
+
+        if (!hasSubtitle && spec.Caption is null)
+            return titleRow is not null ? titleRow with { Grow = 1f } : GrowTitle(titleText);
+
+        int lines = 1 + (hasSubtitle ? 1 : 0) + (spec.Caption is { Length: > 0 } ? 1 : 0);
+        var stack = new Element[lines];
+        int n = 0;
+        stack[n++] = title;
+        if (hasSubtitle)
+        {
+            TextEl caption = Caption(spec.Subtitle!).Secondary() with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+            stack[n++] = pinMark == SidebarPinMark.BeforeSubtitle
+                ? new BoxEl
+                  {
+                      Direction = 0, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.PinMarkSubtitleGap,
+                      Children = [PinMark(), caption with { Grow = 1f, Shrink = 1f, MinWidth = 0f }],
+                  }
+                : caption;
+        }
+        if (spec.Caption is { Length: > 0 } cap)
+            stack[n++] = new TextEl(cap) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+        return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 1f, Children = stack };
+    }
+
+    /// <summary>W8 — the title itself: a plain single-line Body TextEl, or — when this row carries a live search
+    /// match (<see cref="SidebarRowSpec.HighlightStart"/>/<see cref="SidebarRowSpec.HighlightLength"/>, stamped by
+    /// <c>SidebarPaneSlot.EntryRow</c> from <c>SidebarSearch.Find</c>) — a three-run <c>SpanTextEl</c> [before][match
+    /// in accent, weight 600][after]. Same Size/LineHeight as <c>Body</c> either way (14/20), so a highlighted row
+    /// never shifts baseline or wraps differently than the plain rows around it. The range is re-validated here (never
+    /// trusted from the spec) so a stale index against a title that changed under it degrades to the plain title
+    /// instead of throwing.</summary>
+    static Element TitleElement(in SidebarRowSpec spec)
+    {
+        string label = spec.Label;
+        int start = spec.HighlightStart, len = spec.HighlightLength;
+        if (len <= 0 || start < 0 || start + len > label.Length)
+            return Body(label) with { Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+
+        int end = start + len;
+        var spans = new List<TextSpan>(3);
+        if (start > 0) spans.Add(new TextSpan(label[..start]));
+        spans.Add(new TextSpan(label.Substring(start, len), Weight: 600, Color: Tok.AccentTextPrimary));
+        if (end < label.Length) spans.Add(new TextSpan(label[end..]));
+        return new SpanTextEl(spans.ToArray())
+        {
+            Size = 14f, LineHeight = 20f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1,
+        };
+    }
+
+    /// <summary>Apply the "no subtitle, no caption" arm's <c>Grow = 1f</c> — per-type <c>with</c>, because Grow lives
+    /// on each concrete Element record, not the abstract base (see <see cref="TitleElement"/>'s remark).</summary>
+    static Element GrowTitle(Element title) => title switch
+    {
+        TextEl t => t with { Grow = 1f },
+        SpanTextEl s => s with { Grow = 1f },
+        _ => title,
+    };
+
+    /// <summary>The Slot pin mark: smaller than Cluster's trailing glyph (10 vs 12 DIP) and tinted with the accent —
+    /// it rides IN the text column now, not beside the count badge, so it needs to read at a glance against a title
+    /// rather than among other trailing chrome.</summary>
+    static Element PinMark() => Icon(Icons.Pin, SidebarRowGeometry.PinMarkSize, Tok.AccentTextPrimary) with { Shrink = 0f };
+
+    /// <summary>Slot's children: leading cluster, text, the row's own <c>Trailing</c> (if any) as a plain flex child,
+    /// then the ONE trailing slot. Flat — Slot never reaches for the Cluster ZStack overlay.</summary>
+    static Element[] SlotChildren(Element leadingCluster, Element text, in SidebarRowSpec spec, bool overflow)
+    {
+        bool hasChevron = spec.DisclosureChevron is not null;
+        bool hoverOverflow = SidebarRowGeometry.HoverShowsOverflow(hasChevron, overflow);
+        var kids = new List<Element>(4) { leadingCluster, text };
+        if (spec.Trailing is { } trailing) kids.Add(trailing);
+        kids.Add(SlotTrailing(spec.DisclosureChevron, spec.Playing, spec.PlayingAnimated, hoverOverflow));
+        return [.. kids];
+    }
+
+    /// <summary>The ONE 28×28 trailing slot. Its REST layer draws whatever <c>TrailingAtRest</c> says (a chevron never
+    /// yields to hover; the equalizer does, via <c>HoverOpacity</c> — the row's own hover propagation, not app-side
+    /// tracking); its HOVER layer swaps in <see cref="SlotOverflowButton"/> only when this row's menu may show there
+    /// at all.</summary>
+    static Element SlotTrailing(Element? chevron, bool playing, bool animated, bool hoverOverflow)
+    {
+        var rest = SidebarRowGeometry.TrailingAtRest(chevron is not null, playing) switch
+        {
+            SidebarTrailingContent.Chevron => chevron!,
+            SidebarTrailingContent.Equalizer => WaveeEqualizer.Of(animated, Tok.AccentDefault, 12f),
+            _ => (Element)new BoxEl(),
+        };
+        var layers = new List<Element>(2)
+        {
+            new BoxEl
+            {
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+                HoverOpacity = hoverOverflow ? 0f : float.NaN,
+                Children = [rest],
+            },
+        };
+        if (hoverOverflow) layers.Add(SlotOverflowButton());
+        return new BoxEl
+        {
+            ZStack = true, Shrink = 0f, Width = SidebarRowGeometry.TrailingSlotWidth, Height = SidebarRowGeometry.TrailingSlotWidth,
+            Children = [.. layers],
+        };
+    }
+
+    /// <summary>Slot's hover-revealed "…", inside the trailing slot rather than overlaid on the whole row. TWO boxes
+    /// on purpose: an outer reveal (<c>Opacity 0 → HoverOpacity 1</c>, lit by ROW hover through the reveal cascade)
+    /// around an inner 26-DIP circle that carries its OWN <c>HoverFill</c> — folding both onto one box would light the
+    /// circle's fill on mere row hover instead of only when the pointer is over the button itself.
+    /// <c>ClickRequestsContext</c> keeps the button and right-click on the same menu (and keeps a tab stop);
+    /// <c>BlocksDragArm</c> keeps a press here from arming the row's own drag source.</summary>
+    static Element SlotOverflowButton() => new BoxEl
+    {
+        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Opacity = 0f, HoverOpacity = 1f,
+        Children =
+        [
+            new BoxEl
+            {
+                Width = 26f, Height = 26f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Corners = CornerRadius4.All(13f),
+                HoverFill = Tok.FillSubtleTertiary,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand,
+                ClickRequestsContext = true, BlocksDragArm = true,
                 Children = [Icon(Icons.More, 14f, Tok.TextSecondary)],
             },
         ],

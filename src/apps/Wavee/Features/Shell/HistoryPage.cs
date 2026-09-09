@@ -30,7 +30,8 @@ public sealed record HistoryEntry(Route Route, DateTime VisitedAt)
         // A show route opens the shared detail surface (like album/artist), so it is an ENTITY visit, not a generic page —
         // it gets its own kind so the filter chips and the row label stay truthful now that ShellNav.Dest names it.
         Route.Name.StartsWith("show:", StringComparison.Ordinal) ? "show" :
-        Route.Name is "albums" or "artists" or "liked" or "podcasts" or "local" ? "library" :
+        // W7: "local" dropped — the Local Files collection page is retired, so it can no longer appear in the log.
+        Route.Name is "albums" or "artists" or "liked" or "podcasts" ? "library" :
         Route.Name == "search" ? "search" :
         BrowseRoutes.IsHome(Route.Name) ? "browse" :
         "page";

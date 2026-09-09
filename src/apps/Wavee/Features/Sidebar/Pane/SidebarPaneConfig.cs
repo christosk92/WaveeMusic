@@ -23,6 +23,16 @@ sealed record SidebarPaneConfig
     /// renderer never branches on it (that would be the drift this seam exists to prevent).</summary>
     public required SidebarDesign Design { get; init; }
 
+    /// <summary>W4 — the row's own ANATOMY: one trailing slot, the pin mark folded into the title/subtitle line, and
+    /// the "Kind · detail" subtitle grammar (<see cref="SidebarRowStyle.Slot"/>), versus the landed trailing cluster +
+    /// per-kind subtitle strings (<see cref="SidebarRowStyle.Cluster"/>, the struct default). A FLAG, not a
+    /// <c>Design</c> branch (rule 1) — <c>SidebarPaneSlot</c> reads it once per row build and stamps it onto every
+    /// <c>SidebarRowSpec</c> it constructs, so <c>SidebarEntityRow.Create</c> never has to ask which mode is
+    /// rendering. Library V3's config sets <see cref="SidebarRowStyle.Slot"/>; Classic and Curated leave the default,
+    /// and so do the hand-built rows outside this pipeline (<c>LibraryV3NavBand</c>, <c>SidebarRailFolderFlyout</c>),
+    /// which build <c>SidebarRowSpec</c>s with no config to read at all.</summary>
+    public SidebarRowStyle RowStyle { get; init; } = SidebarRowStyle.Cluster;
+
     /// <summary>Scroll-restoration key prefix. The pane appends <c>".drawer"</c> for the narrow-drawer mount, so the
     /// docked pane and the drawer never fight over one saved offset.</summary>
     public required string ScrollKeyPrefix { get; init; }
@@ -69,6 +79,14 @@ sealed record SidebarPaneConfig
     /// <summary>Render the pane's own library-only search box above the scroll surface (only when the document actually
     /// contains a visible EntityList — searching a pane with no library list would filter nothing).</summary>
     public bool SearchHead { get; init; }
+
+    /// <summary>W8 — the live library search text, for painting the matched run of a Slot row's title in accent
+    /// (<c>SidebarPaneSlot.EntryRow</c> → <c>SidebarRowSpec.HighlightStart/Length</c> via <see cref="SidebarSearch.Find"/>).
+    /// A DELEGATE, per this config's one rule (never a snapshot): the query changes on every keystroke while the config
+    /// is frozen at mount. Null ⇒ no mode has a query to highlight against (Classic and Curated leave it null — Cluster
+    /// rows never highlight regardless). Library V3 supplies <c>() =&gt; session.Prefs?.V3Search.Value ?? ""</c> — its
+    /// own toolbar search, not the pane's <see cref="SearchHead"/> (V3 leaves that false; see its own remark).</summary>
+    public Func<string>? SearchQuery { get; init; }
 
     /// <summary>Arbitrary MODE CHROME above the scroll surface (V3's header band, toolbar, chips, breadcrumb). Rendered
     /// before <see cref="SearchHead"/>. Invoked in the pane's render.</summary>

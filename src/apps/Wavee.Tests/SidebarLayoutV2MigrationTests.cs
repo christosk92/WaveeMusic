@@ -6,13 +6,17 @@ using Xunit;
 
 namespace Wavee.Tests;
 
-// LAYOUT V2's version ladder, end to end through the real store (M1 delta spec item 1).
+// The sidebar-layout document's version ladder, end to end through the real store (M1 delta spec item 1; W7 added the
+// v2 → v3 rung).
 //
-// The whole promise of v2 is that it costs an existing user NOTHING: v1 → v2 is an IDENTITY migration, so a document
-// written by the shipped build loads with the same sections, the same pins, the same V3 overlay and the same unknown-member
-// carry, keeps rendering identically, and simply stamps "version": 2 the next time anything is saved. The tests below pin
-// that promise from both directions — a v1 file read by this build, and a v2 file read by a build that predates v2 (the
-// opaque-carry path) — plus the version GATE above it: v3 is TooNew, is never touched, and blocks writes.
+// v1 → v2 costs an existing user NOTHING: it is an IDENTITY migration, so a document written by the shipped build
+// loads with the same sections, the same pins, the same V3 overlay and the same unknown-member carry, keeps rendering
+// identically, and simply stamps the new version the next time anything is saved. v2 → v3 (W7) is the first migration
+// that actually MUTATES a document: it drops the retired "local" route item — the Local Files collection page — from
+// every section, every child section and the top bar, and nothing else. The tests below pin both promises — a v1
+// file read by this build, a v2 file read by a build that predates v2 (the opaque-carry path), and a v2 file carrying
+// "local" items in every place they can hide — plus the version GATE above it: anything past v3 is TooNew, is never
+// touched, and blocks writes.
 //
 // File mechanics (atomic write, .bak, corruption) belong to SidebarLayoutStoreTests; wire shapes to SidebarLayoutJsonTests.
 public sealed class SidebarLayoutV2MigrationTests : IDisposable
@@ -100,10 +104,10 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
     }
     """;
 
-    // ── v1 → v2 is IDENTITY ───────────────────────────────────────────────────────────────────────────────────────────
+    // ── v1 → v2 is IDENTITY (v2 → v3 then runs too, since a v1 file always climbs to CurrentVersion in one load) ──────
 
     [Fact]
-    public void V1Document_Loads_WithoutAFault_AndStampsVersionTwoInMemory()
+    public void V1Document_Loads_WithoutAFault_AndStampsCurrentVersionInMemory()
     {
         File.WriteAllText(_path, V1Document);
         byte[] before = File.ReadAllBytes(_path);
@@ -113,7 +117,8 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
 
         Assert.Equal(SidebarLoadFault.None, load.Fault);
         Assert.NotNull(load.Doc);
-        Assert.Equal(2, load.Doc!.Version);                 // upgraded IN MEMORY…
+        // W7: a v1 file now climbs BOTH rungs (v1 → v2 → v3) on one load; it has no "local" item to prune either way.
+        Assert.Equal(3, load.Doc!.Version);                 // upgraded IN MEMORY…
         Assert.Equal(before, File.ReadAllBytes(_path));      // …and the file is untouched until an ordinary commit
         Assert.False(store.WritesBlocked);
         Assert.Equal(SidebarSaveFault.None, store.SaveFault);
@@ -164,7 +169,7 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
     }
 
     [Fact]
-    public void V1Document_ReSavesAsV2_WithoutLosingAnything()
+    public void V1Document_ReSavesAsCurrentVersion_WithoutLosingAnything()
     {
         File.WriteAllText(_path, V1Document);
 
@@ -174,12 +179,12 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
         Assert.True(store.WaitForWrites(10_000));
 
         string saved = File.ReadAllText(_path);
-        Assert.Contains("\"version\": 2", saved);              // the ONLY visible difference
+        Assert.Contains("\"version\": 3", saved);              // the ONLY visible difference (W7: v1 climbs both rungs)
         Assert.DoesNotContain("\"version\": 1", saved);
         Assert.Contains("telemetryOptIn", saved);              // the envelope carry
         // pins — the default JSON encoder unicode-escapes '&', so probe the name's words rather than the raw glyph
         Assert.True(saved.Contains("Cafe") && saved.Contains("chill"),
-            "the pin name did not survive the v1->v2 re-save");
+            "the pin name did not survive the v1->v3 re-save");
         Assert.Contains("6a1f2c", saved);                      // the V3 overlay
         Assert.Contains("sec_kid", saved);                     // nesting
         Assert.Contains("gravity", saved);                     // an unknown SECTION member, via the wire carry
@@ -187,10 +192,11 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
         Assert.DoesNotContain("\"action\"", saved);
         Assert.DoesNotContain("includeUris", saved);
 
-        // Reading the re-saved file yields the SAME layout, structurally — "no visual change to existing layouts".
+        // Reading the re-saved file yields the SAME layout, structurally — "no visual change to existing layouts"
+        // (V1Document has no "local" item, so the W7 prune has nothing to remove from it either).
         var reloaded = Store().Load();
         Assert.Equal(SidebarLoadFault.None, reloaded.Fault);
-        Assert.Equal(2, reloaded.Doc!.Version);
+        Assert.Equal(3, reloaded.Doc!.Version);
         Assert.True(SidebarLayoutCompare.Equal(
             SidebarLayoutWire.ReadCurated(Parse(V1Document).Curated).Layout,
             SidebarLayoutWire.ReadCurated(reloaded.Doc.Curated).Layout),
@@ -200,15 +206,15 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
     }
 
     [Fact]
-    public void Upgrade_FromV1_IsInPlace_Idempotent_AndKeepsTheCarry()
+    public void Upgrade_FromV1_IsInPlace_Idempotent_AndKeepsTheCarry_AndRunsBothArms()
     {
         var doc = Parse(V1Document);
         int sections = doc.Curated!.Sections!.Length;
 
         var once = SidebarLayoutMigrations.Upgrade(doc);
         Assert.Same(doc, once);                                    // mutated in place ⇒ [JsonExtensionData] survives
-        Assert.Equal(2, once.Version);
-        Assert.Equal(sections, once.Curated!.Sections!.Length);
+        Assert.Equal(3, once.Version);                             // W7: both v1→v2 and v2→v3 ran in one call
+        Assert.Equal(sections, once.Curated!.Sections!.Length);    // no "local" item in V1Document ⇒ nothing pruned
         Assert.NotNull(once.Extra);
 
         string a = Json(once);
@@ -220,10 +226,10 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
     public void Upgrade_IsTotal()
     {
         // Never throws, never returns null, never leaves a version above the current one.
-        Assert.Equal(2, SidebarLayoutMigrations.Upgrade(null!).Version);
-        Assert.Equal(2, SidebarLayoutMigrations.Upgrade(new SidebarLayoutDocDto { Version = 0 }).Version);
-        Assert.Equal(2, SidebarLayoutMigrations.Upgrade(new SidebarLayoutDocDto { Version = 2 }).Version);
-        Assert.Equal(2, SidebarLayoutMigrations.Upgrade(new SidebarLayoutDocDto { Version = 7 }).Version);
+        Assert.Equal(3, SidebarLayoutMigrations.Upgrade(null!).Version);
+        Assert.Equal(3, SidebarLayoutMigrations.Upgrade(new SidebarLayoutDocDto { Version = 0 }).Version);
+        Assert.Equal(3, SidebarLayoutMigrations.Upgrade(new SidebarLayoutDocDto { Version = 3 }).Version);
+        Assert.Equal(3, SidebarLayoutMigrations.Upgrade(new SidebarLayoutDocDto { Version = 7 }).Version);
     }
 
     [Fact]
@@ -276,12 +282,12 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
         Assert.Equal("My separator", layout.Sections[1].Title);
     }
 
-    // ── the version gate above v2 ─────────────────────────────────────────────────────────────────────────────────────
+    // ── the version gate above v3 ─────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(3)]
+    [InlineData(4)]
     [InlineData(99)]
-    public void VersionAboveTwo_IsTooNew_KeepsTheFile_AndBlocksWrites(int version)
+    public void VersionAboveThree_IsTooNew_KeepsTheFile_AndBlocksWrites(int version)
     {
         string payload = $$"""
         { "version": {{version}}, "curated": { "templateId": "curated", "sections": [
@@ -299,7 +305,7 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
         Assert.Contains(version.ToString(), load.Detail);
         Assert.True(store.WritesBlocked);
 
-        store.Commit(new SidebarLayoutDocDto { Version = 2 });
+        store.Commit(new SidebarLayoutDocDto { Version = 3 });
         store.WaitForWrites(2000);
         Assert.Equal(before, File.ReadAllBytes(_path));             // a newer build owns the file
     }
@@ -334,7 +340,7 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
 
         var store = Store();
         var doc = store.Load().Doc!;
-        Assert.Equal(2, doc.Version);
+        Assert.Equal(3, doc.Version);           // W7: Load() upgrades v2 → v3; no "local" item here, so nothing prunes
 
         var read = SidebarLayoutWire.ReadCurated(doc.Curated);
         var x = read.Layout.Sections[0].Extension!;
@@ -390,5 +396,119 @@ public sealed class SidebarLayoutV2MigrationTests : IDisposable
         Assert.Contains("\"kind\": \"hologram\"", saved);
         Assert.Contains("\"spin\"", saved);
         Assert.Contains("\"contributionId\": \"queue\"", saved);
+    }
+
+    // ── v2 → v3 (W7): the retired "local" route (the Local Files collection page) is pruned ────────────────────────────
+
+    /// <summary>A v2 document exercising every place a "local" route item can hide: a top-level section, a CHILD
+    /// section (one level down, inside a <c>customGroup</c>), and the shell top bar — plus one decoy each: an item
+    /// whose KEY is "local" but whose target is NOT route (an entity item must survive), and unknown members on both a
+    /// surviving section and a surviving item (the extension-data carry must survive the mutation-in-place).</summary>
+    const string V2WithLocalRoutes = """
+    {
+      "version": 2,
+      "curated": {
+        "templateId": "curated",
+        "sections": [
+          { "id": "sec_shortcuts", "kind": "collectionShortcuts", "futureSectionField": "keep-me",
+            "items": [
+              { "id": "itm_liked", "target": "route", "key": "liked", "icon": "Heart", "futureItemField": "keep-me-too" },
+              { "id": "itm_local", "target": "route", "key": "local", "icon": "Folder" },
+              { "id": "itm_notarget_local", "key": "local" },
+              { "id": "itm_entity_local", "target": "entity", "key": "local" },
+              { "id": "itm_albums", "target": "route", "key": "albums", "icon": "Album" }
+            ] },
+          { "id": "sec_grp", "kind": "customGroup",
+            "children": [
+              { "id": "sec_kid", "kind": "staticLinks",
+                "items": [
+                  { "id": "itm_kid_local", "target": "route", "key": "local", "icon": "Folder" },
+                  { "id": "itm_kid_home", "target": "route", "key": "home" }
+                ] }
+            ] }
+        ]
+      },
+      "topBar": [
+        { "id": "itm_top_home", "target": "route", "key": "home" },
+        { "id": "itm_top_local", "target": "route", "key": "local", "icon": "Folder" }
+      ]
+    }
+    """;
+
+    [Fact]
+    public void MigrateV2ToV3_DropsEveryLocalRouteItem_ButKeepsNonRouteLocalKeysAndEverythingElse()
+    {
+        var doc = Parse(V2WithLocalRoutes);
+
+        var upgraded = SidebarLayoutMigrations.Upgrade(doc);
+        Assert.Same(doc, upgraded);                     // mutated in place ⇒ the extension-data carry survives
+        Assert.Equal(3, upgraded.Version);
+
+        var shortcuts = upgraded.Curated!.Sections![0];
+        Assert.Equal(new[] { "liked", "local", "albums" }, System.Array.ConvertAll(shortcuts.Items!, i => i.Key));
+        // "itm_local" (target: route) and "itm_notarget_local" (no target ⇒ the route default) are both gone; the
+        // "local"-keyed item is only removed when its TARGET is (or defaults to) route — "itm_entity_local" survives.
+        var keptIds = System.Array.ConvertAll(shortcuts.Items!, i => i.Id);
+        Assert.DoesNotContain("itm_local", keptIds);
+        Assert.DoesNotContain("itm_notarget_local", keptIds);
+        Assert.Contains("itm_entity_local", keptIds);
+        Assert.Equal("keep-me", shortcuts.Extra!["futureSectionField"].GetString());
+        Assert.Equal("keep-me-too", shortcuts.Items![0].Extra!["futureItemField"].GetString());
+
+        var child = upgraded.Curated.Sections[1].Children![0];
+        Assert.Equal(new[] { "itm_kid_home" }, System.Array.ConvertAll(child.Items!, i => i.Id));
+
+        Assert.Equal(new[] { "itm_top_home" }, System.Array.ConvertAll(upgraded.TopBar!, i => i.Id));
+    }
+
+    [Fact]
+    public void MigrateV2ToV3_WithNoLocalItemAnywhere_ReusesTheSameArraysAndOnlyBumpsTheVersion()
+    {
+        var doc = Parse(LegacyCuratedDefault.Replace(
+            """{ "id": "itm_local", "target": "route", "key": "local", "icon": "Folder" }""",
+            """{ "id": "itm_local2", "target": "route", "key": "podcasts2", "icon": "Folder" }"""));
+        var shortcutsBefore = doc.Curated!.Sections![4].Items;
+
+        SidebarLayoutMigrations.Upgrade(doc);
+
+        Assert.Equal(3, doc.Version);
+        // Nothing to prune ⇒ the exact same array instance comes back (proof the no-op path never re-allocates).
+        Assert.Same(shortcutsBefore, doc.Curated.Sections[4].Items);
+    }
+
+    [Fact]
+    public void MigrateV2ToV3_IsIdempotent()
+    {
+        var once = SidebarLayoutMigrations.Upgrade(Parse(V2WithLocalRoutes));
+        string a = Json(once);
+        string b = Json(SidebarLayoutMigrations.Upgrade(once));
+        Assert.Equal(a, b);
+    }
+
+    [Fact]
+    public void V2DocumentWithLocalRoutes_ReSavesWithoutThem_AndKeepsTheRest()
+    {
+        File.WriteAllText(_path, V2WithLocalRoutes);
+
+        var store = Store();
+        var doc = store.Load().Doc!;
+        Assert.Equal(3, doc.Version);
+
+        store.Commit(doc);
+        Assert.True(store.WaitForWrites(10_000));
+
+        string saved = File.ReadAllText(_path);
+        Assert.Contains("\"version\": 3", saved);
+        Assert.DoesNotContain("\"itm_local\"", saved);
+        Assert.DoesNotContain("\"itm_notarget_local\"", saved);
+        Assert.DoesNotContain("\"itm_kid_local\"", saved);
+        Assert.DoesNotContain("\"itm_top_local\"", saved);
+        Assert.Contains("\"itm_entity_local\"", saved);        // not a route ⇒ survives
+        Assert.Contains("\"itm_liked\"", saved);
+        Assert.Contains("\"itm_albums\"", saved);
+        Assert.Contains("\"itm_kid_home\"", saved);
+        Assert.Contains("\"itm_top_home\"", saved);
+        Assert.Contains("futureSectionField", saved);          // the unknown-member carry survived the prune
+        Assert.Contains("futureItemField", saved);
     }
 }

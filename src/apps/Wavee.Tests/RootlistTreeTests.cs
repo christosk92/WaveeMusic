@@ -331,6 +331,22 @@ public class RootlistTreeBuilderTests
     }
 
 
+    // The sidebar recents-sort fix: a rootlist row's server ADD stamp must ride the leaf all the way from the cold AND
+    // live overloads, so SidebarProjection can read it off PlaylistLeaf instead of it being dropped at the tree walk.
+    [Fact]
+    public void PlaylistLeaf_CarriesTheRowsAddedAtStamp_FromBothOverloads()
+    {
+        var cold = new[] { new ColdRootlistEntry(0, 0, Pl("p1"), null, 0, AddedAtMs: 12345) };
+        var live = new[] { new RootlistEntry(0, 0, Pl("p1"), null, 0, AddedAtMs: 12345) };
+
+        Assert.Equal(12345L, Leaf(Assert.Single(RootlistTreeBuilder.Build(cold, Resolve))).AddedAtMs);
+        Assert.Equal(12345L, Leaf(Assert.Single(RootlistTreeBuilder.Build(live, Resolve))).AddedAtMs);
+
+        // A row with no captured stamp still defaults to 0 — "not captured", not a guess.
+        var unstamped = new[] { Cold(0, 0, Pl("p2")) };
+        Assert.Equal(0L, Leaf(Assert.Single(RootlistTreeBuilder.Build(unstamped, Resolve))).AddedAtMs);
+    }
+
     // ── the migration guard ───────────────────────────────────────────────────────────────────────────────────────────
     // PlaylistFolder.Items changing from IReadOnlyList<PlaylistSummary> to IReadOnlyList<PlaylistNode> is a BREAKING
     // change for every flat consumer (Menus.AddToPlaylistItem, the Classic playlist list, LibraryStore.Playlists).

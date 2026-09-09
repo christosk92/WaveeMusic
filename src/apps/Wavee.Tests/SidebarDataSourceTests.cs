@@ -34,7 +34,6 @@ public class SidebarDataSourceTests
     sealed class StubSource : SidebarDataSourceBase
     {
         readonly List<SidebarLibraryEntry> _rows = new();
-        public bool Throw;
         public int SchemaVersion = 1;
         public int Fills;
 
@@ -54,7 +53,6 @@ public class SidebarDataSourceTests
         public override int Fill(List<SidebarLibraryEntry> into, in SidebarSourceRequest request)
         {
             Fills++;
-            if (Throw) throw new InvalidOperationException("boom");
             for (int i = 0; i < _rows.Count; i++) into.Add(_rows[i]);
             return _rows.Count;
         }

@@ -630,8 +630,11 @@ static class HomeModuleLayout
     };
 
     /// <summary>Per-card row height, for the estimator. These are the heights the skins actually produce (content + the
-    /// card's own vertical padding), not guesses.</summary>
-    public static float HeroHeight(float width) => HomeHeroLayout.HeightFor(width);
+    /// card's own vertical padding), not guesses. Viewport-aware: <paramref name="pageViewportHeight"/> and
+    /// <paramref name="hasPulse"/> must be the SAME inputs the renderer's own <c>HomeHeroLayout.For</c> call resolves,
+    /// or the estimate and the render disagree and the measured list re-pins its scroll anchor mid-resize.</summary>
+    public static float HeroHeight(float width, float pageViewportHeight, bool hasPulse, HomeHeroTier previousTier)
+        => HomeHeroLayout.HeightFor(width, pageViewportHeight, hasPulse, previousTier);
 
     public static float ShelfCardHeight(float cardW) => MediaCard.ShelfHeight(cardW);
 
@@ -687,11 +690,12 @@ static class HomeModuleLayout
     };
 
     /// <summary>The rendered height of a module's CONTENT (no head) at this width.</summary>
-    public static float ContentExtent(HomeGroupKind kind, float width, int count)
+    public static float ContentExtent(HomeGroupKind kind, float width, int count,
+        float heroPageViewportHeight = 0f, bool heroHasPulse = false, HomeHeroTier heroPreviousTier = HomeHeroTier.Wide)
     {
         int shown = Shown(kind, count);
         if (shown <= 0) return 0f;
-        if (kind == HomeGroupKind.Hero) return HeroHeight(width);
+        if (kind == HomeGroupKind.Hero) return HeroHeight(width, heroPageViewportHeight, heroHasPulse, heroPreviousTier);
         if (kind is HomeGroupKind.Recents or HomeGroupKind.PodcastShelf or HomeGroupKind.DiscoverFeed)
             return ShelfExtent(width);
         if (kind == HomeGroupKind.Featured) return FeaturedExtent(width, shown);

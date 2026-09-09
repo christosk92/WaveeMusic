@@ -339,6 +339,10 @@ sealed class SpotifyOnlineCatalog : IOnlineCatalog, IDisposable
         // back: the filter is a dictionary probe on the URIs the composed feed actually depends on, and the bump only
         // wakes a Home read that is TTL-cached and re-decides for itself. A rewrite that changes nothing therefore
         // costs one cache-hit recompose, not a network fetch.
+        // Hydrated(uri) answers "the feed carries this daylist", not "a requery was claimed for it" — a detail page
+        // rewriting the header is exactly this event, and it must wake Home the moment it happens rather than wait
+        // for the 60 s poll to notice (#105: the detail page's own nameChanged rewrite went unseen because Hydrated
+        // used to mean the narrower thing).
         void OnStoreChanged(Wavee.Backend.StoreChange change)
         {
             if (change.Uri.Length == 0) return;   // a bulk wave names no uri and says nothing about a specific header

@@ -45,7 +45,7 @@ public class CollectionFetcherTests
                 hasPending, new WaveeLogger(Log, "sync"), () => nowMs);
         }
 
-        public IEnumerable<string> Events(string eventId) => Log.Entries.Where(e => e.EventId == eventId).Select(e => e.EventId);
+        public IEnumerable<string> Events(string eventId) => Log.Entries.Where(e => e.EventId == eventId).Select(_ => eventId);
         public string SentSet(int i) => Col.PageRequest.Parser.ParseFrom(Requests[i].Body).Set;
         public string SentPageToken(int i) => Col.PageRequest.Parser.ParseFrom(Requests[i].Body).PaginationToken;
     }
@@ -112,7 +112,7 @@ public class CollectionFetcherTests
     public async Task FetchWireSet_UnknownWireSet_Throws()
     {
         var rig = new Rig((_, _) => Fail());
-        await Assert.ThrowsAsync<ArgumentException>(() => rig.Fetcher.FetchWireSetAsync("ylpin", TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => rig.Fetcher.FetchWireSetAsync("artistban", TestContext.Current.CancellationToken));
         Assert.Empty(rig.Requests);
     }
 

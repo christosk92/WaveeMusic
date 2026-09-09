@@ -93,8 +93,8 @@
     <Compile Include="..\Wavee\Backend\**\*.cs" />
     <!-- The REAL production VirtualCollection<T> (portable, Signals-only), source-included so DiscographyPaginationTests
          can exercise its provisional-seed reconciliation directly. Its lone dependency (FluentGpu.Signals.Signal<T>) is
-         satisfied by VirtualCollectionSignalShim.cs — so we test the real reconciliation code without referencing the
-         FluentGpu.Engine assembly (which would shadow the source-included Backend's Channel / DealerRouter). -->
+         satisfied by the engine's real Signal<T>/IReadSignal<T>, already in the compilation transitively via the
+         FluentGpu.WindowsApi -> FluentGpu.Engine project reference below. -->
     <Compile Include="$(EngineRoot)src\FluentGpu.Controls\VirtualCollection.cs" />
     <!-- The toast de-duplication RULE (pure value function, zero dependencies), source-included so
          ToastCoalescingTests pins "two Shows that mean the same thing are one card" without standing up a window. -->
@@ -116,6 +116,10 @@
     <Compile Include="..\Wavee\Features\Feedback\ReportKindIndex.cs" />
     <!-- the track list's Loading | Empty | NoMatch | Rows decision (BCL only) — PlaylistListStateTests -->
     <Compile Include="..\Wavee\Features\Detail\PlaylistListState.cs" />
+    <!-- the "Recommended songs" section's one fetch decision: Idle/Loading/Loaded/Failed x armed x fingerprint x force
+         -> None/Fetch/Supersede, plus the order-insensitive membership fingerprint (System + Wavee.Core only) —
+         RecsRefetchPolicyTests -->
+    <Compile Include="..\Wavee\Features\Detail\RecsRefetchPolicy.cs" />
     <!-- home artist-row Mixview width tier + hysteresis (BCL only) — HomeArtistRowLayoutTests -->
     <Compile Include="..\Wavee\Features\Home\HomeArtistRowLayout.cs" />
     <!-- the pre-session/empty/ready classification for the home LANDING feed (System only) — split out so
@@ -137,6 +141,9 @@
          PlaylistPageNoticeRulesTests drive the real decisions. -->
     <Compile Include="..\Wavee\Features\Detail\PlaylistEditErrorKinds.cs" />
     <Compile Include="..\Wavee\Features\Detail\PlaylistPageNoticeRules.cs" />
+    <!-- The I4 "still syncing with Spotify" chip rule: PlaylistResyncQueue.Entry -> PlaylistSyncHealth (System +
+         the Backend entry record only). PlaylistSyncHealthRulesTests pins it. -->
+    <Compile Include="..\Wavee\Features\Detail\PlaylistSyncHealthRules.cs" />
     <!-- DetailPage's initial-load Title/Cover merge rule (System + Wavee.Core only) — the stale-daylist-header fix's
          cause 1: prefer the fresh nav preview over the not-yet-revalidated store row for a ROLLING-IDENTITY container
          only. DetailHeaderMergeRulesTests. -->
@@ -233,12 +240,16 @@
          RecentsViewTests drive the REAL rules without a viewport, a service or a clock. -->
     <Compile Include="..\Wavee\Features\Recents\RecentsView.cs" />
     <!-- the sidebar's engine-free model/data/persistence layer (System + Wavee.Core only). ShellNavDestTests carries
-         its own minimal Icons/Route shims; Signal<T> is satisfied by VirtualCollectionSignalShim.cs (see above). -->
+         its own minimal Icons/Route shims; Signal<T> is the real engine type (see above). -->
     <Compile Include="..\Wavee\Features\Sidebar\SidebarDesign.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\SidebarDesignGating.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\SidebarPaneInvariant.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\SidebarPinStore.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\Data\*.cs" />
+    <!-- The Spotify ylpin↔sidebar-pin bridge (docs/plans/wavee/pin-spotify-sync-implementation.md §1.5). Engine-free
+         apart from the store/mutation seams (Backend is already source-included above) and the IAppSettings shim, so
+         SidebarPinSyncTests drives the real bridge with an InMemoryStore + a recording IPinMutations fake. -->
+    <Compile Include="..\Wavee\App\SidebarPinSync.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\Persistence\*.cs" />
     <!-- O3 — the nav band's PURE half: how the customizable shortcut band (SidebarCustomLayout.EffectiveTopBar) shapes
          into tiles at its new sidebar render site (order, empty-collapse, the four tile shapes, the tile → route rule
@@ -247,7 +258,7 @@
          (Shared\SidebarNavBand.cs) is engine-bound and is deliberately NOT included, exactly like the rest of Shared\. -->
     <Compile Include="..\Wavee\Features\Sidebar\Shared\SidebarNavBandModel.cs" />
     <!-- The app's ONE developer-surface switch. Its only dependencies are the IAppSettings shim above and
-         FluentGpu.Signals.Signal<T> (VirtualCollectionSignalShim), so it compiles here without an engine reference —
+         FluentGpu.Signals.Signal<T> (the real engine type, transitively referenced), so it compiles here —
          which is what lets the sidebar's built-in document, the customizer palette and DeveloperModeTests all drive the
          REAL gate instead of a copy of it. -->
     <Compile Include="..\Wavee\App\DeveloperMode.cs" Link="DeveloperMode.cs" />
@@ -278,6 +289,11 @@
          drive the REAL grammar instead of a renderer copy of it. -->
     <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3ChipStrip.cs" />
     <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3SearchRules.cs" />
+    <!-- Library V3.1: two more PURE halves — the header row's Priority+ ladder (inline search / folded "+" thresholds) and
+         the lens row's shape (which slice, the page link, the count/sort/view controls). System-only, so
+         LibraryV3HeaderRulesTests and LibraryV3LensRulesTests drive the REAL rules. -->
+    <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3HeaderRules.cs" />
+    <Compile Include="..\Wavee\Features\Sidebar\Modes\LibraryV3\LibraryV3LensRules.cs" />
     <!-- the full-page customizer's PURE model (tier ladder + palette table/filter + outline flattening/drag + the
          display projection + the opaque extension-config rewriter). Engine-free by construction, exactly like Data\
          above, so SidebarCustomizerLayoutTests drive the REAL rules. The rest of Features\Sidebar\Curated\ is
@@ -438,7 +454,7 @@
     <Compile Include="..\Wavee\App\ActivityUndo.cs" />
     <!-- The engine-free core of the context-menu action system (Wavee.Core + BCL only) — Actions/*Tests drive the
          selection semantics, link building, and enablement rules. SelectionModel (portable, Signals-only) rides the
-         same VirtualCollectionSignalShim; TrackTargetResolver is the one file that consumes it. -->
+         real engine Signal<T>; TrackTargetResolver is the one file that consumes it. -->
     <Compile Include="..\Wavee\Actions\ActionId.cs" />
     <Compile Include="..\Wavee\Actions\ActionTarget.cs" />
     <Compile Include="..\Wavee\Actions\ActionRules.cs" />
@@ -504,8 +520,8 @@
     <Compile Include="..\Wavee\SpotifyLive\ConcertPathfinderMapper.cs" />
     <Compile Include="..\Wavee\SpotifyLive\SpotifyConcertService.cs" />
     <!-- The cover-colour plane + its getDynamicColorsByUris decoder. The plane's only engine dependency is
-         Signal<int>/IReadSignal<int>, which VirtualCollectionSignalShim.cs already stands in for — so this compiles
-         here WITHOUT a FluentGpu.Engine reference, exactly like the source-included VirtualCollection. -->
+         Signal<int>/IReadSignal<int>, satisfied by the real engine type via the transitive FluentGpu.WindowsApi
+         reference, exactly like the source-included VirtualCollection. -->
     <Compile Include="..\Wavee\SpotifyLive\CoverColorPlane.cs" />
     <Compile Include="..\Wavee\SpotifyLive\CoverColorFiller.cs" />
     <!-- …plus the boundary mapper that turns those roles into chrome colours, so CoverAccentDerivationTests pins the
@@ -560,8 +576,8 @@
          ModuleHostServicesSpotifyTests drive the REAL registration + permission gate over the in-memory module. -->
     <Compile Include="..\Wavee\SpotifyLive\LiveConnect.HostServices.cs" />
     <!-- The app-update + release-notes services. All four are engine-free by construction: the updater takes its
-         metered probe and its url-opener as delegates, the notes store's only FluentGpu type is Signal<T> (the shim
-         above), and the toast decision table's is the InfoBarSeverity shim. AppInstallerUpdateServiceTests /
+         metered probe and its url-opener as delegates, the notes store's only FluentGpu type is Signal<T> (the real
+         engine type), and the toast decision table's is the InfoBarSeverity shim. AppInstallerUpdateServiceTests /
          ReleaseNotesStoreTests / AppUpdateToastsTests drive the REAL services over ScriptedHttpHandler + a fake
          IPackageUpdater. AppVersion comes along because Backend\Spotify\HttpPools.cs stamps its user-agent from it. -->
     <Compile Include="..\Wavee\App\AppVersion.cs" />

@@ -105,7 +105,7 @@ public sealed class SidebarRowGeometryTests
 
     [Fact]
     public void ClassicHeight_IsTheCozyWithSubtitleHeight()
-        => Assert.Equal(SidebarRowGeometry.HeightFor(SidebarDensity.Cozy, true), SidebarRowGeometry.ClassicHeight);
+        => Assert.Equal(SidebarRowGeometry.ClassicHeight, SidebarRowGeometry.HeightFor(SidebarDensity.Cozy, true));
 
     // (SidebarRowMetrics — the engine-bound facade that now forwards to this ladder — lives in Shared/, which the tests
     // deliberately do not source-include, so its delegation cannot be asserted here. It is one-line forwarding by
@@ -268,13 +268,80 @@ public sealed class SidebarRowGeometryTests
     public void GridFallbackColumns_TreatsANonPositivePlannedCountAsOne(int planned)
         => Assert.Equal(1, SidebarRowGeometry.GridFallbackColumns(planned, 2000f, 8f, 40f));
 
-    // ── pin glyph (issue #85, H1) ─────────────────────────────────────────────────────────────────────────────────────
+    // ── pin mark (issue #85, H1) — whether a row draws one at all, Cluster's 12-DIP glyph AND Slot's 10-DIP mark ────────
 
     [Theory]
-    [InlineData(true, false, true)]    // a pinned, non-track entry draws the glyph
+    [InlineData(true, false, true)]    // a pinned, non-track entry draws the mark
     [InlineData(false, false, false)]  // not pinned: nothing to show
     [InlineData(true, true, false)]    // a track is never pinnable (locked decision 4) even if IsPinned is somehow set
     [InlineData(false, true, false)]
     public void ShowsPinGlyph_IsPinnedAndNeverATrack(bool isPinned, bool isTrack, bool expected)
         => Assert.Equal(expected, SidebarRowGeometry.ShowsPinGlyph(isPinned, isTrack));
+
+    // ── W4 — SidebarRowStyle, the one trailing slot, and the Slot pin mark ───────────────────────────────────────────
+
+    [Fact]
+    public void RowStyle_ClusterIsTheDefault_SoAnUnstampedSpecRendersAsBefore()
+    {
+        // The struct-default polarity rule (pitfalls.md "Struct defaults and polarity"): an unstamped
+        // SidebarRowSpec.Style — every caller outside SidebarPaneSlot, and any test fixture that never sets it —
+        // must resolve to the LANDED anatomy, never the new one.
+        Assert.Equal(SidebarRowStyle.Cluster, default(SidebarRowStyle));
+        Assert.Equal((byte)0, (byte)SidebarRowStyle.Cluster);
+        Assert.Equal((byte)1, (byte)SidebarRowStyle.Slot);
+    }
+
+    [Fact]
+    public void TrailingSlot_Is28_AndSitsInsideTheRowsOwnTrailingPadding()
+    {
+        Assert.Equal(28f, SidebarRowGeometry.TrailingSlotWidth);
+        Assert.Equal(42f, SidebarRowGeometry.TrailingLaneWidth);
+        Assert.Equal(SidebarRowGeometry.LeadingGap + SidebarRowGeometry.TrailingSlotWidth + SidebarRowGeometry.RowInsetRight,
+                     SidebarRowGeometry.TrailingLaneWidth);
+        // The slot's right edge lands PaneEdge + RowInsetRight from the pane's outer edge — clear of the 12-DIP
+        // overlay scrollbar that rides on top of the list.
+        Assert.True(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.RowInsetRight >= 12f);
+    }
+
+    [Theory]
+    [InlineData(true, true, SidebarTrailingContent.Chevron)]    // a folder chevron always wins — a folder is never Playing
+    [InlineData(true, false, SidebarTrailingContent.Chevron)]
+    [InlineData(false, true, SidebarTrailingContent.Equalizer)]
+    [InlineData(false, false, SidebarTrailingContent.Empty)]
+    public void TrailingAtRest_ChevronThenEqualizerThenEmpty(bool hasChevron, bool playing, SidebarTrailingContent expected)
+        => Assert.Equal(expected, SidebarRowGeometry.TrailingAtRest(hasChevron, playing));
+
+    [Theory]
+    [InlineData(false, true, true)]    // a menu row with no chevron swaps to "…" on hover
+    [InlineData(false, false, false)]  // no menu at all: nothing to swap to
+    [InlineData(true, true, false)]    // a folder keeps its chevron — its menu stays right-click / the Menu key
+    [InlineData(true, false, false)]
+    public void HoverShowsOverflow_OnlyOnAMenuRowWithoutAChevron(bool hasChevron, bool showsOverflow, bool expected)
+        => Assert.Equal(expected, SidebarRowGeometry.HoverShowsOverflow(hasChevron, showsOverflow));
+
+    [Theory]
+    [InlineData(true, true, SidebarPinMark.BeforeSubtitle)]   // pinned, subtitle visible: the mark leads the subtitle line
+    [InlineData(true, false, SidebarPinMark.AfterTitle)]      // pinned, no subtitle: the mark rides right after the title
+    [InlineData(false, true, SidebarPinMark.None)]
+    [InlineData(false, false, SidebarPinMark.None)]
+    public void PinMarkPlacement_LeadsTheSubtitleElseFollowsTheTitle(bool pinned, bool subtitleVisible, SidebarPinMark expected)
+        => Assert.Equal(expected, SidebarRowGeometry.PinMarkPlacement(pinned, subtitleVisible));
+
+    [Fact]
+    public void PinMark_IsTenDipWithAThreeAndAFourGap()
+    {
+        Assert.Equal(10f, SidebarRowGeometry.PinMarkSize);
+        Assert.Equal(3f, SidebarRowGeometry.PinMarkSubtitleGap);
+        Assert.Equal(4f, SidebarRowGeometry.PinMarkTitleGap);
+    }
+
+    [Fact]
+    public void PinMark_FollowsTheTitleAtCompact_WhateverTheSubtitleSays()
+    {
+        // Compact suppresses subtitles outright (SubtitleVisible's own rule) — so a pinned row at Compact density
+        // always folds its mark after the title, never "before" a subtitle line that will never actually render.
+        bool subtitleVisible = SidebarRowGeometry.SubtitleVisible(SidebarDensity.Compact, "12 songs");
+        Assert.False(subtitleVisible);
+        Assert.Equal(SidebarPinMark.AfterTitle, SidebarRowGeometry.PinMarkPlacement(true, subtitleVisible));
+    }
 }

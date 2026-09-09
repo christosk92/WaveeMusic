@@ -128,7 +128,7 @@ public class QueueOrderTests
 
         var idless = new QueueEntry(QueueItemId.None, "e7", T("x"), QueueBucket.UserQueue, QueueProvider.Queue, false);
         var mixed = new List<QueueEntry> { q[0], idless };
-        Assert.Equal(1, QueueOrder.Remove(mixed, idless).Count);
+        Assert.Single(QueueOrder.Remove(mixed, idless));
     }
 
     [Fact]

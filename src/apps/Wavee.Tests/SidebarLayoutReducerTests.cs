@@ -1445,12 +1445,13 @@ public sealed class SidebarLayoutReducerTests
     public void AddTopBarItem_EnforcesTheSixItemCap()
     {
         var l = Doc(Sec("sec_p", SidebarSectionKind.Pinned));
-        string[] keys = ["liked", "albums", "artists", "podcasts", "local"];   // + the built-in home == 6
+        // W7: "local" (Local Files, retired) swapped for "history" to keep this a five-item band + the built-in home == 6.
+        string[] keys = ["liked", "albums", "artists", "podcasts", "history"];
         for (int i = 0; i < keys.Length; i++)
             l = Apply(l, new AddTopBarItem(TopRoute(keys[i]), int.MaxValue)).Layout;
 
         Assert.Equal(SidebarLayoutReducer.MaxTopBarItems, l.EffectiveTopBar.Count);
-        AssertRejected(l, new AddTopBarItem(TopRoute("history"), 0), SidebarRejectReason.SectionCapReached);
+        AssertRejected(l, new AddTopBarItem(TopRoute("recents"), 0), SidebarRejectReason.SectionCapReached);
     }
 
     [Fact]

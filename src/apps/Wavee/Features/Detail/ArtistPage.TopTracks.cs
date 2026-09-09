@@ -42,10 +42,13 @@ sealed partial class ArtistPage : Component
         {
             bool wide = TopBandWide(w);
             string popTitle = Loc.Get(Strings.Artist.TopTracks);
-            Element tracks = Embed.Comp(() => new ArtistPopular(popular, uri, bridge, svc, popTitle, accent))
+            bool hasFeatured = pinned is not null || upcoming is { IsUpcoming: true };
+            // The chart column's own width: TopBand gives it Grow 2 against the rail's Grow 1 (a ~2:1 split, not
+            // exactly ⅔ once the XL gap between them is accounted for, close enough for the row-density threshold).
+            float bandWidth = hasFeatured && wide ? MathF.Max(1f, w * (2f / 3f)) : w;
+            Element tracks = Embed.Comp(() => new ArtistPopular(popular, uri, bridge, svc, popTitle, accent, bandWidth))
                 with { SkeletonProxy = () => ArtistPopular.SkeletonShape(popular, popTitle, showTrackArtwork, classic) };
             Element featured = FeaturedColumn(pinned, artistImage, artistBackground, artistName, upcoming, go, play, accent, wide);
-            bool hasFeatured = pinned is not null || upcoming is { IsUpcoming: true };
 
             if (!hasFeatured)
                 return new BoxEl { Direction = 1, Children = [tracks] };

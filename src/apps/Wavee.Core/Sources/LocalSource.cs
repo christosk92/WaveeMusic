@@ -4,10 +4,12 @@ using System.Runtime.CompilerServices;
 namespace Wavee.Core;
 
 /// <summary>The local-files peer source (docs/plans/wavee/architecture.md §1, §2 "Local files", §7). Owns the <c>local:</c> /
-/// <c>wavee:local:*</c> uri namespace and serves a synthetic imported library — tracks with <see cref="TrackOrigin.Local"/>
-/// + <c>Source="local"</c> (direct-decode, no CDN/decrypt), surfaced as a single "Local Files" collection. It is the
-/// concrete proof of the seam's two-axis model: a SECOND catalog source the aggregate merges and routes to by uri,
-/// declaring <see cref="SourceCapabilities.LocalDecode"/>. A real source swaps in a folder scan + ATL tag read here.</summary>
+/// <c>wavee:local:*</c> uri namespace for local FILE playback — tracks with <see cref="TrackOrigin.Local"/> +
+/// <c>Source="local"</c> (direct-decode, no CDN/decrypt). It is the concrete proof of the seam's two-axis model: a
+/// SECOND catalog source the aggregate merges and routes to by uri, declaring <see cref="SourceCapabilities.LocalDecode"/>.
+/// A real source swaps in a folder scan + ATL tag read here.
+/// W7: the synthetic "Local Files" COLLECTION (a single playlist listing every local track) is retired — it was never
+/// actually live, and no nav surface opens <c>wavee:local:all</c> any more; see <see cref="GetPlaylistAsync"/>.</summary>
 public sealed class LocalSource : ICatalogSource
 {
     public string Id => "local";
@@ -19,17 +21,10 @@ public sealed class LocalSource : ICatalogSource
 
     static Task<T?> Ok<T>(T value) => Task.FromResult<T?>(value);
 
-    // The whole local library presented as one "Local Files" playlist (the sidebar's Local row opens it). User-owned +
-    // editable in principle (a real local source can rename/reorder its own lists); the cover is a generated gradient.
+    // W7: the "Local Files" collection playlist is retired (no page opens it any more) — this source has no playlist
+    // to hand back, like every other single-item read below with nothing to serve.
     public Task<Playlist?> GetPlaylistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-    {
-        var tracks = FakeData.LocalTracks();
-        return Ok(new Playlist("local-all", uri, "Local Files", "Music imported from this computer.", "On this device",
-            null, tracks.Count, tracks,
-            Owner: new Owner("local", "On this device", null),
-            Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: true, CanEditMetadata: true, IsCollaborative: false, IsOwner: true, Known: true),
-            Source: "local"));
-    }
+        => Task.FromResult<Playlist?>(null);
 
     public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
     {

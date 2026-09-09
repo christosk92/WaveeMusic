@@ -411,6 +411,12 @@ static class SidebarKeys
     // ── Curated ──
     public static readonly SettingKey<string> CuratedTemplateId = new("sidebar.curated.template", "wavee.curated.default");
     public static readonly SettingKey<bool> CuratedRailLabels = new("sidebar.curated.rail.labels", false);
+
+    // ── pin sync (docs/plans/wavee/pin-spotify-sync-implementation.md §1.7) ──
+    // One-time upgrade latch: false until the FIRST converged walk of the server's ylpin set has pushed every
+    // pre-existing syncable local pin up. Only once this is true may SidebarPinSync remove a local pin the server
+    // no longer has — before that, an empty/partial mirror (first boot, offline) must never look like "unpin everything".
+    public static readonly SettingKey<bool> PinsMigratedToServer = new("sidebar.pins.migratedToServer", false);
 }
 
 // IAppSettings backed by the engine's AppDataStore (HKCU registry, unpackaged). Every access is DEFENSIVE — a storage

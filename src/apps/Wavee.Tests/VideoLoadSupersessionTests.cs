@@ -52,7 +52,6 @@ public class VideoLoadSupersessionTests
         readonly object _g = new();
         readonly List<string> _log = new();
         public string LiveKey = "";
-        public TaskCompletionSource? ClearGate;
         public TaskCompletionSource? ApplyGate;
         public readonly List<long> ApplyEpochs = new();
         public readonly List<bool> ApplySawStaleness = new();
@@ -68,13 +67,13 @@ public class VideoLoadSupersessionTests
         public string[] Log { get { lock (_g) return _log.ToArray(); } }
         void Note(string s) { lock (_g) _log.Add(s); }
 
-        async Task ClearAsync(long epoch)
+        Task ClearAsync(long epoch)
         {
             Interlocked.Increment(ref ClearCalls);
             Note("clear:start:" + Volatile.Read(ref LiveKey));
-            if (ClearGate is { } gate) await gate.Task.ConfigureAwait(false);
             Volatile.Write(ref LiveKey, "");
             Note("clear:end");
+            return Task.CompletedTask;
         }
 
         async Task ApplyAsync(FakeSource src, long epoch)

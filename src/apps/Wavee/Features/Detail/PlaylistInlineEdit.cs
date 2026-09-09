@@ -187,6 +187,54 @@ static class PlaylistInlineEdit
         }
     }
 
+    /// <summary>The header's SYNC chip: the client cannot yet prove its copy of this playlist matches Spotify's head. A
+    /// sibling of the pending chip, deliberately separate: "pending" is about OUR edits not having landed; this is about
+    /// the SERVER's answer not having been folded — a torn /changes reply whose revalidation is taking too long or failed.</summary>
+    internal static Element SyncChip(string uri)
+        => Embed.Comp(() => new PlaylistSyncChip(uri)) with { Key = "pl-sync:" + uri };
+
+    sealed class PlaylistSyncChip : Component
+    {
+        readonly string _uri;
+        public PlaylistSyncChip(string uri) => _uri = uri;
+
+        public override Element Render()
+        {
+            var lib = UseContext(LibraryBridge.Slot);
+            var svc = UseContext(Services.Slot);
+            if (lib is null) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            var entry = lib.ResyncState(_uri).Value;            // subscribe → this uri only
+            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var health = PlaylistSyncHealthRules.Decide(entry, now);
+            // Re-render exactly when a still-pending entry crosses the threshold (no polling; the timer re-arms per entry).
+            var crossed = UseSignal(0);
+            long wait = PlaylistSyncHealthRules.MsUntilSyncing(entry, now);
+            UseTimeout(() => crossed.Value++, wait > 0 ? wait : 0f, DepKey.From(HashCode.Combine(entry.Phase, entry.SinceUtcMs, entry.Attempts)));
+            if (health == PlaylistSyncHealth.None) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+
+            bool failed = health == PlaylistSyncHealth.Failed;
+            var children = new List<Element>(3)
+            {
+                Ui.Icon(failed ? Icons.StatusWarning : Icons.Refresh, 12f, failed ? Tok.SystemFillCaution : Tok.TextTertiary),
+                new TextEl(Loc.Get(failed ? Strings.Detail.Edit.SyncFailed : Strings.Detail.Edit.SyncingWithSpotify))
+                    { Size = 11f, Weight = 600, Color = Tok.TextSecondary },
+            };
+            if (failed && svc?.RealSync is { } sync)
+                children.Add(Button.Create(Loc.Get(Strings.Detail.Edit.RetrySync),
+                    () => sync.Enqueue(new Wavee.Backend.Sync.SyncCommand(Wavee.Backend.Sync.SyncKind.ResyncRevalidate, _uri, Attempt: 1)),
+                    ButtonAppearance.Subtle, ControlSize.Small));
+
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Shrink = 0f,
+                Padding = new Edges4(8f, 3f, 10f, 3f), Corners = CornerRadius4.All(12f),
+                Fill = Tok.FillSubtleSecondary,
+                Enter = new EnterExit(Opacity: 0f, Active: true),
+                Children = children.ToArray(),
+            };
+        }
+    }
+
     static Element StatusChip(int status) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Shrink = 0f,
@@ -569,7 +617,9 @@ static class PlaylistInlineEdit
                     new BoxEl
                     {
                         Direction = 0, Width = _width, Gap = 6f, Justify = FlexJustify.End,
-                        Children = status != StatusIdle ? [StatusChip(status), PendingChip(uri)] : [PendingChip(uri)],
+                        Children = status != StatusIdle
+                            ? [StatusChip(status), PendingChip(uri), SyncChip(uri)]
+                            : [PendingChip(uri), SyncChip(uri)],
                     },
                 ],
             });

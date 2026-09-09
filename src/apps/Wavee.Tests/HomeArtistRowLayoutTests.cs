@@ -1,3 +1,4 @@
+using System;
 using Wavee.Features.Home;
 using Xunit;
 
@@ -78,12 +79,22 @@ public class HomeArtistRowLayoutTests
     }
 
     [Fact]
-    public void RampScaleFor_NeverShrinksBelowOne()
+    public void RampScaleFor_ClampsAtTheFloorForAVeryNarrowRow()
     {
-        // A narrow row (fitted column smaller than the ramp's own average box width) must not shrink the ramp — only
-        // stretching is in scope; the prototype's own sizing is the floor.
-        float scale = HomeArtistRowLayout.RampScaleFor(fittedColumnWidth: 40f, count: 10, podChrome: 8f);
+        // A very narrow row clamps at MinArtScale (0.5, roughly half the prototype ramp) rather than shrinking
+        // further — the pods stop shrinking and the row clips at the trailing edge instead of wrapping.
+        float scale = HomeArtistRowLayout.RampScaleFor(fittedColumnWidth: 20f, count: 10, podChrome: 8f);
         Assert.Equal(HomeArtistRowLayout.MinArtScale, scale);
+    }
+
+    [Fact]
+    public void RampScaleFor_ShrinksBelowOneForAModeratelyNarrowRow()
+    {
+        // Between the old floor (1) and the new one (0.5): the ramp now shrinks instead of clamping back up to the
+        // prototype's own sizing — this is the whole fix for "ten artists wrap on a narrow card".
+        float scale = HomeArtistRowLayout.RampScaleFor(fittedColumnWidth: 44f, count: 10, podChrome: 8f);
+        Assert.InRange(scale, HomeArtistRowLayout.MinArtScale, 1f);
+        Assert.Equal(44f / 59.8f, scale, 2);
     }
 
     [Fact]
@@ -134,6 +145,84 @@ public class HomeArtistRowLayoutTests
         Assert.Equal(76f * 1.25f, HomeArtistRowLayout.ArtSize(0, 1.25f), 3);
         Assert.Equal(60f * 1.25f, HomeArtistRowLayout.ArtSize(1, 1.25f), 3);
         Assert.Equal(46f * 1.25f, HomeArtistRowLayout.ArtSize(4, 1.25f), 3);
+    }
+
+    [Fact]
+    public void PodWidth_IsArtPlusChromeFlooredAtMinPodWidth()
+    {
+        Assert.Equal(84f, HomeArtistRowLayout.PodWidth(76f));
+        Assert.Equal(HomeArtistRowLayout.MinPodWidth, HomeArtistRowLayout.PodWidth(23f));   // 23+8=31 < the 40 floor
+        Assert.Equal(40f, HomeArtistRowLayout.PodWidth(32f));   // exactly at the floor
+    }
+
+    [Theory]
+    [InlineData(1f, 2)]
+    [InlineData(0.85f, 2)]
+    [InlineData(0.84f, 1)]
+    [InlineData(0.65f, 1)]
+    [InlineData(0.5f, 0)]
+    public void LabelLines_ShrinksThenHidesTheName(float scale, int expected)
+        => Assert.Equal(expected, HomeArtistRowLayout.LabelLines(scale));
+
+    [Theory]
+    [InlineData(1f, 20f)]
+    [InlineData(0.8f, 20f)]
+    [InlineData(0.7f, 16f)]
+    [InlineData(0.5f, 16f)]
+    public void BadgeSize_ShrinksUnderPressure(float scale, float expected)
+        => Assert.Equal(expected, HomeArtistRowLayout.BadgeSize(scale));
+
+    [Fact]
+    public void SlotHeight_IsRankOneSArtSize()
+        => Assert.Equal(HomeArtistRowLayout.ArtSize(0, 1.2f), HomeArtistRowLayout.SlotHeight(1.2f));
+
+    /// <summary>The whole guarantee behind "never wraps": for a range of realistic content widths, the scale the row
+    /// would actually compute (mirroring HomeModules.Artists' own arithmetic) lays out ten pods, at that scale, into
+    /// AT MOST ONE ROW's worth of overflow beyond the content width — RampScaleFor solves its scale against the
+    /// ramp's own AVERAGE box width (chrome included in the average, but each pod's own +8 chrome does not itself
+    /// shrink with the art), so a very narrow row can run the last pod a few DIP past the edge; ClipToBounds on the
+    /// podium (HomeModules.Artists) takes it from there. What must never happen is a SECOND line — this only checks
+    /// that no width, however narrow, produces an overflow anywhere near a whole extra pod's worth.</summary>
+    [Theory]
+    [InlineData(520f)]
+    [InlineData(640f)]
+    [InlineData(800f)]
+    [InlineData(1000f)]
+    public void TenPodsNeverOverflowByMoreThanOnePodWidth(float contentW)
+    {
+        const int count = 10;
+        const float podChrome = 8f;   // Spacing.S
+        const float gap = 8f;
+        float podiumContentW = MathF.Max(0f, contentW - 2f * 16f);   // 2*Spacing.M
+        float fittedColumnW = (podiumContentW - (count - 1) * gap) / count;
+        float scale = HomeArtistRowLayout.RampScaleFor(fittedColumnW, count, podChrome);
+
+        float total = 0f;
+        for (int i = 0; i < count; i++)
+            total += HomeArtistRowLayout.PodWidth(HomeArtistRowLayout.ArtSize(i, scale));
+        total += (count - 1) * gap;
+        Assert.True(total <= podiumContentW + HomeArtistRowLayout.MinPodWidth,
+            $"contentW={contentW}: ten pods at scale {scale} take {total}, content is only {podiumContentW}");
+    }
+
+    [Fact]
+    public void TenPodsFitExactlyOnceTheRowIsComfortablyWide()
+    {
+        // Above the ramp's own average box width (~59.8 DIP/pod at scale 1), the scaled footprint fits with room to
+        // spare — no clipping at all.
+        const int count = 10;
+        const float podChrome = 8f;
+        const float gap = 8f;
+        const float contentW = 1000f;
+        float podiumContentW = contentW - 2f * 16f;
+        float fittedColumnW = (podiumContentW - (count - 1) * gap) / count;
+        float scale = HomeArtistRowLayout.RampScaleFor(fittedColumnW, count, podChrome);
+
+        float total = 0f;
+        for (int i = 0; i < count; i++)
+            total += HomeArtistRowLayout.PodWidth(HomeArtistRowLayout.ArtSize(i, scale));
+        total += (count - 1) * gap;
+        Assert.True(total <= podiumContentW);
     }
 
     [Fact]

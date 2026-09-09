@@ -3,8 +3,9 @@ using Xunit;
 namespace Wavee.Tests;
 
 // W1 — the search host's morph logic is decided by LibraryV3SearchRules (System-only), never by the component that
-// renders it, so the Escape ladder / blur-close / open-width arithmetic are pinned here without an EditableText, a
-// signal or a frame.
+// renders it, so the Escape ladder / blur-close / shape rules are pinned here without an EditableText, a signal or a
+// frame. The width arithmetic (OpenWidth/TitleReserve/TrailingControlsWidth) is GONE — the open narrow field now
+// takes the whole row (LibraryV3HeaderRules.Resolve decides that, and this file's Resolve just reads its Shape).
 public sealed class LibraryV3SearchRulesTests
 {
     // ── Escape ladder ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -35,31 +36,14 @@ public sealed class LibraryV3SearchRulesTests
         Assert.False(LibraryV3SearchRules.ClosesOnBlur("blue"));
     }
 
-    // ── open width ────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── shape (delegates to LibraryV3HeaderRules) ────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void OpenWidth_IsThePaneMinusPaddingMinusThePillAndGap()
-    {
-        // 320 pane, 43 toolbar padding (LeadInset 27 + ContentLaneEnd 16) -> 320 - 43 - 28 - 4 = 245.
-        float width = LibraryV3SearchRules.OpenWidth(320f, 43f);
-        Assert.Equal(245f, width);
-    }
-
-    [Fact]
-    public void OpenWidth_NeverGoesBelowClosedWidth()
-    {
-        // A pane too narrow to fit the pill+gap must not yield a negative or shrinking host.
-        float width = LibraryV3SearchRules.OpenWidth(40f, 43f);
-        Assert.Equal(LibraryV3SearchRules.ClosedWidth, width);
-    }
-
-    [Fact]
-    public void Resolve_WidePane_IsInlineAndExpanded_WithALabelledPill()
+    public void Resolve_WidePane_IsInlineAndExpanded()
     {
         var wide = LibraryV3SearchRules.Resolve(LibraryV3SearchRules.InlineWidth, openedByUser: false, hasText: false);
         Assert.True(wide.Inline);
         Assert.True(wide.Expanded);
-        Assert.False(wide.SortIconOnly);
     }
 
     [Fact]
@@ -69,11 +53,10 @@ public sealed class LibraryV3SearchRulesTests
         var closed = LibraryV3SearchRules.Resolve(narrow, openedByUser: false, hasText: false);
         Assert.False(closed.Inline);
         Assert.False(closed.Expanded);
-        Assert.False(closed.SortIconOnly);            // 299 ≥ 280: the pill keeps its label while the field is a button
 
         var opened = LibraryV3SearchRules.Resolve(narrow, openedByUser: true, hasText: false);
+        Assert.False(opened.Inline);
         Assert.True(opened.Expanded);
-        Assert.True(opened.SortIconOnly);             // the field owns the row
 
         // A query typed while wide survives a drag past the threshold: text alone keeps the field expanded.
         var typed = LibraryV3SearchRules.Resolve(narrow, openedByUser: false, hasText: true);
@@ -81,20 +64,13 @@ public sealed class LibraryV3SearchRulesTests
     }
 
     [Fact]
-    public void Resolve_VeryNarrowPane_DropsThePillLabelEvenWhenClosed()
+    public void Resolve_AtTheBoundary_319IsNarrow_320IsInline()
     {
-        var tiny = LibraryV3SearchRules.Resolve(240f, openedByUser: false, hasText: false);
-        Assert.False(tiny.Expanded);
-        Assert.True(tiny.SortIconOnly);
-    }
+        var below = LibraryV3SearchRules.Resolve(319f, openedByUser: false, hasText: false);
+        Assert.False(below.Inline);
 
-    [Fact]
-    public void OpenWidth_AtTheFloorBoundary_IsExact()
-    {
-        // paneWidth - padH - pill - gap == ClosedWidth exactly: the floor must not clip a legitimate value.
-        float width = LibraryV3SearchRules.OpenWidth(
-            LibraryV3SearchRules.ClosedWidth + 43f + LibraryV3SearchRules.SortIconOnlyWidth + LibraryV3SearchRules.Gap,
-            43f);
-        Assert.Equal(LibraryV3SearchRules.ClosedWidth, width);
+        var at = LibraryV3SearchRules.Resolve(320f, openedByUser: false, hasText: false);
+        Assert.True(at.Inline);
+        Assert.True(at.Expanded);
     }
 }

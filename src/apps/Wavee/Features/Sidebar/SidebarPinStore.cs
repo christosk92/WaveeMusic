@@ -32,6 +32,13 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
     /// the store itself knows nothing about the document.</summary>
     public Action? OnChanged;
 
+    /// <summary>Raised for a USER-INTENT membership change only (<see cref="Pin"/> / <see cref="Insert"/> /
+    /// <see cref="Unpin"/>). Never by <see cref="ApplyRemote"/>, <see cref="LoadFrom"/>, <see cref="Move"/> or
+    /// <see cref="Touch"/> — that asymmetry is what keeps a server-originated change from echoing back as a write.
+    /// Set by <c>SidebarPinSync</c> (App/SidebarPinSync.cs); the store itself knows nothing about Spotify's ylpin set.
+    /// The bool is the target state: true = pinned (Pin/Insert), false = unpinned (Unpin).</summary>
+    public Action<SidebarPin, bool>? OnLocalPinChanged;
+
     /// <summary>Bumped on every accepted mutation — the render dep for every Pinned section and rail band.</summary>
     public IReadSignal<int> Version => _version;
 
@@ -67,6 +74,7 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
         _index[stored.Id] = _items.Count;
         _items.Add(stored);
         Bump();
+        OnLocalPinChanged?.Invoke(stored, true);
         return true;
     }
 
@@ -81,6 +89,7 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
         _items.Insert(at, stored);
         Reindex(at);
         Bump();
+        OnLocalPinChanged?.Invoke(stored, true);
         return true;
     }
 
@@ -89,11 +98,12 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
     {
         int at = IndexOf(pinId);
         if (at < 0) return -1;
-        string storedId = _items[at].Id;
+        var removed = _items[at];
         _items.RemoveAt(at);
-        _index.Remove(storedId);
+        _index.Remove(removed.Id);
         Reindex(at);
         Bump();
+        OnLocalPinChanged?.Invoke(removed, false);
         return at;
     }
 
@@ -128,7 +138,14 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
     }
 
     /// <summary>Replace the whole list from the loaded document (startup only). Skips null/empty and duplicate ids so a
-    /// hand-edited file can never produce two rows with one identity. Silent — no <see cref="OnChanged"/>.</summary>
+    /// hand-edited file can never produce two rows with one identity. Silent — no <see cref="OnChanged"/>.
+    ///
+    /// <para>W7: also drops a pin whose id names a RETIRED route (<see cref="SidebarPinId.IsRetiredRoute"/>) —
+    /// today that means a pin id of exactly <c>"local"</c>, left behind by the retired Local Files page. The test is the
+    /// explicit retired list, never "not pinnable": a bare id the store has never heard of is kept (rule 9). This is a
+    /// deliberate retirement PRUNE, not the general "missing entity renders disabled" rule (iron rule 9): an AppRoute
+    /// pin has no entity to resolve later and no menu offers it back, so keeping it around would only paint a dead row
+    /// forever. Entity pins (playlist/album/artist/show/folder/track) are never touched here.</para></summary>
     public void LoadFrom(IReadOnlyList<SidebarPin>? pins)
     {
         _items.Clear();
@@ -138,10 +155,46 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
             {
                 var p = Canonicalize(pins[i]);
                 if (string.IsNullOrEmpty(p.Id) || _index.ContainsKey(p.Id)) continue;
+                if (SidebarPinId.IsRetiredRoute(p.Id)) continue;
                 _index[p.Id] = _items.Count;
                 _items.Add(p);
             }
         _version.Value = _version.Peek() + 1;
+    }
+
+    /// <summary>Converge the SYNCABLE pins onto the server's membership without touching order, local-only pins, or the
+    /// local-change event. <paramref name="serverPins"/> is the server set already mapped to pin ids (+ display cache);
+    /// <paramref name="isSyncable"/> decides which local pins are eligible for removal at all. Adds are APPENDED in the
+    /// given order (the caller sorts by added_at ascending, so a batch of remote pins lands oldest-first); removals only
+    /// happen when <paramref name="removeMissing"/> is true — the caller gates that on "the server set has actually
+    /// converged once" (see <c>SidebarPinSync</c>). Returns true when anything changed; commits (<see cref="OnChanged"/>)
+    /// exactly once, and never raises <see cref="OnLocalPinChanged"/> — this is a server-originated change.</summary>
+    public bool ApplyRemote(IReadOnlyList<SidebarPin> serverPins, Func<string, bool> isSyncable, bool removeMissing)
+    {
+        bool changed = false;
+        var keep = new HashSet<string>(serverPins.Count, StringComparer.Ordinal);
+        for (int i = 0; i < serverPins.Count; i++)
+        {
+            var p = Canonicalize(serverPins[i]);
+            if (string.IsNullOrEmpty(p.Id)) continue;
+            keep.Add(p.Id);
+            if (IndexOf(p.Id) >= 0) continue;
+            _index[p.Id] = _items.Count;
+            _items.Add(p);
+            changed = true;
+        }
+        if (removeMissing)
+            for (int i = _items.Count - 1; i >= 0; i--)
+            {
+                var id = _items[i].Id;
+                if (!isSyncable(id) || keep.Contains(id)) continue;
+                _items.RemoveAt(i);
+                _index.Remove(id);
+                Reindex(i);
+                changed = true;
+            }
+        if (changed) Bump();          // version + OnChanged (persist) — deliberately NOT OnLocalPinChanged
+        return changed;
     }
 
     static SidebarPin Canonicalize(SidebarPin pin)

@@ -6,6 +6,14 @@ using Wavee.Core;
 
 namespace Wavee.Backend;
 
+/// <summary>The write-back half of the pin sync bridge (App/SidebarPinSync.cs): pin/unpin in Spotify's ylpin set.
+/// Implemented by <see cref="EngineMutationSource"/> so the bridge is testable with a recording fake — same shape
+/// as <c>IMutationSource.SetSavedAsync</c> minus the set inference (a pin is a pin whatever the entity kind).</summary>
+public interface IPinMutations
+{
+    Task SetPinnedAsync(string wireUri, bool pinned, CancellationToken ct = default);
+}
+
 // ── §7 — the thin SEAM ADAPTERS (engines → Wavee.Core facets) ────────────────────────────────────────────────────────
 // The plan's "facet adapters present the engines as the seam." These wire the store + mutation/session engines behind the
 // existing Wavee.Core interfaces, so the UI/aggregate consume them unchanged. (Catalog/Remote adapters follow the same
@@ -13,7 +21,7 @@ namespace Wavee.Backend;
 
 /// <summary>IMutationSource over the store + the Mutation engine: SetSavedAsync = optimistic Save + drain; the Saved set
 /// mirrors the store and emits on every change (the bridge mirrors it into an engine Signal).</summary>
-public sealed class EngineMutationSource : IMutationSource, IDisposable
+public sealed class EngineMutationSource : IMutationSource, IPinMutations, IDisposable
 {
     readonly IStore _store;
     readonly MutationEngine _mut;
@@ -55,6 +63,17 @@ public sealed class EngineMutationSource : IMutationSource, IDisposable
         else _mut.Save(SetForUri(uri), uri, saved);                        // optimistic + outbox; set inferred from the uri kind
         if (ScheduleDrain is { } viaLoop) { viaLoop(); return; }           // §6 — the loop drains, serialized with inbound
         await _mut.Drain(_transport, _ctx(), ct).ConfigureAwait(false);    // replay + reconcile (stub transport = succeeds)
+    }
+
+    /// <summary>Pin / unpin in Spotify's ylpin set (the "pins" logical set — <see cref="IPinMutations"/>). Same shape as
+    /// <see cref="SetSavedAsync"/> minus the set inference (a pin is a pin whatever the entity kind: a playlist, an
+    /// album, an artist, a show, or the Liked Songs collection), same drain routing. Deliberately NOT folded into
+    /// <see cref="AllSets"/>/<see cref="Saved"/> — a pinned album is not a saved album (§1.3).</summary>
+    public async Task SetPinnedAsync(string wireUri, bool pinned, CancellationToken ct = default)
+    {
+        _mut.Save("pins", wireUri, pinned);                                   // optimistic Pending row + durable outbox op
+        if (ScheduleDrain is { } viaLoop) { viaLoop(); return; }
+        await _mut.Drain(_transport, _ctx(), ct).ConfigureAwait(false);
     }
 
     // Incremental: a single change costs an O(1) IsSaved lookup, not an O(saved-set) rebuild + SetEquals on EVERY store

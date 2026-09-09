@@ -159,6 +159,13 @@ public class MutationOpRebaseTests
         Assert.Equal("spotify:playlist:p", Assert.Single(resync.TakeAll()));    // queued for a full revalidation
     }
 
+    // ASSUMPTION FLAGGED (playlist-sync-convergence plan §2.7, not yet re-validated by a live capture): this pins
+    // field 20 (changes_require_resync) as meaning "the accepted delta cannot be expressed against your base —
+    // refetch", per the 2026-08-15 capture cited at SpotifyLive/Protos/playlist4_external.proto:222-225. Two readings
+    // stay open — (i) set only when the base is missing/stale (the one this test encodes), or (ii) set on every
+    // /changes reply, in which case every edit costs a full GET and the fix is to adopt resulting_revisions[^1] when
+    // the reply also carries a well-formed head and our own ops are the only delta. Do not change this assertion
+    // until that capture exists; if reading (ii) holds, add the adopt-head arm and a second test for it.
     [Fact]
     public async Task Changes200_ChangesRequireResync_MarksDirtyNotAdvance()
     {
@@ -175,7 +182,51 @@ public class MutationOpRebaseTests
         await eng.Drain(new ScriptedTransport(_ => new Resp(true, body, 200)), SessionContext.LoggedOut);
 
         Assert.Equal(Rev24(1), store.PlaylistRevision("spotify:playlist:p"));
+        Assert.Equal(PlaylistResyncQueue.Phase.Marked, resync.Get("spotify:playlist:p").Phase);
         Assert.Equal("spotify:playlist:p", Assert.Single(resync.TakeAll()));
+    }
+
+    // §2.1 — a 2xx /changes reply with NO body at all cannot be folded: neither a revision, nor ops, nor contents.
+    // Never a resync mark (there is nothing "torn" to revalidate) — just a stored revision that stays where it was.
+    // The observable in production is the ChangesEmptyBody Warn log; here we pin the store/queue state it protects.
+    [Fact]
+    public async Task Changes200_EmptyBody_DoesNotAdvance_AndDoesNotMark()
+    {
+        var store = new InMemoryStore();
+        store.SetMembership("spotify:playlist:p", new[] { M("a") }, Rev24(1));
+        var resync = new PlaylistResyncQueue();
+        var eng = new MutationEngine(store, new IMutationStrategy[]
+        {
+            new SetReplayStrategy(), new OpRebaseStrategy(store, () => "https://spclient.wg.spotify.com", resync),
+        });
+
+        eng.Edit("spotify:playlist:p", new[] { new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: new[] { M("q") }) });
+        await eng.Drain(new ScriptedTransport(_ => new Resp(true, Array.Empty<byte>(), 200)), SessionContext.LoggedOut);
+
+        Assert.Equal(Rev24(1), store.PlaylistRevision("spotify:playlist:p"));   // unchanged — nothing to adopt
+        Assert.Equal(PlaylistResyncQueue.Phase.None, resync.Get("spotify:playlist:p").Phase);   // not a torn reply — not marked
+    }
+
+    // A parseable /changes reply carrying neither resulting_revisions nor a sync_result/contents: the fold has nothing
+    // to adopt and nothing to apply. Same consequence as the empty-body case — the revision cannot advance — but this
+    // path is NOT torn either, so it is not queued for revalidation (the new ChangesRevisionMissing Warn covers it).
+    [Fact]
+    public async Task Changes200_NoResultingRevision_DoesNotAdvance()
+    {
+        var store = new InMemoryStore();
+        store.SetMembership("spotify:playlist:p", new[] { M("a") }, Rev24(1));
+        var resync = new PlaylistResyncQueue();
+        var eng = new MutationEngine(store, new IMutationStrategy[]
+        {
+            new SetReplayStrategy(), new OpRebaseStrategy(store, () => "https://spclient.wg.spotify.com", resync),
+        });
+
+        eng.Edit("spotify:playlist:p", new[] { new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: new[] { M("q") }) });
+        var body = ChangesResponse(resultingRevision: null);   // no resulting_revisions, no sync_result, no contents
+        await eng.Drain(new ScriptedTransport(_ => new Resp(true, body, 200)), SessionContext.LoggedOut);
+
+        Assert.Equal(Rev24(1), store.PlaylistRevision("spotify:playlist:p"));
+        Assert.Equal(PlaylistResyncQueue.Phase.None, resync.Get("spotify:playlist:p").Phase);
     }
 
     // The common case: the server accepted exactly what we sent, so there is nothing to fold — just take the head.

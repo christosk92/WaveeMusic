@@ -249,7 +249,14 @@ public sealed class OpRebaseStrategy : IMutationStrategy
     internal static void CaptureChangesResponse(IStore store, PlaylistResyncQueue resync, string uri, byte[] body)
     {
         var bytes = SpotifyZstd.MaybeDecompressZstd(body);
-        if (bytes.Length == 0) return;
+        if (bytes.Length == 0)
+        {
+            // A 2xx with no body is a reply we cannot fold: no revision to adopt, no ops, no contents. Not an error on
+            // the wire — but it leaves the stored revision where it was (possibly null), and the NEXT edit will post
+            // that base. Never silent: this is exactly how a playlist ends up with base_revision = null forever.
+            PlaylistMutationDiagnostics.ChangesEmptyBody(uri, body.Length);
+            return;
+        }
         Pl.SelectedListContent slc;
         try { slc = Pl.SelectedListContent.Parser.ParseFrom(bytes); }
         catch
@@ -261,20 +268,29 @@ public sealed class OpRebaseStrategy : IMutationStrategy
         if (slc.MultipleHeads || slc.ChangesRequireResync)
         {
             resync.Mark(uri);
-            PlaylistMutationDiagnostics.SyncResultTorn(uri, slc.MultipleHeads ? "multiple-heads" : "requires-resync");
+            PlaylistMutationDiagnostics.SyncResultTorn(uri, slc.MultipleHeads ? "multiple-heads" : "requires-resync",
+                store.PlaylistRevision(uri) is null);
             return;
         }
 
         var rev = PlaylistWireMapper.LastResultingRevision(slc);
         bool storable = PlaylistRevisions.IsWellFormed(rev);
-        if (!storable && rev is not null) PlaylistMutationDiagnostics.RootlistBadRevision(rev.Length, "changes-response");
+        if (!storable)
+        {
+            // Both halves are loud now. A malformed head keeps the old RootlistBadRevision line (length + source); a
+            // MISSING head is the new one — the reply carried neither resulting_revisions nor revision, so whatever this
+            // fold does below, the stored revision cannot advance.
+            if (rev is not null) PlaylistMutationDiagnostics.RootlistBadRevision(rev.Length, "changes-response");
+            else PlaylistMutationDiagnostics.ChangesRevisionMissing(uri, bytes.Length,
+                     hasSyncResult: slc.SyncResult is not null, hasContents: slc.Contents is { Items.Count: > 0 });
+        }
 
         IReadOnlyList<PlaylistOp> syncOps;
         try { syncOps = slc.SyncResult is { } sync ? PlaylistWireMapper.MapOps(sync.Ops) : Array.Empty<PlaylistOp>(); }
         catch (ArgumentOutOfRangeException)   // an op shape this client cannot express — converge by refetching
         {
             resync.Mark(uri);
-            PlaylistMutationDiagnostics.SyncResultTorn(uri, "unsupported-op");
+            PlaylistMutationDiagnostics.SyncResultTorn(uri, "unsupported-op", store.PlaylistRevision(uri) is null);
             return;
         }
         if (syncOps.Count > 0)
@@ -284,7 +300,7 @@ public sealed class OpRebaseStrategy : IMutationStrategy
             catch (ArgumentOutOfRangeException)
             {
                 resync.Mark(uri);
-                PlaylistMutationDiagnostics.SyncResultTorn(uri, "torn-apply");
+                PlaylistMutationDiagnostics.SyncResultTorn(uri, "torn-apply", store.PlaylistRevision(uri) is null);
                 return;   // revision NOT advanced — we did not apply these ops
             }
             store.SetMembership(uri, list, storable ? rev : store.PlaylistRevision(uri));

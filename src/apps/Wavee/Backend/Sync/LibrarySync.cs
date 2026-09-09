@@ -38,6 +38,9 @@ public enum SyncKind : byte
     ApplyPlaylistSignal, HydratePlaylist, PermissionPush, SeedPermission,
     /// <summary>The collection drift check over every wire set. <c>Uri</c> carries the trigger ("reconnect"/"periodic").</summary>
     ReconcileCollections,
+    /// <summary>I4 retry: revalidate ONE torn uri (the loop's scheduled backoff retry, or the page's Retry button).
+    /// <c>Uri</c> carries the playlist, <c>Attempt</c> the attempt number (0 = first pass right after a drain).</summary>
+    ResyncRevalidate,
 }
 
 /// <summary>A queued command for the sync loop. A readonly record struct through the unbounded channel (no boxing).
@@ -59,6 +62,9 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
     const int SettleMs = 250;                                                                 // dealer-burst settle (§2.2)
     static readonly TimeSpan OpenRevalidateWindow = TimeSpan.FromMinutes(5);                  // on-open SWR window (§2.2)
     static readonly TimeSpan SetRetryDelay = TimeSpan.FromSeconds(30);                        // per-set hydrate retry (§8.2)
+    // I4 post-drain resync: how many times a torn uri's revalidate is retried before it stays Failed for the user to
+    // retry by hand.
+    internal const int MaxResyncAttempts = 4;
 
     readonly IStore _store;
     readonly PlaylistFetcher _playlists;
@@ -97,6 +103,9 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
 
     /// <summary>The §6.2 resync rate-limit window (default 30s). Public only so tests can collapse it; production never sets it.</summary>
     public TimeSpan ResyncWindow = TimeSpan.FromSeconds(30);
+    /// <summary>The backoff between I4 post-drain resync retry attempts (attempt 1 = 2s, 2 = 10s, 3+ = 30s in production).
+    /// Public only so tests can collapse it; production never sets it.</summary>
+    public Func<int, TimeSpan> ResyncRetryDelay = static attempt => TimeSpan.FromSeconds(attempt switch { 1 => 2, 2 => 10, _ => 30 });
     /// <summary>Minimum gap between two collection reconcile passes (default 5 min): a reconnect burst right after a
     /// periodic pass must not walk every wire set again. Public only so tests can collapse it.</summary>
     public TimeSpan ReconcileMinGap = TimeSpan.FromMinutes(5);
@@ -154,7 +163,7 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
     {
         if (cmd.Kind == SyncKind.CollectionPush)
         {
-            if (ShouldDirectApply(cmd.Payload)) _queue.Writer.TryWrite(cmd);   // immediate — no settle, applied on the loop
+            if (ShouldDirectApply(cmd.Uri, cmd.Payload)) _queue.Writer.TryWrite(cmd);   // immediate — no settle, applied on the loop
             else ScheduleCollectionSettle(cmd);                               // fetch path — settle + wire→logical fan-out
             return;
         }
@@ -329,6 +338,7 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         SyncKind.PermissionPush => PermissionPushAsync(cmd.Permission),
         SyncKind.SeedPermission => SeedPermissionAsync(cmd.Uri),
         SyncKind.ReconcileCollections => ReconcileCollectionsAsync(cmd.Uri.Length > 0 ? cmd.Uri : "periodic"),
+        SyncKind.ResyncRevalidate => ResyncRevalidateAsync(cmd.Uri, cmd.Attempt),
         _ => Task.CompletedTask,
     };
 
@@ -758,7 +768,7 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
     {
         // Only the SETTLE follow-up owns the _pendingSets mark (a direct-apply command bypassed the settle and never added
         // it — clearing it here would prematurely free a concurrent settle window). Enqueue routed non-direct payloads here.
-        bool fromSettle = !ShouldDirectApply(payload);
+        bool fromSettle = !ShouldDirectApply(wireSet, payload);
         try
         {
             if (wireSet.Length == 0) return;
@@ -767,8 +777,9 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
             {
                 var cuid = upd.ClientUpdateId;
                 if (cuid.Length > 0 && (_echoRing?.Contains(cuid) ?? false)) { Interlocked.Increment(ref EchoDropped); return; }
-                if (upd.Items.Count > 0) { await DirectApplyPushAsync(wireSet, upd).ConfigureAwait(false); return; }
-                // parsed but zero items → unknown change shape → fall through to the delta fetch.
+                // ylpin never direct-applies (§0.1) even when a payload happens to parse with items — always settle + delta.
+                if (CollectionSets.PushDirectApplies(wireSet) && upd.Items.Count > 0) { await DirectApplyPushAsync(wireSet, upd).ConfigureAwait(false); return; }
+                // parsed but zero items (or a wire set that never direct-applies) → fall through to the delta fetch.
             }
 
             if (CollectionSets.LogicalSetsForWireSet(wireSet).Count == 0) { LogUnknownWireSetOnce(wireSet); return; }
@@ -829,15 +840,18 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         "shows" or "episodes" => CollectionKind.Shows,
         "playlists" => CollectionKind.Playlists,
         "liked" => CollectionKind.Liked,
+        "pins" => CollectionKind.Pins,
         _ => null,
     };
 
     // A payload direct-applies (bypassing the settle) iff it parses to a PubSubUpdate that carries items OR is an echo of one
     // of our accepted writes (a cuid in the ring). Parsing is pure + off-loop-safe; the handler re-parses to do the work.
-    bool ShouldDirectApply(byte[]? payload)
+    // ylpin pushes are opaque in practice (§0.1) and never direct-apply on the items branch — echo-of-our-own-write still
+    // does (it costs nothing and drops for free), only the "fold these items in" branch is gated on the wire set's policy.
+    bool ShouldDirectApply(string wireSet, byte[]? payload)
     {
         if (!TryParsePush(payload, out var upd)) return false;
-        if (upd.Items.Count > 0) return true;
+        if (upd.Items.Count > 0) return CollectionSets.PushDirectApplies(wireSet);
         return upd.ClientUpdateId.Length > 0 && (_echoRing?.Contains(upd.ClientUpdateId) ?? false);
     }
 
@@ -918,6 +932,11 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
     async Task PlaylistRevalidateAsync(string uri)
     {
         if (uri.Length == 0) return;   // the WaitForIdleAsync idle barrier
+        await RevalidateCoreAsync(uri).ConfigureAwait(false);
+    }
+
+    async Task<DiffOutcome> RevalidateCoreAsync(string uri)
+    {
         var outcome = await _playlists.FetchPlaylistDiffAsync(uri, _ct).ConfigureAwait(false);
         switch (outcome)
         {
@@ -926,7 +945,46 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
             default: Interlocked.Increment(ref DiffFellBack); break;
         }
         MarkRevalidated(uri); ClearDirty(uri);
+        _resync.Resolve(uri);            // whichever path got here, the local copy now matches the server's head
         AfterNetworkSnapshot(uri);
+        return outcome;
+    }
+
+    /// <summary>Revalidate ONE torn uri and record the outcome. Success is recorded inside <see cref="RevalidateCoreAsync"/>
+    /// (Resolve); a throw becomes Failed + a scheduled retry with backoff, up to <see cref="MaxResyncAttempts"/>, after
+    /// which the entry stays Failed for the page to show and the user to retry by hand.</summary>
+    async Task ResyncRevalidateAsync(string uri, int attempt)
+    {
+        if (uri.Length == 0) return;
+        if (attempt > 0 && !_resync.TryBeginRetry(uri)) return;   // resolved meanwhile (another path converged it) → nothing to do
+        MarkDirty(uri);
+        long started = Environment.TickCount64;
+        try
+        {
+            var outcome = await RevalidateCoreAsync(uri).ConfigureAwait(false);
+            PlaylistMutationDiagnostics.ResyncConverged(uri, outcome.ToString(), attempt, Environment.TickCount64 - started);
+        }
+        catch (OperationCanceledException) when (_ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            int n = _resync.Fail(uri);
+            if (n < MaxResyncAttempts)
+            {
+                var delay = ResyncRetryDelay(n);
+                PlaylistMutationDiagnostics.ResyncFailed(uri, n, ex.GetType().Name + ": " + ex.Message, (long)delay.TotalMilliseconds);
+                ScheduleResyncRetry(uri, n, delay);
+            }
+            else PlaylistMutationDiagnostics.ResyncGaveUp(uri, n, ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
+    void ScheduleResyncRetry(string uri, int attempt, TimeSpan delay)
+    {
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(delay, _ct).ConfigureAwait(false); } catch (OperationCanceledException) { return; }
+            Enqueue(new SyncCommand(SyncKind.ResyncRevalidate, uri, Attempt: attempt));
+        });
     }
 
     // Runs after EVERY network membership replace on the loop. Two jobs: (a) a header that came back carrying
@@ -950,15 +1008,10 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         await _mutations.Drain(_mutationTransport, _ctx(), _ct).ConfigureAwait(false);
 
         // I4 — a /changes response that reported multiple_heads / changes_require_resync / a torn sync_result did NOT
-        // advance the stored revision; it dropped the uri here instead. Converge it now, on the single writer, with a
-        // revision-gated /diff (which falls back to a full GET inside the fetcher).
-        foreach (var uri in _resync.TakeAll())
-        {
-            MarkDirty(uri);
-            try { await PlaylistRevalidateAsync(uri).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (_ct.IsCancellationRequested) { throw; }
-            catch (Exception ex) { _log.Info("sync: post-drain resync of '" + uri + "' failed: " + ex.Message); }
-        }
+        // advance the stored revision; it dropped the uri here instead. Converge it now, on the single writer.
+        var torn = _resync.TakeAll();
+        if (torn.Count > 0) PlaylistMutationDiagnostics.ResyncTaken(torn.Count, torn[0]);
+        for (int i = 0; i < torn.Count; i++) await ResyncRevalidateAsync(torn[i], attempt: 0).ConfigureAwait(false);
 
         if (_mutations.Pending > 0)
         {

@@ -86,13 +86,18 @@ public sealed class CollectionSnapshotLedger
     public bool Contains(string uri) => _uris.Contains(uri);
 
     /// <summary>The walked uris that belong to one LOGICAL set: those starting with <paramref name="prefix"/>
-    /// (<see cref="CollectionSets.UriPrefix"/>), or every uri when the set has no prefix (artists/shows/episodes).</summary>
-    public HashSet<string> UrisFor(string? prefix)
+    /// (<see cref="CollectionSets.UriPrefix"/>), or every uri when the set has no prefix (artists/shows/episodes) —
+    /// filtered through <see cref="CollectionSets.AcceptsUri"/> when <paramref name="setId"/> is given, so a
+    /// prefix-less mixed set (pins) never reports a non-pinnable uri (a track, a binary blob) as a server member.</summary>
+    public HashSet<string> UrisFor(string? prefix, string? setId = null)
     {
-        if (prefix is null) return new HashSet<string>(_uris, StringComparer.Ordinal);
         var set = new HashSet<string>(StringComparer.Ordinal);
         foreach (var uri in _uris)
-            if (uri.StartsWith(prefix, StringComparison.Ordinal)) set.Add(uri);
+        {
+            if (prefix is not null && !uri.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            if (setId is not null && !CollectionSets.AcceptsUri(setId, uri)) continue;
+            set.Add(uri);
+        }
         return set;
     }
 }

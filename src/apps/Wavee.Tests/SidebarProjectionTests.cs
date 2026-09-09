@@ -85,7 +85,7 @@ public class SidebarProjectionTests
         Assert.True(e.IsPlayable);
         Assert.True(e.IsOwner);
         Assert.Equal("pl:spotify:playlist:p1", e.RouteKey);       // the id IS the route key (F.5.4)
-        Assert.Equal(0L, e.AddedAtMs);                             // playlists have no server add-date — stated honestly
+        Assert.Equal(0L, e.AddedAtMs);                             // this leaf carries no rootlist add stamp (default 0)
     }
 
     [Fact]
@@ -371,6 +371,29 @@ public class SidebarProjectionTests
         Assert.Equal(0L, rows[0].AddedAtMs);
         Assert.Equal(9_000L, rows[0].SortStamp);
         Assert.Equal(1, r.NewFirstSeenStamps);                     // a fresh stamp ⇒ the owner must persist
+    }
+
+    // The sidebar recents-sort fix: a rootlist row's real server ADD stamp — carried in from RootlistTreeBuilder via
+    // PlaylistLeaf.AddedAtMs — must win over the first-seen proxy; a row with no captured stamp still falls back to it.
+    [Fact]
+    public void SortStamp_UsesTheRootlistRowsAddedAtStamp_WhenTheLeafCarriesOne()
+    {
+        var seen = Seen(now: 9_000L);
+        var uris = new[] { "spotify:playlist:p1", "spotify:playlist:p2" };
+        var stamps = new long[] { 4_242L, 0L };                    // p1 captured, p2 not
+        var entries = Wavee.Backend.Playlists.RootlistTreeBuilder.EntriesFromUris(uris, stamps);
+        var tree = Wavee.Backend.Playlists.RootlistTreeBuilder.Build(entries,
+            uri => Pl(uri.Split(':')[^1], "Name-" + uri.Split(':')[^1]));
+
+        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, tree, firstSeen: seen);
+
+        var p1 = Assert.Single(rows, r => r.Name == "Name-p1");
+        Assert.Equal(4_242L, p1.AddedAtMs);
+        Assert.Equal(4_242L, p1.SortStamp);                        // the real stamp wins over the first-seen proxy
+
+        var p2 = Assert.Single(rows, r => r.Name == "Name-p2");
+        Assert.Equal(0L, p2.AddedAtMs);
+        Assert.Equal(9_000L, p2.SortStamp);                        // no captured stamp ⇒ falls back to first-seen
     }
 
     [Fact]

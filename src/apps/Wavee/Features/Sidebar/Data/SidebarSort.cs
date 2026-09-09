@@ -88,26 +88,26 @@ public static class SidebarSort
 
     // ── the comparators ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Recents: recently PLAYED (<c>PlayLogStore.Recency</c> — <see cref="SidebarLibraryEntry.LastPlayedMs"/>),
-    /// NOT recently opened. A played-block-first, never-played-block-second partition: everything with a play stamps
-    /// leads, newest play first; everything that was never played sinks to the bottom AS A BLOCK, ordered by SortStamp
-    /// desc (the "recently added" key) then Name. The block split is applied BEFORE (and is never affected by)
-    /// <paramref name="desc"/> — a never-played item can never float above a played one just because the direction
-    /// flipped — while `desc` reverses the ordering WITHIN each block independently.
+    /// <summary>Recents: most recent ACTIVITY — the later of last PLAYED (<c>PlayLogStore.Recency</c>,
+    /// <see cref="SidebarLibraryEntry.LastPlayedMs"/>) and ADDED (<see cref="SidebarLibraryEntry.AddedAtMs"/>: created,
+    /// followed or saved, from the rootlist row / saved-set stamp). Spotify's own "Recents" reads the same way, and it is
+    /// what makes a playlist created a moment ago land at the top instead of under a year of plays.
+    /// An activity-block-first, no-activity-block-second partition: everything with either stamp leads, newest activity
+    /// first; everything with neither (no play, no server add stamp — rows adopted before timestamps were captured) sinks
+    /// AS A BLOCK, ordered by SortStamp desc (the local first-seen proxy) then Name. The block split is applied BEFORE
+    /// (and is never affected by) <paramref name="desc"/>; `desc` reverses the ordering WITHIN each block independently.
     ///
-    /// <para>Clicking a row to open it no longer moves it (<see cref="SidebarLibraryEntry.LastVisitedTicksUtc"/>, which
-    /// tracks navigation, feeds only the "recently opened" feed — see <c>SidebarRecency</c>). HONEST LIMIT: a playlist
-    /// or show is stamped only when playback actually STARTED FROM that context (<c>PlayRecency.Stamp(in
-    /// PlayLogEntry)</c>, <c>App/PlayRecency.cs:38-46</c>) — an episode played from the queue or a Home shelf does not
-    /// stamp its show. Albums and artists are stamped regardless of how playback started (the billed artists + album
-    /// of whatever track played), so they are covered unconditionally.</para></summary>
+    /// <para>Clicking a row to open it does not move it (<see cref="SidebarLibraryEntry.LastVisitedTicksUtc"/> feeds only
+    /// the "recently opened" feed). HONEST LIMIT on the play half: a playlist or show is stamped only when playback
+    /// STARTED FROM that context (<c>PlayRecency.Stamp(in PlayLogEntry)</c>, <c>App/PlayRecency.cs:38-46</c>).</para></summary>
     public static int Recents(in SidebarLibraryEntry a, in SidebarLibraryEntry b, bool desc)
     {
-        bool ap = a.LastPlayedMs > 0, bp = b.LastPlayedMs > 0;
+        long aa = a.ActivityMs, ba = b.ActivityMs;
+        bool ap = aa > 0, bp = ba > 0;
         if (ap != bp) return ap ? -1 : 1;
 
         int c = ap
-            ? b.LastPlayedMs.CompareTo(a.LastPlayedMs)
+            ? ba.CompareTo(aa)
             : b.SortStamp.CompareTo(a.SortStamp);
         if (c == 0) c = NameComparer.Compare(a.Name, b.Name);
         if (c == 0) c = string.CompareOrdinal(a.Id, b.Id);
@@ -115,9 +115,9 @@ public static class SidebarSort
     }
 
     /// <summary>Recently added: the resolved SortStamp descending, then rootlist/source order ascending, then Name.
-    /// HONEST LIMIT: playlists have no server add-date, so their stamp is the local first-observation proxy
-    /// (<see cref="SidebarFirstSeen"/>) — on a first run every playlist ties and SourceOrder (Spotify's own newest-first
-    /// rootlist order) decides.</summary>
+    /// HONEST LIMIT: a row's stamp is the local first-observation proxy (<see cref="SidebarFirstSeen"/>) only when
+    /// adopted before timestamps were captured — on a first run those ties fall back to SourceOrder (Spotify's own
+    /// newest-first rootlist order).</summary>
     public static int RecentlyAdded(in SidebarLibraryEntry a, in SidebarLibraryEntry b, bool desc)
     {
         int c = b.SortStamp.CompareTo(a.SortStamp);

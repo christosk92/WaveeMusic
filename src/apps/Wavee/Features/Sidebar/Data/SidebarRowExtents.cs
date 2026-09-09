@@ -77,6 +77,9 @@ static class SidebarRowExtents
             case SidebarRowKind.TreeEnd:
                 return SidebarRowGeometry.TreeEndHeight;
 
+            case SidebarRowKind.PinEnd:
+                return SidebarRowGeometry.PinEndHeight;
+
             case SidebarRowKind.EntityCard:
                 return SidebarRowGeometry.CardHeightFor(section.Opts.Density);
 

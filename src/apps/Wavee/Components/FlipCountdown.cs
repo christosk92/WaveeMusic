@@ -35,6 +35,13 @@ sealed class FlipCountdown : Component
     public bool Compact;
     /// <summary>Bottom margin the mount site owns (the Home hero reserves its pulse row with one).</summary>
     public float BottomMargin;
+    /// <summary>Fired EXACTLY ONCE per mount the instant the window closes — on the tick that first reaches zero, or
+    /// immediately if this mounts already expired (a page opened after the countdown ran out with nobody watching).
+    /// Never a fetch itself: this is the same revalidate seam the reactivation compare uses
+    /// (<c>HomePage</c>'s <c>svc.HomeFeedRevalidate</c>), so the strip asks the ordinary re-read path to look rather
+    /// than deciding staleness on its own. Null is a no-op — most mounts (a non-daylist hero, a detail rail with
+    /// nothing driving a re-read) have nothing to ask.</summary>
+    public Action? OnExpired { get; init; }
 
     /// <summary>Hero digit-cell height — the row the layout estimators reserve. <c>HomeHeroLayout.PulseBlock</c> and
     /// <c>DetailVerticalLayout.PulseRowHeight</c> restate this number as a literal: both are engine-free test-included
@@ -60,6 +67,12 @@ sealed class FlipCountdown : Component
         bool expired = ExpiresAtMs <= 0 || left == 0;
 
         UseInterval(() => _nowMs.Value = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), TickMs, enabled: !expired);
+
+        // Fires once per mount on the transition INTO expired — DepKey.From(expired) only changes value when that
+        // happens, so a component that keeps re-rendering while parked at 00:00:00 never asks twice. Never called from
+        // the interval tick above directly: that callback only ever writes `_nowMs`, and this is the one place a
+        // render-derived fact (the flag flipping) is allowed to cause an effect.
+        UseEffect(() => { if (expired) OnExpired?.Invoke(); }, DepKey.From(expired));
 
         if (ExpiresAtMs <= 0) return new BoxEl();       // the hooks above always ran — stable order
 

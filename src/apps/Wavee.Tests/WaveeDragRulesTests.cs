@@ -248,39 +248,37 @@ public class WaveeDragRulesTests
         Assert.Equal(PlaylistDropRefusal.NoTracks, Verdict(hasTracks: false));
     }
 
-    // ── a QUEUE row's drag is a reorder, never a deposit (QueueDragRules) ───────────────────────────────────────────
-    // The finding: the "Next in queue" row travelled as an ordinary track payload, so every playlist surface accepted
-    // it as a copy and a reorder attempt ended as "Added to {playlist}". The payload now identifies itself as a queue
-    // row, and this is the one predicate — read through WaveeResourceDragPayload.CanCopyTracks by the playlist page,
-    // the track list, the tab strip, the sidebar rows, the player bar and the queue's own foreign-insert gate — that
-    // turns all of them dark for it.
+    // ── a QUEUE row's drag CAN be deposited on a playlist (QueueDragRules) ──────────────────────────────────────────
+    // History: the "Next in queue" row travels as an ordinary track payload, so a 0.2.1 fix made every queue-sourced
+    // payload undepositable ANYWHERE outside the queue, to stop a reorder attempt landing as "Added to {playlist}" on
+    // a nearby surface. That blanket refusal also disabled the legitimate gesture of dragging a queued/autoplay track
+    // onto a real playlist to add it — a track deposit like any other. Depositable() now only asks "does this payload
+    // have tracks", queue-sourced or not; FromQueue still gates the queue-specific (non-deposit) concerns elsewhere
+    // (the resting caption, the queue's own foreign-insert gate, RequireDropOnList).
 
     [Fact]
-    public void AQueueRow_OffersItsTracksToNoDestination()
+    public void AQueueRow_OffersItsTracksTheSameAsAnyOtherTrackDrag()
     {
-        Assert.False(QueueDragRules.Depositable(hasTracks: true, fromQueue: true));
-        // …while an ordinary track drag (the same Track in hand) still does.
-        Assert.True(QueueDragRules.Depositable(hasTracks: true, fromQueue: false));
+        Assert.True(QueueDragRules.Depositable(hasTracks: true));
     }
 
     [Fact]
-    public void ThePayloadStillNeedsTracks_QueueOrNot()
+    public void ThePayloadStillNeedsTracks()
     {
-        Assert.False(QueueDragRules.Depositable(hasTracks: false, fromQueue: false));
-        Assert.False(QueueDragRules.Depositable(hasTracks: false, fromQueue: true));
+        Assert.False(QueueDragRules.Depositable(hasTracks: false));
     }
 
     [Fact]
-    public void AQueueRowOverAPlaylist_ReadsAsNothingToDeposit_InTheRefusalTable()
+    public void AQueueRowOverAnEditablePlaylist_IsAcceptedAsADeposit()
     {
         // The refusal table receives the same predicate as payloadHasTracks, so a queue row over an editable playlist
-        // is a refusal — a real one, with a caption — rather than an accepted copy.
-        bool hasTracks = QueueDragRules.Depositable(hasTracks: true, fromQueue: true);
-        Assert.Equal(PlaylistDropRefusal.NoTracks, Verdict(hasTracks: hasTracks));
-        Assert.False(PlaylistDropRefusalRules.Accepts(editable: true, loading: false, hasTracks,
+        // is accepted as an ordinary copy — not refused as "nothing to add".
+        bool hasTracks = QueueDragRules.Depositable(hasTracks: true);
+        Assert.NotEqual(PlaylistDropRefusal.NoTracks, Verdict(hasTracks: hasTracks));
+        Assert.True(PlaylistDropRefusalRules.Accepts(editable: true, loading: false, hasTracks,
                                                       sameList: false, naturalOrder: true, filtered: false, rowsKeyed: true));
-        // …and the tab strip, which appends and cannot reorder, goes dark for it too.
-        Assert.False(TabDropRules.AcceptsDeposit("spotify:playlist:p1", targetEditable: true, hasTracks,
+        // …and the tab strip, which appends and cannot reorder, accepts it too.
+        Assert.True(TabDropRules.AcceptsDeposit("spotify:playlist:p1", targetEditable: true, hasTracks,
                                                  payloadSourcePlaylistUri: null, payloadUri: "spotify:track:t1"));
     }
 }

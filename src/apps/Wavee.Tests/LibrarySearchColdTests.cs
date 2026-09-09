@@ -72,8 +72,9 @@ public class LibrarySearchColdTests
         Assert.Equal(kind, gotKind);
     }
 
-    // `liked` is a SET (pinned by collection_items itself) and `local` resolves to a synthetic uri no pin table holds —
-    // recording either would burn one of the 50 LRU slots on a row that can never be read back.
+    // `liked` is a SET (pinned by collection_items itself) — recording it would burn one of the 50 LRU slots on a row
+    // that can never be read back. `local` (W7: the Local Files page is retired and is no longer a route at all) never
+    // classified either, so it stays in this list unchanged — there is simply no "local" arm to remove.
     [Theory]
     [InlineData("home")]
     [InlineData("liked")]

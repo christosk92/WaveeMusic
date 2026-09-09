@@ -1451,7 +1451,12 @@ sealed class SidebarPane : Component
                 var section = SectionOf(row.SectionId);
                 if (section is null) return "";
                 var item = SidebarPaneText.ItemOf(section, row.Key);
-                return item is { Target: SidebarItemTarget.Track } ? item.Key : "";
+                if (item is { Target: SidebarItemTarget.Track }) return item.Key;
+                // W4 — the Liked Songs SYSTEM ROW is the only route with a playable collection uri; every other route
+                // (Home, Search, Albums, …) stays dark, exactly as it always has (Cluster's RouteRow never reads play
+                // state at all, so Classic/Curated are unaffected either way).
+                return item is { Target: SidebarItemTarget.Route } && SidebarPinId.FromRoute(item.Key) is { } pin
+                    ? SidebarPinId.UriOf(pin) : "";
             }
             default:
                 return "";
@@ -1858,6 +1863,15 @@ sealed class SidebarPane : Component
         return default;
     }
 
+    /// <summary>The pin store's count for this section's band — the "append" index a drop on the closing gutter
+    /// (<c>PinEnd</c>) and the row menu's Move both need. A thin public alias of <see cref="BandFor"/>'s count.</summary>
+    internal int BandCountOf(string sectionId) => BandFor(sectionId).Count;
+
+    /// <summary>An expanded pinned folder disables its own section's reorder band (<c>_pinnedSubtrees</c>,
+    /// <see cref="RebuildBands"/>) — every row in it still owns a drop target, but a pin payload dropped there is
+    /// refused with a reason instead of a bare glyph (see <c>ResourceDropSpec</c>'s <c>pinBandDisabled</c> arm).</summary>
+    internal bool PinBandDisabled(string sectionId) => _pinnedSubtrees.Contains(sectionId);
+
     /// <summary>Explicit Move up / Move down from a row's context menu (P6: drag is one way, never the only way).
     /// Uses the same commit as an in-place drop when the reorder band is armed, and the pin store directly when that
     /// band is disarmed (an expanded folder in Pinned — the same case the section-card menu already covers).</summary>
@@ -1948,6 +1962,14 @@ sealed class SidebarPane : Component
         if (now > slot) prefs.MovePin(now, slot);
     }
 
+    /// <summary>The <c>PinEnd</c> gutter's own hover callback: arms the band's <c>EndOfList</c> slot while a compatible
+    /// drag is over the compact zone, and disarms only the slot IT published on leave — never a slot a neighbouring row
+    /// has since claimed (the same discipline <c>ResourceDropSpec.Leave</c> uses for every other row).</summary>
+    internal void PublishPinEndSlot(int planIndex, bool over)
+        => _dropSlot.SetIfChanged(over
+            ? PinBandSlots.EndSlot(planIndex)
+            : (_dropSlot.Peek().PlanIndex == planIndex ? SidebarDropSlot.None : _dropSlot.Peek()));
+
     /// <summary>One resource target can be both a playlist deposit and a pinned-band insertion. Tracks/albums/playlists
     /// route to the playlist mutation seam; pinnable resources route to the shared pin store.
     ///
@@ -1962,7 +1984,8 @@ sealed class SidebarPane : Component
                                              Action? onSpringLoad = null,
                                              string? railCueUri = null,
                                              bool isPlaylistRow = false,
-                                             SidebarRowFacts rootFacts = default)
+                                             SidebarRowFacts rootFacts = default,
+                                             bool pinBandDisabled = false)      // this IS a pinned row, but the band is off
     {
         // "Is this row a playlist AT ALL" — deliberately separate from `playlistUri`, which the callers set only for an
         // EDITABLE one. The distinction is the whole refusal-vs-transparent split below: a playlist you cannot write to
@@ -2015,6 +2038,10 @@ sealed class SidebarPane : Component
             RootlistLoaded = RootlistLoaded,
         };
 
+        // A PIN placement: this row sits in an armed pinned band and the payload can pin. Rootlist filings win first (a
+        // rootlist item dragged inside the pinned band is still a pin, because rootTarget is null for pinned rows).
+        bool Pinning(WaveeResourceDragPayload source) => slot >= 0 && source.CanPin && !Filing(source);
+
         // WHAT this row would do with this payload, at this pointer position. ONE answer, published once, consumed by
         // the line, the plate, the caption and the commit.
         SidebarDropSlot SlotFor(WaveeResourceDragPayload p, DragSession s)
@@ -2022,8 +2049,15 @@ sealed class SidebarPane : Component
             if (!Compatible(p)) return SidebarDropSlot.None;
             if (rootTarget is not null && Filing(p) && rootPlanIndex >= 0)
                 return RootlistSlotFor(rootPlanIndex, FactsFor(p), p, s.Position);
-            // Every other accepted destination — a pin-band insertion, a track deposit, a rail tile — is a whole-row
-            // INTO, which is exactly the accent plate this surface has always drawn for them.
+            if (Pinning(p) && rootPlanIndex >= 0)
+            {
+                if (!TryRowT(rootPlanIndex, s.Position, out float t, out float extent))
+                    return new SidebarDropSlot(rootPlanIndex, SidebarDropKind.None, 0, SidebarDropRefusal.Unavailable);
+                int depth = TryRowEntry(rootPlanIndex, out var e) ? e.Depth : 0;
+                return PinBandSlots.Resolve(rootPlanIndex, t, extent, depth, canDepositHere && p.CanCopyTracks);
+            }
+            // Every other accepted destination — a track deposit, a rail tile — is a whole-row INTO, which is exactly
+            // the accent plate this surface has always drawn for them.
             return rootPlanIndex >= 0
                 ? new SidebarDropSlot(rootPlanIndex, SidebarDropKind.Into, 0, SidebarDropRefusal.None)
                 : SidebarDropSlot.None;
@@ -2049,8 +2083,9 @@ sealed class SidebarPane : Component
             if (cue.Refusal != SidebarDropRefusal.None) return RefusalSentence(cue.Refusal);
             if (rootTarget is { } root && Filing(p))
                 return RootlistCaption(in cue, root, p, playlistName);
-            if (canDepositHere && p.CanCopyTracks) return Strings.Drag.AddTo(playlistName ?? "");
-            if (slot >= 0 && p.CanPin) return Strings.Drag.Pin(p.Name);
+            if (cue.Kind == SidebarDropKind.Into && canDepositHere && p.CanCopyTracks)
+                return Strings.Drag.AddTo(playlistName ?? "");
+            if (Pinning(p) && cue.IsArmed) return Strings.Drag.Pin(p.Name);      // Before / After / EndOfList
             return null;
         }
 
@@ -2096,13 +2131,24 @@ sealed class SidebarPane : Component
                 CommitRootlistSlot(rootActs, source, in cue, playlistUri, playlistName, s.Payload);
                 return;
             }
-            if (playlistUri is { Length: > 0 } target && Acts is { } acts
+            if (cue.Kind == SidebarDropKind.Into && playlistUri is { Length: > 0 } target && Acts is { } acts
                 && WaveeResourceDrop.CanDepositTracks(s.Payload))
             {
                 WaveeResourceDrop.DepositTracks(acts, target, playlistName ?? "", s.Payload, insertionIndex: null);
                 return;
             }
-            if (slot >= 0) AcceptForeign(sectionId, s.Payload, slot);
+
+            if (Pinning(source))
+            {
+                if (cue.PlanIndex != rootPlanIndex || !cue.IsArmed)
+                {
+                    RefuseDrop(SidebarDropRefusal.Unavailable, $"pin cue={cue.Kind}/{cue.PlanIndex} row={rootPlanIndex}");
+                    return;
+                }
+                int at = PinBandSlots.InsertIndex(in cue, slot, BandFor(sectionId).Count);
+                if (at < 0) { RefuseDrop(SidebarDropRefusal.Unavailable, "pin cue was Into"); return; }
+                AcceptForeign(sectionId, s.Payload, at);
+            }
         }
 
         // ── the "no" is TWO different answers, and conflating them is what made this surface read as broken ────────────
@@ -2124,6 +2170,9 @@ sealed class SidebarPane : Component
                 && SidebarRailDropRules.TileTransparent(source.RootlistItem, source.CanCopyTracks)) return true;
             // A pin-band insertion or a rootlist filing is this row's own business, so it is never transparent.
             if (slot >= 0 && source.CanPin) return false;
+            // An expanded pinned folder disarms the whole band (`_pinnedSubtrees`), but a pin payload aimed here is
+            // still aimed at PINNING — it is owed a reason, not silence.
+            if (pinBandDisabled && source.CanPin) return false;
             if (Filing(source)) return false;
             // A track-bearing payload over a row that is not a playlist at all: not a destination, not a refusal.
             return source.CanCopyTracks && !IsPlaylistRow;
@@ -2133,6 +2182,8 @@ sealed class SidebarPane : Component
         {
             var refusal = PayloadRefusal(source);
             if (refusal != SidebarDropRefusal.None) return RefusalSentence(refusal);
+            if (pinBandDisabled && source.CanPin && !Filing(source))
+                return Loc.Get(Strings.Drag.CollapsePinnedFolderToPin);
             // Not writable, but it IS a playlist — the refusal that was silent.
             if (IsPlaylistRow && !canDepositHere && source.CanCopyTracks)
                 return Loc.Get(Strings.Drag.CantEditPlaylist);
@@ -2305,24 +2356,35 @@ sealed class SidebarPane : Component
     SidebarDropSlot RootlistSlotFor(int planIndex, SidebarRowFacts facts,
                                     WaveeResourceDragPayload source, Point2 pointer)
     {
-        var viewport = _listController.Viewport;
-        var scene = Context.Scene;
-        if (planIndex < 0 || scene is null || viewport.IsNull || !scene.IsLive(viewport))
+        if (!TryRowT(planIndex, pointer, out float t, out float extent))
             // DEGENERATE (D17): no plan row, no viewport, no scene. Refuse with a reason — the old code guessed
             // Before/Inside here, which is a placement the user never aimed at.
             return new SidebarDropSlot(planIndex, SidebarDropKind.None, 0, SidebarDropRefusal.Unavailable);
 
-        var rect = scene.AbsoluteRect(viewport);
-        float contentY = pointer.Y - rect.Y + _listController.ScrollOffset;
-        float top = SidebarRowGeometry.ContentYOf(planIndex, Plan.Rows.Count, RowExtentOf);
-        float extent = MathF.Max(1f, RowExtentOf(planIndex));
-        float t = Math.Clamp((contentY - top) / extent, 0f, 1f);
         // The list is the padded box's only child, so the viewport's left edge IS the row's left edge.
+        var rect = Context.Scene!.AbsoluteRect(_listController.Viewport);
         float xInRow = pointer.X - rect.X;
 
         var cue = RootlistSlotResolver.Resolve(planIndex, t, xInRow, extent, in facts, _dropSlot.Peek());
         TryDecide(in cue, source, out _, out var refined);
         return refined;
+    }
+
+    /// <summary>Pointer → (t in [0,1] inside the row, the row's extent). False when the geometry is degenerate (no
+    /// viewport / scene / plan row) — the caller refuses with Unavailable rather than guessing (D17). Shared by the
+    /// rootlist arm (which also needs the x channel for the depth ladder) and the pinned-band arm (which does not).</summary>
+    bool TryRowT(int planIndex, Point2 pointer, out float t, out float extent)
+    {
+        t = 0f; extent = 0f;
+        var viewport = _listController.Viewport;
+        var scene = Context.Scene;
+        if (planIndex < 0 || scene is null || viewport.IsNull || !scene.IsLive(viewport)) return false;
+        var rect = scene.AbsoluteRect(viewport);
+        float contentY = pointer.Y - rect.Y + _listController.ScrollOffset;
+        float top = SidebarRowGeometry.ContentYOf(planIndex, Plan.Rows.Count, RowExtentOf);
+        extent = MathF.Max(1f, RowExtentOf(planIndex));
+        t = Math.Clamp((contentY - top) / extent, 0f, 1f);
+        return true;
     }
 
     /// <summary>THE cue → (published slot, destination) decision, for one dragged payload. Called at HOVER to publish

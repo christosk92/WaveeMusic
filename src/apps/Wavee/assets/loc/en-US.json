@@ -34,7 +34,8 @@
     "addToQueue": "Add to queue",
     "playNext": "Play next",
     "cantMoveAcrossSections": "Can’t move across sections",
-    "reorderHint": "Drag to reorder"
+    "reorderHint": "Drag to reorder",
+    "collapsePinnedFolderToPin": "Collapse the pinned folder to pin here"
   },
   "detail": {
     "play": "Play",
@@ -212,6 +213,9 @@
       "deletedElsewhere": "This playlist was deleted.",
       "queuedOffline": "You’re offline — this change will sync when you’re back.",
       "pendingSync": "Saved on this device — still syncing.",
+      "syncingWithSpotify": "Still syncing with Spotify…",
+      "syncFailed": "Couldn’t confirm this playlist with Spotify.",
+      "retrySync": "Retry",
       "failed": "Something went wrong. Try again.",
       "createFailed": "Couldn’t create the playlist.",
       "pendingCount": "{count, plural, one {# change pending} other {# changes pending}}",
@@ -360,6 +364,7 @@
     "otherVersions": "Other versions",
     "recommended": "Recommended songs",
     "noSuggestions": "No suggestions right now",
+    "recsFailed": "Couldn’t load suggestions",
     "viewAllArtists": "View all artists",
     "goToAlbum": "Go to album",
     "collabOpen": "Open to collaboration",
@@ -967,7 +972,9 @@
       "unlimited": "Unlimited",
       "autoTenPercent": "Auto (10%)",
       "unlimitedReserve": "No cache-size ceiling; emergency free space is always preserved.",
-      "freeReserve": "Keeps at least {reserve} free on the cache drive",
+      "freeReserve": "Won't cache new audio once free space drops below {reserve}",
+      "freeReserveBelow": "Free space is {free}, below the {reserve} reserve - caching is paused until space frees up",
+      "cachePausedOverBudget": "The cache is at its {budget} budget - raise it to keep caching new tracks",
       "cacheLocation": "Cache location",
       "chooseLocation": "Choose location",
       "useDefaultLocation": "Use default",
@@ -1376,7 +1383,6 @@
     "artists": "Artists",
     "likedSongs": "Liked Songs",
     "podcasts": "Podcasts",
-    "localFiles": "Local files",
     "recents": "Recents",
     "playlist": "Playlist",
     "playlistPrivate": "Playlist · Private",
@@ -1538,7 +1544,7 @@
       "recentlyPlayed": "Recently played",
       "recentlyPlayedSub": "What you actually listened to, most recent first",
       "shortcuts": "Library shortcuts",
-      "shortcutsSub": "Liked Songs, Albums, Artists, Podcasts, Local files",
+      "shortcutsSub": "Liked Songs, Albums, Artists, Podcasts",
       "playlistTree": "Playlists",
       "playlistTreeSub": "Your playlists, with folders",
       "entityList": "Library list",
@@ -1840,6 +1846,15 @@
         "folder": "Folder"
       },
       "itemCount": "{count, plural, one {# item} other {# items}}",
+      "lens": {
+        "all": "All",
+        "playlists": "All playlists",
+        "albums": "All albums",
+        "artists": "All artists",
+        "podcasts": "All podcasts",
+        "matches": "{count, plural, one {# match} other {# matches}}",
+        "openPage": "Open {page}"
+      },
       "empty": {
         "library": "Nothing in Your Library yet",
         "librarySub": "Save an album, follow an artist or create a playlist and it shows up here.",

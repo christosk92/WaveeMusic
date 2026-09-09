@@ -41,54 +41,39 @@ public class ConcertLayoutTests
     // ── #86 — the procedural promo-card art's geometry ──────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Arc_EndpointsLandExactlyRadiusFromCentre()
+    public void ConcertBars_StayInsideThePaneAtTheReportedArtworkFloor()
     {
-        var sweep = EditorialArtGeometry.Arc(cx: 100f, cy: 80f, r: 40f, startDeg: -150f, sweepDeg: 120f);
-
-        Assert.Equal(40f, Distance(sweep.X0, sweep.Y0, 100f, 80f), 2);
-        Assert.Equal(40f, Distance(sweep.X1, sweep.Y1, 100f, 80f), 2);
-        Assert.Equal(40f, sweep.Radius);
+        // ConcertLayout.WideEditorial's narrowest tier floors ArtworkMin at 180×220 — the bars must never spill past
+        // the pane at that floor, since EditorialArt clips to the card's own rounded corners but nothing clips the
+        // bars to each other or reserves extra headroom for them.
+        float w = 180f, h = 220f;
+        foreach (var bar in EditorialArtGeometry.ConcertBars(w, h))
+        {
+            Assert.InRange(bar.X, 0f, w);
+            Assert.InRange(bar.Y, 0f, h);
+            Assert.InRange(bar.X + bar.Width, 0f, w);
+            Assert.InRange(bar.Y + bar.Height, 0f, h);
+        }
     }
 
     [Fact]
-    public void Arc_FlagsMatchTheSweepDirectionAndSpan()
+    public void ConcertBars_IsDeterministicForTheSamePaneSize()
     {
-        Assert.Equal(1, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, 90f).SweepFlag);     // positive sweep → 1
-        Assert.Equal(0, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, -90f).SweepFlag);    // negative sweep → 0
-        Assert.Equal(0, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, 90f).LargeArc);      // <180° span → not the large arc
-        Assert.Equal(1, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, 200f).LargeArc);     // >180° span → the large arc
+        var a = EditorialArtGeometry.ConcertBars(320f, 288f);
+        var b = EditorialArtGeometry.ConcertBars(320f, 288f);
+        Assert.Equal(a, b);
     }
 
     [Fact]
-    public void ArcSweep_ToPathData_IsCultureInvariant()
+    public void ConcertBars_VaryInHeightAndShareABaseline()
     {
-        var sweep = new ArcSweep(1.5f, 2.5f, 3.5f, 4.5f, 5.5f, 1, 0);
-        string path = sweep.ToPathData();
-
-        // A decimal-comma culture must never leak a "," where PathDataParser would read it as a coordinate separator.
-        // The culture is CLONED from invariant and given a comma separator rather than requested by name: the app runs
-        // with InvariantGlobalization=true (Directory.Build.props), so CultureInfo.GetCultureInfo("nl-NL") throws
-        // CultureNotFoundException here — asking for a named culture would test the harness, not the formatting.
-        var comma = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
-        comma.NumberFormat.NumberDecimalSeparator = ",";
-        comma.NumberFormat.NumberGroupSeparator = ".";
-
-        var original = System.Globalization.CultureInfo.CurrentCulture;
-        System.Globalization.CultureInfo.CurrentCulture = comma;
-        try { Assert.Equal(path, sweep.ToPathData()); }
-        finally { System.Globalization.CultureInfo.CurrentCulture = original; }
-
-        Assert.StartsWith("M1.50,2.50 A5.50,5.50 0 1,0 3.50,4.50", path, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ConcertArcs_SweepOppositeDirections()
-    {
-        // The pair reads as two beams crossing rather than one arc traced twice — verified by opposite sweep flags.
-        var outer = EditorialArtGeometry.ConcertArcOuter(320f, 288f);
-        var inner = EditorialArtGeometry.ConcertArcInner(320f, 288f);
-        Assert.NotEqual(outer.SweepFlag, inner.SweepFlag);
-        Assert.True(inner.Radius < outer.Radius);
+        // A visible peak-in-the-middle silhouette (an equalizer read), all bars resting on the same bottom edge.
+        var bars = EditorialArtGeometry.ConcertBars(320f, 288f);
+        Assert.True(bars.Length is >= 3 and <= 5);
+        Assert.True(bars[2].Height > bars[0].Height);
+        Assert.True(bars[2].Height > bars[3].Height);
+        float baseline = bars[0].Y + bars[0].Height;
+        foreach (var bar in bars) Assert.Equal(baseline, bar.Y + bar.Height, 2);
     }
 
     [Fact]
@@ -114,6 +99,4 @@ public class ConcertLayoutTests
         var b = EditorialArtGeometry.BrowseTiles(320f, 288f);
         Assert.Equal(a, b);
     }
-
-    static float Distance(float x0, float y0, float x1, float y1) => MathF.Sqrt(MathF.Pow(x1 - x0, 2) + MathF.Pow(y1 - y0, 2));
 }
