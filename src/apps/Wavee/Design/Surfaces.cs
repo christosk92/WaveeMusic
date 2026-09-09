@@ -91,6 +91,25 @@ public static class Surfaces
             : neutral;
     }
 
+    /// <summary>A LIVE-BOUND placeholder colour for an art slot that paints its own neutral tile directly as a
+    /// <c>Fill</c>/<c>Placeholder</c> prop rather than stacking a <see cref="CoverShimmer"/> component under the real
+    /// <c>Image</c> (small thumbs below <see cref="ShimmerMinEdge"/>, <see cref="ArtworkFill"/>, <see cref="Mosaic"/>).
+    ///
+    /// <para>A raw <c>PlaceholderFor(url)</c> value is computed ONCE, at the render that first mounts the slot, and
+    /// then frozen into the record (component factory fields freeze at mount — <c>component-props-contract.md</c>).
+    /// <see cref="SpotifyLive.CoverColorPlane.TryGetTint"/>'s enqueue-on-miss is real, but nothing then repaints the
+    /// slot when that grading LANDS a moment later — every sidebar/pin row (20-64 DIP, always under
+    /// <see cref="ShimmerMinEdge"/>) and every <see cref="ArtworkFill"/> grid cell (the artist page's discography
+    /// grid) took exactly this frozen path, which is why they never showed a tint despite the plane correctly
+    /// grading their covers in the background. Mirrors <see cref="CoverShimmer.PlaceholderFill"/>'s own binding
+    /// (a paint-only <c>Prop.Of</c> that reads <see cref="SpotifyLive.CoverColorPlane.Watch"/>, so a landed grading
+    /// repaints exactly this tile — never a component re-render, never the global Epoch fan-out).</para></summary>
+    internal static Prop<ColorF> WatchedPlaceholder(string? url, bool? light = null) => Prop.Of(() =>
+    {
+        if (url is { Length: > 0 } u) _ = SpotifyLive.CoverColorPlane.Current.Watch(u).Value;
+        return light is { } l ? PlaceholderFor(url, l) : PlaceholderFor(url);
+    });
+
     // ── THE TWO GRADING HALVES, AND WHICH JOB TAKES WHICH ────────────────────────────────────────────────────────────
     //
     // Every cover is graded TWICE by the provider — a light half and a dark half — and the app reads BOTH, in opposite
@@ -197,7 +216,7 @@ public static class Surfaces
             // reads as a solid tile regardless of what is behind the window.
             // Tinted from the cover's own graded colour when the plane has one, else the neutral opaque tile.
             // This is the difference between a track list of blank grey squares and one that paints its covers at once.
-            return new BoxEl { Width = width, Height = height, Corners = CornerRadius4.All(corners), Fill = PlaceholderFor(url) };
+            return new BoxEl { Width = width, Height = height, Corners = CornerRadius4.All(corners), Fill = WatchedPlaceholder(url) };
         // Covers/cards: the breathing shimmer. Keyed by url AND the decode bucket so a virtualized card that REBINDS to
         // a new cover, OR the SAME cover at a new decode target (a detail hero's unmeasured→measured bucket jump, a
         // shelf↔grid decode-size mismatch), remounts the tile (a Component freezes its ctor args at mount) — otherwise
@@ -279,7 +298,8 @@ public static class Surfaces
         // Tinted from the cover's own graded colour exactly like Shimmer/Artwork. Without this a whole grid of albums
         // loads as identical grey squares while the track list beside it paints in colour — the placeholder is on
         // screen longest precisely where the most art is loading at once.
-        return Ui.Image(url ?? "", ImageFit.Cover, 1f, decodePx, corners, PlaceholderFor(url), image?.BlurHash);
+        return Ui.Image(url ?? "", ImageFit.Cover, 1f, decodePx, corners, placeholder: (ColorF?)null, image?.BlurHash)
+            with { Placeholder = WatchedPlaceholder(url) };
     }
 
     /// <summary>A 2×2 mosaic of 4 album covers at an EXPLICIT size — how Spotify renders a cover-less playlist. Each
@@ -290,7 +310,7 @@ public static class Surfaces
         Element Cell(string u)
         {
             string? n = ImageSource.Normalize(u);
-            return new BoxEl { Grow = 1f, ClipToBounds = true, Children = [ Ui.Image(n ?? "", ImageFit.Cover, 1f, cell, 0f, PlaceholderFor(n)) ] };
+            return new BoxEl { Grow = 1f, ClipToBounds = true, Children = [ Ui.Image(n ?? "", ImageFit.Cover, 1f, cell, 0f, placeholder: (ColorF?)null) with { Placeholder = WatchedPlaceholder(n) } ] };
         }
         return new BoxEl
         {
