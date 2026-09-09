@@ -302,7 +302,35 @@ sealed class TrackList : Component
     // Art carries alongside Set/Tracks (rather than being re-derived downstream) because it is keyed on DENSITY, which
     // ColumnSet does not encode — every consumer of the shape (header/rows/shimmer/drawer indent) must read the SAME
     // number the width tracks were built from, or the Thumb column and the actual Surfaces.Artwork call disagree.
-    readonly record struct RowShape(ColumnSet Set, TrackSize[] Tracks, float Art);
+    // Equality is HAND-WRITTEN because a record struct compares its members with the default comparer, and for the
+    // TrackSize[] member that is REFERENCE equality. TracksFor hands back a fresh array whenever its (Set, art) cache
+    // misses, so an otherwise-identical shape could compare unequal purely because the array instance changed — and
+    // the shape signal is what gates re-rendering every mounted row. Compare the tracks by VALUE instead; the array is
+    // a handful of structs and this runs once per shape recompute, not per row.
+    readonly record struct RowShape(ColumnSet Set, TrackSize[] Tracks, float Art)
+    {
+        public bool Equals(RowShape other)
+        {
+            if (!Set.Equals(other.Set) || Art != other.Art) return false;
+            var a = Tracks; var b = other.Tracks;
+            if (ReferenceEquals(a, b)) return true;
+            if (a is null || b is null || a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (!a[i].Equals(b[i])) return false;
+            return true;
+        }
+
+        // Cheap and consistent with Equals: length plus the two ends. A shape that differs only in the middle of the
+        // width tracks collides, and Equals then separates them — which is the correct trade for a type that is
+        // compared far more often than it is hashed.
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            hash.Add(Set); hash.Add(Art);
+            hash.Add(Tracks?.Length ?? 0);
+            if (Tracks is { Length: > 0 } t) { hash.Add(t[0]); hash.Add(t[^1]); }
+            return hash.ToHashCode();
+        }
+    }
 
     readonly record struct RowPresentation(
         Track Track, int DisplayIndex, TrackRow.State State,
