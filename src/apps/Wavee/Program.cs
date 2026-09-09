@@ -512,6 +512,7 @@ static class Program
             // let a 13 px equalizer pin ~56% GPU). Latency-sensitive input (scroll/hover/drag) and FrameClock consumers
             // (lyrics) stay at the display rate; FG_ANIM_FPS still overrides everything (=30 to pin a fixed cadence,
             // =0 for uncapped).
+            NavigationFrameWatch.Attach();
             FluentAppHarness.Run(() => new WaveeApp(settings, appLocale),
                 new AppOptions
                 {
@@ -521,6 +522,10 @@ static class Program
                     Title = "Wavee Music", Width = winW, Height = winH,
                     MinWidth = 300, CustomFrame = true,
                     MicaAlt = false,
+                    // Every frame over the panel's refresh interval is logged with WHICH components rendered and who
+                    // allocated (NavigationFrameWatch frame.slow / nav.frames worstCensus). Always on: a slow frame
+                    // that cannot be attributed is a slow frame that does not get fixed.
+                    RenderCensus = true,
                     // App-wide UI zoom, seeded BEFORE the first frame (the ThemeMode discipline: no startup jump from
                     // 100% to the user's scale). Snap, not Clamp: a persisted value that drifted off the ladder (a
                     // hand-edited registry value, an older ladder) re-enters the discrete step set here, so Ctrl+±
@@ -534,6 +539,8 @@ static class Program
                 new HarnessOptions { Frames = frames, Screenshot = screenshot });
             // The window came down in an orderly way (FluentAppHarness.Run returned instead of throwing) — close out
             // the marker RunMarker.Begin opened above so the NEXT launch's Begin reads "clean", not a stale "running".
+            NavigationFrameWatch.EndSession();
+            MemorySampler.SampleProcessEnd();
             RunMarker.End(settings);
             // Process-exit flush for session.json (nav + the playback restore section): the shell's unmount cleanup never
             // runs on shutdown (AppHost.Dispose doesn't unmount the tree), so a pending debounced save would be lost.

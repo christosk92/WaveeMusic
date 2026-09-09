@@ -57,6 +57,7 @@ sealed class ContentHost : Component
         // nothing would write the signal and a stale claim would survive. That is a clear case too.
         UseSignalEffect(() =>
         {
+            NavigationFrameWatch.NoteRoute(_route.Value.Name, _route.Value.Arg);   // attributes the next 4 s of frames to this route
             if (Wavee.Backend.Modules.ModulePages.TryParseRoute(_route.Value.Name, out _, out _)) return;
             if (ui is null || ui.ActiveStagePlayable.Peek().Length == 0) return;   // value-gated: no idle wake-ups
             ui.ActiveStagePlayable.Value = "";
