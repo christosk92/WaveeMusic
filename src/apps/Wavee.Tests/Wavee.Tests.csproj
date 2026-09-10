@@ -432,6 +432,14 @@
          LIVE session clock (never track-absolute), so a mid-track device-format soft reload — a new session at clock 0
          — cannot schedule the next track minutes in the future. Same split-for-testability shape as XrunLogLine above. -->
     <Compile Include="..\Wavee\SpotifyLive\Audio\GaplessJoinClock.cs" Link="GaplessJoinClock.cs" />
+    <!-- #112: the device-format recovery decision (reopen / adopt / keep / fault) — a rate-changed sink swap latches the
+         engine session silent until a new graph exists, so every soft-reload exit routes through this pure seam.
+         DeviceRecoveryPlanTests pin the four cases. Same split-for-testability shape as GaplessJoinClock above. -->
+    <Compile Include="..\Wavee\SpotifyLive\Audio\DeviceRecoveryPlan.cs" Link="DeviceRecoveryPlan.cs" />
+    <!-- SeekGate: the pure decision behind FluentMediaAudioHost.Seek — a seek that arrives on the serialized pump before
+         the body is attached is PARKED, never handed to the engine (whose 0.2.9 SeekAsync would block the pump on bytes
+         only a later pump op can attach — the launch-restore infinite-buffering deadlock). SeekGateTests pin it. -->
+    <Compile Include="..\Wavee\SpotifyLive\Audio\SeekGate.cs" Link="SeekGate.cs" />
     <!-- the v9 video-manifest parser (System.Text.Json + FluentGpu.WindowsApi's DashSourceDescriptor) — SpotifyVideoManifestTests
          drive it against a real captured manifest in Fixtures\spotify-video-manifest-v9.json -->
     <Compile Include="..\Wavee\SpotifyLive\SpotifyVideoManifest.cs" Link="SpotifyVideoManifest.cs" />

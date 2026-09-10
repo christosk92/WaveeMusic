@@ -215,6 +215,13 @@ public static class DetailVerticalLayout
     // The daylist flip-countdown digit row (FlipCountdown.HeroRowHeight, restated — this file is engine-free and
     // test-included, so it cannot reference the component).
     public const float PulseRowHeight = 28f;
+    /// <summary>The hover pill's trailing pencil in PlaylistInlineEdit: a 20-DIP box after a Spacing.S gap. Restated here because this file is
+    /// engine-free; the editable title's run is exactly this much narrower than the wrap width. (#92)</summary>
+    public const float EditableTitlePencilW = 20f, EditableTitlePencilGap = 8f;
+    /// <summary>The width the editable title's run is actually arranged at inside the hover pill — the wrap width less
+    /// the pencil slot. Declared on the run itself so the flex measure pre-pass and the arrange re-measure share ONE
+    /// text-measure cache key and the engine's shrink-to-fit search runs once per invalidation. (#92)</summary>
+    public static float EditableTitleMeasure(float wrapWidth) => MathF.Max(0f, wrapWidth - EditableTitlePencilW - EditableTitlePencilGap);
     public const float ActionRowHeight = 40f;         // WaveeCta.Play (36) + the row's Spacing.XS top margin
     public const float DescriptionLineHeight = 18f;   // the 13px expandable blurb
     public const float IdentityGap = 4f;              // Spacing.XS — the identity column's inter-block gap

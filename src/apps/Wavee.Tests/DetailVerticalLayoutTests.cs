@@ -276,6 +276,39 @@ public class DetailVerticalLayoutTests
             }
     }
 
+    // ── the EDITABLE title's run measure (#92) ───────────────────────────────────────────────────────────────────
+
+    /// <summary>The hover pill in <c>PlaylistInlineEdit</c> lays the title run out beside a 20-DIP pencil after a
+    /// Spacing.S (8) gap, so the run is arranged exactly 28 DIP narrower than the wrap width. The run now declares that
+    /// width itself (one text-measure cache key across the measure pre-pass and arrange, one auto-fit search per
+    /// invalidation); a degenerate wrap width floors at 0 rather than going negative.</summary>
+    [Theory]
+    [InlineData(572f, 544f)]
+    [InlineData(20f, 0f)]
+    [InlineData(28f, 0f)]
+    [InlineData(0f, 0f)]
+    public void EditableTitleMeasure_IsTheWrapWidthLessThePencilSlot(float wrapWidth, float expected)
+        => Assert.Equal(expected, DetailVerticalLayout.EditableTitleMeasure(wrapWidth));
+
+    /// <summary>Over the wrap widths <see cref="DetailVerticalLayout.TitleWidthFor"/> actually produces (the hero
+    /// hands <c>plan.WrapWidth</c> to the editable arm as <c>_width</c>), the run plus the pencil slot fills the pill's
+    /// content box exactly — no leftover for the flex pass to redistribute, and no overlap with the pencil.</summary>
+    [Theory]
+    [InlineData(400f, true)]     // RowFlowLeaveW: 400 − 48 − 24 − 144 = 184
+    [InlineData(424f, true)]     // RowFlowEnterW: 424 − 48 − 24 − 155 = 197
+    [InlineData(820f, true)]     // 820 − 48 − 24 − 240 = 508
+    [InlineData(1200f, true)]    // the issue #79 case: 888
+    [InlineData(1600f, true)]    // TitleWMax binds: 1000
+    [InlineData(240f, false)]    // stacked, narrow pad: 240 − 32 = 208
+    [InlineData(600f, false)]    // stacked: 600 − 48 = 552
+    public void EditableTitleMeasure_PlusPencilSlot_FillsTheWrapWidthExactly(float colW, bool rowFlow)
+    {
+        float wrap = DetailVerticalLayout.TitleWidthFor(colW, rowFlow);
+        float run = DetailVerticalLayout.EditableTitleMeasure(wrap);
+        Assert.True(run > 0f, $"run measure {run} collapsed at colW={colW} row={rowFlow}");
+        Assert.Equal(wrap, run + DetailVerticalLayout.EditableTitlePencilW + DetailVerticalLayout.EditableTitlePencilGap);
+    }
+
     // ── the title TYPE PLAN ──────────────────────────────────────────────────────────────────────────────────────
     //
     // Replaces the old four-rung width ladder (TitleSizeFor/TitleLineHeightFor/TitleMinSizeFor, all deleted): the

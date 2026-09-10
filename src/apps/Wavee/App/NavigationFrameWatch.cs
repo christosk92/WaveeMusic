@@ -249,7 +249,10 @@ public static class NavigationFrameWatch
         + " unaccounted=" + F(s.FrameMs - s.FlushMs - s.LayoutMs - s.AnimMs - s.RecordMs - s.SubmitMs)
         + " comps=" + s.ComponentsRendered + " nodes=" + s.NodesVisited + " draw=" + s.DrawNodeCount
         + " cmds=" + s.DrawCommandCount + " hotAlloc=" + s.HotPhaseAllocBytes
-        + " measures=" + s.MeasureCount + " shapes=" + s.TextShapes + " bindFires=" + s.BindingFires + " bindWrites=" + s.BindingWrites
+        // textMiss is the layout measure-cache MISS count (each one is an auto-fit search or a fresh shape) — the honest
+        // counter next to the raw shape count, so a run measured at two widths shows up as two misses (#92).
+        + " measures=" + s.MeasureCount + " shapes=" + s.TextShapes + " textMiss=" + s.TextShapeMisses
+        + " bindFires=" + s.BindingFires + " bindWrites=" + s.BindingWrites
         + " gc=" + s.Gc0Delta + "/" + s.Gc1Delta + "/" + s.Gc2Delta
         // Render-side causes: how much of the frame's recording was reused, how many blur groups the GPU paid for,
         // and how much of the target was repainted (1 = full).

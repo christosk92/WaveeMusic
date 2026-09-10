@@ -31,4 +31,11 @@ internal static class GaplessJoinClock
 
     /// <summary>A primed voice is only spliceable into a mixer running at the rate it was resampled for.</summary>
     public static bool PrimedSlotMatches(int primedMixRate, int sessionRate) => primedMixRate == sessionRate;
+
+    /// <summary>May <c>CommitGaplessJoin</c> run right now? Never into a session a device-format soft reload may replace
+    /// (<paramref name="softReloading"/>), and never while the host's reported playhead is a stale 0 (<paramref name="clockStale"/>
+    /// — set from the moment a load/reopen is asked for until the new session owns the clock): with a stale playhead
+    /// <c>_activeDurMs − PositionMs</c> reads as "the whole track remains" and the join would be scheduled off a clock that is
+    /// not this track's (#112).</summary>
+    public static bool CanCommit(bool clockStale, bool softReloading) => !clockStale && !softReloading;
 }

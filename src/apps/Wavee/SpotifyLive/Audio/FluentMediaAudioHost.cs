@@ -333,6 +333,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
 
     IMediaSession? _session;
     SpotifyAudioStream? _activeStream;               // the kept fast-start stream (head now, body later); null for external
+    long _pendingSeekMs = -1;                        // a seek parked by SeekGate until the body attaches (-1 = none); Volatile: UI reads it via PositionMs
     SpotifyMediaByteSource? _activeBytes;            // the current session's byte source — re-opened on a device-rate soft reload
     string _activeFileIdHex = "";
     long _loadEpoch;
@@ -502,7 +503,9 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     // The raw session clock (track A's decode position, in ms). After an overlapping crossfade the active track is a
     // later mixer voice, so PositionMs subtracts the active track's start offset to stay active-track-relative.
     long RawPositionMs => _clockStale ? 0L : (long)_core.Position.Peek().TotalMilliseconds;
-    public long PositionMs => Math.Max(0, RawPositionMs - _activeStartMs);
+    // A seek parked by SeekGate (body not attached yet) is reported as the position — the session's clock still says 0
+    // for a track the user resumed at 3:45, and the controller would publish that 0 as fact (see SeekGate.ReportedPositionMs).
+    public long PositionMs => SeekGate.ReportedPositionMs(Volatile.Read(ref _pendingSeekMs), Math.Max(0, RawPositionMs - _activeStartMs));
     public bool IsPlaying => _core.IsPlaying.Peek();
     // The inverse of RawPositionMs's own short-circuit: while the clock is stale, PositionMs is reporting 0 as a LIE
     // (unknown), not a real position — a caller (PlaybackController.EmitState/EmitSnap) must fall back to its own
@@ -568,6 +571,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         Enqueue(async () =>
         {
             StopTicker();
+            Volatile.Write(ref _pendingSeekMs, -1);
             await DisposeSessionAsync().ConfigureAwait(false);
         });
     }
@@ -582,21 +586,57 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         long ms = Math.Max(0, positionMs);
         Enqueue(async () =>
         {
-            if (_session is null) return;
-            await _session.SeekAsync(TimeSpan.FromMilliseconds(ms), EngineSeekMode.Accurate).ConfigureAwait(false);
-            if (_session is PcmAudioSession pcm)
+            // SeekGate: the 0.2.9 engine's SeekAsync blocks until the decoder has PCM at the target. A fast-start session
+            // owns only the clear head until SupplyBody attaches the body — an op queued BEHIND this one on the same pump
+            // — so seeking past the head here deadlocks the pump (the launch restore at a saved position, the video→audio
+            // media swap). Park the target instead; SupplyBodyAsync applies it the moment the body is attached, and a
+            // deferred-open load (no head at all) applies it right after its session opens.
+            bool canServe = _activeStream is null || _activeStream.IsBodyAttached;
+            if (SeekGate.Decide(_session is not null, canServe) == SeekAdmission.Defer)
             {
-                // W2: the seek moved the active track's natural-end FRAME, so a join scheduled at the old frame would butt
-                // B into the middle of A — abandon it (the controller re-arms prepared-next) and re-derive the estimate.
-                // The session rebased its clock to the seek target (active-track-relative), so the position base resets too.
-                AbandonPendingJoin(pcm, "seek");
-                _activeStartMs = 0;
-                _activeJoinFrame = GaplessJoinClock.JoinFrameFor(pcm.SampleClock, _activeDurMs, ms, pcm.Format.SampleRate);
-                _gaplessArmed = 0;      // re-log the arm snapshot for the new endgame
-                _prepRearmSent = 0;     // a seek into the endgame may need a fresh remaining-ms re-arm nudge
-                _endedHold = 0;
+                Volatile.Write(ref _pendingSeekMs, ms);
+                _log.Info($"[audio] seek deferred ms={ms} session={(_session is not null)} bodyAttached={canServe} — applied once the body attaches");
+                // The head is already audible from 0:00 when the session opened with play intent; hold it so the user does
+                // not hear the intro of a track they resumed at 3:45. The deferred apply resumes playback.
+                if (_session is not null && _playIntent) await _session.PauseAsync().ConfigureAwait(false);
+                return;
             }
+            Volatile.Write(ref _pendingSeekMs, -1);
+            await ApplySeekCoreAsync(ms).ConfigureAwait(false);
         });
+    }
+
+    // The engine seek plus the host bookkeeping that follows it — shared by a direct seek and a deferred one.
+    async Task ApplySeekCoreAsync(long ms)
+    {
+        if (_session is null) return;
+        await _session.SeekAsync(TimeSpan.FromMilliseconds(ms), EngineSeekMode.Accurate).ConfigureAwait(false);
+        if (_session is PcmAudioSession pcm)
+        {
+            // W2: the seek moved the active track's natural-end FRAME, so a join scheduled at the old frame would butt
+            // B into the middle of A — abandon it (the controller re-arms prepared-next) and re-derive the estimate.
+            // The session rebased its clock to the seek target (active-track-relative), so the position base resets too.
+            AbandonPendingJoin(pcm, "seek");
+            _activeStartMs = 0;
+            _activeJoinFrame = GaplessJoinClock.JoinFrameFor(pcm.SampleClock, _activeDurMs, ms, pcm.Format.SampleRate);
+            _gaplessArmed = 0;      // re-log the arm snapshot for the new endgame
+            _prepRearmSent = 0;     // a seek into the endgame may need a fresh remaining-ms re-arm nudge
+            _endedHold = 0;
+        }
+    }
+
+    // Runs on the pump right after a body attach / deferred session open (SupplyBodyAsync's single exit). A parked seek
+    // is applied now that the byte source can serve it; if the user asked to hear the track, playback resumes at the
+    // target (Seek's deferral paused the head). A live stream cannot seek — its parked target is dropped.
+    async Task ApplyPendingSeekAsync()
+    {
+        long ms = Volatile.Read(ref _pendingSeekMs);
+        if (ms < 0) return;
+        Volatile.Write(ref _pendingSeekMs, -1);
+        if (_session is null || _activeLive is not null) { _log.Info($"[audio] deferred seek dropped ms={ms} session={(_session is not null)} live={(_activeLive is not null)}"); return; }
+        _log.Info($"[audio] deferred seek applying ms={ms}");
+        await ApplySeekCoreAsync(ms).ConfigureAwait(false);
+        if (_playIntent) { await _session.PlayAsync().ConfigureAwait(false); StartTicker(); }
     }
 
     public void SetVolume(double volume01)
@@ -671,6 +711,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     async Task LoadFastStartAsync(AudioFastStart start, long epoch)
     {
         await DisposeSessionAsync().ConfigureAwait(false);
+        Volatile.Write(ref _pendingSeekMs, -1);   // a seek parked for the OUTGOING track must never land on this one
         _errorReported = false;
         _lastState = PlaybackState.Idle;
 
@@ -703,7 +744,17 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     long _pendingDurMs;
     float _pendingGainDb;
 
+    // One exit for every body-supply branch (fast-start attach, deferred open, local file, external, live, module): a
+    // seek that SeekGate parked because the byte source could not serve it yet is applied here, on the same pump, once
+    // the attach/open above has made it servable. Stale-epoch supplies never reach it (the load that superseded them
+    // already cleared the parked seek in LoadFastStartAsync).
     async Task SupplyBodyAsync(AudioStreamHandle body, long epoch)
+    {
+        await SupplyBodyCoreAsync(body, epoch).ConfigureAwait(false);
+        if (epoch == Volatile.Read(ref _loadEpoch)) await ApplyPendingSeekAsync().ConfigureAwait(false);
+    }
+
+    async Task SupplyBodyCoreAsync(AudioStreamHandle body, long epoch)
     {
         if (epoch != Volatile.Read(ref _loadEpoch)) { _log.Info($"supply-body ignored stale epoch file={body.FileIdHex}"); return; }
         if (PlayIntentGate.ShouldAnnounceBuffering(_playIntent))
@@ -966,27 +1017,59 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     async Task<bool> SoftReloadAsync(long epoch)
     {
         if (epoch != Volatile.Read(ref _loadEpoch)) return true;   // superseded by a real track change — nothing to do
-        var bytes = _activeBytes;
-        if (bytes is null || _activeStream is null) return true;   // external/podcast (PlainHttpAudioStream) — not re-openable
-        if (bytes.ReopenBody is not { } body) return true;         // no captured body handle (ghost/not-attached) — leave old playing
-        if (body.SourceKind != AudioSourceKind.SpotifyEncrypted) return true;   // only the encrypted CDN path is re-openable
 
-        // Finding #4 + Finding A: atomically (under _gate, synchronous-only) DEFER if a crossfade already holds both voices,
-        // else capture the old session + the commit sequence. Tearing the session down mid-fade would silently drop track B;
-        // deferring keeps the pending flag so Tick's Completed edge re-arms the drain once the (short) fade finishes. Capturing
-        // the seq under the same lock CommitCrossfade bumps lets the post-await re-check tell whether a crossfade committed onto
-        // the old session DURING our await (Finding A) — that commit adds B's voice to the old session, so we must not dispose it.
+        // #112: on this engine a rate-changed RebuildSink latches PcmAudioSession.RequiresGraphRebuild ONE-WAY — the graph bound
+        // at prepare time cannot render on the new device and the session is silent (RenderBlock/EnsureStarted short-circuit)
+        // until a NEW graph exists. "Leave the old session playing" is therefore only a benign no-op for a same-rate swap; every
+        // exit below routes through DeviceRecoveryPlan so a rate change ends in an audible session or an honest Fault (Retry),
+        // never in silence until the next track.
+        var bytes = _activeBytes;
+        var body = bytes?.ReopenBody;
+
+        // Finding A: capture the old session + the commit sequence + the hand-off state atomically (under _gate, synchronous-only).
+        // Capturing the seq under the same lock CommitCrossfade bumps lets the post-await re-check tell whether a crossfade
+        // committed onto the old session DURING our await — that commit adds B's voice to the old session, so we must not dispose it.
         IMediaSession? old;
         long seqBefore;
+        bool handOffHeld;
         lock (_gate)
         {
-            // W2: a PENDING gapless join holds B's voice in the live mixer exactly like an in-flight fade does — tearing
-            // the session down would drop B. Defer identically; the Completed edge re-arms the drain.
-            if (_crossfadeInFlight || _joinPending) return false;   // the current track stays only briefly off-pitch; B is never dropped
             old = _session;
             seqBefore = _crossfadeCommitSeq;
+            handOffHeld = _crossfadeInFlight || _joinPending;
         }
         if (old is null) return true;   // no live session to reload
+        var oldPcm = old as PcmAudioSession;
+        bool requiresGraphRebuild = oldPcm is { RequiresGraphRebuild: true };
+
+        // Re-openable = the encrypted CDN path with a captured body handle and a live independent stream. External/podcast
+        // (PlainHttpAudioStream), a ghost/not-attached body and the other source kinds have no fresh-cursor reopen.
+        if (bytes is null || _activeStream is null || body is not { } bodyHandle || bodyHandle.SourceKind != AudioSourceKind.SpotifyEncrypted)
+        {
+            string why = bytes is null || _activeStream is null ? "no-reopenable-stream"
+                       : body is null ? "no-body-handle"
+                       : $"source-kind-{body.Value.SourceKind}";
+            await ApplyUnreopenableRecoveryAsync(old, requiresGraphRebuild, why).ConfigureAwait(false);
+            return true;
+        }
+        _log.Info($"[audio] device-recovery action={DeviceRecoveryPlan.Decide(requiresGraphRebuild, canReopen: true)} requiresGraphRebuild={requiresGraphRebuild} canReopen=True reason=reopen");
+
+        if (handOffHeld)
+        {
+            // Finding #4 / W2: an in-flight fade or a PENDING gapless join holds B's voice in the live mixer — tearing the session
+            // down would drop B. Defer; the pending flag stays set and Tick's Completed edge re-arms the drain once the (short)
+            // fade finishes. The current track stays only briefly off-pitch.
+            if (!requiresGraphRebuild) return false;
+
+            // #112: the mixer holding both voices can no longer render at all, so the fade/join it holds will never be heard and
+            // its Completed edge (driven by rawPos, which no longer advances) would never fire — deferring here is silence until
+            // the next track. Retire the hand-off explicitly and continue the reload of the ACTIVE body: a pending join is
+            // abandoned (its identity never flipped — the reload reopens A; the controller re-prepares B on the ending-soon
+            // Missed re-arm), an in-flight fade is closed as Tick would (identity is already B — the reload reopens B).
+            _log.Info($"[audio] device-recovery hand-off-retired joinPending={_joinPending} crossfadeInFlight={_crossfadeInFlight} reason=requires-graph-rebuild");
+            AbandonPendingJoin(oldPcm, "device-format");
+            CloseHandOffForDeadMixer("device-format");
+        }
 
         long savedPos = PositionMs;   // active-track-relative; captured before the re-open resets the timeline to 0
         // Finding B: OpenSessionAsync blanks _activeUri/_activeDurMs on every open, but a track made active via a committed
@@ -1005,10 +1088,10 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         // region and decrypts to the same clear head) with its OWN body attach + RangedHttpSource, wrapped in a fresh source.
         // The old session keeps its own stream; we dispose old only AFTER the new session is confirmed, and dispose the fresh
         // stream if the re-open fails — so both the shared-cursor race and Finding #2's keep-old-on-failure guarantee hold.
-        var freshStream = SpotifyAudioStream.CreateHeadOnly(_http, ReadOnlyMemory<byte>.Empty, 0, body.FileIdHex, _log, _bodyDisk);
+        var freshStream = SpotifyAudioStream.CreateHeadOnly(_http, ReadOnlyMemory<byte>.Empty, 0, bodyHandle.FileIdHex, _log, _bodyDisk);
         var freshBytes = new SpotifyMediaByteSource(freshStream, bytes.SkipOffset, bytes.Kind, bytes.DurationMs, bytes.GainLinear)
         {
-            ReopenBody = body,   // retain so a SUBSEQUENT device-rate change can reload the fresh stream again
+            ReopenBody = bodyHandle,   // retain so a SUBSEQUENT device-rate change can reload the fresh stream again
         };
 
         // Finding #2: re-open the NEW session (still PAUSED via autoResume:false) BEFORE disposing the OLD one, so a failed
@@ -1022,18 +1105,19 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
             // Attach the encrypted body to the fresh independent stream (re-primes from the disk cache / CDN), then re-open
             // PAUSED (autoResume:false) so the playhead is restored BEFORE audio starts — otherwise the track would audibly
             // play from 0 for a beat before the seek lands. OpenSessionAsync re-applies volume/mute; _playIntent survives.
-            var cdnUrls = body.CdnUrls ?? (string.IsNullOrEmpty(body.CdnUrl) ? Array.Empty<string>() : new[] { body.CdnUrl });
-            await freshStream.AttachBodyWithNativeDecryptorAsync(BuildDecryptor(body), cdnUrls, null, CancellationToken.None).ConfigureAwait(false);
-            freshStream.ConfigureReadAhead(AudioBitratePolicy.BitsPerSecond(body.Format), Wavee.NetworkPolicy.IsMetered);
+            var cdnUrls = bodyHandle.CdnUrls ?? (string.IsNullOrEmpty(bodyHandle.CdnUrl) ? Array.Empty<string>() : new[] { bodyHandle.CdnUrl });
+            await freshStream.AttachBodyWithNativeDecryptorAsync(BuildDecryptor(bodyHandle), cdnUrls, null, CancellationToken.None).ConfigureAwait(false);
+            freshStream.ConfigureReadAhead(AudioBitratePolicy.BitsPerSecond(bodyHandle.Format), Wavee.NetworkPolicy.IsMetered);
             await OpenSessionAsync(freshBytes, epoch, autoResume: false).ConfigureAwait(false);
         }
         catch
         {
             // The body attach (or open) threw before installing the new session: dispose the fresh independent stream (it owns
-            // network/read-ahead resources) and KEEP the OLD session playing — re-subscribe its DeviceFormatChanged so a later
-            // switch still re-arms. Better a brief wrong-pitch than silent death.
+            // network/read-ahead resources) and KEEP the OLD session — re-subscribe its DeviceFormatChanged so a later switch
+            // still re-arms. #112: whether "keep" is audible depends on RequiresGraphRebuild — same rate → a brief wrong-pitch
+            // beats silent death; rate changed → the old session cannot render, so the controller gets a Fault + Retry instead.
             try { freshStream.Dispose(); } catch { }
-            if (old is PcmAudioSession opx) opx.DeviceFormatChanged += OnDeviceFormatChanged;
+            await KeepOldAfterFailedReopenAsync(old, "reopen-threw").ConfigureAwait(false);
             return true;
         }
 
@@ -1066,6 +1150,10 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
                 }
             }
             if (old is PcmAudioSession op3) op3.DeviceFormatChanged += OnDeviceFormatChanged;   // re-arm device-rate switches on old
+            // #112: the restored fade lives in a mixer that cannot render, so its Completed edge would never re-arm the drain.
+            // Close the hand-off now (identity is already B) so the caller's finally re-arms immediately and the next pass
+            // reopens B at the live rate.
+            if (requiresGraphRebuild) CloseHandOffForDeadMixer("device-format-during-reload");
             return false;
         }
 
@@ -1123,11 +1211,77 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         {
             // Re-open did NOT install a new session (OpenSessionAsync's epoch guard skipped/disposed the new one, or it faulted):
             // dispose the fresh stream (idempotent — safe even if the guarded session already tore it down) and KEEP the OLD
-            // session playing — never leave _session null — re-subscribing its DeviceFormatChanged so a later switch re-arms.
+            // session — never leave _session null — re-subscribing its DeviceFormatChanged so a later switch re-arms.
             try { freshStream.Dispose(); } catch { }
-            if (old is PcmAudioSession op2) op2.DeviceFormatChanged += OnDeviceFormatChanged;
+            if (epoch != Volatile.Read(ref _loadEpoch))
+            {
+                // Superseded by a real track change: the new load owns the session now — nothing to recover.
+                if (old is PcmAudioSession op2) op2.DeviceFormatChanged += OnDeviceFormatChanged;
+            }
+            else
+                // #112: the open faulted on the current track — the old session is kept only if it can still render.
+                await KeepOldAfterFailedReopenAsync(old, "reopen-not-installed").ConfigureAwait(false);
         }
         return true;
+    }
+
+    // #112: a reopen was attempted and failed — the body is effectively not reopenable for this pass. Re-arm the old session's
+    // DeviceFormatChanged (a later switch must still reach us) and apply the un-reopenable recovery: KeepSession when the old
+    // graph can still render, ReloadThroughController (Fault + Retry) when the rate change left it silent for good.
+    async Task KeepOldAfterFailedReopenAsync(IMediaSession old, string reason)
+    {
+        if (old is PcmAudioSession opx) opx.DeviceFormatChanged += OnDeviceFormatChanged;
+        bool requiresGraphRebuild = old is PcmAudioSession { RequiresGraphRebuild: true };
+        await ApplyUnreopenableRecoveryAsync(old, requiresGraphRebuild, reason).ConfigureAwait(false);
+    }
+
+    // #112: the active body cannot be reopened in place (external/podcast, local file, live stream, ghost body, or a reopen that
+    // just failed). Same rate (KeepSession) → the old session is still able to render; make sure it is audible when the user
+    // wants to hear it (a sink swap can leave the transport parked; PlayAsync is idempotent on a playing session). Rate changed
+    // (ReloadThroughController) → RequiresGraphRebuild is latched and the session is silent until a new graph exists, which this
+    // host cannot build for that body: invalidate any prepared slot (primed for the dead mixer's rate) and surface an honest
+    // Fault so PlaybackController records its failure checkpoint and offers Retry — the ordinary load path binds a new graph at
+    // the live rate. Product call (#112): silence-with-Retry beats off-pitch-forever for these sources; every Spotify CDN track
+    // takes the reopen path instead.
+    async Task ApplyUnreopenableRecoveryAsync(IMediaSession old, bool requiresGraphRebuild, string reason)
+    {
+        var action = DeviceRecoveryPlan.Decide(requiresGraphRebuild, canReopen: false);
+        _log.Info($"[audio] device-recovery action={action} requiresGraphRebuild={requiresGraphRebuild} canReopen=False reason={reason}");
+        if (action == DeviceRecoveryAction.KeepSession)
+        {
+            if (!_playIntent) return;
+            try { await old.PlayAsync().ConfigureAwait(false); StartTicker(); }
+            catch (Exception ex) { _log.Warn($"[audio] device-recovery keep-session play failed: {ex.Message}"); }
+            return;
+        }
+
+        // ReloadThroughController.
+        if (_prepItem is not null)
+        {
+            string invalidToken = _prepToken ?? "";
+            string invalidUri = _prepUri;
+            await DisposePreparedSlotAsync().ConfigureAwait(false);
+            _transitions.OnNext(new AudioTransitionSignal(AudioTransitionKind.Invalidated, invalidToken, invalidUri, PositionMs, 0, "device-format"));
+        }
+        _signals.OnNext(AudioHostSignal.Fault(PositionMs, AudioKeyFailureReason.None, "output format changed"));
+    }
+
+    // #112: a fade (or a join that already went live) is held in a mixer that can no longer render (RequiresGraphRebuild). Its
+    // Completed edge is driven by rawPos, which no longer advances — so close the hand-off now exactly as Tick would: retire A's
+    // stream and report Completed. The active identity is already B (Started went out at commit); the reload reopens B.
+    void CloseHandOffForDeadMixer(string reason)
+    {
+        SpotifyAudioStream? retiring;
+        lock (_gate)
+        {
+            if (!_crossfadeInFlight) return;
+            _crossfadeInFlight = false;
+            retiring = _retiringStream;
+            _retiringStream = null;
+        }
+        if (retiring is not null) { try { retiring.Dispose(); } catch { } }
+        _log.Info($"[gapless] hand-off-closed token={_committedToken ?? ""} reason={reason}");
+        _transitions.OnNext(new AudioTransitionSignal(AudioTransitionKind.Completed, _committedToken ?? "", _activeUri, PositionMs, EffectiveFadeMs, reason));
     }
 
     async Task DisposeSessionAsync()
@@ -1659,7 +1813,9 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
                 if (CommitCrossfade(sess, item, rawPos)) pos = PositionMs;   // re-read: now B-relative (≈0 at the hand-off)
             }
             else if (fadeMs <= 0 && activePos >= _activeDurMs - GaplessCommitLeadMs
-                     && Volatile.Read(ref _softReloading) == 0)   // never commit into a session a soft reload may replace
+                     // Never commit into a session a soft reload may replace, and never off a stale 0 playhead (#112) —
+                     // GaplessJoinClock.CanCommit is the tested form of this guard.
+                     && GaplessJoinClock.CanCommit(_clockStale, Volatile.Read(ref _softReloading) != 0))
             {
                 CommitGaplessJoin(sess, item);
             }
@@ -1833,7 +1989,10 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
             {
                 var ev = buf[i];
                 double gapMs = XrunLogLine.GapMs(ev.GapFrames, sampleRate);
-                long ageMs = XrunLogLine.AgeMs(ev.Timestamp, Environment.TickCount64);
+                // #113: ev.Timestamp is a Stopwatch.GetTimestamp() (QPC) value, not TickCount64 — subtracting it from
+                // TickCount64 always clamped to 0, so every xrun line reported ageMs=0. Age it on the Stopwatch clock.
+                // (XrunLogLine.AgeMs stays for its pure tests; it is not the right clock for this event.)
+                long ageMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(ev.Timestamp).TotalMilliseconds;
                 _log.Warn(XrunLogLine.Format(ev.VoiceId, ev.GapFrames, totalFramesLost, ev.RingFrames,
                     ev.GcPauseTicksDelta, gapMs, ageMs, posMs, stateText));
             }

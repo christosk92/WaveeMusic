@@ -66,6 +66,27 @@ measured.
 - Play and pause no longer tear down and rebuild the entire equalizer subtree. The element keyed itself on the
   animating flag, so a transition that should only start or stop an animation changed the key and made the
   reconciler rebuild everything under it. (#128)
+- **Plugging headphones in or out while "Default" is the output device no longer silences playback until the next
+  track.** When the new endpoint was not ready yet — or the old one was invalidated by the jack switch — the engine
+  adopted a dead sink and then asked itself to rebuild every 80 ms, which kept postponing its own 250 ms debounce
+  forever. A sink failure now starts a rebuild without postponing it, a device that is not ready is retried at
+  250 ms / 1 s / 3 s while the previous one keeps playing, a failed device open is logged with the step and HRESULT,
+  and a device-format change that cannot be reopened in place keeps the track audible or offers Retry instead of
+  going quiet. (#112)
+- **Resuming a track at its saved position no longer hangs on an endless buffering bar.** The launch restore (and a
+  video-to-audio swap mid-track) seeks to the saved position on the same serialized queue that attaches the encrypted
+  body a moment later; the new engine's seek waits for decoded audio at the target, the fast-start session held only
+  the clear head, so the seek blocked the queue waiting for the very attach queued behind it. A seek that arrives
+  before the body is attached is now parked and applied the instant the body lands, and the player shows the
+  restored position instead of 0:00 while it waits.
+- The editable playlist title no longer runs the engine's shrink-to-fit search against a width it is never drawn
+  at. The hover pill's title declared no width of its own, so layout measured it at the row's leftover and again at
+  its arranged width — two cache keys, up to two eight-probe searches per invalidation — and fitted it to a measure
+  28 DIP narrower than the type plan solved for, so an owned playlist could snap one size smaller than the same title
+  read-only. It now declares the exact width it gets: one key, one search, both arms agree. (#92)
+- Decode-ahead runs on a dedicated above-normal-priority thread again. The engine's per-voice producer had moved to
+  a normal-priority task, so on a busy machine (a compiler, an indexer) the decoder lost its scheduling edge and
+  playback stalled to rebuffer; the `xrun` log line's `ageMs` field, which always printed 0, now reports the real age.
 - A detail page's track list could re-render every mounted row for no reason: the row shape is a record struct
   holding an array, and a record struct compares an array by reference, so an otherwise identical shape compared
   unequal whenever the backing array instance changed. It is compared by value now. The array is usually
