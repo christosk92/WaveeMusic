@@ -216,6 +216,10 @@ public sealed class WaveeLog : IWaveeLog
     static bool GpuForensic(string s) =>
         s.StartsWith("[d3d12.adapter]", StringComparison.Ordinal)
         || s.StartsWith("[device-lost]", StringComparison.Ordinal)
+        // The always-on wake census: one line per 30 s naming the frame rate and WHICH wake term held the loop awake.
+        // It has to clear the Info gate or it answers nothing after the fact - "pinned at panel rate, cause unknown"
+        // is precisely the report this instrument exists to make answerable.
+        || s.StartsWith("[wake]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12.stall]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12] ", StringComparison.Ordinal)
         || s.Contains("dwmGlitches", StringComparison.Ordinal);

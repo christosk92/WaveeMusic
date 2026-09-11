@@ -201,7 +201,10 @@ sealed class NowPlayingPanel : Component
         };
     }
 
-    static ColorF HeroWashColor(string? url)
+    // Internal, not private: the deck faces (DeckArt) and the style flyout's "album colour" swatch have to paint the
+    // SAME wash this tile does, or the vinyl, the swatch and the cover placeholder would each grade the artwork
+    // differently. One function, three surfaces.
+    internal static ColorF HeroWashColor(string? url)
     {
         if (url is { Length: > 0 })
             _ = SpotifyLive.CoverColorPlane.Current.Watch(url).Value;
@@ -497,28 +500,71 @@ sealed class NowPlayingPanel : Component
 /// this component — a sibling that REPLACES the tile, never a layer over it. That is what lets the video keep its own
 /// aspect at the full rail width in the Details body exactly as it does in every other body; a video layer inside this
 /// tile could only ever be this tile's shape, which is a square inset <c>Spacing.S</c> per side.</para>
+///
+/// <para><b>Cover | Player.</b> The tile now owns a 36-DIP header strip (<see cref="NpvHeaderRow"/>) over a KEYED
+/// hero slot holding either today's cover (<see cref="NowPlayingPanel.HeroArt"/>) or one of the twelve player decks
+/// (<c>NpvDeck</c>) — a presentation swap INSIDE the Details arm, not a <c>RailMode</c> and not a playback module.
+/// The docked video is unaffected: it still replaces this whole component (see above), header and all.
+/// See <c>docs/plans/wavee/npv-player-styles-implementation.md</c>.</para>
 /// </summary>
 sealed class NowPlayingHeroTile : Component
 {
+    /// <summary>Top of the ART inside this tile — the top padding, the header strip and the gap under it.
+    /// <c>RightRail</c> offsets the Art|Video toggle by exactly this so it keeps sitting on the ART's top-right
+    /// corner instead of landing in the header strip. Derived, never re-measured: change
+    /// <see cref="NpvHeaderRow.Height"/> and the toggle follows.</summary>
+    public const float ArtTop = Spacing.S + NpvHeaderRow.Height + Spacing.S;
+
+    /// <summary>The rail's content width when the shell context is not resolvable (rail 340 − 2·S). Only the deck
+    /// needs a number at all; the cover is an <c>AspectRatio = 1</c> ImageEl that measures itself.</summary>
+    const float FallbackSide = 324f;
+
     public override Element Render()
     {
         var b = UseContext(PlaybackBridge.Slot);
+        var svc = UseContext(Services.Slot);
+        var overlay = UseContext(Overlay.Service);
+        var ui = UseContext(ShellUi.Slot);
         var track = b?.CurrentTrack.Value;
         // Nothing playing: NowPlayingPanel itself shows Empty(...) with no hero at all, so the pinned slot must
-        // collapse to nothing too — an empty square above "Nothing playing" would be a tile for no track.
+        // collapse to nothing too — an empty square above "Nothing playing" would be a tile for no track (and a
+        // header strip over it would be chrome for a hero that is not there).
         if (track is null) return new BoxEl();
+
+        var settings = svc?.Settings;
+        int presentation = NpvPlayerPrefs.Presentation(settings);   // Epoch-subscribed: any surface's write lands here
+        var preset = NpvPlayerCatalog.ById(NpvPlayerPrefs.Style(settings));
+
+        // A deck is a fixed SQUARE (it lays out in fractions of its own side and isolates its layout), so it needs
+        // the number the cover gets for free from AspectRatio=1. That number is the rail's content width: the rail
+        // width minus this tile's own S inset per side. Reading the SIGNAL subscribes the tile, so a rail resize
+        // (the shell's rail splitter writes RailWidth live) reaches the deck at all — and it is snapped to the 4-DIP
+        // grid because the remount key below quantizes with it: NpvDeck.Create freezes `side` at mount, so the only
+        // way a resized rail re-squares a mounted deck is a re-key. Rounding to 4 keeps the error sub-perceptual
+        // while cutting a drag's remounts to a quarter of what a per-DIP key would cause.
+        float content = ui is null ? FallbackSide : MathF.Max(1f, ui.RailWidth.Value - 2f * Spacing.S);
+        float side = MathF.Round(content / 4f) * 4f;
+
+        // KEYED, so a preset change REMOUNTS (a Cassette must not inherit a Record's mounted deck state) while an
+        // option flip inside one preset does not (the deck restyles in place off NpvPlayerPrefs.Epoch).
+        Element hero = presentation == NpvPlayerPrefs.Player
+            ? NpvDeck.Create(track, preset, side) with { Key = NpvDeck.KeyFor(preset) + "@" + (int)side }
+            : NowPlayingPanel.HeroArt(track) with { Key = "cover" };
+
+        // ImageEl carries no OnContextRequested, and a deck is a whole subtree — so the WRAPPER owns the menu for
+        // both occupants, which also keeps the right-click target identical in either presentation.
+        var heroBox = new BoxEl { Direction = 1, Shrink = 0f, Children = [hero] };
+        if (overlay is not null)
+            heroBox = heroBox.WithContextMenu(overlay, () => NpvArtMenu.Model(settings, presentation, preset));
 
         return new BoxEl
         {
-            Shrink = 0f,
+            Direction = 1, Shrink = 0f, Gap = Spacing.S,
             // LEFT/TOP/RIGHT S, no bottom: the gap to whatever scrolls beneath is NowPlayingPanel.HeroMeta's own
             // top padding (see that method's comment) — this tile does not own the space between itself and the
             // scrolled content, so RightRail's two pinned tiles (this one and the Cap-face card) stay symmetric.
             Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, 0f),
-            // HeroArt alone — its own AspectRatio=1f ImageEl is what makes the tile square, at the rail's content
-            // width. No ZStack and no video layer: see the class doc — the docked card REPLACES this whole component
-            // in RightRail's hero slot rather than painting inside it.
-            Children = [NowPlayingPanel.HeroArt(track)],
+            Children = [Embed.Comp(() => new NpvHeaderRow()), heroBox],
         };
     }
 }

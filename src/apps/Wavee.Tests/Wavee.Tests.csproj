@@ -626,6 +626,14 @@
          Engine-free/BCL-only by construction (System.Threading only) — SingleFlightMemoTests drive the real dedupe/TTL/
          cancellation-detach/invalidate/failure-not-cached contract against production code, not a mock of it. -->
     <Compile Include="..\Wavee\App\SingleFlightMemo.cs" />
+    <!-- Now Playing player styles (docs/plans/wavee/npv-player-styles-implementation.md), Part 1 — engine-free by
+         construction. NpvPlayerCatalog.cs is `using System;` only (NpvPlayerCatalogTests). NpvPlayerPrefs.cs depends
+         only on FluentGpu.Signals.Signal<T> (the real engine type, transitively referenced, same precedent as
+         DeveloperMode.cs above) plus the IAppSettings/WaveeSettings/NpvPlayerKeys shim above (NpvPlayerPrefsTests).
+         NpvDiagnostics.cs depends only on WaveeLog/WaveeLogField from the already-included Diagnostics\*.cs. -->
+    <Compile Include="..\Wavee\Features\Player\NpvPlayerCatalog.cs" />
+    <Compile Include="..\Wavee\Features\Player\NpvPlayerPrefs.cs" />
+    <Compile Include="..\Wavee\Features\Player\NpvDiagnostics.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -660,6 +668,19 @@
          provider returned, kept verbatim so a parser change is regression-tested against reality rather than against a
          synthetic body someone wrote to match their own assumptions. -->
     <Content Include="Lyrics\Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Now Playing player styles (docs/plans/wavee/npv-player-styles-implementation.md), Part 3 — the DECK PHYSICS.
+         Everything under Deck\Model\ is engine-free BY CONSTRUCTION (no `using FluentGpu.*`: BCL + Wavee.Core only,
+         which is why one glob is safe and correct here) — DeckInput/DeckBoundaryRules, DeckFrame/IDeckModel/DeckEase,
+         PositionInterpolator, SpinIntegrator, ProgressModel, plus the per-deck machines (TonearmMachine/RecordModel,
+         TapeMachine, DiscMachine, MeterBallistics, LevelSynth, DriftPath). The engine-bound half of the deck
+         (DeckHost/DeckClock/DeckSignals/DeckArt/DeckGesture/NpvDeck and Deck\Faces\) is deliberately NOT included.
+         Drives: DeckBoundaryRulesTests, DeckEaseTests, PositionInterpolatorTests, SpinIntegratorTests,
+         TonearmMachineTests, TonearmGeometryTests, TapeMachineTests, DiscMachineTests, MeterBallisticsTests,
+         LevelSynthTests. -->
+    <Compile Include="..\Wavee\Features\Player\Deck\Model\*.cs" />
   </ItemGroup>
 
 </Project>

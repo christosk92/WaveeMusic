@@ -212,6 +212,12 @@ public sealed class PlaybackBridge
     /// these must therefore treat null/0 as "say nothing" rather than as a value to fall back from — the absence IS
     /// the honest answer, and it is why this is safe to show at all.</para></summary>
     public Signal<string?> StreamFormat { get; } = new(null);
+    /// <summary>Live RMS/peak/spectrum off the local PCM tap, when there is one — the <see cref="IAudioLevelSource"/>
+    /// precedent, re-pointed at every host swap (fake→pre-login local, go-live, logout). Null means an honest "no local
+    /// tap": the fake/silent backend, or a live session that is merely a Connect VIEWER of another device's playback.
+    /// <para><b>Threading:</b> written on the audio pump thread. A consumer must <c>Peek()</c> it from its own render
+    /// tick, never subscribe/react to it directly — every audio block would otherwise fan out a UI notification.</para></summary>
+    public IReadSignal<FluentGpu.Media.VisualizerFrame>? Levels { get; internal set; }
     public Signal<bool> IsShuffle { get; } = new(false);
     public Signal<RepeatMode> Repeat { get; } = new(RepeatMode.Off);
     public FloatSignal PositionFrac { get; } = new(0f);

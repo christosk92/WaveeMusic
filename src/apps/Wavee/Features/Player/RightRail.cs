@@ -319,11 +319,17 @@ sealed class RightRail : Component
     // DockedVideoSurface's own glyph strip uses. "Art" is the sticky-off path (NotifyVideoSurfaceClosed, never
     // TurnVideoOff — see that method's own doc for why the stale-close identity guard matters), "Video" docks it;
     // both are scoped to THIS surface only.
+    //
+    // GEOMETRY: the ZStack this sits in is the WHOLE hero tile, which since the Cover|Player switch begins with a
+    // header strip — so the toggle is offset down by NowPlayingHeroTile.ArtTop (the tile's top inset + the strip +
+    // the gap under it) and in by the tile's own S inset, landing it XS inside the ART's top-right corner instead of
+    // straddling the corner of a tile whose top 52 DIP are now chrome. Derived from ArtTop, never a literal: change
+    // the strip's height and the toggle follows it down.
     static Element ArtVideoToggle(PlaybackBridge b) => new BoxEl
     {
         Height = 24f, Shrink = 0f,
         AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End,
-        Margin = new Edges4(0f, Spacing.XS, Spacing.XS, 0f),
+        Margin = new Edges4(0f, NowPlayingHeroTile.ArtTop + Spacing.XS, Spacing.S + Spacing.XS, 0f),
         Direction = 0, Corners = CornerRadius4.All(Radii.Control), ClipToBounds = true,
         Fill = WaveeOnMedia.GlassHover,
         Children =

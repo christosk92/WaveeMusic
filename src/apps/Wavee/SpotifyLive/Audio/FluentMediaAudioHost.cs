@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Media;
 using FluentGpu.Media.Windows;
+using FluentGpu.Signals;
 using FluentGpu.Windows.Wasapi;
 using Wavee.Backend;
 using Wavee.Backend.Audio;
@@ -347,7 +348,7 @@ internal sealed class SpotifyEngineAudioDecoder : IAudioDecoder, IDisposable
 /// documented follow-ups — this host delivers correct single-track decode→mix→output with graceful natural-end advance.
 /// </summary>
 public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl, IAudioOutputDeviceControl, IPreparedAudioHost,
-    ILiveMetadataSource
+    ILiveMetadataSource, IAudioLevelSource
 {
     const int MaxCrossfadeMs = 12_000;
 
@@ -734,6 +735,11 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         var v = _volume;
         Enqueue(() => { _session?.SetVolume(v); return Task.CompletedTask; });
     }
+
+    // ── IAudioLevelSource ────────────────────────────────────────────────────────────────────────────────────────────
+    // _effects is always constructed (never null), so this is never null for THIS host; the nullable shape on the
+    // interface is for hosts that never have a tap at all (SilentAudioHost, a Connect-viewer session).
+    public IReadSignal<VisualizerFrame>? Levels => _effects.Visualizer;
 
     // ── IAudioDspControl ─────────────────────────────────────────────────────────────────────────────────────────────
 

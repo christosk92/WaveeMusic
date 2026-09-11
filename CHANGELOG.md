@@ -10,6 +10,15 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.2.9] - unreleased
 
+### Added
+
+- **Player styles for Now Playing.** The Now Playing rail's cover gets a header with a Cover | Player switch and a Player style flyout: twelve
+  players in three rows — Record, Cassette, Reel-to-reel, CD/MiniDisc; Turntable, iPod Classic, Winamp, Hi-fi VU; Zune, WMP visualizer, Canvas
+  drift, Picture disc — each with its own options (vinyl finish, size and speed, cassette shell and label, iPod body, Winamp skin, …). The
+  record's tonearm cues, lifts on pause, seeks, rides the run-out into a locked groove and returns to its rest the way a turntable does. The
+  choice is remembered per user and is also reachable from the artwork's right-click menu, Settings › Appearance › Now playing and the command
+  palette. (#n)
+
 ### Changed
 
 - **"Your Library" opens the library's destinations.** Clicking the Library V3 title shows a flyout with Liked

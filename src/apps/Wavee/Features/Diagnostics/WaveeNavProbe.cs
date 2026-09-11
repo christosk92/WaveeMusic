@@ -1083,7 +1083,7 @@ internal static class WaveeNavProbe
                 int wait = host.RecommendedWaitMs();
                 if (wait > 0) { realLoopThrottled++; if (wait > realLoopMaxWait) realLoopMaxWait = wait; }
                 if (host.LastWaitKind is HostWaitKind.DisplayTick or HostWaitKind.SoftwarePace) realLoopWaitAsync++;
-                else if (host.LastWaitKind == HostWaitKind.Ambient) realLoopWaitAmbient++;
+                else if (host.LastWaitKind == HostWaitKind.Cadence) realLoopWaitAmbient++;
                 else realLoopWaitOther++;
                 // A synthetic queued event is not an HWND message and therefore cannot wake an infinite idle wait.
                 // Clamp that diagnostic-only case; a correctly armed scroll returns a display-paced wait here.
@@ -1103,7 +1103,7 @@ internal static class WaveeNavProbe
             foreach (var v in a) { tot += v; if (v > realLoopWorstMs) realLoopWorstMs = v; if (v > 16.7) realLoopOver16++; }
             realLoopMeanMs = a.Length > 0 ? tot / a.Length : 0;
             Log.Info($"[home-scroll-fps] REAL app-loop wheel scroll: {a.Length} frames mean {realLoopMeanMs:0.0}ms ({(realLoopMeanMs > 0 ? 1000.0 / realLoopMeanMs : 0):0} fps) worst {realLoopWorstMs:0.0}ms ({(realLoopWorstMs > 0 ? 1000.0 / realLoopWorstMs : 0):0} fps) >16.7ms(<60fps)={realLoopOver16} " +
-                $"offsetSpan={realLoopOffsetSpan:0} scrollActive={realLoopScrollActive}/200 waits(async/ambient/other)={realLoopWaitAsync}/{realLoopWaitAmbient}/{realLoopWaitOther} " +
+                $"offsetSpan={realLoopOffsetSpan:0} scrollActive={realLoopScrollActive}/200 waits(async/cadence/other)={realLoopWaitAsync}/{realLoopWaitAmbient}/{realLoopWaitOther} " +
                 $"activePresents={realLoopPresents} activePresentFps={realLoopPresentFps:0.0} trailingPresentFps={realLoopTrailingPresentFps:0.0} drainPresents={realLoopDrainPresents} " +
                 $"throttledWaitFrames={realLoopThrottled} maxWait={realLoopMaxWait}ms");
         }
@@ -1168,7 +1168,7 @@ internal static class WaveeNavProbe
         sb.AppendLine("=== VERDICTS ===");
         if (realLoopMeanMs > 0)
             sb.AppendLine($"  real-loop proof: offsetSpan={realLoopOffsetSpan:0} scrollActive={realLoopScrollActive}/200 " +
-                $"waits(async/ambient/other)={realLoopWaitAsync}/{realLoopWaitAmbient}/{realLoopWaitOther} " +
+                $"waits(async/cadence/other)={realLoopWaitAsync}/{realLoopWaitAmbient}/{realLoopWaitOther} " +
                 $"activePresents={realLoopPresents} activePresentFps={realLoopPresentFps:0.0} " +
                 $"trailingPresentFps={realLoopTrailingPresentFps:0.0} drainPresents={realLoopDrainPresents}");
         AppendScrollVerdicts(sb, homeScroll, likedScroll, all, nAttrib, sumFlush, sumLayout, sumAnim, sumRecord, sumSubmit,

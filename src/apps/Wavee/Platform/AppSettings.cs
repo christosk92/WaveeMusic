@@ -349,6 +349,22 @@ static class WaveeSettings
     // a process that is killed on every run (an IDE stop, Task Manager) is otherwise "unclean" every single launch
     // and re-asks after every dismissal (CrashPromptPolicy.Decide).
     public static readonly SettingKey<bool> UncleanExitOffered = new("crash.uncleanExitOffered", false);
+
+    // ── Now Playing presentation (docs/plans/wavee/npv-player-styles-implementation.md) ─────────────────────────────
+    // Cover (0) or a Player deck (1) in the Details rail's pinned hero. A PER-USER preference, deliberately NOT part of
+    // session.json (that carries RailOpen/RailMode only): the rail remembers WHERE you were, this remembers HOW you like
+    // the hero drawn.
+    public static readonly SettingKey<int> NpvPresentation = new("npv.presentation", 0);
+    // Which player deck, as an NpvPlayerCatalog preset id (ints, like ThemeMode/RowDensity). Append-only, never renumbered.
+    public static readonly SettingKey<int> NpvPlayerStyle = new("npv.player.style", 0);
+}
+
+// Per-preset deck options (the SidebarKeys runtime-built family): one int key per (preset, option), value = index into
+// that option's choice list. SLUGS ARE PERSISTED — NpvPlayerCatalog owns them, never rename. Record and Turntable share
+// option rows but keep SEPARATE keys.
+static class NpvPlayerKeys
+{
+    public static SettingKey<int> Option(string presetSlug, string optionSlug) => new($"npv.player.{presetSlug}.{optionSlug}", 0);
 }
 
 // The LibraryPage's per-kind persisted state (the "Your Library" master–detail: albums/artists/podcasts). Keys are built

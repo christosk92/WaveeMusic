@@ -184,6 +184,18 @@ public interface IAudioDspControl
     void SetCrossfade(bool enabled, int durationMs);
 }
 
+/// <summary>Optional host capability (the <see cref="IAudioDspControl"/> precedent — discovered by interface): a host
+/// with a local PCM tap publishes its live RMS/peak/spectrum here. <see cref="Levels"/> is null for a host that never
+/// has one — no cast failure, just an honest "nothing to show": the fake/silent backend, and a real session that is
+/// merely a Connect VIEWER of another device's playback (nothing decodes locally to measure).
+/// <para><b>Threading:</b> the signal is written on the audio pump thread, off the UI thread — a consumer must
+/// <c>Peek()</c> it from its own render tick (e.g. a per-frame ticker), never <c>Subscribe</c>/react to it directly,
+/// or every audio block would fan out a UI notification.</para></summary>
+public interface IAudioLevelSource
+{
+    FluentGpu.Signals.IReadSignal<FluentGpu.Media.VisualizerFrame>? Levels { get; }
+}
+
 /// <summary>Optional host capability (the <see cref="IAudioDspControl"/> precedent — discovered by interface, never a
 /// new member on the core <see cref="IAudioHost"/> seam): a source whose NOW-PLAYING metadata arrives in-band, after the
 /// track is already loaded. Internet radio is the case that forces it — the ICY <c>StreamTitle</c> block that names the

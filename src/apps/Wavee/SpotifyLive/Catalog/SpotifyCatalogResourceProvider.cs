@@ -144,14 +144,9 @@ public sealed partial class SpotifyCatalogResourceProvider : ICatalogResourcePro
         {
             await Task.WhenAll(requests.Select(async request =>
             {
-                if (responses.TryGetValue(request.Stamp.RequestId, out var decoded))
-                {
-                    // TrackV4 may omit the file plane. One explicit getTrack is the finite availability fallback.
-                    if (request.Key.Facet is not (FacetKind.Availability or FacetKind.UserIdentity)
-                        || decoded.Result.Status is ResourceFetchStatus.Present or ResourceFetchStatus.Unsupported
-                        || decoded.Result.Error?.Kind is ResourceErrorKind.Transport or ResourceErrorKind.RateLimited or ResourceErrorKind.Forbidden)
-                        return;
-                }
+                if (responses.TryGetValue(request.Stamp.RequestId, out var decoded)
+                    && !Wavee.Backend.Catalog.BatchAnswerPolicy.NeedsEnvelopeFallback(request.Key.Facet, decoded.Result))
+                    return;   // TrackV4 may omit the file plane; a USER_PROFILE may carry only a username — see the policy
                 await envelopeGate.WaitAsync(ct).ConfigureAwait(false);
                 try { responses[request.Stamp.RequestId] = await FetchEnvelopeAsync(request, ct).ConfigureAwait(false); }
                 catch (HttpRequestException error) when (error.StatusCode == System.Net.HttpStatusCode.NotFound
