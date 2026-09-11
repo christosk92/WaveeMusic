@@ -30,6 +30,8 @@ public sealed class PlaylistExtenderClient
     public async Task<IReadOnlyList<Track>> ExtendAsync(
         string playlistUri, IReadOnlyList<string> skipTrackIds, int numResults, CancellationToken ct = default)
     {
+        long started = Environment.TickCount64;
+        PlaylistMutationDiagnostics.ExtendStarted(playlistUri, skipTrackIds.Count, numResults);
         var body = BuildBody(playlistUri, skipTrackIds, numResults);
         var r = await _transport.Request(Channel.SpclientWg, "/playlistextender/extendp/", body, ct, "POST", JsonHeaders)
             .ConfigureAwait(false);
@@ -38,7 +40,10 @@ public sealed class PlaylistExtenderClient
             PlaylistMutationDiagnostics.ExtendFailed(playlistUri, r.Status);
             return Array.Empty<Track>();
         }
-        return Parse(SpotifyZstd.MaybeDecompressZstd(r.Body));
+        var bytes = SpotifyZstd.MaybeDecompressZstd(r.Body);
+        var tracks = Parse(playlistUri, bytes);
+        PlaylistMutationDiagnostics.ExtendOk(playlistUri, tracks.Count, bytes.Length, Environment.TickCount64 - started);
+        return tracks;
     }
 
     // {"playlistURI":"spotify:playlist:<id>","trackSkipIDs":[<base62 id>,…],"numResults":20}
@@ -58,7 +63,7 @@ public sealed class PlaylistExtenderClient
         return buffer.WrittenMemory;
     }
 
-    static IReadOnlyList<Track> Parse(byte[] json)
+    static IReadOnlyList<Track> Parse(string playlistUri, byte[] json)
     {
         if (json is null || json.Length == 0) return Array.Empty<Track>();
         try
@@ -71,7 +76,11 @@ public sealed class PlaylistExtenderClient
                 if (MapTrack(e) is { } t) list.Add(t);
             return list;
         }
-        catch { return Array.Empty<Track>(); }
+        catch (Exception ex)
+        {
+            PlaylistMutationDiagnostics.ExtendParseFailed(playlistUri, json.Length, ex);   // was: silent empty list
+            return Array.Empty<Track>();
+        }
     }
 
     // recommendedTracks[i]: { id, originalId:"spotify:track:<id>", name, artists:[{id,name}],

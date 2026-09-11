@@ -11,13 +11,13 @@ using Xunit;
 
 namespace Wavee.Tests.Audio;
 
-public class PreparedTransitionTests
+public class PreparedTransitionTests : PlaybackCatalogTestBase
 {
     [Fact]
     public async Task NaturalHandoff_AdvancesExactPreparedItem_Once_WithoutReload()
     {
         var host = new PreparedHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:track:a", "spotify:track:b", "spotify:track:c"), "dev");
 
@@ -25,7 +25,7 @@ public class PreparedTransitionTests
         await WaitUntilAsync(() => host.Prepared.Count >= 1);
         var prepared = host.Prepared.First();
         Assert.Equal("spotify:track:b", prepared.Start.TrackUri);
-        Assert.True(prepared.AllowOverlap);
+        Assert.False(prepared.AllowOverlap); // unknown album metadata conservatively keeps the boundary gapless
         Assert.Equal(new[] { "spotify:track:a" }, host.Loaded.ToArray());
 
         host.EmitTransition(new AudioTransitionSignal(AudioTransitionKind.Started, prepared.Token,
@@ -43,7 +43,7 @@ public class PreparedTransitionTests
     public async Task QueueEdit_CancelsOldIdentity_AndOnlyNewTokenCanAdvance()
     {
         var host = new PreparedHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:track:a", "spotify:track:b"), "dev");
 
@@ -72,7 +72,7 @@ public class PreparedTransitionTests
     public async Task EpisodesPrepareGaplessButNeverRequestOverlap_AndManualNextReloads()
     {
         var host = new PreparedHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:episode:a", "spotify:episode:b"), "dev");
 
@@ -91,7 +91,7 @@ public class PreparedTransitionTests
         // join with EffectiveFadeMs = 0 and the session must advance off the PREPARED audio. A reload here is the audible
         // gap: it means the WASAPI session was torn down and reopened between two tracks.
         var host = new PreparedHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:track:a", "spotify:track:b"), "dev");
 
@@ -113,7 +113,7 @@ public class PreparedTransitionTests
         // a mixer rate the reopened session no longer runs at) is gone. The controller must react exactly like a Missed
         // hand-off — re-resolve a FRESH prepare for the same upcoming item — never leave the boundary unprepared.
         var host = new PreparedHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:track:a", "spotify:track:b"), "dev");
 
@@ -136,6 +136,43 @@ public class PreparedTransitionTests
         await WaitUntilAsync(() => projection.CurrentTrack?.Uri == "spotify:track:b");
     }
 
+    [Fact]
+    public async Task ManualNextPromotesTheExactPreparedItem_AndPreservesPause()
+    {
+        var host = new PreparedHost { PromotePrepared = true };
+        using var projection = Catalog.Projection("dev");
+        using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
+            new FakeContextResolver("spotify:track:a", "spotify:track:b", "spotify:track:c"), "dev");
+        await controller.PlayAsync("spotify:playlist:test");
+        await WaitUntilAsync(() => host.Prepared.Count > 0);
+        var prepared = host.Prepared.First();
+        await controller.PauseAsync();
+        await controller.NextAsync();
+        var promoted = Assert.Single(host.Promoted);
+        Assert.Equal(prepared.Token, promoted.Token);
+        Assert.Equal(prepared.TargetItem, promoted.TargetItem);
+        Assert.False(promoted.PlayWhenReady);
+        Assert.Equal("spotify:track:b", projection.CurrentTrack?.Uri);
+        Assert.False(projection.Transport.PlayWhenReady);
+        Assert.Equal(new[] { "spotify:track:a" }, host.Loaded.ToArray());
+    }
+
+    [Fact]
+    public async Task NaturalBoundaryReportedDuringManualSkip_IsCommittedBeforeTheManualQueueStep()
+    {
+        var host = new PreparedHost { PromotePrepared = true };
+        using var projection = Catalog.Projection("dev");
+        using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
+            new FakeContextResolver("spotify:track:a", "spotify:track:b", "spotify:track:c"), "dev");
+        await controller.PlayAsync("spotify:playlist:test");
+        await WaitUntilAsync(() => host.Prepared.Count > 0);
+        var prepared = host.Prepared.First();
+        host.OnSkip = () => host.EmitTransition(new(AudioTransitionKind.Started, prepared.Token, prepared.Start.TrackUri, 0));
+        await controller.NextAsync();
+        Assert.Equal("spotify:track:c", projection.CurrentTrack?.Uri);
+        Assert.Equal(new[] { "spotify:track:a", "spotify:track:b" }, controller.SnapForTest.History.Select(x => x.Track.Uri));
+    }
+
     static async Task WaitUntilAsync(Func<bool> predicate)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -144,6 +181,17 @@ public class PreparedTransitionTests
 
     sealed class PreparedHost : IAudioHost, IPreparedAudioHost
     {
+        public Action? OnSkip;
+        public bool PromotePrepared;
+        public ConcurrentQueue<AudioPromoteRequest> Promoted { get; } = new();
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request)
+        {
+            if (request.Action == AudioTransportAction.Skip) { var callback = OnSkip; OnSkip = null; callback?.Invoke(); }
+            return global::Wavee.Tests.RecordingHostOperations.Submit(this, request, _signals.OnNext);
+        }
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, _signals.OnNext);
+        public bool PlayIntent => IsPlaying;
+
         readonly SimpleSubject<AudioHostSignal> _signals = new();
         readonly SimpleSubject<AudioTransitionSignal> _transitions = new();
         public ConcurrentQueue<string> Loaded { get; } = new();
@@ -171,7 +219,14 @@ public class PreparedTransitionTests
             return Task.CompletedTask;
         }
 
-        public Task SupplyNextBodyAsync(string token, AudioStreamHandle body, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<bool> TryPromotePreparedAsync(AudioPromoteRequest request, CancellationToken ct = default)
+        {
+            if (!PromotePrepared) return Task.FromResult(false);
+            Promoted.Enqueue(request);
+            _signals.OnNext(new AudioHostSignal(request.PlayWhenReady ? AudioHostSignalKind.Playing : AudioHostSignalKind.Paused,
+                0, request.PlayWhenReady, false, false) { Command = request.Command, PlayWhenReady = request.PlayWhenReady });
+            return Task.FromResult(true);
+        }
 
         public Task<AudioPrepareCancelResult> CancelPreparedAsync(string token, CancellationToken ct = default)
         {

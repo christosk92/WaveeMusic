@@ -204,11 +204,12 @@ source that raises `Changed` mid-rebuild only marks the binder dirty.
 | `SetSectionCollapsed` | `Action<string,bool>?` | Where collapse state lives. Null ⇒ non-collapsible headers. |
 | `ReadOnly` | `bool` | Suppresses inline `EntityList` controls, the missing-entity "Remove" verb and the empty-pane customize CTA; `Dispatch` becomes a no-op. |
 | `SearchHead` | `bool` | Render the pane-owned library-only search box (only when the document actually contains a visible `EntityList`). |
-| `Head` | `Func<Element?>?` | Arbitrary mode chrome above the scroll surface. V3's `LibraryV3Chrome` mounts, in order: the nav band (`LibraryV3NavBand`) · header · toolbar (search + sort/view) · the filter-chip rail · a rule (`Divider`) · the drill-in breadcrumb (only while drilled) · a retry banner or one of the actionable empty states. Rendered before `SearchHead`. |
+| `Head` | `Func<Element?>?` | Arbitrary mode chrome above the scroll surface. V3's `LibraryV3Chrome` mounts, in order: the nav band (`LibraryV3NavBand`, Compact 32) · the header (`LibraryV3Header` — the title opens the library flyout, `LibraryV3DestinationsFlyout` (Liked Songs · Albums · Artists · Podcasts, each with a count and a pin toggle), and never truncates; the inline search field folds into it per `LibraryV3HeaderRules`; Collapse lives in the "…" overflow) · the filter-chip rail (`LibraryV3Chips`, 36) · the lens row (`LibraryV3LensRow`, 32 — the row count, the Albums/Artists/Podcasts page link and the Sort/View controls) while not drilled, or the drill-in breadcrumb while it is · a retry banner or one of the actionable empty states. Rendered before `SearchHead`. |
 | `ShowLayoutMenu` | `bool` (default true) | Hang the quick layout menu off the pane's **first** section header. |
 | `RailLayoutMenu` | `bool` (default true) | Put it at the bottom of the rail too. |
 | `RailFooter` | `Func<Element?>?` | An extra rail affordance after the planned tiles (Classic's create-playlist "+"). |
-| `RailHead` | `Func<Element?>?` | **Back (W3), for exactly one mode.** Chrome tiles PREPENDED to the 56-DIP rail, ahead of the plan's own tiles (a divider follows). Null for Classic/Curated, whose Shortcuts band is still an ordinary document section and whose tiles therefore arrive through the plan's `ShowInRail` rows. Library V3 supplies one (`Modes/LibraryV3Sidebar.BuildRailHead`) because its own nav band left the document entirely and became fixed chrome (`LibraryV3NavBand`) — it has no section left for `SidebarRowPlanner.BuildRail` to draw a Home tile from. Read inside `SidebarPaneRail`'s render (never the plan's `DepKey`), so a TopBar edit that moves no section still repaints the rail; because of that, `SidebarPane`'s rail memo folds `Prefs.LayoutVersion.Value` into its own `DepKey` whenever `RailHead` is non-null. |
+| `RailHead` | `Func<Element?>?` | **Back (W3), for exactly one mode.** Chrome tiles PREPENDED to the 56-DIP rail, ahead of the plan's own tiles (a divider follows). Null for Classic/Curated, whose Shortcuts band is still an ordinary document section and whose tiles therefore arrive through the plan's `ShowInRail` rows. Library V3 supplies one (`Modes/LibraryV3Sidebar.BuildRailHead`) because its own nav band left the document entirely and became fixed chrome (`LibraryV3NavBand`) — it has no section left for `SidebarRowPlanner.BuildRail` to draw a Home tile from. **It draws ONLY the shortcut band's tiles** (Home and whatever else `TopBar` holds) — Liked Songs is no longer one of them: it draws through the document's own `v3.system` section and its `ShowInRail: true`, exactly like Classic/Curated's Shortcuts section, and Albums/Artists/Podcasts never had rail tiles. Read inside `SidebarPaneRail`'s render (never the plan's `DepKey`), so a TopBar edit that moves no section still repaints the rail; because of that, `SidebarPane`'s rail memo folds `Prefs.LayoutVersion.Value` into its own `DepKey` whenever `RailHead` is non-null. |
+| `RowStyle` | `SidebarRowStyle` (default `Cluster`) | The row-anatomy seam (V3.1) — never a `Design` branch, never a persisted display flag. `Cluster` (0) is today's landed anatomy (trailing cluster, ZStack "…", pin glyph in the cluster) and is **byte-identical** for Classic/Curated. `Slot` (1) is Library V3's opt-in: one trailing slot (`SidebarRowGeometry.TrailingSlotWidth` 28), the pin mark leading the subtitle (`SidebarSubtitleRules`/`PinMarkPlacement`) instead of sitting in the cluster, and the "Kind · detail" subtitle grammar. Every `SidebarPaneSlot` builder stamps a `SidebarRowSpec.Style` field (default `Cluster`) from `_o.Config.RowStyle`; the renderer branches on the **spec's** `Style`, never on `Config.Design` — a row built without a pane config (the rail folder flyout, V3's own nav band) lands on the `Cluster` default. |
 | `ActivateFolder` | `Action<string,string>?` | What activating a folder disclosure row does. Null ⇒ toggle the shared folder-expansion state. Replaces both the row's click **and** the expand/collapse verb in its context menu, so the two can never disagree. |
 | `IsReorderableSection` | `Func<SidebarSectionKind,bool>?` | Default: `Pinned`/`StaticLinks`/`CustomGroup` — never `PlaylistTree` (V3's local custom order opts in). Folder CRUD is no longer locked (the old "locked decision 9" is **lifted**: see `FolderActions`), but the rootlist is written only through `WaveeResourceDrop.MoveRootlist` and `FolderActions`, never through a reorder band. |
 | `TreeSortedNonCustom` | `Func<bool>?` | Null ⇒ false (Classic/Curated always show rootlist order). True ⇒ the drop resolver refuses `Before`/`After`/`EndOfList` with `drag.clearSortingToReorder` while `Into` stays legal. A live probe, never a value. See *Rootlist drag & drop* below. |
@@ -231,7 +232,10 @@ entirely — it renders as fixed CHROME above the header (`Modes/LibraryV3/Libra
 `Head`, never scrolls, never filters/searches with the list) — so it has no section left for `BuildRail` to draw a
 Home tile from. `RailHead` is the one config delegate that hands the rail its own tiles directly; see the member
 table above and [pitfalls.md](pitfalls.md) for why the rail memo now folds `LayoutVersion` when it is set. Classic
-and Curated pass `RailHead = null` and are unaffected.
+and Curated pass `RailHead = null` and are unaffected. As of V3.1, `RailHead` draws **only** the shortcut band's
+tiles — the five word-rail destinations that used to sit beside the nav band are gone from the chrome, and Liked
+Songs draws its own rail tile through the document's `v3.system` section (`ShowInRail: true`), the same path
+Classic/Curated's Shortcuts section uses.
 
 `SidebarPaneReorder(Section, FromSlot, ToSlot, SlotCount, KeyAt)` carries everything a commit could need and
 nothing about the widget: the renderer knows the geometry, only the mode knows where the order *lives*.
@@ -668,8 +672,11 @@ gutter. Both create verbs moved to the header "+"'s flyout, which is also a drop
 `LibraryV3Document.Build(in LibraryV3DocState)` is **pure and unit-tested**. `TemplateId = "v3.synth"`. Sections,
 in order:
 
-1. `"v3.pins"` / `Pinned` — only when `PinsBandVisible` (`HasPins && !Drilled && !Searching`).
-2. `"v3.liked"` / `StaticLinks` — only when `LikedVisible`; one `Route` item at `liked` with icon `Heart`.
+1. `"v3.system"` / `StaticLinks` — the system row, only when `LikedVisible`; one `Route` item at `liked` with icon
+   `Heart`, `ShowInRail: true`, Cozy density with Artwork + Subtitles (the dynamic cover and "Playlist · N songs").
+   Placed BEFORE the pinned band, so Liked always leads it. Followed by a `"v3.rule.system"` `Divider` when the
+   pinned band is NOT visible, so the system row never runs straight into the library.
+2. `"v3.pins"` / `Pinned` — only when `PinsBandVisible` (`HasPins && !Drilled && !Searching`).
 3. `"v3.library"` / `PlaylistTree` **or** `EntityList` — always. `PlaylistTree` when `FoldersApply` (list view,
    not searching, not drilled, All-or-Playlists filter); `EntityList` otherwise. `EmptyBehavior = HideBody`.
 
@@ -687,10 +694,13 @@ band left the document entirely, so the rail needs its own copy of the same tile
 member table above. `OnCustomize` is never set — its document is ephemeral, so there is nothing to customize.
 
 `ChromeHead` mounts `LibraryV3Chrome`, which stacks, in order: `LibraryV3NavBand` (fixed chrome, W3 — `prefs.TopBar`
-rendered directly, never a document section, never touched by search/filter/drill) · `LibraryV3Header` ·
-`LibraryV3Toolbar` (search host + sort/view trigger) · `LibraryV3Chips` (the filter rail) · a `Divider` at the
-content lane · the drill-in breadcrumb (only while `state.Drilled`) · a retry banner or one of §3.2.10's three
-actionable empty states.
+rendered directly, never a document section, never touched by search/filter/drill; Compact density, 32-DIP rows) ·
+`LibraryV3Header` (44 — the title opens `LibraryV3DestinationsFlyout` and never truncates; Collapse is an overflow row; the ladder in
+`LibraryV3HeaderRules.Resolve` decides whether search sits inline, folds to icons, or takes the row) ·
+`LibraryV3Chips` (the filter rail, 36) · `LibraryV3LensRow` (32 — the row count, the Albums/Artists/Podcasts page
+link and the Sort/View controls) while not drilled, or the drill-in breadcrumb while `state.Drilled` is true (the
+lens row IS the separation now — there is no `Divider` between the chips and it) · a retry banner or one of
+§3.2.10's three actionable empty states.
 
 `ShapeInput` sets `Pins`, clears `ExpandedFolders`, sets `SuppressTreeCreateRow = true`, and swaps
 `session.View.Rows` into either `PlaylistTree` (grouped) or `Library` (flat) — **two windows over the one

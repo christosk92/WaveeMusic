@@ -27,8 +27,9 @@ public sealed class FileLocalStore : ILocalStore
         _data = LoadFile(filePath);
     }
 
-    /// <summary>Default location: %LOCALAPPDATA%/Wavee/store.json on Windows; ~/.local/share or ~/Library equivalents elsewhere.</summary>
-    public static FileLocalStore ForApp(string appName = "Wavee", string fileName = "store.json")
+    /// <summary><c>{LocalApplicationData}/{appName}/store.json</c>. <paramref name="appName"/> is always the process's
+    /// <c>UnpackagedAppDataRoot.CurrentFolderName</c> — never a literal — so a <c>--fake</c> run keeps its own store.</summary>
+    public static FileLocalStore ForApp(string appName, string fileName = "store.json")
     {
         var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), appName);
         Directory.CreateDirectory(dir);

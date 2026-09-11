@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using FluentGpu.Animation;
@@ -10,7 +10,9 @@ using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using Wavee.Backend.Playlists;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Features.Detail;
 using static FluentGpu.Dsl.Ui;
 
@@ -27,6 +29,15 @@ namespace Wavee;
 // Rows are PLAIN/recyclable (no binds, no Components) → a steady scroll is zero-alloc.
 sealed class TrackList : Component
 {
+    async void RetryRowMetadata()
+    {
+        if (_queryDemand?.Peek() is not { } query) return;
+        try { await query.RefreshAsync(); }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (Exception error) { System.Diagnostics.Trace.TraceError("Track metadata retry failed: {0}", error); }
+    }
+
     // Row geometry + the cell builders themselves now live in the shared TrackRow (Components/TrackRow.cs) so the detail
     // list, the library pane, artist "Popular" and search all render ONE identical cell. These re-export the shared
     // constants by name so the chrome/header code below is unchanged (the header must stay aligned to the row columns).
@@ -111,22 +122,6 @@ sealed class TrackList : Component
     // layout effect as the item count, never from Render.
     readonly Signal<bool> _verticalFacts = new(false);
 
-    // ── progressive reveal (cold shimmer→content swap) ───────────────────────────────────────────────────────────────
-    // Measured: navigating to a detail/playlist page, the whole visible track band swapped shimmer→real in ONE ~80ms UI
-    // frame (694 spans re-recorded, record=72.4ms, 138 component re-renders, a gen2 GC inside it) — freshly mounted rows
-    // have no cached span to reuse and the engine's realize budget exempts the visible band by design. Instead of that
-    // one-shot swap, the cold reveal ramps the count of REAL rows up DetailRevealRamp.Chunk-at-a-time over a few frames;
-    // rows past the ramp render a cheap ShimmerRow, so no single frame records the whole band. Each row's own crossing
-    // CROSS-FADES (BoundRowContent.RampReveal): the placeholder and the real row are two distinct element types in one
-    // slot, so the swap is a remount and the real row eases in — without that, 12 rows a frame hard-popped from grey bars
-    // into text while the page itself was still fading in. Only rows that actually shimmered fade; see the latch there.
-    // Steady state = _reveal at
-    // DetailRevealRamp.Done (every row real, no per-row cost); an instant/cached load only skips the ramp on pages whose
-    // list owns a real viewport — a HasTrailing page (album/single) is one unwindowed mandatory band, so it ramps warm
-    // opens too (see the arming edge in Render). The progression math is the pure, unit-tested DetailRevealRamp.
-    readonly Signal<int> _reveal = new(DetailRevealRamp.Done);   // rows with displayIndex < _reveal are REAL; the rest render ShimmerRow. Done ⇒ all real
-    readonly Signal<bool> _rampActive = new(false);     // gates the per-frame reveal clock — mounted only while ramping so the frame loop quiesces after
-    bool _sawPending;                                    // this content actually showed shimmer (cold load) ⇒ the ready edge ramps; a warm load ramps only on a HasTrailing page
     float _lastRightW;                                         // last measured right-area width (0 until the first positive bounds)
     readonly SelectionModel _selection = new();                // external → survives a tier remount
     // Keyed by the COLUMN SET, not the tier: the set already folds in every input the track sizes depend on (tier +
@@ -137,17 +132,19 @@ sealed class TrackList : Component
     // change (same lane set, same tier) must miss this cache too, or the Thumb column would keep the previous
     // density's width forever — TrackList itself never remounts on a density change (only its Key'd list children do).
     readonly Dictionary<(ColumnSet Set, float Art), TrackSize[]> _tracksBySet = new();
-    (DetailTrackSort Sort, string Query, TrackFilterState Filters) _viewKey = (new((SortColumn)(-1), false), "\0", TrackFilterState.Default);   // invalid sentinel
-    IReadOnlyList<Track>? _viewTrackSet;                       // source-list identity paired with the sort/filter cache key
-    IReadOnlySet<string>? _viewSavedSet;                       // only populated by Liked-only; reference change invalidates the cached map
-    int[] _view = Array.Empty<int>();                          // filtered + sorted → original track-index map (rows read via this)
+    readonly Signal<TrackRowsSnapshot?> _projectedRows = new(null);
     Memo<TrackRowsSnapshot>? _rowsSnapshot;                    // atomic model/config/handlers/sort/filter value for persistent rows
     Memo<RowShape>? _rowShape;                                 // (column set + tracks) for the ACTIVE tier — the one thing a breakpoint cross changes
     Memo<ColorF>? _rowAccent;                                  // equality-gated scalar: row pills never observe the full snapshot
+    Signal<IQuerySignalBinding?>? _queryDemand;
     BoundItemsSource<Track>? _rowItems;                        // snapshot + recycled slot index resolve together
+    BoundItemsSource<RowPresentation>? _rowPresentations;       // same snapshot, projected to the per-row VALUE a bound
+                                                                // template renders from (Operation ultra-fast, P5 slice 1)
+    RowHandlers? _handlers;                                     // lazily-built once; BoundRowContent reads Handlers
     AsyncCommandSet<string>? _play;                            // per-track-id play command in flight → the row's #-cell buffering spinner
     string? _lastCtxUri;                                       // last loaded context uri → detect a reused-slot album swap (invalidate view/columns/selection)
     IReadOnlyList<Track>? _lastTrackSet;                       // last model.Tracks INSTANCE → an in-place refresh (same ContextUri, new list) invalidates the view cache
+    int[]? _lastChoreographyView;                              // last View() identity — metadata republish must not re-diff 1.5k rows
 
     // ── §4.6 realtime membership choreography (live add/remove/move/reset narration) ──────────────────────────────────
     // Pure item transitions, seeded IN the render that commits the new order (same frame — a late seed reads as a
@@ -161,6 +158,7 @@ sealed class TrackList : Component
     int _lastDealtTier = -1;                                   // the tier the realized rows were last narrated at (-1 = never dealt)
     long _lastDealtAtMs;                                       // stamp of the last breakpoint re-deal → rapid-reversal detection
     bool _dealtThisFrame;                                      // a membership choreography already owns this frame's seeds
+    bool _listRealizedOnce;                                    // first Ready bound-list mount may stagger; remounts fill immediately
     const int ReDealReversalMs = 200;                          // a cross this soon after the last one is a toggle storm, not a gesture
     const int ReDealRows = 24;                                 // seed a viewport's worth; ItemFadeFrom is queried per REALIZED row anyway
     readonly Dictionary<int, (float dx, float dy)> _flip = new();        // new display index → FLIP start residual (dy DIP)
@@ -177,9 +175,14 @@ sealed class TrackList : Component
     const int RecBatch = 20;                                   // one extender page (matches the HAR capture)
     static readonly ColumnSet RecColumns = new(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: false, Thumb: false);
     readonly Signal<IReadOnlyList<Track>> _recs = new(Array.Empty<Track>());
-    readonly Signal<int> _recState = new(0);                   // 0 idle · 1 loading · 2 loaded
+    readonly Signal<RecsState> _recState = new(RecsState.Idle);   // was Signal<int> 0/1/2 — now carries Failed (RecsRefetchPolicy)
     readonly HashSet<string> _recShown = new(StringComparer.Ordinal);   // every id ever shown → the accumulated skip set (non-repeating batches)
-    readonly System.Threading.CancellationTokenSource _recCts = new();
+    readonly System.Threading.CancellationTokenSource _recCts = new();   // the LIFETIME token (unmount) — per-fetch tokens link to it
+    System.Threading.CancellationTokenSource? _recInflight;               // the CURRENT fetch's linked CTS; cancelled by Supersede / unmount
+    int _recEpoch;                                                        // monotonically increments per fetch; a completion with a stale epoch is dropped
+    long _recFetchedFp;                                                   // the membership fingerprint the CURRENT batch (or in-flight fetch) is for
+    bool _recArmed;                                                       // the header has realized at least once (the lazy gate)
+    readonly Signal<long> _membershipFp = new(0);                         // written in the layout effect below; the debounce source
     readonly Signal<int> _listCount = new(0);                  // ItemsView TOTAL (track rows + rec rows); _visibleCount stays the track count for §4.6
     // The expanded row, by MEMBERSHIP ROW identity (MembershipDiff.RowKey — the playlist4 per-row uid where the read
     // model has one, else uri#@displayIndex). NOT by track uri: a playlist may legitimately hold the same song twice,
@@ -188,6 +191,9 @@ sealed class TrackList : Component
     // reorders the list and a purely index-keyed expansion would open a different song than the one clicked.
     // "" = nothing expanded. ONE row at a time — several open drawers push the list around unpredictably while scrolling.
     readonly Signal<string> _expandedRow = new("");
+    int _expandedFlat = -1;                                    // flat index of the open drawer; -1 when closed. Used to
+                                                               // CorrectMeasuredExtent when that row has scrolled off-window.
+    float _expandedClosedH;                                    // the collapsed row height captured when the drawer opened
     bool _recsLive;                                            // the DATA half of the recs gate (see Render): refreshed each render, read by
                                                                // RowOrRecContent so an appended index can never render a header/rec row while the
                                                                // gate is off — the count signal is the primary gate, this is the belt-and-braces one
@@ -278,11 +284,56 @@ sealed class TrackList : Component
     // (see CoverPageTonePlane). The engine seam it used (ScrollEl/VirtualListEl.ScrollTimeline + ScrollBindDsl.Timeline)
     // is general and stays; nothing in Wavee needs it today.
 
+    internal RowHandlers Handlers => _handlers ??= new RowHandlers(
+        Play: PlayRow,
+        ToggleLike: p =>
+        {
+            if (p.Track.Uri.Length > 0) _lib?.ToggleSaved(p.Track.Uri, p.Track.Title);
+        },
+        Go: (route, name) => (_liveHandlers?.Peek() ?? _h).Go(route, name),
+        ToggleExpanded: p => ToggleExpanded(MembershipDiff.RowKey(p.Track, p.DisplayIndex)),
+        RequestContext: static _ => { },
+        RetryMetadata: RetryRowMetadata);
+
+    static IReadOnlyList<FacetKind> FacetsForDemand(ColumnSet columns, in TrackRowsSnapshot snapshot)
+    {
+        var displayed = TrackPresentationRequirements.RequiredFacets(TrackRow.PresentationFacts(columns));
+        var facets = new List<FacetKind>(displayed.Count + 8);
+        for (int i = 0; i < displayed.Count; i++) facets.Add(displayed[i]);
+        void Add(FacetKind f)
+        {
+            for (int i = 0; i < facets.Count; i++) if (facets[i] == f) return;
+            facets.Add(f);
+        }
+        // Identity (track / artist / album) is never demanded here: the definition derives it from every member's kind
+        // and demands the whole model up front (QueryDemand rejects identity facets). Sorting or filtering on a
+        // title/artist/album/duration therefore needs nothing extra; only the DISPLAY facets a sort or filter reads
+        // beyond the columns' own are added.
+        var filters = snapshot.Filters;
+        if (snapshot.Sort.Column == SortColumn.Plays) Add(FacetKind.PlayCount);
+        if (filters.VideoMode != TrackTraitMode.All) Add(FacetKind.VideoAssociation);
+        if (filters.Tempo != TrackTempoBand.Any || filters.CamelotCode is not null) Add(FacetKind.AudioAttributes);
+        if (filters.Tag is not null) Add(FacetKind.Descriptors);
+        if ((filters.Flags & TrackFilterFlags.PlayableOnly) != 0) Add(FacetKind.Availability);
+        return facets;
+    }
+
+    void PublishPageDemand(ColumnSet columns, in TrackRowsSnapshot snapshot)
+    {
+        if (_queryDemand?.Peek() is not { } query) return;
+        query.SetDemand(new QueryDemand(true, QueryPriority.Visible, FacetsForDemand(columns, in snapshot)));
+    }
+
     int TrackStart => _verticalHeader && !_cfg.HasTrailing ? VerticalTrackStart : 0;
 
     // The placeholder row the engine derives the shimmer from — the REAL Row(...) with an empty track, so the skeleton
     // rows always match the real rows (the single-source-of-truth the skeleton kit is built on).
     static readonly Track EmptyTrack = new("", "", "", Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 0L, false, null);
+
+    // No publication to read knowledge from (no query binding on this surface, or no services yet): every facet counts
+    // as known — an absent publication must never relax a filter the user set — and the has-video answer falls back to
+    // the shared probe, which reads the repository's LOCK-FREE published view.
+    static readonly TrackFacts UnboundFacts = TrackFacts.Delegated(static (_, _) => true, VideoPresence.HasVideo);
 
     readonly record struct TrackRowsSnapshot(
         DetailModel Model, DetailConfig Config, DetailHandlers Handlers,
@@ -293,7 +344,49 @@ sealed class TrackList : Component
         bool TempoColumn = false,
         // …and the app-wide Plays column opt-in, on exactly the same contract. Only consulted where the surface offers
         // it (DetailConfig.PlaysColumnOptIn — playlist / Liked); album profiles carry the lane through ShowPlays.
-        bool PlaysColumn = false);
+        bool PlaysColumn = false,
+        // The publication's KNOWLEDGE reader (facts + the per-provider cached scopes). Deliberately NOT part of this
+        // record's equality — see the Equals override below — because the join hands out a fresh fact dictionary on
+        // every publication while the knowledge in it is usually identical; FactsRevision is its scalar identity.
+        TrackFacts? Facts = null,
+        long FactsRevision = 0,
+        // The per-resource knowledge/activity the rows were projected against. A row reads ITS OWN publication's
+        // resources, never the binding's live signal: the binding publishes new facts and the new model in one
+        // flush, but the rows land from the background projection later, and pairing a Present identity with the
+        // previous title-less track read as "Track details unavailable" for a few frames.
+        IReadOnlyDictionary<ResourceKey, ResourceSnapshot>? Resources = null,
+        int[]? ViewIndices = null)
+    {
+        /// <summary>The publication's knowledge, or <see cref="TrackFacts.Unknown"/> before one has landed (a page
+        /// with no query binding at all, and the very first render of every page).</summary>
+        public TrackFacts Knowledge => Facts ?? TrackFacts.Unknown;
+
+        /// <summary>Value equality over everything a ROW or the PROJECTION can be changed by — and nothing else.
+        /// <para>The two dictionaries are payload, not identity: a query republishes ≈20 times while a playlist
+        /// opens, each publication carrying freshly built <c>Facts</c>/<c>Resources</c> instances whose CONTENT is
+        /// almost always unchanged. Comparing them by reference made every one of those publications a new snapshot
+        /// value, which re-ran the whole-membership projection, re-rendered every realized row and re-published
+        /// viewport demand. <see cref="FactsRevision"/> is the join's own scalar identity for <c>Facts</c> (it only
+        /// moves when a fact actually changed), so it stands in for both here.</para></summary>
+        public bool Equals(TrackRowsSnapshot other)
+            => EqualityComparer<DetailModel>.Default.Equals(Model, other.Model)
+               && EqualityComparer<DetailConfig>.Default.Equals(Config, other.Config)
+               && EqualityComparer<DetailHandlers>.Default.Equals(Handlers, other.Handlers)
+               && Sort.Equals(other.Sort)
+               && string.Equals(Query, other.Query, StringComparison.Ordinal)
+               && Filters.Equals(other.Filters)
+               && ReferenceEquals(Saved, other.Saved)
+               && MarqueeDisabled == other.MarqueeDisabled && TrackArtworkHidden == other.TrackArtworkHidden
+               && Classic == other.Classic
+               && string.Equals(TopTrackId, other.TopTrackId, StringComparison.Ordinal)
+               && TempoColumn == other.TempoColumn && PlaysColumn == other.PlaysColumn
+               && FactsRevision == other.FactsRevision
+               && ReferenceEquals(ViewIndices, other.ViewIndices);
+
+        public override int GetHashCode()
+            => HashCode.Combine(Model?.ContextUri, Query, Sort, Filters, FactsRevision,
+                ViewIndices?.Length ?? -1, TopTrackId, Classic);
+    }
 
     // The row/header column geometry for the active tier. Equality-gated: ColumnSet is a value record and the
     // TrackSize[] is the per-tier cached instance, so a re-render that does not cross a breakpoint compares equal and
@@ -302,55 +395,72 @@ sealed class TrackList : Component
     // Art carries alongside Set/Tracks (rather than being re-derived downstream) because it is keyed on DENSITY, which
     // ColumnSet does not encode — every consumer of the shape (header/rows/shimmer/drawer indent) must read the SAME
     // number the width tracks were built from, or the Thumb column and the actual Surfaces.Artwork call disagree.
-    readonly record struct RowShape(ColumnSet Set, TrackSize[] Tracks, float Art);
+    // internal (not the nested default private): TrackRowTemplate.Build (Components/TrackRowTemplate.cs, Operation
+    // ultra-fast P5 slice 2) takes this as a parameter from outside TrackList, the same reason RowPresentation was
+    // pulled to its own file in slice 1.
+    // RowH carries for the SAME reason Art does — it is keyed on DENSITY, which ColumnSet does not encode. Every
+    // consumer of the shape must read the ONE number the reservation chain is built from: the measured layout's
+    // per-row estimate (MeasuredStackVirtualLayout(rowH)), the row skin's MinHeight, the header ladder, and the
+    // collapsed extent ToggleExpanded hands CorrectMeasuredExtent. The bound row template used to hardcode
+    // TrackRow.RowHeight (48) instead, so every Classic row and every Compact row MEASURED a different height than
+    // the list had reserved for it.
+    /// <summary>The column geometry every realized row renders from, as a VALUE — which it has to be, because the
+    /// signal holding it is read by all ~30 mounted row components and a change fires every one of them.
+    /// <para>The equality is hand-written for exactly one reason: <see cref="Tracks"/> is an array, and a record
+    /// struct's generated Equals compares an array member by REFERENCE. <c>TracksFor</c> allocates a fresh array on
+    /// every recompute, so the generated equality could never report two shapes equal — the signal fired on every one
+    /// of the ~20 publications a playlist open produces, and each fire re-rendered every mounted row
+    /// (ExpandableRowSlot + BoundRowContent + RowOrRecContent, measured at ~1 MB of managed allocation per frame).
+    /// The gate the surrounding code documents and depends on was silently never closed. The array is one entry per
+    /// column, so comparing it element-wise costs nothing next to what it prevents.</para></summary>
+    internal readonly record struct RowShape(ColumnSet Set, TrackSize[] Tracks, float Art, float RowH)
+    {
+        public bool Equals(RowShape other)
+        {
+            if (!Set.Equals(other.Set) || Art != other.Art || RowH != other.RowH) return false;
+            var a = Tracks; var b = other.Tracks;
+            if (ReferenceEquals(a, b)) return true;
+            if (a is null || b is null || a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (!a[i].Equals(b[i])) return false;
+            return true;
+        }
 
-    readonly record struct RowPresentation(
-        Track Track, int DisplayIndex, TrackRow.State State,
-        bool MarqueeDisabled, bool ShowTrackArtist, bool ShowListMetadata,
-        Action<string, string?> Go, Owner? AddedBy);
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            hash.Add(Set); hash.Add(Art); hash.Add(RowH);
+            hash.Add(Tracks?.Length ?? 0);
+            if (Tracks is { Length: > 0 } t) { hash.Add(t[0]); hash.Add(t[^1]); }
+            return hash.ToHashCode();
+        }
+    }
+
+    /// <summary>Everything ONE realized row renders from, as a value. Equality-gated (it is the result of a per-row
+    /// computed), so a publication that changed nothing about THIS row re-renders nothing — which is what keeps a new
+    /// rows-snapshot instance from costing ~35 row re-renders.
+    /// <para><paramref name="HasVideo"/> is projected here, once, from the publication the row was built against
+    /// (<see cref="TrackRowsSnapshot.Knowledge"/>), and handed to <c>TrackRow.Grid</c> as a plain bool: the render path
+    /// itself asks nobody — it used to call <c>VideoPresence.HasVideo</c>, which took the catalog repository's gate,
+    /// from every rendered row.</para></summary>
+    // RowPresentation itself now lives in its own file, Features/Detail/RowPresentation.cs (Operation ultra-fast P5
+    // slice 1) — pulled out of this class so Wavee.Tests can source-include it directly (Wavee.Core + BCL only),
+    // exactly like DetailTrackProjection.cs beside it. Same namespace (Wavee), so every use below is unchanged.
 
     // The visible order (cached, keyed by sort + filter): view[displayPos] = original track index, for the tracks that
     // pass the filter (search query + hide-explicit), in the current sort order. Read live by the frozen row template /
     // keyOf / invoke via .Peek(), so a SORT change re-skins the realized window in place; a FILTER change (which alters
     // the count) instead remounts the list via the keyed wrapper.
-    int[] View(TrackRowsSnapshot snapshot)
+    // Runs ONLY when this snapshot's membership, sort, query, filters, saved set or FACTS REVISION changed — every
+    // other publication compares equal (TrackRowsSnapshot.Equals) and LatestProjection.Submit drops it on the floor.
+    static TrackRowsSnapshot ProjectRows(TrackRowsSnapshot snapshot)
     {
-        var s = snapshot.Sort;
-        string q = snapshot.Query;
-        var filters = snapshot.Filters;
-        var key = (s, q, filters);
-        var tracks = snapshot.Model.Tracks;
-        if (!ReferenceEquals(_viewTrackSet, tracks) || !ReferenceEquals(_viewSavedSet, snapshot.Saved) || !key.Equals(_viewKey))
-        {
-            var list = new List<int>(tracks.Count);
-            var now = DateTimeOffset.Now;
-            for (int i = 0; i < tracks.Count; i++)
-            {
-                var t = tracks[i];
-                if (!TrackFilterModel.Matches(t, q, in filters,
-                    hasVideo: VideoPresence.HasVideo(t),               // override-only videos pass the filter too
-                    isSaved: snapshot.Saved?.Contains(t.Uri) ?? false,
-                    now)) continue;
-                list.Add(i);
-            }
-            Comparison<int> baseCmp = s.Column switch
-            {
-                SortColumn.Title => (a, b) => string.Compare(tracks[a].Title, tracks[b].Title, StringComparison.OrdinalIgnoreCase),
-                SortColumn.Album => (a, b) => string.Compare(tracks[a].Album.Name, tracks[b].Album.Name, StringComparison.OrdinalIgnoreCase),
-                SortColumn.Duration => (a, b) => tracks[a].DurationMs.CompareTo(tracks[b].DurationMs),
-                SortColumn.Artist => (a, b) => string.Compare(DetailFormat.ArtistNames(tracks[a].Artists), DetailFormat.ArtistNames(tracks[b].Artists), StringComparison.OrdinalIgnoreCase),
-                SortColumn.DateAdded => (a, b) => Nullable.Compare(tracks[a].AddedAt, tracks[b].AddedAt),
-                SortColumn.Plays => (a, b) => tracks[a].PlayCount.CompareTo(tracks[b].PlayCount),
-                _ => (a, b) => a.CompareTo(b),   // Index = original order
-            };
-            // Stable: ties break by original index (ascending), so descending only flips the primary key.
-            list.Sort((a, b) => { int c = baseCmp(a, b); if (s.Descending) c = -c; return c != 0 ? c : a.CompareTo(b); });
-            _view = list.ToArray(); _viewKey = key; _viewTrackSet = tracks; _viewSavedSet = snapshot.Saved;
-        }
-        return _view;
+        var projection = DetailTrackProjection.Build(snapshot.Model.Tracks, snapshot.Sort, snapshot.Query,
+            snapshot.Filters, snapshot.Saved, snapshot.Knowledge, DateTimeOffset.Now);
+        return snapshot with { ViewIndices = projection.Indices, TopTrackId = projection.TopTrackId };
     }
 
-    int[] View() => _rowsSnapshot is { } rows ? View(rows.Peek()) : _view;
+    static int[] View(TrackRowsSnapshot snapshot) => snapshot.ViewIndices ?? Array.Empty<int>();
+    int[] View() => _rowsSnapshot is { } rows ? View(rows.Peek()) : Array.Empty<int>();
 
     Track TrackAt(TrackRowsSnapshot snapshot, int displayPos)
     {
@@ -361,13 +471,95 @@ sealed class TrackList : Component
         return (uint)original < (uint)tracks.Count ? tracks[original] : EmptyTrack;
     }
 
-    // The most-played track's id (gets the star), or null when there's no play data — so the star stays album-only.
-    static string? TopTrack(IReadOnlyList<Track> tracks)
+    // ── always-on readiness census (one line per CHANGE, not per publication) ────────────────────────────────────────
+    // A track row that reads "Track details unavailable" is claiming a TERMINAL answer: nothing is coming, here is a
+    // Retry button. When that appears for a frame or three on a freshly opened playlist it is not a terminal answer at
+    // all, and the row states above cannot tell us WHICH input produced it — the resource is absent, or Unknown, or
+    // answered-without-a-title, or the query itself failed. So the leading band's states are counted and logged
+    // whenever the shape changes. No switch to turn on: a page publishing terminal rows is a condition worth a line.
+    string _lastReadinessCensus = "";
+
+    void LogReadinessCensus(in TrackRowsSnapshot snapshot)
     {
-        int best = -1;
-        for (int i = 0; i < tracks.Count; i++)
-            if (tracks[i].PlayCount > 0 && (best < 0 || tracks[i].PlayCount > tracks[best].PlayCount)) best = i;
-        return best >= 0 ? tracks[best].Id : null;
+        int n = Math.Min(20, View(snapshot).Length);
+        if (n <= 0) return;
+        int ready = 0, loading = 0, offline = 0, unavailable = 0;
+        int idNull = 0, idUnknown = 0, idPresent = 0, idPresentNoTitle = 0, idAbsent = 0, idErr = 0, noScope = 0;
+        var knowledge = snapshot.Knowledge;
+        bool queryFailed = _queryDemand?.Peek()?.Failure.Peek() is not null;
+        for (int i = 0; i < n; i++)
+        {
+            var t = TrackAt(snapshot, i);
+            ResourceSnapshot? identity = null;
+            if (snapshot.Resources is { } resources && knowledge.ScopeFor(t.Uri) is { } scope)
+            {
+                var key = new ResourceKey(scope, t.Uri,
+                    EntityUri.KindOf(t.Uri) == EntityKind.Episode ? FacetKind.EpisodeIdentity : FacetKind.TrackIdentity);
+                if (!resources.TryGetValue(key, out identity)) identity = null;
+            }
+            else noScope++;
+            if (identity is null) idNull++;
+            else switch (identity.Knowledge)
+            {
+                case Knowledge.Unknown: idUnknown++; break;
+                case Knowledge.Present:
+                    idPresent++;
+                    if (identity.Value is not TrackIdentityValue { Title: { Length: > 0 } }
+                        and not EpisodeIdentityValue { Title: { Length: > 0 } }) idPresentNoTitle++;
+                    break;
+                default: idAbsent++; break;
+            }
+            if (identity?.Error is not null) idErr++;
+            switch (TrackMetadataReadiness.Title(t, identity, queryFailed))
+            {
+                case TrackTitleState.Ready: ready++; break;
+                case TrackTitleState.Offline: offline++; break;
+                case TrackTitleState.Unavailable: unavailable++; break;
+                default: loading++; break;
+            }
+        }
+        string line = "n=" + n + " ready=" + ready + " loading=" + loading + " offline=" + offline
+            + " unavailable=" + unavailable + " queryFailed=" + queryFailed
+            + " id(null=" + idNull + " unknown=" + idUnknown + " present=" + idPresent
+            + " presentNoTitle=" + idPresentNoTitle + " absentOrUnsup=" + idAbsent + " err=" + idErr
+            + " noScope=" + noScope + ")";
+        if (line == _lastReadinessCensus) return;
+        _lastReadinessCensus = line;
+        WaveeLog.Instance.Event(WaveeLogLevel.Info, "ui", "detail.rows.readiness",
+            "detail rows readiness route=" + _route.Value.Name + " " + line);
+    }
+
+    // ── bound item projection (Operation ultra-fast, P5 slice 1) ────────────────────────────────────────────────────
+    // The per-row VALUE a future bound template renders from, projected here once per (snapshot, displayIndex) pair —
+    // the SAME computation BoundRowContent's own presentation memo used to do inline (moved, not duplicated: that
+    // memo now reads this value off the bound source instead of rebuilding it). Pure with respect to its parameters
+    // except for the ambient bridges (_bridge/_lib/_play/_expandedRow/_queryDemand) a row's live state has always
+    // depended on — same contract TrackAt/PlaysStateFor already keep.
+    RowPresentation Presentation(TrackRowsSnapshot snapshot, int displayIndex)
+    {
+        var t = TrackAt(snapshot, displayIndex);
+        var knowledge = snapshot.Knowledge;
+        ResourceSnapshot? identity = null;
+        if (snapshot.Resources is { } resources && knowledge.ScopeFor(t.Uri) is { } scope)
+        {
+            var key = new ResourceKey(scope, t.Uri,
+                EntityUri.KindOf(t.Uri) == EntityKind.Episode ? FacetKind.EpisodeIdentity : FacetKind.TrackIdentity);
+            resources.TryGetValue(key, out identity);
+        }
+        var titleState = TrackMetadataReadiness.Title(t, identity, _queryDemand?.Value?.Failure.Value is not null);
+        bool isTop = snapshot.Config.ShowPlays && snapshot.TopTrackId is not null && t.Id == snapshot.TopTrackId;
+        var st = TrackRow.StateOf(_bridge, _lib, t, isTop, _play?.IsRunning(t.Id) ?? false);
+        bool isExpanded = t.Uri.Length > 0 && MembershipDiff.RowKeyMatches(_expandedRow.Value, t, displayIndex);
+        bool isSkeleton = titleState == TrackTitleState.Loading;
+        // Operation ultra-fast P5 slice 3: whole UTC days since the epoch — the Date cell's FormatCache<int> key
+        // (RowPresentation.AddedDayKey doc). -1 = no AddedAt.
+        int addedDayKey = t.AddedAt is { } added ? (int)(added.UtcDateTime.Date - DateTime.UnixEpoch).TotalDays : -1;
+        return new RowPresentation(
+            t, displayIndex, st,
+            snapshot.MarqueeDisabled, snapshot.Config.ShowTrackArtist, snapshot.Config.ShowAlbumColumn,
+            snapshot.Handlers.Go, AddedByProfile(snapshot.Model, t), titleState,
+            // One probe per row per publication, off this row's own facts — never from inside the grid build.
+            knowledge.HasVideo(t.Uri), PlaysStateFor(t), isSkeleton, isExpanded, addedDayKey);
     }
 
     // Shown in place of the list when there's nothing to show — an empty playlist, or a filter that matched nothing.
@@ -381,7 +573,7 @@ sealed class TrackList : Component
     /// <summary>What stands in for the rows when there are none to show (<see cref="PlaylistListState"/>): shimmer rows
     /// while the membership is still unknown, else the empty / no-match message. The Loading arm is a skeleton boundary
     /// keyed on the MODEL's flag, not the page loadable (the header is Ready — only the rows are not), deriving the
-    /// same <see cref="RowsShimmer"/> the cold page shows, so the two loading looks are one look.</summary>
+    /// same <see cref="LoadingRowBand"/> the cold page shows, so the two loading looks are one look.</summary>
     Element ListPlaceholder(PlaylistRowsState state, ColumnSet set, TrackSize[] tracks, float rowH, float art) => state switch
     {
         PlaylistRowsState.Loading => new SkelRegionEl(
@@ -390,7 +582,7 @@ sealed class TrackList : Component
             // Ready with rows: this element is replaced by the real list in the same flush that flipped the flag; the
             // spacer is what stands there for that flush. Ready with none: the membership landed empty.
             Content: () => _full.Value.Value.Tracks.Count == 0 ? FilterEmpty(noTracks: true) : new BoxEl(),
-            ShimmerSource: () => RowsShimmer(set, tracks, rowH, art),
+            ShimmerSource: () => LoadingRowBand(set, tracks, rowH, art),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false)
             with { Key = "rows:loading" },
         PlaylistRowsState.Empty => FilterEmpty(noTracks: true),
@@ -576,8 +768,8 @@ sealed class TrackList : Component
     }
 
     /// <summary>The set with <paramref name="step"/> lanes yielded. Relief only ever REMOVES a lane the tier already
-    /// admitted, so every downstream consumer — header, rows, shimmer, width tracks, the Classic artist fold in
-    /// <c>RowGrid</c> — follows for free. Tempo is cleared only where the lane was actually up: that flag also means
+    /// admitted, so every downstream consumer — header, rows, shimmer, width tracks, the Classic artist fold —
+    /// follows for free. Tempo is cleared only where the lane was actually up: that flag also means
     /// "this surface wants BPM·Key at all", and clearing it where the tier had already hidden the lane would fork the
     /// ColumnSet cache for no visible difference.</summary>
     static ColumnSet ApplyRelief(in ColumnSet s, int step)
@@ -631,8 +823,12 @@ sealed class TrackList : Component
             if (_verticalHeader && !_verticalHeroFlowInitialized)
                 _verticalHeroRowFlow = DetailVerticalLayout.RowFlow(DetailLayoutBreakpoints.EstimatePageWidthFromViewport(seedW));
         }
+        _queryDemand = UseContext(QueryView.Slot);
         _svc = svc; _post = UsePost();           // cached so the rec fetch/add handlers reach the extender + marshal results back to the UI thread
-        Context.UseSignalEffect(() => Reactive.OnCleanup(() => { try { _recCts.Cancel(); _recCts.Dispose(); } catch { } }));   // cancel in-flight rec fetches on unmount
+        Context.UseSignalEffect(() => Reactive.OnCleanup(() =>
+        {
+            try { _recInflight?.Cancel(); _recInflight?.Dispose(); _recCts.Cancel(); _recCts.Dispose(); } catch { }
+        }));   // cancel in-flight rec fetches (+ the current linked CTS) on unmount
         UseEffect(() =>
         {
             // Do not reset the measured hero height here. Passive effects drain after paint, so on first navigation
@@ -658,7 +854,7 @@ sealed class TrackList : Component
         }, _route.Value.Name + (svc is null ? ":nosvc" : ":svc"));
         // One stable reactive snapshot owns every non-slot input a persistent row can observe. The memo reads the real
         // sources directly, so child rows never depend on this parent publishing mutable fields first.
-        var rowsSnapshot = UseComputed(() =>
+        var rowInput = UseComputed(() =>
         {
             var handlers = _liveHandlers?.Value ?? _initialH;
             var currentModel = _full.Value.Value;
@@ -675,17 +871,54 @@ sealed class TrackList : Component
             bool classic = (svc?.Settings.Get(WaveeSettings.TrackRowStyle) ?? 0) == 1;
             var filters = handlers.Filters.Value;
             IReadOnlySet<string>? saved = filters.LikedOnly ? _lib?.Saved.Value : null;
+            // KNOWLEDGE is subscribed through its REVISION, never through the dictionaries: the binding hands out a
+            // fresh Facts/Resources instance on every publication, so reading those signals rebuilt this snapshot
+            // ≈20 times per playlist open and re-ran the whole chain each time. The revision only moves when a fact
+            // actually changed; the dictionaries themselves ride along as payload, read with Peek().
+            long factsRevision = _queryDemand?.Value?.FactsRevision.Value ?? 0;
+            var binding = _queryDemand?.Peek();
+            TrackFacts facts = binding is null || svc is null ? UnboundFacts
+                : new PublicationTrackFacts(binding.Facts.Peek(), svc.CatalogScope,
+                    svc.Data.ProviderForSubject, VideoPresence.HasVideoOutsideCatalog);
             return new TrackRowsSnapshot(
                 currentModel, config, handlers,
                 handlers.Sort.Value, handlers.Query.Value.Trim(), filters, saved,
-                noMarquee, hideTrackArtwork, classic, TopTrack(currentModel.Tracks),
-                handlers.TempoColumn.Value, handlers.PlaysColumn?.Value ?? false);
+                noMarquee, hideTrackArtwork, classic, null,
+                handlers.TempoColumn.Value, handlers.PlaysColumn?.Value ?? false,
+                facts, factsRevision, binding?.Resources.Peek());
+        });
+        var projector = UseMemo(() => new LatestProjection<TrackRowsSnapshot, TrackRowsSnapshot>(ProjectRows,
+            _post!, value => _projectedRows.Value = value,
+            error => System.Diagnostics.Trace.TraceError("Track projection failed: {0}", error)), DepKey.Empty);
+        Context.UseSignalEffect(() => Reactive.OnCleanup(projector.Dispose));
+        UseEffect(() => projector.Submit(rowInput.Value));
+        var rowsSnapshot = UseComputed(() =>
+        {
+            var input = rowInput.Value;
+            // Retain one coherent source model + index map until the next projection lands. Never combine
+            // old indices with a newer membership array. A route change cannot display the old route's rows.
+            var result = _projectedRows.Value;
+            if (result is not { } ready || ready.Model.ContextUri != input.Model.ContextUri)
+                return input with { Model = input.Model with { Tracks = Array.Empty<Track>() }, ViewIndices = Array.Empty<int>() };
+            var published = ready with { Handlers = input.Handlers, Config = input.Config,
+                MarqueeDisabled = input.MarqueeDisabled, TrackArtworkHidden = input.TrackArtworkHidden,
+                Classic = input.Classic, TempoColumn = input.TempoColumn, PlaysColumn = input.PlaysColumn };
+            LogReadinessCensus(in published);
+            return published;
         });
         var rowItems = UseMemo(() => BoundItems.Project(
             rowsSnapshot,
             snapshot => View(snapshot).Length,
             (snapshot, displayIndex) => TrackAt(snapshot, displayIndex),
             EmptyTrack), DepKey.Empty);
+        // Same snapshot, same count, the richer per-row VALUE (Operation ultra-fast P5 slice 1). A separate source
+        // (not a re-projection of rowItems) because BoundItems.Project reads the snapshot signal itself — sharing one
+        // extra read per resolve costs nothing and keeps this additive next to rowItems rather than routed through it.
+        var rowPresentations = UseMemo(() => BoundItems.Project(
+            rowsSnapshot,
+            snapshot => View(snapshot).Length,
+            (snapshot, displayIndex) => Presentation(snapshot, displayIndex),
+            RowPresentation.Empty), DepKey.Empty);
         var rowAccent = UseComputed(() => rowsSnapshot.Value.Handlers.Accent);
         // The active column geometry, as a signal the persistent rows can read for themselves. A breakpoint cross now
         // re-renders the realized rows through their OWN subscription and the grid patches in place (same path a sort
@@ -702,10 +935,22 @@ sealed class TrackList : Component
             // computed only recomputes from the signals it reads, and TracksFor's Thumb column — and every row's
             // Surfaces.Artwork call — must follow the SAME density-keyed number the row height ladder already does.
             float art = DetailTrackTableRules.ArtSizeFor(_h.Density.Value, set.Classic);
-            return new RowShape(set, TracksFor(in set, art), art);
+            // Same density read, same rule the list's own `rowH` local uses (Render) — ONE ladder, so the reserved
+            // extent and the row the template actually builds can never be two different numbers.
+            float rowHeight = DetailTrackTableRules.RowHeightFor(_h.Density.Value, set.Classic);
+            return new RowShape(set, TracksFor(in set, art), art, rowHeight);
         });
         _rowsSnapshot = rowsSnapshot;
         _rowShape = rowShape;
+        _rowPresentations = rowPresentations;
+        // Demand is the facets this page displays (row shape + sort/filter), applied to the whole model — never a
+        // visible-range window. Membership unknown still demands (the catalog fills the model in 300-subject batches).
+        UseEffect(() =>
+        {
+            var snapshot = rowsSnapshot.Value;
+            var set = rowShape.Value.Set;
+            PublishPageDemand(set, in snapshot);
+        }, DepKey.From(HashCode.Combine(rowShape.Value.Set, rowsSnapshot.Value.Sort, rowsSnapshot.Value.Filters, rowsSnapshot.Value.Query)));
         _rowAccent = rowAccent;
         _rowItems = rowItems;
 
@@ -723,36 +968,17 @@ sealed class TrackList : Component
         // Reused slot: a detail-route swap changes the track set under a stable (sort,query,flags) view key, so the cached
         // view map + per-tier column sets + selection would be STALE (wrong / out-of-range indices). Invalidate them on a
         // context change so the new page recomputes cleanly.
-        // Did this content actually show shimmer (a Pending→Ready load)? Tracked every render so the ready edge below
-        // (which lands on a Ready render) knows whether the swap was cold or instant/cached — one of its two arm gates.
-        if (_full.State.Value == (byte)LoadState.Pending) _sawPending = true;
         if (model.ContextUri != _lastCtxUri)
         {
             _lastCtxUri = model.ContextUri;
             _lastListState = null;   // a new context logs its first list state again
-            _viewKey = (new((SortColumn)(-1), false), "\0", TrackFilterState.Default);
-            _viewSavedSet = null;
             _tracksBySet.Clear();   // bound the cache across navigations (correctness comes from the set-keying, not this)
             _selection.ClearSelection();
             // §4.6 — navigation is not an edit: never choreograph across a context swap.
             _lastDisplayed = null;
+            _lastChoreographyView = null;
             _flip.Clear(); _fade.Clear();
             _resetEpoch++;                               // current render remounts the virtual list — never publish a signal from Render
-            // Progressive reveal: a fresh content identity ⇒ start the ramp (real rows fill in over frames instead of
-            // the whole band in one ~80ms frame). Keyed to the ContextUri edge, so it fires ONCE per content and never
-            // on scroll / re-render / a same-context refresh.
-            // Two arming conditions, because two different things cost the frame:
-            //   · _sawPending — this content actually showed shimmer (a cold Pending→Ready load), any page kind.
-            //   · HasTrailing (album/single) — the list is a natural-size, Grow=0 ItemsView inside the trailing page
-            //     scroller, so the WHOLE list is a mandatory band and the engine's realize budget cannot spread it: a
-            //     WARM KeepAlive re-open (preview already Ready ⇒ no shimmer ⇒ _sawPending false) still mounted every
-            //     row in one frame. Those pages therefore ramp on EVERY context edge, cold or warm.
-            if (model.ContextUri is { Length: > 0 } && (_sawPending || _cfg.HasTrailing))
-            {
-                _reveal.Value = DetailRevealRamp.Chunk;   // the swap frame shows the first chunk real, the rest shimmer
-                _rampActive.Value = true;
-                _sawPending = false;
-            }
         }
 
         // (The old "columns changed → drop the cached sizes" guard is gone: the tracks cache is keyed by the ColumnSet
@@ -768,8 +994,6 @@ sealed class TrackList : Component
         if (trackSetChanged)
         {
             _lastTrackSet = model.Tracks;
-            _viewKey = (new((SortColumn)(-1), false), "\0", TrackFilterState.Default);
-            _viewSavedSet = null;
         }
         // The optimistic-membership handoff edge for the framework-owned insertion gap: a NEW track-set instance means
         // the real list accepted the mutation, so the temporary gap closes into its FLIP with no blank frame between.
@@ -821,14 +1045,23 @@ sealed class TrackList : Component
         int resetEpochBefore = _resetEpoch;
         {
             var vNow = View();
-            var displayedNow = new Track[vNow.Length];
-            for (int i = 0; i < vNow.Length; i++) displayedNow[i] = _tracks[vNow[i]];
-            if (trackSetChanged && _lastDisplayed is { Length: > 0 } prevDisplayed && model.ContextUri == _lastCtxUri)
+            // Metadata batches replace the Tracks list (new ChunkedRows) without moving membership or the view
+            // map. Materializing Track[n] + MembershipDiff.Diff on every one of those was O(n) string-keyed
+            // work on the UI thread during the first scroll. Only a real view-order / count change narrates.
+            bool viewMoved = !ReferenceEquals(_lastChoreographyView, vNow);
+            bool membershipMoved = trackSetChanged && _lastDisplayed is { Length: > 0 } last
+                && !DisplayedKeysMatch(last, vNow);
+            if ((viewMoved || membershipMoved) && _lastDisplayed is { Length: > 0 } prevDisplayed
+                && model.ContextUri == _lastCtxUri)
             {
+                var displayedNow = MaterializeDisplayed(vNow);
                 Choreograph(prevDisplayed, displayedNow, rowH);
                 _dealtThisFrame = true;   // a membership narration outranks the breakpoint re-deal; never seed both
+                _lastDisplayed = displayedNow;
             }
-            _lastDisplayed = displayedNow;
+            else if (viewMoved)
+                _lastDisplayed = MaterializeDisplayed(vNow);
+            _lastChoreographyView = vNow;
         }
         // A breakpoint cross re-composes every visible row (columns appear/disappear, the title lane re-truncates). Narrate
         // it as ONE deliberate re-deal instead of a silent pop: each realized row eases in from a 6px rise with a short
@@ -838,11 +1071,8 @@ sealed class TrackList : Component
         _dealtThisFrame = false;
         // Curated re-cut (reset epoch) remounts replay row mount-opacity; tier/density/filter remounts do not.
         bool narrateRemount = _resetEpoch != resetEpochBefore;
-        // The bound slots are cheap and persistent. Partial cold materialization leaves the track window visibly
-        // catching up during fast scroll, especially when this list is embedded in the trailing page scroller.
-        bool staggerCold = false;
         // Now-playing / sort / column re-skin is per-row now: each bound row subscribes to the bridge + _h.Sort inside
-        // its own binds (BoundRowContent / BoundTitle), so a track change recolours and a sort change reorders the
+        // its own binds (BoundRowContent / TrackRowTemplate), so a track change recolours and a sort change reorders the
         // realized rows IN PLACE — no whole-list epoch, no list re-render. Tier/column changes alter the slot SET and
         // remount via the keyed wrapper below.
         // Labels only at the widest tiers (≥ 720px): the LABELED bar alone is ~400px, so with the fixed 220px search box
@@ -896,13 +1126,29 @@ sealed class TrackList : Component
         // column is the page's opening, and three stacked analytics cards there push the first track below the fold.
         // Has() is an allocation-free early-exit scan (it already runs on every rail render), so it is cheap here.
         bool verticalFacts = _verticalHeader && !_cfg.HasTrailing && LikedFacts.Has(model, _cfg.Badges);
+        // The recs membership fingerprint: O(N), once per model change (Render already walks the rows for the count
+        // signals above). Rides the SAME effect and DepKey so it commits exactly when the other layout facts do.
+        long membershipFp = RecsRefetchPolicy.Fingerprint(model.ContextUri, model.Tracks);
         UseLayoutEffect(() =>
         {
             _visibleCount.Value = visible;
             _listCount.Value = listTotal;
             _verticalFacts.Value = verticalFacts;
             _verticalItemCount.Value = DetailVerticalLayout.ItemCount(visible, verticalFacts);
-        }, DepKey.From(HashCode.Combine(visible, listTotal, verticalFacts)));
+            _membershipFp.Value = membershipFp;      // equality-gated: a same-membership re-render writes nothing
+        }, DepKey.From(HashCode.Combine(visible, listTotal, verticalFacts, membershipFp)));
+
+        // First Ready bound-list mount on a viewport-OWNING list (liked, playlist without trailing) ramps realization
+        // so a 30-row screenful of ~90-node track rows cannot spend 70+ ms in one flush. Nested in the page scroller
+        // (album trailing) the list does not own scroll, and a short realized prefix reads as cut-off rows under chrome.
+        // Remounts (tier already realized, KeepAlive activation) fill the window in one frame — LayoutShellSuite RZ-TIER.
+        bool ConsumeColdStagger()
+        {
+            if (_cfg.HasTrailing) return false;
+            if (_listRealizedOnce) return false;
+            _listRealizedOnce = true;
+            return true;
+        }
 
         Element RealList()
         {
@@ -910,7 +1156,7 @@ sealed class TrackList : Component
             // a real viewport and realizes only its bounded row window, while the recorder applies one shared item-band
             // clip below the sticky chrome (never one reactive clip binding per realized row).
             if (_verticalHeader && !_cfg.HasTrailing)
-                return VerticalList(visible, set, tracks, labeled, tier, rowH, narrateRemount, staggerCold,
+                return VerticalList(visible, set, tracks, labeled, tier, rowH, narrateRemount, ConsumeColdStagger(),
                     verticalLayout, verticalStickyInset, verticalFacts);
             if (recsCapable)
             {
@@ -947,7 +1193,7 @@ sealed class TrackList : Component
                         Scroll = new ScrollOptions { ScrollKey = _route.Value.Name + ":r" + _resetEpoch, AutoEdgeFade = !_cfg.HasTrailing, OnScrollGeometryChanged = SwipeCloseObserver() },
                         Reorder = new ReorderOptions { DisplacementVersion = _dispVer },
                         Insertion = Insertion(),
-                        Entrance = new EntranceOptions { StaggerColdRealize = staggerCold, ItemFlipFrom = SeedFlip, ItemFadeFrom = SeedFade },
+                        Entrance = new EntranceOptions { StaggerColdRealize = ConsumeColdStagger(), ItemFlipFrom = SeedFlip, ItemFadeFrom = SeedFade },
                     });
             }
             return listState != PlaylistRowsState.Rows
@@ -993,9 +1239,7 @@ sealed class TrackList : Component
                     Insertion = Insertion(),
                     Entrance = new EntranceOptions
                     {
-                        // Realize the full oversized row window immediately. Bound slots are persistent; exposing partial
-                        // materialization during scroll reads as cut-off rows under the fixed chrome.
-                        StaggerColdRealize = staggerCold,
+                        StaggerColdRealize = ConsumeColdStagger(),
                         ItemFlipFrom = SeedFlip,
                         ItemFadeFrom = SeedFade,
                     },
@@ -1022,7 +1266,7 @@ sealed class TrackList : Component
         Element list = Skel.Region(_full,
             () => _verticalHeader && !_cfg.HasTrailing
                 ? VerticalShimmer(set, tracks, sort, labeled, tier, checkInset, contentFilterBar, rowH, art)
-                : RowsShimmer(set, tracks, rowH, art),
+                : LoadingRowBand(set, tracks, rowH, art),
             _ => RealList(), reveal: SkelReveal.FadeOnly, smoothResize: false);
 
         // Key the list by density + filter → either REMOUNTS it (a clean slot template with the right row height /
@@ -1091,20 +1335,7 @@ sealed class TrackList : Component
             },
             Children = _verticalHeader ? [rightBody] : [chrome, rightBody],
         };
-        // The per-frame reveal clock: mounted ONLY while a cold ramp is in flight (Flow.Show gated on _rampActive), so it
-        // advances _reveal once per frame and then unmounts — the frame loop quiesces (no forever-loop). Copies the
-        // FrameClock.Tick idiom (TickerClock / CountTicker). Hidden 0×0 node → no layout/hit-test footprint.
-        // Wrapped in a zero-size hit-invisible Box: a bare ZStack sibling above the column would capture HitAny (topmost sibling)
-        // and kill wheel scrolling — the list's scroller lives inside `column`, not up the ancestor chain from this node.
-        Element revealClock = new BoxEl
-        {
-            HitTestVisible = false,
-            Width = 0f,
-            Height = 0f,
-            Children = [Flow.Show(() => _rampActive.Value,
-                Embed.Comp(() => new TickerClock { OnFrame = _ => AdvanceReveal() }))],
-        };
-        return ZStack(column, revealClock) with { Grow = 1f, Shrink = 1f, MinHeight = 0f };
+        return column with { Grow = 1f, Shrink = 1f, MinHeight = 0f };
     }
 
     // Resolve a display row index (what the SelectionModel stores) → the track, through the current filtered+sorted view.
@@ -1500,6 +1731,34 @@ sealed class TrackList : Component
     // land with the SAME frame — never a jump-then-animate flash. Pure item transitions: a removed row's slot rebinds to
     // the next track and every row below FLIP-glides up to reclaim the space; an added row's neighbors part downward and
     // the row fades in at its slot. Everything is bounded: the engine's displacement seed walks only the REALIZED window.
+    Track[] MaterializeDisplayed(int[] view)
+    {
+        var displayed = new Track[view.Length];
+        for (int i = 0; i < view.Length; i++)
+        {
+            int original = view[i];
+            displayed[i] = (uint)original < (uint)_tracks.Count ? _tracks[original] : EmptyTrack;
+        }
+        return displayed;
+    }
+
+    bool DisplayedKeysMatch(Track[] previous, int[] view)
+    {
+        if (previous.Length != view.Length) return false;
+        for (int i = 0; i < view.Length; i++)
+        {
+            int original = view[i];
+            var next = (uint)original < (uint)_tracks.Count ? _tracks[original] : EmptyTrack;
+            var prev = previous[i];
+            if (prev.ContextUid is { Length: > 0 } || next.ContextUid is { Length: > 0 })
+            {
+                if (!string.Equals(prev.ContextUid, next.ContextUid, StringComparison.Ordinal)) return false;
+            }
+            else if (!string.Equals(prev.Uri, next.Uri, StringComparison.Ordinal)) return false;
+        }
+        return true;
+    }
+
     void Choreograph(Track[] old, Track[] next, float rowH)
     {
         var delta = MembershipDiff.Diff(old, next);
@@ -1873,6 +2132,13 @@ sealed class TrackList : Component
         return content;
     }
 
+    // Intentionally left on the ungated overload: BuildToolbar is a plain instance-method reference, not a lambda
+    // that closes over per-render locals — every value it paints from (handlers, model, selection, search state) is
+    // read live via signals/fields INSIDE its own body, at call time. Two consequences: (1) delegate equality
+    // (same target `this` + same MethodInfo) already makes repeated Props compare equal on an unrelated parent
+    // re-render, so ResponsiveBox's own Render() only reruns on an actual width change or a genuine signal it read
+    // last time changing — no wasted rebuilds today; (2) switching to Responsive.Of<TState> here would require
+    // duplicating that same live-signal set into a state key, which is strictly more code for no behavioural gain.
     Element Toolbar(bool labeled, int tier) =>
         Responsive.Of(BuildToolbar, fallback: _lastRightW > 0f ? _lastRightW : 760f)
             with { Key = "detail-track-commandbar" };
@@ -2178,10 +2444,12 @@ sealed class TrackList : Component
     Element CompactSelectionToolbar()
     {
         int trackStart = TrackStart;
-        return Responsive.Of(_ =>
+        // State = trackStart alone: the only per-render value this builder's row-index mapping depends on.
+        // _selection/ExitSelection/HostInfo are stable instance members, not per-render captures.
+        return Responsive.Of(trackStart, (start, _) =>
         {
             Element selection = Embed.Comp(() => new SelectionCommandBar(
-                _selection, i => DisplayTrack(i, trackStart), ExitSelection, host: HostInfo));
+                _selection, i => DisplayTrack(i, start), ExitSelection, host: HostInfo));
             return CommandBarSurface("compact-selection", selection);
         }, fallback: DetailVerticalLayout.FallbackW);
     }
@@ -2516,7 +2784,7 @@ sealed class TrackList : Component
                 HeroHasEyebrow(), HeroHasAttribution(), HeroHasMeta(), HeroHasDescription(), HeroHasPulse(),
                 previewArt: ImageSource.IsUsable(_model.Cover) ? PreviewHeroArt : null),
             Chrome(set, tracks, sort, labeled, tier, checkInset, contentFilterBar: contentFilterBar),
-            RowsShimmer(set, tracks, rowH, art),
+            LoadingRowBand(set, tracks, rowH, art),
         ],
     };
 
@@ -2534,67 +2802,34 @@ sealed class TrackList : Component
         return art.Skel(art);
     }
 
-    // The shimmer source for the track list: N copies of the REAL Row built with an empty track. The engine derives the
-    // grey shimmer bars from this (one source of truth — the row shape can never drift from the real rows).
-    Element RowsShimmer(ColumnSet set, TrackSize[] tracks, float rowH, float art)
+    // Page-level loading skeleton (membership unknown / Pending): N eager TrackRow.Grid copies so the deriver
+    // matches the live column shape. Not a per-row reveal ramp — that path is gone.
+    Element LoadingRowBand(ColumnSet set, TrackSize[] tracks, float rowH, float art)
     {
         var rows = new Element[12];
-        // Static title (no bound slot index here) — the skeleton deriver only needs the row SHAPE. Plain TextEl (matches
-        // the non-now-playing real rows now), so the skeleton mount carries no per-row marquee cost either.
+        var title = new TextEl("")
+        {
+            Size = 14f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1,
+            Trim = TextTrim.CharacterEllipsis,
+        };
         for (int i = 0; i < rows.Length; i++)
-            rows[i] = RowGrid(EmptyTrack, i, isNow: false, isPlaying: false, isBuffering: false, isTop: false,
-                              new TextEl(EmptyTrack.Title) { Size = 14f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                              set, tracks, rowH, art, more: false);
+            rows[i] = TrackRow.Grid(EmptyTrack, i, default, set, tracks, rowH, title,
+                showTrackArtist: false, static (_, _) => { }, art, moreEnabled: false);
         return new BoxEl { Direction = 1, Children = rows };
     }
 
-    // ── progressive reveal ───────────────────────────────────────────────────────────────────────────────────────────
-    // Advance the cold ramp one chunk. Called once per frame by the reveal clock (Flow.Show-gated on _rampActive). When
-    // the chunk crosses the realized band, snap _reveal to MaxValue (all rows real, incl. any scrolled in later) and drop
-    // _rampActive so the clock unmounts. All Peek/arithmetic/signal-write — no per-frame allocation.
-    void AdvanceReveal()
-    {
-        int next = DetailRevealRamp.Next(_reveal.Peek(), _visibleCount.Peek());
-        _reveal.Value = next;
-        if (next == DetailRevealRamp.Done) _rampActive.Value = false;   // ramp finished → the clock unmounts, the frame loop quiesces
-    }
-
-    // Is the row at this display position a REAL row yet, or still a shimmer placeholder? Reading _reveal.Value subscribes
-    // the caller (an equality-gated per-row bool memo), so as the ramp advances only the newly-crossed chunk re-renders
-    // shimmer→real. Done (MaxValue) in steady state ⇒ always true, so a revealed list pays nothing here.
-    internal bool RowRevealed(int displayIndex) => DetailRevealRamp.Revealed(displayIndex, _reveal.Value);
-
-    // The placeholder for a slot beyond the reveal ramp: an EMPTY row of the real row's exact extent — the same GridEl
-    // (same column tracks, same RowHeight) with one empty cell per lane and nothing painted. Deliberately blank, not grey
-    // bars: the crossing into the real row is a remount that fades the row in (BoundRowContent.RampReveal), and a bar
-    // that vanished on the swap frame under a row still at opacity 0 read as bars → blank → text — a per-row flicker, the
-    // very thing the ramp's cross-fade exists to remove. From blank the cascade is one gesture: rows fade in top-down,
-    // chunk by chunk, under the page's own entrance. (On a cold load the region's derived shimmer — RowsShimmer, 12 rows =
-    // one Chunk — is what dissolves under rows 0..11; slots past it were blank during Pending too.) It carries no art,
-    // text shaping, hover transport, marquee or context menu — the record cost the ramp spreads across frames — and it
-    // is static, so it keeps the loop asleep. It stays a GridEl on purpose: the real row mounts as a BoxEl wrapper, and
-    // the TYPE change is what makes the crossing a remount in a single-child slot (see BoundRowContent).
-    const string ShimmerRowKey = "row:shim";
-
-    Element ShimmerRow(TrackSize[] tracks, float rowH)
-    {
-        var cells = new Element[tracks.Length];
-        for (int i = 0; i < cells.Length; i++) cells[i] = new BoxEl();
-        return new GridEl
-        {
-            // Paired with BoundRowContent.RealRowKey: the two roots of the same slot are DISTINCT identities, so the
-            // placeholder→real crossing is a remount (and gets the entrance fade), never an in-place patch.
-            Key = ShimmerRowKey,
-            Columns = tracks, RowHeight = rowH, Grow = 1f,
-            Children = cells,
-        };
-    }
-
     // ── bound row ────────────────────────────────────────────────────────────────────────────────────────
-    // A bound row: ONE self-subscribing content component (re-renders on recycle/sort/now-playing, patching cells in
-    // place — never a remount, so no flash) wrapped in the shape-stable bound selection skin.
-    Element BoundRow(RowScope scope, IReadSignal<Track> item, float rowH, int trackStart, IReadSignal<bool>? hoverPaused = null)
-        => Embed.Comp(() => new BoundRowContent(this, scope, item, _rowsSnapshot!, rowH, trackStart, hoverPaused));
+    // A bound row: ONE self-subscribing content component that mounts TrackRowTemplate once per slot.
+    IReadSignal<T> BindSlot<T>(BoundItemsSource<T> source, RowScope scope, int itemStartIndex = 0)
+        => scope.Runtime is { } runtime
+            ? source.BindItem(scope.Index, runtime, itemStartIndex)
+            : source.BindItem(scope.Index, itemStartIndex);
+
+    // No rowH parameter: the row's height is DENSITY-keyed and BoundRowContent reads it off the live shape signal
+    // (RowShape.RowH) like every other shape fact. It used to take one and silently drop it, which is how the bound
+    // template ended up pinned at the TrackRow.RowHeight constant while the list reserved the density height.
+    Element BoundRow(RowScope scope, IReadSignal<Track> item, int trackStart, IReadSignal<bool>? hoverPaused = null)
+        => Embed.Comp(() => new BoundRowContent(this, scope, BindSlot(_rowPresentations!, scope, trackStart)));
 
     // ── Phase-D touch swipe-to-action for the VIRTUALIZED track rows (OFF by default) ────────────────────────────────
     // FLAGGED OFF: shipping the swipe layer on the eager queue/preview lists first. Before flipping this on, three things
@@ -2636,135 +2871,24 @@ sealed class TrackList : Component
         return (uint)orig < (uint)_tracks.Count ? _tracks[orig] : EmptyTrack;
     }
 
-    // The title text stays bound to the recycled item signal. Playback colour is resolved by the row's equality-gated
-    // presentation memo, so every realized title no longer owns a CurrentTrack subscription.
-    Element BoundTitle(IReadSignal<Track> item) => Marquee.Of(
-        Prop.Of(() => item.Value.Title),
-        new Marquee.Style
-        {
-            FontSize = 14f, Weight = 600,
-            Foreground = Tok.AccentTextPrimary,
-        });
-
-    // PERF: the marquee is 2 nested components + a measure→re-render cycle + a perpetual TranslateX track PER ROW — on a
-    // 12-row cold mount that was ~24 of ~60 components and the dominant slice of the flush spike (and every one re-rendered
-    // by RethemeAll on a theme flip). A non-now-playing title never needs to scroll (Spotify only scrolls the now-playing
-    // row), so render it as a plain, bound, ellipsis TextEl — ONE node, no extra component, no measure cycle, no animation.
-    // Recycle-safe: a recycled row is non-playing → stays plain (no type swap); only the single now-playing row uses the
-    // marquee, and BoundRowContent re-renders (swapping plain↔marquee for just that row) when now-playing changes.
-    Element BoundTitlePlain(IReadSignal<Track> item, bool nowPlaying) => new TextEl(Prop.Of(() => item.Value.Title))
-    {
-        Size = 14f, Weight = 600,
-        Color = nowPlaying ? Tok.AccentTextPrimary : Tok.TextPrimary,
-        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-    };
-
-    // The live content of a bound row: re-renders on its OWN subscriptions (recycle index, sort, now-playing, COLUMN
-    // SHAPE) and patches the GRID in place via diff — no remount, no flash. Child COMPONENTS (the title marquee) are
-    // reused across these re-renders, so the title is built with index-signal binds (BoundTitle) to update despite
-    // frozen args. The column shape is deliberately NOT a constructor arg: those freeze at mount (the component-props
-    // contract), and a frozen shape is what forced a breakpoint cross to remount the whole list.
+    // The live content of a bound row: mounts TrackRowTemplate once per persistent slot. Shape is read here so a
+    // breakpoint cross re-renders THIS row in place; the template binds every per-row value off _presentation.
     sealed class BoundRowContent : Component
     {
         readonly TrackList _o;
         readonly RowScope _scope;
-        readonly IReadSignal<Track> _item;
-        readonly IReadSignal<TrackRowsSnapshot> _state;
-        readonly float _rowH;
-        readonly int _trackStart;
-        readonly IReadSignal<bool>? _hoverPaused;
-        public BoundRowContent(TrackList o, RowScope scope, IReadSignal<Track> item, IReadSignal<TrackRowsSnapshot> state,
-                               float rowH, int trackStart, IReadSignal<bool>? hoverPaused = null)
+        readonly IReadSignal<RowPresentation> _presentation;
+
+        public BoundRowContent(TrackList o, RowScope scope, IReadSignal<RowPresentation> presentation)
         {
-            _o = o; _scope = scope; _item = item; _state = state; _rowH = rowH; _trackStart = trackStart;
-            _hoverPaused = hoverPaused;
+            _o = o; _scope = scope; _presentation = presentation;
         }
 
         public override Element Render()
         {
-            var likePrev = UseRef(((string?)null, false));               // hook FIRST (stable order) — per-slot like-edge memory
-            // The ramp-crossing latch: 0 = this slot has not rendered yet, 1 = its FIRST render was a shimmer placeholder
-            // (so the crossing into the real row is a visible swap and earns the fade below), 2 = it mounted ALREADY
-            // revealed. Only state 1 ever animates: a row that mounted real — steady state (_reveal at Done), a row
-            // scrolled in later, a warm page that never ramped — must play nothing, because an entrance replayed on a
-            // recycled slot reads as flicker (see the "where it may be used" note on WaveeEntrance in Design/WaveeMotion.cs).
-            var revealLatch = UseRef((byte)0);
-            var shape = _o._rowShape!.Value;                             // subscribe → a breakpoint cross re-renders THIS row in place
-            // Progressive reveal: while the cold list ramps in, a row past the ramp renders a cheap shimmer placeholder.
-            // The bool is equality-gated (per-slot), so this row re-renders shimmer→real only on the single frame its own
-            // reveal edge crosses — not on every ramp tick. MaxValue in steady state ⇒ always true (no per-row cost).
-            var revealed = UseComputed(() => _o.RowRevealed(_scope.Index.Value - _trackStart));   // hook order stays stable: all hooks run before the branch below
-            // Full-detail/playback invalidations may recompute this record, but Memo's equality gate schedules a render
-            // only when this particular row's visual state actually changed.
-            var presentation = UseComputed(() =>
-            {
-                int i = _scope.Index.Value;
-                int displayIndex = i - _trackStart;
-                var rowState = _state.Value;
-                var t = _item.Value;
-                bool isTop = rowState.Config.ShowPlays
-                    && rowState.TopTrackId is not null
-                    && t.Id == rowState.TopTrackId;
-                var st = TrackRow.StateOf(
-                    _o._bridge, _o._lib, t, isTop,
-                    _o._play?.IsRunning(t.Id) ?? false);
-                return new RowPresentation(
-                    t, displayIndex, st,
-                    rowState.MarqueeDisabled,
-                    rowState.Config.ShowTrackArtist,
-                    rowState.Config.ShowAlbumColumn,
-                    rowState.Handlers.Go,
-                    AddedByProfile(rowState.Model, t));
-            });
-            // Latch this slot's FIRST reveal state before the branch below — it is what decides whether the crossing fades.
-            bool revealedNow = revealed.Value;
-            if (revealLatch.Value == 0) revealLatch.Value = revealedNow ? (byte)2 : (byte)1;
-            // Not yet revealed (cold ramp): a cheap shimmer placeholder. All hooks above ran, so this early return keeps
-            // hook order stable; presentation stays unread (lazy) so no real-row work happens until this row reveals.
-            if (!revealedNow) return _o.ShimmerRow(shape.Tracks, _rowH);
-            var row = presentation.Value;
-            var t = row.Track;
-            var st = row.State;
-            // Buffering = this track's PlayAsync command is in flight (the Task-driven start spinner), OR the now-playing
-            // track is mid-playback re-buffering (the bridge signal). Reading _play.IsRunning subscribes this row so the
-            // spinner appears/clears as the command starts/finishes.
-            bool likePop = TrackRow.LikeEdge(likePrev, t.Uri, st.Saved);   // pop only on the SAME-uri unsaved→saved edge
-
-            // Marquee only for the now-playing row; every other row is a cheap plain ellipsis title (see BoundTitlePlain).
-            Element title = st.IsNow && !row.MarqueeDisabled
-                ? _o.BoundTitle(_item)
-                : _o.BoundTitlePlain(_item, st.IsNow);
-            Element grid = _o.RowGrid(t, row.DisplayIndex, st.IsNow, st.IsPlaying, st.IsBuffering, st.IsTop, title, shape.Set, shape.Tracks, _rowH, shape.Art,
-                              onPlay: () => _o.PlayRow(row.DisplayIndex),
-                              saved: st.Saved, onLike: t.Uri.Length > 0 ? (Action)(() =>
-                              {
-                                  var current = _item.Peek();
-                                  if (current.Uri.Length > 0) _o._lib?.ToggleSaved(current.Uri, current.Title);
-                              }) : null,
-                              likePop: likePop, presentation: row, hoverPaused: _hoverPaused);
-            // Rows that never shimmered return the grid bare — steady state, every recycled row, every warm page: not one
-            // extra node, not one transition slot. Only a slot whose first render WAS a placeholder (latch 1) is wrapped.
-            if (revealLatch.Value != 1) return grid;
-            // The ramp crossing. The placeholder and the real row are the SAME component slot, so the reconciler would
-            // patch one into the other in place — and a changed Key cannot ask for a remount here, because a component's
-            // root goes through ReconcileSingleChild, which reuses a same-type child and only *reports* the ignored key
-            // (Reconciler.ReportKeyIgnoredInSingleChildSlot). What actually forces Remove+Mount is the root's ELEMENT
-            // TYPE changing, GridEl → BoxEl — and the mount is what seeds Enter (Element.Enter/Animate.Enter is baked on
-            // BoxEl only, so the real row needs this box regardless). The keys are the intent, the type is the mechanism.
-            // Layout-neutral: the wrapper carries the grid's own flex config (Grow 1, Shrink 0, Basis auto, row direction).
-            return new BoxEl { Key = RealRowKey, Direction = 0, Grow = 1f, Animate = RampReveal, Children = [grid] };
+            var shape = _o._rowShape!.Value;
+            return TrackRowTemplate.Build(new BoundItemScope<RowPresentation>(_scope, _presentation), shape, _o.Handlers);
         }
-
-        const string RealRowKey = "row:real";
-        // The crossing's softener: OPACITY ONLY — the row is already sitting in its final slot and its extent is the
-        // measured rowH, so a rise or a size channel would fight the geometry the placeholder just reserved. Same 280ms
-        // FluentDecelerate as the skin's mount entrance (BoundRowSkin `entrance`), so a ramp reveal and a re-cut remount
-        // read as one gesture. Reduced motion needs no branch here: the engine's ReducedSnap still cross-fades opacity.
-        // Static readonly ⇒ one shared spec for every row, so a crossing allocates the wrapper box and nothing else.
-        static readonly LayoutTransition RampReveal = new(
-            TransitionChannels.Opacity,
-            TransitionDynamics.Tween(280f, Easing.FluentDecelerate),
-            Enter: new EnterExit(Opacity: 0f, Active: true));
     }
 
     // Heterogeneous persistent-prefix content for the vertical playlist viewport. Prefix slots never recycle; track
@@ -2781,47 +2905,66 @@ sealed class TrackList : Component
         {
             _o = o;
             _scope = scope;
-            _item = o._rowItems!.BindItem(scope.Index, VerticalTrackStart);
+            _item = o.BindSlot(o._rowItems!, scope, VerticalTrackStart);
             _rowH = rowH;
             _entrance = entrance;
         }
 
         public override Element Render()
         {
-            int i = _scope.Index.Value;
-            var shape = _o._rowShape!.Value;   // subscribe → breakpoint crosses patch the sticky chrome + rows in place
-            int tier = shape.Set.Tier;
-            bool labeled = tier <= 1;
+            // ONE equality-gated computed decides this slot's role. A recycle that keeps the SAME role (the common
+            // case for the track suffix, by far the bulk of the slots) no longer re-renders this wrapper — and, since
+            // shape is now read only inside the branches that actually need it (Chrome/Footer/the placeholder), a
+            // breakpoint cross no longer re-renders track slots at all: ExpandableSlot owns that subscription itself.
+            var role = UseComputed(() =>
+            {
+                int i = _scope.Index.Value;
+                int visible = _o._rowItems!.Count.Value;
+                return DetailVerticalLayout.ItemRole(i, visible, _o._verticalFacts.Value);
+            });
             Element child;
-            int visible = _o._rowItems!.Count.Value;
-            switch (DetailVerticalLayout.ItemRole(i, visible, _o._verticalFacts.Value))
+            switch (role.Value)
             {
                 case DetailVerticalItemRole.Hero:
                     child = _o.VerticalHero();
                     break;
                 case DetailVerticalItemRole.Chrome:
+                {
+                    var shape = _o._rowShape!.Value; // subscribe → breakpoint crosses patch the sticky chrome in place
+                    int tier = shape.Set.Tier;
+                    bool labeled = tier <= 1;
                     Element? filterBar = _o.ContentFilterBar();
                     child = _o.Chrome(shape.Set, shape.Tracks, _o._h.Sort.Value, labeled, tier,
                         _o._checksVisible?.Value ?? false, contentFilterBar: filterBar,
                         lensHeader: _o.LensHeader()) with { Key = "vitem:chrome" };
                     break;
+                }
                 case DetailVerticalItemRole.Footer:
+                {
                     // The metadata cards, once, at the very bottom of the page. Hero system only — the rail arm never
                     // reaches this switch (it is not a vertical viewport at all).
-                    child = _o.VerticalFactsFooter(tier);
+                    var shape = _o._rowShape!.Value; // subscribe → breakpoint crosses re-tier the footer cards
+                    child = _o.VerticalFactsFooter(shape.Set.Tier);
                     break;
+                }
                 case DetailVerticalItemRole.ExpandableTrack:
                     // The vertical viewport has two persistent prefix slots, but its track suffix must use the SAME
                     // expandable slot as the flat/recommendations lists. Building BoundRow directly made the chevron
                     // toggle _expandedRow while no drawer host existed — the glyph flipped and the row stayed one line.
+                    // Shape is NOT read here: ExpandableSlot subscribes to it on its own, so a breakpoint cross must
+                    // not also re-render this wrapper.
                     child = _o.ExpandableSlot(_scope, _item, _rowH, _entrance, VerticalTrackStart)
                         with { Key = "vitem:row" };
                     break;
                 default:
+                {
                     // The empty/loading PLACEHOLDER owns the single row slot an empty list keeps — and only that slot.
                     // Any other unaddressed index is transient: the footer's slot on the frame before _verticalFacts
                     // publishes sits here, and a shimmer band flashing under the last row of a short playlist would be
                     // the whole cost of the move. Render nothing there instead.
+                    int i = _scope.Index.Value;
+                    int visible = _o._rowItems!.Count.Value;
+                    var shape = _o._rowShape!.Value; // needed only for the placeholder's own shape below
                     child = i == DetailVerticalLayout.PrefixCount
                         ? new BoxEl
                         {
@@ -2836,6 +2979,7 @@ sealed class TrackList : Component
                         }
                         : new BoxEl { Key = "vitem:blank" };
                     break;
+                }
             }
 
             return new BoxEl { Direction = 1, Children = [child] };
@@ -2854,34 +2998,53 @@ sealed class TrackList : Component
         readonly float _rowH;
         readonly bool _entrance;
         public RowOrRecContent(TrackList o, RowScope scope, float rowH, bool entrance)
-        { _o = o; _scope = scope; _item = o._rowItems!.BindItem(scope.Index); _rowH = rowH; _entrance = entrance; }
+        { _o = o; _scope = scope; _item = o.BindSlot(o._rowItems!, scope); _rowH = rowH; _entrance = entrance; }
 
         public override Element Render()
         {
-            int i = _scope.Index.Value;            // recycle → re-render
-            int visible = _o._rowItems!.Count.Value;
-            Element child;
-            if (i < visible)
-                // The SAME expandable slot the plain list uses. This branch used to build the row inline and never host
-                // a drawer, so on any playlist with recommendations live the expand chevron toggled its signal, flipped
-                // its glyph, and nothing opened — the one list that looked broken was the one with an extra feature.
-                child = _o.ExpandableSlot(_scope, _item, _rowH, _entrance)
-                    with { Key = "rec:track" };
-            // The DATA half of the gate (see Render): this template is mounted for every capable playlist, including the
-            // window before the full model lands (and non-owned playlists, which never go live). _listCount then equals
-            // the track count, so an appended index cannot be realized — except transiently, if a count write lands a
-            // frame apart from the row projection. Render nothing rather than a stray "Recommended" header.
-            else if (!_o._recsLive)
-                child = new BoxEl { Key = "rec:empty" };
-            else if (i == visible)
-                child = Embed.Comp(() => new RecHeader(_o, _rowH)) with { Key = "rec:header" };
-            else
+            // ONE equality-gated computed decides which branch this slot is in: 0 = track row, 1 = nothing (recs not
+            // live), 2 = the "Recommended" header, 3 = a recommendation row. A recycle that keeps the SAME kind (the
+            // overwhelming common case — most slots stay track rows across the whole scroll) no longer re-renders this
+            // wrapper at all; only the kind-owning branch below reads the live index/item, and the track branch reads
+            // neither — the slot component (ExpandableSlot) owns its own subscriptions.
+            var kind = UseComputed(() =>
             {
-                int k = i - visible - 1;
-                var recs = _o._recs.Value;         // subscribe → rec rows re-render when the batch changes
-                child = k >= 0 && k < recs.Count
-                    ? _o.RecRow(recs[k], _rowH)    // keyed by track id inside RecRow → a recycled slot remounts for the new track
-                    : new BoxEl { Key = "rec:empty" };
+                int i = _scope.Index.Value;
+                int visible = _o._rowItems!.Count.Value;
+                return i < visible ? 0 : !_o._recsLive ? 1 : i == visible ? 2 : 3;
+            });
+            Element child;
+            switch (kind.Value)
+            {
+                case 0:
+                    // The SAME expandable slot the plain list uses. This branch used to build the row inline and never
+                    // host a drawer, so on any playlist with recommendations live the expand chevron toggled its signal,
+                    // flipped its glyph, and nothing opened — the one list that looked broken was the one with an extra
+                    // feature.
+                    child = _o.ExpandableSlot(_scope, _item, _rowH, _entrance)
+                        with { Key = "rec:track" };
+                    break;
+                // The DATA half of the gate (see Render): this template is mounted for every capable playlist, including
+                // the window before the full model lands (and non-owned playlists, which never go live). _listCount then
+                // equals the track count, so an appended index cannot be realized — except transiently, if a count write
+                // lands a frame apart from the row projection. Render nothing rather than a stray "Recommended" header.
+                case 1:
+                    child = new BoxEl { Key = "rec:empty" };
+                    break;
+                case 2:
+                    child = Embed.Comp(() => new RecHeader(_o, _rowH)) with { Key = "rec:header" };
+                    break;
+                default:
+                {
+                    int i = _scope.Index.Value;
+                    int visible = _o._rowItems!.Count.Value;
+                    int k = i - visible - 1;
+                    var recs = _o._recs.Value;     // subscribe → rec rows re-render when the batch changes
+                    child = k >= 0 && k < recs.Count
+                        ? _o.RecRow(recs[k], _rowH) // keyed by track id inside RecRow → a recycled slot remounts for the new track
+                        : new BoxEl { Key = "rec:empty" };
+                    break;
+                }
             }
             return new BoxEl { Direction = 1, Children = [child] };
         }
@@ -2900,16 +3063,26 @@ sealed class TrackList : Component
         {
             var svc = UseContext(Services.Slot);
             var post = UsePost();
-            int state = _o._recState.Value;        // subscribe → spinner ↔ refresh, empty note
+            var state = _o._recState.Value;        // subscribe → spinner ↔ refresh ↔ failed note
             int count = _o._recs.Value.Count;      // subscribe → "no suggestions" only once loaded-empty
 
-            // Lazy first fetch when THIS header realizes (scrolled to bottom). Constant dep ⇒ runs once per mount;
-            // FetchRecs(force:false) no-ops unless idle, so a recycle remount never re-fetches.
+            // Arm + lazy first fetch when THIS header realizes (scrolled to bottom). Constant dep ⇒ once per mount; the
+            // policy makes a recycle remount a no-op when the batch is still current.
+            UseEffect(() =>
+            {
+                _o._recArmed = true;
+                if (svc?.RealExtender is not null && _o._model.ContextUri is { Length: > 0 } uri)
+                    _o.FetchRecs(svc, post, uri, force: false);
+            }, "rec-header-once");
+
+            // Membership-driven re-fetch: the fingerprint, debounced 750 ms (equality-gated — unrelated re-renders do not
+            // restart the timer). Keyed on the debounced VALUE, so it runs once per settled change, never per store bump.
+            var settledFp = UseDebouncedValue(_o._membershipFp, RecsRefetchPolicy.DebounceMs);
             UseEffect(() =>
             {
                 if (svc?.RealExtender is not null && _o._model.ContextUri is { Length: > 0 } uri)
                     _o.FetchRecs(svc, post, uri, force: false);
-            }, "rec-header-once");
+            }, DepKey.From(settledFp.Value));
 
             void Refresh()
             {
@@ -2918,9 +3091,11 @@ sealed class TrackList : Component
             }
 
             var trailing = new List<Element>(2);
-            if (state == 2 && count == 0)
-                trailing.Add(new TextEl("No suggestions right now") { Size = 12f, Color = Tok.TextTertiary });
-            trailing.Add(state == 1
+            if (state == RecsState.Loaded && count == 0)
+                trailing.Add(new TextEl(Loc.Get(Strings.Detail.NoSuggestions)) { Size = 12f, Color = Tok.TextTertiary });
+            else if (state == RecsState.Failed)
+                trailing.Add(new TextEl(Loc.Get(Strings.Detail.RecsFailed)) { Size = 12f, Color = Tok.TextTertiary });
+            trailing.Add(state == RecsState.Loading
                 ? new BoxEl { Width = 32f, Height = 32f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [TrackRow.Spinner()] }
                 : RefreshButton(Refresh));
 
@@ -2932,7 +3107,7 @@ sealed class TrackList : Component
                 Children =
                 [
                     // BodyStrong (14/20/600) — a list-section label, the same rung as the track titles under it. Was 15/700.
-                    Ui.BodyStrong("Recommended songs") with
+                    Ui.BodyStrong(Loc.Get(Strings.Detail.Recommended)) with
                     {
                         Grow = 1f, Basis = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
@@ -2977,29 +3152,56 @@ sealed class TrackList : Component
         ],
     }.WithMenu(_menuOverlay is { } ov ? Menus.TrackAttach(_acts, ov, t) : null);
 
-    // Fetch a fresh, non-repeating batch. force:false = the lazy trigger (fires only from idle); force:true = Refresh /
-    // auto-refill. The skip set carries every id ever shown, so the server never repeats. Marshalled back to the UI thread.
+    // Start (or supersede) a recs fetch per RecsRefetchPolicy. force:false = the lazy trigger / a membership change;
+    // force:true = Refresh / auto-refill. Every fetch gets its own epoch and a linked, deadline-bound token; a
+    // completion whose epoch is no longer current is dropped, so a superseded batch can never overwrite a newer one.
     void FetchRecs(Services svc, Action<Action> post, string uri, bool force)
     {
         if (svc.RealExtender is not { } extender) return;
-        if (_recState.Peek() == 1) return;                     // already loading
-        if (!force && _recState.Peek() != 0) return;           // the lazy trigger fires only once (idle → loading)
-        _recState.Value = 1;
+        long fp = _membershipFp.Peek();
+        var action = RecsRefetchPolicy.Decide(_recState.Peek(), _recArmed, fingerprintCurrent: fp == _recFetchedFp, force);
+        if (action == RecsAction.None) return;
+
+        if (action == RecsAction.Supersede)
+        {
+            PlaylistMutationDiagnostics.ExtendSuperseded(uri, _recEpoch);
+            try { _recInflight?.Cancel(); } catch { }
+        }
+        _recInflight?.Dispose();
+        var cts = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(_recCts.Token);
+        cts.CancelAfter(RecsRefetchPolicy.FetchDeadline);
+        _recInflight = cts;
+        int epoch = ++_recEpoch;
+        _recFetchedFp = fp;
+        _recState.Value = RecsState.Loading;
+
         string[] skip = _recShown.Count == 0 ? Array.Empty<string>() : new string[_recShown.Count];
         if (skip.Length > 0) _recShown.CopyTo(skip);
-        var ct = _recCts.Token;
+        var ct = cts.Token;
+        long started = Environment.TickCount64;
         _ = Run();
 
         async System.Threading.Tasks.Task Run()
         {
-            IReadOnlyList<Track> batch;
+            IReadOnlyList<Track>? batch = null;
+            bool timedOut = false;
             try { batch = await extender.ExtendAsync(uri, skip, RecBatch, ct).ConfigureAwait(false); }
-            catch { batch = Array.Empty<Track>(); }
+            catch (OperationCanceledException) when (_recCts.IsCancellationRequested) { return; }   // unmount — nothing to post to
+            catch (OperationCanceledException) { timedOut = !ct.IsCancellationRequested || cts.IsCancellationRequested; }
+            catch (Exception ex) { PlaylistMutationDiagnostics.ExtendFaulted(uri, epoch, ex); }
+
             post(() =>
             {
+                if (epoch != _recEpoch) return;                     // superseded while in flight — a newer fetch owns the state
+                if (batch is null)
+                {
+                    if (timedOut) PlaylistMutationDiagnostics.ExtendTimedOut(uri, epoch, Environment.TickCount64 - started);
+                    _recState.Value = RecsState.Failed;             // the old batch (if any) stays on screen; Refresh is offered
+                    return;
+                }
                 for (int i = 0; i < batch.Count; i++) { var id = batch[i].Id; if (id.Length > 0) _recShown.Add(id); }
                 _recs.Value = batch;
-                _recState.Value = 2;
+                _recState.Value = RecsState.Loaded;
             });
         }
     }
@@ -3124,7 +3326,30 @@ sealed class TrackList : Component
     /// <summary>Open this row's drawer, closing any other. One at a time, because two open drawers make the list jump
     /// unpredictably under the cursor while scrolling — and the measured layout re-anchors on every extent change.</summary>
     void ToggleExpanded(string rowKey)
-        => _expandedRow.Value = _expandedRow.Peek() == rowKey ? "" : rowKey;
+    {
+        string prev = _expandedRow.Peek();
+        // RecentsPage's contract: a REALIZED closer eases through SizeMode.Reflow (ArrangeVirtualMeasured writes the
+        // closed height). An UNREALIZED closer has no node, so the ExtentTable would keep the drawer height and the
+        // list would scroll past its last row by that leftover band. Snap the cached extent before the signal write.
+        //
+        // The collapsed band comes from the LIVE shape, not from the height the slot happened to be mounted with: it
+        // has to be the number the row will actually measure when it next realizes (the same shape.RowH the row grid
+        // is built at), or the correction hands the extent table a band no row ever occupies.
+        if (prev.Length > 0 && _expandedFlat >= 0 && !_listCtl.IsItemRealized(_expandedFlat))
+            _listCtl.CorrectMeasuredExtent(_expandedFlat, CollapsedRowExtent());
+        if (prev == rowKey) _expandedFlat = -1;
+        _expandedRow.Value = prev == rowKey ? "" : rowKey;
+    }
+
+    /// <summary>The extent ONE collapsed track row occupies — the live density row height, falling back to the value
+    /// the open slot was mounted with when the shape memo has not published yet. This is the single number the whole
+    /// reservation chain shares (the measured layout's estimate, the row skin's MinHeight, the row grid's RowHeight),
+    /// so an off-window collapse corrects the extent table to a band the row will really measure.</summary>
+    float CollapsedRowExtent()
+    {
+        float live = _rowShape?.Peek().RowH ?? 0f;
+        return live > 0f ? live : _expandedClosedH;
+    }
 
     /// <summary>Everything the expanded row's facts strip needs that a <see cref="Track"/> does not carry.
     ///
@@ -3144,10 +3369,11 @@ sealed class TrackList : Component
         var by = AddedByProfile(snap.Model, track);
         return new TrackFactsOptions(
             TempoPending: asksTempo && track.TempoBpm is null,
-            PlaysPending: asksPlays && track.PlayCount <= 0,
+            PlaysState: asksPlays ? PlaysStateFor(track) : TrackFactState.Absent,
             // "Has a music video" is a property of the CATALOGUE ENTRY (the kind-99 association plane) and never a
-            // field on Track — the SAME probe the trailing film lane uses, so a row and its drawer agree.
-            HasVideo: VideoPresence.HasVideo(track),
+            // field on Track — read from the SAME publication the trailing film lane projected from, so a row and its
+            // drawer can never disagree.
+            HasVideo: snap.Knowledge.HasVideo(track.Uri),
             AddedByName: by?.Name is { Length: > 0 } name ? name : track.AddedBy,
             Culture: CultureInfo.CurrentCulture,
             Zone: TimeZoneInfo.Local,
@@ -3156,8 +3382,11 @@ sealed class TrackList : Component
     }
 
     /// <summary>The expandable list slot. A Component (not a plain element) so it re-renders on ITS OWN
-    /// subscriptions: the expanded-uri signal and the slot's bound item. That keeps expansion off the parent's render
-    /// path — opening a drawer must not re-render the whole list.</summary>
+    /// subscriptions — but only when its OWN drawer opens or closes (or the shape changes at a breakpoint cross).
+    /// A plain recycle (a new item bound to the same slot) is NOT a reason for this wrapper to re-render: the row
+    /// skin is bound to the slot index via Prop closures and needs no rebuild, so only BoundRowContent (inside it)
+    /// re-renders on a recycle. That keeps expansion off the parent's render path too — opening a drawer must not
+    /// re-render the whole list.</summary>
     sealed class ExpandableRowSlot : Component
     {
         readonly TrackList _o;
@@ -3221,26 +3450,42 @@ sealed class TrackList : Component
             // Row hover → EQ pause (same interactive ancestor that drives #-cell HoverOpacity). Stable UseSignal.
             var rowHovered = UseSignal(false);
 
-            var track = _item.Value;                       // subscribe → recycle rebinds this slot
-            string expanded = _o._expandedRow.Value;       // subscribe → open/close re-renders only the two slots involved
-            // Subscribe to the slot's own index too: it is half the row identity whenever the read model carries no
-            // per-row uid, so a recycle must be able to move the drawer off this slot.
-            int displayIndex = _scope.Index.Value - _trackStart;
+            // ONE equality-gated computed carries this slot's own open-drawer row key ("" when closed). Reading
+            // _item/_scope.Index/_expandedRow inline used to subscribe this wrapper to EVERY recycle and EVERY
+            // open/close anywhere in the list; wrapping them in a Memo means this component only re-renders on the
+            // frame its OWN computed key actually changes — a recycle that leaves the slot closed (the common case)
+            // no longer re-renders it at all.
+            var openKey = UseComputed(() =>
+            {
+                var t = _item.Value;
+                int displayIndex = _scope.Index.Value - _trackStart;
+                string expanded = _o._expandedRow.Value;
+                return t is { Uri.Length: > 0 } && MembershipDiff.RowKeyMatches(expanded, t, displayIndex)
+                    ? MembershipDiff.RowKey(t, displayIndex) : "";
+            });
             var shape = _o._rowShape!.Value;                 // style/columns are live for both the row skin and drawer
             var row = _o.WrapRowSwipe(_scope,
-                _o.BoundRowSkin(_scope, _o.BoundRow(_scope, _item, _rowH, _trackStart, rowHovered),
-                    _rowH, _narrate, _trackStart, shape.Set, rowHovered),
+                _o.BoundRowSkin(_scope, _o.BoundRow(_scope, _item, _trackStart, rowHovered),
+                    shape.RowH, _narrate, _trackStart, shape.Set, rowHovered),
                 _trackStart, _item);
 
-            bool hasTrack = track is { Uri.Length: > 0 };
-            bool open = hasTrack && MembershipDiff.RowKeyMatches(expanded, track!, displayIndex);
             // The drawer's element keys carry the ROW identity for the same reason the state does: two rows holding the
             // same song used to mint two IDENTICAL keys under the list, which is a keyed-reconcile collision.
-            string rowKey = open ? MembershipDiff.RowKey(track!, displayIndex) : "";
+            string rowKey = openKey.Value;
+            bool open = rowKey.Length > 0;
+            if (open)
+            {
+                _o._expandedFlat = _scope.Index.Value;
+                _o._expandedClosedH = _rowH;
+            }
 
             Element? drawer = null;
             if (open)
             {
+                // Only read while open: a recycle while the drawer is open changes openKey.Value (the key is derived
+                // from the item/index), which already re-renders this slot — so a Peek here does not go stale.
+                var track = _item.Peek();
+                int displayIndex = _scope.Index.Peek() - _trackStart;
                 // Subscribe to the shape: a breakpoint cross changes which leading columns exist, so an open drawer
                 // must re-indent in place rather than keep the indent it mounted with.
                 var model = new TrackVersionsPanel.Model(
@@ -3344,44 +3589,18 @@ sealed class TrackList : Component
         }
     }
 
-    // ── row grid ─────────────────────────────────────────────────────────────────────────────────────────
-    // The row cell is the shared TrackRow.Grid (Components/TrackRow.cs) — ONE definition rendered identically by the
-    // detail list, the library pane, artist "Popular" and search. This threads the detail list's per-row state + the
-    // column set + the navigation handler through; the bound title element (plain vs marquee) is decided by the caller
-    // (BoundRowContent), and the skeleton passes a static title. Plain/diffable → a BoundRowContent re-render patches in place.
-    Element RowGrid(Track t, int displayIndex, bool isNow, bool isPlaying, bool isBuffering, bool isTop, Element title,
-                    ColumnSet set, TrackSize[] tracks, float rowH, float art, Action? onPlay = null, bool saved = false, Action? onLike = null,
-                    bool likePop = false, bool more = true, RowPresentation? presentation = null,
-                    IReadSignal<bool>? hoverPaused = null)
+    TrackFactState PlaysStateFor(Track track)
     {
-        var snapshot = presentation is null ? _rowsSnapshot!.Peek() : default;
-        bool configuredTrackArtist = presentation is { } row ? row.ShowTrackArtist : snapshot.Config.ShowTrackArtist;
-        bool showTrackArtist = configuredTrackArtist && !set.Artist;
-        bool showListMetadata = presentation is { } rowMeta ? rowMeta.ShowListMetadata : snapshot.Config.ShowAlbumColumn;
-        var go = presentation is { } rowGo ? rowGo.Go : snapshot.Handlers.Go;
-        Owner? addedBy = presentation is { } rowOwner ? rowOwner.AddedBy : AddedByProfile(snapshot.Model, t);
-        return TrackRow.Grid(t, displayIndex, new TrackRow.State(isNow, isPlaying, isBuffering, isTop, saved),
-                         set, tracks, rowH, title, showTrackArtist, go, art,
-                         onPlay, onLike, addedBy, likePop,
-                         // The trailing "…" — ClickRequestsContext opens the row's own context menu anchored at the
-                         // button (input-a11y §6.5.1). Disabled for the shimmer rows: a skeleton keeps the identical
-                         // reserved lane but stays non-interactive and hidden.
-                         // When Video is on, More lives in the Video lane (set.Actions false) → no trailing button.
-                         // The ultra-compact tier also drops the "…" lane → no button built.
-                         actionsCell: set.Actions ? TrackRow.MoreButton(more, classic: set.Classic) : null,
-                         // Keyed by the ROW, not the track: two rows holding the same song are two independent drawers.
-                         // TRACKS only: the drawer's whole content is alternate versions + per-item audio format, and
-                         // SpotifyTrackExpansionService is track-only by decision — an EPISODE row would open an empty
-                         // drawer, which is worse than no chevron at all (the lane is simply absent for it).
-                         expandCell: set.Expand && t.Uri.Length > 0 && EntityUri.KindOf(t.Uri) == EntityKind.Track
-                             ? TrackRow.ExpandChevron(
-                                 MembershipDiff.RowKeyMatches(_expandedRow.Value, t, displayIndex),
-                                 () => ToggleExpanded(MembershipDiff.RowKey(t, displayIndex)))
-                             : null,
-                         showAlbumInMeta: !set.Classic && showListMetadata && !set.Album,
-                         showListBadges: showListMetadata,
-                         moreEnabled: more,
-                         hoverPaused: hoverPaused);
+        if (_queryDemand?.Value is not { } query || _svc is not { } services) return TrackFactState.Present;
+        // Same publication as the row's PlayCount value, and the same cached per-provider scope its facts are keyed
+        // by (see TrackRowsSnapshot.Resources / TrackFacts).
+        var snapshot = _rowsSnapshot?.Peek();
+        var scope = snapshot?.Knowledge.ScopeFor(track.Uri)
+            ?? (services.CatalogScope with { Provider = services.Data.ProviderForSubject(track.Uri) });
+        var key = new ResourceKey(scope, track.Uri, FacetKind.PlayCount);
+        var resources = snapshot?.Resources ?? query.Resources.Value;
+        resources.TryGetValue(key, out var resource);
+        return TrackFactPresentation.State(resource, query.Failure.Value is not null);
     }
 
     static Owner? AddedByProfile(DetailModel model, Track t)

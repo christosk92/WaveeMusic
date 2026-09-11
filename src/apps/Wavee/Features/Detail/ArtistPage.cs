@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -9,6 +10,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Features.Concerts;
 using Wavee.Features.Detail;
 using static FluentGpu.Dsl.Ui;
@@ -38,6 +40,13 @@ sealed partial class ArtistPage : Component
     ColorF _accent => _paletteAccent ?? Tok.AccentDefault;
     ActionServices? _acts;                // shelf-card context menus — resolved per-render, read by the shelf builders
     IOverlayService? _menuOverlay;
+    // THE page's one ArtistDetailQuery presentation (QueryHooks memoizes it for the page's lifetime). ArtistPopular
+    // is handed this instead of taking a second lease on the same node - see the demand note in Render.
+    QueryPresentation<Artist>? _artistView;
+
+    static readonly IReadOnlyList<FacetKind> ArtistPageFacets =
+        TrackPresentationRequirements.RequiredFacets(TrackPresentationRequirements.ArtistPopular);
+
     public ArtistPage(Signal<Route> route) { _route = route; }
 
     /// <summary>The lazy card-menu attach for this page's shelves (albums / playlists / artists / video tracks — the
@@ -65,26 +74,49 @@ sealed partial class ArtistPage : Component
         bool colorWashesDisabled = !(svc?.Settings.Get(WaveeSettings.ColorWashesEnabled) ?? true);
         var go = UseContext(HistoryStore.NavCtx);
         var bridge = UseContext(PlaybackBridge.Slot);
-        var store = UseContext(LibraryStore.Slot);
         var shellMaterial = UseContext(ShellMaterial.Slot);
         _acts = UseContext(ActionServices.Slot);          // shelf-card context menus (Menus.CardAttach)
         _menuOverlay = UseContext(Overlay.Service);
-        if (svc is null || store is null) return new BoxEl { Grow = 1f };
+        if (svc is null) return new BoxEl { Grow = 1f };
 
         var route = _route.Value;                       // subscribe → re-derive when this slot's route object changes
         string routeKey = route.Name;
         string uri = UriOf(route) ?? "";
 
-        // ContentHost keeps one ArtistPage alive for artist→artist hops. The data is cached per artist, while the
-        // scroll/skeleton subtree below is keyed by route so pending/ready branches and child components remount cleanly.
-        // ONE read at the RICH rung: identity + assembled discography (Open) plus the queryArtistOverview facets the
-        // header shows — monthly listeners, followers, world rank, related. Two calls and two services collapsed into
-        // one ask because the rung IS the contract (design §1.2); offline the ladder simply cannot reach Rich and the
-        // resident V4 artist stands, exactly as the old null-stats fallback did.
-        var artist = store.ArtistDetail(uri, ct => svc.Library.GetArtistAsync(uri, HydrationLevel.Rich, ct)!,
-            PendingArtist(uri));
-        store.EnsureArtists();
-        var fansList = store.Artists.Value.Value;
+        // The pending SHAPE is dead the moment the query goes Ready, but it used to be an EAGER argument evaluated on
+        // every render — six albums, their tracks and covers, the whole SynthExtras magazine, an OrderByDescending
+        // .ThenBy().First() and a Take(4).ToArray(), hundreds of records per render. Memoized on the uri: built once
+        // per artist, and immutable (the `with` in PendingArtist), so sharing the instance is safe.
+        var pendingShape = UseMemo(() => PendingArtist(uri), (DepKey)uri);
+        // The whole-page reveal is this page's decision (ArtistPageReadiness): the query publishes the moment the
+        // library knows the name, and lifting the skeleton on that partial value re-laid the hero, swapped its art
+        // and left every row on its own placeholder. The pending shape stays until the initial demand has resolved.
+        var artistView = QueryHooks.Use(Context, static (page, value) => page.SetReady(value),
+            svc.Queries, new ArtistDetailQuery(svc.CatalogScope, uri),
+            pendingShape, new QueryDemand(true, QueryPriority.Visible, ArtistPageFacets),
+            initialLoad: static snapshot => ArtistPageReadiness.InitialLoadComplete(snapshot));
+        _artistView = artistView;
+        var artist = artistView.Loadable;
+        var revealWatch = PageRevealWatch.Use(Context, () => artist.IsReady, "ArtistDetailQuery");
+        var artistBinding = artistView.Binding.Value;
+        // ONE lease for this node. The chart reads this page's presentation (passed to its ctor). Demand is the
+        // facets this page displays, applied to the whole model — never a visible-range window.
+        UseEffect(() =>
+        {
+            artistBinding?.SetDemand(new QueryDemand(true, QueryPriority.Visible, ArtistPageFacets));
+        }, DepKey.FromRef(artistBinding));
+        var fansView = QueryHooks.Use(Context, static (page, value) => page.SetReady(value),
+            svc.Queries, new SavedArtistsQuery(svc.CatalogScope),
+            (IReadOnlyList<Artist>)Array.Empty<Artist>(),
+            new QueryDemand(true, QueryPriority.Visible, []));
+        var fansList = fansView.Loadable.Value.Value;
+        var fansBinding = fansView.Binding.Value;
+        bool useFans = artist.Value.Value.Extras?.Related is not { Count: > 0 };
+        UseEffect(() =>
+        {
+            if (fansBinding is null) return;
+            fansBinding.SetDemand(useFans ? new QueryDemand(true, QueryPriority.Visible, []) : QueryDemand.None);
+        }, DepKey.From(HashCode.Combine(RuntimeHelpers.GetHashCode(fansBinding), useFans)));
 
         // ContentHost's SlotKey carries the ROUTE (tab + name + arg), so artist→artist mounts a fresh ArtistPage and
         // slides it in; KeepAlive parks the previous one so going back restores its scroll and its loaded data. There
@@ -131,7 +163,8 @@ sealed partial class ArtistPage : Component
         // One tree: the boundary renders Body with the resource's pending value, derives its loading paint, then fills
         // the same Body with the loaded artist. The page does not author or pass a separate skeleton subtree.
         var scroll = ScrollView(Skel.Region(artist,
-            content: a => Body(a, fansList, svc, go, bridge, compactInteractive, pageScroll, pageViewportHeight, pageAtEnd),
+            content: a => PageRevealWatch.Include(revealWatch, artist.IsReady,
+                Body(a, fansList, svc, go, bridge, compactInteractive, pageScroll, pageViewportHeight, pageAtEnd)),
             onFailed: () => ErrorState.Build(artist.Error),
             reveal: SkelReveal.FadeOnly,
             group: routeKey)
@@ -185,6 +218,11 @@ sealed partial class ArtistPage : Component
         return shape with { Id = "", Uri = uri, Name = "" };
     }
 
+    static (Album[] Albums, Album[] Singles, Album[] Compilations) PartitionAlbums(IReadOnlyList<Album> albumsAll) =>
+        (albumsAll.Where(al => al.Kind == AlbumKind.Album).ToArray(),
+         albumsAll.Where(al => al.Kind is AlbumKind.Single or AlbumKind.EP).ToArray(),
+         albumsAll.Where(al => al.Kind == AlbumKind.Compilation).ToArray());
+
     Element Body(Artist a, IReadOnlyList<Artist> fansAll, Services svc, Action<string, string?> go,
                  PlaybackBridge? bridge, Signal<bool> compactInteractive, IReadSignal<float> pageScroll,
                  IReadSignal<float> pageViewportHeight, IReadSignal<bool> pageAtEnd)
@@ -196,11 +234,11 @@ sealed partial class ArtistPage : Component
         _paletteAccent = chromePal is { } pal ? WaveePalette.ChromeAccent(pal) : null;
         Func<ColorF> accent = () => _accent;
         var extras = a.Extras;
-        var popular = a.TopTracks is { Count: > 0 } tt ? tt : FakeData.TopTracksOf(a);
+        var popular = a.TopTracks ?? Array.Empty<Track>();
         var albumsAll = a.TopAlbums ?? Array.Empty<Album>();
-        var albums = albumsAll.Where(al => al.Kind == AlbumKind.Album).ToArray();
-        var singles = albumsAll.Where(al => al.Kind is AlbumKind.Single or AlbumKind.EP).ToArray();
-        var compilations = albumsAll.Where(al => al.Kind == AlbumKind.Compilation).ToArray();
+        // Memoized on TopAlbums' own reference identity: three LINQ .Where().ToArray() passes over the same list
+        // used to re-run on EVERY page render (a shelf scroll included, before D decoupled those from Render).
+        var (albums, singles, compilations) = UseMemo(() => PartitionAlbums(albumsAll), DepKey.FromRef(albumsAll));
         var fans = fansAll.Where(f => f.Uri != uri).Take(12).ToArray();
 
         void Play() => _ = svc.Player.PlayAsync(uri, 0);
@@ -248,14 +286,11 @@ sealed partial class ArtistPage : Component
                 Section(Loc.Get(Strings.Artist.LatestRelease), LatestReleaseBanner(latestRelease, go, PlayContext, accent)));
         // Owned discography stays inline as full virtualized facets; dedicated pages remain deep-link compatible only.
         if (albums.Length > 0 || a.AlbumsTotal > 0) Sec("albums", Loc.Get(Strings.Artist.Albums), Embed.Comp(
-            new DiscographySection.Props(albums),
-            () => new DiscographySection(DiscographyKind.Albums, Loc.Get(Strings.Artist.Albums), svc, go, PlayContext, accent)));
+            () => new DiscographySection(uri, DiscographyKind.Albums, Loc.Get(Strings.Artist.Albums), svc, go, PlayContext, accent)));
         if (singles.Length > 0 || a.SinglesTotal > 0) Sec("singles", Loc.Get(Strings.Artist.SinglesEps), Embed.Comp(
-            new DiscographySection.Props(singles),
-            () => new DiscographySection(DiscographyKind.Singles, Loc.Get(Strings.Artist.SinglesEps), svc, go, PlayContext, accent)));
+            () => new DiscographySection(uri, DiscographyKind.Singles, Loc.Get(Strings.Artist.SinglesEps), svc, go, PlayContext, accent)));
         if (compilations.Length > 0 || a.CompilationsTotal > 0) Sec("compilations", Loc.Get(Strings.Artist.Compilations), Embed.Comp(
-            new DiscographySection.Props(compilations),
-            () => new DiscographySection(DiscographyKind.Compilations, Loc.Get(Strings.Artist.Compilations), svc, go, PlayContext, accent)));
+            () => new DiscographySection(uri, DiscographyKind.Compilations, Loc.Get(Strings.Artist.Compilations), svc, go, PlayContext, accent)));
         if (a.AppearsOn is { Count: > 0 } appears) Sec("appears-on", Loc.Get(Strings.Artist.AppearsOn), AppearsOnShelf(appears, go, PlayContext));
         if (extras?.Tour is { } tour) Sec("tour", null, TourBannerCard(tour,
             () => go(ConcertRoutes.ArtistSchedule(uri), a.Name)));

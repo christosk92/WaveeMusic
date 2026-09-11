@@ -25,7 +25,7 @@ namespace Wavee.Tests;
 /// Every refusal is now a typed <see cref="PlaylistMutationException"/> with its own sentence, and a legal move posts
 /// exactly ONE request.</para>
 /// </summary>
-public class RootlistMoveSeamTests
+public class RootlistMoveSeamTests : IAsyncLifetime
 {
     static readonly SessionContext Ctx = new("bob", "US", "premium", "en", Tier.Premium, false);
     static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -44,20 +44,24 @@ public class RootlistMoveSeamTests
         public IObservable<WireRequest> Requests(string identPrefix) => new SimpleSubject<WireRequest>();
         public Task Reply(string requestId, RequestResult result) => Task.CompletedTask;
         public Task<Resp> Publish(string deviceId, string connectionId, ReadOnlyMemory<byte> putState, CancellationToken ct = default)
-            => Task.FromResult(new Resp(true, Array.Empty<byte>(), 200));
+            => Task.FromResult(new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
     }
 
     static byte[] Rev24(byte tag) { var r = new byte[24]; r[3] = tag; r[23] = tag; return r; }
 
-    static PlaylistMutationSource Source(IStore store, ITransport transport)
+    readonly List<ReplicaTestHost> _hosts = [];
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync() { foreach (var host in _hosts) await host.DisposeAsync(); }
+
+    async Task<PlaylistMutationSource> Source(IStore store, ITransport transport)
     {
-        var engine = new MutationEngine(store, new IMutationStrategy[]
-        {
-            new OpRebaseStrategy(store, () => "https://spclient.wg.spotify.com", new PlaylistResyncQueue()),
-        });
+        var host = new ReplicaTestHost(store: store);
+        _hosts.Add(host);
+        await host.SeedRootlistAsync(store.Rootlist(), store.RootlistRevision());
         var http = new FakeExchange((_, _) => new HttpResp(500, new Dictionary<string, string>(), Array.Empty<byte>()));
-        return new PlaylistMutationSource(engine, transport, http, () => Ctx,
-            () => "https://spclient.wg.spotify.com", new UserPlaylistSource(), new RootlistLane(), store);
+        var sync = host.AttachSync(http, transport);
+        return new PlaylistMutationSource(host.Mutations, transport, http, () => host.Context,
+            () => "https://spclient.wg.spotify.com", new UserPlaylistSource(), store, host.Replicas, sync);
     }
 
     /// <summary>a · [g]{b, c} · d — one folder with two children, so every refusal shape is reachable.</summary>
@@ -91,8 +95,8 @@ public class RootlistMoveSeamTests
     public async Task ANoOpMove_ThrowsAlreadyThere_AndPostsNothing()
     {
         var store = Store();
-        var transport = new RecTransport((_, _, _) => new Resp(true, Array.Empty<byte>(), 200));
-        var src = Source(store, transport);
+        var transport = new RecTransport((_, _, _) => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
+        var src = await Source(store, transport);
 
         // "after the row right before me" and "before the row right after me" are the two gestures a reorder produces
         // most often — and the two that used to complete "successfully" without a request.
@@ -110,8 +114,8 @@ public class RootlistMoveSeamTests
     public async Task ACycleOrAnInexpressiblePlacement_ThrowsInvalid_AndPostsNothing()
     {
         var store = Store();
-        var transport = new RecTransport((_, _, _) => new Resp(true, Array.Empty<byte>(), 200));
-        var src = Source(store, transport);
+        var transport = new RecTransport((_, _, _) => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
+        var src = await Source(store, transport);
 
         Assert.Equal(PlaylistMutationFailure.Invalid, await Refused(src, F("g"), P("b"), RootlistDropPlacement.Before));
         Assert.Equal(PlaylistMutationFailure.Invalid, await Refused(src, F("g"), P("c"), RootlistDropPlacement.After));
@@ -126,7 +130,7 @@ public class RootlistMoveSeamTests
     {
         // The tree moved under the gesture (a desktop edit, a dealer push). "Your library changed while that was
         // saving" is the honest sentence — not silence, and not "something went wrong".
-        var src = Source(Store(), new RecTransport((_, _, _) => new Resp(true, Array.Empty<byte>(), 200)));
+        var src = await Source(Store(), new RecTransport((_, _, _) => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200)));
         Assert.Equal(PlaylistMutationFailure.Conflict,
                      await Refused(src, P("ghost"), P("a"), RootlistDropPlacement.After));
         Assert.Equal(PlaylistMutationFailure.Conflict,
@@ -139,8 +143,8 @@ public class RootlistMoveSeamTests
         // ONE DROP ⇒ ONE CALL ⇒ ONE REQUEST. The rootlist lane serializes the write and the response is folded back in,
         // so a completed move is a completed move — which is the only thing the caller is allowed to confirm.
         var store = Store();
-        var transport = new RecTransport((_, _, _) => new Resp(true, Array.Empty<byte>(), 200));
-        var src = Source(store, transport);
+        var transport = new RecTransport((_, _, _) => new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
+        var src = await Source(store, transport);
 
         await src.MoveRootlistItemAsync(P("d"), F("g"), RootlistDropPlacement.Inside, Ct);
 
@@ -174,7 +178,7 @@ public class RootlistMoveSeamTests
         public IObservable<WireRequest> Requests(string identPrefix) => new SimpleSubject<WireRequest>();
         public Task Reply(string requestId, RequestResult result) => Task.CompletedTask;
         public Task<Resp> Publish(string deviceId, string connectionId, ReadOnlyMemory<byte> putState, CancellationToken ct = default)
-            => Task.FromResult(new Resp(true, Array.Empty<byte>(), 200));
+            => Task.FromResult(new Resp(true, new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
     }
 
     sealed class Changes : IObserver<StoreChange>
@@ -198,11 +202,13 @@ public class RootlistMoveSeamTests
         var seen = new Changes();
         using var sub = store.Changes.Subscribe(seen);
         var t = new ParkedTransport();
-        var src = Source(store, t);
+        var src = await Source(store, t);
 
         var move = src.MoveRootlistItemAsync(P("d"), F("g"), RootlistDropPlacement.Inside, Ct);
         await t.Posted.Task;                                     // the POST is in flight and PARKED
 
+        try
+        {
         Assert.False(move.IsCompleted);
         Assert.Equal(new[]
         {
@@ -210,10 +216,11 @@ public class RootlistMoveSeamTests
             "spotify:playlist:c", "spotify:playlist:d", "spotify:end-group:g",
         }, Uris(store));                                          // d is already inside the folder
         lock (seen.All)
-            Assert.Contains(seen.All, c => c.Uri == "rootlist" && c.Kind == CollectionKind.Playlists);
+            Assert.Contains(seen.All, c => c.IsBulk || c.Uri == "rootlist");
         Assert.Equal(Rev24(1), store.RootlistRevision());         // …but the revision is NOT advanced until the ack
 
-        t.Answer.SetResult(new Resp(true, RevOnlyReply(), 200));
+        }
+        finally { t.Answer.TrySetResult(new Resp(true, RevOnlyReply(), 200)); }
         await move;
 
         Assert.Equal("spotify:playlist:d", store.Rootlist()[4].Uri);          // the applied order stands
@@ -223,20 +230,22 @@ public class RootlistMoveSeamTests
     }
 
     [Fact]
-    public async Task AMoveThatCannotBeSent_RestoresTheTree_AndThrowsTyped()
+    public async Task AMoveWithAmbiguousFailure_KeepsPendingOverlay_AndThrowsTyped()
     {
         var store = Store();
         var before = Uris(store);
         // 503 → RootlistPostOutcome.Retry: the op is still valid, the WIRE failed. Nothing was saved, so the row the
         // user watched move has to jump back — silently keeping it would be a lie that survives a restart.
         var t = new RecTransport((_, _, _) => new Resp(false, Array.Empty<byte>(), 503));
-        var src = Source(store, t);
+        var src = await Source(store, t);
 
         var ex = await Assert.ThrowsAsync<PlaylistMutationException>(
             () => src.MoveRootlistItemAsync(P("d"), F("g"), RootlistDropPlacement.Inside, Ct));
 
-        Assert.Equal(PlaylistMutationFailure.Unknown, ex.Kind);
-        Assert.Equal(before, Uris(store));
+        Assert.Equal(PlaylistMutationFailure.Pending, ex.Kind);
+        Assert.NotEqual(before, Uris(store));
+        Assert.Equal(before, _hosts[^1].Replicas.ReadConfirmedRootlist().Entries.Select(row => row.Uri));
+        Assert.Single(_hosts[^1].Replicas.Intents);
         Assert.Equal(Rev24(1), store.RootlistRevision());
     }
 
@@ -261,7 +270,7 @@ public class RootlistMoveSeamTests
             2 => new Resp(true, bootstrap.ToByteArray(), 200),      // the bootstrap GET
             _ => new Resp(true, RevOnlyReply(), 200),
         });
-        var src = Source(store, t);
+        var src = await Source(store, t);
 
         await src.MoveRootlistItemAsync(P("d"), F("g"), RootlistDropPlacement.Inside, Ct);
 
@@ -322,7 +331,7 @@ public class RootlistMoveSeamTests
         // THE bug report: LoL dragged onto the top band of "Careless" (first child of "named folder update"). The line
         // was drawn at the right depth, the toast said "Moved to named folder update" — and nothing moved.
         var store = UserStore();
-        var src = Source(store, new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200)));
+        var src = await Source(store, new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200)));
 
         await src.MoveRootlistItemAsync(new RootlistItemRef("spotify:playlist:lol", IsFolder: false),
                                         new RootlistItemRef("spotify:playlist:careless", IsFolder: false),
@@ -343,7 +352,7 @@ public class RootlistMoveSeamTests
     public async Task IntoAFolder_PutsTheRowInside()
     {
         var store = UserStore();
-        var src = Source(store, new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200)));
+        var src = await Source(store, new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200)));
 
         await src.MoveRootlistItemAsync(new RootlistItemRef("spotify:playlist:updated", IsFolder: false),
                                         new RootlistItemRef(Named, IsFolder: true), RootlistDropPlacement.Inside, Ct);
@@ -359,7 +368,7 @@ public class RootlistMoveSeamTests
     public async Task AfterAFolder_OutdentsTheRow_OneLevel()
     {
         var store = UserStore();
-        var src = Source(store, new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200)));
+        var src = await Source(store, new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200)));
 
         await src.MoveRootlistItemAsync(new RootlistItemRef("spotify:playlist:nine", IsFolder: false),
                                         new RootlistItemRef(Named, IsFolder: true), RootlistDropPlacement.After, Ct);
@@ -377,7 +386,7 @@ public class RootlistMoveSeamTests
         var store = UserStore();
         var before = Shape(store);
         var t = new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200));
-        var src = Source(store, t);
+        var src = await Source(store, t);
 
         var ex = await Assert.ThrowsAsync<PlaylistMutationException>(
             () => src.MoveRootlistItemAsync(new RootlistItemRef("spotify:playlist:careless", IsFolder: false),
@@ -395,12 +404,15 @@ public class RootlistMoveSeamTests
     {
         const string User = "31abcdefghijklmnopqrstuvwxyz";
         await using var h = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
-        h.Store.SetRootlist(RootlistTreeBuilder.EntriesFromUris(new[]
+        await h.Host.SeedRootlistAsync(RootlistTreeBuilder.EntriesFromUris(new[]
         {
             "spotify:playlist:a", "spotify:start-group:g:Chill", "spotify:playlist:b",
             "spotify:playlist:c", "spotify:end-group:g", "spotify:playlist:d",
         }), Rev24(1));
-        var src = Source(h.Store, new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200)));
+        var transport = new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200));
+        var src = new PlaylistMutationSource(h.Mut, transport,
+            new FakeExchange((_, _) => SyncHarness.Ok([])), () => h.Host.Context,
+            () => "https://spclient.wg.spotify.com", new UserPlaylistSource(), h.Store, h.Host.Replicas, h.Sync);
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         await src.MoveRootlistItemAsync(P("d"), F("g"), RootlistDropPlacement.Inside, Ct);
@@ -480,7 +492,7 @@ public class RootlistMoveSeamTests
     {
         var store = Store();
         var transport = new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200));
-        var src = Source(store, transport);
+        var src = await Source(store, transport);
 
         await src.MoveRootlistItemsAsync(AAndDIntoTheFolder(), Ct);
 
@@ -509,7 +521,7 @@ public class RootlistMoveSeamTests
         var store = FlatStore();
         var before = Uris(store);
         var t = new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200));
-        var src = Source(store, t);
+        var src = await Source(store, t);
 
         var ex = await Assert.ThrowsAsync<PlaylistMutationException>(() => src.MoveRootlistItemsAsync(new[]
         {
@@ -530,7 +542,7 @@ public class RootlistMoveSeamTests
         var store = Store();
         var before = Uris(store);
         var t = new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200));
-        var src = Source(store, t);
+        var src = await Source(store, t);
 
         var ex = await Assert.ThrowsAsync<PlaylistMutationException>(() => src.MoveRootlistItemsAsync(new[]
         {
@@ -544,19 +556,21 @@ public class RootlistMoveSeamTests
     }
 
     [Fact]
-    public async Task ABatchThatCannotBeSent_RestoresTheWholeTree_AndThrowsTyped()
+    public async Task AmbiguousBatch_KeepsOverlayAndConfirmedTree_AndThrowsPending()
     {
         // ONE optimistic apply, ONE rollback: both rows jump back together, because they moved together.
         var store = Store();
         var before = Uris(store);
         var t = new RecTransport((_, _, _) => new Resp(false, Array.Empty<byte>(), 503));
-        var src = Source(store, t);
+        var src = await Source(store, t);
 
         var ex = await Assert.ThrowsAsync<PlaylistMutationException>(
             () => src.MoveRootlistItemsAsync(AAndDIntoTheFolder(), Ct));
 
-        Assert.Equal(PlaylistMutationFailure.Unknown, ex.Kind);
-        Assert.Equal(before, Uris(store));
+        Assert.Equal(PlaylistMutationFailure.Pending, ex.Kind);
+        Assert.NotEqual(before, Uris(store));
+        Assert.Equal(before, _hosts[^1].Replicas.ReadConfirmedRootlist().Entries.Select(row => row.Uri));
+        Assert.Single(_hosts[^1].Replicas.Intents);
         Assert.Equal(Rev24(1), store.RootlistRevision());
     }
 
@@ -582,7 +596,7 @@ public class RootlistMoveSeamTests
             2 => new Resp(true, bootstrap.ToByteArray(), 200),      // the bootstrap GET
             _ => new Resp(true, RevOnlyReply(), 200),
         });
-        var src = Source(store, t);
+        var src = await Source(store, t);
 
         await src.MoveRootlistItemsAsync(AAndDIntoTheFolder(), Ct);
 
@@ -611,11 +625,11 @@ public class RootlistMoveSeamTests
         // No second write path: the N=1 sugar produces the very same delta the one-element batch does.
         var oneStore = Store();
         var oneT = new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200));
-        await Source(oneStore, oneT).MoveRootlistItemAsync(P("d"), F("g"), RootlistDropPlacement.Inside, Ct);
+        await (await Source(oneStore, oneT)).MoveRootlistItemAsync(P("d"), F("g"), RootlistDropPlacement.Inside, Ct);
 
         var batchStore = Store();
         var batchT = new RecTransport((_, _, _) => new Resp(true, RevOnlyReply(), 200));
-        await Source(batchStore, batchT).MoveRootlistItemsAsync(
+        await (await Source(batchStore, batchT)).MoveRootlistItemsAsync(
             new[] { Mv(P("d"), F("g"), RootlistDropPlacement.Inside) }, Ct);
 
         var single = Assert.Single(Assert.Single(Pl.ListChanges.Parser.ParseFrom(Assert.Single(oneT.Sent).Body).Deltas).Ops).Mov;

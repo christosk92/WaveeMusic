@@ -33,19 +33,16 @@ static class LibraryV3Document
     // STABLE section ids. The pane keys its reorder bands, its scroll identity and its section lookup off them, so a fresh
     // id per rebuild — and this document IS rebuilt on every state change — would reset all three on every keystroke.
     public const string PinsId = "v3.pins";
-    public const string LikedId = "v3.liked";
+    public const string SystemId = "v3.system";
     public const string LibraryId = "v3.library";
 
-    /// <summary>The Liked Songs shortcut's route key (§3.0 obligation 2) and its item id inside the shortcut section.</summary>
+    /// <summary>The Liked Songs shortcut's route key (§3.0 obligation 2) and its item id inside the system section.</summary>
     public const string LikedRouteKey = "liked";
-    public const string LikedItemId = "v3.liked.item";
+    public const string SystemLikedItemId = "v3.system.liked";
 
-    /// <summary>Does V3's CHROME carry the fixed library destinations? It does: <c>LibraryV3NavBand</c> renders Liked
-    /// Songs / Albums / Artists / Podcasts / Local files as one always-present strip (#85 H4). This document therefore
-    /// stops emitting its own <c>v3.liked</c> row, which would be the same destination twice, two rows apart.
-    /// <para>A named constant rather than deleted code: the section, its id and its geometry are still the right answer
-    /// the moment the strip is turned off or moved, and the branch below documents exactly what the strip took over.</para></summary>
-    public static readonly bool ChromeCarriesDestinations = true;
+    /// <summary>The divider that closes the system row off from the library when there is no pin band to do it instead
+    /// (see obligation 2's placement rule below).</summary>
+    public const string SystemRuleId = "v3.rule.system";
 
     /// <summary>Build the ephemeral document for one V3 view state.</summary>
     /// <param name="topBar">W3 — the shell's shortcut band (<c>SidebarPreferences.TopBar</c>), the ONE global list
@@ -53,14 +50,54 @@ static class LibraryV3Document
     /// band renders as fixed chrome above the header (<c>LibraryV3NavBand</c>, mounted by <c>LibraryV3Chrome</c>), so
     /// this document must never carry it — a band that scrolls, filters and searches with the list is exactly the
     /// "shortcuts always showing / never where you'd expect" complaint W3 exists to remove. The parameter survives for
-    /// exactly ONE rule: a user who put Liked Songs in the band must not also get V3's own <c>v3.liked</c> row two
+    /// exactly ONE rule: a user who put Liked Songs in the band must not also get the document's own system row two
     /// places down — see obligation 2 below.</param>
     public static SidebarCustomLayout Build(in LibraryV3DocState state,
         IReadOnlyList<SidebarItemSpec>? topBar = null)
     {
-        var sections = new List<SidebarSectionSpec>(3);
+        var sections = new List<SidebarSectionSpec>(4);
 
-        // 1 — the PIN BAND. The shaped projection already carries the surviving pins as its leading band (pin order,
+        // 1 — LIKED SONGS, the library's own row. §3.0 obligation 2, scoped to the lenses where a saved-songs shortcut is
+        //     truthful (state.LikedVisible: not pinned, not searching, not drilled, All/Playlists only) and skipped when
+        //     the shell's shortcut band already carries a `liked` ROUTE item two rows away (ContainsRoute — the existing
+        //     dedupe obligation the `topBar` parameter exists for; an ENTITY item whose uri maps onto Liked does not
+        //     count, per ContainsRoute's own contract).
+        //
+        //     It sits BEFORE the pin band on purpose: Liked Songs is the library's own saved-songs collection, so it
+        //     reads as the first row of the pinned band rather than a shelf above it. The renderer draws it under V3's
+        //     RowStyle.Slot with the dynamic Liked cover and a "Playlist · n songs" subtitle, because the section asks
+        //     for Artwork AND Subtitles — Cozy + Subtitles is what selects the 44-DIP height the content rows share
+        //     (HeightFor(Cozy, subtitle) == 44, the same ladder the pin band and the library section use).
+        //     CountBadges: false keeps the count in the subtitle only (a StaticLinks section cannot show the badge
+        //     anyway — AllowsDisplayField(StaticLinks, CountBadges) is false). ShowInRail: true gives the 56-DIP rail
+        //     its tile through the shared planner, now that the mode's rail head no longer draws the fixed destinations
+        //     itself (W3 — LibraryV3Sidebar.BuildRailHead dropped them).
+        //
+        //     If Liked is itself pinned (LikedPinned, folded into LikedVisible), the pin band carries it instead — same
+        //     place in the list, now reorderable like any other pin.
+        bool systemRow = state.LikedVisible && !SidebarShortcutsSection.ContainsRoute(topBar, LikedRouteKey);
+        if (systemRow)
+        {
+            sections.Add(new SidebarSectionSpec(SystemId, SidebarSectionKind.StaticLinks,
+                Title: null, TitleLocKey: null,        // V3 renders NO section headers (§3.2.7) — no title ⇒ no header row
+                Hidden: false, Collapsed: false,
+                Display: new SidebarDisplayOptions(
+                    Density: SidebarDensity.Cozy,
+                    Presentation: SidebarPresentation.List,
+                    Artwork: true, Subtitles: true, CountBadges: false,
+                    CollapsedByDefault: false, ShowInRail: true),
+                Items: [new SidebarItemSpec(SystemLikedItemId, SidebarItemTarget.Route, LikedRouteKey,
+                                            IconOverride: "Heart")]));
+
+            // The pin band's own PinEnd gutter already closes the whole band off from the library when pins are
+            // visible; without a pin band, nothing else marks where the system row ends, so the system row would run
+            // straight into the library with no seam. A plain rule closes it — the same chrome Classic uses between
+            // its own fixed bands.
+            if (!state.PinsBandVisible)
+                sections.Add(new SidebarSectionSpec(SystemRuleId, SidebarSectionKind.Divider));
+        }
+
+        // 2 — the PIN BAND. The shaped projection already carries the surviving pins as its leading band (pin order,
         //     filter-aware), and the mode component hands exactly that band to the planner as `Pins`; this section renders
         //     it, which is also what gives V3 drop-to-pin and pin reordering it never had.
         //     Absent when there is nothing pinned (an empty Pinned section is the drop-zone card, which V3's chrome does
@@ -70,41 +107,6 @@ static class LibraryV3Document
                 Title: null, TitleLocKey: null,        // V3 renders NO section headers (§3.2.7) — no title ⇒ no header row
                 Hidden: false, Collapsed: false,
                 Display: ContentDisplay(in state)));
-
-        // 2 — LIKED SONGS, the surface's own row: placed right after the pin band when it is not itself pinned, scoped to
-        //     the lenses where a saved-songs shortcut is truthful (§3.0 obligation 2). A route row, so it follows the UI
-        //     culture through ShellNav rather than freezing a label into the document.
-        //
-        //     THE "drop v3.liked only if Liked is already a shortcut" RULE, decided here from the actual band: the nav
-        //     band above the header (W3's chrome, not this document) may already carry a `liked` ROUTE item, and two
-        //     rows to the same destination — one in the chrome, one in the list — is the duplication this rule exists
-        //     to remove. It is NOT dropped unconditionally — a user who removed Liked from the band still gets V3's own
-        //     row, which is the §3.0 obligation. (An ENTITY item whose uri maps onto Liked does not count: different
-        //     art, different menu, and SidebarShortcutsSection.ContainsRoute owns that distinction.)
-        // ...and it is now dropped ALWAYS, because the chrome's destination strip (LibraryV3NavBand) carries Liked
-        // Songs unconditionally alongside Albums / Artists / Podcasts / Local files (#85 H4). The rule above is
-        // unchanged in spirit — one destination, one row — the band it defers to simply stopped being optional. Kept
-        // as a guarded branch rather than deleted so the section, its id and its geometry survive for the moment a
-        // future design turns the strip off.
-        if (!ChromeCarriesDestinations &&
-            state.LikedVisible && !SidebarShortcutsSection.ContainsRoute(topBar, LikedRouteKey))
-            sections.Add(new SidebarSectionSpec(LikedId, SidebarSectionKind.StaticLinks,
-                Title: null, TitleLocKey: null,
-                Hidden: false, Collapsed: false,
-                // W7 — a GLYPH row must be 44 tall with a 32-wide glyph column so its label lands at the same x as the
-                // content rows' labels: HeightFor(Cozy, subtitle) = 44, ArtFor(Cozy) = 32. Comfortable would give a
-                // 40-wide column and a 77 label (one lane short of every art row beside it). Subtitles: true is what
-                // SELECTS the 44 height — no subtitle text is actually drawn, because a route row never passes one
-                // (`AllowsDisplayField(StaticLinks, Subtitles)` is false, so the user cannot flip this either way).
-                // Fixed for every V3 view — Liked Songs is always exactly one row, so it no longer tracks the
-                // Compact/Cozy split the CONTENT bands use.
-                Display: new SidebarDisplayOptions(
-                    Density: SidebarDensity.Cozy,
-                    Presentation: SidebarPresentation.List,
-                    Artwork: false, Subtitles: true, CountBadges: false,
-                    CollapsedByDefault: false, ShowInRail: true),
-                Items: [new SidebarItemSpec(LikedItemId, SidebarItemTarget.Route, LikedRouteKey,
-                                            IconOverride: "Heart")]));
 
         // 3 — THE ONE LIBRARY SECTION. Kind is the only thing that varies, and it varies for exactly one reason: only the
         //     PlaylistTree path stamps a row's NESTING DEPTH (indentation) and preserves the given order verbatim, while

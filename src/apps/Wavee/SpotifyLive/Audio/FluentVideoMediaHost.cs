@@ -281,6 +281,56 @@ public sealed class FluentVideoMediaHost : IMediaHost
         _pump.RequestClear();
     }
 
+    long _seekRevision;
+
+    public PlaybackCommandReceipt Submit(AudioTransportRequest request)
+    {
+        if (request.Action == AudioTransportAction.Seek)
+        {
+            lock (_gate) _startSeekPending = false; // an explicit seek supersedes a carried load position
+            long revision = Interlocked.Increment(ref _seekRevision);
+            _ = SeekCommandAsync(request, revision);
+            return new(request.Command);
+        }
+        switch (request.Action)
+        {
+            case AudioTransportAction.Play: Play(); break;
+            case AudioTransportAction.Pause: Pause(); break;
+            case AudioTransportAction.Stop: Stop(); break;
+            case AudioTransportAction.Skip: Pause(); break;
+            case AudioTransportAction.Adopt: break;
+            default: throw new ArgumentOutOfRangeException(nameof(request));
+        }
+        _signals.OnNext(new AudioHostSignal(IsPlaying ? AudioHostSignalKind.Playing : AudioHostSignalKind.Paused,
+            PositionMs, IsPlaying, false, false)
+        { Command = request.Command, OperationStatus = PlaybackOperationStatus.Applied, PlayWhenReady = request.PlayWhenReady });
+        return new(request.Command);
+    }
+
+    async System.Threading.Tasks.Task SeekCommandAsync(AudioTransportRequest request, long revision)
+    {
+        var player = CurrentPlayer;
+        try
+        {
+            if (player is null) throw new InvalidOperationException("No video session is loaded.");
+            long target = Math.Max(0, request.PositionMs);
+            if (request.SeekKind == PlaybackSeekKind.Commit && IsAtOrPastLiveEdge(player, target))
+                await player.GoLiveAsync().ConfigureAwait(false);
+            else await player.SeekAsync(TimeSpan.FromMilliseconds(target), request.Mode == SeekMode.Keyframe
+                ? EngineSeekMode.Keyframe : EngineSeekMode.Accurate).ConfigureAwait(false);
+            bool superseded = revision != Volatile.Read(ref _seekRevision) || !ReferenceEquals(player, CurrentPlayer);
+            _signals.OnNext(new AudioHostSignal(IsPlaying ? AudioHostSignalKind.Playing : AudioHostSignalKind.Paused,
+                PositionMs, IsPlaying, false, false)
+            { Command = request.Command, OperationStatus = superseded ? PlaybackOperationStatus.Superseded : PlaybackOperationStatus.Applied });
+        }
+        catch (Exception ex)
+        {
+            _signals.OnNext(new AudioHostSignal(IsPlaying ? AudioHostSignalKind.Playing : AudioHostSignalKind.Paused,
+                PositionMs, IsPlaying, false, false, detail: ex.Message)
+            { Command = request.Command, OperationStatus = PlaybackOperationStatus.Failed });
+        }
+    }
+
     public void Seek(long positionMs, SeekMode mode) => SeekPlayer(CurrentPlayer, positionMs, mode);
 
     /// <summary>Seek one player instance, fail-soft. Shared by the transport <see cref="Seek"/> and by the load path, so

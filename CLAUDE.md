@@ -60,14 +60,18 @@ this reason.
 
 ## Working rules
 
-- **Component props freeze at mount.** `Embed.Comp(() => new T { Field = value })` runs once; changing data
-  reaches a child only via a `Signal`/`Func`, `Ctx.Provide`+`UseContext`, or a remount through `Key`
+- **Plain component factory fields freeze at mount.** `Embed.Comp(() => new T { Field = value })` runs once.
+  Changing data uses signals/context, explicitly re-pushed component props, or reactive bound items.
+  Keys express identity; metadata updates must preserve mounted nodes
   (`..\fluent-gpu\docs\design\subsystems\component-props-contract.md`; `ReuseGuard` catches the mistake).
 - **No source-text tests.** A test never reads/greps production source. Extract the decision into an
   engine-free pure class and unit-test that (`SetupGating`, `AppUpdateToasts`, `ShutdownUpdatePolicy`,
   `ReleaseNotesRange` are the pattern).
 - **No environment-variable switches** for behaviour or verification: always-on logs, the diagnostics page, gates.
 - **No legacy paths.** Replace outright; delete obsolete code. Breaking is acceptable.
+- **Pages never manage fetch windows.** No `OnVisibleRange → demand`, no shelf windows, no lookahead policies in
+  page or feature code. A page demands its whole model; the query/catalog layer fetches it in extended-metadata
+  batches (300 subjects per POST) and publishes a complete model. Only rendering (`ItemsView`) is virtualized.
 - **Every fix references its issue.** The CHANGELOG bullet ends with ` (#n)`, the commit body carries `Fixes #n`,
   and the release script's `issue refs` gate refuses a mismatch between the two (→ `github-triage` skill).
 - **Plans with real code.** Multi-part work gets a plan in `docs/plans/wavee/*-implementation.md` with the actual

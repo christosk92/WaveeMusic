@@ -23,22 +23,14 @@ dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj
 
 ## Architecture hub
 
-`docs/plans/wavee/` — and within it **`architecture.md` is the seam canon**: the ports (`ICatalogSource`,
-`IEntityHydrator`, `IOnlineCatalog`, the playback/remote/session/lyrics/mutation ports), the `SourceRegistry` /
-`AggregateCatalog` federation, the ACL rule (no GraphQL/proto type crosses a port), the §9 status matrix and the
-§10 file map. Start there for "where does this belong?".
+`docs/plans/wavee/architecture.md` is the current seam canon: normalized catalog facts, typed observable queries,
+explicit whole-model demand, durable library replicas, source ownership, and pure UI signal adapters. Read
+[catalog-state.md](catalog-state.md) before changing catalog/backend/query consumption.
 
-Two pointers that used to conflict, now reconciled:
-
-- `docs/plans/wavee-native-backend-architecture.md` is a **different** doc — the *live Spotify backend* (transport,
-  dealer, session, audio). It does not supersede `architecture.md`; read it for wire/session questions.
-- Production comments across `Wavee.Core/Sources/**`, `App/**` and `Features/**` cite `docs/architecture.md`, which
-  does not exist. They mean `docs/plans/wavee/architecture.md`; the §-numbers still line up.
-
-**Hydration** (every catalog metadata fetch in the app goes through one façade):
-[hydration.md](hydration.md) is the how-to. Canon: `docs/plans/wavee/hydration-facade-design.md` (shapes),
-`hydration-facade-plan.md` (phases + status), `metadata-entry-points-inventory.md` (what it replaced),
-`xm-kind-probe-overview.md` + `xm-playcount-handoff.md` (which extension kind carries what).
+The approved detailed replacement contract is `docs/plans/wavee/catalog-state-replacement-implementation.md`.
+The old `hydration-facade-design.md`, `hydration-facade-plan.md`, metadata entry-point inventory, and original native
+backend proposal are historical research, not implementation instructions. Transport probes such as
+`xm-kind-probe-overview.md` still provide wire evidence; their old ownership guidance is superseded.
 
 ## Wiring discipline (mandatory)
 
@@ -46,10 +38,8 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
 
 ## Sub-skills
 
-- [hydration.md](hydration.md) — **the metadata façade**: `IEntityHydrator`, the five levels, the per-kind ladders,
-  traits + surfaces, the display-only extension reader, and the rules (no `spotify:track:` string tests, no
-  per-service memos/caps/etag forks, store-writing = ladder/projector vs return-only = service). Read before adding
-  ANY fetch of catalog metadata, a new trait, a new extension read, or a second provider.
+- [catalog-state.md](catalog-state.md) - canonical facet/replica ownership, typed query observation and demand,
+  knowledge versus activity, provider ingress, stable bound UI props, retention, and behavioral verification.
 - [wiring-discipline.md](wiring-discipline.md) — required deps, fail-loud stubs, go-live hooks
 - [home-layout.md](home-layout.md) — Home visibility + order (`home-layout.json`, reducer,
   `HomeLandingProjection`, `HomeCustomizerPage`). Read before adding a landing module.

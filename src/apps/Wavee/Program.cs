@@ -62,8 +62,16 @@ static class Program
             Environment.Exit(0);
         }
 
+        // Real (live Spotify) backend is the DEFAULT. --fake is the offline FakeData demo (no login/network — used by
+        // --screenshot and UI iteration). Latched HERE, before factory-reset / settings / logs / any DefaultPath, so a
+        // fake process writes (and wipes) under the isolated root and cannot poison the real profile.
+        bool fake = Array.IndexOf(args, "--fake") >= 0;
+        UnpackagedAppDataRoot.Configure(fake);
+        Services.UseRealBackend = !fake;
+
         // Factory-reset wipe MUST run before settings / logs / library.db open. The previous process only armed a
-        // marker (files were still locked); this process is a clean first launch afterwards.
+        // marker (files were still locked); this process is a clean first launch afterwards. Configure ran first so
+        // DefaultDataRoots sees the same folder this process will write.
         FactoryReset.ApplyIfPending();
 
         // CLI flags below print to the console; a WinExe has none on a bare terminal launch, so attach the parent's first
@@ -73,7 +81,8 @@ static class Program
         // ── Observability ───────────────────────────────────────────────────────────────────────────────────────────
         // Settings are hoisted above Configure so the persisted log-level overrides seed it (env still wins inside
         // Configure). One instance, reused for theme/backend below.
-        var settings = AppDataSettings.ForUnpackaged("Wavee", "Wavee");
+        string appDataFolder = UnpackagedAppDataRoot.CurrentFolderName;
+        var settings = AppDataSettings.ForUnpackaged(appDataFolder, appDataFolder);
         // Launch-scoped by design: the Settings picker persists a new value, and the next process applies it atomically
         // to UI strings, Spotify metadata requests, and locale-partitioned caches.
         AppLocale appLocale = AppLocaleBootstrap.Initialize(settings);
@@ -93,7 +102,7 @@ static class Program
         // Developer mode (App/DeveloperMode.cs) is a process-wide latch read by the diagnostic surfaces. Load it here,
         // before anything can ask, so a single settings read decides it for the whole launch.
         DeveloperMode.Load(settings);
-        string logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "logs");
+        string logDir = Path.Combine(UnpackagedAppDataRoot.Current, "logs");
         string logPath = Path.Combine(logDir, "wavee.log");
         // Dev default: the in-memory ring keeps full Debug detail for the in-app viewer, but the FILE defaults to Info so a
         // dev run doesn't bloat wavee.log with the demoted verbose flow. Settings › Logs › Verbose (or the Capture
@@ -120,6 +129,7 @@ static class Program
             // Where that path REALLY lands (MSIX redirects %LOCALAPPDATA% into the package's LocalCache; an unpackaged
             // run, or a real folder that already exists, writes the literal path). The two look identical above and
             // differ in every consequence — a split settings/log store reads as "the app forgot everything".
+            WaveeLogField.Of("appDataRoot", FluentGpu.WindowsApi.Storage.FinalPath.Resolve(UnpackagedAppDataRoot.Current) ?? UnpackagedAppDataRoot.Current),
             WaveeLogField.Of("logResolved", FluentGpu.WindowsApi.Storage.FinalPath.Resolve(logDir) ?? "?"),
             WaveeLogField.Of("dealerArchive", Path.Combine(logDir, "dealer")),
             WaveeLogField.Of("framework", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription),
@@ -418,10 +428,7 @@ static class Program
 
         // ── Localization: load the bundled culture tables (assets/loc/*.json, copied next to the exe) before the first
         // frame, so every Loc.Get(Strings.*) resolves. en-US is the base + terminal fallback; more cultures drop in later.
-        // Real (live Spotify) backend is the DEFAULT: the persistent Store-backed catalog + durable mutations, hydrated by
-        // the live session (login → spclient fetchers → the hm:// dealer) that the login takeover starts on launch. Pass
-        // --fake for the offline FakeData demo (populated UI with no login/network — used by --screenshot and UI iteration).
-        Services.UseRealBackend = Array.IndexOf(args, "--fake") < 0;
+        // (--fake / Services.UseRealBackend is latched at the top of Main, before settings and logs open.)
 
         // NOTE: there is no pre-window premium gate. The account tier is a LOGIN-TIME fact (ProductInfo), so the tier
         // check lives where the tier is actually known — Backend/Seam.cs (GoLive), SpotifyAuthSession, SpotifyLiveLogin —
@@ -512,6 +519,7 @@ static class Program
             // let a 13 px equalizer pin ~56% GPU). Latency-sensitive input (scroll/hover/drag) and FrameClock consumers
             // (lyrics) stay at the display rate; FG_ANIM_FPS still overrides everything (=30 to pin a fixed cadence,
             // =0 for uncapped).
+            NavigationFrameWatch.Attach();
             FluentAppHarness.Run(() => new WaveeApp(settings, appLocale),
                 new AppOptions
                 {
@@ -521,6 +529,10 @@ static class Program
                     Title = "Wavee Music", Width = winW, Height = winH,
                     MinWidth = 300, CustomFrame = true,
                     MicaAlt = false,
+                    // Every frame over the panel's refresh interval is logged with WHICH components rendered and who
+                    // allocated (NavigationFrameWatch frame.slow / nav.frames worstCensus). Always on: a slow frame
+                    // that cannot be attributed is a slow frame that does not get fixed.
+                    RenderCensus = true,
                     // App-wide UI zoom, seeded BEFORE the first frame (the ThemeMode discipline: no startup jump from
                     // 100% to the user's scale). Snap, not Clamp: a persisted value that drifted off the ladder (a
                     // hand-edited registry value, an older ladder) re-enters the discrete step set here, so Ctrl+±
@@ -534,6 +546,8 @@ static class Program
                 new HarnessOptions { Frames = frames, Screenshot = screenshot });
             // The window came down in an orderly way (FluentAppHarness.Run returned instead of throwing) — close out
             // the marker RunMarker.Begin opened above so the NEXT launch's Begin reads "clean", not a stale "running".
+            NavigationFrameWatch.EndSession();
+            MemorySampler.SampleProcessEnd();
             RunMarker.End(settings);
             // Process-exit flush for session.json (nav + the playback restore section): the shell's unmount cleanup never
             // runs on shutdown (AppHost.Dispose doesn't unmount the tree), so a pending debounced save would be lost.

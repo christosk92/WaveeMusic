@@ -10,13 +10,14 @@ using Xunit;
 
 namespace Wavee.Tests;
 
-public class DeviceStatePublisherVolumeTests
+public class DeviceStatePublisherVolumeTests : PlaybackCatalogTestBase
 {
     static Track T(string uri) => new(uri[(uri.LastIndexOf(':') + 1)..], uri, uri,
         Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
 
     sealed class Harness
     {
+        readonly PlaybackCatalogTestHost Catalog;
         public readonly StubTransport Transport = new();
         public readonly NowPlayingProjection Proj;
         public readonly SimpleSubject<string?> ConnId = new(null);
@@ -26,9 +27,10 @@ public class DeviceStatePublisherVolumeTests
         public long Clock = 1000;
         public readonly DeviceStatePublisher Publisher;
 
-        public Harness(int windowMs = 400)
+        public Harness(PlaybackCatalogTestHost catalog, int windowMs = 400)
         {
-            Proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => Clock);
+            Catalog = catalog;
+            Proj = Catalog.Projection("us", () => Clock);
             Publisher = new DeviceStatePublisher(Transport, "us", Proj, ConnId, () => CurrentConnId,
                 (reason, snap, _, _) =>
                 {
@@ -62,7 +64,7 @@ public class DeviceStatePublisherVolumeTests
         public void StartTrack()
         {
             var track = T("spotify:track:a");
-            Proj.OnEvent(new PlaybackEvent(EvKind.Started, track, 0));
+            Catalog.Event(Proj, new PlaybackEvent(EvKind.Started, track, 0));
             Publisher.OnEvent(new PlaybackEvent(EvKind.Started, track, 0));
         }
 
@@ -74,7 +76,7 @@ public class DeviceStatePublisherVolumeTests
     [Fact]
     public async Task RapidVolumeChanges_CoalesceToLeadingAndTrailing()
     {
-        var h = new Harness();
+        var h = new Harness(Catalog);
         h.StartTrack();
         h.Publishes.Clear();
 
@@ -97,7 +99,7 @@ public class DeviceStatePublisherVolumeTests
     [Fact]
     public async Task SameVolumeAfterWindow_Dedupes()
     {
-        var h = new Harness();
+        var h = new Harness(Catalog);
         h.StartTrack();
         h.Publishes.Clear();
 
@@ -117,7 +119,7 @@ public class DeviceStatePublisherVolumeTests
     [Fact]
     public async Task PlayerStateChanged_NotBlockedByVolumeCoalescer()
     {
-        var h = new Harness();
+        var h = new Harness(Catalog);
         h.StartTrack();
         h.Publishes.Clear();
 
@@ -132,7 +134,7 @@ public class DeviceStatePublisherVolumeTests
     [Fact]
     public async Task Dispose_CancelsPendingVolumePublish()
     {
-        var h = new Harness();
+        var h = new Harness(Catalog);
         h.StartTrack();
         h.Publishes.Clear();
 

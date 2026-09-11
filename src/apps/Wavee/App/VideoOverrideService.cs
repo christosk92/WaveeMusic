@@ -5,17 +5,21 @@ using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Wavee.Backend;
+using Wavee.Backend.Catalog;
+using Wavee.Core;
 
 namespace Wavee;
 
 // ── USER-ATTACHED LOCAL VIDEO OVERRIDES — the warm, synchronous view ──────────────────────────────────────────────────
-// The persisted roster lives in SQLite (`video_override`, schema v4) behind IStore; THIS is the warm mirror every hot
+// The persisted roster lives in SQLite (`video_override`) behind its curation port; this is the warm mirror every hot
 // caller reads. It exists because the decision "should this playable play as video?" is asked from playback/dealer
 // threads — including for the NEXT track, by uri, before CurrentTrack has moved — so it must be an allocation-free
 // dictionary lookup, never a signal read and never a SQLite round-trip.
 //
-// Engine-free by construction (IStore + WaveeLogger + BCL): the whole tier-1 decision is unit-testable headlessly, and
+// Engine-free by construction: the whole tier-1 decision is unit-testable headlessly, and
 // CompositeVideoResolver is only the thin shell that maps a decision onto a PopOutVideoSource.
 
 /// <summary>Which tier-1 branch a playable takes before the source's own video resolver is consulted.</summary>
@@ -50,21 +54,26 @@ public sealed class VideoOverrideService
     /// <summary>The logging category for store/service events (play-time events stay on "playback", UI on "ui").</summary>
     public const string LogCategory = "video.local";
 
-    readonly IStore _store;
+    readonly DataCommitQueue _commits;
+    readonly IVideoOverridePersistence _persistence;
     readonly WaveeLogger _log;
+    readonly SimpleEvent<string> _changes = new();
+    public IObservable<string> Changes => _changes;
     // Warm mirror of the persisted roster. Ordinal-keyed by the exact playable uri; read from playback/dealer threads.
-    readonly ConcurrentDictionary<string, VideoOverride> _warm = new(StringComparer.Ordinal);
+    volatile ConcurrentDictionary<string, VideoOverride> _warm = new(StringComparer.Ordinal);
     // Per-SESSION only (never persisted): (uri, source key) pairs whose file failed to open. A restart is a fresh chance,
     // which is the honest behavior for "the codec might now be installed / the drive is back".
     readonly ConcurrentDictionary<string, byte> _quarantine = new(StringComparer.Ordinal);
     // Per-SESSION missing-file signatures, so a broken link warns ONCE rather than on every replay of the same track.
     readonly ConcurrentDictionary<string, byte> _warnedMissing = new(StringComparer.Ordinal);
 
-    public VideoOverrideService(IStore store, WaveeLogger log = default)
+    public VideoOverrideService(DataCommitQueue commits, IVideoOverridePersistence persistence,
+        IReadOnlyList<VideoOverride> initial, WaveeLogger log = default)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _commits = commits ?? throw new ArgumentNullException(nameof(commits));
+        _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
         _log = log.Sink is null ? log : log.With(LogCategory);
-        Reload();
+        foreach (var row in initial) _warm[row.Uri] = row;
     }
 
     /// <summary>Existence probe for an override's file. Injectable purely so the tier-1 decision is testable without a
@@ -81,13 +90,13 @@ public sealed class VideoOverrideService
     public Action<string>? OnBrokenLink;
 
     /// <summary>Re-read the whole roster from the store into the warm mirror (startup / after a backend swap).</summary>
-    public void Reload()
+    public Task ReloadAsync(CancellationToken ct = default) => _commits.CommitAsync(async token =>
     {
-        _warm.Clear();
-        var rows = _store.VideoOverrides();
-        for (int i = 0; i < rows.Count; i++) _warm[rows[i].Uri] = rows[i];
-        if (rows.Count > 0) _log.Info($"video overrides loaded: {rows.Count}");
-    }
+        var rows = await _persistence.LoadAsync(token).ConfigureAwait(false);
+        var next = new ConcurrentDictionary<string, VideoOverride>(StringComparer.Ordinal);
+        foreach (var row in rows) next[row.Uri] = row;
+        return new DataCommit<int>(_ => ValueTask.CompletedTask, () => _warm = next, 0);
+    }, ct);
 
     // ── the hot reads (allocation-free dictionary lookups; called from playback/dealer threads) ───────────────────────
 
@@ -135,7 +144,7 @@ public sealed class VideoOverrideService
     /// <summary>Attach (or REPLACE — the uri is the primary key, so a duplicate attach IS the replace) a local video file
     /// to a playable. The file is LINKED: the absolute normalized path is stored, nothing is copied or moved. Returns the
     /// persisted record. Throws <see cref="ArgumentException"/> for an empty uri/path.</summary>
-    public VideoOverride Attach(string playableUri, string path)
+    public Task<VideoOverride> AttachAsync(string playableUri, string path, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(playableUri)) throw new ArgumentException("playable uri is required", nameof(playableUri));
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("path is required", nameof(path));
@@ -150,43 +159,59 @@ public sealed class VideoOverrideService
         }
         catch { /* stat failure is a staleness hint at worst — never a reason to refuse the attachment */ }
 
-        bool replaced = _warm.ContainsKey(playableUri);
         var o = new VideoOverride(playableUri, full, id, 0, size, mtime, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        _warm[playableUri] = o;
-        // A replace re-arms the file: the NEW (uri, key) was never quarantined, and dropping the old one lets the user
-        // repair a bad attachment by re-picking the same path after fixing it.
-        _quarantine.TryRemove(QuarantineKey(playableUri, o.SourceKey), out _);
-        _warnedMissing.TryRemove(MissingKey(o), out _);
-        _store.UpsertVideoOverride(o);
-        _log.Event(WaveeLogLevel.Info, replaced ? "override.replace" : "override.attach",
-            replaced ? "replaced the attached video" : "attached a local video",
-            fields: [WaveeLogField.Of("uri", playableUri), WaveeLogField.Of("path", full), WaveeLogField.Of("sizeBytes", size)]);
-        OnChanged?.Invoke(playableUri, replaced ? OverrideMutationKind.Replace : OverrideMutationKind.Attach);
-        return o;
+        return _commits.CommitAsync(() =>
+        {
+            bool replaced = _warm.ContainsKey(playableUri);
+            return new DataCommit<VideoOverride>(token => _persistence.WriteAsync(o, token), () =>
+            {
+                _warm[playableUri] = o;
+                _quarantine.TryRemove(QuarantineKey(playableUri, o.SourceKey), out _);
+                _warnedMissing.TryRemove(MissingKey(o), out _);
+                _log.Event(WaveeLogLevel.Info, replaced ? "override.replace" : "override.attach",
+                    replaced ? "replaced the attached video" : "attached a local video",
+                    fields: [WaveeLogField.Of("uri", playableUri), WaveeLogField.Of("path", full), WaveeLogField.Of("sizeBytes", size)]);
+                _commits.NotifyAfterPublish(() => OnChanged?.Invoke(playableUri,
+                    replaced ? OverrideMutationKind.Replace : OverrideMutationKind.Attach));
+                _commits.NotifyAfterPublish(() => _changes.OnNext(playableUri));
+            }, o);
+        }, ct, encodedBytes: checked(256 + Encoding.UTF8.GetByteCount(playableUri) + Encoding.UTF8.GetByteCount(full)));
     }
 
     /// <summary>Detach the override from a playable. Never touches the file on disk. Returns false when nothing was
     /// attached (a no-op, so no signal and no notification).</summary>
-    public bool Remove(string playableUri)
+    public Task<bool> RemoveAsync(string playableUri, CancellationToken ct = default)
     {
-        if (playableUri is not { Length: > 0 } || !_warm.TryRemove(playableUri, out var o)) return false;
-        _quarantine.TryRemove(QuarantineKey(playableUri, o.SourceKey), out _);
-        _warnedMissing.TryRemove(MissingKey(o), out _);
-        _store.RemoveVideoOverride(playableUri);
-        _log.Event(WaveeLogLevel.Info, "override.remove", "detached the local video",
-            fields: [WaveeLogField.Of("uri", playableUri), WaveeLogField.Of("path", o.Path)]);
-        OnChanged?.Invoke(playableUri, OverrideMutationKind.Remove);
-        return true;
+        if (playableUri is not { Length: > 0 }) return Task.FromResult(false);
+        return _commits.CommitAsync(() =>
+        {
+            if (!_warm.TryGetValue(playableUri, out var o))
+                return new DataCommit<bool>(_ => ValueTask.CompletedTask, static () => { }, false);
+            return new DataCommit<bool>(token => _persistence.DeleteAsync(playableUri, token), () =>
+            {
+                _warm.TryRemove(playableUri, out _);
+                _quarantine.TryRemove(QuarantineKey(playableUri, o.SourceKey), out _);
+                _warnedMissing.TryRemove(MissingKey(o), out _);
+                _log.Event(WaveeLogLevel.Info, "override.remove", "detached the local video",
+                    fields: [WaveeLogField.Of("uri", playableUri), WaveeLogField.Of("path", o.Path)]);
+                _commits.NotifyAfterPublish(() => OnChanged?.Invoke(playableUri, OverrideMutationKind.Remove));
+                _commits.NotifyAfterPublish(() => _changes.OnNext(playableUri));
+            }, true);
+        }, ct, encodedBytes: checked(128 + Encoding.UTF8.GetByteCount(playableUri)));
     }
 
     /// <summary>Record the media engine's authoritative duration for an attachment (the mp4's real length). Persisted so
     /// the roster can show it; does NOT notify (it is a metadata refinement, not a curation change).</summary>
-    public void NoteDuration(string playableUri, long durationMs)
+    public Task NoteDurationAsync(string playableUri, long durationMs, CancellationToken ct = default)
     {
-        if (durationMs <= 0 || !TryGetActive(playableUri, out var o) || o.DurationMs == durationMs) return;
-        var updated = o with { DurationMs = durationMs };
-        _warm[playableUri] = updated;
-        _store.UpsertVideoOverride(updated);
+        if (durationMs <= 0) return Task.CompletedTask;
+        return _commits.CommitAsync(() =>
+        {
+            if (!TryGetActive(playableUri, out var o) || o.DurationMs == durationMs)
+                return new DataCommit<int>(_ => ValueTask.CompletedTask, static () => { }, 0);
+            var updated = o with { DurationMs = durationMs };
+            return new DataCommit<int>(token => _persistence.WriteAsync(updated, token), () => _warm[playableUri] = updated, 0);
+        }, ct, encodedBytes: checked(128 + Encoding.UTF8.GetByteCount(playableUri)));
     }
 
     // ── per-session quarantine + the one-shot notices ────────────────────────────────────────────────────────────────

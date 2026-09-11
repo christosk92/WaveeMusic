@@ -219,6 +219,15 @@ public sealed class RangedHttpSource : IDisposable
     long _readAheadOffset;
     int _readAheadPauseCount;
     int _readAheadResourcesDisposed;
+    Exception? _terminalReadError;
+
+    public void ThrowIfFailed()
+    {
+        if (Volatile.Read(ref _terminalReadError) is { } error)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+        if (_stopped || _disposeCts.IsCancellationRequested)
+            throw new IOException("ranged source stopped");
+    }
     volatile bool _stopped;
     Task? _readAheadTask;
 
@@ -306,6 +315,7 @@ public sealed class RangedHttpSource : IDisposable
     public void Stop()
     {
         _stopped = true;
+        _onRangeAvailable?.Invoke();
         try { _disposeCts.Cancel(); } catch (ObjectDisposedException) { }
     }
 
@@ -388,9 +398,10 @@ public sealed class RangedHttpSource : IDisposable
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
+                Volatile.Write(ref _terminalReadError, ex);
                 if (RangeTrace) TraceLine($"stream {_name}: async prefetch failed range=[{start},{end}): {ex.GetType().Name}: {ex.Message}");
             }
-            finally { Interlocked.Exchange(ref _asyncPrefetchInFlight, 0); }
+            finally { Interlocked.Exchange(ref _asyncPrefetchInFlight, 0); _onRangeAvailable?.Invoke(); }
         });
     }
 

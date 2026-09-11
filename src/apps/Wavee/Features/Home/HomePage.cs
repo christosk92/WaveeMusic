@@ -12,6 +12,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Core.Home;
 using Wavee.Features.Browse;
 using static FluentGpu.Dsl.Ui;
@@ -85,23 +86,13 @@ sealed class HomePage : Component
         var menuOverlay = UseContext(Overlay.Service);
         var lib = UseContext(LibraryBridge.Slot);          // the hero's heart
         var shellMaterial = UseContext(ShellMaterial.Slot);   // Home owns the shell material while it is the active page
+        var pageScroll = UseSignal(0f);
         if (svc is null) return new BoxEl { Grow = 1f };
 
         var home = UseLoadable(Loadable<HomeFeed>.Pending(FakeData.HomeSeed));   // seed renders the loading shape; later refreshes swap Ready->Ready in place
+        var revealWatch = PageRevealWatch.Use(Context, () => home.IsReady, "HomeQuery");
 
-        // ── the two auth vantages this page reasons from (bridge.AuthState, PlaybackBridge.ProjectAuthState) ──────
-        // CONCLUDED: has the live-catalog attempt had its say? Everything but Connecting — Live, Offline (a resume
-        // that failed against a retained credential), and SignInRequired (nothing will ever be attempted: no stored
-        // credential, or the fake backend, which reports Authenticated anyway). This is HomeFeedReadiness.Classify's
-        // `liveCatalogConcluded`: not "did THIS fetch get a live answer" (that can never tell "not tried yet" apart from
-        // "tried and failed"), but "is there anything still worth waiting for". ProjectAuthState already folds the
-        // login phase against the stored-credential check for precisely this Connecting-vs-Offline call, so it is
-        // reused rather than re-derived inside StoreLibrarySource. Peek() in the helpers: they are read from background
-        // poll continuations, never during Render (Render reads `.Value` once below, to subscribe).
-        // AVAILABLE: is there a live catalog to fail loud against right now? Live only. Charts' Featured-null rule
-        // used to be keyed on CONCLUDED, which made an Offline session throw its fail-loud ErrorState for a browse
-        // that legitimately does not exist offline; the two questions are different and get different helpers.
-        bool LiveCatalogConcluded() => bridge is null || bridge.AuthState.Peek() != ShellAuthState.Connecting;
+        // Browse charts are a separate resource and arm when the session attempt has concluded.
         bool LiveCatalogAvailable() => bridge is not null && bridge.AuthState.Peek() == ShellAuthState.Live;
         bool catalogConcludedNow = bridge is null || bridge.AuthState.Value != ShellAuthState.Connecting;   // subscribe: the flip re-renders
 
@@ -133,12 +124,6 @@ sealed class HomePage : Component
         // "Concluded" here is "nothing in flight": Idle (never fetched — offline, the fake backend) counts as concluded
         // because nothing is coming, Loading is the one state worth a bounded wait.
         var nc = UseContext(NotificationCenterBridge.Slot);
-        bool ChromeConcluded()
-            => charts.Loadable.State.Peek() != (byte)LoadState.Pending
-            && (nc is null
-                || (nc.WhatsNewState.Peek() != NotificationFeedState.Loading
-                    && nc.SocialState.Peek() != NotificationFeedState.Loading));
-
         var post = UsePost();
         // Home groups have substantially different heights (quick grid / hero / compact grid / shelf / editorial).
         // Hoist one measured extent table so the viewport can correct and anchor rows while recycling offscreen groups.
@@ -148,66 +133,44 @@ sealed class HomePage : Component
         // reseed on every All<->facet swap and throw away every measured correction belonging to both.
         var facetLayout = UseMemo(static () => new HomeFacetVirtualLayout(), DepKey.Empty);
 
-        // The background home-refresh loop, tied to this component's lifetime. Its Reactive.OnCleanup fires on unmount
-        // (KeepAlive eviction / a page whose cache entry was evicted) and before each re-run. Without it, each cold
-        // remount of Home leaked an orphaned 60s PeriodicTimer loop that COMPOUNDED over a long session. Mirrors the
-        // LyricsTicker lifecycle pattern (Features/Player/LyricsView.cs).
-        //
-        // The two signals it reads are the cache-published FEED EPOCH (Services.HomeFeedEpoch) and bridge.AuthState. A
-        // bump — OR an auth-state flip — re-runs this effect, which cancels the old loop and starts a new one, i.e. one
-        // immediate re-read plus a fresh 60 s cadence, never a poll in render and never a subscription to anything hot.
-        // This is what reaches a KeepAlive-PARKED page: park runs no cleanups, so the effect is still live, re-reads on
-        // the bump, and the page's deferred render replays the fresh feed the instant it is activated. Reading epoch
-        // HERE rather than in Render is deliberate — it is a refresh trigger, not a rendered value.
-        //
-        // AuthState is the fix for the "Home never leaves the skeleton" hang: go-live publishes no epoch bump for the
-        // session's OPENING read (LiveHomeCache in SpotifyOnlineCatalog.cs deliberately withholds the bump on the very
-        // first post-login identity — "a bump nobody needed"), so without tracking AuthState too a withheld Placeholder
-        // answer could sit until the next ordinary 60 s tick happened to land after go-live — sometimes effectively
-        // never, if that tick's own read raced ahead of the session. Reading `.Value` here makes the flip itself the
-        // trigger: the loop restarts and re-reads the instant the session goes live, without waiting on the clock.
-        //
-        // The vantage is captured at the loop's START, not re-read per answer: a loop started while Connecting can
-        // only ever have read the resident shelves (its online catalog was still the offline stub), so its answers are
-        // provisional however late they land — a read that was in flight across the flip must not be mistaken for the
-        // settled feed just because the flip beat its continuation. The flip restarts the loop, and THAT loop's read
-        // is the one that settles the page.
-        var feedEpoch = svc.HomeFeedEpoch;
-        Context.UseSignalEffect(() =>
-        {
-            int epoch = feedEpoch.Value;
-            bool concludedAtStart = bridge is null || bridge.AuthState.Value != ShellAuthState.Connecting;   // tracked
-            var cts = new CancellationTokenSource();
-            StartHomeRefreshLoop(svc, home, post, epoch,
-                (e, feed) => ApplyFeed(svc, home, e, feed, concludedAtStart, ChromeConcluded), cts.Token);
-            Reactive.OnCleanup(() => { cts.Cancel(); cts.Dispose(); });
-        });
+        // The hero's own viewport-aware density (§1 of the responsive plan): the page's visible content height, not
+        // the raw window — a maximized 4K window and a snapped half-window both have plenty of WIDTH, but only one of
+        // them has the vertical room for the hero's full copy budget. `heroTier` is the hysteresis memory the render
+        // arm and the estimator must share (HomeHeroLayout.TierFor), so a resize sitting on a tier boundary cannot
+        // have the renderer and the estimator disagree about which tier is current.
+        float pageH = Wavee.Features.Shell.ShellViewport.PageHeightFor(UseContext(Viewport.Size).Height);
+        var heroTier = UseRef(HomeHeroTier.Wide);
+        homeLayout.SetPageViewportHeight(pageH);
+        facetLayout.SetPageViewportHeight(pageH);
 
-        // The HARD FALLBACK: Home must never sit on the skeleton indefinitely, no matter what upstream timing bug
-        // might withhold every ordinary read. 8 s after MOUNT (DepKey.Empty — armed once, not on every epoch/auth
-        // re-run) — if the region is still Pending — force-publish whatever feed the refresh loop has most recently
-        // seen (even a withheld Placeholder), or HomeFeed.Empty if nothing has landed at all yet. `home` is captured
-        // by reference in the loadable, and UseTimeout always invokes the LATEST render's closure, so this reads
-        // current state at fire time regardless of how many renders happened in between.
-        UseTimeout(() => ForceReleaseIfStillPending(svc, home, ChromeConcluded), (float)HomeFeedReadiness.ForceReleaseMs, DepKey.Empty);
-
-        // ── the FIRST reveal waits for the chrome (HomeRevealGate) ──────────────────────────────────────────────
-        // A settled feed that landed before the Charts deck / the notification feeds concluded is HELD (the skeleton
-        // stays up) and published from here — the instant the last of them concludes (this effect tracks their
-        // signals), or when the cap elapses (the timeout, re-armed on every hold via _heldVersion), whichever is
-        // first. Both funnel through the one gate, which is idempotent, so a chrome flip and the cap firing in the
-        // same tick cannot double-publish. After the reveal neither path does anything: HomeRevealGate.Tick returns
-        // null once revealed, and every later publish is a Ready→Ready swap straight from ApplyFeed.
-        int heldVersion = _heldVersion.Value;   // subscribe: a hold re-renders, which re-arms the cap below
-        Context.UseSignalEffect(() =>
+        string? facet = svc.HomeFacet.Value;
+        var scope = svc.CatalogScope;
+        var active = UseIsActive();
+        UseEffect(() =>
         {
-            _ = charts.Loadable.State.Value;
-            if (nc is not null) { _ = nc.WhatsNewState.Value; _ = nc.SocialState.Value; }
-            _ = _heldVersion.Value;
-            PublishHeld(home, ChromeConcluded, force: false);
-        });
-        UseTimeout(() => PublishHeld(home, ChromeConcluded, force: false),
-            (float)HomeFeedReadiness.ChromeSettleMs, DepKey.From(heldVersion));
+            home.SetPending(FakeData.HomeSeed);
+            if (_queryScope != scope)
+            {
+                _queryScope = scope;
+            }
+            // A facet is a different server document. Disposing the prior handle invalidates queued delivery.
+            // The page explicitly reveals each published document; resource completeness is not a readiness policy.
+            var binding = new QuerySignalBinding<HomeFeed>(svc.Queries.Acquire(new HomeQuery(scope, facet)),
+                post, snapshot =>
+                {
+                    if (!string.Equals(svc.HomeFacet.Peek(), facet, StringComparison.Ordinal)) return;
+                    if (snapshot.Failure is { } failure)
+                    {
+                        if (!home.IsReady) home.SetFailed(new InvalidOperationException(failure.Message));
+                        return;
+                    }
+                    home.SetReady(snapshot.Value);
+                    PublishHomeDemand();
+                }, failed: error => { if (!home.IsReady || home.Value.Peek().Facet != (facet ?? "")) home.SetFailed(error); });
+            _query = binding;
+            binding.SetActive(active.Peek());
+            return (Action?)(() => { binding.Dispose(); if (ReferenceEquals(_query, binding)) _query = null; });
+        }, DepKey.From(HashCode.Combine(scope, facet)));
 
         // ── the shell MATERIAL: Home's three-wash composition (ShellMaterial / ShellMaterialLayer) ────────────────
         // Home publishes the WASH arm (Tint: null); detail pages publish the flat tint arm. The SEED and the loaded feed
@@ -247,33 +210,9 @@ sealed class HomePage : Component
         UseEffect(() => SetWash(wash),
             DepKey.From(HashCode.Combine(colorWashesDisabled, HomeWashSource.Fingerprint(picks))));
         UseActivation(
-            onActivated: () =>
-            {
-                SetWash(wash);
-                // The epoch COMPARE, not a refetch. An epoch this page has not applied means the cache superseded the
-                // feed on screen, so re-read once; an epoch it HAS applied means nothing is known to have moved, and
-                // the only thing worth spending is the cheap head probe — which resolves nothing itself: if the
-                // daylist's revision has advanced it publishes the epoch, and the ordinary refresh effect below does
-                // the read. One mechanism, one call, and none of it on a cadence or in a render.
-                int at = feedEpoch.Peek();
-                if (at != _gate.AppliedEpoch)
-                    _ = RefreshHomeOnce(svc, post, failIfInitial: false, at,
-                        (e, feed) => ApplyFeed(svc, home, e, feed, LiveCatalogConcluded(), ChromeConcluded), home, default);
-                else if (svc.HomeFeedRevalidate is { } revalidate)
-                    _ = revalidate(default);
-            },
-            onDeactivated: ClearWash);
-        // …and on UNMOUNT too, because onDeactivated fires only on PARK: a nav that evicts Home without parking it would
-        // otherwise leave a wash owned by a gone page. Owner-gated, so it can never clobber the next page's material.
+            onActivated: () => { SetWash(wash); _query?.SetActive(true); },
+            onDeactivated: () => { ClearWash(); _query?.SetActive(false); });
         UseEffect(() => (Action?)ClearWash, DepKey.Empty);
-        // The in-flight facet read is page state for the same reason: an unmount must not leave a request racing to
-        // publish into a loadable whose page is gone, nor a live CancellationTokenSource behind it.
-        UseEffect(() => (Action?)(() =>
-        {
-            _facetCts?.Cancel();
-            _facetCts?.Dispose();
-            _facetCts = null;
-        }), DepKey.Empty);
 
         string? name = bridge?.User.Value?.DisplayName;     // subscribe → greeting refreshes on login
 
@@ -293,6 +232,8 @@ sealed class HomePage : Component
         // writes one `card.play` line per press naming the card and how the request ended, and a thrown failure
         // reaches the user as a toast instead of dying in a discarded Task.
         void PlayCard(HomeCard c) => _ = PlayCardAsync(svc, post, c.Uri, c.Kind);
+
+
 
         // Every home card is a drag SOURCE for the entity it stands for — drop it on a sidebar playlist to add its
         // tracks, on a folder to file it, on the pin band to pin it. The payload factory is gesture-COLD (it runs once,
@@ -424,30 +365,14 @@ sealed class HomePage : Component
             Children = [ concerts, browse ],
         };
 
-        void WarmGroup(HomeGroup g)
+        // The hover peek is primed for the WHOLE discover feed the moment the document lands — a data model, not a
+        // viewport concern. Only DiscoverFeed: feedBaselineLookup answers for the single-item baseline recommendations
+        // that coalesce into it; Featured is editorial playlists, which that batch has nothing to say about. Cover
+        // decode is the engine's: realized rows (including the overscan halo) request their own images.
+        static void PrimePreviews(HomeGroup g)
         {
-            // Preview lookup and image decode follow the realized window. The old eager whole-feed pass enqueued every
-            // cover before the first content frame, largely defeating the benefit of recycling the group trees.
-            // The hover peek is primed for DiscoverFeed, not Featured: feedBaselineLookup only answers for the
-            // single-item baseline recommendations, which now coalesce into the discover feed. Featured is editorial
-            // playlists, which that batch has nothing to say about.
             if (g.Kind == HomeGroupKind.DiscoverFeed)
                 Wavee.SpotifyLive.HomeBaselinePreviews.Prime(g.Cards.Select(c => c.Uri));
-            // The decode target per module — a cover decoded for a 32px station row must not be fetched at 512.
-            int px = g.Kind switch
-            {
-                HomeGroupKind.RadioDial or HomeGroupKind.QueueList => 64,
-                HomeGroupKind.QuickGrid => 64,
-                HomeGroupKind.RatedShelf or HomeGroupKind.ChipCards or HomeGroupKind.WeeklyPair
-                    or HomeGroupKind.DiscoverFeed => 128,
-                HomeGroupKind.Hero => 256,
-                HomeGroupKind.MixBand => 64,
-                HomeGroupKind.Featured => 512,
-                _ => 256,
-            };
-            var cards = g.Cards;
-            for (int i = 0; i < cards.Count; i++)
-                if (cards[i].Image?.Url is { Length: > 0 } url) PrefetchImage(url, px);
         }
 
         Element VirtualHome(HomeFeed feed)
@@ -455,6 +380,7 @@ sealed class HomePage : Component
             HomeImageDiagnostics.LogFeed(feed);
             HomeFeedDiagnostics.LogModules(feed);
             var landing = Landing(feed);
+            if (landing.Get(HomeGroupKind.DiscoverFeed)?.Group is { } discover) PrimePreviews(discover);
             homeLayout.Configure(landing);
             // The layout object can't see the loadable itself (it is hoisted OUTSIDE Render, per-page state that
             // survives a refresh), so mirror it in as a byte + an empty bit — the same pattern _sectionDeckCount uses
@@ -497,32 +423,37 @@ sealed class HomePage : Component
                 var row = rows[index];
                 string key = KeyAt(index);
                 float tailBottom = PlayerDock.Reserve + Spacing.XXL;
-                return Responsive.Of(width =>
+                // Gate key: everything the builder paints besides the live feed/landing, which it reads straight off
+                // the `home` signal INSIDE the builder — that read independently re-subscribes this ResponsiveBox's
+                // own Render() (Component tracking sees through Build), so a feed swap still rebuilds regardless of
+                // the props gate. `row`/`key`/`tailBottom` are what's left; they're effectively constant for a given
+                // mounted slot (the Key already forces a remount when `row` would change), but naming them explicitly
+                // matches the "state is everything painted" contract.
+                return Responsive.Of((row, key, tailBottom), (state, width) =>
                 {
-                    // `.Value` SUBSCRIBES this row's ResponsiveBox to the feed: a swap re-renders the realized rows from
-                    // the landing that is actually on the page, not the one the closure was born with.
                     var liveFeed = home.Value.Value;
                     var liveLanding = Landing(liveFeed);
-                    return HomeRowShell(RenderRow(liveFeed, liveLanding, row), key,
+                    return HomeRowShell(RenderRow(liveFeed, liveLanding, state.row), state.key,
                         // The first row opens on the page gutter, not on half of it: 24 top matches the 36 sides closely
                         // enough to read as one inset, where 12 read as "the page starts before it starts".
-                        row == HomeRow.Chips ? Spacing.XXL : 0f,
-                        row == HomeRow.Tail ? tailBottom : RowHasContent(liveLanding, row) ? HomeModuleLayout.Gap(width) : 0f);
+                        state.row == HomeRow.Chips ? Spacing.XXL : 0f,
+                        state.row == HomeRow.Tail ? state.tailBottom : RowHasContent(liveLanding, state.row) ? HomeModuleLayout.Gap(width) : 0f);
                 }, fallback: HomeModuleLayout.FallbackWidth) with { Key = key };
             }
 
-            return Virtual.Measured(rows.Length, homeLayout, RowAt, KeyAt, overscan: 1) with
-            {
-                Grow = 1f,
-                Shrink = 1f,
-                MinHeight = 0f,
-                ScrollKey = "home",
-                OnVisibleRange = (first, end) =>
+            return Ctx.Provide(LazyScroll.Slot, (IReadSignal<float>)pageScroll,
+                Virtual.Measured(rows.Length, homeLayout, RowAt, KeyAt, overscan: 1) with
                 {
-                    for (int i = first; i < end && i < rows.Length; i++)
-                        if (FeedGroup(landing, rows[i]) is { } g) WarmGroup(g);
-                },
-            };
+                    Grow = 1f,
+                    Shrink = 1f,
+                    MinHeight = 0f,
+                    ScrollKey = "home",
+                    OnScrollGeometryChanged =
+                    (
+                        g => HashCode.Combine((int)(g.OffsetY / 24f), (int)MathF.Round(g.ViewportH / Spacing.XS)),
+                        g => pageScroll.Value = g.OffsetY
+                    ),
+                });
         }
 
         // -- the FACET viewport -------------------------------------------------------------------------------
@@ -540,13 +471,14 @@ sealed class HomePage : Component
         {
             HomeFeedDiagnostics.LogModules(feed);
             var facetRows = FacetRows(feed);
+            for (int i = 0; i < facetRows.Count; i++) PrimePreviews(facetRows[i].Group);
             facetLayout.Configure(facetRows);
             int count = facetRows.Count + 2;                     // chips + one row per section + tail
 
             // The CHIPS key is deliberately byte-identical to VirtualHome's: the chip row is the one element on the
             // page that survives an All<->facet swap, and a remount a second after the tap would replay the fused
             // pill's morph. Section rows carry the facet, their ORDINAL (two sections may share a title) and the
-            // group's content fingerprint, so a section that changed remounts and one that did not is left alone.
+            // group's stable source identity. Live props update card metadata without dropping shelf state.
             string facetTag = "home:" + feed.Facet;
             string KeyAt(int index)
             {
@@ -563,39 +495,43 @@ sealed class HomePage : Component
                 bool isTail = index > facetRows.Count;
                 var mounted = chips || isTail ? null : facetRows[index - 1];
                 float tailBottom = PlayerDock.Reserve + Spacing.XXL;
-                return Responsive.Of(width =>
+                // Gate key: `chips`/`isTail`/`key`/`tailBottom` decide which branch paints and how it's captioned;
+                // `mounted` is the fallback row content for the rare shrinking-facet-mid-swap case where the live feed
+                // no longer has enough rows, and `name` is display data (not stable behaviour) so it must ride the
+                // gate too. The live feed/rows are read straight off the `home` signal INSIDE the builder (that read
+                // independently re-subscribes this ResponsiveBox's own Render()), so a Ready->Ready swap still
+                // rebuilds regardless of the gate; `svc`/`post`/`go` are stable service/navigation plumbing, the
+                // sanctioned "capture directly" case.
+                return Responsive.Of((key, chips, isTail, mounted, tailBottom, name), (state, width) =>
                 {
-                    // `.Value` SUBSCRIBES this row to the feed, so a Ready->Ready swap (the 60 s poll, a re-read of the
-                    // same facet) re-describes the realized rows from the feed that is actually on the page instead of
-                    // leaving them frozen on the one their closure was born with. The row's ROLE stays as mounted: a
-                    // feed whose shape moved produces a different key above and remounts the row outright.
                     var liveFeed = home.Value.Value;
-                    if (chips)
+                    if (state.chips)
                         // No hero band on a facet, so the greeting has nowhere else to go: a null landing is what makes
                         // GreetingBlock render its standalone form above the chip strip.
-                        return HomeRowShell(GreetingBlock(name, liveFeed, home, svc, post, LiveHasHero(liveFeed), go), key,
+                        return HomeRowShell(GreetingBlock(state.name, liveFeed, home, svc, post, LiveHasHero(liveFeed), go), state.key,
                             Spacing.XXL, HomeModuleLayout.Gap(width));
-                    if (isTail) return HomeRowShell(tail, key, 0f, tailBottom);
+                    if (state.isTail) return HomeRowShell(tail, state.key, 0f, state.tailBottom);
                     var liveRows = FacetRows(liveFeed);
-                    var row = index - 1 < liveRows.Count ? liveRows[index - 1] : mounted!;
-                    return HomeRowShell(RenderFacetRow(liveFeed, row), key, 0f, HomeModuleLayout.Gap(width));
+                    var row = index - 1 < liveRows.Count ? liveRows[index - 1] : state.mounted!;
+                    return HomeRowShell(RenderFacetRow(liveFeed, row), state.key, 0f, HomeModuleLayout.Gap(width));
                 }, fallback: HomeModuleLayout.FallbackWidth) with { Key = key };
             }
 
-            return Virtual.Measured(count, facetLayout, RowAt, KeyAt, overscan: 1) with
-            {
-                Grow = 1f,
-                Shrink = 1f,
-                MinHeight = 0f,
-                // Per facet: the previous facet's offset belongs to a document that no longer exists, so it is dropped
-                // rather than landing 3000px down this one.
-                ScrollKey = facetTag,
-                OnVisibleRange = (first, end) =>
+            return Ctx.Provide(LazyScroll.Slot, (IReadSignal<float>)pageScroll,
+                Virtual.Measured(count, facetLayout, RowAt, KeyAt, overscan: 1) with
                 {
-                    for (int i = Math.Max(1, first); i < end && i - 1 < facetRows.Count; i++)
-                        WarmGroup(facetRows[i - 1].Group);
-                },
-            };
+                    Grow = 1f,
+                    Shrink = 1f,
+                    MinHeight = 0f,
+                    // Per facet: the previous facet's offset belongs to a document that no longer exists, so it is dropped
+                    // rather than landing 3000px down this one.
+                    ScrollKey = facetTag,
+                    OnScrollGeometryChanged =
+                    (
+                        g => HashCode.Combine((int)(g.OffsetY / 24f), (int)MathF.Round(g.ViewportH / Spacing.XS)),
+                        g => pageScroll.Value = g.OffsetY
+                    ),
+                });
         }
 
         // One server section, in the shape the projection decided its cards name. The dispatcher for the facet page,
@@ -612,12 +548,22 @@ sealed class HomePage : Component
                 case HomeFacetRowKind.Hero:
                 {
                     var card = g.Cards[0];
+                    bool hasPulse = card.Meta is { ExpiresAtMs: > 0 };
+                    // Gate key: the painted hero data (card + its enclosing feed, for eyebrow text) plus the one
+                    // external layout input that isn't width (the page viewport height); `hasPulse` is derived from
+                    // `card` but cheap enough to just carry too. `heroTier`/PlayCard/ShuffleCard/NavCard/lib/ChromeOf
+                    // are stable component-scoped refs/callbacks, the sanctioned "capture directly" case.
                     return HomeModules.SourceModule(g,
-                        Responsive.Of(w => HomeCards.HeroBand(card, HeroEyebrow(card, feed), CardMeta(card),
-                            () => PlayCard(card), () => ShuffleCard(card), () => NavCard(card),
-                            () => lib?.ToggleSaved(card.Uri, card.Title),
-                            ChromeOf(card).Menu,
-                            w),
+                        Responsive.Of((card, feed, hasPulse, pageH), (state, w) =>
+                        {
+                            var m = HomeHeroLayout.For(w, state.pageH, state.hasPulse, heroTier.Value);
+                            heroTier.Value = m.Tier;
+                            return HomeCards.HeroBand(state.card, HeroEyebrow(state.card, state.feed), CardMeta(state.card),
+                                () => PlayCard(state.card), () => ShuffleCard(state.card), () => NavCard(state.card),
+                                () => lib?.ToggleSaved(state.card.Uri, state.card.Title),
+                                ChromeOf(state.card).Menu,
+                                in m);
+                        },
                             fallback: 900f),
                         open);
                 }
@@ -684,13 +630,23 @@ sealed class HomePage : Component
                 case HomeRow.Chips:
                     return GreetingBlock(name, feed, home, svc, post, LiveHasHero(feed), go);
                 case HomeRow.Hero:
+                    // Gate key: the hero group (its first card is what's painted) + its enclosing feed (eyebrow text)
+                    // + the page viewport height; heroTier/PlayCard/ShuffleCard/NavCard/lib/ChromeOf are stable
+                    // component-scoped refs/callbacks, the sanctioned "capture directly" case.
                     return landing.Get(HomeGroupKind.Hero) is { Group: { } h }
                         ? HomeModules.SourceModule(h,
-                            Responsive.Of(w => HomeCards.HeroBand(h.Cards[0], HeroEyebrow(h.Cards[0], feed), CardMeta(h.Cards[0]),
-                                () => PlayCard(h.Cards[0]), () => ShuffleCard(h.Cards[0]), () => NavCard(h.Cards[0]),
-                                () => lib?.ToggleSaved(h.Cards[0].Uri, h.Cards[0].Title),
-                                ChromeOf(h.Cards[0]).Menu,
-                                w),
+                            Responsive.Of((h, feed, pageH), (state, w) =>
+                            {
+                                var card = state.h.Cards[0];
+                                bool hasPulse = card.Meta is { ExpiresAtMs: > 0 };
+                                var m = HomeHeroLayout.For(w, state.pageH, hasPulse, heroTier.Value);
+                                heroTier.Value = m.Tier;
+                                return HomeCards.HeroBand(card, HeroEyebrow(card, state.feed), CardMeta(card),
+                                    () => PlayCard(card), () => ShuffleCard(card), () => NavCard(card),
+                                    () => lib?.ToggleSaved(card.Uri, card.Title),
+                                    ChromeOf(card).Menu,
+                                    in m);
+                            },
                                 fallback: 900f))
                         : new BoxEl();
                 case HomeRow.Weekly:
@@ -832,21 +788,8 @@ sealed class HomePage : Component
         // Swap one viewport for another. There is deliberately no outer ScrollView around VirtualHome: doing that would
         // measure the virtual list at its complete content extent and silently realize every group again.
         //
-        // `isEmpty`/`onEmpty` IS back (HomeFeedReadiness fix): both VirtualHome and VirtualFacet ALWAYS render the
-        // Tail row (`tail`, above — the Concert Hub + Browse editorial destinations) unconditionally, so a 0-group
-        // feed painted through VirtualHome directly is not a blank page — it is Timeline's inline notification rows,
-        // Charts, and Tail with nothing else, which reads as broken chrome rather than as "nothing here yet". That
-        // shape used to reach `home` in TWO cases: a genuinely empty account, and the pre-GoLive placeholder (0
-        // groups because the live session had not landed). Removing isEmpty/onEmpty fixed the second case by
-        // accident and broke the first — it let a truly empty account render the same chrome-only soup this row's
-        // predecessor comment was written to avoid.
-        //
-        // ApplyFeed (above) now owns the actual fix: a 0-group UNFACETED feed only ever reaches `home` as Ready once
-        // HomeFeedReadiness.Classify says Empty (the live-catalog attempt has concluded) — the pre-GoLive Placeholder
-        // case is withheld and `home` stays Pending (skeleton) instead. So by the time this predicate can see
-        // `Groups.Count == 0`, it is never the placeholder — it is a real answer — and the page state below is
-        // finally safe to show without misfiring on every cold launch. `onFailed` is untouched — a genuine load
-        // failure is not "empty" and still needs its own explicit state.
+        // Query knowledge separates an unknown document from a successful empty document. Only primary data
+        // reaches Ready, so the empty branch cannot mistake the initial placeholder for an empty account.
         return Skel.Region(
             home,
             group: HomeSkeleton.Group,
@@ -857,129 +800,21 @@ sealed class HomePage : Component
             // Facet-agnostic guard: a facet is the server's own ordered document (VirtualFacet renders whatever it
             // says, including empty), so this only ever fires for the unfiltered landing.
             isEmpty: feed => feed.Facet.Length == 0 && feed.Groups.Count == 0,
-            onEmpty: () => StateHome(EmptyState.Default()),
+            onEmpty: () => PageRevealWatch.Include(revealWatch, home.IsReady, StateHome(EmptyState.Default())),
             onFailed: () => StateHome(ErrorState.Build(home.Error)),
             // A facet renders the server's ORDERED SECTIONS, not the authored landing rhythm — see VirtualFacet.
-            content: feed => feed.Facet.Length == 0 ? VirtualHome(feed) : VirtualFacet(feed));
+            content: feed => PageRevealWatch.Include(revealWatch, home.IsReady,
+                feed.Facet.Length == 0 ? VirtualHome(feed) : VirtualFacet(feed)));
     }
 
-    // The reveal state machine (pure, HomeFeedReadiness.cs): which read settles the page, when the FIRST reveal may
-    // fire, and that nothing after it ever reveals again. Instance state, like _facetCts: two mounted HomePages (tabs)
-    // each track what THEY have consumed. It also carries the applied epoch (-1 until the first read lands, so a fresh
-    // mount never skips one) and the last read SEEN — withheld or not — for the 8 s hard fallback.
-    readonly HomeRevealGate<HomeFeed> _gate = new();
+    void PublishHomeDemand()
+    {
+        _query?.SetDemand(new QueryDemand(true, QueryPriority.Visible, []));
+    }
 
-    // Bumped whenever the gate HOLDS a settled feed for the chrome rows: Render subscribes, so the hold re-arms the
-    // ChromeSettleMs cap timer against the moment this feed settled rather than against mount.
-    readonly Signal<int> _heldVersion = new(0);
-
-    // Charts' resource arms (monotonically, per mount) the first time Render sees the live-catalog attempt concluded.
+    QuerySignalBinding<HomeFeed>? _query;
+    CatalogScope? _queryScope;
     bool _chartsArmed;
-
-    // The gate's clock. Wall-clock-independent ticks: only differences matter (the chrome cap), never a date.
-    static double NowMs() => Environment.TickCount64;
-
-    /// <summary>Publish a read's feed through the reveal gate. Its rules, in order:
-    /// <para>The FACET: the 60 s poll reads whatever facet was current when it left; a chip tapped while it was in
-    /// flight makes that answer a different document, and painting it would repaint Home as "All" under a lit "Music"
-    /// tab. A dropped answer leaves the epoch UNADVANCED — nothing was applied, so a later reactivation must still be
-    /// free to re-read it.</para>
-    /// <para>The EPOCH, monotonic rather than arrival-ordered: a read superseded mid-flight must not land on top of a
-    /// newer one — but the read that PRODUCED a bump (the cache publishes the epoch from inside the very read that
-    /// observed the rollover) is itself the freshest answer, so gating on the loop's cancellation instead would throw
-    /// away exactly the feed the bump exists to deliver.</para>
-    /// <para>READINESS (<see cref="HomeFeedReadiness"/>), for the UNFACETED landing only: a read from a vantage where
-    /// the live-catalog attempt had not concluded — whatever it holds, including the resident library shelves — is
-    /// withheld as <see cref="HomeFeedState.Placeholder"/>: <c>home</c> stays Pending and the skeleton stays up. A
-    /// withheld read leaves the applied epoch UNCHANGED, so the AuthState-triggered re-read for the SAME epoch is still
-    /// free to land. Publishing the shelves early is the whole "why does Home open like this" recording: cached grid
-    /// revealed, then the live feed replaced it 1.5 s later and every row jumped. A faceted read is the server's own
-    /// document and can only be tapped on a revealed page, so it always passes.</para>
-    /// <para>The CHROME, for the first reveal only: a settled feed is HELD until the Charts deck and the notification
-    /// feeds have concluded (or <see cref="HomeFeedReadiness.ChromeSettleMs"/> elapses), so those rows paint WITH the
-    /// reveal — never a lone "No charts right now" or a timeline popping into a page already on screen. The hold is
-    /// released from <see cref="PublishHeld"/>. Once revealed, every later publish is a Ready→Ready swap in place:
-    /// the engine reveals only on the Pending→Ready edge, so a poll, an epoch bump or a facet can never replay the
-    /// stagger or re-skeletonize a row.</para>
-    /// <para><paramref name="force"/> is the 8 s hard-fallback escape hatch (<see cref="ForceReleaseIfStillPending"/>):
-    /// it publishes a Placeholder as-is and skips the chrome hold — the epoch and facet gates still apply, so a forced
-    /// publish can never regress behind a real answer that already landed.</para></summary>
-    void ApplyFeed(Services svc, Loadable<HomeFeed> home, int epoch, HomeFeed feed, bool liveCatalogConcluded,
-        Func<bool> chromeConcluded, bool force = false)
-    {
-        if (!FacetMatches(svc, feed)) return;
-        var verdict = _gate.Offer(epoch, feed, feed.Groups.Count, faceted: feed.Facet.Length > 0, liveCatalogConcluded,
-            force, alreadyResolved: home.State.Peek() != (byte)LoadState.Pending, chromeConcluded(), NowMs());
-        switch (verdict)
-        {
-            case HomeRevealVerdict.Reveal:
-            case HomeRevealVerdict.Swap:
-                home.SetReady(feed);
-                break;
-            case HomeRevealVerdict.Held:
-                _heldVersion.Value++;   // re-arm the cap against THIS settle; the chrome effect does the rest
-                break;
-        }
-    }
-
-    /// <summary>Release a held first reveal if the chrome has concluded or the cap elapsed — called from the chrome
-    /// signal effect and the cap timeout; a no-op whenever nothing is held or the page is already revealed.</summary>
-    void PublishHeld(Loadable<HomeFeed> home, Func<bool> chromeConcluded, bool force)
-    {
-        if (_gate.Tick(chromeConcluded(), NowMs(), force) is { } feed) home.SetReady(feed);
-    }
-
-    /// <summary>The hard fallback (HomePage's mount-time <c>UseTimeout</c>, 8 s): Home must never sit on the skeleton
-    /// indefinitely no matter what upstream timing withheld every ordinary read (see the comment on the refresh
-    /// effect). If the region is still Pending 8 s after mount, force through the best UNFACETED feed this page has
-    /// actually seen — a held feed still waiting on a slow chart read, else the last read even if it was withheld (a
-    /// real device with cached shelves virtually always has SOMETHING by then) — or <see cref="HomeFeed.Empty"/> if
-    /// literally nothing has landed yet. A facet in progress is left alone: it is the server's own document and the
-    /// gate never held it in the first place.</summary>
-    void ForceReleaseIfStillPending(Services svc, Loadable<HomeFeed> home, Func<bool> chromeConcluded)
-    {
-        if (home.State.Peek() != (byte)LoadState.Pending) return;   // already resolved (Ready/Failed) — nothing to force
-        var (epoch, feed) = _gate.ForceRelease();
-        ApplyFeed(svc, home, epoch, feed ?? HomeFeed.Empty, liveCatalogConcluded: true, chromeConcluded, force: true);
-    }
-
-    static void StartHomeRefreshLoop(Services svc, Loadable<HomeFeed> home, Action<Action> post, int epoch,
-        Action<int, HomeFeed> apply, CancellationToken ct)
-    {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await RefreshHomeOnce(svc, post, failIfInitial: true, epoch, apply, home, ct).ConfigureAwait(false);
-                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(60));
-                while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
-                    await RefreshHomeOnce(svc, post, failIfInitial: false, epoch, apply, home, ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) { /* Home unmounted / a newer epoch superseded this loop → stop cleanly */ }
-        }, ct);
-    }
-
-    static async Task RefreshHomeOnce(Services svc, Action<Action> post, bool failIfInitial,
-        int epoch, Action<int, HomeFeed> apply, Loadable<HomeFeed> home, CancellationToken ct)
-    {
-        try
-        {
-            // The facet is a request parameter, and the poll refreshes whatever the user is LOOKING at: re-reading
-            // unfiltered here would have every 60 s tick quietly replace the faceted feed with "All".
-            var feed = await svc.Library.GetHomeAsync(svc.HomeFacet.Peek(), ct).ConfigureAwait(false);
-            post(() => apply(epoch, feed));
-        }
-        catch (OperationCanceledException) { /* superseded / unmounted — never a page failure */ }
-        catch (Exception ex)
-        {
-            if (!failIfInitial) return;
-            post(() =>
-            {
-                if (home.State.Peek() != (byte)LoadState.Ready) home.SetFailed(ex);
-            });
-        }
-    }
-
 
     // Greeting + the home facet chip row. The chips come from the SAME home response the shelves do, so they cost no
     // extra request; selecting one writes Services.HomeFacet (the UI selection) and hands (previous, next) back here,
@@ -999,7 +834,7 @@ sealed class HomePage : Component
         Element? chipRow = null;
         if (feed?.Chips is { Count: > 0 } chips && svc is not null)
             chipRow = Ctx.Provide(HomeFacetChips.Props,
-                new HomeFacetChips.Model(chips, (prev, next) => RefreshForFacet(svc, home, post, prev, next)),
+                new HomeFacetChips.Model(chips, static (_, _) => { }),
                 Embed.Comp(() => new HomeFacetChips()));
 
         Element? customize = go is null ? null : HomeCustomizeAffordance.Button(go);
@@ -1046,51 +881,6 @@ sealed class HomePage : Component
     /// by name at all.</summary>
     static bool LooksLikeHandle(string name) => name.Length >= 20 && !name.Contains(' ');
 
-    // A facet change is a new home REQUEST, not a client-side filter: Spotify returns a different document per facet
-    // (Music drops the personal quick matrix, Podcasts is shows), so the facet travels as a request PARAMETER and the
-    // answer carries the facet it was read for. PathfinderResource keys its cache on the request body, so each facet is
-    // its own entry rather than a stale hit on the unfiltered feed.
-    //
-    // Exactly ONE facet read is in flight: a second tap cancels the first, so a slow "Podcasts" can never land on top
-    // of the "Music" the user has since chosen. The answer publishes only if the chip row still says this facet, and a
-    // failure is LOUD — the row is put back where it was and the user is told, because a tab left underlined over the
-    // previous facet's feed (what the old swallow-everything version did) is a page lying about what it is showing.
-    void RefreshForFacet(Services svc, Loadable<HomeFeed> home, Action<Action> post, string? previous, string? facet)
-    {
-        _facetCts?.Cancel();
-        _facetCts?.Dispose();
-        var cts = _facetCts = new CancellationTokenSource();
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var feed = await svc.Library.GetHomeAsync(facet, cts.Token).ConfigureAwait(false);
-                post(() => { if (FacetMatches(svc, feed)) home.SetReady(feed); });
-            }
-            catch (OperationCanceledException) { /* a newer tap superseded this read — ITS answer is the one that lands */ }
-            catch (Exception ex)
-            {
-                WaveeLog.Instance.Warn("ui", "home.facet.failed",
-                    "home facet '" + (facet ?? "") + "' failed; keeping the previous feed: " + ex.Message);
-                post(() =>
-                {
-                    // The user moved on while this was failing — whatever they picked owns the row now, and reverting
-                    // would yank the strip out from under them.
-                    if (!string.Equals(svc.HomeFacet.Peek(), facet, StringComparison.Ordinal)) return;
-                    svc.HomeFacet.Value = previous;
-                    Toast.Show(Loc.Get(Strings.Home.FacetFailed), new ToastOptions { Severity = InfoBarSeverity.Error });
-                });
-            }
-        }, cts.Token);
-    }
-
-    /// <summary>Does this answer still belong on screen? A feed knows the facet it was READ for
-    /// (<c>HomeFeed.Facet</c>), so a superseded facet read and a stale poll answer are both measured against the ONE
-    /// thing that decides what the page is showing — the chip row's selection. A null selection is the unfiltered
-    /// feed, which the model spells "".</summary>
-    static bool FacetMatches(Services svc, HomeFeed feed)
-        => string.Equals(svc.HomeFacet.Peek() ?? "", feed.Facet, StringComparison.Ordinal);
-
     // The shell-material ownership token (see ShellMaterialState): identity for race-free last-writer-wins across a
     // navigation. Per instance, never static — two mounted HomePages must not clear each other's wash.
     readonly object _washOwner = new();
@@ -1105,11 +895,6 @@ sealed class HomePage : Component
     {
         if (url is { Length: > 0 }) _ = SpotifyLive.CoverColorPlane.Current.Watch(url).Value;
     }
-
-    // The in-flight facet read. Cancelled by the next chip tap and by unmount, so two racing reads can never publish
-    // in arrival order and leave the loser's feed on screen. Instance state, not static: two mounted HomePages (tabs)
-    // must not cancel each other's reads.
-    CancellationTokenSource? _facetCts;
 
     // ── the landing projection, memoized on the feed ───────────────────────────────────────────────────────────────
     // Project() walks every group and every card of the feed (per-kind aggregation, a URI dedupe set per module, the
@@ -1223,6 +1008,13 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
     // change together from this call site's point of view.
     byte _chartsState;
     bool _chartsEmpty;
+    // Home hero viewport-aware density (§1 of the responsive plan): the page viewport height and whether the hero
+    // card carries a daylist pulse row are the two inputs HomeHeroLayout.For needs beyond width, and _heroTier is
+    // the hysteresis memory this estimator's OWN Hero-row arm advances — never read by anything else, so it can
+    // never disagree with itself.
+    float _pageViewportH;
+    bool _heroHasPulse;
+    HomeHeroTier _heroTier = HomeHeroTier.Wide;
     int _shapeVersion;
     int _seededVersion = -1;
     float _seededCross = float.NaN;
@@ -1234,6 +1026,16 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
         if (state == _chartsState && empty == _chartsEmpty) return;
         _chartsState = state;
         _chartsEmpty = empty;
+        _shapeVersion++;
+    }
+
+    /// <summary>Mirror the page's live viewport height in (HomePage reads <c>Viewport.Size</c> and derives it through
+    /// <c>ShellViewport.PageHeightFor</c>) — the layout object itself has no context access. A resize past the
+    /// Compact/Full density boundary is exactly the kind of change that must reseed the Hero row's estimate.</summary>
+    public void SetPageViewportHeight(float pageViewportHeight)
+    {
+        if (MathF.Abs(pageViewportHeight - _pageViewportH) <= 0.5f) return;
+        _pageViewportH = pageViewportHeight;
         _shapeVersion++;
     }
 
@@ -1262,6 +1064,8 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
             _rows = CopyRows(landing.Rows);
             changed = true;
         }
+        bool heroHasPulse = landing.Get(HomeGroupKind.Hero)?.Group.Cards is [{ Meta.ExpiresAtMs: > 0 }, ..];
+        if (heroHasPulse != _heroHasPulse) { _heroHasPulse = heroHasPulse; changed = true; }
         if (changed) _shapeVersion++;
     }
 
@@ -1348,16 +1152,6 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
             return extent;
         }
 
-        float First(HomeGroupKind kind)
-        {
-            if (!_groups.TryGetValue(kind, out var groups)) return 0f;
-            for (int i = 0; i < groups.Count; i++)
-                if (groups[i].Count > 0)
-                    return (groups[i].Titled ? Head : 0f)
-                        + HomeModuleLayout.ContentExtent(kind, available, groups[i].Count);
-            return 0f;
-        }
-
         float RowStack(HomeGroupKind kind, bool shelfOwnsHeader = false)
         {
             float extent = Stack(kind, shelfOwnsHeader);
@@ -1372,14 +1166,24 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
             return left + HomeModuleLayout.Gap(width) + right + outerGap;
         }
 
+        // The hero row bypasses First()/Stack(): it is the one module whose extent depends on the PAGE viewport
+        // height and whether it carries a daylist pulse, neither of which the generic per-kind helpers know about.
+        // _heroTier is advanced here exactly once per Estimate call, mirroring the tier the render arm's own
+        // HomeHeroLayout.For call resolves for the same width.
+        float HeroRowExtent()
+        {
+            if (!_groups.TryGetValue(HomeGroupKind.Hero, out var groups) || groups.Count == 0 || groups[0].Count == 0)
+                return 0f;
+            var m = HomeHeroLayout.For(available, _pageViewportH, _heroHasPulse, _heroTier);
+            _heroTier = m.Tier;
+            return (groups[0].Titled ? Head : 0f) + m.Height;
+        }
+
         return row switch
         {
             // Greeting fallback (only when there is no hero) + the chip row.
             HomeRow.Chips => (Count(HomeGroupKind.Hero) > 0 ? 0f : 84f) + 40f + Spacing.XXL + gap,
-            // Through ContentExtent, not a second literal: the hero band's authored text/action allocation and the
-            // estimator's prediction are the same arithmetic.
-            HomeRow.Hero => Count(HomeGroupKind.Hero) == 0 ? 0f
-                : First(HomeGroupKind.Hero) + gap,
+            HomeRow.Hero => Count(HomeGroupKind.Hero) == 0 ? 0f : HeroRowExtent() + gap,
             HomeRow.Weekly => RowStack(HomeGroupKind.WeeklyPair),
             HomeRow.Quick => RowStack(HomeGroupKind.QuickGrid),
             // PagedShelf owns the recents header, chevrons, lift clearance, and shared MediaCard height.
@@ -1465,15 +1269,26 @@ sealed class HomeFeedVirtualLayout : IMeasuredVirtualLayout
 /// other arithmetic.</para></summary>
 sealed class HomeFacetVirtualLayout : IMeasuredVirtualLayout
 {
-    readonly record struct RowMetric(HomeFacetRowKind Kind, int Count, bool Titled);
+    readonly record struct RowMetric(HomeFacetRowKind Kind, int Count, bool Titled, bool HasPulse);
 
     static readonly RowMetric[] NoRows = [];
     RowMetric[] _rows = NoRows;
 
     readonly ExtentTable _extents = new(0, 1f);
+    // Same viewport-aware Hero geometry as HomeFeedVirtualLayout — see its own fields' doc comment.
+    float _pageViewportH;
+    HomeHeroTier _heroTier = HomeHeroTier.Wide;
     int _shapeVersion;
     int _seededVersion = -1;
     float _seededCross = float.NaN;
+
+    /// <summary>Mirror the page's live viewport height in — see <see cref="HomeFeedVirtualLayout.SetPageViewportHeight"/>.</summary>
+    public void SetPageViewportHeight(float pageViewportHeight)
+    {
+        if (MathF.Abs(pageViewportHeight - _pageViewportH) <= 0.5f) return;
+        _pageViewportH = pageViewportHeight;
+        _shapeVersion++;
+    }
 
     /// <summary>The section rows plus the two chrome rows the page always has: the chip block at 0 and the tail last.</summary>
     public int ItemCount => _rows.Length + 2;
@@ -1490,7 +1305,8 @@ sealed class HomeFacetVirtualLayout : IMeasuredVirtualLayout
     }
 
     static RowMetric Metric(HomeFacetRow row)
-        => new(row.Kind, row.Group.Cards.Count, row.Group.Title is { Length: > 0 });
+        => new(row.Kind, row.Group.Cards.Count, row.Group.Title is { Length: > 0 },
+               row.Group.Cards is [{ Meta.ExpiresAtMs: > 0 }, ..]);
 
     static bool SameShape(RowMetric[] a, IReadOnlyList<HomeFacetRow> b)
     {
@@ -1523,6 +1339,13 @@ sealed class HomeFacetVirtualLayout : IMeasuredVirtualLayout
     // A module head is Subtitle 20/28 plus the module head gap - the same constant the landing estimator uses.
     const float Head = 28f + HomeModuleLayout.HeadGap;
 
+    float FacetHeroHeight(float available, bool hasPulse)
+    {
+        var m = HomeHeroLayout.For(available, _pageViewportH, hasPulse, _heroTier);
+        _heroTier = m.Tier;
+        return m.Height;
+    }
+
     float Estimate(int index, float cross)
     {
         // The SAME arithmetic HomeRowShell performs: cap the row at the app page measure, then take the page gutter off
@@ -1544,10 +1367,9 @@ sealed class HomeFacetVirtualLayout : IMeasuredVirtualLayout
         if (metric.Count == 0) return 0f;
         return metric.Kind switch
         {
-            // Through ContentExtent, not a second literal: the hero band's authored text/action allocation and the
-            // estimator's prediction stay the same arithmetic.
-            HomeFacetRowKind.Hero => (metric.Titled ? Head : 0f)
-                + HomeModuleLayout.ContentExtent(HomeGroupKind.Hero, available, 1) + gap,
+            // Viewport-aware, same as HomeFeedVirtualLayout's own Hero arm: the height depends on the PAGE viewport
+            // height and the pulse row too, neither of which the generic ContentExtent(kind, width, count) knows.
+            HomeFacetRowKind.Hero => (metric.Titled ? Head : 0f) + FacetHeroHeight(available, metric.HasPulse) + gap,
             // Every PagedShelf owns its own header, chevrons and lift clearance, so ShelfExtent IS the whole row.
             HomeFacetRowKind.Podcasts or HomeFacetRowKind.Recents or HomeFacetRowKind.Feed or HomeFacetRowKind.Shelf
                 => HomeModuleLayout.ShelfExtent(available) + gap,

@@ -10,9 +10,8 @@ namespace Wavee.Backend.Persistence;
 // It is a NARROWER question than the shell's page routing, which is why it is its own function rather than a reuse of
 // `DetailPage.ParseDetail` / `ArtistPage.UriOf` / `ContentHost.IsDetail` (those decide WHICH PAGE renders and must map
 // every route, including the two that pin nothing):
-//   • `liked` is a SET, not an entity — it is pinned by `collection_items` itself and has no entity row to keep;
-//   • `local` resolves to the synthetic uri `wavee:local:all`, which no cold row and no pin table ever contains.
-// Recording either would burn one of the 50 LRU slots on a row that can never be read back. Everything else the detail
+//   • `liked` is a SET, not an entity — it is pinned by `collection_items` itself and has no entity row to keep.
+// Recording it would burn one of the 50 LRU slots on a row that can never be read back. Everything else the detail
 // surfaces render (`album:` / `pl:` / `show:` / `artist:`) is a real entity uri and is recorded.
 //   • `prerelease:` (an upcoming release, which renders the ordinary album page) is deliberately left unclassified: the
 //     ALBUM uri is the thing worth pinning, and it is pinned the moment the user reaches the `album:` route — pinning

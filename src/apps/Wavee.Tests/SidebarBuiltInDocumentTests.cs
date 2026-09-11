@@ -112,8 +112,9 @@ public sealed class SidebarBuiltInDocumentTests
         var icons = new string?[lib.ItemList.Count];
         for (int i = 0; i < keys.Length; i++) { keys[i] = lib.ItemList[i].Key; icons[i] = lib.ItemList[i].IconOverride; }
 
-        Assert.Equal(new[] { "albums", "artists", "liked", "podcasts", "local" }, keys);
-        Assert.Equal(new string?[] { "Album", "Contact", "Heart", "RadioTower", "Folder" }, icons);
+        // W7: "local" (Local Files) dropped — that page is retired.
+        Assert.Equal(new[] { "albums", "artists", "liked", "podcasts" }, keys);
+        Assert.Equal(new string?[] { "Album", "Contact", "Heart", "RadioTower" }, icons);
         Assert.True(lib.Opts.CountBadges);   // the counts survive — as quiet numbers, never the accent pill
     }
 

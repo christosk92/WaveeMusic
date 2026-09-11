@@ -6,8 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Wavee.Backend;
-using Wavee.Backend.Hydration;
-using Wavee.Backend.Hydration.Projectors;
+using Wavee.Backend.Catalog;
+using Wavee.Core.Catalog;
 using Wavee.Backend.Metadata;
 using Wavee.Core;
 using Af = Wavee.Protocol.Audiofiles;
@@ -20,81 +20,35 @@ using EntityKind = Wavee.Core.EntityKind;
 
 namespace Wavee.SpotifyLive;
 
-/// <summary>Resolves a track's alternate versions and playable audio formats for the expanded row drawer.
-///
-/// Everything here is fetched ON EXPAND. That is the whole performance argument: a 10k-row playlist realizes rows
-/// constantly, and the waveform/association planes are far too heavy to ride that path — kind 237 alone is ~38 KB per
-/// track. Tempo and tint DO ride the row bundle (the trait pipeline's audio-attributes and visual-identity projectors)
-/// because they are a few bytes and appear in the row itself.
-///
-/// The version LABEL problem, stated plainly: kinds 98/99 return a <c>target_uri</c> and artwork and nothing else — no
-/// name, no "Live"/"Remix" tag. So the associations are resolved to real tracks in a second read, and the drawer shows
-/// the resolved TRACK NAME. Any type wording beyond video-vs-audio would be invented, so it is not shown.
-///
-/// THIN OVER <see cref="IExtensionReader"/> (design §2.5). Three consequences worth stating, because they are the
-/// measurable half of this rewrite:
-/// <list type="bullet">
-/// <item>the target resolve reads <b>TrackV4 only</b>. It used to ask for 222 (AUDIO_ATTRIBUTES_V2) beside it and then
-/// <i>discard the payload</i> — the tempo/key the drawer prints is read off <c>_store.GetTrack</c>, written by the row
-/// bundle. That was one wasted kind per association target on every expand;</item>
-/// <item>TrackV4 now rides the SAME etag cache the catalogue reads, so a version target the page already hydrated
-/// costs nothing;</item>
-/// <item>kind 237 gets that cache for free as well (design finding 25) — which is what turns a re-expand into a 304
-/// instead of a fresh ~38 KB body.</item>
-/// </list></summary>
+/// <summary>Finite expanded-row document assembly. Resource state, bytes and scheduling belong to the catalog.</summary>
 public sealed class SpotifyTrackExpansionService : ITrackExpansionService
 {
-    /// <summary>How many assembled drawers are memoized. The memo is the REDUCTION, not the bytes: the reader and the
-    /// etag cache below it already hold the payloads, so what this saves is re-walking three ~12 KB waveform bands into
-    /// 220 columns every time a row is re-expanded. Past the cap a drawer still opens — it just re-assembles.</summary>
-    const int MemoCap = 256;
-
     static readonly MessageParser<Va.VideoAssociations> AssocParser =
         Va.VideoAssociations.Parser.WithDiscardUnknownFields(true);
     static readonly MessageParser<Af.AudioFilesExtensionResponse> AudioFilesParser =
         Af.AudioFilesExtensionResponse.Parser.WithDiscardUnknownFields(true);
-    static readonly MessageParser<Md.Track> TrackParser = Md.Track.Parser.WithDiscardUnknownFields(true);
     static readonly MessageParser<Wf.ThreeBandWaveforms> WaveformParser =
         Wf.ThreeBandWaveforms.Parser.WithDiscardUnknownFields(true);
 
-    readonly IExtensionReader _reader;
-    readonly IStore _store;
+    readonly CatalogExtensionReader _reader;
+    readonly CatalogRepository _catalog;
+    readonly IResourceCoordinator _resources;
+    readonly PlaybackQueueProjection _projection;
+    readonly Func<string, CatalogScope> _scope;
     readonly WaveeLogger _log;
 
     // Per-item format override. Session-scoped by design: "play this ONE track as FLAC" is a momentary choice, and
     // persisting it would silently diverge from the user's global quality setting forever.
     readonly ConcurrentDictionary<string, int> _formatOverrides = new(StringComparer.Ordinal);
 
-    // The ASSEMBLED drawer per track — see MemoCap. Not an in-flight guard bolted on the side: it is ONE dictionary of
-    // Tasks, so a second opener of the same row joins the first assembly rather than racing it.
-    readonly ConcurrentDictionary<string, Task<TrackExpansion>> _cache = new(StringComparer.Ordinal);
-
-    public SpotifyTrackExpansionService(IExtensionReader reader, IStore store, WaveeLogger log = default)
-    {
-        _reader = reader ?? throw new ArgumentNullException(nameof(reader));
-        _store = store ?? throw new ArgumentNullException(nameof(store));
-        _log = log;
-    }
+    public SpotifyTrackExpansionService(CatalogExtensionReader reader, CatalogRepository catalog,
+        IResourceCoordinator resources, PlaybackQueueProjection projection, Func<string, CatalogScope> scope,
+        WaveeLogger log = default)
+    { _reader = reader; _catalog = catalog; _resources = resources; _projection = projection; _scope = scope; _log = log; }
 
     public Task<TrackExpansion> GetAsync(string trackUri, CancellationToken ct = default)
-    {
-        // TRACK-ONLY on purpose, and it stays that way after P4's "an episode is a playable" sweep: every plane this
-        // drawer assembles is a recording fact the podcast catalogue does not file — alternate/video versions (98/5),
-        // the audio-file format list, the 237 waveform. An episode has exactly one rendition and no counterparts, so
-        // widening would buy a guaranteed-empty drawer for one extra POST per expanded row.
-        if (string.IsNullOrEmpty(trackUri) || EntityUri.KindOf(trackUri) != EntityKind.Track)
-            return Task.FromResult(TrackExpansion.Empty);
-
-        // The load runs on CancellationToken.None (inside LoadAsync): it is SHARED, so one caller navigating away must
-        // not cancel an assembly a second surface is waiting on — the same rule the reader applies one layer down.
-        if (!_cache.TryGetValue(trackUri, out var memo))
-            memo = _cache.Count >= MemoCap
-                ? LoadAsync(trackUri)                                   // past the cap: still correct, just unmemoized
-                : _cache.GetOrAdd(trackUri, static (u, self) => self.LoadAsync(u), this);
-
-        // …and the CALLER's token only ever detaches the caller.
-        return memo.WaitAsync(ct);
-    }
+        => string.IsNullOrEmpty(trackUri) || EntityUri.KindOf(trackUri) != EntityKind.Track
+            ? Task.FromResult(TrackExpansion.Empty) : LoadAsync(trackUri, ct);
 
     public void SetFormatOverride(string uri, int? formatId)
     {
@@ -106,61 +60,40 @@ public sealed class SpotifyTrackExpansionService : ITrackExpansionService
     public int? FormatOverrideFor(string uri)
         => !string.IsNullOrEmpty(uri) && _formatOverrides.TryGetValue(uri, out var id) ? id : null;
 
-    async Task<TrackExpansion> LoadAsync(string trackUri)
+    async Task<TrackExpansion> LoadAsync(string trackUri, CancellationToken ct)
     {
         try
         {
-            // ONE POST for all four planes: the reader groups every kind under a single EntityRequest, so the two
-            // association kinds, the audio-file ladder and the ~38 KB waveform cost one round trip between them. That
-            // is exactly why 237 is here and not in the row bundle, where 300 realized rows would pull ~11 MB.
-            // Revalidate: an expand is the user asking for THIS row's truth, so the read is conditional — the etag
-            // rides the request and an unchanged plane comes back as a 304 with no body.
-            var raw = await _reader.ReadRawAsync(
-                new (string Uri, Xm.ExtensionKind Kind)[]
-                {
-                    (trackUri, Xm.ExtensionKind.VideoAssociations),
-                    (trackUri, Xm.ExtensionKind.AudioAssociations),
-                    (trackUri, Xm.ExtensionKind.AudioFiles),
-                    (trackUri, Xm.ExtensionKind.ThreebandWaveforms),
-                },
-                TraitSurface.TrackExpansion, CancellationToken.None, new ReadOptions(Revalidate: true))
-                .ConfigureAwait(false);
+            var videoKey = new ResourceKey(_scope(trackUri), trackUri, FacetKind.VideoAssociation);
+            var raw = await _reader.ReadDocumentsAsync(
+                [(trackUri, Xm.ExtensionKind.AudioAssociations), (trackUri, Xm.ExtensionKind.AudioFiles),
+                 (trackUri, Xm.ExtensionKind.ThreebandWaveforms)], ct, [videoKey]).ConfigureAwait(false);
 
             var targets = new List<(string Uri, TrackVersionKind Kind)>(4);
-            raw.TryGetValue((trackUri, Xm.ExtensionKind.VideoAssociations), out var video);
+            if (_catalog.Peek(videoKey).Value is VideoAssociationValue { Association.CounterpartUri: { Length: > 0 } counterpart })
+                targets.Add((counterpart, TrackVersionKind.Video));
             raw.TryGetValue((trackUri, Xm.ExtensionKind.AudioAssociations), out var audio);
-            // Teach the plane what this fetch just learned — the SAME kind-99 fold the trait pipeline's projector uses,
-            // so the row's has-video indicator and this drawer can never disagree about a payload one of them holds.
-            // This is also the heal path: a row whose association was a stale negative lights up on expand.
-            if (video is not null) VideoProjector.Fold(_store, trackUri, video, DateTimeOffset.UtcNow);
-            CollectTargets(Body(video), TrackVersionKind.Video, targets);
-            CollectTargets(Body(audio), TrackVersionKind.Audio, targets);
+            CollectTargets(audio, TrackVersionKind.Audio, targets);
 
             raw.TryGetValue((trackUri, Xm.ExtensionKind.AudioFiles), out var files);
-            var formats = MapFormats(Body(files));
+            var formats = MapFormats(files);
 
             raw.TryGetValue((trackUri, Xm.ExtensionKind.ThreebandWaveforms), out var wave);
-            var waveform = MapWaveform(Body(wave));
+            var waveform = MapWaveform(wave);
 
             var versions = targets.Count == 0
                 ? (IReadOnlyList<TrackVersion>)Array.Empty<TrackVersion>()
-                : await ResolveAsync(targets).ConfigureAwait(false);
+                : await ResolveAsync(targets, ct).ConfigureAwait(false);
 
             return new TrackExpansion(versions, formats, waveform);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _log.Event(WaveeLogLevel.Warning, "expansion.fail", "track expansion failed", trackUri, ex: ex);
             // Never memoize a failure — the next open must retry rather than inherit an empty drawer.
-            _cache.TryRemove(trackUri, out _);
             return TrackExpansion.Empty;
         }
     }
-
-    /// <summary>The decodable body of one answer: null both for "the wire did not answer" and for an explicit negative.
-    /// The distinction the etag cache keeps (absent ≠ missing) has no meaning in a drawer — both are "no plane".</summary>
-    static ByteString? Body(CachedExtension? answer)
-        => answer is { Missing: false, Payload: { IsEmpty: false } payload } ? payload : null;
 
     /// <summary>Both association kinds share ONE message shape (<c>associations[].target_uri</c> + artwork); only the
     /// image aspect differs (16:9 video stills vs square covers). So one collector serves both, and the KIND comes
@@ -247,61 +180,18 @@ public sealed class SpotifyTrackExpansionService : ITrackExpansionService
     /// CACHES: the parsed answer is uri-independent, so a target already resolved for another drawer is free.
     /// Non-null whenever the payload decoded at all — returning null would write the shared negative memo for
     /// TrackV4, and "this track has no name" is not an answer anyone should memoize.</summary>
-    sealed record TrackFacts(string? Title, long Duration, Image? Art);
-
-    /// <summary>The reader's parse hook for a version target. Only the three fields the drawer prints are kept: the
-    /// cover in particular was here all along — a music video is an entity the playlist never contained, so the store
-    /// lookup always missed and the thumbnail rendered as an empty tile, while the SAME TrackV4 payload carries
-    /// <c>album.cover_group</c>. Kinds 98/99 only ever ship DASH file ids, so this is the only place a video's art can
-    /// come from.</summary>
-    static TrackFacts ParseTitleArtDuration(ByteString payload)
+    async Task<IReadOnlyList<TrackVersion>> ResolveAsync(List<(string Uri, TrackVersionKind Kind)> targets, CancellationToken ct)
     {
-        var track = TrackParser.ParseFrom(payload);
-        return new TrackFacts(
-            track.Name is { Length: > 0 } name ? name : null,
-            track.Duration > 0 ? track.Duration : 0,
-            ExtendedMetadataSource.PickImage(track.Album?.CoverGroup));
-    }
-
-    /// <summary>Resolve association targets to real tracks (name + duration + art) so the drawer can show what actually
-    /// differs between versions rather than a list of ids. Tempo/key come off the STORE — the row bundle already wrote
-    /// them, which is why the dead 222 ask that used to ride this request is gone.</summary>
-    async Task<IReadOnlyList<TrackVersion>> ResolveAsync(List<(string Uri, TrackVersionKind Kind)> targets)
-    {
-        var uris = new List<string>(targets.Count);
-        foreach (var (uri, _) in targets) uris.Add(uri);
-
-        IReadOnlyDictionary<string, TrackFacts> resolved;
-        try
-        {
-            // Same kind, same etag cache, same chunking as the catalogue's own TrackV4 reads — so a target the page
-            // already hydrated is answered without a request.
-            resolved = await _reader.ReadManyAsync(uris, Xm.ExtensionKind.TrackV4, ParseTitleArtDuration,
-                                                   TraitSurface.TrackExpansion, CancellationToken.None)
-                                    .ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _log.Event(WaveeLogLevel.Warning, "expansion.resolve.fail", "version title resolve failed", ex: ex);
-            // Fall back to id-titled entries rather than dropping the versions entirely — the user still learns the
-            // track HAS alternates and can open them.
-            return Fallback(targets);
-        }
-
+        var keys = new List<ResourceKey>(targets.Count);
+        foreach (var (uri, _) in targets) keys.Add(new(_scope(uri), uri, FacetKind.TrackIdentity));
+        await _resources.EnsureAsync(keys, ct: ct).ConfigureAwait(false);
         var list = new List<TrackVersion>(targets.Count);
         foreach (var (uri, kind) in targets)
         {
-            TrackFacts? facts = resolved.TryGetValue(uri, out var hit) ? hit : null;
-            string title = facts?.Title ?? EntityUri.IdOf(uri);
-            long duration = facts?.Duration ?? 0;
-
-            // Prefer whatever the store already knows (the row bundle may have adorned it) over the payload's cover.
-            var stored = _store.GetTrack(uri);
-            var art = facts?.Art ?? stored?.Image;
-
-            list.Add(new TrackVersion(uri, kind, title, art, duration,
-                TempoBpm: stored?.TempoBpm, MusicalKey: stored?.MusicalKey,
-                CamelotCode: stored?.CamelotCode, CamelotColor: stored?.CamelotColor));
+            var row = _projection.ReadTrack(uri);
+            list.Add(new TrackVersion(uri, kind, row.Title, row.Image, row.DurationMs,
+                TempoBpm: row.TempoBpm, MusicalKey: row.MusicalKey,
+                CamelotCode: row.CamelotCode, CamelotColor: row.CamelotColor));
         }
         return list;
     }

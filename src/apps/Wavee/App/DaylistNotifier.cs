@@ -1,6 +1,8 @@
 using System;
 using FluentGpu.WindowsApi.Notifications;
 using Wavee.Core;
+using Wavee.Core.Catalog;
+using Wavee.Backend.Catalog;
 
 namespace Wavee;
 
@@ -9,7 +11,7 @@ namespace Wavee;
 /// end of its own window), so this needs no polling and no background task — the same trick as a pre-save release drop.
 /// </summary>
 /// <remarks>
-/// Fed from <c>HomeDaylistHydrator</c>, i.e. a data path that runs when the home feed resolves — never from a render.
+/// Fed from accepted canonical playlist-header transitions, never from a render or a Home document copy.
 /// The tag is keyed on the WINDOW, so learning the same window twice is idempotent while a genuinely new window replaces
 /// the entry rather than stacking a second banner. Gated on the <see cref="NotifyTopic.DaylistRefresh"/> dial.
 /// </remarks>
@@ -25,14 +27,36 @@ static class DaylistNotifier
     static readonly object Gate = new();
     static IAppSettings? _settings;
     static long _scheduledFor;      // the window end we currently hold a toast for (0 = none)
+    static IDisposable? _catalogSubscription;
+    static string? _catalogAccount;
 
     /// <summary>Composition-root install (idempotent). Before this, <see cref="Note"/> is a no-op.</summary>
-    public static void Attach(IAppSettings settings)
+    public static void Attach(IAppSettings settings, CatalogRepository catalog)
     {
         ArgumentNullException.ThrowIfNull(settings);
         lock (Gate) _settings = settings;
-        // The feed reports each hydrated daylist window through this hook; the hydrator itself knows nothing about toasts.
-        Wavee.SpotifyLive.HomeDaylistHydrator.WindowObserved = Note;
+        _catalogSubscription?.Dispose();
+        _catalogAccount = catalog.Scope.ProviderAccount;
+        _catalogSubscription = catalog.Changes.Subscribe(new HeaderObserver(catalog));
+    }
+
+    sealed class HeaderObserver(CatalogRepository catalog) : IObserver<CatalogChangeSet>
+    {
+        public void OnNext(CatalogChangeSet change)
+        {
+            var scope = catalog.Scope;
+            if (_catalogAccount != scope.ProviderAccount) { Unschedule(); _catalogAccount = scope.ProviderAccount; }
+            foreach (var key in change.Keys)
+            {
+                if (key.Facet != FacetKind.PlaylistHeader || key.Scope != scope) continue;
+                var snapshot = catalog.Peek(key);
+                if (snapshot is { Knowledge: Knowledge.Present, Provenance: CatalogProvenance.Provider,
+                    Value: PlaylistHeaderValue { Format: "daylist", NextUpdateAt: { } next } header })
+                    Note(key.Subject, next.ToUnixTimeMilliseconds(), header.Name);
+            }
+        }
+        public void OnError(Exception error) { }
+        public void OnCompleted() { }
     }
 
     /// <summary>The daylist's current window ends at <paramref name="expiresAtUnixMs"/>. Called whenever the feed

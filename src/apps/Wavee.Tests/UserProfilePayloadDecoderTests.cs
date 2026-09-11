@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
-using Wavee.Backend.Hydration;
+using Wavee.Backend.Catalog;
 using Xunit;
 
 namespace Wavee.Tests;

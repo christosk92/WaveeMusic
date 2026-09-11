@@ -5,6 +5,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 
 namespace Wavee;
 
@@ -70,13 +71,11 @@ sealed class LikedCoverArt : Component
     public override Element Render()
     {
         var svc = UseContext(Services.Slot);
-        // The store CONTEXT first, then the services' own reference as the fallback — the off-page resolution the rest
-        // of the app already uses (Services.LibraryStore). This component is mounted from surfaces that are not pages:
-        // a context-menu header, a drag chip, an overlay flyout. Those render under the overlay host, and requiring
-        // every such host to re-provide LibraryStore.Slot is exactly the "every page needs special wiring" trap that
-        // left the cover stock wherever the wiring was missed. Same instance either way (Services builds it), so the
-        // fallback changes nothing where the context IS present.
-        var store = UseContext(LibraryStore.Slot) ?? svc?.LibraryStore;
+        var requestedStyle = AppearancePrefs.LikedCover(svc?.Settings);
+        bool needsArt = LikedCoverRules.Effective(requestedStyle, int.MaxValue) != LikedCoverStyle.Stock;
+        var likes = QueryHooks.Use<IReadOnlyList<Track>>(Context, static (page, value) => page.SetReady(value), svc?.Queries,
+            needsArt && svc is not null ? new LikedSongsQuery(svc.CatalogScope) : null, Array.Empty<Track>(),
+            new QueryDemand(true, QueryPriority.Visible, []));
 
         var snapshot = UseComputed(() =>
         {
@@ -92,7 +91,7 @@ sealed class LikedCoverArt : Component
             // Reading the Loadable SUBSCRIBES: a like/unlike refreshes this cell IN PLACE (no Pending flip), so the
             // cover recomposes from the new newest-first list without a skeleton flash (E8). Still Pending ⇒ an empty
             // list ⇒ no tiles ⇒ Stock, which is exactly what the app paints today (E2).
-            var tracks = store?.Liked.Value.Value ?? (IReadOnlyList<Track>)Array.Empty<Track>();
+            var tracks = likes.Loadable.Value.Value;
             var tiles = LikedCoverRules.Tiles(tracks);
             var arr = tiles as string[] ?? ToArray(tiles);
             return new Snapshot(requested, LikedCoverRules.Effective(requested, arr.Length), true,
@@ -100,10 +99,6 @@ sealed class LikedCoverArt : Component
         });
 
         var snap = snapshot.Value;
-        // Liked is deliberately NOT in LibraryStore.WarmCheap — it is the one large collection — so a consumer has to
-        // ask. Idempotent (a guarded one-shot) and asynchronous, so this is not a write during render.
-        if (snap.WantsArt) store?.EnsureLiked();
-
         bool hasLoops = LikedCoverTreatments.HasLoops(snap.Effective) && _size >= LikedCoverTreatments.BadgeMinSize;
 
         // Wired here rather than inside OnRealized because the handles are only valid AFTER realize, and because the

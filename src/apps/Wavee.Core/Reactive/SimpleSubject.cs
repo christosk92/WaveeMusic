@@ -33,7 +33,7 @@ public sealed class SimpleSubject<T> : IObservable<T>
             hasLast = _hasLast;   // capture under the lock — T may be a multi-field struct (StoreChange), so reading it
             last = _last;          // unsynchronized could observe a torn value mid-write
         }
-        if (hasLast) observer.OnNext(last);
+        if (hasLast) ObserverDelivery.Next(observer, last);
         return new Subscription(this, observer);
     }
 
@@ -47,7 +47,7 @@ public sealed class SimpleSubject<T> : IObservable<T>
             _hasLast = true;
             snapshot = _observers;   // the array is immutable (replaced on sub/unsub) — grab the reference, no per-publish copy
         }
-        foreach (var o in snapshot) o.OnNext(value);
+        foreach (var o in snapshot) ObserverDelivery.Next(o, value);
     }
 
     void Remove(IObserver<T> observer)
@@ -99,7 +99,7 @@ public sealed class SimpleEvent<T> : IObservable<T>
     {
         IObserver<T>[] snapshot;
         lock (_gate) snapshot = _observers;
-        foreach (var o in snapshot) o.OnNext(value);
+        foreach (var o in snapshot) ObserverDelivery.Next(o, value);
     }
 
     void Remove(IObserver<T> observer)
@@ -124,5 +124,15 @@ public sealed class SimpleEvent<T> : IObservable<T>
             _parent?.Remove(observer);
             _parent = null;
         }
+    }
+}
+
+/// <summary>Observer code cannot interrupt a successful state publication or suppress a sibling subscriber.</summary>
+static class ObserverDelivery
+{
+    public static void Next<T>(IObserver<T> observer, T value)
+    {
+        try { observer.OnNext(value); }
+        catch (Exception error) { System.Diagnostics.Trace.TraceError("Observable subscriber failed: {0}", error); }
     }
 }

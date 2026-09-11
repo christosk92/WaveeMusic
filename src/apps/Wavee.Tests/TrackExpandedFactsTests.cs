@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -87,7 +88,7 @@ public class TrackExpandedFactsTests
               availableAt: Live, availability: Availability.Unavailable, addedBy: "raw-id",
               isrc: "USRC17607839", tags: new[] { "Rock", "Mellow" }, isExplicit: true,
               origin: TrackOrigin.Local),
-            new TrackFactsOptions(HasVideo: true, Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc));
+            new TrackFactsOptions(HasVideo: true, PlaysState: TrackFactState.Present, Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc));
 
         Assert.Equal(new[]
         {
@@ -137,7 +138,7 @@ public class TrackExpandedFactsTests
         var facts = TrackExpandedFacts.For(
             T(durationMs: 0, playCount: 0, availability: Availability.Unavailable,
               availableAt: DateTimeOffset.UtcNow.AddYears(5)),
-            new TrackFactsOptions(PlaysPending: true, Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc));
+            new TrackFactsOptions(PlaysState: TrackFactState.Pending, Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc));
 
         Assert.Equal(new[] { TrackFactKind.Released }, Kinds(facts));
     }
@@ -180,14 +181,14 @@ public class TrackExpandedFactsTests
     }
 
     [Theory]
-    [InlineData(0L, true, TrackFactForm.Pending)]
-    [InlineData(0L, false, null)]
-    [InlineData(1_847_392L, true, TrackFactForm.Value)]
-    [InlineData(1_847_392L, false, TrackFactForm.Value)]
-    public void For_PlaysFollowsTheSameEnrichmentGatingAsTheLane(long count, bool asked, TrackFactForm? form)
+    [InlineData(0L, TrackFactState.Pending, TrackFactForm.Pending)]
+    [InlineData(0L, TrackFactState.Absent, null)]
+    [InlineData(0L, TrackFactState.Present, TrackFactForm.Value)]
+    [InlineData(1_847_392L, TrackFactState.Present, TrackFactForm.Value)]
+    public void For_PlaysFollowsResourceKnowledgeIncludingZero(long count, TrackFactState state, TrackFactForm? form)
     {
         var facts = TrackExpandedFacts.For(T(playCount: count), new TrackFactsOptions(
-            PlaysPending: asked, Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc));
+            PlaysState: state, Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc));
 
         if (form is null) Assert.False(Has(facts, TrackFactKind.Plays));
         else Assert.Equal(form, Pick(facts, TrackFactKind.Plays).Form);
@@ -199,7 +200,7 @@ public class TrackExpandedFactsTests
     public void For_PlaysStatesTheExactCountInTheInjectedCulture()
     {
         var facts = TrackExpandedFacts.For(T(playCount: 1_847_392),
-            new TrackFactsOptions(Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc));
+            new TrackFactsOptions(PlaysState: TrackFactState.Present, Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc));
 
         Assert.Equal("1,847,392", Pick(facts, TrackFactKind.Plays).Value);
     }
@@ -353,7 +354,7 @@ public class TrackExpandedFactsTests
         var facts = TrackExpandedFacts.For(
             T(playCount: 1_847_392, bpm: 128d, durationMs: 214_000,
               albumName: "Rumours", albumUri: "spotify:album:a1", isrc: "USRC17607839"),
-            Injected);
+            Injected with { PlaysState = TrackFactState.Present });
 
         var split = TrackExpandedFacts.HeroSplit(Pick(facts, kind));
         Assert.Equal(expected, split.Value);
@@ -367,7 +368,7 @@ public class TrackExpandedFactsTests
     public void HeroSplit_PendingFactsCarryTheEmDashThatForAlreadyWrote()
     {
         var facts = TrackExpandedFacts.For(T(playCount: 0),
-            Injected with { PlaysPending = true, TempoPending = true });
+            Injected with { PlaysState = TrackFactState.Pending, TempoPending = true });
 
         foreach (var kind in new[] { TrackFactKind.Plays, TrackFactKind.Bpm, TrackFactKind.Key })
         {

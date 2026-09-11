@@ -47,13 +47,6 @@ static class PlaylistCreateFlow
         try { created = lib.CreatePlaylist(name, placement); }
         catch (Exception ex) { PlaylistEditErrors.Toast(ex); return null; }
 
-        if (navigate)
-        {
-            // Arm the one-shot BEFORE the navigation so the page's first layout pass finds it: a brand-new playlist
-            // needs a name, and the title editor is the only place to give it one.
-            PlaylistCreateIntent.Arm(created.Uri);
-            s.Go?.Invoke("pl:" + created.Uri, name);
-        }
         Observe(s, lib, created, name, placement, navigate);
         return created;
     }
@@ -67,7 +60,16 @@ static class PlaylistCreateFlow
 
         async Task Run()
         {
-            try { await completion.ConfigureAwait(false); }
+            try
+            {
+                await created.Staged.ConfigureAwait(false);
+                if (navigate) Post(s, () =>
+                {
+                    PlaylistCreateIntent.Arm(created.Uri);
+                    s.Go?.Invoke("pl:" + created.Uri, name);
+                });
+                await completion.ConfigureAwait(false);
+            }
             catch (Exception ex)
             {
                 Post(s, () => Failed(s, lib, uri, name, placement, navigate, ex));

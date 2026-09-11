@@ -18,7 +18,7 @@ namespace Wavee.Tests;
 /// The fix: a Paused/Ended/BecameInactive local snapshot clears the two transient flags with the play-state. All three
 /// mean "nothing here is waiting on audio", so none of them may leave a buffering state standing.
 /// </summary>
-public class LaunchRecoveryBufferingTests
+public class LaunchRecoveryBufferingTests : PlaybackCatalogTestBase
 {
     static RemoteTrack Remote(string uri) =>
         new(uri, "Song", "Artist", "spotify:artist:a", "Album", "spotify:album:al", "https://img/x", 208_000);
@@ -46,9 +46,9 @@ public class LaunchRecoveryBufferingTests
     public void RecoveryPublishingPaused_RetiresABufferingFlagAdoptedFromTheCluster()
     {
         const string uri = "spotify:track:5odlY52u43F5BjByhxg7wg";
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var p = Catalog.Projection("us");
 
-        p.OnCluster(StaleOwnCluster(uri, buffering: true));
+        Catalog.Cluster(p, StaleOwnCluster(uri, buffering: true));
         Assert.True(p.IsBuffering);   // adopted from the wire — the fold is doing its job
 
         // What SessionRecovery does: seed the local session, publish Paused to the viewer only.
@@ -65,8 +65,8 @@ public class LaunchRecoveryBufferingTests
         const string uri = "spotify:track:x";
         foreach (var kind in new[] { EvKind.Ended, EvKind.BecameInactive })
         {
-            using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
-            p.OnCluster(StaleOwnCluster(uri, buffering: true));
+            using var p = Catalog.Projection("us");
+            Catalog.Cluster(p, StaleOwnCluster(uri, buffering: true));
             Assert.True(p.IsBuffering);
 
             p.ApplyLocalSnapshot(Snap(Local(uri)), new PlaybackEvent(kind, Local(uri), 0));
@@ -79,9 +79,9 @@ public class LaunchRecoveryBufferingTests
     public void ANonBufferingClusterIsUnaffected()
     {
         const string uri = "spotify:track:y";
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var p = Catalog.Projection("us");
 
-        p.OnCluster(StaleOwnCluster(uri, buffering: false));
+        Catalog.Cluster(p, StaleOwnCluster(uri, buffering: false));
         p.ApplyLocalSnapshot(Snap(Local(uri)), new PlaybackEvent(EvKind.Paused, Local(uri), 1785));
 
         Assert.False(p.IsBuffering);
@@ -109,7 +109,7 @@ public class LaunchRecoveryBufferingTests
     public void SnapshotRestore_PausedFold_ThenAStrayHostBufferingSignal_IsRetiredByClearTransientBuffering()
     {
         const string uri = "spotify:track:z";
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var p = Catalog.Projection("us");
 
         // The restore: seed the local session, publish Paused — nobody has asked to hear this track yet.
         p.ApplyLocalSnapshot(Snap(Local(uri)), new PlaybackEvent(EvKind.Paused, Local(uri), 1785));
@@ -133,7 +133,7 @@ public class LaunchRecoveryBufferingTests
     public void SnapshotRestore_AfterPlay_AGenuineBufferingSignalIsAllowedToShow()
     {
         const string uri = "spotify:track:z2";
-        using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        using var p = Catalog.Projection("us");
 
         p.ApplyLocalSnapshot(Snap(Local(uri)), new PlaybackEvent(EvKind.Paused, Local(uri), 1785));
         Assert.False(p.IsBuffering);

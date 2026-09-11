@@ -12,13 +12,22 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>
-/// §3.2.3 — the header band: <c>[library glyph · "Your Library"]</c> · spacer · <c>[+]</c> · <c>[…]</c> · <c>[collapse]</c>.
+/// §3.2.3 — the header band, its shape resolved once per render by <see cref="LibraryV3HeaderRules.Resolve"/> (the
+/// ONE Priority+ ladder: the title is the last thing to yield):
+/// <c>[title = collapse toggle]</c> · <c>[search]</c> · spacer · <c>[+]</c> · <c>[…]</c>. The title itself is text
+/// only, <c>Shrink = 0</c>, never ellipsized, never squeezed by the search field — it hides ENTIRELY (never shrinks)
+/// while <c>Shape.SearchTakesRow</c>, and reappears the instant the field closes or the pane widens past
+/// <see cref="LibraryV3HeaderRules.InlineSearchWidth"/>. The "‹" collapse chevron this row used to carry is gone —
+/// the title is the collapse affordance now (docked only; the drawer has no rail to collapse into, so it renders a
+/// plain, non-interactive title there) — and a "Collapse" row is back in the "…" overflow to replace it.
 ///
 /// <para>The overflow menu is where V3 carries locked entry point 3 (the quick sidebar-layout switch): it embeds
 /// <c>SidebarLayoutMenu.Rows</c> as a SUB-MENU rather than re-declaring the three design radios, so the pane menu, the
-/// Classic header button and this menu can never disagree about what switching a design does. Labels are resolved AT OPEN
-/// TIME, never in the render body — <c>Loc.Get</c> reads the culture epoch, and a static header button must not subscribe
-/// to it four times over (the docked pane and the drawer each keep an expanded and a compact body mounted).</para>
+/// Classic header button and this menu can never disagree about what switching a design does. Sort/View moved OFF this
+/// menu entirely (they now live on the lens row below the chips, a separate workstream) — this header no longer
+/// mentions <c>V3SortViewMenu</c> at all. Labels are resolved AT OPEN TIME, never in the render body — <c>Loc.Get</c>
+/// reads the culture epoch, and a static header button must not subscribe to it four times over (the docked pane and
+/// the drawer each keep an expanded and a compact body mounted).</para>
 /// </summary>
 sealed class LibraryV3Header : Component
 {
@@ -32,6 +41,25 @@ sealed class LibraryV3Header : Component
         var svc = UseContext(Overlay.Service);
         var anchor = UseRef<NodeHandle>(default);
         var handle = UseRef<OverlayHandle?>(null);
+        var destAnchor = UseRef<NodeHandle>(default);
+        var destHandle = UseRef<OverlayHandle?>(null);
+
+        // The title's flyout: the library's fixed destinations (Liked Songs · Albums · Artists · Podcasts), each a row
+        // that opens its page and a pin toggle that puts it in the pinned band. This is where the destination word
+        // rail went in V3.1 — one click behind the title instead of 30 DIP of chrome — and, unlike the rail, every
+        // destination is pinnable in place. Same popup discipline as the overflow: built at OPEN time, light-dismiss.
+        void ToggleDestinations()
+        {
+            if (svc is null) return;
+            if (destHandle.Value is { IsOpen: true } open) { open.Close(); return; }
+            destHandle.Value = svc.Open(
+                () => destAnchor.Value,
+                () => Embed.Comp(() => new LibraryV3DestinationsFlyout(_session, () => destHandle.Value?.Close())),
+                FlyoutPlacement.BottomLeft,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
+                { ConstrainToRootBounds = false });
+            destHandle.Value.ClosedAction = () => destHandle.Value = null;
+        }
 
         void ToggleOverflow()
         {
@@ -59,53 +87,57 @@ sealed class LibraryV3Header : Component
             return m;
         }, DepKey.Empty);
 
+        // W1 — the ONE rule for the whole row's shape (LibraryV3HeaderRules.Resolve), mirrored from the search
+        // host's own equality-gated read: a seam drag re-renders this component only when the SHAPE flips, not per
+        // frame. Priority+: the title is the last thing to yield — it is never a parameter of the ladder's own
+        // narrowing logic, only the search field and the create button react to width.
+        var shape = UseComputed(() => LibraryV3HeaderRules.Resolve(
+            _session.Width.Value, _session.SearchOpen.Value, _session.Prefs?.V3Search.Value is { Length: > 0 })).Value;
+
+        // The title opens the library flyout (ToggleDestinations) in the docked pane AND the drawer — a flyout needs
+        // no rail to exist. Collapse lives in the "…" overflow only. Text-only (no leading glyph: the engine's Icons
+        // table has no library glyph, and the width budget at the 180 floor has no room for one anyway), Shrink = 0,
+        // no Trim — it never ellipsizes, on the strength of LibraryV3HeaderRules alone.
+        Element title = new BoxEl
+        {
+            Direction = 0, Height = 28f, Padding = new Edges4(4f, 0f, 6f, 0f), Corners = Radii.ControlAll,
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+            OnClick = ToggleDestinations, OnRealized = h => destAnchor.Value = h, Shrink = 0f,
+            Children = [new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
+            {
+                Size = 15f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1,
+            }],
+        }.Interactive(Interaction.Subtle);
+
         var kids = new List<Element>(6)
         {
-            // W7 — the glyph box IS the art column (SidebarCover.S32 == SidebarRowMetrics.ArtFor(Cozy) == 32), so the
-            // header's library mark and every row's cover/glyph below it share one edge; the 16-DIP glyph is centred
-            // inside it exactly as a row's bare-glyph art is. Segoe MDL2 Assets (not Icons.List/Theme's Segoe Fluent
-            // Icons face) is this glyph's own font, so it must be named explicitly (Icon's `family` param) — reading
-            // only a codepoint against the wrong face is how an icon renders as tofu.
-            new BoxEl
-            {
-                Width = SidebarCover.S32, Height = SidebarCover.S32, Shrink = 0f,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                // The row's label sits a LeadingGap (10) past the art column (W7), not the row's own 4-DIP button
-                // rhythm — so the extra 6 rides on the glyph box's own margin rather than widening the whole row's
-                // Gap (which would also push the create/overflow/collapse buttons apart from each other).
-                Margin = new Edges4(0f, 0f, 6f, 0f),
-                // U+E71C (Segoe MDL2 "Filter"/library mark) as an ESCAPE, never a literal: the private-use character is
-                // invisible in every editor and was silently dropped once already when this file was rewritten.
-                Children = [Icon("", 16f, Tok.TextSecondary, "Segoe MDL2 Assets")],
-            },
-            new TextEl(Loc.Get(Strings.Sidebar.V3.Title))
-            {
-                // Ui.BodyStrong is 14/20/600; the header title sits one rung up (15) and no alias covers that exact
-                // size, so it stays an explicit override rather than a one-call-site alias (W5).
-                Size = 15f, Weight = 600, Color = Tok.TextPrimary,
-                Grow = 1f, Basis = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            },
-            // H2 (#85) — the same drop spec Classic's section-header "+" gets: a rootlist selection files into a new
-            // top-level folder, a track set becomes a new playlist. V3 never sets SidebarPaneConfig.HeaderCreate (it
-            // renders no section headers at all), so this button needed its own copy of that spec.
-            Embed.Comp(() => new SidebarCreateButton(
-                _session.CreatePlaylist, menu: CreateMenu,
-                drop: _session.HeaderCreateDropSpec(), dropActive: () => _session.HeaderCreateDropActive.Value,
-                box: 28f, glyph: 14f)),
-            // W5 — IconButton.Create gives the overflow button its focus ring, Space/Enter activation and
-            // AutomationRole for free; the hand-rolled BoxEl this used to be had none of those.
-            ToolTip.Wrap(
-                IconButton.Create(Icons.More, ToggleOverflow, parts: overflowParts, size: ControlSize.Small)
-                    with { Key = "v3-overflow" },
-                Loc.Get(Strings.Sidebar.Layout.MenuTitle)),
+            // Hidden — never shrunk — while the search field takes the whole row (Flow.Show, never Width = 0: a
+            // zero-size flex child still collects the row's Gap, pitfalls.md "Geometry and virtualization").
+            Flow.Show(() => !shape.SearchTakesRow, title),
+            Embed.Comp(() => new LibraryV3Search(_session)) with { Key = "v3-search" },
+            // Grow=0 whenever the search host is the row's flexible sibling — inline, or OPEN on a narrow pane (it takes
+            // the row then): two Grow=1 elements would split the remaining space by ratio, which is exactly the
+            // half-width open field the first V3.1 build showed. Grow=1 only around the closed magnifier, where the
+            // title keeps its natural ("Your Library" is short and fixed) width and the spacer pushes the icons out.
+            new BoxEl { Key = "v3-header-spacer", Grow = shape.InlineSearch || shape.SearchTakesRow ? 0f : 1f },
         };
 
-        // A drawer has no rail to collapse INTO, so the affordance is absent rather than dead (§3.2.14).
-        if (!_session.InDrawer)
-            kids.Add(ToolTip.Wrap(
-                IconButton.Create(Icons.ChevronLeft, _session.Collapse, size: ControlSize.Small)
-                    with { Key = "v3-collapse" },
-                Loc.Get(Strings.Sidebar.V3.Collapse)));
+        if (shape.ShowsCreate)
+            // H2 (#85) — the same drop spec Classic's section-header "+" gets: a rootlist selection files into a new
+            // top-level folder, a track set becomes a new playlist. V3 never sets SidebarPaneConfig.HeaderCreate (it
+            // renders no section headers at all), so this button needed its own copy of that spec. Folds into the
+            // "…" overflow (New playlist / New folder) below LibraryV3HeaderRules.CreateFoldWidth.
+            kids.Add(Embed.Comp(() => new SidebarCreateButton(
+                _session.CreatePlaylist, menu: CreateMenu,
+                drop: _session.HeaderCreateDropSpec(), dropActive: () => _session.HeaderCreateDropActive.Value,
+                box: 28f, glyph: 14f)));
+
+        // W5 — IconButton.Create gives the overflow button its focus ring, Space/Enter activation and
+        // AutomationRole for free; the hand-rolled BoxEl this used to be had none of those.
+        kids.Add(ToolTip.Wrap(
+            IconButton.Create(Icons.More, ToggleOverflow, parts: overflowParts, size: ControlSize.Small)
+                with { Key = "v3-overflow" },
+            Loc.Get(Strings.Sidebar.Layout.MenuTitle)));
 
         return new BoxEl
         {
@@ -132,7 +164,10 @@ sealed class LibraryV3Header : Component
         });
     }
 
-    /// <summary>The overflow rows, built at OPEN time (§3.2.3's exact order).</summary>
+    /// <summary>The overflow rows, built at OPEN time (§3.2.3's exact order): Sidebar layout ▸ · separator ·
+    /// [New playlist · New folder — only when the header's own "+" is folded away] · Clear filters · Collapse
+    /// (docked only) · separator · API Console (developer mode). Sort/View are GONE from this menu entirely — they
+    /// now live on the lens row under the chips (a separate workstream), never re-declared here.</summary>
     List<MenuFlyoutItem> BuildOverflow(SidebarPreferences? prefs)
     {
         var rows = new List<MenuFlyoutItem>(8);
@@ -143,12 +178,21 @@ sealed class LibraryV3Header : Component
             rows.Add(MenuFlyoutItem.Separator);
         }
 
+        // The header's own "+" folds away below LibraryV3HeaderRules.CreateFoldWidth — reuse the exact two verbs
+        // CreateMenu() already builds so the header and this overflow can never disagree about what "New playlist"/
+        // "New folder" do. `Peek`, not `Value`: built at OPEN time, nothing to subscribe.
+        bool showsCreate = LibraryV3HeaderRules.Resolve(
+            _session.Width.Peek(), _session.SearchOpen.Peek(), _session.Prefs?.V3Search.Peek() is { Length: > 0 }).ShowsCreate;
+        if (!showsCreate && CreateMenu() is { Rows.Count: > 0 } createMenu)
+            rows.AddRange(createMenu.Rows);
+
         rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.V3.ClearFilters), Icons.Cancel,
                                     _session.AnyFilterActive, _session.ClearAllFilters));
 
+        // The "Collapse" row is BACK — the header's own "‹" chevron is gone (the title is the collapse toggle now),
+        // so this is the only remaining path to it. Docked only: a drawer has no rail to collapse into.
         if (!_session.InDrawer)
-            rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.V3.Collapse), Icons.ChevronLeft, prefs is not null,
-                                        _session.Collapse));
+            rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.V3.Collapse), Icons.ChevronLeft, true, _session.Collapse));
 
         // DEVELOPER SURFACE, hidden unless developer mode is on (Settings ▸ Diagnostics) — the same gate Classic's
         // Tools section rides. Deliberately unlocalized, matching Classic's DevToolsRow: it is a dev entry point, not
@@ -161,49 +205,5 @@ sealed class LibraryV3Header : Component
                                         () => _session.Go(DeveloperMode.ApiConsoleRoute, null)));
         }
         return rows;
-    }
-}
-
-/// <summary>§3.2.2 band 2 — the search + sort row. Its own component so opening the search field or flipping a sort
-/// re-renders 36 DIP of chrome instead of the whole pane.</summary>
-sealed class LibraryV3Toolbar : Component
-{
-    readonly LibraryV3Session _session;
-
-    public LibraryV3Toolbar(LibraryV3Session session) => _session = session;
-
-    public override Element Render()
-    {
-        // The sort pill collapses to icon-only when the search host is open (it owns the row) or when the pane is
-        // simply too narrow for a label. A MEMO, not a raw width read: a seam drag writes the width every frame, and
-        // the memo's equality cut-off means this component re-renders only when the BOOLEAN flips.
-        //
-        // W1 — reads _session.SearchOpen (a session Signal), never prefs.V3SearchOpen: the open flag left
-        // SidebarPreferences entirely (it is no longer a persisted setting), so the toolbar's own idea of "is search
-        // open" lives on the same object LibraryV3Search itself writes to.
-        // ONE rule for the row's shape (LibraryV3SearchRules.Resolve), read by the host and by this toolbar alike, so
-        // the pill can never be icon-only while the field is a button, nor labelled while the field owns the row.
-        var layout = UseComputed(() => LibraryV3SearchRules.Resolve(
-            _session.Width.Value, _session.SearchOpen.Value, _session.Prefs?.V3Search.Value is { Length: > 0 }));
-        var iconOnly = UseComputed(() => layout.Value.SortIconOnly);
-        bool inline = layout.Value.Inline;
-
-        // W1 — children are ALWAYS [search, spacer, trigger], never keyed on the open flag: in the NARROW shape the
-        // search HOST's own explicit Width does the morph (LibraryV3SearchRules.OpenWidth) and the spacer (Grow=1)
-        // simply shrinks to (near) 0 while it is open; in the INLINE shape the host itself grows and the spacer
-        // yields (Grow=0), or the two would split the row. Swapping the child SET would remount the spacer and
-        // reintroduce the old file's cross-fade-instead-of-morph bug at the toolbar level.
-        Element search = Embed.Comp(() => new LibraryV3Search(_session)) with { Key = "v3-search" };
-        Element spacer = new BoxEl { Key = "v3-toolbar-spacer", Grow = inline ? 0f : 1f };
-        Element trigger = Embed.Comp(() => new V3SortViewTrigger(iconOnly)) with { Key = "v3-sortview" };
-
-        return new BoxEl
-        {
-            Direction = 0, Height = LibraryV3Metrics.ToolbarHeight, AlignItems = FlexAlign.Center, Gap = 4f,
-            // W7 — LeadBandInset: the search host's closed 28-DIP box must sit on the rows' art column (27), exactly
-            // like the header's glyph and the nav band's rows, so the whole chrome stack shares one left edge.
-            Padding = SidebarPaneMetrics.LeadBandInset,
-            Children = [search, spacer, trigger],
-        };
     }
 }

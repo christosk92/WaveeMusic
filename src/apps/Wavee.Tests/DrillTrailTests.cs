@@ -23,7 +23,7 @@ namespace Wavee.Tests
         [InlineData("artists")]
         [InlineData("podcasts")]
         [InlineData("liked")]
-        [InlineData("local")]
+        // W7: "local" (Local Files) is retired — it is no longer a route at all, so it has nothing to pin here.
         [InlineData("settings")]
         [InlineData("home-customize")]
         [InlineData("sidebar-customize")]

@@ -28,8 +28,9 @@ public static class MediaSeekInterop
 
     /// <summary>Seek the current media from a UI surface that speaks the ENGINE's <c>SeekMode</c> (a
     /// <c>MediaPlayerElement.SeekRequested</c> / <c>MediaSeekBar.SeekRequested</c> callback). Delegates to
-    /// <see cref="IPlaybackPlayer.SeekAsync(long, SeekMode, CancellationToken)"/> — the routing (preview vs commit,
+    /// <see cref="IPlaybackPlayer.SeekAsync(PlaybackSeekRequest, CancellationToken)"/> — the routing (preview vs commit,
     /// local vs remote) lives there, not here.</summary>
     public static Task SeekAsync(this IPlaybackPlayer player, long positionMs, FluentGpu.Media.SeekMode mode,
-        CancellationToken ct = default) => player.SeekAsync(positionMs, mode.ToTransport(), ct);
+        CancellationToken ct = default) => player.SeekAsync(new PlaybackSeekRequest(positionMs, mode.ToTransport(),
+            mode == FluentGpu.Media.SeekMode.Keyframe ? PlaybackSeekKind.Preview : PlaybackSeekKind.Commit), ct);
 }

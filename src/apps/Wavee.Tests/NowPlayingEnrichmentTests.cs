@@ -1,132 +1,95 @@
 using System;
-using System.Collections.Generic;
-using System.Threading;
+using System.Linq;
 using System.Threading.Tasks;
 using Wavee.Backend;
+using Wavee.Backend.Queries;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Xunit;
 
 namespace Wavee.Tests;
 
-// The now-playing row's own hydration (design §1.5). A cluster player_state is routinely thin, so the projection raises
-// the current playable to Open through THE façade and folds the store row back in. The properties that matter are all
-// "how often": it must resolve a uri ONCE and then stop — because MaybeEnrichCurrent runs on every cluster push, every
-// local snapshot and every playback event, so anything that stays "thin" after a resolve becomes a per-heartbeat loop
-// (a façade call, a store read, and a Changes broadcast that wakes the player bar and the queue panel).
-public class NowPlayingEnrichmentTests
+public class NowPlayingEnrichmentTests : PlaybackCatalogTestBase
 {
-    sealed class CountingHydrator : IEntityHydrator
+    const string TrackUri = "spotify:track:one";
+    static Track Thin(string uri = TrackUri) => ContextResolve.Synthetic(uri);
+    static Track Rich() => new("one", TrackUri, "Resolved song", [new("artist", "spotify:artist:artist", "Artist")],
+        new("album", "spotify:album:album", "Album"), 210000, false, new("https://i.scdn.co/image/one"));
+
+    [Fact]
+    public async Task MetadataArrivalThenPauseOrVolume_CannotRollQueueBack()
     {
-        public int Ensures;
-        public HydrationLevel LevelOf(string uri) => HydrationLevel.None;
-
-        public Task<HydrationOutcome> EnsureAsync(string uri, HydrationLevel level, HydrationOptions opts = default,
-            CancellationToken ct = default)
-        {
-            Interlocked.Increment(ref Ensures);
-            return Task.FromResult(new HydrationOutcome(HydrationLevel.Open, HydrationStatus.Reached));
-        }
-
-        public Task<HydrationBatchOutcome> EnsureManyAsync(IReadOnlyList<string> uris, HydrationLevel level,
-            HydrationOptions opts = default, CancellationToken ct = default)
-            => Task.FromResult(new HydrationBatchOutcome(uris, Array.Empty<string>(), HydrationStatus.Reached));
-
-        public Task EnsureTraitsAsync(IReadOnlyList<string> uris, TraitSurface surface, CancellationToken ct = default)
-            => Task.CompletedTask;
-        public Task EnsureTraitsAsync(IReadOnlyList<string> uris, TraitSet traits, TraitSurface surface, CancellationToken ct = default)
-            => Task.CompletedTask;
-        public void Invalidate(string uri) { }
-    }
-
-    const string EpisodeUri = "spotify:episode:e1";
-    const string ShowUri = "spotify:show:s1";
-
-    /// <summary>A cluster row for an episode as the wire actually gives it: a title, no artist, the show in the album
-    /// slot, and no artwork — i.e. thin enough that the bar cannot paint it.</summary>
-    static RemoteTrack ThinEpisode() =>
-        new(EpisodeUri, "Episode One", "", "", "", ShowUri, null, 1_800_000);
-
-    // PAUSED on purpose: a playing cluster starts the position ticker, whose play-state watchdog can publish a
-    // structural change of its own — noise in a test whose whole subject is "how many Changes did the ENRICHMENT fire".
-    static ClusterDelta Cluster(RemoteTrack track) =>
-        new("other-device", true, track, "spotify:show:s1", false, true, false, 0, 0, 0, track.DurationMs,
-            false, RepeatMode.Off, Array.Empty<ConnectDeviceRow>(), Array.Empty<RemoteTrack>());
-
-    static Episode OpenEpisode() =>
-        new("e1", EpisodeUri, "Episode One", "The Show", new Image("https://i.scdn.co/image/e1"),
-            1_800_000, DateTimeOffset.UnixEpoch);
-
-    /// <summary>The resolve is fire-and-forget off the fold, so a test has to wait for it to settle.</summary>
-    static async Task SettleAsync(Func<bool> done)
-    {
-        for (int i = 0; i < 200 && !done(); i++) await Task.Delay(5);
+        var projection = Catalog.Projection();
+        var session = new PlaybackSession(Catalog.Queue);
+        var thinSnapshot = session.SetContext("spotify:playlist:list", [new(Thin(), "u1"), new(Thin(), "u2")], 0);
+        projection.ApplyLocalSnapshot(thinSnapshot, new PlaybackEvent(EvKind.Paused, Thin(), 0));
+        var revision = Catalog.Queue.Current.StructuralRevision;
+        var ids = Catalog.Queue.Current.Rows.Select(x => x.ItemId).ToArray();
+        await Catalog.SeedAsync(Rich());
+        projection.ApplyLocalSnapshot(thinSnapshot, new PlaybackEvent(EvKind.VolumeChanged, Thin(), 0));
+        Assert.All(projection.Queue, row => Assert.Equal("Resolved song", row.Track.Title));
+        Assert.Equal("Resolved song", session.Snapshot().Current!.Track.Title);
+        Assert.Equal(revision, Catalog.Queue.Current.StructuralRevision);
+        Assert.Equal(ids, Catalog.Queue.Current.Rows.Select(x => x.ItemId));
     }
 
     [Fact]
-    public async Task Episode_ResolvesOnce_ThenStopsAskingAndStopsFiringChanges()
+    public async Task MetadataChange_ReplacesOnlyAffectedQueryRows()
     {
-        var store = new InMemoryStore();
-        store.UpsertEpisode(OpenEpisode());
-        var hydrator = new CountingHydrator();
-        var p = new NowPlayingProjection("us", hydrator, store);
-
-        p.OnCluster(Cluster(ThinEpisode()));
-        await SettleAsync(() => p.CurrentTrack?.Image is not null);
-        Assert.Equal(1, Volatile.Read(ref hydrator.Ensures));
-
-        int changes = 0;
-        using var sub = p.Changes.Subscribe(ConnectHarness.Obs<IPlaybackState>(_ => changes++));
-        changes = 0;   // SimpleSubject replays its last value to a new subscriber; count only what comes AFTER.
-
-        // The heartbeat: the same cluster, over and over. Nothing about the row can improve, so nothing may be asked
-        // for and nothing may be published.
-        for (int i = 0; i < 5; i++) p.OnCluster(Cluster(ThinEpisode()));
-        await Task.Delay(60);
-
-        Assert.Equal(1, Volatile.Read(ref hydrator.Ensures));   // resolved once, never re-fired
-        Assert.Equal(5, changes);                               // the five folds themselves — and NOT one enrich each
+        var projection = Catalog.Projection();
+        var session = new PlaybackSession(Catalog.Queue);
+        projection.ApplyLocalSnapshot(session.SetContext("spotify:playlist:list", [new(Thin(), "u1"), new(Thin("spotify:track:two"), "u2")], 0));
+        var definition = new QueueQueryDefinition(new QueueQuery(Catalog.Repository.Scope), Catalog.Queue, Catalog.Queue);
+        var first = definition.Read(new QueryReadContext(Catalog.Repository)).Value;
+        await Catalog.SeedAsync(Rich());
+        var next = definition.Read(new QueryReadContext(Catalog.Repository)).Value;
+        Assert.NotSame(first.Rows[0], next.Rows[0]);
+        Assert.Same(first.Rows[1], next.Rows[1]);
+        Assert.Equal(first.StructuralRevision, next.StructuralRevision);
     }
 
     [Fact]
-    public async Task Episode_Enrichment_KeepsTheShowLinkTheClusterCarried()
+    public async Task RuntimeOverride_AppliesOnlyToCurrentOccurrence()
     {
-        var store = new InMemoryStore();
-        store.UpsertEpisode(OpenEpisode());
-        var p = new NowPlayingProjection("us", new CountingHydrator(), store);
-
-        p.OnCluster(Cluster(ThinEpisode()));
-        await SettleAsync(() => p.CurrentTrack?.Image is not null);
-
-        // EpisodeAsTrack has no show URI to give (Episode carries none), so folding its ref in wholesale used to erase
-        // the one the cluster DID carry — and the player-bar subtitle stopped being a link to the podcast.
-        Assert.Equal("The Show", p.CurrentTrack!.Album.Name);
-        Assert.Equal(ShowUri, p.CurrentTrack.Album.Uri);
-        Assert.Equal(1_800_000, p.CurrentTrack.DurationMs);
+        var projection = Catalog.Projection();
+        await Catalog.SeedAsync(Rich());
+        var session = new PlaybackSession(Catalog.Queue);
+        projection.ApplyLocalSnapshot(session.SetContext("spotify:playlist:list", [new(Rich(), "u1"), new(Rich(), "u2")], 0));
+        projection.SetMetadataOverride(TrackUri, "Live title", "Live artist");
+        var definition = new QueueQueryDefinition(new QueueQuery(Catalog.Repository.Scope), Catalog.Queue, Catalog.Queue);
+        var before = definition.Read(new QueryReadContext(Catalog.Repository)).Value;
+        Assert.Equal("Live title", before.Rows[0].Track.Title);
+        Assert.Equal("Resolved song", before.Rows[1].Track.Title);
+        projection.ApplyLocalSnapshot(session.Next()!);
+        Assert.Equal("Resolved song", projection.CurrentTrack!.Title);
     }
 
     [Fact]
-    public async Task UnresolvableTrack_IsAskedOnce_AndNeverRepublishesAnIdenticalRow()
+    public void SuccessorOwner_FencesOutgoingQueuePublicationAndDisposal()
     {
-        // A row the ladder can only get to Identity: it IS resident, so the fold below has something to apply — it
-        // just never becomes any better than what is already on the slab.
-        var store = new InMemoryStore();
-        store.UpsertTrack(new Track("t1", "spotify:track:t1", "Song", Array.Empty<ArtistRef>(),
-            new AlbumRef("", "", ""), 0, false, null));
-        var hydrator = new CountingHydrator();
-        var p = new NowPlayingProjection("us", hydrator, store);
-        var thin = new RemoteTrack("spotify:track:t1", "Song", "", "", "", "", null, 210_000);
+        var outgoing = Catalog.Projection();
+        var current = Catalog.Projection();
+        var session = new PlaybackSession(Catalog.Queue);
+        current.ApplyLocalSnapshot(session.SetContext("spotify:playlist:new", [new(Thin(), "u1")], 0));
+        var snapshot = Catalog.Queue.Current;
+        outgoing.SetLocalQueue([]);
+        outgoing.Dispose();
+        Assert.Same(snapshot, Catalog.Queue.Current);
+    }
 
-        p.OnCluster(Cluster(thin));
-        await SettleAsync(() => Volatile.Read(ref hydrator.Ensures) > 0);
-
-        int changes = 0;
-        using var sub = p.Changes.Subscribe(ConnectHarness.Obs<IPlaybackState>(_ => changes++));
-        changes = 0;   // SimpleSubject replays its last value to a new subscriber; count only what comes AFTER.
-        for (int i = 0; i < 4; i++) p.OnCluster(Cluster(thin));
-        await Task.Delay(60);
-
-        // The façade is allowed to be asked again (its ledger answers from the Exhausted seal for free), but a row that
-        // did not actually move must never be republished.
-        Assert.Equal(4, changes);
+    [Fact]
+    public async Task EpisodeCatalogJoin_PreservesShowIdentityAcrossHeartbeats()
+    {
+        const string episodeUri = "spotify:episode:one", showUri = "spotify:show:show";
+        var projection = Catalog.Projection();
+        var cluster = new ClusterDelta("phone", true, new RemoteTrack(episodeUri, "Episode", "", "", "Show", showUri, null, 1800000),
+            showUri, false, true, false, 0, 0, 0, 1800000, false, RepeatMode.Off, [], []);
+        Catalog.Cluster(projection, cluster);
+        await Catalog.SeedAsync(new Track("one", episodeUri, "Episode", [], new("show", showUri, "Show"), 1800000,
+            false, new("https://i.scdn.co/image/episode")));
+        Catalog.Cluster(projection, cluster);
+        Assert.Equal(showUri, projection.CurrentTrack!.Album.Uri);
+        Assert.Equal("Show", projection.CurrentTrack.Album.Name);
+        Assert.NotNull(projection.CurrentTrack.Image);
     }
 }

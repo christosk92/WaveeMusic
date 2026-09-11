@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -35,9 +35,9 @@ sealed class SearchGenreTiles : Component
         var svc = UseContext(Services.Slot);
         var goOrigin = UseContext(HistoryStore.GoWithOrigin);
         if (svc is null || _query.Length == 0) return new BoxEl();
-        var results = UseResource(
-            ct => svc.Library.SearchAsync(_query, SearchFacet.Genres, 0, 30, ct),
-            SearchResults.Empty, _query).Loadable;
+        var results = QueryHooks.Use(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            new Wavee.Core.Catalog.SearchQuery(svc.CatalogScope, _query, SearchFacet.Genres),
+            SearchResults.Empty).Loadable;
         // The shimmer must stay NON-zero-height and smoothResize must stay false — both are load-bearing for a
         // separate engine issue. Deriving the shimmer from Grid itself (rather than a hand-authored bar list) means
         // it is built from the SAME BrowseTiles.Link cells the real content renders — 8 varied-length seed names
@@ -55,7 +55,9 @@ sealed class SearchGenreTiles : Component
         string? originQ = null, Action<string, string?, NavOrigin?>? goOrigin = null)
     {
         if (genres is not { Count: > 0 } list) return new BoxEl();
-        Element body = Responsive.Of(width => Columns(list, go, width, originQ, goOrigin), fallback: BrowseLayout.DirectoryFallbackWidth);
+        // State = (list, originQ): the two values Columns' cells depend on; go/goOrigin are stable nav callbacks.
+        Element body = Responsive.Of((list, originQ), (s, width) => Columns(s.list, go, width, s.originQ, goOrigin),
+            fallback: BrowseLayout.DirectoryFallbackWidth);
         if (!header) return body;
         return new BoxEl
         {

@@ -345,8 +345,13 @@ public static class ConcertUi
     // minus the band (deliberate cohesion).
     public static Element Hero(Image image, string eyebrow, string title, uint? accent, Element? trailing = null,
         Element? stats = null) =>
-        Responsive.Of(width => BuildHero(image, eyebrow, title, accent, trailing, stats, width > 0f ? width : 900f),
+        // Gated on every value BuildHero reads besides width: the band photo/accent wash and the copy block are pure
+        // functions of these six — nothing else varies the built subtree.
+        Responsive.Of(new HeroState(image, eyebrow, title, accent, trailing, stats),
+            static (s, width) => BuildHero(s.Image, s.Eyebrow, s.Title, s.Accent, s.Trailing, s.Stats, width > 0f ? width : 900f),
             fallback: 900f);
+
+    private readonly record struct HeroState(Image Image, string Eyebrow, string Title, uint? Accent, Element? Trailing, Element? Stats);
 
     static Element BuildHero(Image image, string eyebrow, string title, uint? accent, Element? trailing, Element? stats, float width)
     {
@@ -707,9 +712,15 @@ public static class ConcertUi
         Action onClick,
         float fallbackWidth = 1000f,
         EditorialArtStyle style = EditorialArtStyle.Concert) =>
-        Responsive.Of(width => BuildWideEditorial(
-            artwork, style, eyebrow, title, subtitle, actionLabel, onClick,
-            width > 0f ? width : fallbackWidth), fallback: fallbackWidth);
+        // Gated on every value BuildWideEditorial reads besides width, including onClick — a caller that swaps its
+        // action (a new playlist id, say) must rebuild the card, not just react to a resize.
+        Responsive.Of(new WideEditorialState(artwork, style, eyebrow, title, subtitle, actionLabel, onClick, fallbackWidth),
+            static (s, width) => BuildWideEditorial(
+                s.Artwork, s.Style, s.Eyebrow, s.Title, s.Subtitle, s.ActionLabel, s.OnClick,
+                width > 0f ? width : s.FallbackWidth), fallback: fallbackWidth);
+
+    private readonly record struct WideEditorialState(Image? Artwork, EditorialArtStyle Style, string Eyebrow,
+        string Title, string Subtitle, string ActionLabel, Action OnClick, float FallbackWidth);
 
     static Element BuildWideEditorial(
         Image? artwork,
@@ -831,9 +842,11 @@ public static class ConcertUi
 /// small enum PARAMETER, not a string sniff on the element <c>Key</c>.</summary>
 public enum EditorialArtStyle : byte
 {
-    /// <summary>Warm radial ground + a drifting light + two stage-light arc sweeps on stroke-trim loops.</summary>
+    /// <summary>Warm radial ground + a drifting light + a small equalizer-bar cluster, each bar pulsing height on its
+    /// own offset-phase <c>ScaleY</c> loop.</summary>
     Concert,
-    /// <summary>Cool gradient ground + rounded category tiles on co-prime <c>TranslateY</c> wobble loops.</summary>
+    /// <summary>Cool gradient ground + a diagonal stack of rounded layers, each fanning out and settling back on its
+    /// own co-prime <c>TranslateX</c>/<c>TranslateY</c> loop.</summary>
     Browse,
 }
 
@@ -856,17 +869,17 @@ sealed class EditorialArt : Component
     readonly float _width, _height;
     readonly EditorialArtStyle _style;
 
-    // Ambient-loop nodes as INSTANCE FIELDS, not hooks (LikedCoverArt's rule) — four sinks allocated once per
-    // component; Concert uses the first three (ground drift + two arc sweeps), Browse uses all four (one per tile,
-    // with the fourth spare for a future tile).
-    NodeHandle _loopA, _loopB, _loopC, _loopD;
-    readonly Action<NodeHandle> _sinkA, _sinkB, _sinkC, _sinkD;
+    // Ambient-loop nodes as INSTANCE FIELDS, not hooks (LikedCoverArt's rule) — five sinks allocated once per
+    // component; Concert uses all five (ground drift + 4 equalizer bars), Browse uses the first three (one per
+    // stacked layer, D/E spare).
+    NodeHandle _loopA, _loopB, _loopC, _loopD, _loopE;
+    readonly Action<NodeHandle> _sinkA, _sinkB, _sinkC, _sinkD, _sinkE;
 
-    // Frozen at mount (component-props-contract.md): the two arc PathDatas (Concert) or the tile rects (Browse),
-    // built once from the ctor's own width/height via the BCL-only ConcertLayout.EditorialArtGeometry, never rebuilt
-    // per render or per frame.
-    readonly PathData? _arcOuter, _arcInner;
-    readonly BrowseTile[]? _tiles;
+    // Frozen at mount (component-props-contract.md): the bar rects (Concert) or the layer rects (Browse), built once
+    // from the ctor's own width/height via the BCL-only ConcertLayout.EditorialArtGeometry, never rebuilt per render
+    // or per frame.
+    readonly BrowseTile[]? _bars;
+    readonly BrowseTile[]? _layers;
 
     public EditorialArt(float width, float height, EditorialArtStyle style)
     {
@@ -875,18 +888,12 @@ sealed class EditorialArt : Component
         _sinkB = h => _loopB = h;
         _sinkC = h => _loopC = h;
         _sinkD = h => _loopD = h;
+        _sinkE = h => _loopE = h;
 
         if (style == EditorialArtStyle.Concert)
-        {
-            _arcOuter = PathDataParser.Parse(EditorialArtGeometry.ConcertArcOuter(width, height).ToPathData(),
-                PathContentEpoch.Mint(), FillRule.NonZero);
-            _arcInner = PathDataParser.Parse(EditorialArtGeometry.ConcertArcInner(width, height).ToPathData(),
-                PathContentEpoch.Mint(), FillRule.NonZero);
-        }
+            _bars = EditorialArtGeometry.ConcertBars(width, height);
         else
-        {
-            _tiles = EditorialArtGeometry.BrowseTiles(width, height);
-        }
+            _layers = EditorialArtGeometry.BrowseTiles(width, height);
     }
 
     public override Element Render()
@@ -898,7 +905,8 @@ sealed class EditorialArt : Component
         {
             if (Context.Anim is not { } anim || Context.Scene is not { } scene) return;
             NodeHandle Live(NodeHandle h) => !h.IsNull && scene.IsLive(h) ? h : default;
-            EditorialArtMotion.SeedLoops(_style, anim, Live(_loopA), Live(_loopB), Live(_loopC), Live(_loopD));
+            EditorialArtMotion.SeedLoops(_style, anim,
+                Live(_loopA), Live(_loopB), Live(_loopC), Live(_loopD), Live(_loopE));
         }, DepKey.Empty);
 
         return _style == EditorialArtStyle.Concert ? BuildConcert() : BuildBrowse();
@@ -906,56 +914,64 @@ sealed class EditorialArt : Component
 
     // Warm radial ground + a drifting light (the ground layer itself glides — there is no scalar AnimChannel for a
     // Point2, so an animated BoxEl.RadialGradientCenter would need its own per-frame Signal driver; the proven
-    // TranslateY-keyframe mechanism LikedCoverTreatments.Wall already uses is the lower-risk choice) + two stage-light
-    // arc sweeps on stroke-trim loops, swept in OPPOSITE directions so the pair reads as beams crossing.
+    // TranslateY-keyframe mechanism LikedCoverTreatments.Wall already uses is the lower-risk choice) + a small
+    // equalizer-bar cluster (EditorialArtGeometry.ConcertBars), each bar a bottom-anchored rounded-pill BoxEl
+    // (TransformOriginY = 1) pulsing on its own offset-phase ScaleY loop so the cluster reads as live audio rather
+    // than bars moving in lockstep.
     Element BuildConcert()
     {
         bool dark = Tok.Theme == ThemeKind.Dark;
         ColorF baseFill = dark ? ColorF.FromRgba(0x1B, 0x1B, 0x1D) : Tok.FillCardSecondary;
         ColorF warm = WaveePalette.ToColor(0xFFFF8A3D);
 
+        var children = new List<Element>(6)
+        {
+            new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = baseFill },
+            new BoxEl
+            {
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                Gradient = new GradientSpec(GradientShape.Radial, 0f,
+                [
+                    new GradientStop(0f, warm with { A = dark ? 0.34f : 0.20f }),
+                    new GradientStop(0.55f, warm with { A = dark ? 0.10f : 0.06f }),
+                    new GradientStop(1f, warm with { A = 0f }),
+                ])
+                { RadialCenter = new Point2(0.5f, 0.66f), RadialRadius = new Point2(0.85f, 0.85f) },
+                OnRealized = _sinkA,
+            },
+        };
+
+        if (_bars is { } bars)
+        {
+            Action<NodeHandle>[] sinks = [_sinkB, _sinkC, _sinkD, _sinkE];
+            for (int i = 0; i < bars.Length && i < sinks.Length; i++)
+            {
+                var bar = bars[i];
+                children.Add(new BoxEl
+                {
+                    Width = bar.Width, Height = bar.Height, Shrink = 0f,
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                    Margin = new Edges4(bar.X, bar.Y, 0f, 0f),
+                    TransformOriginX = 0.5f, TransformOriginY = 1f,
+                    Corners = CornerRadius4.All(bar.Width * 0.5f),
+                    Fill = warm with { A = dark ? 0.55f : 0.40f },
+                    OnRealized = sinks[i],
+                });
+            }
+        }
+
         return new BoxEl
         {
             Width = _width, Height = _height, ZStack = true, ClipToBounds = true, HitTestVisible = false,
-            Children =
-            [
-                new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = baseFill },
-                new BoxEl
-                {
-                    AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                    Gradient = new GradientSpec(GradientShape.Radial, 0f,
-                    [
-                        new GradientStop(0f, warm with { A = dark ? 0.34f : 0.20f }),
-                        new GradientStop(0.55f, warm with { A = dark ? 0.10f : 0.06f }),
-                        new GradientStop(1f, warm with { A = 0f }),
-                    ])
-                    { RadialCenter = new Point2(0.5f, 0.66f), RadialRadius = new Point2(0.85f, 0.85f) },
-                    OnRealized = _sinkA,
-                },
-                // Width/Height match the pane exactly, with no Offset/Margin, because the arc's own points
-                // (EditorialArtGeometry.ConcertArcOuter/Inner) are already computed in full-pane-local DIP — the
-                // same convention MixGraphRing's PolylineStrokeEl connectors use for their ZStack.
-                _arcOuter is { } outer ? new PathEl
-                {
-                    Width = _width, Height = _height,
-                    Geometry = outer, StrokeColor = warm with { A = dark ? 0.55f : 0.40f },
-                    Stroke = new StrokeStyle(2.5f, LineCap.Round),
-                    TrimStart = 0f, TrimEnd = 1f, OnRealized = _sinkB,
-                } : new BoxEl(),
-                _arcInner is { } inner ? new PathEl
-                {
-                    Width = _width, Height = _height,
-                    Geometry = inner, StrokeColor = warm with { A = dark ? 0.40f : 0.28f },
-                    Stroke = new StrokeStyle(2f, LineCap.Round),
-                    TrimStart = 0f, TrimEnd = 1f, OnRealized = _sinkC,
-                } : new BoxEl(),
-            ],
+            Children = [.. children],
         };
     }
 
-    // Cool gradient ground + 3 rounded tiles on co-prime TranslateY loops with an additive wobble — a shifting
-    // category mosaic. Fixed relative geometry (EditorialArtGeometry.BrowseTiles), not randomized, so a resize's
-    // remount always produces the same layout for the same box.
+    // Cool gradient ground + a diagonal stack of rounded layers (EditorialArtGeometry.BrowseTiles) — Fluent's "Stack"
+    // glyph shape — each riding its own co-prime TranslateX/TranslateY loop that nudges it FURTHER along the same
+    // diagonal it is already offset on and back, so the stack gently fans open and settles rather than sitting
+    // static. Fixed relative geometry, not randomized, so a resize's remount always produces the same layout for the
+    // same box.
     Element BuildBrowse()
     {
         bool dark = Tok.Theme == ThemeKind.Dark;
@@ -974,19 +990,21 @@ sealed class EditorialArt : Component
             },
         };
 
-        if (_tiles is { } tiles)
+        if (_layers is { } tiles)
         {
-            Action<NodeHandle>[] sinks = [_sinkA, _sinkB, _sinkC, _sinkD];
+            Action<NodeHandle>[] sinks = [_sinkA, _sinkB, _sinkC, _sinkD, _sinkE];
             for (int i = 0; i < tiles.Length && i < sinks.Length; i++)
             {
                 var t = tiles[i];
+                // The front (last-drawn) layer reads as the topmost card — a touch more opaque than the ones behind.
+                float depth = tiles.Length <= 1 ? 1f : (float)i / (tiles.Length - 1);
                 layers.Add(new BoxEl
                 {
                     Width = t.Width, Height = t.Height, Shrink = 0f,
                     AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                     Margin = new Edges4(t.X, t.Y, 0f, 0f),
                     Corners = CornerRadius4.All(Radii.Control),
-                    Fill = cool with { A = dark ? 0.22f : 0.14f },
+                    Fill = cool with { A = (dark ? 0.16f : 0.09f) + depth * (dark ? 0.14f : 0.09f) },
                     BorderWidth = 1f, BorderColor = cool with { A = dark ? 0.34f : 0.24f },
                     OnRealized = sinks[i],
                 });
@@ -1007,41 +1025,76 @@ sealed class EditorialArt : Component
 /// of independently-looping tracks never visibly repeats.</summary>
 static class EditorialArtMotion
 {
-    const float ConcertGroundLoopMs = 19_000f;    // the drifting-light ground — coprime with both arcs below
-    const float ConcertArcOuterLoopMs = 9_000f;   // the outer stroke-trim sweep
-    const float ConcertArcInnerLoopMs = 7_000f;   // the inner counter-sweep — coprime with the outer's 9s
-    const float BrowseTileLoopMsA = 11_000f;
-    const float BrowseTileLoopMsB = 13_000f;
-    const float BrowseTileLoopMsC = 17_000f;
+    const float ConcertGroundLoopMs = 19_000f;   // the drifting-light ground — coprime with every bar below
+    // The 4 equalizer bars: distinct, largely co-prime durations AND distinct keyframe curves (different peak
+    // offsets/shapes below) so the cluster never reads as bars pulsing in unison, even at t=0.
+    const float ConcertBar1LoopMs = 8_200f;
+    const float ConcertBar2LoopMs = 6_600f;
+    const float ConcertBar3LoopMs = 7_400f;
+    const float ConcertBar4LoopMs = 9_400f;
+
+    const float BrowseLayer1LoopMs = 7_400f;
+    const float BrowseLayer2LoopMs = 8_000f;
+    const float BrowseLayer3LoopMs = 8_600f;
 
     const float GroundDriftDip = 10f;
-    const float TileWobbleDip = 6f;
+    // How far (in DIP) a stacked layer nudges further along its own already-offset diagonal at the peak of its loop
+    // — kept small since this is ambient background decoration, not a focal gesture.
+    const float LayerFanX = 8f;
+    const float LayerFanY = 6f;
 
     /// <summary>Reduced motion as a VALUE, not a branch (LikedCoverTreatments' rule): every loop below is still
-    /// declared and still quiesces under a parked page — its amplitude is simply zero, so nothing about the
-    /// authored tree changes when the OS setting flips.</summary>
+    /// declared and still quiesces under a parked page — its amplitude is simply zero (or, for the ScaleY bars,
+    /// exactly 1 — ScaleY's neutral value), so nothing about the authored tree changes when the OS setting flips.
+    /// </summary>
     static readonly Keyframe[] s_still = [new(0f, 0f), new(1f, 0f)];
+    static readonly Keyframe[] s_scaleStill = [new(0f, 1f), new(1f, 1f)];
     static readonly Keyframe[] s_groundDrift = [new(0f, -GroundDriftDip), new(0.5f, GroundDriftDip), new(1f, -GroundDriftDip)];
-    static readonly Keyframe[] s_tileWobble = [new(0f, 0f), new(0.5f, TileWobbleDip), new(1f, 0f)];
-    // A stroke-trim "draw-on" pulse: hidden → fully drawn → hidden, rather than a one-shot reveal, since this is an
-    // AMBIENT loop with no user action to reveal FOR.
-    static readonly Keyframe[] s_arcSweep = [new(0f, 0f), new(0.5f, 1f), new(1f, 0f)];
 
-    public static void SeedLoops(EditorialArtStyle style, AnimEngine anim, NodeHandle a, NodeHandle b, NodeHandle c, NodeHandle d)
+    // 4 distinct height-pulse curves for the equalizer bars — same value range (0.6..1.15 of the bar's resting
+    // height) but each shaped/offset differently so the cluster reads as independent bars, not one wave.
+    static readonly Keyframe[] s_bar1 = [new(0f, 0.65f), new(0.5f, 1.05f), new(1f, 0.65f)];
+    static readonly Keyframe[] s_bar2 = [new(0f, 1.05f), new(0.5f, 0.65f), new(1f, 1.05f)];
+    static readonly Keyframe[] s_bar3 = [new(0f, 0.85f), new(0.25f, 1.1f), new(0.6f, 0.6f), new(1f, 0.85f)];
+    static readonly Keyframe[] s_bar4 = [new(0f, 0.6f), new(0.4f, 0.95f), new(0.75f, 1.1f), new(1f, 0.6f)];
+
+    public static void SeedLoops(EditorialArtStyle style, AnimEngine anim,
+        NodeHandle a, NodeHandle b, NodeHandle c, NodeHandle d, NodeHandle e)
     {
         bool still = Motion.ReducedMotion;
         if (style == EditorialArtStyle.Concert)
         {
             if (!a.IsNull) anim.Keyframes(a, AnimChannel.TranslateY, still ? s_still : s_groundDrift, ConcertGroundLoopMs, loop: true);
-            if (!b.IsNull) anim.Keyframes(b, AnimChannel.StrokeTrimEnd, still ? s_still : s_arcSweep, ConcertArcOuterLoopMs, loop: true);
-            if (!c.IsNull) anim.Keyframes(c, AnimChannel.StrokeTrimEnd, still ? s_still : s_arcSweep, ConcertArcInnerLoopMs, loop: true);
+            if (!b.IsNull) anim.Keyframes(b, AnimChannel.ScaleY, still ? s_scaleStill : s_bar1, ConcertBar1LoopMs, loop: true);
+            if (!c.IsNull) anim.Keyframes(c, AnimChannel.ScaleY, still ? s_scaleStill : s_bar2, ConcertBar2LoopMs, loop: true);
+            if (!d.IsNull) anim.Keyframes(d, AnimChannel.ScaleY, still ? s_scaleStill : s_bar3, ConcertBar3LoopMs, loop: true);
+            if (!e.IsNull) anim.Keyframes(e, AnimChannel.ScaleY, still ? s_scaleStill : s_bar4, ConcertBar4LoopMs, loop: true);
         }
         else
         {
-            if (!a.IsNull) anim.Keyframes(a, AnimChannel.TranslateY, still ? s_still : s_tileWobble, BrowseTileLoopMsA, loop: true, composite: CompositeOp.Add);
-            if (!b.IsNull) anim.Keyframes(b, AnimChannel.TranslateY, still ? s_still : s_tileWobble, BrowseTileLoopMsB, loop: true, composite: CompositeOp.Add);
-            if (!c.IsNull) anim.Keyframes(c, AnimChannel.TranslateY, still ? s_still : s_tileWobble, BrowseTileLoopMsC, loop: true, composite: CompositeOp.Add);
+            // 3 stacked layers; index 1 (the middle card) is the fan's pivot and barely moves, while the back (0)
+            // and front (2) layers nudge in OPPOSITE directions along the diagonal — the stack visibly fans open.
+            SeedFanLayer(anim, a, factor: -1f, BrowseLayer1LoopMs, still);
+            SeedFanLayer(anim, b, factor: 0f, BrowseLayer2LoopMs, still);
+            SeedFanLayer(anim, c, factor: 1f, BrowseLayer3LoopMs, still);
         }
+    }
+
+    static void SeedFanLayer(AnimEngine anim, NodeHandle node, float factor, float loopMs, bool still)
+    {
+        if (node.IsNull) return;
+        if (still)
+        {
+            anim.Keyframes(node, AnimChannel.TranslateX, s_still, loopMs, loop: true, composite: CompositeOp.Add);
+            anim.Keyframes(node, AnimChannel.TranslateY, s_still, loopMs, loop: true, composite: CompositeOp.Add);
+            return;
+        }
+
+        float dx = factor * LayerFanX, dy = -factor * LayerFanY;
+        Keyframe[] fanX = [new(0f, 0f), new(0.5f, dx), new(1f, 0f)];
+        Keyframe[] fanY = [new(0f, 0f), new(0.5f, dy), new(1f, 0f)];
+        anim.Keyframes(node, AnimChannel.TranslateX, fanX, loopMs, loop: true, composite: CompositeOp.Add);
+        anim.Keyframes(node, AnimChannel.TranslateY, fanY, loopMs, loop: true, composite: CompositeOp.Add);
     }
 }
 

@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Google.Protobuf.Collections;
-using Wavee.Backend.Hydration;
+using Wavee.Backend.Catalog;
 using Wavee.Core;
 using Pb = Wavee.Protocol.PreRelease;
 using Xm = Wavee.Protocol.ExtendedMetadata;
@@ -20,23 +20,17 @@ namespace Wavee.SpotifyLive;
 // never an error: "no upcoming release" is the correct answer for every album that is already out, and the announce
 // surfaces simply do not render.
 //
-// THIN OVER IExtensionReader (design §2.5): the answers-including-negatives table, the in-flight slot, the
-// etag-cache-or-raw fork and the cancellation rule are the reader's. What stays here is the projection — and the ONE
-// thing that is genuinely this kind's own: the THREE-KEY PUBLISH. A positive payload names both uris, so the answer is
-// SEEDED under the payload's prerelease uri and its album uri as well as under the uri the caller happened to hold.
-// That is what makes one round trip serve both directions (the artist masthead resolves an album uri; the pre-save
-// heart later asks with the prerelease uri) — and it is a SEED, never a wire outcome, so it deliberately does not
-// touch the negative memo.
+// Resource state and raw retention are shared; this service only projects a finite document.
 sealed class SpotifyPreReleaseService : IPreReleaseService
 {
     // Unknown fields are discarded rather than retained: nothing here round-trips a payload back to the server, and the
     // corpus already shows Spotify adding fields to these trait payloads over time.
     static readonly MessageParser<Pb.Prerelease> PayloadParser = Pb.Prerelease.Parser.WithDiscardUnknownFields(true);
 
-    readonly IExtensionReader _reader;
+    readonly CatalogExtensionReader _reader;
     readonly WaveeLogger _log;
 
-    public SpotifyPreReleaseService(IExtensionReader reader, WaveeLogger log = default)
+    public SpotifyPreReleaseService(CatalogExtensionReader reader, WaveeLogger log = default)
     {
         _reader = reader ?? throw new ArgumentNullException(nameof(reader));
         _log = log;
@@ -46,20 +40,25 @@ sealed class SpotifyPreReleaseService : IPreReleaseService
     {
         if (string.IsNullOrEmpty(uri)) return null;
 
-        var link = await _reader.ReadAsync(uri, Xm.ExtensionKind.Prerelease, Link, TraitSurface.PreRelease, ct)
-                                .ConfigureAwait(false);
+        PreReleaseLink? link;
+        try
+        {
+            link = await _reader.ReadAsync(uri, Xm.ExtensionKind.Prerelease, Link, ct).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            // This optional presentation boundary degrades to no banner. Resource failures remain
+            // observable in the catalog; a transport or parse error never becomes a cached absence.
+            _log.Error($"prerelease read failed for {uri}", error);
+            return null;
+        }
         if (link is null) return null;
 
-        // The other two keys of the pair. Seeding is idempotent and cheap, so it runs on every hit rather than only on
-        // the fetch that produced it — the reader hands back the SAME instance either way.
-        _reader.Seed(link.PreReleaseUri, Xm.ExtensionKind.Prerelease, link);
-        _reader.Seed(link.AlbumUri, Xm.ExtensionKind.Prerelease, link);
         _log.Debug($"prerelease resolved {uri} -> {link.PreReleaseUri} / {link.AlbumUri} at {link.ReleaseAt}");
         return link;
     }
 
-    /// <summary>The reader's parse hook. A HALF-LINK returns null, which the reader caches and memoizes exactly like a
-    /// 404 — for every surface downstream they are the same answer.</summary>
+    // A half-link cannot be navigated or saved; it is rejected without inventing either URI.
     static PreReleaseLink? Link(ByteString payload) => Link(PayloadParser.ParseFrom(payload));
 
     /// <summary>Projects the wire payload onto <see cref="PreReleaseLink"/>, or null when it is not a usable link.</summary>

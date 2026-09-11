@@ -122,6 +122,9 @@ sealed class FakeDeriver : IPlayPlayKeyDeriver
 
 sealed class RecordingAudioHost : IAudioHost
 {
+    public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, _sig.OnNext);
+    public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, _sig.OnNext);
+
     public bool LoadFastStartCalled, PlayCalled, SupplyBodyCalled, StopCalled;
     /// <summary>Was the clear head already loaded when the body arrived? The wall-clock "supply grace" that used to
     /// enforce that ordering is gone; the host's serialized Enqueue pump is what guarantees it now, so tests pin the

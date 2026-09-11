@@ -231,10 +231,17 @@ an offset from the module base and nothing else:
    at Wavee!<BaseAddress>+0x7b1fc6
 ```
 
-That is why **every package ships with its symbols**. `pack-wavee-msix.ps1` always publishes with
-`/p:NativeDebugSymbols=true /p:DebugType=portable /p:IlcGenerateMapFile=true` (ILC `-g` + `link.exe /DEBUG`; the
-managed portable PDB is what gives the native PDB its line numbers), moves the results out of the layout **before** the
-package is staged, and zips them next to the `.msix`:
+That is why **every NativeAOT publish of Wavee ships a matching PDB, dev or release** — `Wavee.csproj` sets
+`DebugType=portable` + `NativeDebugSymbols=true` for any publish with a `RuntimeIdentifier` (right after the
+`Wavee.Publish.props` import, which otherwise defaults both off for a smaller/faster loose publish). This is what
+adds ILC `-g` and `link.exe /DEBUG` to the native link (the managed portable PDB is what gives the native PDB its
+line numbers) — `/DEBUG` is also what writes the **CodeView debug-directory entry** into `Wavee.exe` itself, which a
+plain `dotnet publish` used to omit entirely (`llvm-readobj --coff-debug-directory Wavee.exe` showed only a POGO
+entry, and the one `Wavee.pdb` lying around was from an older link — see
+`docs/plans/wavee/library-v3-1-findings-2026-09-06.md` §4.1). `pack-wavee-msix.ps1` additionally publishes with
+`/p:NativeDebugSymbols=true /p:DebugType=portable /p:IlcGenerateMapFile=true` on the command line (now redundant
+with the csproj defaults for the first two, kept for clarity and because it still owns `IlcGenerateMapFile`), moves
+the results out of the layout **before** the package is staged, and zips them next to the `.msix`:
 
 | File | Where it comes from | What it is for |
 |---|---|---|
@@ -274,6 +281,28 @@ Things to know:
   so a symbols build has the same code layout as a symbol-less one — which is also why a **release that shipped
   without a zip** (0.2.0.1) can be resolved by rebuilding its tag with the same SDK and the same three properties.
 - A JIT (`-NoAot`) package has only the managed PDB; its frames already carry names.
+
+### Symbolicating a dev publish
+
+A loose developer publish never goes near `pack-wavee-msix.ps1`, but it gets the same PDB-next-to-the-exe guarantee
+for free — no `-Symbols` flag, no extra step:
+
+```powershell
+dotnet publish src\apps\Wavee\Wavee.csproj -c Release -r win-arm64
+# -> src\apps\Wavee\bin\Release\net10.0\win-arm64\publish\Wavee.exe
+#    src\apps\Wavee\bin\Release\net10.0\win-arm64\publish\Wavee.pdb   (fresh, matches THIS exe's link)
+
+llvm-readobj --coff-debug-directory src\apps\Wavee\bin\Release\net10.0\win-arm64\publish\Wavee.exe
+#    -> a CodeView entry naming Wavee.pdb (not just POGO)
+
+cdb -lines -z src\apps\Wavee\bin\Release\net10.0\win-arm64\publish\Wavee.exe `
+    -y src\apps\Wavee\bin\Release\net10.0\win-arm64\publish -c "ln Wavee+0x7b1fc6; q"
+```
+
+`ops\build\publish-wavee-aot.ps1 -Symbols` still exists and still passes the same three `/p:` flags — harmless now
+that they match the csproj defaults — and still writes into its own `bin\publish-aot-symbols\` tree so a symbols
+publish can never be mistaken for the plain one. Either publish resolves an RVA the same way; the only thing that
+changes is which folder holds the matching `Wavee.pdb`.
 
 ---
 

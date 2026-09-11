@@ -248,9 +248,11 @@ sealed class BrowseDirectory : Component
                 {
                     BrowseGroup.Top => WrapRow(items, model, BrowseTiles.Word, BrowseLayout.ChipGap),
                     BrowseGroup.ForYou => WrapRow(items, model, BrowseTiles.Name, BrowseLayout.ChipGap),
-                    BrowseGroup.Genres => Responsive.Of(width => LinkGrid(items, model, width), fallback: BrowseLayout.DirectoryFallbackWidth),
-                    BrowseGroup.MoodActivity => Responsive.Of(width => BarGrid(items, model, width), fallback: BrowseLayout.DirectoryFallbackWidth),
-                    BrowseGroup.More => Responsive.Of(width => MoreGrid(items, model, width), fallback: BrowseLayout.DirectoryFallbackWidth),
+                    // Gated on (items, model): LinkGrid/BarGrid/MoreGrid read nothing else — model carries the click
+                    // callback, items the category list for this band.
+                    BrowseGroup.Genres => Responsive.Of((items, model), static (s, width) => LinkGrid(s.items, s.model, width), fallback: BrowseLayout.DirectoryFallbackWidth),
+                    BrowseGroup.MoodActivity => Responsive.Of((items, model), static (s, width) => BarGrid(s.items, s.model, width), fallback: BrowseLayout.DirectoryFallbackWidth),
+                    BrowseGroup.More => Responsive.Of((items, model), static (s, width) => MoreGrid(s.items, s.model, width), fallback: BrowseLayout.DirectoryFallbackWidth),
                     _ => throw new InvalidOperationException("BandOf is never asked for Charts — see Body/ChartsBand."),
                 },
             ],

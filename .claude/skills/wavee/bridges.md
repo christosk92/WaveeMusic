@@ -52,6 +52,8 @@ Toast CLSID (packaged manifest must match): `C8E4A91B-3D52-4F07-9B6A-1E7C4D8F2A3
 | Play target | `link.AlbumUri`, not the prerelease uri: the two ids are unrelated and only the album resolves once the record is out. |
 | Cover | `ToastImageCache.Default.Localize(url)` — the unpackaged AUMID hero path rejects `http(s)`. A failed localize drops the hero, never the toast. |
 
-`DaylistNotifier` is its sibling: the daylist card carries the end of its own window, so a rollover is a known future moment and schedules the same way (fed by `HomeDaylistHydrator.WindowObserved` — a hook, so the hydrator never reaches into the toast layer). Dials, gates and reconcile rules for both: **[notifications.md](notifications.md)**.
+`DaylistNotifier` is its sibling: it observes accepted authoritative `PlaylistHeader` facts in the catalog and
+schedules the known `NextUpdateAt` moment. `ActiveCatalogDemand` owns shared expiry/revision requests; the notifier
+owns the external OS schedule. Dials, gates and reconciliation rules: **[notifications.md](notifications.md)**.
 
 **Still missing (T1.6 second half):** the `TimeTrigger` background task that would *discover* things while closed — a followed-artist release that did not exist at schedule time. Anything whose moment is known in advance (release drops, daylist rollover) is scheduled instead and needs none of it. The task needs a packaged (MSIX) identity — `BackgroundTaskBuilder` and `windows.backgroundTasks` are unavailable unpackaged — plus a full-trust COM server and manifest entries in the `ops/` AppxManifest sources.

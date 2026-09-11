@@ -13,7 +13,8 @@ public class AggregateCatalogSearchTests
         var online = new SearchMetaSource(new SearchResults(
             Array.Empty<Track>(), Array.Empty<Album>(), Array.Empty<Artist>(), Array.Empty<Playlist>(),
             ChipOrder: chips, Genres: genres, GenresTotal: 8));
-        var cat = new AggregateCatalog(new SourceRegistry(new ISource[] { new FakeSource(), online }));
+        await using var host = new CatalogQueryTestHost(online);
+        var cat = host.Library;
 
         var r = await cat.SearchAsync("sleep");
 
@@ -33,7 +34,8 @@ public class AggregateCatalogSearchTests
     public async Task GetHomeAsync_ForwardsTheFacetToEverySource_AndStampsItOnTheFeed()
     {
         var online = new SearchMetaSource(SearchResults.Empty);
-        var cat = new AggregateCatalog(new SourceRegistry(new ISource[] { new FakeSource(), online }));
+        await using var host = new CatalogQueryTestHost(online);
+        var cat = host.Library;
 
         var feed = await cat.GetHomeAsync("music-chip");
 
@@ -41,7 +43,7 @@ public class AggregateCatalogSearchTests
         Assert.Equal("music-chip", feed.Facet);
 
         var unfiltered = await cat.GetHomeAsync(null);
-        Assert.Null(online.LastFacet);
+        Assert.Equal("", online.LastFacet);
         Assert.Equal("", unfiltered.Facet);
     }
 
@@ -59,16 +61,16 @@ public class AggregateCatalogSearchTests
 
         public string Id => "search-meta";
         public bool Owns(string uri) => false;
-        public SourceCapabilities Capabilities => SourceCapabilities.Catalog;
+        public SourceCapabilities Capabilities => SourceCapabilities.Catalog | SourceCapabilities.Search | SourceCapabilities.Home;
+        public IAsyncEnumerable<TrackPage> StreamTracksAsync(string uri, CancellationToken ct = default)
+            => _inner.StreamTracksAsync(uri, ct);
 
-        public Task<Playlist?> GetPlaylistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-            => _inner.GetPlaylistAsync(uri, level, ct);
-        public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-            => _inner.GetAlbumAsync(uri, level, ct);
-        public Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-            => _inner.GetArtistAsync(uri, level, ct);
-        public IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, CancellationToken ct = default)
-            => _inner.StreamTracksAsync(contextUri, ct);
+        public Task<Playlist?> GetPlaylistAsync(string uri, CancellationToken ct = default)
+            => _inner.GetPlaylistAsync(uri, ct);
+        public Task<Album?> GetAlbumAsync(string uri, CancellationToken ct = default)
+            => _inner.GetAlbumAsync(uri, ct);
+        public Task<Artist?> GetArtistAsync(string uri, CancellationToken ct = default)
+            => _inner.GetArtistAsync(uri, ct);
         public Task<IReadOnlyList<LibraryItem>> GetLibraryAsync(CancellationToken ct = default)
             => _inner.GetLibraryAsync(ct);
         public Task<IReadOnlyList<PlaylistSummary>> GetPlaylistsAsync(CancellationToken ct = default)
@@ -77,8 +79,8 @@ public class AggregateCatalogSearchTests
             => _inner.GetAlbumsAsync(ct);
         public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default)
             => _inner.GetArtistsAsync(ct);
-        public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-            => _inner.GetLikedSongsAsync(level, ct);
+        public Task<IReadOnlyList<Track>> GetLikedSongsAsync(CancellationToken ct = default)
+            => _inner.GetLikedSongsAsync(ct);
         public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default)
             => Task.FromResult(_payload);
         public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default)

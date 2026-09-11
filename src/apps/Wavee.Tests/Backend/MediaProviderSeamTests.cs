@@ -19,7 +19,7 @@ namespace Wavee.Tests;
 // media source. These tests pin the routing contract (first Owns wins; spotify: covers tracks AND episodes; an unowned
 // uri is a typed Restricted failure, never a silent drop), the capability queries, and the two additive host hooks
 // (controller prepared-next gate, publisher uri mask) whose null state must stay byte-identical to today's behavior.
-public class MediaProviderSeamTests
+public class MediaProviderSeamTests : PlaybackCatalogTestBase
 {
     static Track T(string uri) => new(uri[(uri.LastIndexOf(':') + 1)..], uri, uri,
         Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
@@ -160,7 +160,7 @@ public class MediaProviderSeamTests
     public async Task CanPrepareNext_False_SkipsThePreparedHandoff()
     {
         var host = new PreparedHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:track:a", "spotify:track:b"), "dev");
         var asked = new ConcurrentQueue<string>();
@@ -178,7 +178,7 @@ public class MediaProviderSeamTests
     public async Task CanPrepareNext_Null_LeavesTheHandoffExactlyAsItIsToday()
     {
         var host = new PreparedHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:track:a", "spotify:track:b"), "dev");
 
@@ -192,7 +192,7 @@ public class MediaProviderSeamTests
     public async Task CanPrepareNext_True_PreparesJustLikeTheUnwiredPath()
     {
         var host = new PreparedHost();
-        var projection = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        var projection = Catalog.Projection("dev");
         using var controller = new PlaybackController(host, new StubTrackResolver(), projection,
             new FakeContextResolver("spotify:track:a", "spotify:track:b"), "dev");
         controller.CanPrepareNext = _ => true;
@@ -208,7 +208,7 @@ public class MediaProviderSeamTests
     [Fact]
     public async Task PublishUriMask_Null_PublishesEveryUriVerbatim()
     {
-        var h = new PublisherHarness();
+        var h = new PublisherHarness(Catalog);
         h.Connect("c1");
         h.SetQueue(
             new QueueEntry(QueueItemId.None, "now", T("wavee:local:file:a"), QueueBucket.NowPlaying, QueueProvider.Context, false, "u-now"),
@@ -225,7 +225,7 @@ public class MediaProviderSeamTests
     [Fact]
     public async Task PublishUriMask_Set_RewritesTheUriOnly_AndPreservesTheUid()
     {
-        var h = new PublisherHarness();
+        var h = new PublisherHarness(Catalog);
         h.Publisher.PublishUriMask = t =>
             t.Uri.StartsWith("spotify:", StringComparison.Ordinal) ? t.Uri : "spotify:local:::" + t.Title + ":1";
         h.Connect("c1");
@@ -236,7 +236,7 @@ public class MediaProviderSeamTests
         await Task.Delay(20);
 
         var snap = Assert.IsType<LocalPlaybackSnapshot>(h.LastSnapshot);
-        Assert.Equal("spotify:local:::wavee:local:file:a:1", snap.Track.Uri);
+        Assert.Equal("spotify:local::::1", snap.Track.Uri); // An unknown title stays empty in the canonical projection.
         Assert.Equal("u-now", snap.Track.Uid);              // the wire rows stay addressable
         Assert.Equal("spotify:track:b", snap.NextTracks[0].Uri);   // publishable uris are untouched
         Assert.Equal("u-n0", snap.NextTracks[0].Uid);
@@ -245,7 +245,7 @@ public class MediaProviderSeamTests
     [Fact]
     public async Task PublishUriMask_ThatThrowsOrReturnsEmpty_FallsBackToTheRealUri()
     {
-        var h = new PublisherHarness();
+        var h = new PublisherHarness(Catalog);
         h.Publisher.PublishUriMask = _ => throw new InvalidOperationException("boom");
         h.Connect("c1");
         h.Play("spotify:track:a");
@@ -326,6 +326,10 @@ public class MediaProviderSeamTests
 
     sealed class PreparedHost : IAudioHost, IPreparedAudioHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, _signals.OnNext);
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, _signals.OnNext);
+        public bool PlayIntent => IsPlaying;
+
         readonly SimpleSubject<AudioHostSignal> _signals = new();
         readonly SimpleSubject<AudioTransitionSignal> _transitions = new();
         public ConcurrentQueue<string> Loaded { get; } = new();
@@ -353,7 +357,7 @@ public class MediaProviderSeamTests
             return Task.CompletedTask;
         }
 
-        public Task SupplyNextBodyAsync(string token, AudioStreamHandle body, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<bool> TryPromotePreparedAsync(AudioPromoteRequest request, CancellationToken ct = default) => Task.FromResult(false);
 
         public Task<AudioPrepareCancelResult> CancelPreparedAsync(string token, CancellationToken ct = default)
         {
@@ -366,15 +370,18 @@ public class MediaProviderSeamTests
 
     sealed class PublisherHarness
     {
+        readonly PlaybackCatalogTestHost Catalog;
         public readonly StubTransport Transport = new();
-        public readonly NowPlayingProjection Proj = new("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        public readonly NowPlayingProjection Proj;
         public readonly SimpleSubject<string?> ConnId = new(null);
         public string? CurrentConnId;
         public LocalPlaybackSnapshot? LastSnapshot;
         public readonly DeviceStatePublisher Publisher;
 
-        public PublisherHarness()
+        public PublisherHarness(PlaybackCatalogTestHost catalog)
         {
+            Catalog = catalog;
+            Proj = Catalog.Projection("us", () => 0);
             Publisher = new DeviceStatePublisher(Transport, "us", Proj, ConnId, () => CurrentConnId,
                 (reason, snap, mid, active) =>
                 {
@@ -390,7 +397,7 @@ public class MediaProviderSeamTests
         public void Play(string trackUri)
         {
             var e = new PlaybackEvent(EvKind.Started, T(trackUri), 0);
-            Proj.OnEvent(e);
+            Catalog.Event(Proj, e);
             Publisher.OnEvent(e);
         }
     }

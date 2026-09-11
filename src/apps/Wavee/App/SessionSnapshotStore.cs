@@ -108,10 +108,9 @@ public sealed class SessionSnapshotStore
         Active = this;
     }
 
-    /// <summary>%LOCALAPPDATA%\Wavee\WaveeMusic\session.json — beside history.json and play-log.json.</summary>
-    public static string DefaultPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Wavee", "WaveeMusic", "session.json");
+    /// <summary>%LOCALAPPDATA%\{Wavee|Wavee-fake}\WaveeMusic\session.json — beside history.json and play-log.json.
+    /// The folder name is <see cref="UnpackagedAppDataRoot"/>'s one decision (a --fake run must not share the real profile).</summary>
+    public static string DefaultPath() => UnpackagedAppDataRoot.MusicFile("session.json");
 
     /// <summary>Call once (before <see cref="Load"/>) with the full file path. Injectable so tests point at a temp file.</summary>
     public void Init(string sessionFilePath)

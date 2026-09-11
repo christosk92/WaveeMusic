@@ -29,6 +29,9 @@ internal sealed class LiveRingBuffer : IByteSink, IDisposable
 
     readonly byte[] _buf;
     readonly object _gate = new();
+    readonly AudioDataAvailability _availability = new();
+    public long DataVersion => _availability.Version;
+    public void WaitForData(long version, CancellationToken ct) => _availability.Wait(version, ct);
     int _head;          // read cursor into _buf
     int _count;         // bytes currently held
     long _totalWritten;
@@ -73,6 +76,7 @@ internal sealed class LiveRingBuffer : IByteSink, IDisposable
                 _head = 0;
                 _count = _buf.Length;
                 Monitor.PulseAll(_gate);
+                _availability.Pulse();
                 return;
             }
 
@@ -90,6 +94,7 @@ internal sealed class LiveRingBuffer : IByteSink, IDisposable
             if (first < data.Length) data[first..].CopyTo(_buf.AsSpan(0));
             _count += data.Length;
             Monitor.PulseAll(_gate);
+            _availability.Pulse();
         }
     }
 
@@ -122,6 +127,30 @@ internal sealed class LiveRingBuffer : IByteSink, IDisposable
             _head = (_head + n) % _buf.Length;
             _count -= n;
             return n;
+        }
+    }
+
+    public int TryRead(Span<byte> destination, out bool wouldBlock, int minAvailable = 1)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            wouldBlock = false;
+            if (destination.IsEmpty) return 0;
+            int needed = Math.Clamp(minAvailable, 1, Math.Min(_buf.Length, destination.Length));
+            if (_count < needed && !_completed) { wouldBlock = true; return 0; }
+            if (_count == 0)
+            {
+                if (_error is not null) throw _error;
+                return 0;
+            }
+            int count = Math.Min(destination.Length, _count);
+            int first = Math.Min(count, _buf.Length - _head);
+            _buf.AsSpan(_head, first).CopyTo(destination);
+            if (first < count) _buf.AsSpan(0, count - first).CopyTo(destination[first..]);
+            _head = (_head + count) % _buf.Length;
+            _count -= count;
+            return count;
         }
     }
 
@@ -171,6 +200,7 @@ internal sealed class LiveRingBuffer : IByteSink, IDisposable
             _completed = true;
             _error = error;
             Monitor.PulseAll(_gate);
+            _availability.Pulse();
         }
     }
 
@@ -184,6 +214,7 @@ internal sealed class LiveRingBuffer : IByteSink, IDisposable
             _disposed = true;
             _count = 0;
             Monitor.PulseAll(_gate);
+            _availability.Pulse();
         }
     }
 }

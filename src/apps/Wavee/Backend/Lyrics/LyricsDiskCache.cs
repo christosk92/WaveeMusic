@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Wavee;
 using Wavee.Core;
 
 namespace Wavee.Backend.Lyrics;
@@ -89,10 +90,14 @@ public sealed class LyricsDiskCache
     }
 
     /// <summary>%LOCALAPPDATA%\Wavee\lyrics — beside library.db, logs\ and diag\.</summary>
-    public static string DefaultDirectory() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "lyrics");
+    public static string DefaultDirectory() => UnpackagedAppDataRoot.UnderCurrent("lyrics");
 
     public string Directory => _dir;
+
+    // Readers retain the envelope they opened while a writer atomically installs its replacement. Without Delete
+    // sharing, an ordinary cache lookup can reject that rename on Windows and permanently lose a richer upgrade.
+    internal FileStream OpenRead(string trackId) => new(PathFor(trackId), FileMode.Open, FileAccess.Read,
+        FileShare.Read | FileShare.Delete, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
 
     // ── read ──────────────────────────────────────────────────────────────────────────────────────────────────────
     /// <summary>Look one track up. Async file I/O; NEVER throws for a bad file (a corrupt/stale/foreign entry is a miss
@@ -103,18 +108,17 @@ public sealed class LyricsDiskCache
         ArmSweep();
 
         string path = PathFor(trackId);
-        byte[] bytes;
+        LyricsCacheEnvelope? env = null;
         try
         {
             if (!File.Exists(path)) return LyricsCacheEntry.Missing;
-            bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+            await using var stream = OpenRead(trackId);
+            env = await JsonSerializer.DeserializeAsync(stream, LyricsCacheJson.Default.LyricsCacheEnvelope, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (JsonException) { /* unparseable -> discarded below */ }
+        catch (NotSupportedException) { /* unsupported envelope -> discarded below */ }
         catch { return LyricsCacheEntry.Missing; }   // locked / racing delete / unreadable — a miss, never a throw
-
-        LyricsCacheEnvelope? env = null;
-        try { env = JsonSerializer.Deserialize(bytes, LyricsCacheJson.Default.LyricsCacheEnvelope); }
-        catch { /* unparseable → discarded below */ }
 
         if (env is null) { Discard(path, trackId, "unparseable"); return LyricsCacheEntry.Missing; }
         if (env.V != SchemaVersion) { Discard(path, trackId, "schema v" + env.V); return LyricsCacheEntry.Missing; }
@@ -164,7 +168,18 @@ public sealed class LyricsDiskCache
             var env = new LyricsCacheEnvelope(SchemaVersion, _nowUnixMs(), trackId, document);
             var bytes = JsonSerializer.SerializeToUtf8Bytes(env, LyricsCacheJson.Default.LyricsCacheEnvelope);
             await File.WriteAllBytesAsync(tmp, bytes, ct).ConfigureAwait(false);
-            File.Move(tmp, path, overwrite: true);   // write-then-rename: a crash can't leave a torn document
+            // Write-then-rename: a crash can't leave a torn document. Windows refuses MoveFileEx(REPLACE_EXISTING)
+            // while a reader holds the target open, even one opened with FileShare.Delete (ERROR_ACCESS_DENIED,
+            // measured 2026-09-09), and that silently lost every Line -> Syllable upgrade a lookup was reading. A
+            // delete (POSIX semantics: the name goes away at once, the open handle keeps its complete old bytes)
+            // followed by a plain rename installs the replacement. A concurrent writer that re-created the name in
+            // between gets one more delete + rename; a second collision falls through to the best-effort catch.
+            for (int attempt = 0; ; attempt++)
+            {
+                if (File.Exists(path)) File.Delete(path);
+                try { File.Move(tmp, path); break; }
+                catch (IOException) when (attempt == 0 && File.Exists(path)) { }
+            }
         }
         catch (Exception e)
         {
@@ -288,7 +303,7 @@ internal sealed record LyricsCacheEnvelope(
     [property: JsonPropertyName("id")] string? Id,
     [property: JsonPropertyName("doc")] LyricsDocument? Doc);
 
-// AOT-safe source-generated JSON (the HistoryJsonCtx / PlayLogJsonCtx / EntityJson precedent) — no reflection-based
+// AOT-safe source-generated JSON (the HistoryJsonCtx / PlayLogJsonCtx precedent) — no reflection-based
 // serialization anywhere in this app.
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]

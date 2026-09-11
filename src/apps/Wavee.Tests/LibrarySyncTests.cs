@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Google.Protobuf;
 using Wavee.Backend;
 using Wavee.Backend.Collections;
-using Wavee.Backend.Hydration;
 using Wavee.Backend.Playlists;
 using Wavee.Backend.Spotify;
 using Wavee.Backend.Sync;
@@ -22,26 +21,23 @@ namespace Wavee.Tests;
 sealed class SyncHarness : IAsyncDisposable
 {
     public readonly InMemoryStore Store = new();
-    public readonly StubTransport Dealer = new();          // dealer MESSAGE pushes + the mutation transport
+    public readonly StubTransport Dealer = new();
     public readonly MutationEngine Mut;
-    public readonly CollectionEchoRing Echo = new();       // §7.1 — shared between the write strategy and the sync loop
-    public readonly Dictionary<string, string?> Revs = new();
-    public readonly List<string> Hydrated = new();
+    public readonly CollectionEchoRing Echo;
+    public readonly ReplicaTestHost Host;
+    public readonly ITransport Transport;
+    public Dictionary<string, string?> Revs => CollectionSets.WireSets.Select(w => (Wire: w,
+        Token: Host.Replicas.ReadConfirmedCollection(CollectionSets.LogicalSetsForWireSet(w)[0]).WireRevision))
+        .Where(x => x.Token is not null).ToDictionary(x => x.Wire, x => x.Token);
     public int PlaylistGets, RootlistGets, CollectionPosts;
     public readonly LibrarySync Sync;
     public readonly PlaylistResyncQueue Resync = new();
-    /// <summary>Every route the loop asked the TRANSPORT for (the outbox drain + the on-open permission seed), in order.</summary>
     public readonly List<string> TransportRoutes = new();
-    readonly CancellationTokenSource _cts = new();
-
     public static HttpResp Ok(byte[] body) => new(200, new Dictionary<string, string>(), body);
-
-    /// <param name="transportRespond">Answers the loop's TRANSPORT requests (permission seed / drain). Null = the plain
-    /// StubTransport answer (200, empty body), which is what every non-permission test wants.</param>
-    public SyncHarness(Func<HttpReq, HttpResp> responder, Func<string, string, bool>? hasPending = null,
-        Action<InMemoryStore, IReadOnlyList<string>>? onHydrate = null,
-        Func<string, Resp>? transportRespond = null)
+    public SyncHarness(Func<HttpReq, HttpResp> responder, Func<string, Resp>? transportRespond = null)
     {
+        Host = new ReplicaTestHost(store: Store);
+        Mut = Host.Mutations; Echo = Host.Echo;
         var http = new FakeExchange((req, _) =>
         {
             if (req.Url.Contains("/rootlist")) RootlistGets++;
@@ -49,22 +45,10 @@ sealed class SyncHarness : IAsyncDisposable
             else if (req.Url.Contains("/collection/v2/")) CollectionPosts++;
             return responder(req);
         });
-        Task Hydrate(IReadOnlyList<string> uris, CancellationToken c)
-        {
-            lock (Hydrated) Hydrated.AddRange(uris);
-            onHydrate?.Invoke(Store, uris);
-            return Task.CompletedTask;
-        }
-        var pf = new PlaylistFetcher(http, () => "https://x", Store, Hydrate, () => "");
-        var cf = new CollectionFetcher(http, () => "https://x", () => "bob", Store,
-            s => Revs.TryGetValue(s, out var r) ? r : null, (s, r) => Revs[s] = r, Hydrate, hasPending);
-        Mut = new MutationEngine(Store, new IMutationStrategy[] { new SetReplayStrategy(Echo), new OpRebaseStrategy(Store, () => "https://spclient.wg.spotify.com", Resync), new RootlistFollowStrategy(Store, new RootlistLane()) });
-        var transport = new HarnessTransport(Dealer, TransportRoutes, transportRespond);
-        Sync = new LibrarySync(Store, pf, cf, Mut, Resync, transport,
-            () => new SessionContext("bob", "US", "premium", "en", Tier.Premium, false), () => "bob", default, _cts.Token, Echo);
+        Transport = new HarnessTransport(Dealer, TransportRoutes, transportRespond);
+        Sync = Host.AttachSync(http, Transport, resync: Resync);
     }
-
-    public async ValueTask DisposeAsync() { await Sync.DisposeAsync(); _cts.Cancel(); _cts.Dispose(); }
+    public ValueTask DisposeAsync() => Host.DisposeAsync();
 }
 
 // The mutation transport the loop drains + seeds permissions over. Dealer pushes still ride the real StubTransport (the
@@ -155,6 +139,12 @@ public class LibrarySyncTests
                 case "artist": p.Items.Add(new Col.CollectionItem { Uri = "spotify:artist:ar1", AddedAt = 1 }); break;
                 case "show": p.Items.Add(new Col.CollectionItem { Uri = "spotify:show:s1", AddedAt = 1 }); break;
                 case "listenlater": p.Items.Add(new Col.CollectionItem { Uri = "spotify:episode:e1", AddedAt = 1 }); break;
+                // A pin set mixes kinds AND carries stray uris this client cannot pin (a track) — CollectionSets.AcceptsUri
+                // is what keeps the track out of the "pins" logical set.
+                case "ylpin":
+                    p.Items.Add(new Col.CollectionItem { Uri = "spotify:playlist:pin1", AddedAt = 1 });
+                    p.Items.Add(new Col.CollectionItem { Uri = "spotify:track:notapin", AddedAt = 2 });
+                    break;
             }
             return Ok(p.ToByteArray());
         }
@@ -194,6 +184,103 @@ public class LibrarySyncTests
         return slc.ToByteArray();
     }
 
+    // ── Finding #3 (library-v3-1-findings-2026-09-06.md Part 2 2.1 #3) ──────────────────────────────────────────────
+    // One unreachable playlist must not abort the whole outbox drain.
+
+    [Fact]
+    public async Task DrainWrites_OnePlaylist404sDuringRecovery_OtherStillReachesTheWire_FirstNeedsAttention()
+    {
+        const string p1 = "spotify:playlist:p1", p2 = "spotify:playlist:p2";
+        await using var h = new SyncHarness(req =>
+            req.Url.Contains("/playlist/p1") ? new HttpResp(404, new Dictionary<string, string>(), Array.Empty<byte>()) : Ok(Array.Empty<byte>()));
+
+        // p2 is seeded as an ALREADY-VERIFIED, resident baseline (the same shape OpenPlaylist_WhileADrainIsInFlight_
+        // ServesTheCachedSnapshotImmediately uses) — its intent is replayable from the start, with no fetch of its
+        // own needed. That isolates finding #3's actual claim (p1's failed recovery must not stop the drain from
+        // reaching an intent that was ALREADY ready to send) from the separate question of whether a fetch-driven
+        // recovery within the SAME drain pass can itself be replayed immediately after landing.
+        await h.Host.SeedHeaderAsync(new Playlist("p2", p2, "Mine", null, "bob", null, 0));
+        await h.Host.SeedPlaylistAsync(p2, new[] { M("a01", "spotify:track:a") }, Rev24(1));
+
+        // Add(AddLast) never goes "out of range" — safe to stage against a playlist with no known baseline yet,
+        // unlike a positional Remove (which the projection would tear/reject immediately against empty rows). Item ids
+        // are 16 hex chars: PlaylistWireMapper hex-decodes them, and a non-hex id fails BEFORE the transport call.
+        await h.Mut.EditAsync(p1, new[] { new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: new[] { M("00000000000000a1", "spotify:track:t1") }) });
+        await h.Mut.EditAsync(p2, new[] { new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: new[] { M("00000000000000a2", "spotify:track:t2") }) });
+
+        await h.Sync.DrainWritesAsync(TestContext.Current.CancellationToken);
+
+        // p1's 404 is definitive: baseline missing, its intent NeedsAttention — but that does not abort the drain.
+        var p1Intent = Assert.Single(h.Host.Replicas.Intents, x => x.EntityKey == p1);
+        Assert.Equal(ReplicaIntentState.NeedsAttention, p1Intent.State);
+        Assert.Equal(ReplicaBaselineState.Missing, h.Host.Replicas.ReadConfirmedPlaylist(p1).State);
+
+        // p2's already-replayable intent still reached the mutation transport — the drain kept going past p1's failure.
+        Assert.Contains(h.TransportRoutes, r => r.Contains("playlist/p2"));
+    }
+
+    // An op that cannot be encoded for the wire (a non-hex item id here) never reaches the transport. That is a
+    // deterministic failure, not a network fault: the intent is rejected with its reason and nothing is retried —
+    // the drain used to swallow the exception as a silent Retry and burn ten attempts on it.
+    [Fact]
+    public async Task DrainWrites_AnUnencodableOp_IsRejectedWithItsReason_AndNeverReachesTheWire()
+    {
+        const string p = "spotify:playlist:p1";
+        await using var h = new SyncHarness(req => Ok(FullSlcWithAttrs(Rev24(1), ("spotify:track:a", "bob", 1))));
+        await h.Host.SeedHeaderAsync(new Playlist("p1", p, "Mine", null, "bob", null, 0));
+        await h.Host.SeedPlaylistAsync(p, new[] { M("aaaaaaaaaaaaaa01", "spotify:track:a") }, Rev24(1));
+        await h.Mut.EditAsync(p, new[] { new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: new[] { M("not-hex", "spotify:track:t") }) });
+
+        await h.Sync.DrainWritesAsync(TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(h.TransportRoutes, r => r.Contains("/changes"));
+        Assert.DoesNotContain(h.Host.Replicas.Intents, x => x.EntityKey == p && x.State == ReplicaIntentState.Pending);
+    }
+
+    [Fact]
+    public async Task DrainWrites_BaselineRecovery5xx_BothStayPendingAndRedrainIsScheduled()
+    {
+        const string p1 = "spotify:playlist:p1", p2 = "spotify:playlist:p2";
+        await using var h = new SyncHarness(req =>
+            req.Url.Contains("/playlist/v2/") ? new HttpResp(503, new Dictionary<string, string>(), Array.Empty<byte>()) : Ok(Array.Empty<byte>()));
+
+        await h.Mut.EditAsync(p1, new[] { new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: new[] { M("00000000000000a1", "spotify:track:t1") }) });
+        await h.Mut.EditAsync(p2, new[] { new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: new[] { M("00000000000000a2", "spotify:track:t2") }) });
+
+        await h.Sync.DrainWritesAsync(TestContext.Current.CancellationToken);
+
+        // An ambiguous (5xx) baseline-recovery failure leaves BOTH intents Pending, never NeedsAttention.
+        Assert.Equal(2, h.Host.Replicas.Intents.Length);
+        Assert.All(h.Host.Replicas.Intents, x => Assert.Equal(ReplicaIntentState.Pending, x.State));
+
+        int getsAfterFirstDrain = h.PlaylistGets;
+        await PollAsync(h.Sync, () => h.PlaylistGets > getsAfterFirstDrain, TestContext.Current.CancellationToken, timeoutMs: 3000);
+        Assert.True(h.PlaylistGets > getsAfterFirstDrain);   // the drain re-armed itself in a `finally` and retried on its own
+    }
+
+    // ── Finding #2(b) (library-v3-1-findings-2026-09-06.md Part 2 2.1 #2) ───────────────────────────────────────────
+    // A verification fetch that itself fails offline must not count as an attempt toward NeedsAttention.
+
+    [Fact]
+    public async Task VerifyIntent_OfflineFetchFails_NeverCountsTowardNeedsAttention()
+    {
+        const string uri = "spotify:playlist:p";
+        await using var h = new SyncHarness(req =>
+            req.Url.Contains("/playlist/v2/") ? new HttpResp(503, new Dictionary<string, string>(), Array.Empty<byte>()) : Ok(Array.Empty<byte>()));
+
+        var intent = await h.Host.Replicas.StageAsync("oprebase", uri, uri, false, [],
+            initialState: ReplicaIntentState.AwaitingVerification);
+
+        for (int i = 0; i < 3; i++)
+        {
+            h.Sync.Enqueue(new SyncCommand(SyncKind.VerifyIntent, IntentId: intent.Id));
+            await h.Sync.WaitForIdleAsync();
+            var current = Assert.Single(h.Host.Replicas.Intents, x => x.Id == intent.Id);
+            Assert.Equal(ReplicaIntentState.AwaitingVerification, current.State);   // deferred, never NeedsAttention
+            Assert.Equal(0, current.Attempts);                                     // the offline fetch never burned an attempt
+        }
+    }
+
     // -- the open page must NEVER queue behind a write --------------------------------------------------------------
     // The sync loop is a SINGLE-READER FIFO, so a DrainWrites command parked on a slow POST holds every later command
     // behind it - OpenPlaylist included. That is exactly why a playlist which already has a membership baseline must
@@ -206,41 +293,42 @@ public class LibrarySyncTests
     {
         const string uri = "spotify:playlist:p1";
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var h = new SyncHarness(HydrateResponder,
+        await using var h = new SyncHarness(req => req.Url.Contains("/playlist/v2/")
+                ? Ok(FullSlcNoAttrs(Rev24(2), "spotify:track:a", "spotify:track:b")) : HydrateResponder(req),
             // The mutation transport parks: the drain command owns the loop until the test lets go.
             transportRespond: _ => { release.Task.GetAwaiter().GetResult(); return new Resp(true, Array.Empty<byte>(), 200); });
-
-        // A resident baseline plus a LOCAL edit whose optimistic effect is already in the store.
-        h.Store.UpsertPlaylist(new Playlist("p1", uri, "Mine", null, "bob", null, 0));
-        h.Store.SetMembership(uri, new[] { M("aaaaaaaaaaaaaa01", "spotify:track:a") }, Rev24(1));
-        h.Mut.Edit(uri, new[]
+        try
         {
-            new PlaylistOp(PlaylistOpKind.Add, FromIndex: 1,
-                Items: new[] { new PlaylistMember("aaaaaaaaaaaaaa02", "spotify:track:b", "bob", 7) }),
-        }, Rev24(1));
+            // A resident baseline plus a LOCAL edit whose optimistic effect is already in the store.
+            await h.Host.SeedHeaderAsync(new Playlist("p1", uri, "Mine", null, "bob", null, 0));
+            await h.Host.SeedPlaylistAsync(uri, new[] { M("aaaaaaaaaaaaaa01", "spotify:track:a") }, Rev24(1));
+            await h.Mut.EditAsync(uri, new[]
+            {
+                new PlaylistOp(PlaylistOpKind.Add, FromIndex: 1,
+                    Items: new[] { new PlaylistMember("aaaaaaaaaaaaaa02", "spotify:track:b", "bob", 7) }),
+            }, Rev24(1));
 
-        // The optimistic row is resident BEFORE anything touches the wire - this is what the page has to be able to read.
-        Assert.Equal(new[] { "aaaaaaaaaaaaaa01", "aaaaaaaaaaaaaa02" }, h.Store.Membership(uri).Select(m => m.ItemId).ToArray());
+            // The optimistic row is resident BEFORE anything touches the wire - this is what the page has to be able to read.
+            Assert.Equal(new[] { "aaaaaaaaaaaaaa01", "aaaaaaaaaaaaaa02" }, h.Store.Membership(uri).Select(m => m.ItemId).ToArray());
 
-        var drain = h.Sync.DrainWritesAsync(TestContext.Current.CancellationToken);
-        await Task.Delay(80, TestContext.Current.CancellationToken);
-        Assert.False(drain.IsCompleted);                       // the loop really is parked on the write
+            var drain = h.Sync.DrainWritesAsync(TestContext.Current.CancellationToken);
+            await Task.Delay(80, TestContext.Current.CancellationToken);
+            Assert.False(drain.IsCompleted);                       // the loop really is parked on the write
 
-        // (a) The cached snapshot serves NOW: the read model is complete and unaffected by the parked write.
-        Assert.Equal(new[] { "aaaaaaaaaaaaaa01", "aaaaaaaaaaaaaa02" }, h.Store.Membership(uri).Select(m => m.ItemId).ToArray());
-        // (b) ...and the on-open plan for a baselined playlist never blocks on that loop.
-        var plan = OpenPolicy.For(EntityKind.Playlist, hasBaseline: true);
-        Assert.Equal(HydrationLevel.None, plan.Blocking);
-        Assert.Equal(HydrationLevel.Open, plan.Background);
-        Assert.True(plan.Revalidate);
-        // (c) The distinction matters: the BLOCKING open really does queue behind the drain.
-        var queued = h.Sync.OpenPlaylistAsync(uri, TestContext.Current.CancellationToken);
-        await Task.Delay(80, TestContext.Current.CancellationToken);
-        Assert.False(queued.IsCompleted);
+            // (a) The cached snapshot serves NOW: the read model is complete and unaffected by the parked write.
+            Assert.Equal(new[] { "aaaaaaaaaaaaaa01", "aaaaaaaaaaaaaa02" }, h.Store.Membership(uri).Select(m => m.ItemId).ToArray());
+            // (b) ...and the on-open plan for a baselined playlist never blocks on that loop.
+            Assert.Equal(2, h.Host.Replicas.ReadPlaylist(uri).Members.Length);
+            // (c) The distinction matters: the BLOCKING open really does queue behind the drain.
+            var queued = h.Sync.OpenPlaylistAsync(uri, TestContext.Current.CancellationToken);
+            await Task.Delay(80, TestContext.Current.CancellationToken);
+            Assert.False(queued.IsCompleted);
 
-        release.SetResult();
-        await drain;
-        await queued;
+            release.SetResult();
+            await drain;
+            await queued;
+        }
+        finally { release.TrySetResult(); }
     }
 
     // ── the attribute-aware heal gate (Date-added / Added-by regression) ──────────────────────────────────────────────
@@ -248,7 +336,7 @@ public class LibrarySyncTests
     // playlist) must open through the FULL attribute-bearing fetch, not the /diff revalidate — /diff never re-reads
     // attributes for existing rows, so the poisoned cache would otherwise serve blank added_at/added_by forever.
     [Fact]
-    public async Task OpenPlaylist_AttributeLessMembership_HealsViaFullFetch_NotDiff()
+    public async Task OpenPlaylist_InvalidRevision_ReplacesUnverifiedRowsWithFullSnapshot()
     {
         const string uri = "spotify:playlist:poisoned";
         int diffs = 0, fulls = 0;
@@ -256,11 +344,11 @@ public class LibrarySyncTests
         {
             if (req.Url.Contains("/diff?")) { Interlocked.Increment(ref diffs); return Ok(new Pl.SelectedListContent { UpToDate = true }.ToByteArray()); }
             Interlocked.Increment(ref fulls);
-            return Ok(FullSlcWithAttrs(new byte[] { 2 },
+            return Ok(FullSlcWithAttrs(Rev24(2),
                 ("spotify:track:t1", "alice", 1_700_000_000_000L), ("spotify:track:t2", "bob", 1_700_000_100_000L)));
         });
         // resident membership recorded WITHOUT item attributes (the poisoned cache) + a revision (so /diff would be taken).
-        h.Store.SetMembership(uri, new[] { M("i1", "spotify:track:t1"), M("i2", "spotify:track:t2") }, new byte[] { 1 });
+        await h.Host.SeedPlaylistAsync(uri, new[] { M("i1", "spotify:track:t1"), M("i2", "spotify:track:t2") }, new byte[] { 1 });
 
         await h.Sync.OpenPlaylistAsync(uri, CancellationToken.None);
 
@@ -277,7 +365,7 @@ public class LibrarySyncTests
     // The loop guard: a playlist whose server data GENUINELY has no attributes stays attribute-less after the heal fetch,
     // so it must force the full GET only ONCE per session — never storm one on every open.
     [Fact]
-    public async Task OpenPlaylist_GenuinelyAttributeLess_ForcesFullFetchOnce_ThenDoesNotLoop()
+    public async Task OpenPlaylist_InvalidRevision_RefetchesOnce_ThenHonorsFreshnessWithNoAttributes()
     {
         const string uri = "spotify:playlist:noattrs";
         int fulls = 0;
@@ -285,9 +373,9 @@ public class LibrarySyncTests
         {
             if (req.Url.Contains("/diff?")) return Ok(new Pl.SelectedListContent { UpToDate = true }.ToByteArray());
             Interlocked.Increment(ref fulls);
-            return Ok(FullSlcNoAttrs(new byte[] { 2 }, "spotify:track:t1"));   // server returns no item attributes
+            return Ok(FullSlcNoAttrs(Rev24(2), "spotify:track:t1"));
         });
-        h.Store.SetMembership(uri, new[] { M("i1", "spotify:track:t1") }, new byte[] { 1 });
+        await h.Host.SeedPlaylistAsync(uri, new[] { M("i1", "spotify:track:t1") }, new byte[] { 1 });
 
         await h.Sync.OpenPlaylistAsync(uri, CancellationToken.None);
         Assert.Equal(1, fulls);                                   // forced once
@@ -319,18 +407,22 @@ public class LibrarySyncTests
         Assert.Equal("tok-artist", h.Revs["artist"]);
         Assert.Equal("tok-show", h.Revs["show"]);
         Assert.Equal("tok-listenlater", h.Revs["listenlater"]);
+        Assert.Equal("tok-ylpin", h.Revs["ylpin"]);
         Assert.False(h.Revs.ContainsKey("liked"));
         // the "playlists" saved-set fold
         Assert.True(h.Store.IsSaved("playlists", "spotify:playlist:p1"));
         Assert.True(h.Store.IsSaved("playlists", "spotify:playlist:p2"));
-        // one Bulk-coalesced signal per burst — no per-uri change leaked (rootlist+fold = 1, then 4 wire sets = 4).
+        // the pins set: the playlist landed, the stray track did not (CollectionSets.AcceptsUri)
+        Assert.True(h.Store.IsSaved("pins", "spotify:playlist:pin1"));
+        Assert.False(h.Store.IsSaved("pins", "spotify:track:notapin"));
+        // one Bulk-coalesced signal per burst — no per-uri change leaked (rootlist+fold = 1, then 5 wire sets = 5).
         List<StoreChange> snap; lock (col.All) snap = new List<StoreChange>(col.All);
         Assert.All(snap, c => Assert.True(c.IsBulk));
-        Assert.Equal(5, snap.Count);
+        Assert.Equal(6, snap.Count);
     }
 
     [Fact]
-    public async Task InitialHydrate_WalksFourWireSets_NotFiveLogicalSets()
+    public async Task InitialHydrate_WalksFiveWireSets_NotSixLogicalSets()
     {
         // liked + albums ride the same "collection" snapshot: walking it twice was how each logical set's sweep could
         // run over a truncated copy of the other's. One walk per wire set, one token per wire set.
@@ -339,9 +431,9 @@ public class LibrarySyncTests
         h.Sync.Enqueue(new SyncCommand(SyncKind.InitialHydrate, Done: done));
         await done.Task;
 
-        Assert.Equal(4, h.CollectionPosts);
-        Assert.Equal(4, h.Sync.SetFetches);
-        Assert.Equal(new[] { "collection", "artist", "show", "listenlater" }, h.Revs.Keys.OrderBy(k => Array.IndexOf(CollectionSets.WireSets, k)).ToArray());
+        Assert.Equal(5, h.CollectionPosts);
+        Assert.Equal(5, h.Sync.SetFetches);
+        Assert.Equal(new[] { "collection", "artist", "show", "listenlater", "ylpin" }, h.Revs.Keys.OrderBy(k => Array.IndexOf(CollectionSets.WireSets, k)).ToArray());
         Assert.True(h.Store.IsSaved("liked", "spotify:track:t1"));
         Assert.True(h.Store.IsSaved("albums", "spotify:album:a1"));
         Assert.Equal(0, h.Sync.ReconcilePasses);   // boot arms the periodic pass; it does not run one
@@ -374,9 +466,9 @@ public class LibrarySyncTests
     {
         await using var h = new SyncHarness(HydrateResponder);
         var uri = "spotify:playlist:pr";
-        var rev0 = new byte[] { 1 };
-        var rev1 = new byte[] { 2 };
-        h.Store.SetMembership(uri, new[] { new Wavee.Backend.Playlists.PlaylistMember("id1", "spotify:track:a", null, 0) }, rev0);
+        var rev0 = Rev24(1);
+        var rev1 = Rev24(2);
+        await h.Host.SeedPlaylistAsync(uri, new[] { new Wavee.Backend.Playlists.PlaylistMember("id1", "spotify:track:a", null, 0) }, rev0);
         var ops = new[]
         {
             new Wavee.Backend.Playlists.PlaylistOp(Wavee.Backend.Playlists.PlaylistOpKind.Add, AddLast: true,
@@ -425,47 +517,34 @@ public class LibrarySyncTests
     // which pins the invariant the hook's removal depends on - the ladder asks, LibrarySync writes.
 
     [Fact]
-    public async Task PlaylistPush_AddHydratesThenEmitsPlaylistBump()
+    public async Task PlaylistPush_PublishesMembershipWithoutMetadataRepair()
     {
-        var uri = "spotify:playlist:p";
-        var added = "spotify:track:new";
-        var rev0 = new byte[] { 1 };
-        var rev1 = new byte[] { 2 };
-        await using var h = new SyncHarness(HydrateResponder, onHydrate: (store, uris) =>
-        {
-            foreach (var u in uris) store.UpsertTrack(Trk(u, "Hydrated " + u));
-        });
-        h.Store.SetMembership(uri, new[] { M("old", "spotify:track:old") }, rev0);
-
-        var playlistSignals = new List<bool>();
-        using var sub = h.Store.Changes.Subscribe(new ChangeObserver(c =>
-        {
-            if (c.Uri == uri) lock (playlistSignals) playlistSignals.Add(h.Store.GetTrack(added) is not null);
-        }));
-
-        var op = new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: new[] { M("new", added) });
+        const string uri = "spotify:playlist:p";
+        await using var h = new SyncHarness(HydrateResponder);
+        await h.Host.SeedPlaylistAsync(uri, [M("old", "spotify:track:old")], Rev24(1));
+        var changes = new List<ReplicaChange>();
+        using var subscription = h.Host.Replicas.Changes.Subscribe(Observers.From<ReplicaChange>(changes.Add));
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, ParentRev: rev0, NewRev: rev1, Ops: new[] { op }, Done: done));
+        h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, ParentRev: Rev24(1), NewRev: Rev24(2),
+            Ops: [new PlaylistOp(PlaylistOpKind.Add, AddLast: true, Items: [M("new", "spotify:track:new")])], Done: done));
         await done.Task;
-
-        List<bool> snap; lock (playlistSignals) snap = new List<bool>(playlistSignals);
-        Assert.True(snap.Count >= 2);
-        Assert.False(snap[0]);                       // membership write before metadata hydration
-        Assert.Contains(true, snap);                  // post-hydration playlist bump wakes the joined detail read-model
-        Assert.NotNull(h.Store.GetTrack(added));
+        Assert.Equal(2, h.Host.Replicas.ReadPlaylist(uri).Members.Length);
+        Assert.Single(changes);
+        Assert.Null(h.Host.ReadTrack("spotify:track:new"));
+        Assert.Equal(0, h.PlaylistGets);
     }
 
     [Fact]
     public async Task PlaylistPush_UpdateListAttributes_RefetchesHeader()
     {
         var uri = "spotify:playlist:p";
-        var rev0 = new byte[] { 1 };
-        var rev1 = new byte[] { 2 };
+        var rev0 = Rev24(1);
+        var rev1 = Rev24(2);
         var header = new Pl.SelectedListContent { Length = 7, OwnerUsername = "bob" };
         header.Attributes = new Pl.ListAttributes { Name = "Renamed", Description = "fresh" };
         await using var h = new SyncHarness(req => req.Url.Contains("/playlist/v2/") ? Ok(header.ToByteArray()) : Ok(Array.Empty<byte>()));
-        h.Store.UpsertPlaylist(new Playlist("p", uri, "Old", null, "bob", null, 1));
-        h.Store.SetMembership(uri, new[] { M("old", "spotify:track:old") }, rev0);
+        await h.Host.SeedHeaderAsync(new Playlist("p", uri, "Old", null, "bob", null, 1));
+        await h.Host.SeedPlaylistAsync(uri, new[] { M("old", "spotify:track:old") }, rev0);
 
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, ParentRev: rev0, NewRev: rev1,
@@ -473,81 +552,64 @@ public class LibrarySyncTests
         await done.Task;
 
         Assert.Equal(1, h.PlaylistGets);
-        var playlist = h.Store.GetPlaylist(uri);
+        var playlist = h.Host.ReadHeader(uri);
         Assert.NotNull(playlist);
         Assert.Equal("Renamed", playlist.Name);
         Assert.Equal("fresh", playlist.Description);
-        Assert.Equal(7, playlist.TrackCount);
+        Assert.Equal(7, ((Wavee.Core.Catalog.PlaylistHeaderValue)h.Host.Catalog.Peek(
+            new(h.Host.Catalog.Scope, uri, Wavee.Core.Catalog.FacetKind.PlaylistHeader)).Value!).TrackCount);
     }
 
     [Fact]
-    public async Task MarkAndSweep_FullPaging_RemovesAbsent_KeepsShielded()
+    public async Task MarkAndSweep_FullPaging_RemovesConfirmedAbsent_AndPreservesPendingProjection()
     {
-        var store = new InMemoryStore();
-        store.SetSaved("albums", "spotify:album:gone", true, SyncState.Confirmed);          // absent from the snapshot → swept
-        store.SetSaved("albums", "spotify:album:pending", true, SyncState.Pending);         // absent + shielded → survives
-
+        await using var host = new ReplicaTestHost();
+        await host.SeedCollectionAsync("collection", [new("spotify:album:gone", false, 1)]);
+        await host.Mutations.SaveAsync("albums", "spotify:album:pending", true);
         var page = new Col.PageResponse { SyncToken = "t2", NextPageToken = "" };
         page.Items.Add(new Col.CollectionItem { Uri = "spotify:album:a", AddedAt = 1 });
-        var revs = new Dictionary<string, string?>();
-        var http = new FakeExchange((req, _) => Ok(page.ToByteArray()));
-        var fetcher = new CollectionFetcher(http, () => "https://x", () => "bob", store,
-            s => revs.TryGetValue(s, out var r) ? r : null, (s, r) => revs[s] = r, (u, c) => Task.CompletedTask,
-            (s, u) => u == "spotify:album:pending");
-
-        await fetcher.FetchWireSetAsync("collection", TestContext.Current.CancellationToken);
-
-        Assert.True(store.IsSaved("albums", "spotify:album:a"));            // snapshot member
-        Assert.False(store.IsSaved("albums", "spotify:album:gone"));        // swept
-        Assert.True(store.IsSaved("albums", "spotify:album:pending"));      // shielded survives
-        Assert.Equal("t2", revs["collection"]);                            // the WIRE set's token
+        var http = new FakeExchange((_, _) => Ok(page.ToByteArray()));
+        var fetcher = new CollectionFetcher(http, () => "https://x", () => "bob");
+        await host.Replicas.AdoptCollectionAsync(await fetcher.FetchWireSetAsync("collection", null));
+        Assert.Equal(new[] { "spotify:album:a", "spotify:album:pending" }, host.Replicas.ReadCollection("albums").Items.Select(x => x.Uri).OrderBy(x => x));
+        Assert.Equal("t2", host.Replicas.ReadConfirmedCollection("albums").WireRevision);
     }
 
     [Fact]
     public async Task MarkAndSweep_MidPagingThrow_LeavesPartial_NoSweep_TokenNotAdvanced()
     {
-        var store = new InMemoryStore();
-        store.SetSaved("albums", "spotify:album:gone", true, SyncState.Confirmed);
-
-        var page1 = new Col.PageResponse { SyncToken = "t1", NextPageToken = "p2" };         // a second page follows
-        page1.Items.Add(new Col.CollectionItem { Uri = "spotify:album:a", AddedAt = 1 });
-        var revs = new Dictionary<string, string?>();
-        var http = new FakeExchange((req, n) => n == 1 ? Ok(page1.ToByteArray()) : new HttpResp(500, new Dictionary<string, string>(), Array.Empty<byte>()));
-        var fetcher = new CollectionFetcher(http, () => "https://x", () => "bob", store,
-            s => revs.TryGetValue(s, out var r) ? r : null, (s, r) => revs[s] = r, (u, c) => Task.CompletedTask);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fetcher.FetchWireSetAsync("collection", TestContext.Current.CancellationToken));
-
-        Assert.True(store.IsSaved("albums", "spotify:album:a"));            // partial page applied
-        Assert.True(store.IsSaved("albums", "spotify:album:gone"));         // NOT swept (partial loop)
-        Assert.False(revs.ContainsKey("collection"));                      // token NOT advanced → next attempt re-pages fully
+        await using var host = new ReplicaTestHost();
+        await host.SeedCollectionAsync("collection", [new("spotify:album:gone", false, 1)], "prior");
+        var page = new Col.PageResponse { SyncToken = "t1", NextPageToken = "p2" };
+        page.Items.Add(new Col.CollectionItem { Uri = "spotify:album:a", AddedAt = 1 });
+        int calls = 0;
+        var http = new FakeExchange((_, _) => ++calls == 1 ? Ok(page.ToByteArray()) : new HttpResp(500, new Dictionary<string, string>(), []));
+        var read = await new CollectionFetcher(http, () => "https://x", () => "bob").FetchWireSetAsync("collection", null);
+        Assert.False(read.Verified);
+        await host.Replicas.AdoptCollectionAsync(read);
+        Assert.Equal(2, host.Replicas.ReadCollection("albums").Items.Length);
+        Assert.Equal("prior", host.Replicas.ReadConfirmedCollection("albums").WireRevision);
     }
 
+    // Finding #2 (library-v3-1-findings-2026-09-06.md Part 2 2.1 #2): this used to pin the OLD BUG — a "set" (like)
+    // write that got an ambiguous 500 reply flipped to AwaitingVerification, which is exactly the state 3 failed
+    // OFFLINE verification fetches turn into permanent NeedsAttention. A "set" write is idempotent, so the correct
+    // contract is Retry: it stays Pending (with attempts/backoff climbing) and is resent — never Verify/NeedsAttention.
+    // "Sent once" still holds across the two Drain calls here because the backoff timer (min 60s, 2^attempts) blocks
+    // the second attempt, not because the intent stopped being replayable.
     [Fact]
-    public async Task DrainBackoff_SkipsNotDueOps_ThenAttempts_CapsAtTenDeadLetters()
+    public async Task AmbiguousWrite_IsSentOnce_ThenStaysPendingForRetry()
     {
-        var store = new InMemoryStore();
-        var clock = DateTime.UtcNow;
-        var eng = new MutationEngine(store, new IMutationStrategy[] { new SetReplayStrategy() }, null, () => clock);
-        eng.Save("liked", "spotify:track:a", true);
-        var t = new FailTransport();
-        var ctx = SessionContext.LoggedOut;
-
-        await eng.Drain(t, ctx);                       // attempt 1 fails → nextAttemptAt = now + 1s
-        Assert.Equal(1, t.Calls);
-        Assert.Equal(1, eng.Pending);
-
-        await eng.Drain(t, ctx);                       // not due → skipped (no new replay)
-        Assert.Equal(1, t.Calls);
-        Assert.Equal(1, eng.Pending);
-
-        clock = clock.AddSeconds(1.5);                 // advance past the backoff
-        await eng.Drain(t, ctx);                       // attempt 2
-        Assert.Equal(2, t.Calls);
-
-        for (int i = 0; i < 15 && eng.Pending > 0; i++) { clock = clock.AddSeconds(120); await eng.Drain(t, ctx); }
-        Assert.Equal(0, eng.Pending);                  // 10 attempts exhausted → dead-lettered
-        Assert.Single(eng.DeadLetter);
+        await using var host = new ReplicaTestHost();
+        await host.Mutations.SaveAsync("liked", "spotify:track:a", true);
+        var transport = new FailTransport();
+        await host.Mutations.Drain(transport, host.Context);
+        await host.Mutations.Drain(transport, host.Context);
+        Assert.Equal(1, transport.Calls);
+        var intent = Assert.Single(host.Replicas.Intents);
+        Assert.Equal(ReplicaIntentState.Pending, intent.State);
+        Assert.Equal(1, intent.Attempts);
+        Assert.Single(host.Replicas.ReadCollection("liked").Items);
     }
 
     [Fact]
@@ -578,8 +640,8 @@ public class LibrarySyncTests
         await using var h = new SyncHarness(HydrateResponder);
 
         // A like that goes out and is accepted records its client_update_id in the shared echo ring.
-        h.Mut.Save("liked", "spotify:track:z", true);
-        await h.Mut.Drain(h.Dealer, new SessionContext("bob", "US", "premium", "en", Tier.Premium, false),
+        await h.Mut.SaveAsync("liked", "spotify:track:z", true);
+        await h.Mut.Drain(h.Transport, new SessionContext("bob", "US", "premium", "en", Tier.Premium, false),
             TestContext.Current.CancellationToken);
         Assert.True(h.Store.IsSaved("liked", "spotify:track:z"));                        // optimistic → Confirmed on ack
         var cuid = Col.WriteRequest.Parser.ParseFrom(h.Dealer.LastRequestBody).ClientUpdateId;
@@ -603,7 +665,7 @@ public class LibrarySyncTests
     {
         await using var h = new SyncHarness(HydrateResponder);
         // A pending local intent shields (liked, t:pending) — a foreign push trying to REMOVE it must be skipped.
-        h.Mut.Save("liked", "spotify:track:pending", true);
+        await h.Mut.SaveAsync("liked", "spotify:track:pending", true);
 
         var upd = new Col.PubSubUpdate { Set = "collection" };   // foreign: no client_update_id
         upd.Items.Add(new Col.CollectionItem { Uri = "spotify:track:t9", IsRemoved = false, AddedAt = 5 });
@@ -620,36 +682,19 @@ public class LibrarySyncTests
         Assert.True(h.Store.IsSaved("liked", "spotify:track:pending"));     // shielded removal skipped → survives
         Assert.Equal(0, h.CollectionPosts);                                 // zero round-trip
         // HydrateUrisAsync (the spec's hydrate path) covers added track/episode uris; albums ride the next delta/on-open fetch.
-        List<string> hyd; lock (h.Hydrated) hyd = new List<string>(h.Hydrated);
-        Assert.Contains("spotify:track:t9", hyd);
-        Assert.DoesNotContain("spotify:track:pending", hyd);               // shielded item never touched
     }
 
     [Fact]
-    public async Task CollectionPush_DirectApplyHydratesThenEmitsCollectionKindBump()
+    public async Task CollectionPush_PublishesMembershipWithoutMetadataTransport()
     {
-        var added = "spotify:track:t9";
-        await using var h = new SyncHarness(HydrateResponder, onHydrate: (store, uris) =>
-        {
-            foreach (var u in uris) store.UpsertTrack(Trk(u, "Hydrated " + u));
-        });
-
-        var signals = new List<(StoreChange Change, bool TrackKnown)>();
-        using var sub = h.Store.Changes.Subscribe(new ChangeObserver(c =>
-        {
-            lock (signals) signals.Add((c, h.Store.GetTrack(added) is not null));
-        }));
-
-        var upd = new Col.PubSubUpdate { Set = "collection" };
-        upd.Items.Add(new Col.CollectionItem { Uri = added, IsRemoved = false, AddedAt = 5 });
-
+        await using var h = new SyncHarness(HydrateResponder);
+        var update = new Col.PubSubUpdate { Set = "collection" };
+        update.Items.Add(new Col.CollectionItem { Uri = "spotify:track:new", IsRemoved = false, AddedAt = 5 });
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "collection", Payload: upd.ToByteArray(), Done: done));
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "collection", Payload: update.ToByteArray(), Done: done));
         await done.Task;
-
-        List<(StoreChange Change, bool TrackKnown)> snap; lock (signals) snap = new List<(StoreChange, bool)>(signals);
-        Assert.Contains(snap, s => s.Change.Uri == added && s.Change.Kind == CollectionKind.Liked && s.TrackKnown);
-        Assert.NotNull(h.Store.GetTrack(added));
+        Assert.Equal("spotify:track:new", Assert.Single(h.Host.Replicas.ReadCollection("liked").Items).Uri);
+        Assert.Null(h.Host.ReadTrack("spotify:track:new"));
         Assert.Equal(0, h.CollectionPosts);
     }
 
@@ -683,12 +728,59 @@ public class LibrarySyncTests
         Assert.True(h.Store.IsSaved("liked", "spotify:track:t1"));
         Assert.True(h.Store.IsSaved("albums", "spotify:album:a1"));
 
-        // "ylpin" (an unknown wire set) → ignored, zero fetch.
+        // "artistban" (an unknown wire set) → ignored, zero fetch.
         var done2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "ylpin", Done: done2));
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "artistban", Done: done2));
         await done2.Task;
         Assert.Equal(1, h.Sync.SetFetches);      // unchanged — no fetch for the unknown set
         Assert.Equal(1, h.CollectionPosts);
+    }
+
+    [Fact]
+    public async Task CollectionPush_Ylpin_NeverDirectApplies_FetchesPinsSet()
+    {
+        // §0.1/§2.3 — ylpin pushes are opaque in practice; they always take the settle + delta-fetch path, NEVER a
+        // direct fold, even when the payload happens to parse with items.
+        await using var h = new SyncHarness(HydrateResponder);
+
+        // (a) no payload at all.
+        var done1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "ylpin", Done: done1));
+        await done1.Task;
+        Assert.Equal(0, h.Sync.PushDirectApplied);
+        Assert.Equal(1, h.Sync.SetFetches);
+        Assert.True(h.Store.IsSaved("pins", "spotify:playlist:pin1"));
+        Assert.False(h.Store.IsSaved("pins", "spotify:track:notapin"));   // AcceptsUri keeps the stray track out
+
+        // (b) a parseable PubSubUpdate carrying items — still no direct apply, still a fetch (the token is already set
+        // from (a), so this is a delta; the responder answers "nothing changed" for a held token).
+        var upd = new Col.PubSubUpdate();
+        upd.Items.Add(new Col.CollectionItem { Uri = "spotify:playlist:pin1", AddedAt = 1 });
+        var done2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "ylpin", Payload: upd.ToByteArray(), Done: done2));
+        await done2.Task;
+        Assert.Equal(0, h.Sync.PushDirectApplied);
+        Assert.Equal(2, h.Sync.SetFetches);
+    }
+
+    [Fact]
+    public async Task CollectionPush_YlpinEcho_IsDropped()
+    {
+        // The echo check runs BEFORE the direct-apply/PushDirectApplies gate, so our own accepted ylpin write's echo
+        // is dropped for free — zero fetch, zero fold.
+        const string cuid = "ylpin-cuid-1";
+        await using var h = new SyncHarness(HydrateResponder);
+        h.Echo.Record(cuid);
+
+        var upd = new Col.PubSubUpdate { ClientUpdateId = cuid };
+        upd.Items.Add(new Col.CollectionItem { Uri = "spotify:playlist:pin1", AddedAt = 1 });
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.CollectionPush, "ylpin", Payload: upd.ToByteArray(), Done: done));
+        await done.Task;
+
+        Assert.Equal(1, h.Sync.EchoDropped);
+        Assert.Equal(0, h.Sync.SetFetches);
+        Assert.Equal(0, h.CollectionPosts);
     }
 
     [Fact]
@@ -722,7 +814,7 @@ public class LibrarySyncTests
         await h.Sync.WaitForIdleAsync();
         await h.Sync.WaitForIdleAsync();
         Assert.Equal(1, h.Sync.ReconcilePasses);
-        Assert.Equal(8, h.CollectionPosts);          // (3) one walk per wire set + one shadow walk per wire set
+        Assert.Equal(10, h.CollectionPosts);         // (3) one walk per wire set + one shadow walk per wire set (5 wire sets)
         Assert.Equal(0, h.Sync.ReconcileDrifts);     // the reconnect walk just converged them — no drift
         Assert.Equal("tok-collection", h.Revs["collection"]);
 
@@ -733,7 +825,7 @@ public class LibrarySyncTests
         await h.Sync.WaitForIdleAsync();
         Assert.Equal(1, h.Sync.ReconcilePasses);
         Assert.Equal(1, h.Sync.ReconcilesSkipped);
-        Assert.Equal(12, h.CollectionPosts);         // the reconnect's own 4 (now delta) probes ran; the reconcile did not
+        Assert.Equal(15, h.CollectionPosts);         // the reconnect's own 5 (now delta) probes ran; the reconcile did not
     }
 
     [Fact]
@@ -773,22 +865,23 @@ public class LibrarySyncTests
     }
 
     [Fact]
-    public void RootlistRevision_RoundTrips_ThroughSqliteMeta()
+    public async Task RootlistRevision_RoundTrips_ThroughScopedReplica()
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wavee-test-" + Guid.NewGuid().ToString("N") + ".db");
         try
         {
             var rev = new byte[] { 1, 2, 3, 0xAB };
+            var scope = new ReplicaScope("bob", 1);
             using (var s = new Wavee.Backend.Persistence.SqliteColdStore(path))
             {
-                Assert.Null(s.GetRootlistRevision());  // unset → null
-                s.SetRootlistRevision(rev);
+                Assert.Null((await s.LoadAsync(scope, TestContext.Current.CancellationToken)).Rootlist.Revision);
+                await s.CommitAsync(new ReplicaTransaction(scope, [], new([], rev), [], [], [], [], []), TestContext.Current.CancellationToken);
             }
             using (var s2 = new Wavee.Backend.Persistence.SqliteColdStore(path))
             {
-                Assert.Equal(rev, s2.GetRootlistRevision());   // durable across instances
-                s2.SetRootlistRevision(null);                  // null clears
-                Assert.Null(s2.GetRootlistRevision());
+                Assert.Equal(rev, (await s2.LoadAsync(scope, TestContext.Current.CancellationToken)).Rootlist.Revision);
+                await s2.CommitAsync(new ReplicaTransaction(scope, [], new([], null), [], [], [], [], []), TestContext.Current.CancellationToken);
+                Assert.Null((await s2.LoadAsync(scope, TestContext.Current.CancellationToken)).Rootlist.Revision);
             }
         }
         finally { foreach (var f in new[] { path, path + "-wal", path + "-shm" }) { try { System.IO.File.Delete(f); } catch { } } }
@@ -809,12 +902,12 @@ public class LibrarySyncTests
             ? new HttpResp(500, new Dictionary<string, string>(), Array.Empty<byte>())
             : HydrateResponder(req)))
         {
-            h.Store.SetRootlist(rows, corrupt);
+            await h.Host.SeedRootlistAsync(rows, corrupt);
             var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             h.Sync.Enqueue(new SyncCommand(SyncKind.InitialHydrate, Done: done));
             await done.Task;
 
-            Assert.Equal(1, h.Sync.RootlistRevisionsHealed);
+            Assert.Equal(ReplicaBaselineState.NeedsResync, h.Host.Replicas.ReadConfirmedRootlist().State);
             Assert.Null(h.Store.RootlistRevision());                     // the URI bytes are gone
             Assert.Single(h.Store.Rootlist());                            // rows preserved (only the revision was cleared)
         }
@@ -822,12 +915,12 @@ public class LibrarySyncTests
         // (b) with the GET answering, the same boot ends on the real 24-byte head.
         await using (var h2 = new SyncHarness(HydrateResponder))
         {
-            h2.Store.SetRootlist(rows, corrupt);
+            await h2.Host.SeedRootlistAsync(rows, corrupt);
             var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             h2.Sync.Enqueue(new SyncCommand(SyncKind.InitialHydrate, Done: done));
             await done.Task;
 
-            Assert.Equal(1, h2.Sync.RootlistRevisionsHealed);
+            Assert.Equal(ReplicaBaselineState.Verified, h2.Host.Replicas.ReadConfirmedRootlist().State);
             Assert.Equal(Rev24(9), h2.Store.RootlistRevision());
             Assert.True(PlaylistRevisions.IsWellFormed(h2.Store.RootlistRevision()));
         }
@@ -847,7 +940,7 @@ public class LibrarySyncTests
             return Ok(FullSlcWithAttrs(Rev24(2), ("spotify:track:t1", "alice", 1_700_000_000_000L)));
         });
         // attribute-BEARING resident rows: the attr-heal gate must not be what answers this push.
-        h.Store.SetMembership(uri, new[] { new PlaylistMember("i1", "spotify:track:t1", "alice", 1_700_000_000_000L) }, Rev24(1));
+        await h.Host.SeedPlaylistAsync(uri, new[] { new PlaylistMember("i1", "spotify:track:t1", "alice", 1_700_000_000_000L) }, Rev24(1));
         h.Sync.SetOpenContext(uri);
 
         h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, NewRev: Rev24(2), Ops: Array.Empty<PlaylistOp>()));
@@ -864,7 +957,7 @@ public class LibrarySyncTests
     {
         const string uri = "spotify:playlist:cold";
         await using var h = new SyncHarness(_ => Ok(Array.Empty<byte>()));
-        h.Store.SetMembership(uri, new[] { new PlaylistMember("i1", "spotify:track:t1", "alice", 1_700_000_000_000L) }, Rev24(1));
+        await h.Host.SeedPlaylistAsync(uri, new[] { new PlaylistMember("i1", "spotify:track:t1", "alice", 1_700_000_000_000L) }, Rev24(1));
 
         h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, NewRev: Rev24(2), Ops: Array.Empty<PlaylistOp>()));
         await h.Sync.WaitForIdleAsync();
@@ -885,14 +978,13 @@ public class LibrarySyncTests
     {
         const string uri = "spotify:playlist:gone";
         await using var h = new SyncHarness(_ => Ok(Array.Empty<byte>()));
-        h.Store.UpsertPlaylist(new Playlist("gone", uri, "Doomed", null, "bob", null, 1));
-        h.Store.SetMembership(uri, new[] { M("i1", "spotify:track:t1") }, Rev24(1));
-        h.Store.SetRootlist(new[]
+        await h.Host.SeedHeaderAsync(new Playlist("gone", uri, "Doomed", null, "bob", null, 1));
+        await h.Host.SeedPlaylistAsync(uri, new[] { M("i1", "spotify:track:t1") }, Rev24(1));
+        await h.Host.SeedRootlistAsync(new[]
         {
             new RootlistEntry(0, 0, uri, null, 0),
             new RootlistEntry(1, 0, "spotify:playlist:keep", null, 0),
         }, Rev24(5));
-        h.Store.SetSaved("playlists", uri, true, SyncState.Confirmed);
 
         h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, NewRev: Rev24(2), Ops: new[] { TombstoneOp() }));
         await h.Sync.WaitForIdleAsync();
@@ -903,7 +995,7 @@ public class LibrarySyncTests
         Assert.Equal(Rev24(5), h.Store.RootlistRevision());                        // … rev-preserving (its own head follows)
         Assert.Empty(h.Store.Membership(uri));                                     // … membership evicted
         Assert.False(h.Store.IsSaved("playlists", uri));                           // … saved pill cleared
-        Assert.True(h.Store.GetPlaylist(uri)!.DeletedByOwner);                     // … header latched for the page notice
+        Assert.True(h.Host.ReadHeader(uri)!.DeletedByOwner);                     // … header latched for the page notice
         Assert.Equal(0, h.PlaylistGets);                                           // and NO network at all
     }
 
@@ -913,25 +1005,26 @@ public class LibrarySyncTests
     {
         const string uri = "spotify:playlist:gone";
         await using var h = new SyncHarness(_ => Ok(Array.Empty<byte>()));
-        h.Store.UpsertPlaylist(new Playlist("gone", uri, "Doomed", null, "bob", null, 1));
+        await h.Host.SeedHeaderAsync(new Playlist("gone", uri, "Doomed", null, "bob", null, 1));
 
         h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, NewRev: Rev24(2), Ops: new[] { TombstoneOp() }));
         await h.Sync.WaitForIdleAsync();
 
-        h.Store.UpsertPlaylist(new Playlist("gone", uri, "Doomed", null, "bob", null, 1));   // a thin re-upsert
-        Assert.True(h.Store.GetPlaylist(uri)!.DeletedByOwner);
+        await h.Host.SeedHeaderAsync(new Playlist("gone", uri, "Doomed", null, "bob", null, 1));   // a thin re-upsert
+        Assert.True(h.Host.ReadHeader(uri)!.DeletedByOwner);
     }
 
     // I3(a) — local intent wins until acked. A push that arrives while our own edit is unacked describes a list that
     // does NOT contain that edit, so applying it in place would visibly revert the user's action. Mark dirty instead.
     [Fact]
-    public async Task PlaylistPush_WhilePending_MarksDirty_NoInPlaceApply()
+    public async Task PlaylistPush_WhilePending_AdvancesConfirmedAndReappliesOverlay()
     {
         const string uri = "spotify:playlist:p";
         await using var h = new SyncHarness(_ => Ok(Array.Empty<byte>()));
-        h.Store.SetMembership(uri, new[] { M("i1", "spotify:track:a"), M("i2", "spotify:track:b") }, Rev24(1));
+        await h.Host.SeedPlaylistAsync(uri, new[] { M("i1", "spotify:track:a"), M("i2", "spotify:track:b") }, Rev24(1));
 
-        h.Mut.Edit(uri, new[] { new PlaylistOp(PlaylistOpKind.Remove, FromIndex: 0, Length: 1) });   // optimistic: [b]
+        await h.Mut.EditAsync(uri, new[] { new PlaylistOp(PlaylistOpKind.Remove, ItemsAsKey: true,
+            Items: new[] { M("i1", "spotify:track:a") }) }, Rev24(1));
         Assert.Equal(1, h.Mut.PendingFor(uri));
 
         // A parent-matching, ops-carrying push that WOULD have applied in place (gate 5) if nothing were pending.
@@ -939,10 +1032,11 @@ public class LibrarySyncTests
         h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, ParentRev: Rev24(1), NewRev: Rev24(2), Ops: new[] { foreign }));
         await h.Sync.WaitForIdleAsync();
 
-        Assert.Equal(1, h.Sync.PushDeferredPending);
-        Assert.Equal(0, h.Sync.PushApplied);
-        Assert.Equal("spotify:track:b", Assert.Single(h.Store.Membership(uri)).ItemUri);   // our optimistic list survives
-        Assert.Equal(Rev24(1), h.Store.PlaylistRevision(uri));                             // and the head is NOT adopted
+        Assert.Equal(0, h.Sync.PushDeferredPending);
+        Assert.Equal(1, h.Sync.PushApplied);
+        Assert.Equal(new[] { "spotify:track:b", "spotify:track:z" }, h.Store.Membership(uri).Select(x => x.ItemUri));
+        Assert.Equal(3, h.Host.Replicas.ReadConfirmedPlaylist(uri).Members.Length);
+        Assert.Equal(Rev24(2), h.Store.PlaylistRevision(uri));
         Assert.Equal(0, h.PlaylistGets);                                                   // no eager revalidate either
     }
 
@@ -960,16 +1054,16 @@ public class LibrarySyncTests
         }.ToByteArray();
         await using var h = new SyncHarness(_ => Ok(Array.Empty<byte>()),
             transportRespond: _ => new Resp(true, proto, 200));
-        h.Store.UpsertPlaylist(new Playlist("mine", uri, "Mine", null, "bob", null, 0, IsPublic: true,
+        await h.Host.SeedHeaderAsync(new Playlist("mine", uri, "Mine", null, "bob", null, 0, IsPublic: true,
             Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: true, CanEditMetadata: true,
-                IsCollaborative: false, IsOwner: true, CanAdministratePermissions: true)));
+                IsCollaborative: false, IsOwner: true, CanAdministratePermissions: true, Known: true)));
 
         h.Sync.SetOpenContext(uri);
         await h.Sync.WaitForIdleAsync();
 
         Assert.Equal(1, h.Sync.PermissionSeeds);
         Assert.Contains(h.TransportRoutes, r => r.Contains("/permission/base"));
-        var header = h.Store.GetPlaylist(uri)!;
+        var header = h.Host.ReadHeader(uri)!;
         Assert.False(header.IsPublic);                       // BLOCKED
         Assert.Equal("3b907c0d29c940a3", header.BasePermissionRevision);   // hex, never a playlist4 revision
     }
@@ -1012,7 +1106,7 @@ public class LibrarySyncTests
 
         Assert.Equal(1, h.Sync.PermissionSeeds);
         Assert.Contains(h.TransportRoutes, r => r.Contains("/permission/base"));
-        var header = h.Store.GetPlaylist(uri)!;
+        var header = h.Host.ReadHeader(uri)!;
         Assert.False(header.IsPublic);                                    // BLOCKED
         Assert.Equal("3b907c0d29c940a3", header.BasePermissionRevision);
 
@@ -1043,7 +1137,7 @@ public class LibrarySyncTests
             }
             return Ok(Array.Empty<byte>());
         });
-        h.Store.SetMembership(currentUri,
+        await h.Host.SeedPlaylistAsync(currentUri,
             [new PlaylistMember("i1", "spotify:track:t1", "alice", 1_700_000_000_000L)], Rev24(1));
 
         h.Sync.SetOpenContext(currentUri);
@@ -1070,7 +1164,7 @@ public class LibrarySyncTests
     {
         const string uri = "spotify:playlist:theirs";
         await using var h = new SyncHarness(_ => Ok(Array.Empty<byte>()));
-        h.Store.UpsertPlaylist(new Playlist("theirs", uri, "Theirs", null, "someone", null, 0,
+        await h.Host.SeedHeaderAsync(new Playlist("theirs", uri, "Theirs", null, "someone", null, 0,
             Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: false, CanEditMetadata: false,
                 IsCollaborative: false, IsOwner: false, CanAdministratePermissions: false)));
 
@@ -1079,5 +1173,92 @@ public class LibrarySyncTests
 
         Assert.Equal(0, h.Sync.PermissionSeeds);
         Assert.Empty(h.TransportRoutes);
+    }
+
+    // ── I4 post-drain resync: retry, resolve, give up (§2.2.2) ─────────────────────────────────────────────────────────
+
+    /// <summary>Poll until <paramref name="until"/> is true (or the deadline passes), letting the loop drain between
+    /// checks. The scheduled retry runs on its own <c>Task.Run</c> after <see cref="LibrarySync.ResyncRetryDelay"/>
+    /// (collapsed to zero by the caller), so there is nothing else to await directly.</summary>
+    static async Task PollAsync(LibrarySync sync, Func<bool> until, CancellationToken ct, int timeoutMs = 2000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!until() && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10, ct);
+            await sync.WaitForIdleAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PostDrainResync_ThatThrows_IsRetried_ThenResolves()
+    {
+        const string uri = "spotify:playlist:p";
+        var header = new Pl.SelectedListContent { Attributes = new Pl.ListAttributes { Name = "Mine" },
+            Revision = ByteString.CopyFrom(Rev24(2)), Contents = new Pl.ListItems { Pos = 0, Truncated = false } };
+        int playlistCalls = 0;
+        await using var h = new SyncHarness(req =>
+        {
+            if (!req.Url.Contains("/playlist/v2/")) return Ok(Array.Empty<byte>());
+            playlistCalls++;
+            return playlistCalls == 1 ? new HttpResp(500, new Dictionary<string, string>(), Array.Empty<byte>()) : Ok(header.ToByteArray());
+        });
+        h.Sync.ResyncRetryDelay = _ => TimeSpan.Zero;   // collapse the backoff so the test does not sleep for real seconds
+        await h.Host.SeedHeaderAsync(new Playlist("p", uri, "Old", null, "bob", null, 0));
+
+        h.Resync.Mark(uri);
+        await h.Sync.DrainWritesAsync(TestContext.Current.CancellationToken);   // attempt 0: the GET fails -> Failed, retry scheduled
+
+        await PollAsync(h.Sync, () => h.Resync.Get(uri).Phase == PlaylistResyncQueue.Phase.None, TestContext.Current.CancellationToken);
+
+        Assert.Equal(PlaylistResyncQueue.Phase.None, h.Resync.Get(uri).Phase);
+        Assert.Equal(2, h.PlaylistGets);   // one failed attempt, one that converged
+    }
+
+    [Fact]
+    public async Task PostDrainResync_ExhaustsRetries_StaysFailed()
+    {
+        const string uri = "spotify:playlist:p";
+        await using var h = new SyncHarness(req =>
+            req.Url.Contains("/playlist/v2/") ? new HttpResp(500, new Dictionary<string, string>(), Array.Empty<byte>()) : Ok(Array.Empty<byte>()));
+        h.Sync.ResyncRetryDelay = _ => TimeSpan.Zero;
+        await h.Host.SeedHeaderAsync(new Playlist("p", uri, "Old", null, "bob", null, 0));
+
+        h.Resync.Mark(uri);
+        await h.Sync.DrainWritesAsync(TestContext.Current.CancellationToken);
+
+        await PollAsync(h.Sync, () => h.Resync.Get(uri) is { Phase: PlaylistResyncQueue.Phase.Failed, Attempts: 4 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(PlaylistResyncQueue.Phase.Failed, h.Resync.Get(uri).Phase);
+        Assert.Equal(4, h.Resync.Get(uri).Attempts);   // LibrarySync.MaxResyncAttempts — stays Failed, no further auto-retry
+        int getsAtGiveUp = h.PlaylistGets;
+        await Task.Delay(120, TestContext.Current.CancellationToken);
+        await h.Sync.WaitForIdleAsync();
+        Assert.Equal(getsAtGiveUp, h.PlaylistGets);   // no further GETs once retries are exhausted
+    }
+
+    [Fact]
+    public async Task AnyConvergencePath_Resolves()
+    {
+        const string uri = "spotify:playlist:p";
+        await using var h = new SyncHarness(req => req.Url.Contains("/playlist/v2/")
+            ? Ok(new Pl.SelectedListContent { UpToDate = true }.ToByteArray())
+            : Ok(Array.Empty<byte>()));
+        await h.Host.SeedHeaderAsync(new Playlist("p", uri, "Mine", null, "bob", null, 0));
+        await h.Host.SeedPlaylistAsync(uri, new[] { M("a01", "spotify:track:a") }, Rev24(1));
+        h.Sync.SetOpenContext(uri);
+
+        h.Resync.Mark(uri);
+        Assert.Equal(PlaylistResyncQueue.Phase.Marked, h.Resync.Get(uri).Phase);
+
+        // Gate 4 (a new, well-formed head with no usable parent and no ops) on the OPEN uri revalidates directly —
+        // no DrainWrites involved. RevalidateCoreAsync resolves the resync entry on every convergence path, not just
+        // the post-drain one.
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, ParentRev: null, NewRev: Rev24(2), Ops: null, Done: done));
+        await done.Task;
+
+        Assert.Equal(PlaylistResyncQueue.Phase.None, h.Resync.Get(uri).Phase);
     }
 }

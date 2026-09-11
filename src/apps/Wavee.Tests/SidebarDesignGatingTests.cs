@@ -28,7 +28,7 @@ public class SidebarDesignGatingTests : IDisposable
     /// <summary>An "existing install" witness: the account database the real probe looks for first.</summary>
     void WriteLibraryDb()
     {
-        string d = Path.Combine(_local, "Wavee");
+        string d = UnpackagedAppDataRoot.Resolve(_local, fake: false);
         Directory.CreateDirectory(d);
         File.WriteAllText(Path.Combine(d, "library.db"), "sqlite");
     }

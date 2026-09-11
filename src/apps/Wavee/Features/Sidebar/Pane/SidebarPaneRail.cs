@@ -110,7 +110,15 @@ static class SidebarPaneRail
                 if (entry.Kind == SidebarEntryKind.AppRoute)
                 {
                     var dest = ShellNav.Dest(entry.Id);
-                    return SidebarRailItem.Icon(key, dest.Glyph, string.Equals(entry.Id, sel, StringComparison.Ordinal),
+                    bool routeSelected = string.Equals(entry.Id, sel, StringComparison.Ordinal);
+                    // W3 — Liked Songs draws the user's DYNAMIC cover here too (the same `SidebarCover.Liked` the
+                    // expanded pane's row and a projected Liked entity both use), not the heart glyph every other
+                    // route tile gets: a system route row is otherwise the one rail tile that looked unlike its
+                    // neighbours' real artwork.
+                    if (string.Equals(entry.Id, LibraryV3Document.LikedRouteKey, StringComparison.Ordinal))
+                        return SidebarRailItem.Art(key, SidebarCover.Liked(SidebarRailItem.ArtEdge), routeSelected,
+                            () => owner.Navigate(entry.Id, null), dest.Title);
+                    return SidebarRailItem.Icon(key, dest.Glyph, routeSelected,
                         () => owner.Navigate(entry.Id, null), dest.Title);
                 }
                 Element art = SidebarCover.Art(entry.Cover, entry.MosaicTiles, entry.Id, SidebarRailItem.ArtEdge,
@@ -191,8 +199,14 @@ static class SidebarPaneRail
         string key = row.Key;
         var dest = ShellNav.Dest(key);
         string label = item?.LabelOverride is { Length: > 0 } alias ? alias : dest.Title;
+        bool selected = string.Equals(key, sel, StringComparison.Ordinal);
+        // W3 — a hand-placed Liked Songs shortcut draws the same dynamic cover as the projected/system tile above,
+        // rather than the heart glyph every other route shortcut gets.
+        if (string.Equals(key, LibraryV3Document.LikedRouteKey, StringComparison.Ordinal))
+            return SidebarRailItem.Art("rail:" + key, SidebarCover.Liked(SidebarRailItem.ArtEdge), selected,
+                () => owner.Navigate(key, null), label);
         return SidebarRailItem.Icon("rail:" + key, SidebarPaneText.Glyph(item, dest.Glyph),
-            string.Equals(key, sel, StringComparison.Ordinal), () => owner.Navigate(key, null), label);
+            selected, () => owner.Navigate(key, null), label);
     }
 
     /// <summary>A whole SECTION as one tile. Concerts navigates to its hub; every other feed-shaped section (an extension

@@ -1,33 +1,23 @@
 using System;
 using System.Collections.Generic;
-using Wavee.Backend.Persistence;
 using Wavee.Core;
 
 namespace Wavee.Backend.Playlists;
 
-// Turns the flat rootlist marker stream (persisted as ordered ColdRootlistEntry rows) into the sidebar PlaylistNode tree.
+// Turns the flat rootlist marker stream (represented as ordered RootlistEntry rows) into the sidebar PlaylistNode tree.
 // Markers: kind 0 = a playlist uri, kind 1 = start-group, kind 2 = end-group. The playlist header (name/cover/owner) is
 // resolved from the shared Store via the injected resolver, so this stays pure + unit-testable.
 public static class RootlistTreeBuilder
 {
     /// <summary>The ONE marker shape the tree walk understands — the shared shape of a cold row and a live row, so the
-    /// parse loop exists once and both public overloads are thin adapters over it.</summary>
-    public readonly record struct RootlistMarker(int Kind, string Uri, string? GroupName);
+    /// parse loop exists once and the public adapter supplies it.</summary>
+    public readonly record struct RootlistMarker(int Kind, string Uri, string? GroupName, long AddedAtMs = 0);
 
-    /// <summary>Cold (persisted) rows → the tree.</summary>
-    public static IReadOnlyList<PlaylistNode> Build(IReadOnlyList<ColdRootlistEntry> entries, Func<string, PlaylistSummary> resolve)
-    {
-        var markers = new RootlistMarker[entries.Count];
-        for (int i = 0; i < entries.Count; i++) markers[i] = new RootlistMarker(entries[i].Kind, entries[i].Uri, entries[i].GroupName);
-        return BuildCore(markers, resolve);
-    }
-
-    /// <summary>Live (in-memory Store) rows → the tree. Same parse, no duplicated loop — StoreLibrarySource reads
-    /// <c>_store.Rootlist()</c>, which is the RootlistEntry shape.</summary>
+    /// <summary>Build a tree from the confirmed or effective ordered marker stream.</summary>
     public static IReadOnlyList<PlaylistNode> Build(IReadOnlyList<RootlistEntry> entries, Func<string, PlaylistSummary> resolve)
     {
         var markers = new RootlistMarker[entries.Count];
-        for (int i = 0; i < entries.Count; i++) markers[i] = new RootlistMarker(entries[i].Kind, entries[i].Uri, entries[i].GroupName);
+        for (int i = 0; i < entries.Count; i++) markers[i] = new RootlistMarker(entries[i].Kind, entries[i].Uri, entries[i].GroupName, entries[i].AddedAtMs);
         return BuildCore(markers, resolve);
     }
 
@@ -61,7 +51,7 @@ public static class RootlistTreeBuilder
                 default:  // a playlist (or any item) uri
                     if (EntityUri.KindOf(e.Uri) == EntityKind.Playlist)
                     {
-                        var leaf = new PlaylistLeaf(resolve(e.Uri));
+                        var leaf = new PlaylistLeaf(resolve(e.Uri), e.AddedAtMs);
                         (open.Count > 0 ? open.Peek().Items : top).Add(leaf);
                     }
                     break;

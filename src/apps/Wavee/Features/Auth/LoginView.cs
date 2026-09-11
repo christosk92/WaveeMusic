@@ -163,7 +163,7 @@ sealed class WaitingDots : Component
                     new(peak, -5f, Easing.EaseInOut),                          // hop up
                     new(MathF.Min(peak + 0.26f, 0.98f), 0f, Easing.EaseInOut), // settle back
                     new(1f, 0f, Easing.Linear),
-                }, 1100f, loop: true, displayRate: true);
+                }, 1100f, loop: true, cadence: Cadence.Display);
             }
             Drive(d0.Value, 0.16f);   // STAGGERED peaks → a left-to-right hop wave (dot0 → dot1 → dot2)
             Drive(d1.Value, 0.28f);

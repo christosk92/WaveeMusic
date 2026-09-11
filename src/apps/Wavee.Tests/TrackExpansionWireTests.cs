@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Wavee.Backend;
-using Wavee.Backend.Hydration;
+using Wavee.Backend.Catalog;
 using Wavee.Backend.Metadata;
 using Wavee.Backend.Spotify;
 using Wavee.Core;
@@ -28,8 +28,12 @@ namespace Wavee.Tests;
 //     (AUDIO_ATTRIBUTES_V2) alongside it and then discarded the payload — the tempo/key the drawer prints is read off
 //     the STORE, written by the row bundle. One wasted kind per target on every expand is exactly the waste the
 //     hydration façade exists to delete, so a regression here has to fail a test rather than a code review.
-public class TrackExpansionWireTests
+public class TrackExpansionWireTests : IAsyncLifetime
 {
+    readonly List<CatalogResourceWireFixture> _fixtures = new();
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync() { foreach (var fixture in _fixtures) await fixture.DisposeAsync(); }
+
     const string TrackUri = "spotify:track:0spnMEFDuWTQRTsI941Q5n";
     const string TargetUri = "spotify:track:1aBcDeFgHiJkLmNoPqRsTu";
 
@@ -57,7 +61,7 @@ public class TrackExpansionWireTests
     static ByteString TargetTrack()
         => new Md.Track { Name = "Live at Wembley", Duration = 214_000 }.ToByteString();
 
-    static (SpotifyTrackExpansionService Svc, InMemoryStore Store, Wire Log) Build()
+    (SpotifyTrackExpansionService Svc, CatalogResourceWireFixture Fixture, Wire Log) Build()
     {
         var log = new Wire();
         var http = new FakeExchange((req, _) =>
@@ -105,10 +109,10 @@ public class TrackExpansionWireTests
             return new HttpResp(200, new Dictionary<string, string>(), response.ToByteArray());
         });
 
-        var em = new ExtendedMetadataSource(http, () => "https://spclient.test", () => Ctx);
-        var reader = new ExtensionReader(new ExtensionEtagCache(em, () => Ctx), new NegativeMemo());
-        var store = new InMemoryStore();
-        return (new SpotifyTrackExpansionService(reader, store), store, log);
+        var fixture = new CatalogResourceWireFixture(http, Ctx);
+        _fixtures.Add(fixture);
+        return (new SpotifyTrackExpansionService(fixture.Reader, fixture.Data.Catalog, fixture.Data.Resources,
+            fixture.Data.PlaybackQueue, _ => fixture.Scope), fixture, log);
     }
 
     [Fact]
@@ -131,8 +135,9 @@ public class TrackExpansionWireTests
                 Xm.ExtensionKind.AudioAssociations,      // 98
                 Xm.ExtensionKind.AudioFiles,             //  5
                 Xm.ExtensionKind.ThreebandWaveforms,     // 237
-            },
-            drawer.Kinds);
+                Xm.ExtensionKind.ConsumptionExperienceTrait,
+            }.OrderBy(x => (int)x),
+            drawer.Kinds.OrderBy(x => (int)x));
         Assert.Equal(99, (int)Xm.ExtensionKind.VideoAssociations);
         Assert.Equal(237, (int)Xm.ExtensionKind.ThreebandWaveforms);
 
@@ -162,7 +167,7 @@ public class TrackExpansionWireTests
         var second = await svc.GetAsync(TrackUri, CT);
 
         Assert.Equal(2, log.Posts.Count);
-        Assert.Same(first, second);
+        Assert.Equal(first.Versions, second.Versions);
     }
 
     [Fact]

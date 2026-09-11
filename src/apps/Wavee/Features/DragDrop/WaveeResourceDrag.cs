@@ -43,8 +43,11 @@ sealed record WaveeResourceDragPayload(
     IReadOnlyList<RootlistItemRef>? RootlistItems = null,
     QueueItemId? SourceQueueItemId = null)
 {
-    /// <summary>This drag lifted a row out of the queue panel. The gesture is a reorder of that list; no playlist, tab,
-    /// sidebar row or player-bar surface may read it as a track to deposit (<see cref="CanCopyTracks"/> is false).</summary>
+    /// <summary>This drag lifted a row out of the queue panel. Inside the queue this is a REORDER (the list's own
+    /// <c>Reorderable</c> handles it); a playlist, tab, sidebar row or player-bar surface may still accept it as an
+    /// ordinary track deposit (<see cref="CanCopyTracks"/>) — see <see cref="QueueDragRules"/>. <c>FromQueue</c> itself
+    /// still gates the queue-specific (non-deposit) concerns: the resting "drag to reorder" caption, and the queue
+    /// panel's own foreign-insert guard / <c>RequireDropOnList</c>.</summary>
     public bool FromQueue => SourceQueueItemId is not null;
 
     /// <summary>How many ROOTLIST items this drag is carrying: the whole normalised selection for a multi-select
@@ -59,12 +62,11 @@ sealed record WaveeResourceDragPayload(
     /// boundary <see cref="TryPin"/> uses rather than duplicating its kind list, so the two can never drift apart.</summary>
     public bool CanPin => TryPin(out _);
 
-    /// <summary>This payload OFFERS its tracks to a destination (a playlist deposit, a queue insert). Not merely "has
-    /// tracks": a queue row travels with its <see cref="Track"/> (the chip reads it) and offers it to nobody — the rule
-    /// is <see cref="QueueDragRules.Depositable"/>, and every destination reads THIS property, so the queue refusal
-    /// reaches them all without a single target knowing the queue exists.</summary>
+    /// <summary>This payload OFFERS its tracks to a destination (a playlist deposit, a queue insert) — see
+    /// <see cref="QueueDragRules.Depositable"/> for why a queue-sourced payload is no different from any other track
+    /// payload here; <see cref="FromQueue"/> still gates the queue-specific concerns that AREN'T about depositing.</summary>
     public bool CanCopyTracks
-        => QueueDragRules.Depositable(Tracks is { Count: > 0 } || TrackResolver is not null, FromQueue);
+        => QueueDragRules.Depositable(Tracks is { Count: > 0 } || TrackResolver is not null);
 
     public Task<IReadOnlyList<Track>> ResolveTracksAsync(CancellationToken ct = default)
         => Tracks is { } tracks ? Task.FromResult(tracks)

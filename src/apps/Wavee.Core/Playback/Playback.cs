@@ -68,9 +68,25 @@ public enum SeekMode : byte
     Accurate
 }
 
-/// <summary>Playback command surface. The real implementation marshals these to the out-of-process
-/// x64 AudioHost over a named pipe; the fake implementation is in-process. State is observed via
-/// <see cref="IPlaybackState"/>, never returned from commands.</summary>
+/// <summary>Identifies an accepted operation independently of item/source ownership.</summary>
+public readonly record struct PlaybackCommandId(long ItemGeneration, long Sequence);
+public readonly record struct PlaybackCommandReceipt(PlaybackCommandId Id);
+public enum PlaybackPhase : byte { Idle, Resolving, Buffering, Playing, Pausing, Paused, Seeking, Transitioning, Recovering, Ended, Failed }
+public enum PlaybackSeekKind : byte { Preview, Commit }
+public enum PlaybackOperationStatus : byte { Accepted, Applied, Superseded, Failed }
+public readonly record struct PlaybackSeekRequest(long PositionMs, SeekMode Mode, PlaybackSeekKind Kind);
+public readonly record struct PlaybackSeekState(PlaybackCommandId Id, long TargetMs, long? ActualPositionMs, PlaybackOperationStatus Status);
+/// <summary>User intent, readiness and actual output are separate facts. A buffered load never restores old intent.</summary>
+public readonly record struct PlaybackTransportState(bool PlayWhenReady, PlaybackPhase Phase, bool OutputAdvancing, PlaybackSeekState? Seek)
+{
+    /// <summary>Current local item/source ownership, including repeated plays of the same URI. Remote state uses 0.</summary>
+    public long ItemGeneration { get; init; }
+    /// <summary>Latest submitted output position, in track milliseconds; null when the host cannot bound interpolation.</summary>
+    public long? PositionUpperBoundMs { get; init; }
+}
+
+/// <summary>In-process playback command surface. Completion acknowledges command acceptance; actual transport
+/// readiness and applied seek positions are observed through <see cref="IPlaybackState.Transport"/>.</summary>
 public interface IPlaybackPlayer
 {
     Task PlayAsync(string contextUri, int startIndex = 0, CancellationToken ct = default);
@@ -82,9 +98,9 @@ public interface IPlaybackPlayer
     Task ResumeAsync(CancellationToken ct = default);
     Task NextAsync(CancellationToken ct = default);
     Task PreviousAsync(CancellationToken ct = default);
-    /// <summary>Seek the current media. <paramref name="mode"/> decides whether this is a scrub PREVIEW
+    /// <summary>Seek the current media. The request decides whether this is a scrub PREVIEW
     /// (<see cref="SeekMode.Keyframe"/> — local host only) or the committed seek (<see cref="SeekMode.Accurate"/>).</summary>
-    Task SeekAsync(long positionMs, SeekMode mode, CancellationToken ct = default);
+    Task<PlaybackCommandReceipt> SeekAsync(PlaybackSeekRequest request, CancellationToken ct = default);
     Task SetVolumeAsync(double volume01, CancellationToken ct = default);
     Task SetShuffleAsync(bool on, CancellationToken ct = default);
     Task SetRepeatAsync(RepeatMode mode, CancellationToken ct = default);
@@ -145,6 +161,7 @@ public interface IPlaybackState : System.ComponentModel.INotifyPropertyChanged
     /// <summary>The URI of the context currently playing (the playlist/album/liked uri) — what a card compares its own
     /// uri against to show the now-playing equalizer. Null when nothing was started from a context.</summary>
     string? ContextUri { get; }
+    PlaybackTransportState Transport { get; }
     bool IsPlaying { get; }
     bool IsBuffering { get; }
     /// <summary>A recoverable interruption currently being handled automatically by the local audio host.</summary>

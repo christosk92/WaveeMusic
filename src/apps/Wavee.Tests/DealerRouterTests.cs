@@ -45,7 +45,7 @@ public class DealerRouterTests
     public async Task PlaylistPush_ParentRevMatch_AppliesOpsInPlace_AndAdvancesRevision()
     {
         await using var h = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
-        h.Store.SetMembership("spotify:playlist:p", new[] { M("a"), M("b") }, Rev24(1));
+        await h.Host.SeedPlaylistAsync("spotify:playlist:p", new[] { M("a"), M("b") }, Rev24(1));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         h.Dealer.PushEvent(new WireEvent("hm://playlist/v2/playlist/p", Mod("spotify:playlist:p", Rev24(1), Rev24(2), Rem(0, 1)).ToByteArray()));
@@ -62,7 +62,7 @@ public class DealerRouterTests
     public async Task PlaylistPush_ParentRevMismatch_MarksDirty_NoFetch()
     {
         await using var h = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
-        h.Store.SetMembership("spotify:playlist:p", new[] { M("a"), M("b") }, Rev24(1));
+        await h.Host.SeedPlaylistAsync("spotify:playlist:p", new[] { M("a"), M("b") }, Rev24(1));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         h.Dealer.PushEvent(new WireEvent("hm://playlist/v2/playlist/p", Mod("spotify:playlist:p", Rev24(9), Rev24(10), Rem(0, 1)).ToByteArray()));
@@ -77,7 +77,7 @@ public class DealerRouterTests
     public async Task PlaylistPush_Echo_StoredEqualsNewRev_NoOp()
     {
         await using var h = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
-        h.Store.SetMembership("spotify:playlist:p", new[] { M("a"), M("b") }, Rev24(5));
+        await h.Host.SeedPlaylistAsync("spotify:playlist:p", new[] { M("a"), M("b") }, Rev24(5));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         // new_revision == stored → an echo of our own write → dropped before any store work.
@@ -93,7 +93,7 @@ public class DealerRouterTests
     public async Task PlaylistPush_TornApply_FallsToDirty()
     {
         await using var h = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
-        h.Store.SetMembership("spotify:playlist:p", new[] { M("a"), M("b") }, Rev24(1));
+        await h.Host.SeedPlaylistAsync("spotify:playlist:p", new[] { M("a"), M("b") }, Rev24(1));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         // parent matches but REM [0,+5] doesn't fit → torn apply → gate 5 (not open) → mark dirty, no fetch.
@@ -111,7 +111,7 @@ public class DealerRouterTests
     public async Task PlaylistPush_NoHeadNoOps_LogsDrop_NoEnqueue()
     {
         await using var h = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
-        h.Store.SetMembership("spotify:playlist:p", new[] { M("a") }, Rev24(1));
+        await h.Host.SeedPlaylistAsync("spotify:playlist:p", new[] { M("a") }, Rev24(1));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         var info = new Pl.PlaylistModificationInfo { Uri = ByteString.CopyFromUtf8("spotify:user:" + User + ":collection:artist:x") };
@@ -159,7 +159,7 @@ public class DealerRouterTests
     public async Task RootlistPush_HeadOnlyPMI_RevMismatch_FullGets_OncePerPair()
     {
         await using var h = new SyncHarness(RootlistResponder(Rev24(7), "spotify:playlist:fresh"));
-        h.Store.SetRootlist(new[] { new RootlistEntry(0, 0, "spotify:playlist:old", null, 0) }, Rev24(1));
+        await h.Host.SeedRootlistAsync(new[] { new RootlistEntry(0, 0, "spotify:playlist:old", null, 0) }, Rev24(1));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         var payload = RootlistHeadPmi(Rev24(2));
@@ -180,7 +180,7 @@ public class DealerRouterTests
     public async Task RootlistPush_HeadOnly_StoredEqualsNew_EchoDrops()
     {
         await using var h = new SyncHarness(RootlistResponder(Rev24(7), "spotify:playlist:fresh"));
-        h.Store.SetRootlist(new[] { new RootlistEntry(0, 0, "spotify:playlist:p1", null, 0) }, Rev24(3));
+        await h.Host.SeedRootlistAsync(new[] { new RootlistEntry(0, 0, "spotify:playlist:p1", null, 0) }, Rev24(3));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         h.Dealer.PushEvent(new WireEvent(RootlistTopicV2, RootlistHeadPmi(Rev24(3))));   // the echo of our own write
@@ -198,7 +198,7 @@ public class DealerRouterTests
     public async Task RootlistPush_UriBytesNeverPersistAsRevision()
     {
         await using var h = new SyncHarness(RootlistResponder(Rev24(7), "spotify:playlist:fresh"));
-        h.Store.SetRootlist(new[] { new RootlistEntry(0, 0, "spotify:playlist:old", null, 0) }, Rev24(1));
+        await h.Host.SeedRootlistAsync(new[] { new RootlistEntry(0, 0, "spotify:playlist:old", null, 0) }, Rev24(1));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         h.Dealer.PushEvent(new WireEvent(RootlistTopicV2, RootlistHeadPmi(Rev24(2))));
@@ -214,13 +214,13 @@ public class DealerRouterTests
     public async Task RootlistPush_RmiWithOps_ParentMatch_AppliesInPlace()
     {
         await using var h = new SyncHarness(RootlistResponder(Rev24(7), "spotify:playlist:fresh"));
-        h.Store.SetRootlist(new[]
+        await h.Host.SeedRootlistAsync(new[]
         {
             new RootlistEntry(0, 0, "spotify:playlist:p1", null, 0),
             new RootlistEntry(1, 0, "spotify:playlist:p2", null, 0),
         }, Rev24(1));
-        h.Store.SetSaved("playlists", "spotify:playlist:p1", true, SyncState.Confirmed);   // will be swept by the fold
-        h.Mut.Save("playlists", "spotify:playlist:shield", true);                          // pending → shielded from removal
+
+        await h.Mut.SaveAsync("playlists", "spotify:playlist:shield", true);                          // pending → shielded from removal
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         h.Dealer.PushEvent(new WireEvent(RootlistTopic, RootMod(Rev24(1), Rev24(2), Rem(0, 1))));
@@ -239,7 +239,7 @@ public class DealerRouterTests
     public async Task RootlistPush_Unparseable_LogsDrop_NoStoreWrite()
     {
         await using var h = new SyncHarness(RootlistResponder(Rev24(7), "spotify:playlist:fresh"));
-        h.Store.SetRootlist(new[] { new RootlistEntry(0, 0, "spotify:playlist:p1", null, 0) }, Rev24(3));
+        await h.Host.SeedRootlistAsync(new[] { new RootlistEntry(0, 0, "spotify:playlist:p1", null, 0) }, Rev24(3));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         h.Dealer.PushEvent(new WireEvent(RootlistTopicV2, new byte[] { 0xFF, 0xFF, 0xFF, 0xFF }));   // not a protobuf
@@ -284,14 +284,14 @@ public class DealerRouterTests
     public async Task PermissionPush_FlipsIsPublic_NoGet()
     {
         await using var h = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
-        h.Store.UpsertPlaylist(OwnedHeader(isPublic: false));
+        await h.Host.SeedHeaderAsync(OwnedHeader(isPublic: false));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         h.Dealer.PushEvent(new WireEvent(PermTopic,
             PermissionState(Pl.PermissionLevel.Viewer, new byte[] { 0xDE, 0xAD }, isCollaborative: true)));
         await h.Sync.WaitForIdleAsync();
 
-        var header = h.Store.GetPlaylist("spotify:playlist:p")!;
+        var header = h.Host.ReadHeader("spotify:playlist:p")!;
         Assert.True(header.IsPublic);                                   // BLOCKED -> VIEWER means public
         Assert.Equal("dead", header.BasePermissionRevision);            // the permission chain revision, as hex
         Assert.True(header.Capabilities.IsCollaborative);
@@ -304,13 +304,13 @@ public class DealerRouterTests
     public async Task PermissionPush_Blocked_MakesItPrivate()
     {
         await using var h = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
-        h.Store.UpsertPlaylist(OwnedHeader(isPublic: true));
+        await h.Host.SeedHeaderAsync(OwnedHeader(isPublic: true));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         h.Dealer.PushEvent(new WireEvent(PermTopic, PermissionState(Pl.PermissionLevel.Blocked, new byte[] { 1 }, isPrivate: true)));
         await h.Sync.WaitForIdleAsync();
 
-        Assert.False(h.Store.GetPlaylist("spotify:playlist:p")!.IsPublic);
+        Assert.False(h.Host.ReadHeader("spotify:playlist:p")!.IsPublic);
     }
 
     // No base_permission = nothing to adopt. I7: a logged drop, never a guess and never a store write.
@@ -318,7 +318,7 @@ public class DealerRouterTests
     public async Task PermissionPush_MissingBase_LogsDrop()
     {
         await using var h = new SyncHarness(_ => SyncHarness.Ok(Array.Empty<byte>()));
-        h.Store.UpsertPlaylist(OwnedHeader(isPublic: false));
+        await h.Host.SeedHeaderAsync(OwnedHeader(isPublic: false));
         using var router = new DealerRouter(h.Dealer, h.Sync);
 
         var empty = new Pl.PermissionStatePub { PermissionState = new Pl.PermissionState { IsPrivate = true } }.ToByteArray();
@@ -328,7 +328,7 @@ public class DealerRouterTests
 
         Assert.Equal(2, router.DealerDrops);
         Assert.Equal(0, h.Sync.PermissionPushesApplied);
-        Assert.False(h.Store.GetPlaylist("spotify:playlist:p")!.IsPublic);   // untouched
+        Assert.False(h.Host.ReadHeader("spotify:playlist:p")!.IsPublic);   // untouched
     }
 
     // A cold header cannot be patched, and fetching one per push for a playlist nobody is looking at is pure herd:
@@ -345,6 +345,6 @@ public class DealerRouterTests
         Assert.Equal(1, h.Sync.PermissionPushesIgnored);
         Assert.Equal(0, h.PlaylistGets);
         Assert.Empty(h.TransportRoutes);
-        Assert.Null(h.Store.GetPlaylist("spotify:playlist:p"));
+        Assert.Null(h.Host.ReadHeader("spotify:playlist:p"));
     }
 }

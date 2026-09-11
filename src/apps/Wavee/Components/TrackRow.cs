@@ -9,6 +9,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -96,7 +97,7 @@ internal readonly record struct ColumnSet(bool Album, bool By, bool Date, bool V
 // artist/album hyperlinks, the duration/plays cells. Callers vary only the COLUMN SET (what's shown) and the CONTAINER
 // (the detail/library bound-selection skin vs. an eager hover row), so every surface renders an identical cell — they
 // can never drift, because they all build from here. Pure/diffable (no Animate) → a bound re-render patches in place.
-internal static class TrackRow
+internal static partial class TrackRow
 {
     // Grid-layout constants — SHARED so a row's columns line up under the detail header (the alignment invariant).
     internal const float RowHeight = 48f;            // density M
@@ -156,8 +157,31 @@ internal static class TrackRow
         : n >= 1_000 ? $"{n / 1_000f:0.#}K"
         : n.ToString("N0");
 
-    // The per-row playback state the cell reflects (now-playing equalizer / buffer spinner / top-track star / saved heart).
-    internal readonly record struct State(bool IsNow, bool IsPlaying, bool IsBuffering, bool IsTop, bool Saved);
+    internal static TrackPresentationFacts PresentationFacts(ColumnSet set) =>
+        (set.Plays ? TrackPresentationFacts.PlayCount : TrackPresentationFacts.None)
+        | (ShowTempo(set) ? TrackPresentationFacts.Audio : TrackPresentationFacts.None)
+        | (set.Video || DetailTrackTableRules.ShowClassicInlineVideo(set.Classic, true, set.Tier)
+            ? TrackPresentationFacts.Video : TrackPresentationFacts.None);
+
+    static readonly Loadable<long> PendingPlayCount = Loadable<long>.Pending();
+
+    internal static Element PlayCountCell(long count, TrackFactState state, bool classic = false,
+        ColorF? ink = null, bool full = false, bool suffix = false)
+    {
+        string label = state == TrackFactState.Present
+            ? (full ? count.ToString("N0") : PlaysLabel(count)) + (suffix ? " plays" : "")
+            : state == TrackFactState.Pending ? (suffix ? "000 plays" : "000") : Dash;
+        Element leaf = FactualText(label, classic, ink ?? Tok.TextTertiary) with { MaxLines = 1, Shrink = 0f };
+        if (state == TrackFactState.Pending) return leaf.Pending(PendingPlayCount);
+        if (state is TrackFactState.Failed or TrackFactState.Offline)
+            return ToolTip.Wrap(leaf, Loc.Get(state == TrackFactState.Offline
+                ? Strings.Detail.TrackDetailsOffline : Strings.Detail.TrackDetailsUnavailable));
+        return leaf;
+    }
+
+    // State (the per-row playback state the cell reflects: now-playing equalizer / buffer spinner / top-track star /
+    // saved heart) lives in the sibling file TrackRow.State.cs — split out because it is the one engine-free fragment
+    // of this otherwise FluentGpu-bound class, and RowPresentation.cs (Features/Detail) needs it source-includable.
 
     internal enum ArtCardKind { Grid, Rail }
 
@@ -192,7 +216,8 @@ internal static class TrackRow
         startDifferent();
     }
 
-    // Builds the row GRID — ONE source for the live bound rows, the eager rows, AND the skeleton shimmer. The per-track
+    // Builds the row GRID — eager surfaces (Home artists, the artist album drawer, Recents, TrackRow.Row). The
+    // virtualized detail list uses TrackRowTemplate instead. The per-track
     // values arrive resolved (t + state flags + the title element), so the caller decides static (shimmer/eager) vs
     // index-signal-bound (detail BoundRowContent) title. Plain/diffable — no Animate — so a re-render patches cells in place.
     internal static Element Grid(Track t, int displayIndex, in State st, ColumnSet set, TrackSize[] tracks, float rowH,
@@ -206,9 +231,16 @@ internal static class TrackRow
                                  bool likePop = false, Element? actionsCell = null,
                                  bool showAlbumInMeta = false, bool showListBadges = false,
                                  Element? expandCell = null, bool moreEnabled = true,
-                                 IReadSignal<bool>? hoverPaused = null)
+                                 IReadSignal<bool>? hoverPaused = null, TrackFactState playsState = TrackFactState.Pending,
+                                 // "Does this row have a video?" as a VALUE. The detail table projects it once per row
+                                 // from the publication its rows were built from (RowPresentation.HasVideo) and passes
+                                 // it here, so the render path asks nobody at all. Null = "no publication to answer
+                                 // from" (search, artist Popular, the album drawer, RecentsPage) and only then does
+                                 // the row fall back to the shared VideoPresence probe.
+                                 bool? hasVideo = null)
     {
         float thumb = art;   // the row's art column edge — density-keyed for the detail table, fixed elsewhere
+        bool rowHasVideo = hasVideo ?? VideoPresence.HasVideo(t);
 
         var cells = new List<Element>(tracks.Length);
         // Every cell carries a STABLE key. The column set changes at runtime (a breakpoint cross drops Album/Added-by/
@@ -251,7 +283,7 @@ internal static class TrackRow
         // artist line and back.
         bool showMeta = !set.Classic && (showTrackArtist || showAlbumInMeta || (showListBadges && t.IsExplicit));
         bool classicVideo = DetailTrackTableRules.ShowClassicInlineVideo(
-            set.Classic, VideoPresence.HasVideo(t), set.Tier);
+            set.Classic, rowHasVideo, set.Tier);
         Element titleLine = set.Classic
             ? ClassicTitleLine(t, title, showTrackArtist, classicVideo,
                 showListBadges && t.IsExplicit, go, classicNow)
@@ -290,12 +322,10 @@ internal static class TrackRow
         // and 0 duration. Formatting those gives "0" and "0:00", which reads as a real, dismal track rather than as one
         // that is not out — so the cells state the absence instead. Reuses the `notYetOut` local above rather than
         // re-deriving the test: one row must not be dim-but-timed or bright-but-dashed.
-        // A count of 0 is "not known yet", never "nobody played it": the kind-185 reader refuses to invent a count, and
-        // playlist/Liked rows fill LAZILY (the whole-list hydrator runs off the open path, and album rows are countless
-        // until it lands too). Rendering that as "0" would state a fact the app does not have, so the cell dashes.
+        // Resource knowledge distinguishes an unanswered count from an authoritative zero.
         if (set.Plays)
-            Add(CellKey.Plays, EndCell(FactualText(
-                notYetOut || t.PlayCount <= 0 ? Dash : PlaysLabel(t.PlayCount), set.Classic, tertiaryInk)));
+            Add(CellKey.Plays, EndCell(PlayCountCell(t.PlayCount,
+                notYetOut ? TrackFactState.Absent : playsState, set.Classic, tertiaryInk)));
         if (ShowTempo(set))
             Add(CellKey.Tempo, EndCell(TempoCell(t, classicNow ? Tok.AccentTextPrimary : null, set.Classic)));
         // A pending track states WHEN rather than a dash, when the metadata plane gave us a live instant in the future
@@ -316,8 +346,9 @@ internal static class TrackRow
         // sit AFTER Duration so it never wedges between Album and Tempo when the BPM column is on.
         if (set.Video)
             // Override-aware: a user-attached local video counts as "this row has a video" exactly like the source's own
-            // association. VideoPresence.HasVideo is one ordinal dictionary probe — no context read, no per-row signal.
-            Add(CellKey.Video, CenterCell(VideoMoreCell(VideoPresence.HasVideo(t), moreEnabled)));
+            // association. The answer arrives as `hasVideo` — the one bool this row's caller already projected. The
+            // fallback probe reads the catalog's LOCK-FREE published view: no gate, no context read, no per-row signal.
+            Add(CellKey.Video, CenterCell(VideoMoreCell(rowHasVideo, moreEnabled)));
         // Trailing "..." overflow lane when Video is off. Present only when the set keeps Actions AND the caller
         // reserved its width in `tracks`. When Video is on, More lives in the Video lane instead.
         if (set.Actions && actionsCell is not null) Add(CellKey.More, actionsCell);
@@ -345,14 +376,15 @@ internal static class TrackRow
     // Component-hosted so the row hover signal (EQ pause + HoverOpacity source) lives across parent re-renders.
     internal static Element Row(Track t, int displayIndex, in State st, ColumnSet set, TrackSize[] tracks, float rowH,
                                 bool showTrackArtist, Action<string, string?> go, Action onPlay, Action? onLike = null, bool zebra = false,
-                                Element? actionsCell = null)
+                                Element? actionsCell = null, TrackFactState playsState = TrackFactState.Pending)
         => Embed.Comp(
-            new EagerRowProps(t, displayIndex, st, set, tracks, rowH, showTrackArtist, go, onPlay, onLike, zebra, actionsCell),
+            new EagerRowProps(t, displayIndex, st, set, tracks, rowH, showTrackArtist, go, onPlay, onLike, zebra, actionsCell, playsState),
             () => new EagerRowHost());
 
     sealed record EagerRowProps(
         Track Track, int DisplayIndex, State St, ColumnSet Set, TrackSize[] Tracks, float RowH,
-        bool ShowTrackArtist, Action<string, string?> Go, Action OnPlay, Action? OnLike, bool Zebra, Element? ActionsCell);
+        bool ShowTrackArtist, Action<string, string?> Go, Action OnPlay, Action? OnLike, bool Zebra, Element? ActionsCell,
+        TrackFactState PlaysState);
 
     sealed class EagerRowHost : Component
     {
@@ -386,7 +418,8 @@ internal static class TrackRow
                 Children =
                 [
                     Grid(m.Track, m.DisplayIndex, m.St, m.Set, m.Tracks, m.RowH, title, m.ShowTrackArtist, m.Go,
-                         onPlay: m.OnPlay, onLike: m.OnLike, actionsCell: m.ActionsCell, hoverPaused: hovered),
+                         onPlay: m.OnPlay, onLike: m.OnLike, actionsCell: m.ActionsCell, hoverPaused: hovered,
+                         playsState: m.PlaysState),
                 ],
             };
         }
@@ -402,7 +435,7 @@ internal static class TrackRow
                                     bool showArtists = true, bool explicitBadge = false,
                                     bool showDuration = true, ArtCardKind kind = ArtCardKind.Rail,
                                     Action? onAdd = null, bool likePop = false, bool showMore = false,
-                                    bool showArtwork = true)
+                                    bool showArtwork = true, TrackFactState playsState = TrackFactState.Pending)
     {
         // One radius for the art, not the old grid-4 / list-5 split (5 was on no ramp at all).
         const float radius = Radii.Control;
@@ -436,7 +469,7 @@ internal static class TrackRow
         if (meta.Count > 0)
             textKids.Add(new BoxEl { Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Children = meta.ToArray() });
         if (set.Plays)
-            textKids.Add(Caption($"{t.PlayCount:N0} plays") with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
+            textKids.Add(PlayCountCell(t.PlayCount, playsState, full: true, suffix: true));
 
         var trailing = new List<Element>(3);
         if (onAdd is not null) trailing.Add(AddButton(onAdd));   // recommendation rows: the "+" add-to-playlist button leads the trailing cluster
@@ -910,18 +943,9 @@ internal static class TrackRow
         TransitionDynamics.Spring(0.30f, 0.55f),   // low damping → the overshoot pop (BadgePop's spring)
         Enter: new EnterExit(Sx: 0.25f, Sy: 0.25f, Opacity: 0f, Active: true, Blur: Expressive.BlurSmall));
 
-    /// <summary>Per-slot like-edge detector: true only when the SAME uri flipped unsaved→saved since this slot's last
-    /// render — a recycle re-binds to a different uri, so scrolling never reports an edge (no pop replay).</summary>
-    internal static bool LikeEdge(Ref<(string? Uri, bool Saved)> prev, string uri, bool saved)
-    {
-        bool edge = saved && !prev.Value.Saved && string.Equals(prev.Value.Uri, uri, StringComparison.Ordinal);
-        prev.Value = (uri, saved);
-        return edge;
-    }
-
     // The per-row like heart: filled (accent) when the track is in the saved-set, outline otherwise; click toggles it
     // through the caller's LibraryBridge (optimistic). Null onLike (skeleton / overscan rows) → a static, non-interactive heart.
-    // `pop` (a caller-detected like EDGE, see LikeEdge) attaches the overshoot Enter to the keyed glyph for that ONE
+    // `pop` (a caller-detected like EDGE) attaches the overshoot Enter to the keyed glyph for that ONE
     // render; any other render — recycling included — mounts the (possibly key-changed) glyph with Animate = null → snap.
     //
     // Always painted at rest — filled when saved, outline when not. Saved-ness is a FACT the row owes the reader, and

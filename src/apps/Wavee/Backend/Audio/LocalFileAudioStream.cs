@@ -43,6 +43,14 @@ public sealed class LocalFileAudioStream : Stream, IAsyncDisposable, IAudioReadS
 
     // ── IAudioReadStream — a local file has no clear head, no deferred body and no read-ahead to throttle ────────────
     public Stream AsStream() => this;
+    public long DataVersion => 0;
+    public void WaitForData(long observedVersion, CancellationToken cancellationToken)
+        => throw new InvalidOperationException("A local file never reports wouldBlock.");
+    public int TryRead(Span<byte> destination, out bool wouldBlock)
+    {
+        wouldBlock = false;
+        return Read(destination);
+    }
     public long CurrentOffset => _file.CanSeek ? _file.Position : 0;
     public bool IsBodyAttached => true;
     public long KnownSize => _length;

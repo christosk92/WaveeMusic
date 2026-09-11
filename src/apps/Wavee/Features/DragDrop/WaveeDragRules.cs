@@ -174,19 +174,28 @@ static class TabDropRules
     }
 }
 
-/// <summary>A QUEUE row's drag is a REORDER, never a deposit. The one decision every playlist destination reads
-/// through <c>WaveeResourceDragPayload.CanCopyTracks</c>, so no target has to know the queue exists.
-/// <para>The finding this answers: the queue's "Next in queue" row travelled as an ordinary track payload (it carries
-/// its <c>Track</c> — the chip needs it for the title and the art), so every playlist surface accepted it as a copy and
-/// a drag that was aimed at the queue's own rows ended as "Added to {playlist}". The payload now says where it came
-/// from, and a payload from the queue offers its tracks to nobody: the playlist page body, the track list, the tab
-/// strip, the sidebar rows and the player bar all gate on the same predicate, and all of them go dark for it. Inside
-/// the queue the gesture is the list's OWN (<c>ReorderPayload</c> from its <c>Reorderable</c>), which the list accepts
-/// without asking this question — so refusing everywhere else costs the reorder nothing.</para></summary>
+/// <summary>Whether a QUEUE row's drag may be DEPOSITED (copied onto a playlist / inserted elsewhere), as opposed to
+/// merely reordering the queue's own list. The one decision every playlist destination reads through
+/// <c>WaveeResourceDragPayload.CanCopyTracks</c>, so no target has to know the queue exists.
+/// <para>History: the queue's "Next in queue" row travels as an ordinary track payload (it carries its <c>Track</c> —
+/// the chip needs it for the title and the art). A 0.2.1 fix (<c>f792c883</c>) made every queue-sourced payload
+/// undepositable ANYWHERE outside the queue, because a drag aimed at reordering the queue's own rows could end as
+/// "Added to {playlist}" on whatever playlist surface happened to be nearby. That blanket refusal also disabled the
+/// legitimate gesture of dragging a queued/autoplay track onto a real playlist to add it there — which is a track
+/// deposit like any other, not a queue reorder, and reads a payload with a perfectly valid <c>Track</c>/URI.</para>
+/// <para>Deposit is re-enabled here: <see cref="Depositable"/> now only asks whether the payload HAS tracks. The
+/// original mis-drop hazard is covered independently — inside the queue the gesture is the list's OWN
+/// (<c>ReorderPayload</c> from its <c>Reorderable</c>), which the list accepts without asking this question at all,
+/// and <c>QueuePanel.RequireDropOnList</c> cancels (rather than commits a reorder for) any release outside the
+/// queue's own list bounds. <c>fromQueue</c>/<see cref="WaveeResourceDragPayload.FromQueue"/> still gates the
+/// queue-specific concerns that are NOT about depositing on a playlist: the "drag to reorder" resting caption, the
+/// queue's own foreign-insert guard (blocking a row from the OTHER queue surface re-inserting itself), and
+/// <c>RequireDropOnList</c>.</para></summary>
 static class QueueDragRules
 {
-    /// <summary>May this payload's tracks be deposited on a playlist / inserted into a queue by a drop?</summary>
-    public static bool Depositable(bool hasTracks, bool fromQueue) => hasTracks && !fromQueue;
+    /// <summary>May this payload's tracks be deposited on a playlist / inserted into a queue by a drop? Depositing no
+    /// longer distinguishes a queue-sourced payload from any other track payload — see the type doc.</summary>
+    public static bool Depositable(bool hasTracks) => hasTracks;
 }
 
 /// <summary>D16 — the COLLAPSED RAIL's transparency rule. A 56-DIP strip of covers is a corridor as much as a set of

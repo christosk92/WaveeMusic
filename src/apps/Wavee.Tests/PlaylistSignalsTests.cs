@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,6 +7,7 @@ using Wavee.Backend;
 using Wavee.Backend.Collections;
 using Wavee.Backend.Library;
 using Wavee.Backend.Playlists;
+using Wavee.Backend.Queries;
 using Wavee.Backend.Realtime;
 using Wavee.Backend.Spotify;
 using Wavee.Backend.Sync;
@@ -19,8 +20,6 @@ namespace Wavee.Tests;
 public sealed class PlaylistSignalsTests
 {
 
-    // The facade every StoreLibrarySource read goes through. Offline = store-only, never networks (design §1.3).
-    static SwitchableEntityHydrator Offline(IStore store) => new(new Wavee.Backend.Hydration.OfflineEntityHydrator(store));
     const string Uri = "spotify:playlist:mix";
     const string ChoiceA = "session_control_display$mix$more_discovery";
     const string ChoiceB = "session_control_display$mix$soft_pop:nl_genre";
@@ -92,18 +91,10 @@ public sealed class PlaylistSignalsTests
     [Fact]
     public void SnapshotAdoption_MapsFormatRosterLabelsSelectionAndReset()
     {
-        var store = new InMemoryStore();
-        var fetcher = new PlaylistFetcher(
-            new FakeExchange((_, _) => throw new InvalidOperationException()),
-            () => "https://x",
-            store,
-            (_, _) => Task.CompletedTask,
-            () => "");
-
-        fetcher.AdoptSnapshot(Uri, Snapshot(4, ChoiceB));
-
-        Assert.Equal(Rev(4), store.PlaylistRevision(Uri));
-        var playlist = Assert.IsType<Playlist>(store.GetPlaylist(Uri));
+        var fetcher = new PlaylistFetcher(new FakeExchange((_, _) => throw new InvalidOperationException()), () => "https://x", () => "");
+        var read = fetcher.ReadSnapshot(Uri, Snapshot(4, ChoiceB));
+        Assert.Equal(Rev(4), read.Revision);
+        var playlist = Assert.IsType<Playlist>(read.Header);
         Assert.Equal("inspiredby-mix", playlist.Format);
         var tuning = Assert.IsType<PlaylistTuning>(playlist.Tuning);
         Assert.Equal(ChoiceB, tuning.SelectedIdentifier);
@@ -112,7 +103,7 @@ public sealed class PlaylistSignalsTests
         Assert.Equal("Make it more soft pop", tuning.Available[1].DisplayName);
         Assert.Equal(PlaylistTuningOptionKind.Reset, tuning.Available[2].Kind);
         Assert.Null(tuning.Available[2].DisplayName);
-        Assert.Equal("spotify:track:4", Assert.Single(store.Membership(Uri)).ItemUri);
+        Assert.Equal("spotify:track:4", Assert.Single(read.Members).ItemUri);
     }
 
     [Fact]
@@ -137,17 +128,16 @@ public sealed class PlaylistSignalsTests
     [Fact]
     public async Task StoreRead_HidesTuningWhenMembershipRevisionHasAdvanced()
     {
-        var store = new InMemoryStore();
-        store.UpsertPlaylist(new Playlist(
+        await using var host = new ReplicaTestHost();
+        await host.SeedHeaderAsync(new Playlist(
             "mix", Uri, "Mix", null, "spotify", null, 1,
             Tuning: new PlaylistTuning(
                 Rev(1),
                 new[] { new PlaylistTuningOption(ChoiceA, "More discovery tracks", PlaylistTuningOptionKind.Choice) },
                 null)));
-        store.SetMembership(Uri, new[] { new PlaylistMember("a", "spotify:track:a", null, 0) }, Rev(2));
-        using var source = new StoreLibrarySource(store, Offline(store), OfflineOnlineCatalog.Instance);
-
-        var playlist = await source.GetPlaylistAsync(Uri, ct: TestContext.Current.CancellationToken);
+        await host.SeedPlaylistAsync(Uri, new[] { new PlaylistMember("a", "spotify:track:a", null, 0) }, Rev(2));
+        var read = new CatalogReadView(host.Catalog.Scope, host.Replicas, _ => "spotify");
+        var playlist = read.Playlist(new QueryReadContext(host.Catalog), Uri);
 
         Assert.NotNull(playlist);
         Assert.Null(playlist!.Tuning);
@@ -166,41 +156,12 @@ public sealed class PlaylistSignalsTests
             string selected = request.Signals[0].Identifier;
             return new HttpResp(200, new Dictionary<string, string>(), Snapshot((byte)(calls + 1), selected).ToByteArray());
         });
-        var store = new InMemoryStore();
-        store.UpsertPlaylist(new Playlist(
-            "mix", Uri, "Automatic Mix", null, "spotify", null, 1,
-            Tuning: new PlaylistTuning(
-                Rev(1),
-                new PlaylistTuningOption[]
-                {
-                    new(ChoiceA, "More discovery tracks", PlaylistTuningOptionKind.Choice),
-                    new(ChoiceB, "Make it more soft pop", PlaylistTuningOptionKind.Choice),
-                    new(Reset, null, PlaylistTuningOptionKind.Reset),
-                },
-                null)));
-        store.SetMembership(Uri, new[] { new PlaylistMember("a", "spotify:track:a", null, 0) }, Rev(1));
-
-        var fetcher = new PlaylistFetcher(http, () => "https://x", store, (_, _) => Task.CompletedTask, () => "");
-        var revisions = new Dictionary<string, string?>();
-        var collections = new CollectionFetcher(http, () => "https://x", () => "bob", store,
-            s => revisions.TryGetValue(s, out var r) ? r : null,
-            (s, r) => revisions[s] = r,
-            (_, _) => Task.CompletedTask);
-        var echo = new CollectionEchoRing();
-        var mutations = new MutationEngine(store,
-            new IMutationStrategy[]
-            {
-                new SetReplayStrategy(echo),
-                new OpRebaseStrategy(store, () => "https://x", new PlaylistResyncQueue()),
-                new RootlistFollowStrategy(store, new RootlistLane()),
-            });
-        using var cts = new CancellationTokenSource();
-        var transport = new StubTransport();
+        await using var host = new ReplicaTestHost();
+        var parser = new PlaylistFetcher(http, () => "https://x", () => "bob");
+        await host.Replicas.AdoptPlaylistAsync(parser.ReadSnapshot(Uri, Snapshot(1)));
+        var store = host.Store;
         var client = new PlaylistSignalsClient(http, () => "https://x", () => "en");
-        await using var sync = new LibrarySync(
-            store, fetcher, collections, mutations, new PlaylistResyncQueue(), transport,
-            () => new SessionContext("bob", "US", "premium", "en", Tier.Premium, false),
-            () => "bob", default, cts.Token, echo, client);
+        var sync = host.AttachSync(http, new StubTransport(), signals: client);
 
         await sync.ApplyAsync(Uri, ChoiceA, TestContext.Current.CancellationToken);
         await sync.ApplyAsync(Uri, ChoiceB, TestContext.Current.CancellationToken);
@@ -209,7 +170,7 @@ public sealed class PlaylistSignalsTests
         Assert.Equal(Rev(1), requestRevisions[0]);
         Assert.Equal(Rev(2), requestRevisions[1]);
         Assert.Equal(Rev(3), store.PlaylistRevision(Uri));
-        Assert.Equal(ChoiceB, store.GetPlaylist(Uri)!.Tuning!.SelectedIdentifier);
+        Assert.Equal(ChoiceB, host.ReadHeader(Uri)!.Tuning!.SelectedIdentifier);
         Assert.Equal(2, sync.SignalApplies);
     }
 
@@ -218,8 +179,8 @@ public sealed class PlaylistSignalsTests
     {
         var response = Snapshot(2, ChoiceA);
         await using var harness = new SyncHarness(_ => SyncHarness.Ok(response.ToByteArray()));
-        harness.Store.UpsertPlaylist(new Playlist("mix", Uri, "Mix", null, "spotify", null, 1));
-        harness.Store.SetMembership(Uri, new[] { new PlaylistMember("a", "spotify:track:a", null, 0) }, Rev(1));
+        await harness.Host.SeedHeaderAsync(new Playlist("mix", Uri, "Mix", null, "spotify", null, 1));
+        await harness.Host.SeedPlaylistAsync(Uri, new[] { new PlaylistMember("a", "spotify:track:a", null, 0) }, Rev(1));
         using var router = new DealerRouter(harness.Dealer, harness.Sync);
 
         var info = new Pl.PlaylistModificationInfo

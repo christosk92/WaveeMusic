@@ -35,14 +35,7 @@ public sealed class LicenseKeyDiskCache : IDisposable
 
     public static string DefaultDbPath() => Path.Combine(CacheRoot(), "audiokeys.db");
 
-    public static string CacheRoot()
-    {
-        try { return FluentGpu.WindowsApi.Storage.AppDataStore.ForUnpackaged("Wavee", "Wavee").CacheFolder; }
-        catch
-        {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "Cache");
-        }
-    }
+    public static string CacheRoot() => UnpackagedAppDataRoot.UnderCurrent("Cache");
 
     public static LicenseKeyDiskCache? FromSettings(IAppSettings settings)
     {

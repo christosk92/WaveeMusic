@@ -1,5 +1,10 @@
 # Wavee hydration façade — the design (contracts + engine + ladders + traits)
 
+> **Historical document, superseded 2026-09.** Its old implementation instructions and status matrix do not describe
+> the current tree. Use [architecture.md](architecture.md) and
+> [catalog-state-replacement-implementation.md](catalog-state-replacement-implementation.md). Preserve this document
+> as evidence of the earlier design; do not restore its facade, ladders, mutable store or UI repair paths.
+
 > Companion to `hydration-facade-plan.md` (phases, ownership, gates) and `metadata-entry-points-inventory.md` (what exists
 > today). This is the doc every implementing agent reads. Where the plan says *what*, this says *exactly which shapes*.
 > Repo vocabulary: `docs/plans/wavee/architecture.md` §4 (ports / ACL / SourceRegistry), `.claude/skills/wavee/wiring-discipline.md`

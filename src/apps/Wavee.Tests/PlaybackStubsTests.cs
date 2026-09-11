@@ -39,7 +39,7 @@ public class PlaybackStubsTests
         await p.PauseAsync();
         await p.NextAsync();
         await p.PreviousAsync();
-        await p.SeekAsync(1000, SeekMode.Accurate);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => p.SeekAsync(new(1000, SeekMode.Accurate, PlaybackSeekKind.Commit)));
         await p.SetVolumeAsync(0.5);
         await p.SetShuffleAsync(true);
         await p.SetRepeatAsync(RepeatMode.Context);
@@ -80,9 +80,9 @@ public class PlaybackStubsTests
     }
 
     [Fact]
-    public void NoLyricsProvider_ReturnsNull()
+    public async Task NoLyricsProvider_ReturnsNull()
     {
         var l = new NoLyricsProvider();
-        Assert.Null(l.GetLyricsAsync("spotify:track:a").GetAwaiter().GetResult());
+        Assert.Null(await l.GetLyricsAsync("spotify:track:a"));
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using FluentGpu.Foundation;
 using FluentGpu.Hosting;
@@ -43,9 +44,10 @@ internal static class WaveeNavProbe
         ("pl:spotify:playlist:pl4", "Playlist 4"),
         ("pl:spotify:playlist:pl5", "Playlist 5"),
     ];
+    // W7: "local" dropped — the Local Files collection page is retired, so the probe no longer has a route to visit.
     static readonly (string Key, string? Arg)[] CheapRoutes =
     [
-        ("albums", null), ("artists", null), ("podcasts", null), ("local", null), ("browse", null),
+        ("albums", null), ("artists", null), ("podcasts", null), ("browse", null),
     ];
 
     /// <summary>Every env flag that hands this probe the run loop. ONE list, read by both <see cref="TryRun"/> and the
@@ -56,7 +58,7 @@ internal static class WaveeNavProbe
         "WAVEE_NAV_PROBE", "WAVEE_CONN_STRESS", "WAVEE_TRACKLIST_SHOT", "WAVEE_HERO_SHOT", "WAVEE_SHELF_SHOT",
         "WAVEE_RAIL_SHOT", "WAVEE_RAIL_PROBE", "WAVEE_HOME_SCROLL_PROBE", "WAVEE_LYRICS_PROBE",
         "WAVEE_LIVE_LYRICS_SCROLL_PROBE", "WAVEE_LYRICS_ADVANCE_PROBE", "WAVEE_SIDEBAR_MODE_SHOT",
-        "WAVEE_SIDEBAR_V3_SHOT", "WAVEE_SIDEBAR_VISUAL_SHOT",
+        "WAVEE_SIDEBAR_V3_SHOT", "WAVEE_SIDEBAR_VISUAL_SHOT", "WAVEE_TRACKLIST_SCROLL_PROBE",
     ];
 
     /// <inheritdoc cref="ProbeFlags"/>
@@ -85,6 +87,7 @@ internal static class WaveeNavProbe
         bool sidebarModeShot = Diag.EnvFlag("WAVEE_SIDEBAR_MODE_SHOT");
         bool sidebarV3Shot = Diag.EnvFlag("WAVEE_SIDEBAR_V3_SHOT");
         bool sidebarVisualShot = Diag.EnvFlag("WAVEE_SIDEBAR_VISUAL_SHOT");
+        bool trackScrollProbe = Diag.EnvFlag("WAVEE_TRACKLIST_SCROLL_PROBE");
         WaveeLog.Instance.SetEcho(Console.Error.WriteLine);   // env-gated run only: mirror probe progress to the terminal
         if (window is not Win32Window w || device is not D3D12Device gpu)
         {
@@ -98,19 +101,18 @@ internal static class WaveeNavProbe
         // hero shots they need the authenticated first sync to have landed — not just the shell to have mounted.
         bool needsAuth = liveLyricsScroll || advanceProbe || heroShot || shelfShot || railShot || sidebarModeShot || sidebarV3Shot || sidebarVisualShot;
         int hookFrames = needsAuth ? Math.Max(240, EnvInt("WAVEE_PROBE_AUTH_FRAMES", 7200, 240, 36000)) : 240;
+        // Both branches pump the window's message loop between frames: the shell mounts from a UI post the fake
+        // session issues once it starts, and a frame loop that never services messages never delivers that post
+        // (240 vsync-free frames used to run inside ~100 ms and report "nav hook not wired").
         for (int i = 0; i < hookFrames && WaveeShell.ProbeNav is null && !w.IsClosed; i++)
         {
-            if (needsAuth)
-            {
-                host.RunFrame();
-                w.WaitForWork(Math.Min(host.RecommendedWaitMs(), 16));
-            }
-            else
+            if (!needsAuth)
             {
                 gpu.SuppressLatencyWaitOnce();
                 gpu.SuppressVsyncOnce();
-                host.RunFrame();
             }
+            host.RunFrame();
+            w.WaitForWork(Math.Min(host.RecommendedWaitMs(), 16));
         }
         if (WaveeShell.ProbeNav is null)
         {
@@ -127,6 +129,7 @@ internal static class WaveeNavProbe
         else if (trackShot) RunTrackListShot(host, w, gpu);
         else if (connStress) RunConnStress(host, w, gpu);
         else if (homeScroll) RunHomeScrollProbe(host, w, gpu);
+        else if (trackScrollProbe) RunTrackListScrollProbe(host, w, gpu);
         else if (liveLyricsScroll) RunLiveLyricsScrollProbe(host, w, gpu);
         else if (advanceProbe) RunLyricsAdvanceProbe(host, w, gpu);
         else if (lyricsProbe) RunLyricsProbe(host, w, gpu);
@@ -1080,7 +1083,7 @@ internal static class WaveeNavProbe
                 int wait = host.RecommendedWaitMs();
                 if (wait > 0) { realLoopThrottled++; if (wait > realLoopMaxWait) realLoopMaxWait = wait; }
                 if (host.LastWaitKind is HostWaitKind.DisplayTick or HostWaitKind.SoftwarePace) realLoopWaitAsync++;
-                else if (host.LastWaitKind == HostWaitKind.Ambient) realLoopWaitAmbient++;
+                else if (host.LastWaitKind == HostWaitKind.Cadence) realLoopWaitAmbient++;
                 else realLoopWaitOther++;
                 // A synthetic queued event is not an HWND message and therefore cannot wake an infinite idle wait.
                 // Clamp that diagnostic-only case; a correctly armed scroll returns a display-paced wait here.
@@ -1100,7 +1103,7 @@ internal static class WaveeNavProbe
             foreach (var v in a) { tot += v; if (v > realLoopWorstMs) realLoopWorstMs = v; if (v > 16.7) realLoopOver16++; }
             realLoopMeanMs = a.Length > 0 ? tot / a.Length : 0;
             Log.Info($"[home-scroll-fps] REAL app-loop wheel scroll: {a.Length} frames mean {realLoopMeanMs:0.0}ms ({(realLoopMeanMs > 0 ? 1000.0 / realLoopMeanMs : 0):0} fps) worst {realLoopWorstMs:0.0}ms ({(realLoopWorstMs > 0 ? 1000.0 / realLoopWorstMs : 0):0} fps) >16.7ms(<60fps)={realLoopOver16} " +
-                $"offsetSpan={realLoopOffsetSpan:0} scrollActive={realLoopScrollActive}/200 waits(async/ambient/other)={realLoopWaitAsync}/{realLoopWaitAmbient}/{realLoopWaitOther} " +
+                $"offsetSpan={realLoopOffsetSpan:0} scrollActive={realLoopScrollActive}/200 waits(async/cadence/other)={realLoopWaitAsync}/{realLoopWaitAmbient}/{realLoopWaitOther} " +
                 $"activePresents={realLoopPresents} activePresentFps={realLoopPresentFps:0.0} trailingPresentFps={realLoopTrailingPresentFps:0.0} drainPresents={realLoopDrainPresents} " +
                 $"throttledWaitFrames={realLoopThrottled} maxWait={realLoopMaxWait}ms");
         }
@@ -1165,7 +1168,7 @@ internal static class WaveeNavProbe
         sb.AppendLine("=== VERDICTS ===");
         if (realLoopMeanMs > 0)
             sb.AppendLine($"  real-loop proof: offsetSpan={realLoopOffsetSpan:0} scrollActive={realLoopScrollActive}/200 " +
-                $"waits(async/ambient/other)={realLoopWaitAsync}/{realLoopWaitAmbient}/{realLoopWaitOther} " +
+                $"waits(async/cadence/other)={realLoopWaitAsync}/{realLoopWaitAmbient}/{realLoopWaitOther} " +
                 $"activePresents={realLoopPresents} activePresentFps={realLoopPresentFps:0.0} " +
                 $"trailingPresentFps={realLoopTrailingPresentFps:0.0} drainPresents={realLoopDrainPresents}");
         AppendScrollVerdicts(sb, homeScroll, likedScroll, all, nAttrib, sumFlush, sumLayout, sumAnim, sumRecord, sumSubmit,
@@ -1235,6 +1238,248 @@ internal static class WaveeNavProbe
         }
         if (workOk120 && mFence < 1.0 && mRealize < 0.5 && hotAllocFrames == 0 && mEsc < 0.01 && realOver16 == 0)
             sb.AppendLine("  OVERALL: work path looks clean. If the app still 'feels heavy', suspect input latency / async present / subjective motion (not CPU frame budget).");
+    }
+
+    /// <summary>One measured (painted) frame of the tracklist-scroll probe: the engine's own per-phase split
+    /// (<see cref="FrameStats"/>) plus the GC deltas this file's other probes don't carry — a Gen0/1/2 collection
+    /// count and total-allocated-bytes delta, sampled around the single <c>host.RunFrame()</c> call.</summary>
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern uint GetCurrentThreadId();
+
+    // GCAllocationTick sampler: the runtime raises one event per ~100 KB allocated (per allocation context) carrying the
+    // type of the object that crossed the threshold and the OS thread, so the sample is an unbiased estimate of bytes per
+    // type. Off (Enabled=false) it drops every event, so the warm-up/settle phases are not counted.
+    sealed class AllocationTickListener : System.Diagnostics.Tracing.EventListener
+    {
+        const int GcKeyword = 0x1;
+        readonly uint _ui;
+        readonly Dictionary<string, (long Ui, long Other)> _byType = new(StringComparer.Ordinal);
+        readonly object _gate = new();
+        public volatile bool Enabled;
+        int _events; readonly List<string> _names = new();
+        public AllocationTickListener(uint uiThreadId) { _ui = uiThreadId; }
+        protected override void OnEventSourceCreated(System.Diagnostics.Tracing.EventSource source)
+        {
+            if (source.Name == "Microsoft-Windows-DotNETRuntime" || source.Name == "System.Runtime")
+                EnableEvents(source, System.Diagnostics.Tracing.EventLevel.Verbose, (System.Diagnostics.Tracing.EventKeywords)GcKeyword);
+        }
+        protected override void OnEventWritten(System.Diagnostics.Tracing.EventWrittenEventArgs e)
+        {
+            System.Threading.Interlocked.Increment(ref _events);
+            if (_names.Count < 12) lock (_gate) { if (_names.Count < 12 && !_names.Contains(e.EventName ?? "")) _names.Add(e.EventName ?? ("id" + e.EventId)); }
+            if (!Enabled || e.EventName is null || !e.EventName.StartsWith("GCAllocationTick", StringComparison.Ordinal) || e.Payload is null) return;
+            long amount = 0; string type = "?";
+            for (int i = 0; i < e.PayloadNames!.Count; i++)
+            {
+                switch (e.PayloadNames[i])
+                {
+                    case "AllocationAmount64": amount = Convert.ToInt64(e.Payload[i], CultureInfo.InvariantCulture); break;
+                    case "AllocationAmount": if (amount == 0) amount = Convert.ToInt64(e.Payload[i], CultureInfo.InvariantCulture); break;
+                    case "TypeName": type = e.Payload[i] as string ?? "?"; break;
+                }
+            }
+            bool ui = e.OSThreadId == _ui;
+            lock (_gate)
+            {
+                _byType.TryGetValue(type, out var c);
+                _byType[type] = ui ? (c.Ui + amount, c.Other) : (c.Ui, c.Other + amount);
+            }
+        }
+        public string Report(int top)
+        {
+            lock (_gate)
+            {
+                long ui = 0, other = 0;
+                foreach (var v in _byType.Values) { ui += v.Ui; other += v.Other; }
+                var sb = new StringBuilder(4096);
+                sb.AppendLine($"[tracklist-scroll-probe] allocation ticks during the drives: ui={ui / 1024} KB other={other / 1024} KB  (top {top} types, KB ui/other) events={_events} names={string.Join('|', _names)}");
+                foreach (var kv in _byType.OrderByDescending(kv => kv.Value.Ui + kv.Value.Other).Take(top))
+                    sb.AppendLine($"    {(kv.Value.Ui + kv.Value.Other) / 1024,8} KB  ui={kv.Value.Ui / 1024,7}  other={kv.Value.Other / 1024,7}  {kv.Key}");
+                return sb.ToString();
+            }
+        }
+    }
+
+    readonly record struct ScrollProbeRow(int Frame, string Label, FrameStats Stats, int Gen0, int Gen1, int Gen2, long AllocBytes,
+        long UiAllocBytes)
+    {
+        public bool GcFired => Gen0 > 0 || Gen1 > 0 || Gen2 > 0;
+        public bool OverBudget => Stats.FrameMs > BudgetMs;
+    }
+
+    // WAVEE_TRACKLIST_SCROLL_PROBE=1: a scripted in-process scroll benchmark of the DETAIL track list on a 1500-track
+    // FAKE playlist (spotify:playlist:pl-big, "Q-top 1500 (fake)" — FakeData.PlaylistBig, reachable via the sidebar
+    // AND directly by nav key). Drives 40 real wheel notches down (~1 notch every 2 frames, the coast frame between
+    // notches carries no new input so the inertial ease is what actually moves the offset on it), lets the fling run
+    // out, then the same 40 notches up — the REAL input path (window.QueueInput -> PumpInto -> dispatcher -> wheel
+    // routing -> the scroll kernel), same as RunTrackListShot's detail-scroll leg above. Every PAINTED frame during
+    // the whole run (wheel + coast + settle) is recorded: the full FrameStats phase split plus
+    // GC.CollectionCount(0/1/2) deltas and a GC.GetTotalAllocatedBytes delta, so a frame over one 120 Hz vblank
+    // (8.33 ms) can be attributed to WORK vs a GC pause on that exact frame. Needs no auth (spotify:playlist:pl-big
+    // is served entirely by the fake sources — SpotifyExportSource special-cases the uri, FakeSource lists it in the
+    // sidebar tree), so it runs under --fake with no login/network. Output -> the always-on [probe] summary (mirrored
+    // to the console) + %LOCALAPPDATA%\Wavee\logs\tracklist-scroll-probe.csv (one row per painted frame).
+    static void RunTrackListScrollProbe(AppHost host, Win32Window window, D3D12Device gpu)
+    {
+        string logsDir = UnpackagedAppDataRoot.UnderCurrent("logs");
+        try { Directory.CreateDirectory(logsDir); } catch { }
+        string csvPath = Path.Combine(logsDir, "tracklist-scroll-probe.csv");
+        bool keepVsync = Diag.EnvFlag("WAVEE_PROBE_VSYNC");
+
+        var rows = new List<ScrollProbeRow>(2048);
+        void Nav(string key, string? arg) => WaveeShell.ProbeNav!(key, arg);
+        void Settle(int n) { for (int i = 0; i < n && !window.IsClosed; i++) host.RunFrame(); }
+
+        // One measured frame; returns null for a frame that produced no paint (nothing to attribute).
+        ScrollProbeRow? Measure(string label)
+        {
+            int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+            long a0 = GC.GetTotalAllocatedBytes();
+            long u0 = GC.GetAllocatedBytesForCurrentThread();
+            if (!keepVsync) { gpu.SuppressLatencyWaitOnce(); gpu.SuppressVsyncOnce(); }
+            var s = host.RunFrame();
+            if (!(s.Rendered || s.DrawCommandCount > 0)) return null;
+            long alloc = GC.GetTotalAllocatedBytes() - a0;
+            long uiAlloc = GC.GetAllocatedBytesForCurrentThread() - u0;
+            var row = new ScrollProbeRow(rows.Count, label, s,
+                GC.CollectionCount(0) - g0, GC.CollectionCount(1) - g1, GC.CollectionCount(2) - g2, alloc, uiAlloc);
+            rows.Add(row);
+            return row;
+        }
+
+        Log.Info("[tracklist-scroll-probe] warmup");
+        for (int i = 0; i < 80 && !window.IsClosed; i++) { gpu.SuppressLatencyWaitOnce(); gpu.SuppressVsyncOnce(); host.RunFrame(); }
+        GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+
+        Log.Info("[tracklist-scroll-probe] nav -> pl:" + Wavee.Core.FakeData.BigPlaylistUri);
+        Nav("pl:" + Wavee.Core.FakeData.BigPlaylistUri, "Q-top 1500 (fake)");
+        Settle(40);
+        System.Threading.Thread.Sleep(700);   // let the 1500-row list mount/virtualize + settle before measuring
+        Settle(30);
+
+        var viewport = FindLargestScrollViewport(host.Scene);
+        if (viewport.IsNull)
+        {
+            Log.Warn("[tracklist-scroll-probe] no scroll viewport found for the big playlist detail page — aborting");
+            return;
+        }
+        var vr = host.Scene.AbsoluteRect(viewport);
+        host.Scene.TryGetScroll(viewport, out var s0);
+        float vh = s0.ViewportH > 20f ? s0.ViewportH : (vr.H > 20f ? vr.H : 400f);
+        var pos = new Point2(vr.X + vr.W * 0.5f, vr.Y + vh * 0.5f);
+        window.QueueInput(new InputEvent(InputKind.PointerMove, pos, 0, 0));
+        Settle(2);
+        var routed = host.Input.ScrollableUnderForAxis(pos, wantHorizontal: false);
+        Log.Info($"[tracklist-scroll-probe] viewport n#{viewport.Raw.Index} routed=n#{routed.Raw.Index} rect=({vr.X:0},{vr.Y:0} {vr.W:0}x{vr.H:0}) content={s0.ContentH:0} viewH={s0.ViewportH:0}");
+        if (routed.IsNull)
+            Log.Warn("[tracklist-scroll-probe] wheel routing FAILED (ScrollableUnderForAxis returned null) — frames will still be recorded, but the offset is unlikely to move");
+
+        // 40 notches at ~1 notch / 2 frames: the wheel frame injects the notch, the following COAST frame injects
+        // nothing (the scroll kernel's own inertial ease is what moves the offset on it) — then the fling is allowed
+        // to run all the way out before reversing direction, so the tail-end deceleration frames are captured too.
+        void Drive(float delta, int notches, string tag)
+        {
+            for (int n = 0; n < notches && !window.IsClosed; n++)
+            {
+                window.QueueInput(new InputEvent(InputKind.Wheel, pos, 0, 0, delta));
+                Measure(tag + "-wheel");
+                Measure(tag + "-coast");
+            }
+            for (int f = 0; f < 60 && !window.IsClosed; f++) Measure(tag + "-settle");   // let the fling run out
+        }
+
+        // Allocation attribution by TYPE (runtime GCAllocationTick, one sample per ~100 KB allocated, with the OS thread
+        // that allocated): which types make up the per-frame churn, split UI thread vs everything else.
+        using var ticks = new AllocationTickListener(uiThreadId: (uint)GetCurrentThreadId());
+        ticks.Enabled = true;
+
+        Log.Info("[tracklist-scroll-probe] 40 notches down");
+        Drive(+60f, 40, "down");
+        host.Scene.TryGetScroll(viewport, out var sDown);
+        Log.Info($"[tracklist-scroll-probe] down endOff={sDown.OffsetY:0}");
+
+        Log.Info("[tracklist-scroll-probe] 40 notches up");
+        Drive(-60f, 40, "up");
+        host.Scene.TryGetScroll(viewport, out var sUp);
+        Log.Info($"[tracklist-scroll-probe] up endOff={sUp.OffsetY:0} (started {sDown.OffsetY:0})");
+        ticks.Enabled = false;
+
+        // ── CSV: one row per painted frame ──
+        var csv = new StringBuilder(1 << 16);
+        csv.AppendLine("frame,label,frameMs,flushMs,reactiveFlushMs,virtualRealizeMs,layoutMs,animMs,recordMs,submitMs," +
+            "fenceWaitMs,gpuRenderMs,componentsRendered,nodesVisited,drawCommandCount,hotPhaseAllocBytes,repaintCoverage," +
+            "spansReused,spansReRecorded,blurGroupCount,gen0,gen1,gen2,allocBytes,uiAllocBytes,overBudget," +
+            "measure,arrange,textMiss");
+        foreach (var r in rows)
+        {
+            var s = r.Stats;
+            static string F(double v) => v.ToString("0.000", CultureInfo.InvariantCulture);
+            csv.Append(r.Frame).Append(',').Append(r.Label).Append(',')
+               .Append(F(s.FrameMs)).Append(',').Append(F(s.FlushMs)).Append(',').Append(F(s.ReactiveFlushMs)).Append(',')
+               .Append(F(s.VirtualRealizeMs)).Append(',').Append(F(s.LayoutMs)).Append(',').Append(F(s.AnimMs)).Append(',')
+               .Append(F(s.RecordMs)).Append(',').Append(F(s.SubmitMs)).Append(',').Append(F(s.FenceWaitMs)).Append(',')
+               .Append(F(s.GpuRenderMs)).Append(',')
+               .Append(s.ComponentsRendered).Append(',').Append(s.NodesVisited).Append(',').Append(s.DrawCommandCount).Append(',')
+               .Append(s.HotPhaseAllocBytes).Append(',').Append(F(s.RepaintCoverage)).Append(',')
+               .Append(s.SpansReused).Append(',').Append(s.SpansReRecorded).Append(',').Append(s.BlurGroupCount).Append(',')
+               .Append(r.Gen0).Append(',').Append(r.Gen1).Append(',').Append(r.Gen2).Append(',')
+               .Append(r.AllocBytes).Append(',').Append(r.UiAllocBytes).Append(',').Append(r.OverBudget ? '1' : '0').Append(',')
+               .Append(s.MeasureCount).Append(',').Append(s.ArrangeCount).Append(',').Append(s.TextShapeMisses).AppendLine();
+        }
+        WriteProbeFile(csvPath, csv.ToString(), "tracklist-scroll-probe");
+        Log.Info(ticks.Report(30));
+
+        // ── summary ──
+        int total = rows.Count;
+        if (total == 0) { Log.Warn("[tracklist-scroll-probe] no painted frames captured — nothing to report"); return; }
+
+        int overBudgetCount = 0, overWork = 0, overGc = 0;
+        long totalAlloc = 0, maxAlloc = 0;
+        int totalGen0 = 0, totalGen1 = 0, totalGen2 = 0;
+        double sumFlush = 0, sumRx = 0, sumVr = 0, sumLayout = 0, sumAnim = 0, sumRecord = 0, sumSubmit = 0, sumFence = 0, sumGpu = 0;
+        var frameMs = new double[total];
+        for (int i = 0; i < total; i++)
+        {
+            var r = rows[i]; var s = r.Stats;
+            frameMs[i] = s.FrameMs;
+            if (r.OverBudget) { overBudgetCount++; if (r.GcFired) overGc++; else overWork++; }
+            totalAlloc += r.AllocBytes; if (r.AllocBytes > maxAlloc) maxAlloc = r.AllocBytes;
+            totalGen0 += r.Gen0; totalGen1 += r.Gen1; totalGen2 += r.Gen2;
+            sumFlush += s.FlushMs; sumRx += s.ReactiveFlushMs; sumVr += s.VirtualRealizeMs; sumLayout += s.LayoutMs;
+            sumAnim += s.AnimMs; sumRecord += s.RecordMs; sumSubmit += s.SubmitMs; sumFence += s.FenceWaitMs; sumGpu += s.GpuRenderMs;
+        }
+        var sorted = (double[])frameMs.Clone(); Array.Sort(sorted);
+        double p50 = Pct(sorted, 50), p95 = Pct(sorted, 95), max = sorted[^1];
+        double inv = 1.0 / total;
+
+        var order = new int[total];
+        for (int i = 0; i < total; i++) order[i] = i;
+        Array.Sort(order, (a, b) => rows[b].Stats.FrameMs.CompareTo(rows[a].Stats.FrameMs));
+
+        var sb = new StringBuilder(4096);
+        sb.AppendLine();
+        sb.AppendLine("=== WAVEE TRACKLIST SCROLL PROBE — \"Q-top 1500 (fake)\" detail track list ===");
+        sb.AppendLine(keepVsync ? "(WAVEE_PROBE_VSYNC: vblank-paced)" : "(vsync/latency throttle removed -> pure production work cost)");
+        sb.AppendLine($"painted frames={total}  over {BudgetMs:0.00}ms (120Hz vblank)={overBudgetCount}  (WORK={overWork}  GC={overGc})");
+        sb.AppendLine($"FrameMs: p50={p50:0.00}ms  p95={p95:0.00}ms  max={max:0.00}ms");
+        sb.AppendLine($"mean phase ms/frame: flush={sumFlush * inv:0.00} (rx={sumRx * inv:0.00} vr={sumVr * inv:0.00})  layout={sumLayout * inv:0.00}  anim={sumAnim * inv:0.00}  record={sumRecord * inv:0.00}  submit={sumSubmit * inv:0.00}  fenceWait={sumFence * inv:0.00}");
+        sb.AppendLine($"mean gpuRenderMs={sumGpu * inv:0.00}");
+        sb.AppendLine($"alloc/frame: mean={(long)(totalAlloc * inv)}B  max={maxAlloc}B  |  collections over the run: Gen0={totalGen0} Gen1={totalGen1} Gen2={totalGen2}");
+        sb.AppendLine();
+        sb.AppendLine("Worst 10 frames (frame# label frameMs = flush(rx/vr) + layout + anim + record + submit(fence) | gpu | comps/nodes/draws | alloc gc0/1/2):");
+        for (int i = 0; i < Math.Min(10, total); i++)
+        {
+            var r = rows[order[i]]; var s = r.Stats;
+            sb.AppendLine($"  #{r.Frame,5} {r.Label,-11} {s.FrameMs,7:0.00}ms = flush {s.FlushMs:0.00}(rx {s.ReactiveFlushMs:0.00} vr {s.VirtualRealizeMs:0.00}) " +
+                $"+ layout {s.LayoutMs:0.00} + anim {s.AnimMs:0.00} + record {s.RecordMs:0.00} + submit {s.SubmitMs:0.00}(fence {s.FenceWaitMs:0.00}) " +
+                $"| gpu {s.GpuRenderMs:0.00} | comps={s.ComponentsRendered} nodes={s.NodesVisited} draws={s.DrawCommandCount} " +
+                $"| alloc={r.AllocBytes}B gc={r.Gen0}/{r.Gen1}/{r.Gen2}");
+        }
+
+        string report = sb.ToString();
+        Log.Info(report);
+        Log.Info($"[tracklist-scroll-probe] wrote {csvPath} ({total} rows)");
+        Log.Info("[tracklist-scroll-probe] done");
     }
 
     // WAVEE_RAIL_PROBE=1 (projected-motion P0): the dedicated rail/sidebar transition perf harness. Wide-window (rail

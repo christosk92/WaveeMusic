@@ -62,7 +62,7 @@ internal static class FacePiles
     /// lens is the one that is on, and <paramref name="Tip"/> is the tooltip a portrait otherwise cannot carry (a face
     /// is not a label; without one an overlapped avatar names nobody).</para></summary>
     internal readonly record struct Face(string Name, string? ImageUrl, Action? OnClick = null, bool Selected = false,
-                                         string? Tip = null);
+                                         string? Tip = null, Element? Portrait = null);
 
     /// <summary>The strip: up to <paramref name="maxVisible"/> framed portraits, then a "+N" frame.
     /// <paramref name="overflow"/> defaults to what the list itself carries beyond the visible cut; pass it explicitly
@@ -106,7 +106,7 @@ internal static class FacePiles
             PressScale = live ? WaveeMotion.ScaleStandard.Press : 1f,
             HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
             OnClick = f.OnClick,
-            Children = [PersonPicture.Create("", Avatar, displayName: f.Name, imageSourcePath: f.ImageUrl)],
+            Children = [f.Portrait ?? PersonPicture.Create("", Avatar, displayName: f.Name, imageSourcePath: f.ImageUrl)],
         };
         // The negative margin stays on the FRAME, under the tooltip wrapper: a flex item's outer size includes its
         // margins, so the wrapper shrink-wraps to (Outer - Overlap) and paints the frame Overlap to the left of its own

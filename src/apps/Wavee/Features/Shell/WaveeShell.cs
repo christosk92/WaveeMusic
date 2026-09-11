@@ -213,9 +213,7 @@ sealed class WaveeShell : Component
 
     // The shell receives its persisted settings through the IAppSettings interface (provided by the composition root,
     // Services). It never sees the concrete store — no "ForUnpackaged"/registry/publisher detail leaks in here.
-    static string HistoryFilePath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Wavee", "WaveeMusic", "history.json");
+    static string HistoryFilePath() => UnpackagedAppDataRoot.MusicFile("history.json");
     static string SessionFilePath() => SessionSnapshotStore.DefaultPath();
 
     // Stress-probe nav seam (WAVEE_NAV_PROBE only): lets the WaveeNavProbe drive REAL navigation/theme/tab churn through
@@ -278,7 +276,7 @@ sealed class WaveeShell : Component
 
         // WAVEE_STARTUP_BENCH belongs in this list even though it drives no navigation: the bench's "session restored"
         // mark is the first frame on which ProbeNav is non-null, so without the flag here that timing reads n/a forever.
-        if (Diag.EnvFlag("WAVEE_NAV_PROBE") || Diag.EnvFlag("WAVEE_RESIZE_PROBE") || Diag.EnvFlag("WAVEE_CONN_STRESS") || Diag.EnvFlag("WAVEE_TRACKLIST_SHOT") || Diag.EnvFlag("WAVEE_HERO_SHOT") || Diag.EnvFlag("WAVEE_SHELF_SHOT") || Diag.EnvFlag("WAVEE_RAIL_SHOT") || Diag.EnvFlag("WAVEE_HOME_SCROLL_PROBE") || Diag.EnvFlag("WAVEE_RAIL_PROBE") || Diag.EnvFlag("WAVEE_LYRICS_PROBE") || Diag.EnvFlag("WAVEE_LIVE_LYRICS_SCROLL_PROBE") || Diag.EnvFlag("WAVEE_LYRICS_ADVANCE_PROBE") || Diag.EnvFlag("WAVEE_MEM_SOAK") || Diag.EnvFlag("WAVEE_PERF_BENCH") || Diag.EnvFlag("WAVEE_STARTUP_BENCH") || Diag.EnvFlag("WAVEE_SIDEBAR_MODE_SHOT") || Diag.EnvFlag("WAVEE_SIDEBAR_V3_SHOT") || Diag.EnvFlag("WAVEE_SIDEBAR_VISUAL_SHOT"))
+        if (Diag.EnvFlag("WAVEE_NAV_PROBE") || Diag.EnvFlag("WAVEE_RESIZE_PROBE") || Diag.EnvFlag("WAVEE_CONN_STRESS") || Diag.EnvFlag("WAVEE_TRACKLIST_SHOT") || Diag.EnvFlag("WAVEE_TRACKLIST_SCROLL_PROBE") || Diag.EnvFlag("WAVEE_HERO_SHOT") || Diag.EnvFlag("WAVEE_SHELF_SHOT") || Diag.EnvFlag("WAVEE_RAIL_SHOT") || Diag.EnvFlag("WAVEE_HOME_SCROLL_PROBE") || Diag.EnvFlag("WAVEE_RAIL_PROBE") || Diag.EnvFlag("WAVEE_LYRICS_PROBE") || Diag.EnvFlag("WAVEE_LIVE_LYRICS_SCROLL_PROBE") || Diag.EnvFlag("WAVEE_LYRICS_ADVANCE_PROBE") || Diag.EnvFlag("WAVEE_MEM_SOAK") || Diag.EnvFlag("WAVEE_PERF_BENCH") || Diag.EnvFlag("WAVEE_STARTUP_BENCH") || Diag.EnvFlag("WAVEE_SIDEBAR_MODE_SHOT") || Diag.EnvFlag("WAVEE_SIDEBAR_V3_SHOT") || Diag.EnvFlag("WAVEE_SIDEBAR_VISUAL_SHOT"))
         {
             ProbeNav = GoNav; ProbeBack = Back; ProbeForward = Forward; ProbeTheme = ToggleTheme; ProbeOpenTab = OpenNewTab;
             ProbeRail = m => { _shellUi.RailOpen.Value = true; _shellUi.Mode.Value = (RailMode)m; };
@@ -556,10 +554,13 @@ sealed class WaveeShell : Component
         _actions.Library = UseContext(LibraryBridge.Slot);
         _actions.Svc = UseContext(Services.Slot);
         _actions.Store = UseContext(LibraryStore.Slot);
-        // Jump List was built at PlaybackBridge.Activate (window exists) — attach the shell's history + the warm
-        // library so "Jump back in" can print real names instead of "Playlist" / a raw URI.
-        _actions.Playback?.JumpList?.AttachHistory(_historyStore);
-        _actions.Playback?.JumpList?.AttachLibrary(_actions.Store);
+        // Hand the Jump List the shell's history + the warm library so "Jump back in" can print real names instead of
+        // "Playlist" / a raw URI. Through the BRIDGE, not through `JumpList` directly: the sibling is no longer built
+        // inside Activate (it is a window-phase startup step a few posted drains later, so the shell COM + the
+        // .customDestinations-ms write stay out of the first frame), and these two setters hold their argument until it
+        // exists rather than being a no-op that happened to self-heal on the next render.
+        _actions.Playback?.AttachJumpListHistory(_historyStore);
+        _actions.Playback?.AttachJumpListLibrary(_actions.Store);
         _actions.Clipboard = UseContext(InputHooks.Current).Clipboard;
         _actions.Go = GoNav;
         _actions.Post = post;
@@ -681,7 +682,7 @@ sealed class WaveeShell : Component
         // The row indicator / "Videos only" filter read the association plane + the curation through a process-wide
         // probe rather than context, because they run per ROW (a context read or a signal subscription per row is not
         // affordable there). Both halves of the has-video answer are attached here, and nothing else answers it.
-        VideoPresence.Attach(_actions.VideoOverrides, _actions.Svc?.RealStore);
+        VideoPresence.Attach(_actions.VideoOverrides, _actions.Svc?.Data.Catalog);
         // The two override toasts' "Manage" button + the Settings roster deep-link: bump the request counter (the
         // PlaybackRuntimeBanner precedent — Settings has no route-arg tab deep-link) and navigate.
         if (_actions.Playback is { } pb && pb.OpenVideoOverrideManager is null)
@@ -1883,15 +1884,17 @@ sealed class WaveeShell : Component
         if (_searchText.Peek() != next) _searchText.Value = next;
     }
 
-    // Addendum A5 — the `recent_surfaces` pin reason. Hooked to FORWARD navigation only: Back/Forward re-visit a surface
-    // through history, which is not a new "open" and must not churn the 50-slot LRU (the surface is already in it).
-    // Runs on the UI thread, so nothing here may touch SQLite: RecordRecentSurface updates the in-memory pin mirror
-    // synchronously (the write gate has to see the new pin on the very next upsert) and lanes the row + the entity flush
-    // onto CachedStore's background writer. Null RealStore (fake/offline backend) ⇒ no-op.
+    // Forward navigation records a recent surface through the shared data owner. History traversal keeps its order.
     void RecordRecentSurface(Route r)
     {
         if (!Wavee.Backend.Persistence.RecentSurfaceRoute.TryClassify(r.Name, out var uri, out var kind)) return;
-        if (_actions.Svc?.RealStore is Wavee.Backend.Persistence.CachedStore store) store.RecordRecentSurface(uri, (int)kind);
+        if (_actions.Svc?.CacheGc is { } cache) _ = RecordRecentAsync(cache, uri, (int)kind);
+    }
+
+    static async System.Threading.Tasks.Task RecordRecentAsync(Wavee.Backend.Persistence.CatalogCacheMaintenance cache, string uri, int kind)
+    {
+        try { await cache.RecordRecentAsync(uri, kind).ConfigureAwait(false); }
+        catch (Exception error) { WaveeLog.Instance.Warn("cache", "recent surface: " + error.Message); }
     }
 
     void Back()
@@ -2188,6 +2191,7 @@ sealed class ShellNarrowDrawer : Component
     public override Element Render()
     {
         bool open = _narrow.Value && _open.Value;
+        var demandVisible = UseComputed(() => _narrow.Value && _open.Value);
         var hooks = UseContext(InputHooks.Current);
         var savedPreview = UseRef<Func<int, bool>?>(null);
         var escPreview = UseRef<Func<int, bool>?>(null);
@@ -2229,8 +2233,9 @@ sealed class ShellNarrowDrawer : Component
                     Grow = 1f, Direction = 0, Justify = FlexJustify.Start, HitTestPassThrough = true,
                     Children =
                     [
-                        Embed.Comp(() => new ShellNarrowDrawerPane(
-                            _open, _viewport, _expandedWidth, _drawerCompact, _route, _go)),
+                        Ctx.Provide(SidebarDemandVisibility.Slot, (IReadSignal<bool>)demandVisible,
+                            Embed.Comp(() => new ShellNarrowDrawerPane(
+                                _open, _viewport, _expandedWidth, _drawerCompact, _route, _go))),
                     ],
                 },
             ],

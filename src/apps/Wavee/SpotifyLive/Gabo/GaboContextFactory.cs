@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
+using Wavee;
 using Wavee.SpotifyLive.Gabo;
 
 namespace Wavee.SpotifyLive;
@@ -32,7 +33,7 @@ public static class GaboContextFactory
     {
         try
         {
-            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "gabo_installation_id");
+            var path = UnpackagedAppDataRoot.UnderCurrent("gabo_installation_id");
             if (File.Exists(path))
             {
                 var hex = File.ReadAllText(path).Trim();

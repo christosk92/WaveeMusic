@@ -38,6 +38,16 @@ public sealed class SystemMediaControlsBridge : IDisposable
     SystemMediaControls? _smtc;
     bool _disposed;
 
+    // §(startup) — Activate used to be one call that did all four things below in a single Window-phase drain (a
+    // native tour measured it at 40.8 ms). ActivateStep instead advances ONE stage per call, so the startup schedule
+    // can hand each of the four its own posted drain (see WaveeApp's Window steps "smtc-acquire" / "smtc-enable" /
+    // "smtc-seed" / "smtc-timeline"). Acquire folds the WinRT factory activation and GetForWindow together — the
+    // engine's SystemMediaControls.GetForWindow is one call and there is no lower-level entry point to split it
+    // further from here. A caller outside the startup schedule (there is none today) can still call ActivateStep
+    // in a tight loop to get the old all-at-once behaviour.
+    enum Stage : byte { Acquire, Enable, Seed, Timeline, Done }
+    Stage _stage;
+
     // Edge-dedupe so a state tick that didn't change what the OS shows makes no WinRT call.
     string? _lastUri = null;
     MediaPlaybackStatus _lastStatus = (MediaPlaybackStatus)(-1);
@@ -63,26 +73,75 @@ public sealed class SystemMediaControlsBridge : IDisposable
     /// platform leaves the bridge inert (no OS surface, no throw). Idempotent — a second call is a no-op.</summary>
     public void Activate(nint hwnd)
     {
-        if (_smtc is not null || _disposed || hwnd == 0) return;
-        if (!OperatingSystem.IsWindowsVersionAtLeast(8, 0)) return;
-        try
+        while (ActivateStep(hwnd)) { }
+    }
+
+    /// <summary>Advance the activation state machine by exactly ONE stage; returns true while more stages remain.
+    /// UI thread only (same HWND-apartment contract as <see cref="Activate"/>). Idempotent past <c>Done</c> — every
+    /// call once finished (or once refused) is a no-op that returns false, so a startup step that runs one extra
+    /// drain by mistake costs nothing.
+    /// <list type="bullet">
+    /// <item><c>Acquire</c> — <c>SystemMediaControls.GetForWindow</c> (the WinRT activation) plus wiring the button
+    /// dispatcher and the two OS callbacks. The one stage that can fail outright (older OS, interop refusal); a
+    /// failure here jumps straight to <c>Done</c> and every later push stays a silent no-op, exactly like the old
+    /// all-at-once <see cref="Activate"/> did.</item>
+    /// <item><c>Enable</c> — the three cheap property/method calls that make the surface live: enabled buttons,
+    /// playback rate, <c>IsEnabled</c>.</item>
+    /// <item><c>Seed</c> — <see cref="OnStateChanged"/>: title/artist/art + status + button availability, from
+    /// whatever is playing right now (the bridge was activated first).</item>
+    /// <item><c>Timeline</c> — <see cref="OnPositionChanged"/>: the initial scrub-bar position.</item>
+    /// </list></summary>
+    public bool ActivateStep(nint hwnd)
+    {
+        if (_disposed || _stage == Stage.Done) return false;
+        if (!OperatingSystem.IsWindowsVersionAtLeast(8, 0)) { _stage = Stage.Done; return false; }
+        switch (_stage)
         {
-            var smtc = SystemMediaControls.GetForWindow(hwnd);
-            smtc.ButtonDispatcher = _post;   // OS worker thread → UI thread (the same post the bridge marshals on)
-            smtc.ButtonPressed += OnButton;
-            smtc.PositionChangeRequested += OnSeek;   // lock-screen / flyout scrub-bar drag → SeekAsync (best-effort seam)
-            smtc.SetEnabledButtons(play: true, pause: true, next: true, previous: true);
-            smtc.PlaybackRate = 1.0;         // must be > 0; Spotify content is normal speed (spoken-word rate is not surfaced here)
-            smtc.IsEnabled = true;
-            _smtc = smtc;
-            // Seed the OS surface from whatever is playing right now (the bridge was activated first).
-            OnStateChanged();
-            OnPositionChanged(_bridge.PositionMs.Peek());
-        }
-        catch (Exception)
-        {
-            // Platform refused SMTC (older OS / interop) — stay inert; the app is unaffected.
-            _smtc = null;
+            case Stage.Acquire:
+                if (_smtc is not null) { _stage = Stage.Enable; return true; }   // re-entered mid-ladder (defensive)
+                if (hwnd == 0) { _stage = Stage.Done; return false; }
+                try
+                {
+                    var smtc = SystemMediaControls.GetForWindow(hwnd);
+                    smtc.ButtonDispatcher = _post;   // OS worker thread → UI thread (the same post the bridge marshals on)
+                    smtc.ButtonPressed += OnButton;
+                    smtc.PositionChangeRequested += OnSeek;   // lock-screen / flyout scrub-bar drag → SeekAsync (best-effort seam)
+                    _smtc = smtc;
+                }
+                catch (Exception)
+                {
+                    // Platform refused SMTC (older OS / interop) — stay inert; the app is unaffected.
+                    _smtc = null;
+                    _stage = Stage.Done;
+                    return false;
+                }
+                _stage = Stage.Enable;
+                return true;
+
+            case Stage.Enable:
+                if (_smtc is not { } enabling) { _stage = Stage.Done; return false; }
+                try
+                {
+                    enabling.SetEnabledButtons(play: true, pause: true, next: true, previous: true);
+                    enabling.PlaybackRate = 1.0;   // must be > 0; Spotify content is normal speed (spoken-word rate is not surfaced here)
+                    enabling.IsEnabled = true;
+                }
+                catch (Exception) { }
+                _stage = Stage.Seed;
+                return true;
+
+            case Stage.Seed:
+                OnStateChanged();
+                _stage = Stage.Timeline;
+                return true;
+
+            case Stage.Timeline:
+                OnPositionChanged(_bridge.PositionMs.Peek());
+                _stage = Stage.Done;
+                return false;
+
+            default:
+                return false;
         }
     }
 
@@ -116,6 +175,7 @@ public sealed class SystemMediaControlsBridge : IDisposable
         }
 
         var status = track is null ? MediaPlaybackStatus.Closed
+            : !_bridge.PlayWhenReady.Peek() ? MediaPlaybackStatus.Paused
             : _bridge.IsBuffering.Peek() ? MediaPlaybackStatus.Changing
             : _bridge.IsPlaying.Peek() ? MediaPlaybackStatus.Playing
             : MediaPlaybackStatus.Paused;

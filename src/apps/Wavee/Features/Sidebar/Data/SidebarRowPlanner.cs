@@ -52,6 +52,14 @@ public enum SidebarRowKind : byte
     // of moving it (D3). This row owns that slot as a whole-row `EndOfList`, and the create row is now transparent to
     // rootlist payloads. APPENDED, never inserted: the kind is the ItemsView's ContentType (one recycle pool per kind).
     TreeEnd       = 14,
+    // The Pinned band's closing gutter (24 DIP) — the TreeEnd idea for pins. Planned directly after the band's last
+    // row (root pins only, folder descendants included) whenever the band has at least one pin and is not presented
+    // as a grid (a grid has no vertical band to close). It exists for exactly one reason: dragging a pinnable item
+    // over a band that already holds ≥1 pin showed no drop-zone cue at all, because the 56-DIP SidebarPinDropZone card
+    // was only ever the section's EMPTY row. APPENDED, never inserted: the kind is the ItemsView's ContentType (one
+    // recycle pool per kind) and the tests pin the row SEQUENCE, so renumbering would silently re-pool every existing
+    // row.
+    PinEnd        = 15,
 }
 
 /// <summary>POD. No strings are allocated during planning: labels resolve at render time from the referenced
@@ -409,6 +417,9 @@ public static class SidebarRowPlanner
         // Empty Pinned is the real DropZone row ("Drop items here to pin"), not a caption.
         if (count == 0) { Add(ref st, Chrome(SidebarRowKind.Empty, s, depth)); return; }
         if (grid) EmitProjected(s, depth, start, count, ref st);
+        // The band's closing gutter: the ONE end-of-list drop target the pin band never had (see PinEnd's doc). A grid
+        // presentation has no vertical band to close, so it stays without one.
+        else Add(ref st, Chrome(SidebarRowKind.PinEnd, s, depth));
     }
 
     /// <summary>Expand one pinned folder against the canonical flattened rootlist. The pinned folder itself is a root row

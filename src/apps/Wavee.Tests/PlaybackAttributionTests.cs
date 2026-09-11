@@ -23,10 +23,14 @@ namespace Wavee.Tests;
 //   3. the paths that fold REMOTE state (a cluster push, a PutState echo) can never execute a play by themselves.
 //
 // (3) is the load-bearing one: it fences the whole "the server corrected us" hypothesis in code rather than in prose.
-public class PlaybackAttributionTests
+public class PlaybackAttributionTests : PlaybackCatalogTestBase
 {
     sealed class RecordingHost : IAudioHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, _sig.OnNext);
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, _sig.OnNext);
+        public bool PlayIntent => IsPlaying;
+
         public readonly List<string> Calls = new();
         readonly SimpleSubject<AudioHostSignal> _sig = new();
         public IObservable<AudioHostSignal> Signals => _sig;
@@ -49,6 +53,8 @@ public class PlaybackAttributionTests
     // A stand-in for FluentVideoMediaHost: the controller only needs the common IMediaHost verbs to swap onto it.
     sealed class RecordingVideoHost : IMediaHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, _sig.OnNext);
+
         public readonly List<string> Calls = new();
         readonly SimpleSubject<AudioHostSignal> _sig = new();
         public IObservable<AudioHostSignal> Signals => _sig;
@@ -72,11 +78,11 @@ public class PlaybackAttributionTests
             playing, !playing, false, pos, 0, 0, track?.DurationMs ?? 0, false, RepeatMode.Off,
             Array.Empty<ConnectDeviceRow>(), Array.Empty<RemoteTrack>());
 
-    static (PlaybackController C, RecordingHost H, NowPlayingProjection P, CapturingWaveeLog L) Make(
+    (PlaybackController C, RecordingHost H, NowPlayingProjection P, CapturingWaveeLog L) Make(
         IContextResolver? ctx = null, IOutboundControl? outbound = null, IMediaHost? video = null)
     {
         var host = new RecordingHost();
-        var proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var proj = Catalog.Projection("us", () => 0);
         var log = new CapturingWaveeLog();
         var c = new PlaybackController(host, new StubTrackResolver(), proj,
             ctx ?? new FakeContextResolver(new[] { "spotify:track:a", "spotify:track:b", "spotify:track:c" }),
@@ -129,7 +135,7 @@ public class PlaybackAttributionTests
         var (c, host, proj, log) = Make(outbound: outbound);
         using (c)
         {
-            proj.OnCluster(Cluster("other-device", Remote("spotify:track:remote")));
+            Catalog.Cluster(proj, Cluster("other-device", Remote("spotify:track:remote")));
             await c.PlayAsync("spotify:playlist:p", 0);
         }
         Assert.Contains("route=forward", Line(log, "play intent") ?? "");
@@ -174,8 +180,8 @@ public class PlaybackAttributionTests
 
             for (int i = 0; i < 5; i++)
             {
-                proj.OnCluster(Cluster("us", Remote("spotify:track:previous"), pos: 190488));
-                proj.OnCluster(Cluster("", Remote("spotify:track:previous"), pos: 190488, playing: false));
+                Catalog.Cluster(proj, Cluster("us", Remote("spotify:track:previous"), pos: 190488));
+                Catalog.Cluster(proj, Cluster("", Remote("spotify:track:previous"), pos: 190488, playing: false));
             }
             await Task.Delay(30);
 
@@ -196,7 +202,7 @@ public class PlaybackAttributionTests
         {
             await c.PlayAsync("spotify:playlist:p", 0);
             host.Calls.Clear();
-            proj.OnCluster(Cluster("phone", Remote("spotify:track:elsewhere")));
+            Catalog.Cluster(proj, Cluster("phone", Remote("spotify:track:elsewhere")));
             await Task.Delay(30);
 
             Assert.DoesNotContain(host.Calls, s => s.StartsWith("load:", StringComparison.Ordinal)

@@ -1,0 +1,701 @@
+<title>Wavee Library V3.1</title>
+<style>
+  :root {
+    /* lab page (light) */
+    --lab-bg: #e7eaf0; --lab-text: #1a1e26; --lab-muted: #5a6373;
+    --lab-panel: rgba(255,255,255,.66); --lab-stroke: rgba(20,30,50,.10);
+    --lab-bad: #a4262c; --lab-good: #0f7b3a;
+
+    /* Wavee light tokens (Fluent Mica) */
+    --mica: #f3f3f3; --mica-a: rgba(243,243,243,.84); --blob1: #b9d2f2; --blob2: #e6c8e0;
+    --layer: rgba(255,255,255,.60); --layer-stroke: rgba(0,0,0,.058);
+    --text-1: rgba(0,0,0,.896); --text-2: rgba(0,0,0,.606); --text-3: rgba(0,0,0,.446); --text-4: rgba(0,0,0,.32);
+    --fill-ctrl: rgba(255,255,255,.72); --ctrl-stroke: rgba(0,0,0,.07);
+    --subtle: rgba(0,0,0,.037); --subtle-2: rgba(0,0,0,.062);
+    --divider: rgba(0,0,0,.08);
+    --accent: #005fb8; --accent-text: #003e92; --accent-subtle: rgba(0,95,184,.12); --on-accent: #ffffff;
+    --shadow: 0 10px 36px rgba(20,30,50,.20);
+    --sel-fill: rgba(0,0,0,.05);
+
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-d: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --r-ctrl: 4px; --r-layer: 8px; --r-pill: 999px;
+
+    /* geometry from SidebarRowGeometry / LibraryV3Metrics */
+    --pane-edge: 8px; --row-l: 4px; --row-r: 8px; --gutter: 3px; --lead-gap: 6px;
+    --hd-h: 44px; --chip-band: 36px; --chip-h: 28px; --lens-h: 32px; --row-h: 44px; --row-cmp: 32px; --crumb-h: 32px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --lab-bg: #0e1014; --lab-text: #eef1f5; --lab-muted: #97a0af;
+      --lab-panel: rgba(27,30,37,.80); --lab-stroke: rgba(255,255,255,.09);
+      --lab-bad: #ff9d9d; --lab-good: #7ee2a8;
+      --mica: #202020; --mica-a: rgba(32,32,32,.86); --blob1: #3d5a8f; --blob2: #6b3a63;
+      --layer: rgba(58,58,58,.30); --layer-stroke: rgba(255,255,255,.06);
+      --text-1: #ffffff; --text-2: rgba(255,255,255,.786); --text-3: rgba(255,255,255,.544); --text-4: rgba(255,255,255,.34);
+      --fill-ctrl: rgba(255,255,255,.061); --ctrl-stroke: rgba(255,255,255,.07);
+      --subtle: rgba(255,255,255,.061); --subtle-2: rgba(255,255,255,.084);
+      --divider: rgba(255,255,255,.084);
+      --accent: #4cc2ff; --accent-text: #6fcbff; --accent-subtle: rgba(76,194,255,.16); --on-accent: #001b28;
+      --shadow: 0 18px 56px rgba(0,0,0,.55);
+      --sel-fill: rgba(255,255,255,.06);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --lab-bg: #0e1014; --lab-text: #eef1f5; --lab-muted: #97a0af;
+    --lab-panel: rgba(27,30,37,.80); --lab-stroke: rgba(255,255,255,.09);
+    --lab-bad: #ff9d9d; --lab-good: #7ee2a8;
+    --mica: #202020; --mica-a: rgba(32,32,32,.86); --blob1: #3d5a8f; --blob2: #6b3a63;
+    --layer: rgba(58,58,58,.30); --layer-stroke: rgba(255,255,255,.06);
+    --text-1: #ffffff; --text-2: rgba(255,255,255,.786); --text-3: rgba(255,255,255,.544); --text-4: rgba(255,255,255,.34);
+    --fill-ctrl: rgba(255,255,255,.061); --ctrl-stroke: rgba(255,255,255,.07);
+    --subtle: rgba(255,255,255,.061); --subtle-2: rgba(255,255,255,.084);
+    --divider: rgba(255,255,255,.084);
+    --accent: #4cc2ff; --accent-text: #6fcbff; --accent-subtle: rgba(76,194,255,.16); --on-accent: #001b28;
+    --shadow: 0 18px 56px rgba(0,0,0,.55);
+    --sel-fill: rgba(255,255,255,.06);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--lab-bg); color: var(--lab-text);
+    font: 14px/1.5 var(--font); padding: 28px 28px 96px;
+  }
+  svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  h1 { font: 600 28px/1.15 var(--font-d); letter-spacing: -.02em; margin: 0 0 6px; text-wrap: balance; }
+  h2 { font: 600 19px/1.25 var(--font-d); letter-spacing: -.015em; margin: 48px 0 6px; }
+  h3 { font: 600 14px/1.3 var(--font); margin: 0 0 4px; }
+  p  { margin: 0 0 10px; max-width: 78ch; }
+  .lede { color: var(--lab-muted); font-size: 15px; max-width: 88ch; }
+  .muted { color: var(--lab-muted); }
+  .sm { font-size: 12.5px; }
+  code { font: 12px/1 "Cascadia Code", Consolas, monospace; background: var(--lab-stroke); padding: 2px 5px; border-radius: 4px; }
+  a { color: var(--accent-text); text-decoration: none; border-bottom: 1px solid var(--accent-subtle); }
+  a:hover { border-bottom-color: var(--accent-text); }
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .theme { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--lab-stroke); border-radius: var(--r-pill); background: var(--lab-panel); }
+  .theme button { border: 0; background: transparent; color: var(--lab-muted); font: 600 12px var(--font); padding: 5px 12px; border-radius: var(--r-pill); cursor: pointer; }
+  .theme button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  .theme button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .panel { background: var(--lab-panel); border: 1px solid var(--lab-stroke); border-radius: 12px; padding: 18px 20px; backdrop-filter: blur(24px); }
+  .cols { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+  .defects { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 24px; margin: 0; padding: 0; list-style: none; counter-reset: d; }
+  .defects li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 13px; line-height: 1.45; }
+  .defects li::before { counter-increment: d; content: counter(d); font: 600 11px/22px var(--font); text-align: center; color: var(--lab-bad); border: 1px solid currentColor; border-radius: 50%; width: 22px; height: 22px; }
+  .defects b { color: var(--lab-text); }
+  .fix { color: var(--lab-good); font-weight: 600; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--lab-stroke); vertical-align: top; }
+  th { font-weight: 600; color: var(--lab-muted); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; }
+  td.n { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .tbl { overflow-x: auto; }
+
+  /* ── ladder layout ───────────────────────────────────────────── */
+  .ladder { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .spec { width: max-content; }
+  .spec .cap { font-size: 12px; color: var(--lab-muted); margin: 8px 0 0; max-width: 34ch; line-height: 1.45; }
+  .spec .cap b { color: var(--lab-text); font-weight: 600; }
+  .spec .w { font: 600 11px/1 var(--font); letter-spacing: .05em; text-transform: uppercase; color: var(--lab-muted); margin: 0 0 8px; }
+
+  /* ── the Mica window frame ───────────────────────────────────── */
+  .win {
+    width: min(1180px, 100%); height: 760px; margin: 18px 0 0;
+    display: grid; grid-template-rows: 48px 1fr 88px; grid-template-columns: 280px 1fr;
+    grid-template-areas: "title title" "pane content" "np np";
+    border-radius: 8px; overflow: hidden; border: 1px solid var(--layer-stroke); box-shadow: var(--shadow);
+    background:
+      linear-gradient(var(--mica-a), var(--mica-a)),
+      radial-gradient(760px 520px at 8% 0%, var(--blob1) 0%, transparent 62%),
+      radial-gradient(820px 600px at 94% 98%, var(--blob2) 0%, transparent 64%),
+      var(--mica);
+    color: var(--text-1); font-family: var(--font);
+  }
+  .titlebar { grid-area: title; display: flex; align-items: center; gap: 6px; padding-left: 8px; }
+  .tb { width: 32px; height: 32px; border-radius: var(--r-ctrl); color: var(--text-2); display: grid; place-items: center; }
+  .tb.dis { color: var(--text-4); }
+  .crumb { display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 48px; position: relative; font-weight: 600; font-size: 14px; }
+  .crumb::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 3px; border-radius: 2px 2px 0 0; background: var(--accent); }
+  .asb { margin-left: auto; margin-right: auto; width: 400px; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+         background: var(--fill-ctrl); border: 1px solid var(--ctrl-stroke); border-radius: var(--r-ctrl); color: var(--text-3); font-size: 13.5px; }
+  .asb .i { margin-left: auto; }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--subtle-2); color: var(--text-2); display: grid; place-items: center; font: 600 12px var(--font); margin-right: 14px; }
+  .caption { display: flex; }
+  .caption span { width: 46px; height: 48px; display: grid; place-items: center; color: var(--text-2); }
+
+  .content { grid-area: content; min-width: 0; background: var(--layer); border-top: 1px solid var(--layer-stroke); border-left: 1px solid var(--layer-stroke);
+             border-top-left-radius: var(--r-layer); padding: 22px 32px 0; overflow: hidden; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--divider); margin: 0 0 22px; }
+  .tabs span { padding: 8px 14px 10px; font-size: 15px; color: var(--text-2); position: relative; }
+  .tabs span.on { color: var(--text-1); font-weight: 600; }
+  .tabs span.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 2px; background: var(--accent); }
+  .hero { height: 232px; border-radius: 8px; padding: 26px 30px; position: relative; overflow: hidden; color: #fff;
+          background: radial-gradient(420px 260px at 66% 44%, rgba(255,255,255,.55), transparent 60%), linear-gradient(120deg, #2a4a7a, #1f3554 55%, #24324a); }
+  .hero small { display: block; font-size: 13px; opacity: .8; margin-bottom: 14px; }
+  .hero h4 { margin: 0 0 12px; font: 600 38px/1.05 var(--font-d); letter-spacing: -.02em; }
+  .hero .meta { font-size: 14px; opacity: .85; }
+  .hero .btns { display: flex; gap: 10px; margin-top: 30px; }
+  .hero .btns span { height: 40px; border-radius: 20px; padding: 0 20px; display: grid; place-items: center; background: rgba(255,255,255,.14); font-weight: 600; font-size: 14px; }
+  .hero .btns span.pri { background: var(--accent); color: var(--on-accent); }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 20px 0; }
+  .card { height: 112px; border-radius: 8px; background: var(--fill-ctrl); border: 1px solid var(--ctrl-stroke); display: flex; gap: 16px; padding: 14px 18px; align-items: center; }
+  .card .art { width: 72px; height: 72px; border-radius: 6px; flex: none; }
+  .card b { display: block; font: 600 19px/1.2 var(--font-d); margin-bottom: 4px; }
+  .card span { font-size: 13px; color: var(--text-2); }
+  .jump { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; }
+  .jump b { font: 600 22px/1.1 var(--font-d); letter-spacing: -.015em; }
+  .jump span { color: var(--text-3); font-size: 13.5px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .tile { height: 64px; border-radius: 6px; background: var(--fill-ctrl); border: 1px solid var(--ctrl-stroke); display: flex; align-items: center; gap: 14px; padding-right: 10px; overflow: hidden; }
+  .tile .art { width: 64px; height: 64px; flex: none; }
+  .tile span { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .np { grid-area: np; display: flex; align-items: center; gap: 14px; padding: 0 18px; border-top: 1px solid var(--layer-stroke); }
+  .np .art { width: 62px; height: 62px; border-radius: 4px; flex: none; }
+  .np .track { width: 200px; }
+  .np .track small { display: block; color: var(--accent-text); font-size: 12px; font-weight: 600; }
+  .np .track b { display: block; font-size: 15px; }
+  .np .track span { color: var(--text-2); font-size: 13px; }
+  .np .ctl { display: flex; align-items: center; gap: 18px; color: var(--text-1); margin-left: 12px; }
+  .np .ctl .like { width: 38px; height: 38px; border-radius: 8px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; }
+  .np .bar { flex: 1; display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .np .bar i { flex: 1; height: 3px; border-radius: 2px; background: var(--subtle-2); position: relative; }
+  .np .bar i::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 36%; background: var(--accent); border-radius: 2px; }
+  .np .right { display: flex; gap: 16px; color: var(--text-2); }
+
+  /* ── art stand-ins ───────────────────────────────────────────── */
+  .a1 { background: linear-gradient(135deg, #7a3b4a, #2a1a2e); }
+  .a2 { background: linear-gradient(135deg, #3d6d9e, #1a2c44); }
+  .a3 { background: linear-gradient(135deg, #b8843a, #4a2f18); }
+  .a4 { background: linear-gradient(135deg, #5b8a5e, #21332a); }
+  .a5 { background: linear-gradient(135deg, #d3a94f, #f3e2a8 60%, #d68f32); }
+  .a6 { background: linear-gradient(135deg, #8b4fae, #2f1a44); }
+  .a7 { background: linear-gradient(135deg, #2a7f6f, #12332f); }
+  .a8 { background: linear-gradient(135deg, #b9474a, #4c1c1e); }
+  .a9 { background: linear-gradient(135deg, #4b5b77, #232a38); }
+  .liked { background: linear-gradient(135deg, #3d2fbd, #a9c9ff); color: #fff; display: grid; place-items: center; }
+  .liked .i { width: 14px; height: 14px; fill: currentColor; stroke: none; }
+
+  /* ── THE PANE ─────────────────────────────────────────────────── */
+  .pane { grid-area: pane; width: 280px; display: flex; flex-direction: column; padding: 8px var(--pane-edge) 12px; overflow: hidden; color: var(--text-1); font-family: var(--font); }
+  .pane.free { background:
+      linear-gradient(var(--mica-a), var(--mica-a)),
+      radial-gradient(400px 300px at 10% 0%, var(--blob1) 0%, transparent 62%),
+      radial-gradient(420px 340px at 96% 100%, var(--blob2) 0%, transparent 64%), var(--mica);
+      border: 1px solid var(--layer-stroke); border-radius: 8px; height: 560px; box-shadow: var(--shadow); }
+  .pane.w180 { width: 180px; } .pane.w240 { width: 240px; } .pane.w320 { width: 320px; }
+  .rule { height: 1px; background: var(--divider); margin: 4px var(--row-r) 4px var(--row-l); flex: none; }
+
+  /* shortcut band (SidebarPreferences.TopBar) — Compact density, 32 */
+  .sc { display: flex; align-items: center; gap: 10px; height: var(--row-cmp); padding: 0 var(--row-r) 0 var(--row-l); border-radius: var(--r-ctrl); position: relative; font-size: 13.5px; }
+  .sc .lead { width: 25px; display: flex; justify-content: flex-end; color: var(--text-2); flex: none; }   /* gutter 3 + gap 6 + glyph 16 */
+  .sc.on { background: var(--sel-fill); }
+  .sc.on .lead { color: var(--accent-text); }
+  .sc.on::before { content: ""; position: absolute; left: var(--row-l); top: 8px; bottom: 8px; width: var(--gutter); border-radius: 2px; background: var(--accent); }
+  .sc:hover { background: var(--subtle); }
+
+  /* header — title never truncates; the title IS the collapse toggle */
+  .hd { display: flex; align-items: center; gap: 4px; height: var(--hd-h); padding: 0 var(--row-r) 0 calc(var(--row-l) + var(--gutter) + var(--lead-gap) - 4px); flex: none; }
+  .hd .ttl { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 6px 0 4px; border-radius: var(--r-ctrl); font: 600 15px/1 var(--font); letter-spacing: -.01em; white-space: nowrap; color: var(--text-1); cursor: pointer; flex: none; }
+  .hd .ttl:hover { background: var(--subtle); }
+  .hd .ttl .i { color: var(--text-2); }
+  .hd .sp { flex: 1; min-width: 4px; }
+  .hd .ib { width: 28px; height: 28px; border-radius: var(--r-ctrl); display: grid; place-items: center; color: var(--text-2); flex: none; }
+  .hd .ib:hover { background: var(--subtle); color: var(--text-1); }
+  .hd .fld { flex: 1; min-width: 96px; height: 28px; margin: 0 2px 0 6px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: var(--r-ctrl); background: var(--fill-ctrl); border: 1px solid var(--ctrl-stroke); color: var(--text-3); font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+  .hd .fld.open { border-bottom: 2px solid var(--accent); color: var(--text-1); margin-left: 0; }
+  .hd .fld.open .i:last-child { margin-left: auto; color: var(--text-2); }
+  .hd .fld .cur { display: inline-block; width: 1px; height: 14px; background: var(--text-1); }
+
+  /* chips (LibraryV3Chips grammar: idle · filtered · fused) inside a 36 band */
+  .chips { display: flex; align-items: center; gap: 6px; height: var(--chip-band); padding: 0 0 0 calc(var(--row-l) + var(--gutter) + var(--lead-gap)); overflow: hidden; flex: none;
+           mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); }
+  .chips.nofade { mask-image: none; -webkit-mask-image: none; }
+  .chip { height: var(--chip-h); padding: 0 11px; border-radius: var(--r-pill); background: var(--fill-ctrl); border: 1px solid var(--ctrl-stroke); font-size: 12.5px; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; color: var(--text-1); flex: none; }
+  .chip.on { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
+  .chip.x { width: var(--chip-h); padding: 0; justify-content: center; color: var(--text-2); }
+  .chip.fused { padding: 0; overflow: hidden; }
+  .chip.fused span { padding: 0 10px; height: 100%; display: inline-flex; align-items: center; gap: 5px; }
+  .chip.fused span + span { background: var(--fill-ctrl); color: var(--text-1); font-weight: 400; border-left: 1px solid var(--ctrl-stroke); }
+  .chip .i { width: 12px; height: 12px; stroke-width: 2; }
+
+  /* lens row — "which slice am I looking at" + sort/view, 32 */
+  .lens { display: flex; align-items: center; gap: 8px; height: var(--lens-h); padding: 0 var(--row-r) 0 calc(var(--row-l) + var(--gutter) + var(--lead-gap)); font-size: 12px; color: var(--text-3); flex: none; }
+  .lens .lk { display: inline-flex; align-items: center; gap: 2px; color: var(--text-1); font-weight: 600; height: 24px; padding: 0 6px; margin-left: -6px; border-radius: var(--r-ctrl); white-space: nowrap; }
+  .lens .lk:hover { background: var(--subtle); }
+  .lens .lk .i { width: 12px; height: 12px; color: var(--text-2); }
+  .lens .n { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .lens .sp { flex: 1; }
+  .lens .sort { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 6px; border-radius: var(--r-ctrl); color: var(--text-2); font-weight: 600; white-space: nowrap; }
+  .lens .sort:hover { background: var(--subtle); }
+  .lens .sort .i { width: 12px; height: 12px; }
+  .lens .vw { width: 24px; height: 24px; border-radius: var(--r-ctrl); display: grid; place-items: center; color: var(--text-2); }
+  .lens .vw .i { width: 14px; height: 14px; }
+  .lens .vw:hover { background: var(--subtle); }
+
+  /* breadcrumb (drilled folder), 32 */
+  .crumbrow { display: flex; align-items: center; gap: 4px; height: var(--crumb-h); padding: 0 var(--row-r) 0 calc(var(--row-l) + var(--gutter) + var(--lead-gap) - 6px); font: 600 12px var(--font); color: var(--text-2); flex: none; }
+  .crumbrow .ib { width: 24px; height: 24px; display: grid; place-items: center; border-radius: var(--r-ctrl); }
+  .crumbrow .ib .i { width: 12px; height: 12px; }
+  .crumbrow .ib:hover { background: var(--subtle); }
+
+  /* list rows */
+  .list { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; padding-top: 2px; }
+  .r { display: flex; align-items: center; gap: 10px; height: var(--row-h); padding: 0 var(--row-r) 0 var(--row-l); border-radius: var(--r-ctrl); position: relative; flex: none; }
+  .r:hover { background: var(--subtle); }
+  .r.on { background: var(--sel-fill); }
+  .r.on::before { content: ""; position: absolute; left: var(--row-l); top: 12px; bottom: 12px; width: var(--gutter); border-radius: 2px; background: var(--accent); }
+  .r .lead { margin-left: calc(var(--gutter) + var(--lead-gap)); width: 32px; height: 32px; border-radius: 4px; flex: none; overflow: hidden; display: grid; place-items: center; color: var(--text-2); }
+  .r .lead.circ { border-radius: 50%; }
+  .r .lead.glyph { background: var(--fill-ctrl); border: 1px solid var(--ctrl-stroke); }
+  .r .two { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+  .r .two i { font-style: normal; font-size: 13.5px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 18px; }
+  .r .two s { text-decoration: none; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 16px; display: block; }
+  .r .two s .pin { width: 10px; height: 10px; color: var(--accent-text); stroke-width: 2; display: inline-block; vertical-align: -1px; margin-right: 3px; }
+  .r .slot { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: var(--r-ctrl); color: var(--text-2); }
+  .r .slot .more { opacity: 0; }
+  .r:hover .slot .more { opacity: 1; }
+  .r .slot .spk { color: var(--accent-text); }
+  .r .slot .chev { color: var(--text-3); }
+  .r.cmp { height: var(--row-cmp); }
+  .r.cmp .lead { width: 16px; height: 16px; border-radius: 0; margin-left: calc(var(--gutter) + var(--lead-gap) + 8px); margin-right: 8px; }
+  .r.cmp .two i { font-size: 13px; }
+  .pinend { height: 1px; background: var(--divider); margin: 8px var(--row-r) 8px calc(var(--row-l) + var(--gutter) + var(--lead-gap)); flex: none; }
+
+  /* grid view */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 4px 0 0 calc(var(--row-l) + var(--gutter) + var(--lead-gap) - 4px); }
+  .g { display: flex; flex-direction: column; gap: 6px; padding: 4px; border-radius: var(--r-ctrl); min-width: 0; position: relative; }
+  .g:hover { background: var(--subtle); }
+  .g .art { aspect-ratio: 1; border-radius: 4px; display: grid; place-items: center; color: var(--text-2); }
+  .g .art.circ { border-radius: 50%; }
+  .g .art.glyph { background: var(--fill-ctrl); border: 1px solid var(--ctrl-stroke); }
+  .g i { font-style: normal; font-size: 12px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .g i .pin { width: 10px; height: 10px; color: var(--accent-text); stroke-width: 2; display: inline-block; vertical-align: -1px; margin-right: 3px; }
+
+  /* empty state */
+  .empty { padding: 26px 12px 8px; text-align: center; }
+  .empty b { display: block; font-size: 13.5px; margin-bottom: 4px; }
+  .empty span { display: block; color: var(--text-3); font-size: 12px; margin-bottom: 12px; }
+  .empty em { font-style: normal; display: inline-flex; height: 30px; align-items: center; padding: 0 14px; border-radius: var(--r-ctrl); background: var(--fill-ctrl); border: 1px solid var(--ctrl-stroke); font-size: 12.5px; font-weight: 600; }
+
+  /* collapsed rail, 56 */
+  .rail { width: 56px; height: 560px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0 12px; border: 1px solid var(--layer-stroke); border-radius: 8px; box-shadow: var(--shadow); color: var(--text-1);
+          background: linear-gradient(var(--mica-a), var(--mica-a)), radial-gradient(300px 260px at 10% 0%, var(--blob1) 0%, transparent 62%), var(--mica); }
+  .rail .t { width: 40px; height: 40px; border-radius: var(--r-ctrl); display: grid; place-items: center; color: var(--text-2); position: relative; }
+  .rail .t:hover { background: var(--subtle); }
+  .rail .t.on { background: var(--sel-fill); color: var(--accent-text); }
+  .rail .t.on::before { content: ""; position: absolute; left: -6px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--accent); }
+  .rail .t .art { width: 32px; height: 32px; border-radius: 4px; }
+  .rail .t .art.circ { border-radius: 50%; }
+  .rail .rl { width: 32px; height: 1px; background: var(--divider); margin: 2px 0; }
+
+  .callouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 22px; margin: 14px 0 0; padding: 0; list-style: none; }
+  .callouts li { font-size: 13px; line-height: 1.45; padding-left: 12px; border-left: 2px solid var(--accent); }
+  .callouts b { display: block; font-weight: 600; }
+  .src { font-size: 12.5px; line-height: 1.55; margin: 0; padding-left: 18px; }
+  .src li { margin-bottom: 4px; }
+  @media (prefers-reduced-motion: no-preference) { .r .slot .more, .chip { transition: opacity .12s, background-color .12s; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1h-5v-6h-5v6h-5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="i-chl" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></symbol>
+  <symbol id="i-chr" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+  <symbol id="i-chd" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M20 12H5m6-7-7 7 7 7"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M4 12h15m-6-7 7 7-7 7"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="m15 3 6 6-4.5 1.5L13 14l.5 4-3-3-6 6-1-1 6-6-3-3 4 .5 3.5-3.5z"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-8-4.9-8-10.4A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 8 3.1c0 5.5-8 10.4-8 10.4z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5h6l2 2h10v10H3z"/></symbol>
+  <symbol id="i-spk" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5zM16 9a4.2 4.2 0 0 1 0 6m2.8-8.5a8 8 0 0 1 0 11"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-lib" viewBox="0 0 24 24"><path d="M4 4v16M9 4v16M13.5 5 19 20"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-dev" viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="1.5"/><path d="M12 17.5h.01"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+  <symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></symbol>
+  <symbol id="i-min" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-max" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M18 5v14M6 6l9 6-9 6z"/></symbol>
+  <symbol id="i-shuf" viewBox="0 0 24 24"><path d="M4 7h3l10 10h3M4 17h3l3-3M14 7h6m-3-3 3 3-3 3"/></symbol>
+  <symbol id="i-rep" viewBox="0 0 24 24"><path d="M17 4l3 3-3 3M7 20l-3-3 3-3M20 7H8a4 4 0 0 0-4 4M4 17h12a4 4 0 0 0 4-4"/></symbol>
+  <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5zM16 9a4.2 4.2 0 0 1 0 6"/></symbol>
+  <symbol id="i-lyr" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-q" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/></symbol>
+  <symbol id="i-cast" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M8 20h8"/></symbol>
+</svg>
+
+<div class="topbar">
+  <div>
+    <h1>Library V3.1 — one taxonomy, a title that never truncates, one trailing slot</h1>
+    <p class="lede">The current V3 pane says <b>Albums</b> twice, two rows apart, and means two different things (a page, then a filter). It clips its own title to <i>Your L…</i> at 300 DIP, spends 30 DIP on a word strip that repeats the chips’ nouns as page links, and gives every row two trailing glyphs that eat the label. This is the redesign: the destinations fold into the filter they already duplicate, Liked Songs becomes the system-pinned row it is everywhere else, and the header follows a Priority+ ladder where the title is the last thing to go.</p>
+  </div>
+  <div class="theme" role="group" aria-label="Preview theme">
+    <button type="button" data-t="system" aria-pressed="true">System</button>
+    <button type="button" data-t="light" aria-pressed="false">Light</button>
+    <button type="button" data-t="dark" aria-pressed="false">Dark</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ THE WINDOW ═══════════════════════════ -->
+<div class="win" aria-label="Wavee window with the redesigned Library V3.1 pane">
+  <div class="titlebar">
+    <span class="tb"><svg class="i"><use href="#i-menu"/></svg></span>
+    <span class="tb"><svg class="i"><use href="#i-back"/></svg></span>
+    <span class="tb dis"><svg class="i"><use href="#i-fwd"/></svg></span>
+    <span class="crumb"><svg class="i"><use href="#i-home"/></svg>Home</span>
+    <div class="asb">Search songs, artists, albums…<svg class="i"><use href="#i-search"/></svg></div>
+    <span class="avatar">C</span>
+    <span class="tb"><svg class="i"><use href="#i-sun"/></svg></span>
+    <div class="caption"><span><svg class="i"><use href="#i-min"/></svg></span><span><svg class="i"><use href="#i-max"/></svg></span><span><svg class="i"><use href="#i-x"/></svg></span></div>
+  </div>
+
+  <!-- ── the pane: idle state, 280 wide ── -->
+  <div class="pane">
+    <div class="sc on"><span class="lead"><svg class="i"><use href="#i-home"/></svg></span>Home</div>
+    <div class="rule"></div>
+
+    <div class="hd">
+      <span class="ttl" title="Collapse the library"><svg class="i"><use href="#i-lib"/></svg>Your Library</span>
+      <span class="sp"></span>
+      <span class="ib" title="Search your library"><svg class="i"><use href="#i-search"/></svg></span>
+      <span class="ib" title="Create"><svg class="i"><use href="#i-plus"/></svg></span>
+      <span class="ib" title="More"><svg class="i"><use href="#i-more"/></svg></span>
+    </div>
+
+    <div class="chips">
+      <span class="chip">Playlists</span><span class="chip">Albums</span><span class="chip">Artists</span><span class="chip">Podcasts</span>
+    </div>
+
+    <div class="lens">
+      <span class="n">All · 212</span>
+      <span class="sp"></span>
+      <span class="sort">Recents<svg class="i"><use href="#i-chd"/></svg></span>
+      <span class="vw" title="View as"><svg class="i"><use href="#i-list"/></svg></span>
+    </div>
+
+    <div class="list">
+      <div class="r"><span class="lead liked"><svg class="i"><use href="#i-heart"/></svg></span><span class="two"><i>Liked Songs</i><s><svg class="i pin"><use href="#i-pin"/></svg>Playlist · 1,204 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      <div class="r"><span class="lead glyph"><svg class="i"><use href="#i-dev"/></svg></span><span class="two"><i>Local files</i><s><svg class="i pin"><use href="#i-pin"/></svg>This PC · 318 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      <div class="r"><span class="lead circ a9"></span><span class="two"><i>Savage Garden</i><s><svg class="i pin"><use href="#i-pin"/></svg>Artist</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      <div class="r"><span class="lead a1"></span><span class="two"><i>Can This Love Be Translated</i><s><svg class="i pin"><use href="#i-pin"/></svg>Album · Kim Min Seok</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      <div class="r"><span class="lead a5"></span><span class="two"><i>teen pop 2010s saturday</i><s><svg class="i pin"><use href="#i-pin"/></svg>Playlist · Spotify</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      <div class="pinend"></div>
+      <div class="r"><span class="lead a8"></span><span class="two"><i>My Playlist #1</i><s>Playlist · 11 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      <div class="r on"><span class="lead a2"></span><span class="two"><i>Daily Mix 1</i><s>Playlist · Spotify</s></span><span class="slot"><svg class="i spk"><use href="#i-spk"/></svg></span></div>
+      <div class="r"><span class="lead glyph"><svg class="i"><use href="#i-folder"/></svg></span><span class="two"><i>Road trips</i><s>Folder · 6 playlists</s></span><span class="slot"><svg class="i chev"><use href="#i-chr"/></svg></span></div>
+      <div class="r"><span class="lead circ a4"></span><span class="two"><i>League of Legends</i><s>Artist</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      <div class="r"><span class="lead a6"></span><span class="two"><i>rosie</i><s>Album · ROSÉ</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      <div class="r"><span class="lead a7"></span><span class="two"><i>Nostalgia 2000s Mix</i><s>Playlist · Spotify</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      <div class="r"><span class="lead a3"></span><span class="two"><i>Darknet Diaries</i><s>Podcast · 156 episodes</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+    </div>
+  </div>
+
+  <!-- ── content layer: Home, as context ── -->
+  <div class="content">
+    <div class="tabs"><span class="on">All</span><span>Music</span><span>Podcasts</span><span>Audiobooks</span></div>
+    <div class="hero">
+      <small>Good evening, Christos · your daylist</small>
+      <h4>confidence baddie saturday night</h4>
+      <div class="meta">50 songs · by Spotify</div>
+      <div class="btns"><span class="pri">▶&nbsp; Play</span><span>Shuffle</span></div>
+    </div>
+    <div class="cards">
+      <div class="card"><span class="art a6"></span><div><b>Discover Weekly</b><span>Your shortcut to hidden gems, deep cuts, and future faves.</span></div></div>
+      <div class="card"><span class="art a7"></span><div><b>Release Radar</b><span>Catch all the latest music from artists you follow.</span></div></div>
+    </div>
+    <div class="jump"><b>Jump back in</b><span>Your 8 most-opened of 20 ›</span></div>
+    <div class="tiles">
+      <div class="tile"><span class="art liked"></span><span>Liked Songs</span></div>
+      <div class="tile"><span class="art a8"></span><span>My Playlist #1</span></div>
+      <div class="tile"><span class="art a1"></span><span>90's Nederlandstalig</span></div>
+    </div>
+  </div>
+
+  <div class="np">
+    <span class="art a9"></span>
+    <div class="track"><small>Playing on iPhone</small><b>La fille du 7e étage</b><span>St-Amour, Sarah Degny</span></div>
+    <div class="ctl"><span class="like"><svg class="i" style="fill:currentColor;stroke:none"><use href="#i-heart"/></svg></span><svg class="i"><use href="#i-prev"/></svg><svg class="i"><use href="#i-pause"/></svg><svg class="i"><use href="#i-next"/></svg></div>
+    <div class="bar"><span>1:05</span><i></i><span>2:57</span></div>
+    <div class="right"><svg class="i"><use href="#i-shuf"/></svg><svg class="i"><use href="#i-rep"/></svg><svg class="i"><use href="#i-vol"/></svg><svg class="i"><use href="#i-lyr"/></svg><svg class="i"><use href="#i-q"/></svg><svg class="i"><use href="#i-cast"/></svg><svg class="i"><use href="#i-more"/></svg></div>
+  </div>
+</div>
+<p class="sm muted" style="margin-top:10px">Idle state at 280 DIP. Read the pane top to bottom: shortcut band (Compact, 32) · header (44) · filter chips (36) · lens row (32) · pinned band with Liked Songs and Local files as system rows · hairline · the library. The word strip and the second taxonomy are gone. Hover a row: the single trailing slot shows “…”; the playing row shows the speaker there instead.</p>
+
+<!-- ═══════════════════════════ DEFECTS ═══════════════════════════ -->
+<h2>What is wrong today (from the screenshots)</h2>
+<div class="panel">
+  <ol class="defects">
+    <li><span><b>Two taxonomies, two rows apart.</b> <i>Liked Songs · Albums · Artists · Podca…</i> (pages) sits above <i>Playlists · Podcasts · Albums · Artists</i> (filters). Same nouns, different verbs; nobody can tell which “Albums” they are clicking. <span class="fix">→ one set of nouns: the chips.</span></span></li>
+    <li><span><b>The word strip is a second tab strip.</b> It borrows the Home page’s underline-tab vocabulary for a different job (leaving the pane), shows four and a half of its five words at the default width, and its pager chevrons are hover-only. <span class="fix">→ deleted; the chips are the one band that scrolls, fade on at rest.</span></span></li>
+    <li><span><b>“Your L…”.</b> The inline search host and three icons out-rank the title, so the one word that names the pane is the first to be sacrificed. <span class="fix">→ the title is the last element to yield (Priority+), and it doubles as the collapse toggle.</span></span></li>
+    <li><span><b>Home dominates.</b> A 40-DIP Cozy row with a full-width selected plate, placed <i>above</i> the library’s own title, inverts the hierarchy. <span class="fix">→ Compact 32 with the standard 3-DIP gutter.</span></span></li>
+    <li><span><b>Two trailing glyphs per row.</b> Pin at rest plus “…” on hover cost ~56 DIP of label; “Can This Love Be Tra…”. The scrollbar thumb then overlaps the “…” column (image 1). <span class="fix">→ one 28-DIP slot; pin moves into the subtitle as Spotify does.</span></span></li>
+    <li><span><b>Subtitle grammar drifts.</b> “Artist” · “Album · Kim Min S…” · “50 songs” · “11 songs”. <span class="fix">→ always <i>Kind · detail</i>.</span></span></li>
+    <li><span><b>The pinned band has no end.</b> Only the presence of a pin glyph separates pins from the rest. <span class="fix">→ a hairline after the band (PinEndHeight already exists).</span></span></li>
+    <li><span><b>Sort and View are buried.</b> Folding them into “…” fixed the 7-icon header but hid the two controls a library list is operated with. <span class="fix">→ a quiet text control on the lens row, Spotify’s exact placement.</span></span></li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════ THE LADDER ═══════════════════════════ -->
+<h2>The width ladder — 180 · 240 · 320 · rail</h2>
+<p class="lede">Every state of the header at every width the pane can take. The title is never clipped anywhere on this ladder.</p>
+<div class="ladder">
+
+  <div class="spec">
+    <p class="w">180 — the floor · idle</p>
+    <div class="pane free w180">
+      <div class="sc"><span class="lead"><svg class="i"><use href="#i-home"/></svg></span>Home</div>
+      <div class="rule"></div>
+      <div class="hd">
+        <span class="ttl"><svg class="i"><use href="#i-lib"/></svg>Your Library</span><span class="sp"></span>
+        <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="chips"><span class="chip">Playlists</span><span class="chip">Albums</span><span class="chip">Artists</span><span class="chip">Podcasts</span></div>
+      <div class="lens"><span class="n">All · 212</span><span class="sp"></span><span class="sort">Recents<svg class="i"><use href="#i-chd"/></svg></span></div>
+      <div class="list">
+        <div class="r cmp"><span class="lead liked" style="border-radius:3px"><svg class="i" style="width:10px;height:10px"><use href="#i-heart"/></svg></span><span class="two"><i>Liked Songs</i></span></div>
+        <div class="r cmp"><span class="lead"><svg class="i"><use href="#i-dev"/></svg></span><span class="two"><i>Local files</i></span></div>
+        <div class="r cmp"><span class="lead"><svg class="i"><use href="#i-person"/></svg></span><span class="two"><i>Savage Garden</i></span></div>
+        <div class="r cmp"><span class="lead"><svg class="i"><use href="#i-disc"/></svg></span><span class="two"><i>Can This Love Be Translated</i></span></div>
+        <div class="pinend"></div>
+        <div class="r cmp"><span class="lead"><svg class="i"><use href="#i-note"/></svg></span><span class="two"><i>My Playlist #1</i></span></div>
+        <div class="r cmp on"><span class="lead"><svg class="i"><use href="#i-note"/></svg></span><span class="two"><i>Daily Mix 1</i></span><span class="slot" style="width:20px"><svg class="i spk" style="width:13px;height:13px"><use href="#i-spk"/></svg></span></div>
+        <div class="r cmp"><span class="lead"><svg class="i"><use href="#i-folder"/></svg></span><span class="two"><i>Road trips</i></span></div>
+        <div class="r cmp"><span class="lead"><svg class="i"><use href="#i-person"/></svg></span><span class="two"><i>League of Legends</i></span></div>
+        <div class="r cmp"><span class="lead"><svg class="i"><use href="#i-disc"/></svg></span><span class="two"><i>rosie</i></span></div>
+        <div class="r cmp"><span class="lead"><svg class="i"><use href="#i-note"/></svg></span><span class="two"><i>Nostalgia 2000s Mix</i></span></div>
+        <div class="r cmp"><span class="lead"><svg class="i"><use href="#i-mic"/></svg></span><span class="two"><i>Darknet Diaries</i></span></div>
+      </div>
+    </div>
+    <p class="cap"><b>Two icons.</b> “+” folds into “…” (New playlist · New folder). The view auto-drops to Compact (32, kind glyph, no subtitle) below 200 — a 32-DIP cover next to 90 DIP of text is not a row. Chips scroll with a peek fade; the lens row loses its view glyph.</p>
+  </div>
+
+  <div class="spec">
+    <p class="w">240 — Albums lens on</p>
+    <div class="pane free w240">
+      <div class="sc"><span class="lead"><svg class="i"><use href="#i-home"/></svg></span>Home</div>
+      <div class="rule"></div>
+      <div class="hd">
+        <span class="ttl"><svg class="i"><use href="#i-lib"/></svg>Your Library</span><span class="sp"></span>
+        <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-plus"/></svg></span><span class="ib"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="chips nofade"><span class="chip x"><svg class="i"><use href="#i-x"/></svg></span><span class="chip on">Albums</span></div>
+      <div class="lens"><span class="lk">All albums<svg class="i"><use href="#i-chr"/></svg></span><span class="n">312</span><span class="sp"></span><span class="sort">Recents<svg class="i"><use href="#i-chd"/></svg></span><span class="vw"><svg class="i"><use href="#i-list"/></svg></span></div>
+      <div class="list">
+        <div class="r"><span class="lead a1"></span><span class="two"><i>Can This Love Be Translated</i><s><svg class="i pin"><use href="#i-pin"/></svg>Album · Kim Min Seok</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="pinend"></div>
+        <div class="r"><span class="lead a6"></span><span class="two"><i>rosie</i><s>Album · ROSÉ</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead a2"></span><span class="two"><i>Affirmation</i><s>Album · Savage Garden</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead a3"></span><span class="two"><i>Face Value</i><s>Album · Phil Collins</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead a8"></span><span class="two"><i>Thriller</i><s>Album · Michael Jackson</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead a4"></span><span class="two"><i>Hounds of Love</i><s>Album · Kate Bush</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead a7"></span><span class="two"><i>Currents</i><s>Album · Tame Impala</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      </div>
+    </div>
+    <p class="cap"><b>This is where the Albums page went.</b> Pick the chip and the lens row becomes the link: <b>All albums ›</b> opens the full page, the same “heading ›” idiom Home uses for <i>Jump back in ›</i>. Artists and Podcasts work the same way; Playlists has no page, so its lens is plain text. The ✕ pops in, the other chips leave (existing grammar).</p>
+  </div>
+
+  <div class="spec">
+    <p class="w">320 — WinUI default · search open</p>
+    <div class="pane free w320">
+      <div class="sc"><span class="lead"><svg class="i"><use href="#i-home"/></svg></span>Home</div>
+      <div class="rule"></div>
+      <div class="hd">
+        <span class="fld open"><svg class="i"><use href="#i-search"/></svg>sav<span class="cur"></span><svg class="i"><use href="#i-x"/></svg></span>
+        <span class="ib"><svg class="i"><use href="#i-plus"/></svg></span><span class="ib"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="chips nofade"><span class="chip fused"><span class="on" style="background:var(--accent);color:var(--on-accent);font-weight:600">Playlists</span><span>By you<svg class="i"><use href="#i-x"/></svg></span></span></div>
+      <div class="lens"><span class="n">Playlists by you · 3 matches</span><span class="sp"></span><span class="sort">Alphabetical<svg class="i"><use href="#i-chd"/></svg></span><span class="vw"><svg class="i"><use href="#i-list"/></svg></span></div>
+      <div class="list">
+        <div class="r"><span class="lead a8"></span><span class="two"><i><b style="font-weight:600;color:var(--accent-text)">Sav</b>ed for later</i><s>Playlist · 42 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead a4"></span><span class="two"><i><b style="font-weight:600;color:var(--accent-text)">Sav</b>age Garden deep cuts</i><s>Playlist · 18 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead a2"></span><span class="two"><i>Road trips / <b style="font-weight:600;color:var(--accent-text)">Sav</b>annah</i><s>Playlist · 27 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      </div>
+    </div>
+    <p class="cap"><b>Search is the one thing allowed to cover the title.</b> At ≥ 320 the closed field sits inline; when it opens (any width) it takes the row, the title steps aside, Esc or ✕ brings it back. A search flattens folders, so the path shows in the name. The fused <b>Playlists │ By you ✕</b> pill is the existing shared primitive, unchanged.</p>
+  </div>
+
+  <div class="spec">
+    <p class="w">56 — collapsed rail</p>
+    <div class="rail">
+      <span class="t" title="Expand"><svg class="i"><use href="#i-lib"/></svg></span>
+      <span class="t" title="Create"><svg class="i"><use href="#i-plus"/></svg></span>
+      <span class="rl"></span>
+      <span class="t on" title="Home"><svg class="i"><use href="#i-home"/></svg></span>
+      <span class="rl"></span>
+      <span class="t" title="Liked Songs"><span class="art liked"><svg class="i" style="width:12px;height:12px"><use href="#i-heart"/></svg></span></span>
+      <span class="t" title="Local files"><svg class="i"><use href="#i-dev"/></svg></span>
+      <span class="t" title="Savage Garden"><span class="art circ a9"></span></span>
+      <span class="t" title="Can This Love Be Translated"><span class="art a1"></span></span>
+      <span class="t" title="teen pop 2010s saturday"><span class="art a5"></span></span>
+      <span class="rl"></span>
+      <span class="t" title="My Playlist #1"><span class="art a8"></span></span>
+      <span class="t" title="Daily Mix 1"><span class="art a2"></span></span>
+      <span class="t" title="Road trips"><svg class="i"><use href="#i-folder"/></svg></span>
+      <span class="t" title="League of Legends"><span class="art circ a4"></span></span>
+    </div>
+    <p class="cap"><b>The rail keeps the same order</b> as the pane: expand · create · shortcut band · pinned band (Liked, Local, pins) · hairline · the library. Icon-only is the rail’s whole trade, so the tooltip carries the name. Albums / Artists / Podcasts tiles are gone from the rail too: same reason, one taxonomy.</p>
+  </div>
+</div>
+
+<h2>Three more states at 280</h2>
+<div class="ladder">
+
+  <div class="spec">
+    <p class="w">Grid view · Artists lens</p>
+    <div class="pane free" style="width:280px">
+      <div class="sc"><span class="lead"><svg class="i"><use href="#i-home"/></svg></span>Home</div>
+      <div class="rule"></div>
+      <div class="hd">
+        <span class="ttl"><svg class="i"><use href="#i-lib"/></svg>Your Library</span><span class="sp"></span>
+        <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-plus"/></svg></span><span class="ib"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="chips nofade"><span class="chip x"><svg class="i"><use href="#i-x"/></svg></span><span class="chip on">Artists</span></div>
+      <div class="lens"><span class="lk">All artists<svg class="i"><use href="#i-chr"/></svg></span><span class="n">88</span><span class="sp"></span><span class="sort">Alphabetical<svg class="i"><use href="#i-chd"/></svg></span><span class="vw"><svg class="i"><use href="#i-grid"/></svg></span></div>
+      <div class="list">
+        <div class="grid">
+          <div class="g"><span class="art circ a9"></span><i><svg class="i pin"><use href="#i-pin"/></svg>Savage Garden</i></div>
+          <div class="g"><span class="art circ a4"></span><i>League of Legends</i></div>
+          <div class="g"><span class="art circ a1"></span><i>Michael Jackson</i></div>
+          <div class="g"><span class="art circ a3"></span><i>Phil Collins</i></div>
+          <div class="g"><span class="art circ a6"></span><i>ROSÉ</i></div>
+          <div class="g"><span class="art circ a2"></span><i>Kate Bush</i></div>
+          <div class="g"><span class="art circ a7"></span><i>Tame Impala</i></div>
+          <div class="g"><span class="art circ a8"></span><i>Sarah Degny</i></div>
+          <div class="g"><span class="art circ a5"></span><i>Kim Min Seok</i></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>Columns are derived, never chosen</b> (3 at 280, cell ≥ 84). Pinned cells stay first and carry the same 10-DIP pin mark the list subtitle uses — one pin vocabulary in list and grid. The lens row is the only place the count and the sort live, so the grid gets them for free.</p>
+  </div>
+
+  <div class="spec">
+    <p class="w">Drilled into a folder</p>
+    <div class="pane free" style="width:280px">
+      <div class="sc"><span class="lead"><svg class="i"><use href="#i-home"/></svg></span>Home</div>
+      <div class="rule"></div>
+      <div class="hd">
+        <span class="ttl"><svg class="i"><use href="#i-lib"/></svg>Your Library</span><span class="sp"></span>
+        <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-plus"/></svg></span><span class="ib"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="chips"><span class="chip">Playlists</span><span class="chip">Albums</span><span class="chip">Artists</span><span class="chip">Podcasts</span></div>
+      <div class="crumbrow"><span class="ib" title="Back to Your Library"><svg class="i"><use href="#i-chl"/></svg></span>Road trips<span style="margin-left:auto;color:var(--text-3);font-weight:400">6 playlists</span></div>
+      <div class="list">
+        <div class="r"><span class="lead a2"></span><span class="two"><i>Savannah</i><s>Playlist · 27 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead a7"></span><span class="two"><i>Coast highway</i><s>Playlist · 64 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead glyph"><svg class="i"><use href="#i-folder"/></svg></span><span class="two"><i>Night drives</i><s>Folder · 2 playlists</s></span><span class="slot"><svg class="i chev"><use href="#i-chr"/></svg></span></div>
+        <div class="r"><span class="lead a5"></span><span class="two"><i>Gas station snacks</i><s>Playlist · 40 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+        <div class="r"><span class="lead a3"></span><span class="two"><i>Sing-along</i><s>Playlist · 33 songs</s></span><span class="slot"><svg class="i more"><use href="#i-more"/></svg></span></div>
+      </div>
+    </div>
+    <p class="cap"><b>The breadcrumb replaces the lens row</b> while drilled — a folder level has no sort of its own (custom order) and no pins. Below 320 folders navigate; at ≥ 320 they disclose inline with the tree guide, exactly as today. The chips stay: a filter inside a folder is legal and useful.</p>
+  </div>
+
+  <div class="spec">
+    <p class="w">Empty by filter</p>
+    <div class="pane free" style="width:280px;height:340px">
+      <div class="sc"><span class="lead"><svg class="i"><use href="#i-home"/></svg></span>Home</div>
+      <div class="rule"></div>
+      <div class="hd">
+        <span class="ttl"><svg class="i"><use href="#i-lib"/></svg>Your Library</span><span class="sp"></span>
+        <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-plus"/></svg></span><span class="ib"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="chips nofade"><span class="chip x"><svg class="i"><use href="#i-x"/></svg></span><span class="chip on">Podcasts</span></div>
+      <div class="lens"><span class="lk">All podcasts<svg class="i"><use href="#i-chr"/></svg></span><span class="n">0</span><span class="sp"></span><span class="sort">Recents<svg class="i"><use href="#i-chd"/></svg></span><span class="vw"><svg class="i"><use href="#i-list"/></svg></span></div>
+      <div class="empty"><b>No podcasts in your library</b><span>Shows you follow appear here.</span><em>Clear filter</em></div>
+    </div>
+    <p class="cap"><b>Unchanged priority order</b> (error › search › filter › empty library) and the same compact, actionable state. The lens row stays with a zero, because “0 of a kind” is information and the link to the page still works.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ RULES ═══════════════════════════ -->
+<h2>The rules the mock encodes</h2>
+<div class="cols">
+  <div class="panel">
+    <h3>Header — Priority+ ladder</h3>
+    <div class="tbl"><table>
+      <tr><th>Pane width</th><th>Header row</th></tr>
+      <tr><td class="n">≥ 320</td><td>Title · inline search field (grows) · + · …</td></tr>
+      <tr><td class="n">240 – 319</td><td>Title · spacer · 🔍 · + · …</td></tr>
+      <tr><td class="n">180 – 239</td><td>Title · spacer · 🔍 · … (“+” folds into “…”)</td></tr>
+      <tr><td class="n">any, search open</td><td>Field takes the row; title hidden until Esc / ✕</td></tr>
+      <tr><td>Chips</td><td>The one horizontally scrolling band. Four facets fit at ≥ ~330; below that the last chip peeks under the 20-DIP fade — a finite, known set, so nothing is lost behind it. Order Playlists · Albums · Artists · Podcasts (the destination order, not today’s Playlists · Podcasts · Albums · Artists).</td></tr>
+    </table></div>
+    <p class="sm muted" style="margin-top:10px">The title is a button: click collapses to the rail (Spotify’s own affordance; the “‹” chevron leaves the header). “…” holds Sidebar layout ▸ · Clear filters · Collapse · New playlist / New folder when folded · API console in developer mode. Sort and View leave “…” for the lens row.</p>
+  </div>
+  <div class="panel">
+    <h3>Row — one trailing slot</h3>
+    <div class="tbl"><table>
+      <tr><th>Part</th><th>Spec</th></tr>
+      <tr><td>Height</td><td>44 with a 32 cover (Cozy + subtitle); 32 Compact with a 16 kind glyph, no subtitle. One height per band.</td></tr>
+      <tr><td>Lead</td><td>Pane edge 8 · row inset 4 · gutter 3 · gap 6 → cover at x = 21, label at x = 63. Same x for every row and for the chrome’s leading glyphs.</td></tr>
+      <tr><td>Subtitle</td><td><i>Kind · detail</i>, always: Playlist · Spotify / 11 songs · Album · Artist name · Artist · Podcast · n episodes · Folder · n playlists. Pinned rows lead the subtitle with a 10-DIP pin mark.</td></tr>
+      <tr><td>Trailing</td><td>One 28-DIP slot: empty at rest · “…” on hover/focus · speaker when playing · “›” on a folder at narrow widths. Clears the scrollbar’s overlay lane.</td></tr>
+      <tr><td>Selection</td><td>3-DIP accent gutter + subtle fill. No accent text on the label.</td></tr>
+    </table></div>
+  </div>
+  <div class="panel">
+    <h3>Vertical budget above the first library row</h3>
+    <div class="tbl"><table>
+      <tr><th>Band</th><th>Today</th><th>V3.1</th></tr>
+      <tr><td>Word strip + rule</td><td class="n">41</td><td class="n">—</td></tr>
+      <tr><td>Shortcut band (Home) + rule</td><td class="n">49</td><td class="n">41</td></tr>
+      <tr><td>Header</td><td class="n">44</td><td class="n">44</td></tr>
+      <tr><td>Chips (+ rule today)</td><td class="n">49</td><td class="n">36</td></tr>
+      <tr><td>Lens row (sort · view · page link)</td><td class="n">—</td><td class="n">32</td></tr>
+      <tr><td>Padding</td><td class="n">16</td><td class="n">14</td></tr>
+      <tr><td><b>Total</b></td><td class="n"><b>199</b></td><td class="n"><b>167</b></td></tr>
+    </table></div>
+    <p class="sm muted" style="margin-top:10px">32 DIP back, with Sort/View visible again and the five destinations still one click away (Liked, Local as rows; Albums/Artists/Podcasts via the lens link). With an emptied shortcut band the chrome is 126.</p>
+  </div>
+</div>
+
+<h2>What the research settled</h2>
+<div class="panel">
+  <ul class="callouts">
+    <li><b>Filters, not destinations, are the sidebar’s nouns.</b> Spotify’s Your Library sidebar has filter chips (Playlists · Artists · Albums · Podcasts), sub-filters (By you · By Spotify · Downloaded), sort (Recents · Recently Added · Alphabetical · Creator · Custom Order), library search, list/grid, and pinning — and Liked Songs is simply a pinned row. There is no separate “Albums page” strip; the filter <i>is</i> the view.</li>
+    <li><b>Where destinations are rows, they are plain rows.</b> Apple Music on Windows lists Recently Added · Artists · Albums · Songs under a “Library” heading as ordinary sidebar rows, editable via “Edit Library Sidebar”. Nobody ships them as a word strip.</li>
+    <li><b>NavigationView says: pane title next to the toggle, ≤ 2 levels, labels always.</b> Microsoft’s pane anatomy puts <code>PaneTitle</code> beside the menu button and recommends a shallow hierarchy; its top-nav guidance (≤ 5 categories, “icons cannot clearly describe your categories”) is what the strip leaned on — but top-nav is an alternative to a pane, not a band inside one.</li>
+    <li><b>Priority+ decides what yields.</b> The pattern shows the most important items first and moves the least important into “more” as width shrinks. The pane’s most important item is its name; the least is the third icon.</li>
+    <li><b>Mode splits cost keystrokes.</b> Hicks.design’s complaint about Apple Music — having to pre-select “Library” before a search finds “Cowboy Sadness” — is the same friction as choosing between two “Albums”. One noun, one meaning.</li>
+  </ul>
+  <p class="sm" style="margin-top:16px"><b>Sources</b></p>
+  <ol class="src">
+    <li><a href="https://community.spotify.com/t5/Your-Library/Desktop-New-Your-Library-sidebar/td-p/5571384">Spotify Community — Desktop: New Your Library sidebar</a> (filters, sub-filters, sort options, pins, remembered state)</li>
+    <li><a href="https://www.androidpolice.com/spotify-redesigned-library-now-playing-desktop/">Android Police — Spotify gets a redesigned Library and Now Playing interface on desktop</a> (grid/list, resize, collapse, library search)</li>
+    <li><a href="https://support.apple.com/guide/music-windows/customize-the-apple-music-window-mus2d264e327/windows">Apple Support — Customize the Apple Music window on Windows</a> (Library sidebar rows, Edit Library Sidebar)</li>
+    <li><a href="https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/navigationview">Microsoft Learn — NavigationView</a> (PaneTitle / PaneHeader anatomy, top-nav criteria, two-level hierarchy)</li>
+    <li><a href="https://css-tricks.com/the-priority-navigation-pattern/">CSS-Tricks — The Priority+ Navigation Pattern</a></li>
+    <li><a href="https://hicks.design/journal/my-perfect-music-app-doesnt-exist">Hicks.design — My perfect music app doesn’t exist</a> (mode-switch friction in Apple Music)</li>
+  </ol>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement, btns = document.querySelectorAll('.theme button');
+    function set(t) {
+      if (t === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', t);
+      btns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.t === t)); });
+      try { localStorage.setItem('v31-theme', t); } catch (e) {}
+    }
+    btns.forEach(function (b) { b.addEventListener('click', function () { set(b.dataset.t); }); });
+    var saved = null; try { saved = localStorage.getItem('v31-theme'); } catch (e) {}
+    if (saved === 'light' || saved === 'dark') set(saved);
+  })();
+</script>

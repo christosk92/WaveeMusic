@@ -16,7 +16,7 @@ namespace Wavee.Tests;
 //     after it, the autoplay tail keeps natural relative order at the END, cursor = 0.
 // The shuffle permutation comes from a deterministic per-session LCG but is treated as order-OPAQUE here: shuffled
 // regions are asserted by SET membership, exact order only where natural order is the contract.
-public class ShuffleAutoplayTests
+public class ShuffleAutoplayTests : PlaybackCatalogTestBase
 {
     static Track T(string id) => new(id, "spotify:track:" + id, "T-" + id,
         System.Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
@@ -36,9 +36,9 @@ public class ShuffleAutoplayTests
         es.Select(e => e.Track.Id).OrderBy(x => x, System.StringComparer.Ordinal).ToArray();
 
     // playlist a,b,c fully played; autoplay tail s1..s4 appended; current = s1 (Autoplay); history [a,b,c]
-    static PlaybackSession AutoplaySession()
+    PlaybackSession AutoplaySession()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c"), 0);
         s.AppendContextPage(new[]
         {
@@ -88,7 +88,7 @@ public class ShuffleAutoplayTests
     [Fact]
     public void ShuffleOn_ContextAnchor_WithAutoplayTail_KeepsRepooledContextAndNaturalTail()
     {
-        var s = new PlaybackSession();
+        var s = new PlaybackSession(Catalog.Queue);
         s.SetContext("spotify:playlist:p", Ctx("a", "b", "c", "d", "e"), 2);   // current = c
         s.AppendContextPage(new[] { Q("s1", "us1", "autoplay"), Q("s2", "us2", "autoplay") },
             QueueProvider.Autoplay, "spotify:station:x");

@@ -1,38 +1,37 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Wavee.Backend;
-using Wavee.Backend.Library;
+using Wavee.Backend.Catalog;
 using Wavee.Backend.Persistence;
 using Wavee.Backend.Playlists;
+using Wavee.Backend.Queries;
 using Wavee.Backend.Realtime;
 using Wavee.Backend.Spotify;
+using Wavee.Backend.Sync;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Xunit;
 using Pl = Wavee.Protocol.Playlist;
 
 namespace Wavee.Tests;
 
-// End-to-end: the whole playlist vertical composing over the real CachedStore — fetch (faked HTTP) -> StoreLibrarySource
-// read-model join -> MutationEngine edit -> DealerRouter push -> persistence across a "restart". Proves the units wire up.
+// Actual transport decoding, durable replicas, normalized queries and dealer ingress share one persisted vertical.
 public class LibraryVerticalTests
 {
-
-    // The facade every StoreLibrarySource read goes through. Offline = store-only, never networks (design 1.3).
-    static SwitchableEntityHydrator Offline(IStore store) => new(new Wavee.Backend.Hydration.OfflineEntityHydrator(store));
+    const string PlaylistUri = "spotify:playlist:p";
     static string TempDb() => Path.Combine(Path.GetTempPath(), "wavee-test-" + Guid.NewGuid().ToString("N") + ".db");
     static void TryDelete(string p) { foreach (var f in new[] { p, p + "-wal", p + "-shm" }) { try { File.Delete(f); } catch { } } }
-
-    // I1 — a stored playlist revision is always the 24-byte playlist4 head, so the crafted response carries one.
     static byte[] Rev24(byte tag) { var r = new byte[24]; r[3] = tag; r[23] = tag; return r; }
 
     static byte[] CraftPlaylist(byte rev, params (string Uri, string AddedBy)[] items)
     {
-        var slc = new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(rev)), Length = items.Length };
-        slc.Attributes = new Pl.ListAttributes { Name = "Mix" };
+        var slc = new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(rev)), Length = items.Length,
+            Attributes = new Pl.ListAttributes { Name = "Mix" } };
         var contents = new Pl.ListItems { Pos = 0, Truncated = false };
         foreach (var it in items)
             contents.Items.Add(new Pl.Item { Uri = it.Uri, Attributes = new Pl.ItemAttributes { AddedBy = it.AddedBy } });
@@ -40,76 +39,115 @@ public class LibraryVerticalTests
         return slc.ToByteArray();
     }
 
+    sealed class Transport : ITransport
+    {
+        readonly SimpleSubject<WireEvent> _events = new();
+        public int RequestsSent;
+        public void Push(WireEvent value) => _events.OnNext(value);
+        public Task<Resp> Request(Channel ch, string route, ReadOnlyMemory<byte> body, CancellationToken ct = default,
+            string? method = null, IReadOnlyDictionary<string, string>? headers = null)
+        {
+            RequestsSent++;
+            return Task.FromResult(new Resp(true,
+                new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev24(2)) }.ToByteArray(), 200));
+        }
+        public IObservable<WireEvent> Events(string prefix) => _events;
+        public IObservable<WireRequest> Requests(string prefix) => new SimpleSubject<WireRequest>();
+        public Task Reply(string requestId, RequestResult result) => Task.CompletedTask;
+        public Task<Resp> Publish(string deviceId, string connectionId, ReadOnlyMemory<byte> state, CancellationToken ct = default)
+            => Task.FromResult(new Resp(true, [], 200));
+    }
+
+    static async Task<ReplicaTestHost> Open(SqliteColdStore persistence, InMemoryStore store)
+    {
+        var bootstrap = await ((IReplicaPersistence)persistence).LoadAsync(new("bob", 1), TestContext.Current.CancellationToken);
+        var host = new ReplicaTestHost(store: store, persistence: persistence, bootstrap: bootstrap);
+        await host.Replicas.PublishInitialAsync();
+        await host.Replicas.EnsurePlaylistCachedAsync(PlaylistUri);
+        return host;
+    }
+
+    static QueryService Queries(ReplicaTestHost host, IResourceCoordinator resources)
+    {
+        var queries = new QueryService(host.Catalog, resources, new LibraryQueryDemand(() => null, host.Replicas), host.Replicas.Changes);
+        CatalogQueryDefinitions.Register(queries, host.Replicas, _ => "spotify");
+        return queries;
+    }
+
     [Fact]
-    public async Task FullVertical_Fetch_Read_Edit_Push_Persist()
+    public async Task FullVertical_Fetch_Query_Edit_Push_Persist()
     {
         var path = TempDb();
         var ct = TestContext.Current.CancellationToken;
         try
         {
-            using (var store = new CachedStore(new SqliteColdStore(path)))
+            using (var persistence = new SqliteColdStore(path))
             {
-                // hydrator stands in for MetadataService: upsert each membership uri as a Track entity
-                Task Hydrate(IReadOnlyList<string> uris, CancellationToken c)
-                {
-                    foreach (var u in uris)
-                        store.UpsertTrack(new Track(u.Split(':')[^1], u, "T-" + u.Split(':')[^1], Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null));
-                    return Task.CompletedTask;
-                }
+                await using var host = await Open(persistence, new InMemoryStore());
+                await using var resources = new ResourceCoordinator(host.Catalog, [], TimeProvider.System);
+                using var queries = Queries(host, resources);
+                using var query = queries.Acquire(new PlaylistDetailQuery(host.Catalog.Scope, PlaylistUri));
+                var published = new System.Collections.Concurrent.ConcurrentQueue<Playlist>();
+                using var subscription = query.Changes.Subscribe(Observers.From<QuerySnapshot<Playlist>>(s => published.Enqueue(s.Value)));
 
-                // 1) FETCH a playlist (faked spclient) → thin header + membership + hydrated tracks
-                var http = new FakeExchange((req, _) => new HttpResp(200, new Dictionary<string, string>(),
+                var http = new FakeExchange((_, _) => new HttpResp(200, new Dictionary<string, string>(),
                     CraftPlaylist(1, ("spotify:track:a", "alice"), ("spotify:track:b", "bob"))));
-                var fetcher = new PlaylistFetcher(http, () => "https://spclient.test", store, Hydrate, () => "");
-                await fetcher.FetchPlaylistAsync("spotify:playlist:p", ct);
+                var fetcher = new PlaylistFetcher(http, () => "https://spclient.test", () => "bob");
+                await host.Replicas.AdoptPlaylistAsync(await fetcher.FetchPlaylistAsync(PlaylistUri, ct));
+                await QueryPublication.Until(() => query.Current.Value.Tracks is { Count: 2 });
+                Assert.Equal(2, query.Current.Value.Tracks!.Count); // unresolved entities retain their occurrence slots
+                Assert.Equal("alice", query.Current.Value.Tracks[0].AddedBy);
 
-                // 2) READ through the catalog bridge → joined read-model with membership facts stamped
-                var src = new StoreLibrarySource(store, Offline(store), OfflineOnlineCatalog.Instance);
-                var pl = await src.GetPlaylistAsync("spotify:playlist:p");
-                Assert.Equal("Mix", pl!.Name);
-                Assert.Equal(2, pl.Tracks!.Count);
-                Assert.Equal("alice", pl.Tracks[0].AddedBy);
-                Assert.Equal("T-a", pl.Tracks[0].Title);
+                var seeds = new List<CatalogSeed>();
+                foreach (var id in new[] { "a", "b" })
+                    CatalogDomainSeeds.Track(host.Catalog.Scope,
+                        new Track(id, "spotify:track:" + id, "T-" + id, [], new("", "", ""), 1000, false, null), seeds);
+                await host.Catalog.SeedManyAsync(seeds, host.Catalog.Epoch, ct);
+                await QueryPublication.Until(() => query.Current.Value.Tracks![0].Title == "T-a"
+                    && published.Any(p => p.Tracks is { Count: 2 } rows && rows[0].Title == "T-a"));
+                Assert.Equal("Mix", query.Current.Value.Name);
+                Assert.Equal("T-a", query.Current.Value.Tracks![0].Title);
+                Assert.Contains(published, p => p.Tracks is { Count: 2 } && p.Tracks[0].Title == "T-a");
 
-                // 3) EDIT optimistically (remove the first track) → the read reflects it immediately
-                var eng = new MutationEngine(store, new IMutationStrategy[] { new SetReplayStrategy(), new OpRebaseStrategy(store, () => "https://spclient.wg.spotify.com", new PlaylistResyncQueue()) });
-                eng.Edit("spotify:playlist:p", new[] { new PlaylistOp(PlaylistOpKind.Remove, FromIndex: 0, Length: 1) }, store.PlaylistRevision("spotify:playlist:p"));
-                var edited = await src.GetPlaylistAsync("spotify:playlist:p");
-                Assert.Equal("spotify:track:b", Assert.Single(edited!.Tracks!).Uri);
+                await host.Mutations.EditAsync(PlaylistUri, [new(PlaylistOpKind.Remove, FromIndex: 0, Length: 1)]);
+                await QueryPublication.Until(() => query.Current.Value.Tracks is { Count: 1 });
+                Assert.Equal("spotify:track:b", Assert.Single(query.Current.Value.Tracks!).Uri);
+                var transport = new Transport();
+                await host.Mutations.Drain(transport, host.Context, ct);
+                Assert.Equal(0, host.Mutations.Pending);
+                Assert.Equal(1, transport.RequestsSent);
 
-                // 3b) DRAIN the edit. I3(a): while a local intent is pending for a playlist, an inbound push is never
-                //     applied in place — it only marks dirty. So the ack has to land before the push arrives, which is
-                //     exactly the real ordering (the /changes response comes back before the dealer echo does).
-                var transport = new StubTransport();
-                await eng.Drain(transport, new SessionContext("bob", "US", "premium", "en", Tier.Premium, false), ct);
-                Assert.Equal(0, eng.Pending);
-
-                // 4) DEALER PUSH (parent-rev match) adds a track back → decoded + enqueued onto the sync loop, applied in place
-                var collections = new Wavee.Backend.Collections.CollectionFetcher(http, () => "https://spclient.test", () => "bob", store,
-                    _ => null, (_, _) => { }, Hydrate);
-                await using var sync = new Wavee.Backend.Sync.LibrarySync(store, fetcher, collections, eng, new PlaylistResyncQueue(), transport,
-                    () => new SessionContext("bob", "US", "premium", "en", Tier.Premium, false), () => "bob", default, ct);
+                var sync = host.AttachSync(http, transport);
                 using var router = new DealerRouter(transport, sync);
-                var mod = new Pl.PlaylistModificationInfo { Uri = ByteString.CopyFromUtf8("spotify:playlist:p"), ParentRevision = store.PlaylistRevision("spotify:playlist:p") is { } r ? ByteString.CopyFrom(r) : ByteString.Empty, NewRevision = ByteString.CopyFrom(Rev24(9)) };
+                var mod = new Pl.PlaylistModificationInfo { Uri = ByteString.CopyFromUtf8(PlaylistUri),
+                    ParentRevision = ByteString.CopyFrom(Rev24(2)), NewRevision = ByteString.CopyFrom(Rev24(9)) };
                 var add = new Pl.Add { AddLast = true };
-                add.Items.Add(new Pl.Item { Uri = "spotify:track:b" });   // re-add b
+                add.Items.Add(new Pl.Item { Uri = "spotify:track:b" });
                 mod.Ops.Add(new Pl.Op { Kind = Pl.Op.Types.Kind.Add, Add = add });
-                transport.PushEvent(new WireEvent("hm://playlist/v2/playlist/p", mod.ToByteArray()));
+                transport.Push(new("hm://playlist/v2/playlist/p", mod.ToByteArray()));
                 await sync.WaitForIdleAsync();
-                Assert.Equal(2, store.Membership("spotify:playlist:p").Count);                 // applied in place
-                Assert.Equal(Rev24(9), store.PlaylistRevision("spotify:playlist:p"));           // revision advanced
-
-                store.Flush();
+                await QueryPublication.Until(() => query.Current.Value.Tracks is { Count: 2 });
+                Assert.Equal(2, query.Current.Value.Tracks!.Count);
+                Assert.All(query.Current.Value.Tracks, track => Assert.Equal("T-b", track.Title));
+                Assert.Equal(Rev24(9), host.Replicas.ReadPlaylist(PlaylistUri).Revision);
+                await host.Queue.FlushAsync();
             }
 
-            // 5) RESTART → membership + entities persisted → the catalog reads offline from disk
-            using (var store2 = new CachedStore(new SqliteColdStore(path)))
+            using (var persistence = new SqliteColdStore(path))
             {
-                var src2 = new StoreLibrarySource(store2, Offline(store2), OfflineOnlineCatalog.Instance);
-                var pl = await src2.GetPlaylistAsync("spotify:playlist:p");
-                Assert.NotNull(pl);
-                Assert.Equal(2, pl!.Tracks!.Count);                  // the post-push membership survived the restart
-                Assert.Equal("spotify:track:b", pl.Tracks[1].Uri);
+                await using var host = await Open(persistence, new InMemoryStore());
+                await host.Catalog.SetSessionAsync(host.Catalog.Scope, "bob", online: false, ct);
+                await using var resources = new ResourceCoordinator(host.Catalog, [], TimeProvider.System);
+                using var queries = Queries(host, resources);
+                var snapshot = await queries.ReadOnceAsync(new PlaylistDetailQuery(host.Catalog.Scope, PlaylistUri),
+                    cancellationToken: ct);
+                Assert.True(snapshot.Status.HasPrimaryData);
+                Assert.True(snapshot.Status.IsOffline);
+                Assert.Equal("Mix", snapshot.Value.Name);
+                Assert.Equal(2, snapshot.Value.Tracks!.Count);
+                Assert.Equal("spotify:track:b", snapshot.Value.Tracks[1].Uri);
+                Assert.All(snapshot.Value.Tracks, track => Assert.Equal("T-b", track.Title));
+                Assert.Equal(Rev24(9), host.Replicas.ReadPlaylist(PlaylistUri).Revision);
             }
         }
         finally { TryDelete(path); }

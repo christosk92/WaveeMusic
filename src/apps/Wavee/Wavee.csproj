@@ -63,6 +63,34 @@
 
   <Import Project="Wavee.Publish.props" />
 
+  <!-- Every NativeAOT publish - dev or release, not only the release script's explicit /p: flags - ships a PDB
+       that matches the exe and leaves a CodeView debug-directory entry in it. Without this, a plain developer
+       `dotnet publish -c Release -r win-arm64` produced an exe with NO CodeView entry at all (llvm-readobj showed
+       only a POGO entry) next to a stale Wavee.pdb from an older link, so a crash report's "Frames (RVA)" section
+       could not be symbolized (docs/plans/wavee/library-v3-1-findings-2026-09-06.md §4.1). Wavee.Publish.props
+       defaults DebugType=none / NativeDebugSymbols=false for any RID publish (smaller/faster loose publishes);
+       override that back on here so the guarantee holds unconditionally:
+         - DebugType=portable      the managed PDB (Roslyn) that gives the native PDB its line numbers; by itself
+                                    this also flips NativeDebugSymbols true (ILCompiler SDK's
+                                    Microsoft.NETCore.Native.targets:25 - NativeDebugSymbols defaults true unless
+                                    DebugType is 'none'/empty), but it is set explicitly below for clarity.
+         - NativeDebugSymbols=true adds ILC `-g` (Microsoft.NETCore.Native.targets:246) and, on Windows,
+                                    link.exe `/DEBUG` (Microsoft.NETCore.Native.Windows.targets:97) - `/DEBUG` is
+                                    what writes the CodeView debug-directory entry into Wavee.exe and emits the
+                                    matching Wavee.pdb next to it. The SDK's own AfterTargets="Publish" target
+                                    `_CopyAotSymbols` (Microsoft.NETCore.Native.Publish.targets:94-122) then copies
+                                    that PDB from bin\<Configuration>\net10.0\<rid>\native\ into publish\ for free -
+                                    no extra copy step needed for a loose dev publish.
+       StripSymbols is deliberately left alone: the ILCompiler SDK only consults it for non-Windows targets (every
+       StripSymbols branch in both .targets files is gated on '$(_targetOS)' != 'win'), so it has no effect here.
+       This does not bloat the MSIX: pack-wavee-msix.ps1 moves Wavee.pdb into the symbols zip and then purges every
+       *.pdb from the staged layout before makeappx ever sees it (ops/build/pack-wavee-msix.ps1:230-248,312) -
+       the publish folder's PDB never reaches the package payload regardless of where it came from. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <DebugType>portable</DebugType>
+    <NativeDebugSymbols>true</NativeDebugSymbols>
+  </PropertyGroup>
+
   <!-- Native in-process PlayReady CDM DLL (ops/tools/playready-native): build it if its sources changed, then copy it
        NEXT TO Wavee.exe so DesktopProtectedVideoPlayer's P/Invokes resolve at runtime. Without this the DLL is absent
        from Wavee's bin and DRM video fails to load (it now degrades to a typed DRM error, but the DLL is required to
@@ -169,7 +197,7 @@
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.35.0" />
     <PackageReference Include="FlacBox" Version="1.0.0" />
-    <PackageReference Include="NLayer" Version="1.15.0" />
+    <PackageReference Include="NLayer" Version="3.0.0" />
     <!-- DPAPI (Windows) — the OPTIONAL at-rest protector swapped behind the portable ICredentialProtector seam. -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
     <!-- §2.7 — pure-managed (AOT-safe) zstd decode for the Content-Encoding: zstd /changes + /diff playlist-v2 responses. -->

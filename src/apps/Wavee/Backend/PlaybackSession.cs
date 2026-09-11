@@ -15,8 +15,8 @@ namespace Wavee.Backend;
 
 /// <summary>One resolved item in the session: a stable id + the domain track + its context uid + provider + row kind +
 /// the context it came from + wire metadata. Immutable; the id is identity (position is presentation).</summary>
-sealed record SessionItem(
-    QueueItemId Id, Track Track, string Uid, QueueProvider Provider,
+sealed record SessionOccurrence(
+    QueueItemId Id, string EntityUri, string Uid, QueueProvider Provider,
     QueueRowKind Kind, string? SourceContextUri,
     IReadOnlyDictionary<string, string>? Metadata);
 
@@ -37,17 +37,21 @@ public sealed record QueueSnapshot(
     string ClusterQueueRevision,
     int ContextCursor = -1);
 
+public enum QueueAdvanceReason : byte { Natural, Manual }
+
 public sealed class PlaybackSession
 {
+    readonly PlaybackQueueProjection _catalog;
+    public PlaybackSession(PlaybackQueueProjection catalog) => _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
     /// <summary>Actually-played rows retained (display windowing is a bridge concern — see §4.9).</summary>
     public const int HistoryCap = 32;
 
-    readonly List<SessionItem> _context = new();       // the PLAY order (context rows + autoplay tail + markers)
-    readonly List<SessionItem> _naturalOrder = new();  // the natural order — kept so shuffle can be turned back OFF
-    readonly List<SessionItem> _userQueue = new();     // q# — drains before the context, cursor unmoved
-    readonly List<SessionItem> _history = new();       // actually-played, newest last (cap HistoryCap)
+    readonly List<SessionOccurrence> _context = new();       // the PLAY order (context rows + autoplay tail + markers)
+    readonly List<SessionOccurrence> _naturalOrder = new();  // the natural order — kept so shuffle can be turned back OFF
+    readonly List<SessionOccurrence> _userQueue = new();     // q# — drains before the context, cursor unmoved
+    readonly List<SessionOccurrence> _history = new();       // actually-played, newest last (cap HistoryCap)
     int _cursor = -1;                                  // index into _context of the resident context position (-1 = none)
-    SessionItem? _current;                             // THE single source of "current" (may be a queue/history replay)
+    SessionOccurrence? _current;                             // THE single source of "current" (may be a queue/history replay)
     ulong _nextItemId = 1;                             // 0 is QueueItemId.None — never mint it
     int _nextQueueUid;                                 // q{n} minting cursor (active device mints — FIXTURE-C)
     int _seedState = 0x5DEECE66 & 0x7fffffff;          // shuffle LCG (deterministic, replayable — no Random)
@@ -61,7 +65,7 @@ public sealed class PlaybackSession
     public string? ContextUri => _contextUri;
     public bool Shuffle => _shuffle;
     public RepeatMode Repeat => _repeat;
-    public Track? Current => _current?.Track;
+    public Track? Current => _current is { } current ? _catalog.ReadTrack(current.EntityUri) : null;
 
     /// <summary>Playable context rows remaining after the cursor (drives the continuation-prefetch trigger). Excludes the
     /// user queue and non-surfaced markers.</summary>
@@ -77,9 +81,9 @@ public sealed class PlaybackSession
 
     /// <summary>The next playable track that would surface on advance (user queue head → context row after cursor) — for
     /// fast-track warm-up. Null at the end of the resolved session.</summary>
-    public QueueEntry? PreviewNext()
+    public QueueEntry? PreviewNext(QueueAdvanceReason reason = QueueAdvanceReason.Natural)
     {
-        if (_repeat == RepeatMode.Track && _current is { Kind: QueueRowKind.Playable } repeated)
+        if (reason == QueueAdvanceReason.Natural && _repeat == RepeatMode.Track && _current is { Kind: QueueRowKind.Playable } repeated)
             return ToEntry(repeated, QueueBucket.NextUp);
 
         for (int i = 0; i < _userQueue.Count; i++)
@@ -116,9 +120,9 @@ public sealed class PlaybackSession
     {
         if (max <= 0) return Array.Empty<string>();
         var list = new List<string>(max);
-        if (_current is { } cur && !string.IsNullOrEmpty(cur.Track.Uri)) list.Add(cur.Track.Uri);
+        if (_current is { } cur && !string.IsNullOrEmpty(cur.EntityUri)) list.Add(cur.EntityUri);
         for (int i = _history.Count - 1; i >= 0 && list.Count < max; i--)
-            if (!string.IsNullOrEmpty(_history[i].Track.Uri)) list.Add(_history[i].Track.Uri);
+            if (!string.IsNullOrEmpty(_history[i].EntityUri)) list.Add(_history[i].EntityUri);
         return list;
     }
 
@@ -136,7 +140,7 @@ public sealed class PlaybackSession
         _contextUri = uri;
         foreach (var q in tracks)
         {
-            var it = new SessionItem(MintId(), q.Track, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
+            var it = new SessionOccurrence(MintId(), q.Uri, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
                 q.RowKind, uri, q.Metadata);
             _naturalOrder.Add(it);
             _context.Add(it);
@@ -167,11 +171,11 @@ public sealed class PlaybackSession
             var q = tracks[i];
             bool same = priorCurrent is { } current
                 && ((!string.IsNullOrEmpty(current.Uid) && current.Uid == q.Uid)
-                    || current.Track.Uri == q.Uri);
+                    || current.EntityUri == q.Uri);
             var item = same && matched < 0
-                ? new SessionItem(priorCurrent!.Id, q.Track, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
+                ? new SessionOccurrence(priorCurrent!.Id, q.Uri, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
                     q.RowKind, uri, q.Metadata)
-                : new SessionItem(MintId(), q.Track, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
+                : new SessionOccurrence(MintId(), q.Uri, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
                     q.RowKind, uri, q.Metadata);
             if (same && matched < 0) matched = i;
             _naturalOrder.Add(item);
@@ -216,7 +220,7 @@ public sealed class PlaybackSession
         for (int i = 0; i < tracks.Count; i++)
         {
             var q = tracks[i];
-            var item = new SessionItem(MintId(), q.Track, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
+            var item = new SessionOccurrence(MintId(), q.Uri, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
                 q.RowKind, uri, q.Metadata);
             _naturalOrder.Add(item);
             _context.Add(item);
@@ -235,7 +239,7 @@ public sealed class PlaybackSession
         else
         {
             _cursor = missCursor >= 0 && _context.Count > 0 ? Math.Min(missCursor, _context.Count - 1) : -1;
-            _current = new SessionItem(MintId(), transferredCurrent.Track, transferredCurrent.Uid,
+            _current = new SessionOccurrence(MintId(), transferredCurrent.Uri, transferredCurrent.Uid,
                 QueueProviderExtensions.FromWire(transferredCurrent.Provider), transferredCurrent.RowKind, uri,
                 transferredCurrent.Metadata);
             if (_shuffle) ShuffleWithoutAnchor();
@@ -251,7 +255,7 @@ public sealed class PlaybackSession
         {
             var left = _naturalOrder[i];
             var right = tracks[i];
-            if (!string.Equals(left.Track.Uri, right.Uri, StringComparison.Ordinal)
+            if (!string.Equals(left.EntityUri, right.Uri, StringComparison.Ordinal)
                 || !string.Equals(left.Uid, right.Uid, StringComparison.Ordinal)
                 || left.Kind != right.RowKind
                 || !string.Equals(left.Provider.ToWire(), right.Provider, StringComparison.Ordinal))
@@ -269,7 +273,7 @@ public sealed class PlaybackSession
     {
         foreach (var q in tracks)
         {
-            var it = new SessionItem(MintId(), q.Track, q.Uid, provider, q.RowKind, sourceContextUri, q.Metadata);
+            var it = new SessionOccurrence(MintId(), q.Uri, q.Uid, provider, q.RowKind, sourceContextUri, q.Metadata);
             _naturalOrder.Add(it);
             _context.Add(it);
         }
@@ -299,9 +303,9 @@ public sealed class PlaybackSession
 
         // Does the still-playing track sit inside the radio list? Match by uri (the seed identity) — uid-agnostic.
         int k = -1;
-        if (current is { } cur && !string.IsNullOrEmpty(cur.Track.Uri))
+        if (current is { } cur && !string.IsNullOrEmpty(cur.EntityUri))
             for (int i = 0; i < radioTracks.Count; i++)
-                if (radioTracks[i].Uri == cur.Track.Uri) { k = i; break; }
+                if (radioTracks[i].Uri == cur.EntityUri) { k = i; break; }
 
         // current NOT in radio → prepend it (identity preserved) so it plays out, then radio[0] on the next advance.
         if (k < 0 && current is { } keep)
@@ -311,7 +315,7 @@ public sealed class PlaybackSession
         }
         foreach (var q in radioTracks)
         {
-            var it = new SessionItem(MintId(), q.Track, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
+            var it = new SessionOccurrence(MintId(), q.Uri, q.Uid, QueueProviderExtensions.FromWire(q.Provider),
                 q.RowKind, uri, q.Metadata);
             _naturalOrder.Add(it);
             _context.Add(it);
@@ -358,10 +362,10 @@ public sealed class PlaybackSession
 
     /// <summary>Advance: user queue head → context row after cursor → autoplay tail → (repeat modes) → session end. A
     /// Delimiter row stops advance (advancing_past_track:"pause"); PageMarker/Delimiter rows are never surfaced (§4.6).</summary>
-    public QueueSnapshot? Next()
+    public QueueSnapshot? Next(QueueAdvanceReason reason = QueueAdvanceReason.Natural, bool recordHistory = true)
     {
-        if (_repeat == RepeatMode.Track && _current is { Kind: QueueRowKind.Playable }) return Bump();   // repeat-one holds
-        PushHistory(_current);
+        if (reason == QueueAdvanceReason.Natural && _repeat == RepeatMode.Track && _current is { Kind: QueueRowKind.Playable }) return Bump();   // repeat-one holds
+        if (recordHistory) PushHistory(_current);
         while (_userQueue.Count > 0)                                                                     // user queue drains first
         {
             var it = _userQueue[0];
@@ -536,7 +540,7 @@ public sealed class PlaybackSession
             foreach (var p in prev)
             {
                 if (RowKindOfUri(p.Uri) != QueueRowKind.Playable) continue;   // markers never enter history
-                _history.Add(new SessionItem(MintId(), TrackFromRemote(p), p.Uid,
+                _history.Add(new SessionOccurrence(MintId(), p.Uri, p.Uid,
                     QueueProviderExtensions.FromWire(p.Provider), QueueRowKind.Playable, c.ContextUri, p.Metadata));
             }
             if (_history.Count > HistoryCap) _history.RemoveRange(0, _history.Count - HistoryCap);
@@ -553,7 +557,7 @@ public sealed class PlaybackSession
             if (queued)
             {
                 BumpQueueCursor(n.Uid);
-                _userQueue.Add(new SessionItem(MintId(), TrackFromRemote(n), n.Uid, QueueProvider.Queue, kind, null, n.Metadata));
+                _userQueue.Add(new SessionOccurrence(MintId(), n.Uri, n.Uid, QueueProvider.Queue, kind, null, n.Metadata));
             }
             else
             {
@@ -562,7 +566,7 @@ public sealed class PlaybackSession
                 if (provider != QueueProvider.Autoplay && kind == QueueRowKind.Playable && IsAutoplayMeta(n.Metadata))
                     provider = QueueProvider.Autoplay;
                 if (provider == QueueProvider.Autoplay && _autoplayContextUri is null) _autoplayContextUri = AutoplayCtxOf(n);
-                var it = new SessionItem(MintId(), TrackFromRemote(n), n.Uid, provider, kind,
+                var it = new SessionOccurrence(MintId(), n.Uri, n.Uid, provider, kind,
                     provider == QueueProvider.Autoplay ? _autoplayContextUri : c.ContextUri, n.Metadata);
                 _naturalOrder.Add(it);
                 _context.Add(it);
@@ -570,10 +574,10 @@ public sealed class PlaybackSession
         }
         _cursor = -1;
         if (hydratedCurrent is { } hc)
-            _current = new SessionItem(MintId(), hc, c.Track.Uid, QueueProviderExtensions.FromWire(c.Track.Provider),
+            _current = new SessionOccurrence(MintId(), hc.Uri, c.Track.Uid, QueueProviderExtensions.FromWire(c.Track.Provider),
                 QueueRowKind.Playable, c.ContextUri, c.Track.Metadata);
         else if (c.HasTrack)
-            _current = new SessionItem(MintId(), TrackFromRemote(c.Track), c.Track.Uid,
+            _current = new SessionOccurrence(MintId(), c.Track.Uri, c.Track.Uid,
                 QueueProviderExtensions.FromWire(c.Track.Provider), QueueRowKind.Playable, c.ContextUri, c.Track.Metadata);
         else
             _current = null;
@@ -593,27 +597,13 @@ public sealed class PlaybackSession
     /// every rebuilt row into its own bare uri. A row we genuinely never held before still synthesizes.</para>
     /// <para>Separately, when the incoming context/autoplay rows are a PERMUTATION of the ones already in
     /// <see cref="_naturalOrder"/> (same identity set, just reordered — a shuffle toggle or a Connect-side reorder),
-    /// the existing <see cref="SessionItem"/> instances are reused verbatim and <see cref="_naturalOrder"/> is left
+    /// the existing <see cref="SessionOccurrence"/> instances are reused verbatim and <see cref="_naturalOrder"/> is left
     /// untouched, so a later shuffle-off (<see cref="RestoreOriginalOrder"/>) still restores the true pre-shuffle
     /// order instead of re-deriving one from whatever order this set_queue happened to carry. Only a genuinely new
     /// row set (a row added or dropped) rebuilds it.</para></summary>
     public QueueSnapshot ApplySetQueue(IReadOnlyList<QueueWireEntry> prev, IReadOnlyList<QueueWireEntry> next, string revision)
     {
         _clusterRevision = revision ?? "";
-
-        // Index every row we already hold (by uid, then by uri) BEFORE anything is cleared.
-        var byUid = new Dictionary<string, Track>();
-        var byUri = new Dictionary<string, Track>();
-        foreach (var it in _userQueue) IndexExistingTrack(it, byUid, byUri);
-        foreach (var it in _context) IndexExistingTrack(it, byUid, byUri);
-
-        // A row we've never held before still doesn't have to fall back to ContextResolve.Synthetic: the wire itself
-        // carries display metadata inline (title/artist/album/duration/image), and the controller has already parsed
-        // it into a real Track on the QueueWireEntry. Seed the SAME lookup maps ResolveExistingTrack falls back to —
-        // via TryAdd, so a Track we already hold (resolved through the catalogue, possibly richer still) always wins
-        // over the wire's own copy — rather than widen ResolveExistingTrack's signature for it.
-        foreach (var e in prev) IndexWireTrack(e, byUid, byUri);
-        foreach (var e in next) IndexWireTrack(e, byUid, byUri);
 
         var naturalByKey = KeyByIdentity(_naturalOrder);
         bool keepNaturalOrder = naturalByKey.Count > 0 && IsPermutationOfNaturalOrder(next, naturalByKey);
@@ -631,8 +621,8 @@ public sealed class PlaybackSession
                 string uid = e.Uid;
                 if (string.IsNullOrEmpty(uid)) uid = "q" + (_nextQueueUid++);
                 else BumpQueueCursor(uid);
-                var track = ResolveExistingTrack(e.Uid, e.Uri, byUid, byUri);
-                _userQueue.Add(new SessionItem(MintId(), track, uid, QueueProvider.Queue, kind, null, e.Metadata));
+
+                _userQueue.Add(new SessionOccurrence(MintId(), e.Uri, uid, QueueProvider.Queue, kind, null, e.Metadata));
             }
             else
             {
@@ -641,15 +631,15 @@ public sealed class PlaybackSession
                 if (provider == QueueProvider.Autoplay && _autoplayContextUri is null && e.Metadata is { } m && m.TryGetValue("context_uri", out var cu))
                     _autoplayContextUri = cu;
 
-                SessionItem it;
+                SessionOccurrence it;
                 if (keepNaturalOrder && naturalByKey.TryGetValue(IdentityKey(e.Uid, e.Uri), out var reused))
                 {
                     it = reused;   // same instance as in _naturalOrder — keeps their ids in lockstep (§ MoveItem/Reshuffle)
                 }
                 else
                 {
-                    var track = ResolveExistingTrack(e.Uid, e.Uri, byUid, byUri);
-                    it = new SessionItem(MintId(), track, e.Uid, provider, kind, _contextUri, e.Metadata);
+
+                    it = new SessionOccurrence(MintId(), e.Uri, e.Uid, provider, kind, _contextUri, e.Metadata);
                     if (!keepNaturalOrder) _naturalOrder.Add(it);
                 }
                 _context.Add(it);
@@ -659,32 +649,10 @@ public sealed class PlaybackSession
         return Bump();
     }
 
-    static void IndexExistingTrack(SessionItem it, Dictionary<string, Track> byUid, Dictionary<string, Track> byUri)
+    static Dictionary<string, SessionOccurrence> KeyByIdentity(List<SessionOccurrence> items)
     {
-        if (!string.IsNullOrEmpty(it.Uid)) byUid[it.Uid] = it.Track;
-        if (!string.IsNullOrEmpty(it.Track.Uri)) byUri.TryAdd(it.Track.Uri, it.Track);
-    }
-
-    // TryAdd only — never overwrite an entry IndexExistingTrack already placed. A row we already held wins on its own
-    // (possibly catalogue-hydrated) Track; the wire's inline copy is strictly a fallback for a row we've never seen.
-    static void IndexWireTrack(in QueueWireEntry e, Dictionary<string, Track> byUid, Dictionary<string, Track> byUri)
-    {
-        if (e.Track is not { } track) return;
-        if (!string.IsNullOrEmpty(e.Uid)) byUid.TryAdd(e.Uid, track);
-        if (!string.IsNullOrEmpty(e.Uri)) byUri.TryAdd(e.Uri, track);
-    }
-
-    static Track ResolveExistingTrack(string uid, string uri, Dictionary<string, Track> byUid, Dictionary<string, Track> byUri)
-    {
-        if (!string.IsNullOrEmpty(uid) && byUid.TryGetValue(uid, out var t1)) return t1;
-        if (!string.IsNullOrEmpty(uri) && byUri.TryGetValue(uri, out var t2)) return t2;
-        return ContextResolve.Synthetic(uri);
-    }
-
-    static Dictionary<string, SessionItem> KeyByIdentity(List<SessionItem> items)
-    {
-        var d = new Dictionary<string, SessionItem>(items.Count);
-        foreach (var it in items) d[IdentityKey(it.Uid, it.Track.Uri)] = it;
+        var d = new Dictionary<string, SessionOccurrence>(items.Count);
+        foreach (var it in items) d[IdentityKey(it.Uid, it.EntityUri)] = it;
         return d;
     }
 
@@ -694,7 +662,7 @@ public sealed class PlaybackSession
     // holds) resolves to a DISTINCT key already present in naturalByKey, with none left over on either side — i.e. the
     // same rows, only reordered. A duplicate key, an added row or a dropped one all fail this and fall back to a full
     // rebuild below.
-    static bool IsPermutationOfNaturalOrder(IReadOnlyList<QueueWireEntry> next, Dictionary<string, SessionItem> naturalByKey)
+    static bool IsPermutationOfNaturalOrder(IReadOnlyList<QueueWireEntry> next, Dictionary<string, SessionOccurrence> naturalByKey)
     {
         var incoming = new HashSet<string>();
         foreach (var e in next)
@@ -740,12 +708,12 @@ public sealed class PlaybackSession
 
     QueueItemId MintId() => new(_nextItemId++);
 
-    SessionItem NewQueueItem(QueuedTrack q)
+    SessionOccurrence NewQueueItem(QueuedTrack q)
     {
         string uid;
         if (!string.IsNullOrEmpty(q.Uid)) { uid = q.Uid; BumpQueueCursor(uid); }
         else uid = "q" + (_nextQueueUid++);
-        return new SessionItem(MintId(), q.Track, uid, QueueProvider.Queue, q.RowKind, null, q.Metadata);
+        return new SessionOccurrence(MintId(), q.Uri, uid, QueueProvider.Queue, q.RowKind, null, q.Metadata);
     }
 
     // Keep the q-uid mint cursor ahead of any preserved "q{n}" uid so a later local add never collides.
@@ -755,9 +723,9 @@ public sealed class PlaybackSession
             _nextQueueUid = n + 1;
     }
 
-    static QueueEntry ToEntry(SessionItem it, QueueBucket bucket) =>
-        new(it.Id, "i" + it.Id.Value, it.Track, bucket, it.Provider,
-            it.Provider == QueueProvider.Autoplay, it.Uid, it.Metadata);
+    QueueEntry ToEntry(SessionOccurrence it, QueueBucket bucket) =>
+        _catalog.Materialize(new QueueOccurrence(it.Id, it.Uid, it.EntityUri, bucket, it.Provider,
+            it.Kind, it.SourceContextUri, it.Metadata));
 
     int FirstPlayableFrom(int start)
     {
@@ -831,11 +799,11 @@ public sealed class PlaybackSession
     (char Bucket, int Index)? LocateByUri(string? uri)
     {
         if (string.IsNullOrEmpty(uri)) return null;
-        int k = _userQueue.FindIndex(x => x.Track.Uri == uri);
+        int k = _userQueue.FindIndex(x => x.EntityUri == uri);
         if (k >= 0) return ('q', k);
-        int j = _context.FindIndex(x => x.Track.Uri == uri && x.Kind == QueueRowKind.Playable);
+        int j = _context.FindIndex(x => x.EntityUri == uri && x.Kind == QueueRowKind.Playable);
         if (j >= 0) return ('c', j);
-        int h = _history.FindIndex(x => x.Track.Uri == uri);
+        int h = _history.FindIndex(x => x.EntityUri == uri);
         if (h >= 0) return ('h', h);
         return null;
     }
@@ -847,7 +815,7 @@ public sealed class PlaybackSession
         _ => r.Index > _cursor ? SkipToUpcomingIndex(r.Index) : SkipToContextBackIndex(r.Index),
     };
 
-    void PushHistory(SessionItem? it)
+    void PushHistory(SessionOccurrence? it)
     {
         if (it is null || it.Kind != QueueRowKind.Playable) return;
         if (_history.Count == 0 || _history[^1].Id != it.Id) _history.Add(it);
@@ -864,15 +832,15 @@ public sealed class PlaybackSession
     void ReshuffleAnchoringCurrent()
     {
         if (_naturalOrder.Count <= 1) return;
-        SessionItem? anchor = _current is { } c && _context.FindIndex(x => x.Id == c.Id) >= 0
+        SessionOccurrence? anchor = _current is { } c && _context.FindIndex(x => x.Id == c.Id) >= 0
             ? _current
             : (_cursor >= 0 && _cursor < _context.Count ? _context[_cursor] : null);
         if (anchor is null) return;
 
         if (anchor.Provider == QueueProvider.Autoplay) { ReshuffleAutoplayAnchored(anchor); return; }
 
-        var ctx = new List<SessionItem>();
-        var tail = new List<SessionItem>();
+        var ctx = new List<SessionOccurrence>();
+        var tail = new List<SessionOccurrence>();
         foreach (var it in _naturalOrder)
         {
             if (it.Id == anchor.Id) continue;
@@ -888,12 +856,12 @@ public sealed class PlaybackSession
         if (_current is { } cur && cur.Id == anchor.Id) _current = anchor;
     }
 
-    void ReshuffleAutoplayAnchored(SessionItem anchor)
+    void ReshuffleAutoplayAnchored(SessionOccurrence anchor)
     {
         int na = _naturalOrder.FindIndex(x => x.Id == anchor.Id);
         if (na < 0) return;
-        var pool = new List<SessionItem>();
-        var rest = new List<SessionItem>();
+        var pool = new List<SessionOccurrence>();
+        var rest = new List<SessionOccurrence>();
         for (int i = na + 1; i < _naturalOrder.Count; i++)
         {
             var it = _naturalOrder[i];
@@ -911,8 +879,8 @@ public sealed class PlaybackSession
 
     void ShuffleWithoutAnchor()
     {
-        var playable = new List<SessionItem>();
-        var tail = new List<SessionItem>();
+        var playable = new List<SessionOccurrence>();
+        var tail = new List<SessionOccurrence>();
         foreach (var item in _naturalOrder)
         {
             if (item.Provider == QueueProvider.Context && item.Kind == QueueRowKind.Playable) playable.Add(item);
@@ -932,7 +900,7 @@ public sealed class PlaybackSession
         _cursor = idx >= 0 ? idx : (_context.Count > 0 ? 0 : -1);
     }
 
-    void FisherYates(List<SessionItem> items)
+    void FisherYates(List<SessionOccurrence> items)
     {
         for (int i = items.Count - 1; i > 0; i--)
         {
@@ -970,16 +938,5 @@ public sealed class PlaybackSession
 
     static string? AutoplayCtxOf(in RemoteTrack n) =>
         n.Metadata is { } m && m.TryGetValue("context_uri", out var u) ? u : null;
-
-    static Track TrackFromRemote(in RemoteTrack r)
-    {
-        var artists = string.IsNullOrEmpty(r.ArtistName) && string.IsNullOrEmpty(r.ArtistUri)
-            ? Array.Empty<ArtistRef>()
-            : new[] { new ArtistRef(EntityUri.IdOf(r.ArtistUri), r.ArtistUri, r.ArtistName) };
-        var album = new AlbumRef(EntityUri.IdOf(r.AlbumUri), r.AlbumUri, r.AlbumName);
-        var img = string.IsNullOrEmpty(r.ImageUrl) ? null : new Image(r.ImageUrl!);
-        return new Track(EntityUri.IdOf(r.Uri), r.Uri, string.IsNullOrEmpty(r.Title) ? r.Uri : r.Title,
-            artists, album, r.DurationMs, false, img);
-    }
 
 }

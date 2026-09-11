@@ -1,18 +1,20 @@
+using System.Collections.Frozen;
+
 namespace Wavee.Core;
 
-/// <summary>The in-process Mutations source (docs/plans/wavee/architecture.md §4.2): owns the user's saved / liked / followed set as
-/// an optimistic in-memory set, persisted through an injected <c>persist</c> sink (the outbox analog — a real source
-/// would reconcile with the server + revision conflicts). Saved-state is cross-cutting, so it owns no uri namespace
+/// <summary>The local saved / liked / followed owner. Serialized writes persist a candidate through the injected
+/// sink before publishing an immutable snapshot. Saved-state is cross-cutting, so it owns no uri namespace
 /// (<see cref="Owns"/> is false); the federation routes to it by the <see cref="SourceCapabilities.Mutations"/> flag.</summary>
 public sealed class LocalMutationSource : IMutationSource
 {
-    readonly HashSet<string> _saved;
+    FrozenSet<string> _saved;
+    readonly SemaphoreSlim _writer = new(1, 1);
     readonly SimpleSubject<IReadOnlySet<string>> _changed = new();
     readonly System.Action<IReadOnlySet<string>>? _persist;
 
     public LocalMutationSource(IEnumerable<string>? seed = null, System.Action<IReadOnlySet<string>>? persist = null)
     {
-        _saved = seed is null ? new HashSet<string>() : new HashSet<string>(seed);
+        _saved = (seed ?? []).ToFrozenSet(StringComparer.Ordinal);
         _persist = persist;
     }
 
@@ -20,19 +22,24 @@ public sealed class LocalMutationSource : IMutationSource
     public bool Owns(string uri) => false;
     public SourceCapabilities Capabilities => SourceCapabilities.Mutations;
 
-    public IReadOnlySet<string> Saved => new HashSet<string>(_saved);   // immutable snapshot
-    public bool IsSaved(string uri) => _saved.Contains(uri);
+    public IReadOnlySet<string> Saved => Volatile.Read(ref _saved);
+    public bool IsSaved(string uri) => Volatile.Read(ref _saved).Contains(uri);
     public IObservable<IReadOnlySet<string>> SavedChanged => _changed;
 
-    public Task SetSavedAsync(string uri, bool saved, CancellationToken ct = default)
+    public async Task SetSavedAsync(string uri, bool saved, CancellationToken ct = default)
     {
-        bool changed = saved ? _saved.Add(uri) : _saved.Remove(uri);
-        if (changed)
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri);
+        await _writer.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var snapshot = new HashSet<string>(_saved);
-            _persist?.Invoke(snapshot);     // the outbox: flush the new full set to durable storage
-            _changed.OnNext(snapshot);      // notify the bridge → engine Signal
+            var next = new HashSet<string>(_saved, StringComparer.Ordinal);
+            if (!(saved ? next.Add(uri) : next.Remove(uri))) return;
+            var snapshot = next.ToFrozenSet(StringComparer.Ordinal);
+            if (_persist is not null)
+                await Task.Run(() => _persist(snapshot), ct).ConfigureAwait(false);
+            Volatile.Write(ref _saved, snapshot);
+            _changed.OnNext(snapshot);
         }
-        return Task.CompletedTask;
+        finally { _writer.Release(); }
     }
 }

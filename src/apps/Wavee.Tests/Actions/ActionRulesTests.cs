@@ -146,15 +146,17 @@ public class ActionRulesTests
     // ── bug 1: an inserted row for a video-capable track must not assert "audio" — the target has no reason to doubt
     // an explicit claim, so a hardcoded downgrade actively lies. ──────────────────────────────────────────────────────
     [Fact]
-    public void PlayNext_VideoAssociatedTrack_DoesNotClaimAudio()
+    public async System.Threading.Tasks.Task PlayNext_VideoAssociatedTrack_DoesNotClaimAudio()
     {
         var track = T.Mk("v");
-        var store = new Wavee.Backend.InMemoryStore();
-        store.UpsertVideoAssociation(new VideoAssociation(track.Uri, true, "spotify:track:v-video",
-            VideoAssociation.NoFiles, null, DateTimeOffset.UtcNow, 0));
+        await using var catalog = new CatalogFixture();
+        var association = new VideoAssociation(track.Uri, true, "spotify:track:v-video",
+            VideoAssociation.NoFiles, null, DateTimeOffset.UtcNow, 0);
+        await catalog.Repository.SeedManyAsync([new(new(catalog.Scope, track.Uri, Wavee.Core.Catalog.FacetKind.VideoAssociation),
+            new Wavee.Core.Catalog.ReplaceFacetPatch(new Wavee.Core.Catalog.VideoAssociationValue(association)))], catalog.Repository.Epoch);
         try
         {
-            VideoPresence.Attach(null, store);
+            VideoPresence.Attach(null, catalog.Repository);
             var p = new RecordingPlayer();
             DetailQueueActions.PlayNext(p, new[] { track });
 

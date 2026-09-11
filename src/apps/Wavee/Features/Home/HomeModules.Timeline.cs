@@ -92,7 +92,12 @@ sealed class HomeTimeline : Component
                 new BoxEl { Direction = 1, Gap = 0f, MinWidth = 0f, Children = [.. groups] },
             ],
         };
-        return Responsive.Of(width => new BoxEl
+        // Gate key: `feed` (Groups/Shown/Total/Unread) — this Component's Render() itself only re-runs when
+        // nc.Items.Value changes (tracked signal read above), so by the time this line runs the content genuinely
+        // did change; `feed` is a readonly record struct whose only reference field (Groups) is a freshly allocated
+        // array every Build(), so comparing it is a cheap O(1) field compare, not a delegate-identity check, while
+        // `module` (already built from `feed` just above) stays a closed-over value, not part of the key itself.
+        return Responsive.Of(feed, (_, width) => new BoxEl
         {
             Direction = 1, MinWidth = 0f,
             Padding = new Edges4(0f, 0f, 0f, HomeModuleLayout.Gap(width)),

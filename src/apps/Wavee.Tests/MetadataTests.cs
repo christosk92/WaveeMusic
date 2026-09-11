@@ -150,8 +150,8 @@ public class StoreBulkTests
         obs.Count = 0;   // ignore the BehaviorSubject replay on subscribe
         using (store.BeginBulk())
             for (int i = 0; i < 1000; i++)
-                store.UpsertTrack(new Track("t" + i, "spotify:track:t" + i, "T", [], new AlbumRef("", "", ""), 0, false, null));
+                store.SetSaved("liked", "spotify:track:t" + i, true, SyncState.Confirmed);
         Assert.Equal(1, obs.Count);                                 // ONE signal, not 1000
-        Assert.Equal(1000, store.QueryTracks(limit: 5000).Count);   // all the data is present
+        Assert.Equal(1000, store.SavedUris("liked").Count);   // all the data is present
     }
 }

@@ -57,6 +57,7 @@ sealed class ContentHost : Component
         // nothing would write the signal and a stale claim would survive. That is a clear case too.
         UseSignalEffect(() =>
         {
+            NavigationFrameWatch.NoteRoute(_route.Value.Name, _route.Value.Arg);   // attributes the next 4 s of frames to this route
             if (Wavee.Backend.Modules.ModulePages.TryParseRoute(_route.Value.Name, out _, out _)) return;
             if (ui is null || ui.ActiveStagePlayable.Peek().Length == 0) return;   // value-gated: no idle wake-ups
             ui.ActiveStagePlayable.Value = "";
@@ -82,9 +83,12 @@ sealed class ContentHost : Component
                         Flow.KeepAlive(
                             () => new PageSlot(_activeTabId(), _route.Value),
                             PageNavMotion.SlotKey,
-                            s => PageFor(s.Route),
+                            s => Ctx.Provide(PageRevealWatch.Slot, new PageRevealWatch(s.Route.Name, s.Route.Arg), PageFor(s.Route)),
                             new KeepAliveOptions(
-                                MaxEntries: 8,
+                                // Three entries = the live page plus a two-deep back stack. Eight retained every
+                                // tour route (scene 494→15668, components 93→1479) and the working set never came
+                                // back down; parked pages still release image pins (ReleaseInactiveResources default).
+                                MaxEntries: 3,
                                 TransitionFor: PageTransition,
                                 SuppressLayoutTransitionsOnActivation: true)),
                     ],
@@ -145,15 +149,16 @@ sealed class ContentHost : Component
         Children = [ Embed.Comp(() => new ArtistPage(new Signal<Route>(route))) ],
     };
 
-    // album / playlist / liked / local / SHOW all flow through the one shared detail surface (DetailPage → DetailShell);
-    // a show just renders Episodes instead of Tracks on the right (DetailConfig.Show.Content == Episodes).
+    // album / playlist / liked / SHOW all flow through the one shared detail surface (DetailPage → DetailShell); a show
+    // just renders Episodes instead of Tracks on the right (DetailConfig.Show.Content == Episodes).
     // A `prerelease:` route IS the album detail surface: the prerelease uri is resolved to its album INSIDE DetailPage's
     // load (kind 138 — the ids differ, so nothing can map them earlier), so it needs no page class of its own, only its
     // own keep-alive slot.
+    // W7: "local" dropped — the Local Files collection page is retired from every nav surface.
     static bool IsDetail(Route r) =>
         r.Name.StartsWith("album:", StringComparison.Ordinal) || r.Name.StartsWith("pl:", StringComparison.Ordinal)
         || r.Name.StartsWith("prerelease:", StringComparison.Ordinal)
-        || r.Name.StartsWith("show:", StringComparison.Ordinal) || r.Name == "liked" || r.Name == "local";
+        || r.Name.StartsWith("show:", StringComparison.Ordinal) || r.Name == "liked";
 
     static bool IsArtist(Route r) => r.Name.StartsWith("artist:", StringComparison.Ordinal);
 

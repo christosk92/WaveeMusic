@@ -39,6 +39,7 @@ message LeanAlbumRef {           // a track's embedded album: gid + name + cover
 message LeanCountStub { }        // empty — retained for any count-only repeated fields
 
 message LeanDisc {
+    optional sint32 number = 1;
     repeated LeanTrack track = 3;   // the album's tracklist (parsed: gid/name/artist/duration via LeanTrack's field numbers)
 }
 
@@ -63,6 +64,8 @@ message LeanTrack {
     optional string name = 2;
     optional LeanAlbumRef album = 3;
     repeated LeanArtistRef artist = 4;
+    optional sint32 number = 5;
+    optional sint32 disc_number = 6;
     optional sint32 duration = 7;
     optional bool explicit = 9;
     repeated LeanExternalId external_id = 10;   // field 10 == metadata.proto Track.external_id (carries the ISRC)

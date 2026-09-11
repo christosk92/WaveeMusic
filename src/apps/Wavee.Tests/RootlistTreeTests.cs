@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Wavee.Backend;
-using Wavee.Backend.Persistence;
 using Wavee.Backend.Playlists;
 using Wavee.Core;
 using Xunit;
@@ -15,7 +14,7 @@ public class RootlistTreeBuilderTests
 {
     static PlaylistSummary Resolve(string uri) => new(uri, "Name-" + uri.Split(':')[^1], "Owner", 0, null);
 
-    static ColdRootlistEntry Cold(int pos, int kind, string uri, string? group = null, int depth = 0)
+    static RootlistEntry Cold(int pos, int kind, string uri, string? group = null, int depth = 0)
         => new(pos, kind, uri, group, depth);
 
     static string Start(string id, string name) => "spotify:start-group:" + id + ":" + name;
@@ -330,6 +329,22 @@ public class RootlistTreeBuilderTests
         Assert.Equal("F", entries[0].GroupName);
     }
 
+
+    // The sidebar recents-sort fix: a rootlist row's server ADD stamp must ride the leaf all the way from the cold AND
+    // live overloads, so SidebarProjection can read it off PlaylistLeaf instead of it being dropped at the tree walk.
+    [Fact]
+    public void PlaylistLeaf_CarriesTheRowsAddedAtStamp_FromBothOverloads()
+    {
+        var cold = new[] { new RootlistEntry(0, 0, Pl("p1"), null, 0, AddedAtMs: 12345) };
+        var live = new[] { new RootlistEntry(0, 0, Pl("p1"), null, 0, AddedAtMs: 12345) };
+
+        Assert.Equal(12345L, Leaf(Assert.Single(RootlistTreeBuilder.Build(cold, Resolve))).AddedAtMs);
+        Assert.Equal(12345L, Leaf(Assert.Single(RootlistTreeBuilder.Build(live, Resolve))).AddedAtMs);
+
+        // A row with no captured stamp still defaults to 0 — "not captured", not a guess.
+        var unstamped = new[] { Cold(0, 0, Pl("p2")) };
+        Assert.Equal(0L, Leaf(Assert.Single(RootlistTreeBuilder.Build(unstamped, Resolve))).AddedAtMs);
+    }
 
     // ── the migration guard ───────────────────────────────────────────────────────────────────────────────────────────
     // PlaylistFolder.Items changing from IReadOnlyList<PlaylistSummary> to IReadOnlyList<PlaylistNode> is a BREAKING

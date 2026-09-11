@@ -1,5 +1,10 @@
 # Wavee Home defect register
 
+Architecture note (2026-09-06): the hydration and Home cache mechanisms described
+in historical entries were replaced by catalog queries and shared active
+demand. See [the implemented catalog design](../../../../../docs/plans/wavee/catalog-state-replacement-implementation.md).
+Those entries retain the original bug evidence; they do not describe current ownership.
+
 This is the implementation-side status register for the redesign handoff. “Build/test verified” is intentionally
 separate from “manually observed”; the app is run by the user, so visual/input acceptance remains explicit.
 
@@ -7,7 +12,8 @@ separate from “manually observed”; the app is run by the user, so visual/inp
 |---|---|---|
 | D1 | Fixed; build verified | `HomeCards.cs` imports `FluentGpu.Hooks`; Debug and Release compile gates cover it. |
 | D2 | Superseded by D3 | The separate thumbnail/ghost pair has been removed; `HomeCards.HeroBand` now integrates one complete square cover. |
-| D3 | Fixed in code; manual geometry acceptance retained | `HomeHeroLayout` is the shared renderer/estimator arithmetic and pins the flattened surface at 345/305/297 DIPs. |
+| D3 | Fixed in code; manual geometry acceptance retained | `HomeHeroLayout` is the shared renderer/estimator arithmetic. Superseded by D34 (viewport-aware density tiers): the fixed 345/305/297 DIPs no longer describe it — the hero now also reads the PAGE viewport height and clamps to `MaxViewportFraction` (0.42) of it, dropping to a Compact density (1-line title, no tags) before it ever clamps outright. |
+| D34 | Fixed; `HomeHeroLayoutTests` + `HomeArtistRowLayoutTests` + `ArtistHeroLayoutTests` green; manual visual acceptance pending | On a short window (900x600) the home hero paid its full two-line/tags/pulse budget regardless of viewport height (~65% of the visible page), "Your top artists" wrapped to two lines instead of shrinking its avatars to fit one row, and the artist header's stacked (narrow) presentation was literally taller than its wide one. Fix A: `HomeHeroLayout` gained a `HomeHeroDensity` (Full/Compact) axis driven by `ShellViewport.PageHeightFor` + a `MaxViewportFraction` cap, and the pulse row is reserved only when the card is actually a daylist (`HomeHeroMetrics.ShowPulse`). Fix B: `HomeArtistRowLayout.MinArtScale` dropped 1 → 0.5 and gained `PodWidth`/`LabelLines`/`BadgeSize` so the podium shrinks avatars (dropping labels, then badges) instead of wrapping; the row is `Wrap=false` + `ClipToBounds=true`. Fix C: `ArtistHeroLayout`'s per-tier heights came down (Wide 440→360, Medium 384→320, Compact 452→380, Narrow 476→388) and gained the same viewport cap (`MaxViewportFraction` 0.45), clamping the copy block on horizontal tiers and the photo band (floor 96) on stacked ones; `ArtistPopular`'s row height drops to 48 DIP when its own chart-column band is narrower than `ColBreakW`. |
 | D4 | Fixed | `HomeCards.QuickPlay` carries the authored hover scale instead of the dead `1f : 1f` ternary. |
 | D5 | Fixed; build verified | `HomeModules.Recents` uses `PagedShelf`; `HomeModuleLayout.ShelfCardHeight/ShelfExtent` are shared with estimation. |
 | D6 | Resolved by explicit product decision | Prototype skins retain their own physics; only horizontal browse shelves deliberately use `MediaCard.Shelf` (`Recents`, `Podcasts`). |

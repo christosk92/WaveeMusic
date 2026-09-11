@@ -94,7 +94,7 @@ public static class SidebarBuiltInDocuments
                     Route(LibraryId + ":artists", "artists", "Contact"),
                     Route(LibraryId + ":liked", "liked", "Heart"),
                     Route(LibraryId + ":podcasts", "podcasts", "RadioTower"),
-                    Route(LibraryId + ":local", "local", "Folder"),
+                    // W7: the "local" row (Local Files) is retired — the page it opened no longer exists.
                 ]),
 
             Divider(DividerPlaylistsId),

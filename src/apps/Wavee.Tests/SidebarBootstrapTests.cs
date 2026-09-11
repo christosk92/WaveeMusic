@@ -26,7 +26,7 @@ public class SidebarBootstrapTests : IDisposable
 
     string WaveeDir()
     {
-        string d = Path.Combine(_local, "Wavee");
+        string d = UnpackagedAppDataRoot.Resolve(_local, fake: false);
         Directory.CreateDirectory(d);
         return d;
     }
@@ -35,7 +35,7 @@ public class SidebarBootstrapTests : IDisposable
 
     void WriteHistoryJson()
     {
-        string d = Path.Combine(WaveeDir(), "WaveeMusic");
+        string d = Path.Combine(WaveeDir(), UnpackagedAppDataRoot.MusicFolderName);
         Directory.CreateDirectory(d);
         File.WriteAllText(Path.Combine(d, "history.json"), "[]");
     }
@@ -71,6 +71,17 @@ public class SidebarBootstrapTests : IDisposable
     {
         WriteLibraryDb();
         Assert.False(SidebarBootstrap.IsFreshInstall(new MemoryAppSettings(), _local));
+    }
+
+    [Fact]
+    public void IsFresh_WhenTheOnlyWitnessLivesUnderTheOtherProfileFolder()
+    {
+        // A real-profile library.db must not make a --fake probe look existing (and the reverse). This test
+        // writes the witness under Wavee-fake while the latch is still real, so the resolved root misses it.
+        string other = UnpackagedAppDataRoot.Resolve(_local, fake: true);
+        Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(other, "library.db"), "sqlite");
+        Assert.True(SidebarBootstrap.IsFreshInstall(new MemoryAppSettings(), _local));
     }
 
     [Fact]

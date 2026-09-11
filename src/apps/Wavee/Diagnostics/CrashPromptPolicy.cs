@@ -17,7 +17,7 @@ static class CrashPromptPolicy
 {
     /// <summary>Latched by Program.cs for this launch; ReportChrome consumes it (resets to default) — the same
     /// one-shot discipline AfterUpdateDialog uses for its own "show once after launch" latch.</summary>
-    public static CrashPromptDecision ThisLaunch;
+    public static CrashPromptDecision ThisLaunch { get; set; }
 
     /// <param name="versionChanged">True when the previous process was killed by an update deployment (a relaunch
     /// after an update, or the running version no longer matches the last-recorded one) rather than by a crash —

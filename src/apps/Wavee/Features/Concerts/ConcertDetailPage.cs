@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -52,12 +52,14 @@ sealed class ConcertDetailPage : Component
 
         var region = Skel.Region(
             details,
-            content: d => Responsive.Of(width =>
+            // State = d (the loaded details): the only value besides width the body depends on — go and the
+            // hysteresis fields (_wasWide/_wideInit) are stable component members, not per-render data.
+            content: d => Responsive.Of(d, (detail, width) =>
             {
                 bool wide = ConcertLayout.DetailWide(width, _wasWide, _wideInit);
                 _wasWide = wide;
                 _wideInit = true;
-                return BuildBody(d!, wide, go);
+                return BuildBody(detail!, wide, go);
             }, fallback: 1000f),
             reveal: SkelReveal.Soft,
             onFailed: () => ErrorState.Build(details.Error, onRetry: () => reload.Value++),
@@ -332,18 +334,19 @@ sealed class ConcertDetailPage : Component
     // Cell 0 is the Browse-all navigation tile (the shelf's standing exit to the Concert Hub); the related events follow.
     static Element RelatedShelf(IReadOnlyList<Concert> related, Action<string, string?> go)
     {
-        int n = Math.Min(related.Count, 15) + 1;
+        var cards = new Concert?[Math.Min(related.Count, 15) + 1];
+        for (int i = 1; i < cards.Length; i++) cards[i] = related[i - 1];
         return PagedShelf.Create(
-            n,
-            cardAt: (i, w) => i == 0
+            cards,
+            cardAt: (item, i, w) => item is null
                 ? ConcertUi.BrowseAllCard(Loc.Get(Strings.Concerts.LiveMusic),
                     Loc.Get(Strings.Concerts.BrowseAll),
                     () => go(ConcertRoutes.Hub, Loc.Get(Strings.Concerts.Title)))
-                : ConcertUi.VerticalCard(related[i - 1],
-                    () => go(ConcertRoutes.Detail(related[i - 1].Uri), related[i - 1].Title ?? related[i - 1].Venue)),
+                : ConcertUi.VerticalCard(item!,
+                    () => go(ConcertRoutes.Detail(item!.Uri), item!.Title ?? item!.Venue)),
             header: SectionCaption(Loc.Get(Strings.Concerts.Detail.RelatedConcerts)),
             headerGap: Spacing.S,
-            measured: true, keyOf: i => i == 0 ? "browse-all" : related[i - 1].Uri);
+            measured: true, keyOf: (item, i) => item is null ? "browse-all" : item!.Uri);
     }
 
     // The accent eyebrow shared by every section (matches the schedule page's header style). AccentDecor: kept.

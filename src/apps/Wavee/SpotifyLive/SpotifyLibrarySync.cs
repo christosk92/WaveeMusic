@@ -1,8 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Wavee;
 using Wavee.Backend;
 using Wavee.Backend.Collections;
-using Wavee.Backend.Hydration;
+using Wavee.Backend.Catalog;
+using Wavee.Core.Catalog;
 using Wavee.Backend.Metadata;
 using Wavee.Backend.Persistence;
 using Wavee.Backend.Playlists;
@@ -20,7 +23,7 @@ namespace Wavee.SpotifyLive;
 // `--spotify-sync`. This one-shot doubles as the integration probe of the real orchestrator — no divergent hand-wiring.
 public static class SpotifyLibrarySync
 {
-    static readonly string[] Sets = { "liked", "albums", "artists", "shows", "episodes" };
+    static readonly string[] Sets = { "liked", "albums", "artists", "shows", "episodes", "pins" };
 
     public static async Task<int> RunAsync(WaveeLogger log, CancellationToken ct, string language = "en")
     {
@@ -28,31 +31,26 @@ public static class SpotifyLibrarySync
         var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, retainApChannel: true, language: language).ConfigureAwait(false);
         if (live is null) return 1;
 
-        string dbPath = System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "Wavee", "library.db");
+        string dbPath = System.IO.Path.Combine(UnpackagedAppDataRoot.Current, "library.db");
         System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dbPath)!);
         using var cold = new SqliteColdStore(dbPath, SqliteColdStore.DefaultAccount, language);
-        using var store = new CachedStore(cold);
+        var store = new InMemoryStore();
 
-        // The fetchers' hydrate delegate is THE catalogue arm the app's go-live path uses (one mixed-kind
-        // extended-metadata POST per 300 uris, etag-conditional) — no divergent probe-only transport.
-        var source = new ExtendedMetadataSource(live.Pipeline, () => live.BaseUrl, () => live.Session);
-        var catalog = new XmCatalogFetch(new ExtensionEtagCache(source, () => live.Session, log, persistent: cold), store, log);
-        async Task Hydrate(IReadOnlyList<string> uris, CancellationToken c)
-        {
-            var refs = new List<Wavee.Core.EntityUri>(uris.Count);
-            for (int i = 0; i < uris.Count; i++) refs.Add(Wavee.Core.EntityUri.Parse(uris[i]));
-            await catalog.FetchAsync(refs, null, Wavee.Core.TraitSurface.None, c).ConfigureAwait(false);
-        }
-
-        var rootlistLane = new RootlistLane();   // I2 — one lane for every rootlist write in this process
-        var resyncQueue = new PlaylistResyncQueue();   // I4 — one queue, shared by the replay strategy and the sync loop
-        var mutEngine = new MutationEngine(store, new IMutationStrategy[] { new SetReplayStrategy(), new OpRebaseStrategy(store, () => live.BaseUrl, resyncQueue), new CreatePlaylistStrategy(store, () => live.BaseUrl, resyncQueue), new RootlistFollowStrategy(store, rootlistLane) }, cold);
-        var sessionHost = new SessionContextHost(new SessionContext(live.Username, "US", "premium", language, Tier.Premium, false));
-        var playlistFetcher = new PlaylistFetcher(live.Pipeline, () => live.BaseUrl, store, Hydrate, () => live.Username);
-        var collectionFetcher = new CollectionFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username, store,
-            s => cold.GetCollectionRevision(s), (s, r) => cold.SetCollectionRevision(s, r, DateTimeOffset.UtcNow.ToUnixTimeSeconds()), Hydrate,
-            (s, u) => mutEngine.HasPending(s, u), log);
+        await using var commits = new DataCommitQueue();
+        var scope = new ReplicaScope(live.Username, 1);
+        var catalogScope = new CatalogScope("spotify", live.Username, live.Session.Locale, live.Session.Market,
+            live.Session.Catalogue, (int)live.Session.Tier, live.Session.ExplicitFilter);
+        var catalog = new CatalogRepository(commits, cold, TimeProvider.System, catalogScope, live.Username);
+        var bootstrap = await cold.LoadAsync(scope, ct).ConfigureAwait(false);
+        var replicas = new LibraryReplicaCoordinator(commits, cold, new MemoryReplicaProjection(store), () => scope, bootstrap, catalog);
+        var echo = new CollectionEchoRing();
+        var resyncQueue = new PlaylistResyncQueue();
+        using var mutEngine = new MutationEngine(replicas,
+            [new SetReplayStrategy(echo), new OpRebaseStrategy(replicas, () => live.BaseUrl),
+                new CreatePlaylistStrategy(replicas, () => live.BaseUrl), new RootlistFollowStrategy(replicas, () => live.BaseUrl)]);
+        var sessionHost = new SessionContextHost(live.Session);
+        var playlistFetcher = new PlaylistFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username);
+        var collectionFetcher = new CollectionFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username, log);
 
         // The dealer transport doubles as the mutation transport here (the CLI drains any restart-reloaded outbox intents
         // over the live socket during InitialHydrate — same as the app's go-live drain).
@@ -64,8 +62,8 @@ public static class SpotifyLibrarySync
         // 1) InitialHydrate through the real orchestrator: drain → rootlist + "playlists" fold → every WIRE set (token-gated
         //    delta, else a ledger-verified page walk + shielded mark-and-sweep), per-set failures isolated — exactly the
         //    app's go-live pass. The per-logical-set counts below are the read the UI makes.
-        await using var sync = new LibrarySync(store, playlistFetcher, collectionFetcher, mutEngine, resyncQueue, transport,
-            () => sessionHost.Current, () => live.Username, log, ct);
+        await using var sync = new LibrarySync(store, replicas, playlistFetcher, collectionFetcher, mutEngine, resyncQueue, transport,
+            () => sessionHost.Current, () => live.Username, log, ct, echo);
         using var router = new DealerRouter(transport, sync);
 
         log.Info("Syncing library (rootlist + collection sets, via LibrarySync.InitialHydrate)...");
@@ -76,7 +74,12 @@ public static class SpotifyLibrarySync
         var rootlist = store.Rootlist();
         log.Info("  " + rootlist.Count(e => e.Kind == 0) + " playlists, " + rootlist.Count(e => e.Kind == 1) + " folders.");
         foreach (var set in Sets) log.Info("  " + set + ": " + store.SavedUris(set).Count + " items.");
-        store.Flush();
+        // §0.1/§5 — the capture step for the Liked Songs pin's wire uri: print the first few "pins" set uris so a run
+        // against an account with Liked Songs pinned tells us the exact spelling collection2v2 uses for it.
+        var pinUris = store.SavedUris("pins");
+        if (pinUris.Count > 0)
+            log.Info("  pins (first " + Math.Min(5, pinUris.Count) + "): " + string.Join(", ", pinUris.Take(5)));
+        await commits.FlushAsync(ct).ConfigureAwait(false);
         log.Info("Library synced + persisted to " + dbPath);
 
         // 2) the hm:// firehose: pushes decode-and-enqueue into the SAME loop (parent-rev in-place apply / dirty / delta).
@@ -91,7 +94,7 @@ public static class SpotifyLibrarySync
         // stand-ins are passed HERE, explicitly, instead of being defaulted inside LiveConnect where the degrade
         // would be invisible to every other caller (wiring-discipline).
         using var liveConnect = new LiveConnect(transport, live.DeviceId, live.ApChannel,
-            NotOwnedEntityHydrator.Instance, new InMemoryStore(), log: log);
+            new PlaybackQueueProjection(catalog, replicas, _ => "spotify"), store, log: log);
         using var npSub = liveConnect.Projection.Changes.Subscribe(Observers.From<Wavee.Core.IPlaybackState>(s =>
         {
             if (s.CurrentTrack is { } tk)
@@ -101,7 +104,7 @@ public static class SpotifyLibrarySync
 
         log.Info("Dealer firehose open + Connect device announced; listening for live updates for 20s...");
         try { await Task.Delay(TimeSpan.FromSeconds(20), ct).ConfigureAwait(false); } catch { }
-        store.Flush();
+        await commits.FlushAsync(ct).ConfigureAwait(false);
         log.Info("Sync counters: pushApplied=" + sync.PushApplied + " dirty=" + sync.PushMarkedDirty + " directApplied=" + sync.PushDirectApplied
             + " echoDropped=" + sync.EchoDropped + " setFetches=" + sync.SetFetches
             + " diff(applied/upToDate/full)=" + sync.DiffApplied + "/" + sync.DiffUpToDate + "/" + sync.DiffFellBack);

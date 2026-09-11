@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Wavee.Backend;
 using Wavee.Core;
 using Xunit;
@@ -7,7 +8,7 @@ using Xunit;
 namespace Wavee.Tests;
 
 // Stage D — the cluster → IPlaybackState projection, reconciliation, and the device roster (proto-free, hand-built deltas).
-public class ConnectProjectionTests
+public class ConnectProjectionTests : PlaybackCatalogTestBase
 {
     static RemoteTrack Trk(string uri, string title, long dur) =>
         new(uri, title, "Artist", "spotify:artist:a", "Album", "spotify:album:al", "https://img/x", dur);
@@ -19,14 +20,15 @@ public class ConnectProjectionTests
             devices ?? Array.Empty<ConnectDeviceRow>(), Array.Empty<RemoteTrack>(), PlaybackSpeed: speed);
 
     [Fact]
-    public void OnCluster_ViewerMode_FoldsTrackPlayStateContext_AndAnchorsPosition()
+    public async Task OnCluster_ViewerMode_FoldsTrackPlayStateContext_AndAnchorsPosition()
     {
         long now = 1000;
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
+        var p = Catalog.Projection("us", () => now);
         int changes = 0;
         using var s = p.Changes.Subscribe(ConnectHarness.Obs<IPlaybackState>(_ => changes++));
 
-        p.OnCluster(Cluster("other-device", playing: true, Trk("spotify:track:t1", "Song", 200000), pos: 5000));
+        Catalog.Cluster(p, Cluster("other-device", playing: true, Trk("spotify:track:t1", "Song", 200000), pos: 5000));
+        await QueryPublication.Until(() => p.CurrentTrack?.Title == "Song");
 
         Assert.Equal("spotify:track:t1", p.CurrentTrack!.Uri);
         Assert.Equal("Song", p.CurrentTrack.Title);
@@ -44,9 +46,9 @@ public class ConnectProjectionTests
     public void OnCluster_AgesSnapshotByServerSideDelta()
     {
         long now = 0;
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
+        var p = Catalog.Projection("us", () => now);
         // position 5000 sampled at ts=1000, cluster emitted at serverTs=3000 → 2000ms stale at fold (no clock sync needed).
-        p.OnCluster(Cluster("other", playing: true, Trk("spotify:track:t1", "Song", 200000), pos: 5000, tsMs: 1000, serverTsMs: 3000));
+        Catalog.Cluster(p, Cluster("other", playing: true, Trk("spotify:track:t1", "Song", 200000), pos: 5000, tsMs: 1000, serverTsMs: 3000));
         Assert.Equal(7000, p.PositionMs);   // 5000 + serverSideAge(2000); no monotonic elapse yet
     }
 
@@ -54,9 +56,9 @@ public class ConnectProjectionTests
     public void OnCluster_SyncedServerClock_AddsNetworkTransit()
     {
         long now = 0, serverNow = 0;
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now, () => serverNow);
+        var p = Catalog.Projection("us", () => now, () => serverNow);
         serverNow = 3500;   // synced clock says server-now is 500ms past the cluster's emit time → +500 transit
-        p.OnCluster(Cluster("other", playing: true, Trk("spotify:track:t", "T", 200000), pos: 5000, tsMs: 1000, serverTsMs: 3000));
+        Catalog.Cluster(p, Cluster("other", playing: true, Trk("spotify:track:t", "T", 200000), pos: 5000, tsMs: 1000, serverTsMs: 3000));
         Assert.Equal(7500, p.PositionMs);   // 5000 + serverSideAge(2000) + networkAge(500)
     }
 
@@ -64,10 +66,10 @@ public class ConnectProjectionTests
     public void OnCluster_NewTrackNearZero_IgnoresStaleTimestamp()
     {
         long now = 0;
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
-        p.OnCluster(Cluster("other", playing: true, Trk("spotify:track:a", "A", 200000), pos: 120000, tsMs: 1000, serverTsMs: 2000));
+        var p = Catalog.Projection("us", () => now);
+        Catalog.Cluster(p, Cluster("other", playing: true, Trk("spotify:track:a", "A", 200000), pos: 120000, tsMs: 1000, serverTsMs: 2000));
         // New track starts at ~0 but its Timestamp lags badly → must anchor at the snapshot, not jump forward by the Δ.
-        p.OnCluster(Cluster("other", playing: true, Trk("spotify:track:b", "B", 200000), pos: 300, tsMs: 1000, serverTsMs: 60000));
+        Catalog.Cluster(p, Cluster("other", playing: true, Trk("spotify:track:b", "B", 200000), pos: 300, tsMs: 1000, serverTsMs: 60000));
         Assert.Equal(300, p.PositionMs);
     }
 
@@ -75,8 +77,8 @@ public class ConnectProjectionTests
     public void Pos_AppliesPlaybackSpeed()
     {
         long now = 1000;
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
-        p.OnCluster(Cluster("other", playing: true, Trk("spotify:track:t", "T", 600000), pos: 10000, speed: 2.0));
+        var p = Catalog.Projection("us", () => now);
+        Catalog.Cluster(p, Cluster("other", playing: true, Trk("spotify:track:t", "T", 600000), pos: 10000, speed: 2.0));
         now = 3000;   // 2000ms monotonic elapse at 2× → +4000
         Assert.Equal(14000, p.PositionMs);
     }
@@ -85,8 +87,8 @@ public class ConnectProjectionTests
     public void Pos_ClampsToDuration()
     {
         long now = 0;
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
-        p.OnCluster(Cluster("other", playing: true, Trk("spotify:track:t", "T", 5000), pos: 4000));
+        var p = Catalog.Projection("us", () => now);
+        Catalog.Cluster(p, Cluster("other", playing: true, Trk("spotify:track:t", "T", 5000), pos: 4000));
         now = 10000;   // would be 14000 but duration is 5000
         Assert.Equal(5000, p.PositionMs);
     }
@@ -95,9 +97,9 @@ public class ConnectProjectionTests
     public void Pos_Paused_ReturnsFrozenSnapshot_NoAging()
     {
         long now = 0;
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
+        var p = Catalog.Projection("us", () => now);
         // Paused remote, with a large server-side Δ: must NOT age (frozen) and must not interpolate.
-        p.OnCluster(Cluster("other", playing: false, Trk("spotify:track:t", "T", 200000), pos: 8000, tsMs: 1000, serverTsMs: 5000));
+        Catalog.Cluster(p, Cluster("other", playing: false, Trk("spotify:track:t", "T", 200000), pos: 8000, tsMs: 1000, serverTsMs: 5000));
         now = 100000;
         Assert.Equal(8000, p.PositionMs);
     }
@@ -105,8 +107,8 @@ public class ConnectProjectionTests
     [Fact]
     public void OnCluster_NoActiveDevice_ClampsToPaused()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
-        p.OnCluster(Cluster("", playing: true, Trk("spotify:track:x", "X", 1000)));
+        var p = Catalog.Projection("us");
+        Catalog.Cluster(p, Cluster("", playing: true, Trk("spotify:track:x", "X", 1000)));
         Assert.False(p.IsPlaying);   // nobody active → we are not playing
     }
 
@@ -114,8 +116,8 @@ public class ConnectProjectionTests
     public void Reconciliation_StaleClusterDoesNotRevertOptimisticLocalCommand()
     {
         long now = 0;
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
-        p.OnCluster(Cluster("us", playing: true, Trk("spotify:track:t", "T", 100000)));
+        var p = Catalog.Projection("us", () => now);
+        Catalog.Cluster(p, Cluster("us", playing: true, Trk("spotify:track:t", "T", 100000)));
         Assert.True(p.IsPlaying);
 
         // local pause (optimistic) + the controller flags the in-flight command
@@ -124,11 +126,11 @@ public class ConnectProjectionTests
         Assert.False(p.IsPlaying);
 
         now = 1000;   // a STALE cluster (still shows playing) arrives within the window → must NOT revert
-        p.OnCluster(Cluster("us", playing: true, Trk("spotify:track:t", "T", 100000)));
+        Catalog.Cluster(p, Cluster("us", playing: true, Trk("spotify:track:t", "T", 100000)));
         Assert.False(p.IsPlaying);
 
         now = 5000;   // past the window → the cluster is authoritative again
-        p.OnCluster(Cluster("us", playing: true, Trk("spotify:track:t", "T", 100000)));
+        Catalog.Cluster(p, Cluster("us", playing: true, Trk("spotify:track:t", "T", 100000)));
         Assert.True(p.IsPlaying);
     }
 
@@ -152,15 +154,16 @@ public class ConnectProjectionTests
     }
 
     [Fact]
-    public void LocalEvent_DrivesSlab_AndFiresChanges()
+    public async Task LocalEvent_DrivesSlab_AndFiresChanges()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var p = Catalog.Projection("us", () => 0);
         var track = new Track("t", "spotify:track:t", "Local",
             new[] { new ArtistRef("a", "spotify:artist:a", "A") }, new AlbumRef("al", "spotify:album:al", "Al"),
             60000, false, null);
         bool fired = false;
         using var s = p.Changes.Subscribe(ConnectHarness.Obs<IPlaybackState>(_ => fired = true));
-        p.OnEvent(new PlaybackEvent(EvKind.Started, track, 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Started, track, 0));
+        await QueryPublication.Until(() => p.CurrentTrack?.Title == "Local");
         Assert.True(p.IsPlaying);
         Assert.Equal("Local", p.CurrentTrack!.Title);
         Assert.True(fired);
@@ -169,27 +172,27 @@ public class ConnectProjectionTests
     [Fact]
     public void LocalEvent_FoldsTrackDuration()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var p = Catalog.Projection("us", () => 0);
         var track = new Track("t", "spotify:track:t", "Local",
             new[] { new ArtistRef("a", "spotify:artist:a", "A") }, new AlbumRef("al", "spotify:album:al", "Al"),
             151000, false, null);
-        p.OnEvent(new PlaybackEvent(EvKind.Started, track, 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.Started, track, 0));
         Assert.Equal(151000, p.DurationMs);   // the seek bar scales scrub fractions by this — must follow the local track
     }
 
     [Fact]
     public void LocalTrackChange_ReplacesStaleDuration_FromPriorClusterTrack()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var p = Catalog.Projection("us", () => 0);
         // remote plays a 3:34 track…
-        p.OnCluster(Cluster("us", playing: true, Trk("spotify:track:old", "Old", 214000)));
+        Catalog.Cluster(p, Cluster("us", playing: true, Trk("spotify:track:old", "Old", 214000)));
         Assert.Equal(214000, p.DurationMs);
         // …then LOCAL playback advances to a 2:31 track: duration must follow (no cluster echo needed —
         // offline/PlayPlay-local playback never gets one, which froze the label AND corrupted seek targets).
         var next = new Track("n", "spotify:track:new", "New",
             new[] { new ArtistRef("a", "spotify:artist:a", "A") }, new AlbumRef("al", "spotify:album:al", "Al"),
             151000, false, null);
-        p.OnEvent(new PlaybackEvent(EvKind.TrackChanged, next, 0));
+        Catalog.Event(p, new PlaybackEvent(EvKind.TrackChanged, next, 0));
         Assert.Equal(151000, p.DurationMs);
         Assert.Equal("spotify:track:new", p.CurrentTrack!.Uri);
     }
@@ -197,8 +200,8 @@ public class ConnectProjectionTests
     [Fact]
     public void OnCluster_Restrictions_GateSkipAndSeek_AndVolumeFollowsActiveDevice()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
-        p.OnCluster(new ClusterDelta("other", true, Trk("spotify:ad:x", "Ad", 30000), "ctx",
+        var p = Catalog.Projection("us", () => 0);
+        Catalog.Cluster(p, new ClusterDelta("other", true, Trk("spotify:ad:x", "Ad", 30000), "ctx",
             true, false, false, 0, 0, 0, 30000, false, RepeatMode.Off,
             Array.Empty<ConnectDeviceRow>(), Array.Empty<RemoteTrack>(),
             DisallowSkipPrev: true, DisallowSkipNext: true, DisallowSeeking: true, OurVolume0_65535: 16384, ActiveVolume0_65535: 16384));
@@ -211,8 +214,8 @@ public class ConnectProjectionTests
     [Fact]
     public void OnCluster_ViewerQueue_SplitsProviders_AndDropsDelimiters()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
-        p.OnCluster(Cluster("other", playing: true, Trk("spotify:track:now", "Now", 1000)) with
+        var p = Catalog.Projection("us", () => 0);
+        Catalog.Cluster(p, Cluster("other", playing: true, Trk("spotify:track:now", "Now", 1000)) with
         {
             NextTracks = new[]
             {
@@ -247,8 +250,8 @@ public class ConnectProjectionTests
     [Fact]
     public void OnCluster_WeAreStaleActive_FillsQueueFromCluster()
     {
-        var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
-        p.OnCluster(new ClusterDelta(
+        var p = Catalog.Projection("us", () => 0);
+        Catalog.Cluster(p, new ClusterDelta(
             "us", true, Trk("spotify:track:now", "Now", 200000), "spotify:playlist:ctx",
             false, true, false, 1000, 0, 0, 200000, Shuffle: true, RepeatMode.Context,
             Array.Empty<ConnectDeviceRow>(),

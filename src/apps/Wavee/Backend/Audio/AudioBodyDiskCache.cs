@@ -1,3 +1,4 @@
+using Wavee;
 using Wavee.Sdk.Streams;
 
 namespace Wavee.Backend.Audio;
@@ -29,8 +30,7 @@ public static class AudioBodyDiskCache
     /// <summary>Wavee's canonical cache root under the per-user app-data cache folder.</summary>
     public static string DefaultDirectory()
     {
-        try { return Path.Combine(FluentGpu.WindowsApi.Storage.AppDataStore.ForUnpackaged("Wavee", "Wavee").CacheFolder, "audio"); }
-        catch { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "Cache", "audio"); }
+        return UnpackagedAppDataRoot.UnderCurrent("Cache", "audio");
     }
 
     /// <summary>The picker stores a parent directory. Wavee owns only this dedicated child beneath it.</summary>

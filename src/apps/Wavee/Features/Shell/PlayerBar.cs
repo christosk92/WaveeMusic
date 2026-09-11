@@ -146,7 +146,7 @@ sealed class PlayerBarContent : Component
         bool loading = b.IsLoading.Value;
         bool buffering = b.IsBuffering.Value;
         bool reconnecting = b.RecoveryKind.Value == PlaybackRecoveryKind.Network;
-        bool playing = b.IsPlaying.Value;
+        bool playing = b.PlayWhenReady.Value;
         bool shuffle = b.IsShuffle.Value;
         var repeat = b.Repeat.Value;
         bool hasVideo = b.CurrentTrackHasVideo.Value;   // async-detected music video (VideoService) for the now-playing track
@@ -171,10 +171,10 @@ sealed class PlayerBarContent : Component
             reconnecting ? PlayerState.Reconnecting :
                             PlayerState.Active;
         bool active = st == PlayerState.Active;
-        bool canTransport = active || buffering || reconnecting;
+        bool canTransport = track is not null && err is null;
         var remoteDevice = active && L.ShowRemoteDeviceLine ? RemoteDevice(b) : null;
-        // Primary is live for Active/Buffering and for Error (a retry); dead only for NoTrack/Loading.
-        bool primaryEnabled = st != PlayerState.NoTrack && st != PlayerState.Loading;
+        // Accepted play intent can be withdrawn while resolution or buffering is still in progress.
+        bool primaryEnabled = st != PlayerState.NoTrack || playing;
         // (SeekBar derives its own enabled state reactively from the bridge signals — see SeekBar.Render.)
 
         // ── responsive breakpoints (coarse layout signal; no raw viewport subscription in this component) ──
@@ -366,7 +366,7 @@ sealed class PlayerBarContent : Component
         // Empty while a bar-less video surface owns the transport — see `ownsTransport` above.
         var transport = new List<Element>(3);
         if (ownsTransport && showPrevNext)
-            transport.Add(Transport(Icons.Previous, () => { _ = b.Player.PreviousAsync(); }, canTransport, false, accent, buttonBox, buttonGlyph)
+            transport.Add(Transport(Icons.Previous, () => { _ = b.Player.PreviousAsync(); }, canTransport && b.CanSkipPrev.Value, false, accent, buttonBox, buttonGlyph)
                 with { Key = "prev", Animate = ItemMotion });
         if (ownsTransport)
             transport.Add(Primary(
@@ -374,7 +374,7 @@ sealed class PlayerBarContent : Component
                 () => PrimaryClick(b, st), primaryEnabled, accent, primaryBox, primaryGlyph)
                 with { Key = "primary", Animate = MoveMotion });
         if (ownsTransport && showPrevNext)
-            transport.Add(Transport(Icons.Next, () => { _ = b.Player.NextAsync(); }, canTransport, false, accent, buttonBox, buttonGlyph)
+            transport.Add(Transport(Icons.Next, () => { _ = b.Player.NextAsync(); }, canTransport && b.CanSkipNext.Value, false, accent, buttonBox, buttonGlyph)
                 with { Key = "next", Animate = ItemMotion });
 
         var transportGroup = new BoxEl
@@ -424,8 +424,8 @@ sealed class PlayerBarContent : Component
         var overflowCommands = new List<AppBarCommand>(8);
         if (ownsTransport && !showPrevNext)
         {
-            overflowCommands.Add(new AppBarCommand(Icons.Previous, Loc.Get(Strings.Player.Previous), () => { _ = b.Player.PreviousAsync(); }, Enabled: canTransport));
-            overflowCommands.Add(new AppBarCommand(Icons.Next, Loc.Get(Strings.Player.Next), () => { _ = b.Player.NextAsync(); }, Enabled: canTransport));
+            overflowCommands.Add(new AppBarCommand(Icons.Previous, Loc.Get(Strings.Player.Previous), () => { _ = b.Player.PreviousAsync(); }, Enabled: canTransport && b.CanSkipPrev.Value));
+            overflowCommands.Add(new AppBarCommand(Icons.Next, Loc.Get(Strings.Player.Next), () => { _ = b.Player.NextAsync(); }, Enabled: canTransport && b.CanSkipNext.Value));
         }
         if (!showShuffleRepeat)
         {
@@ -591,8 +591,8 @@ sealed class PlayerBarContent : Component
         // derives it as an OPAQUE gray (warm #DCDAD4; slate/accent Darken(page, 0.08)), and an opaque gray line across
         // an otherwise unpainted band is its own small disjoint slab. Same reasoning as
         // TabStrip's baseline hairline and separators.
-        Element topEdge = (loading || buffering || reconnecting)
-            ? ProgressBar.Indeterminate(L.TopEdgeWidth)
+        Element topEdge = playing && (loading || buffering || reconnecting)
+            ? Embed.Comp(() => new PlaybackActivity { Width = L.TopEdgeWidth }) with { Key = "activity:" + L.TopEdgeWidth }
             : new BoxEl
             {
                 Height = 1f,
@@ -667,17 +667,14 @@ sealed class PlayerBarContent : Component
     static void PrimaryClick(PlaybackBridge b, PlayerState st)
     {
         if (st == PlayerState.Error) { b.InvokePlaybackErrorAction(); return; }
-        if (st is PlayerState.NoTrack or PlayerState.Loading) return;
+        if (st == PlayerState.NoTrack && !b.PlayWhenReady.Peek()) return;
         TogglePlayPause(b);
     }
 
-    /// <summary>THE play/pause intent — optimistic (write the signal first so the UI is instant, then let the bridge
-    /// reconcile), exactly like <see cref="ToggleShuffle"/> and <see cref="CycleRepeat"/>. Shared with the immersive
-    /// stage's filled primary so the two surfaces cannot drift into two different play buttons.</summary>
+    /// <summary>Shared play/pause action. The controller publishes accepted intent; views never fabricate actual playback.</summary>
     internal static void TogglePlayPause(PlaybackBridge b)
     {
-        bool p = b.IsPlaying.Peek();
-        b.IsPlaying.Value = !p;
+        bool p = b.PlayWhenReady.Peek();
         if (p) _ = b.Player.PauseAsync(); else _ = b.Player.ResumeAsync();
     }
 
@@ -1119,8 +1116,6 @@ sealed class TimeText : Component
         // Either surface bumps PlayerBarPrefs after writing the setting → re-seed the mounted label live.
         int prefsEpoch = PlayerBarPrefs.Epoch.Value;
         UseEffect(() => setShowRemaining(svc?.Settings.Get(WaveeSettings.PlayerBarShowRemaining) ?? true), prefsEpoch);
-        long pos = _b.PositionMs.Value;          // subscribe → 1 Hz tick
-        long dur = _b.DurationMs.Value;
         bool rightDuration = _remaining;
         // LIVE. Both halves of the row change, and both changes are the same idea: state what IS true instead of
         // dressing a broadcast up as a track.
@@ -1138,11 +1133,33 @@ sealed class TimeText : Component
         bool behindLive = _b.IsBehindLive.Value;
         if (rightDuration && isLive) return LiveSlot(_b, live, behindLive, _ink);
         bool remainingMode = rightDuration && showRemaining;
-        long ms = rightDuration ? (remainingMode ? Math.Max(0, dur - pos) : dur) : pos;
-        if (!rightDuration && isLive) ms = ElapsedSinceTuneIn(_b, pos);
-        // ms == 0 in remaining mode means "there is nothing left" (paused exactly at/after the end) — "-0:00" reads as
-        // a negative countdown that never resolves; the sign belongs only to an ACTUAL remainder.
-        string s = (remainingMode && ms > 0 ? "-" : "") + PlayerBarContent.Fmt(ms);
+        // ── the playhead is a BOUND CHANNEL, never a component subscription ────────────────────────────────────────
+        // Reading PositionMs (or the scrub/seek targets, or the tune-in anchor) in Render subscribes this COMPONENT to
+        // a signal that moves every playback tick, so the whole label — box, hover/pressed fills, click handler,
+        // caption — was rebuilt at tick rate for a string that changes once a second. Two of these are mounted, and
+        // they showed up in the steady-churn census on essentially every in-budget frame. Read inside a Prop instead:
+        // the tick re-evaluates ONE text channel and writes it, and nothing re-renders.
+        //
+        // The structural reads (isLive, showRemaining, ink) stay in Render — they change rarely and they change the
+        // element SHAPE, which a bound channel cannot.
+        // Every value the thunk depends on is read INSIDE it (the FGRP002 contract: a replacement thunk is ignored
+        // after mount, so a captured local would freeze at its mount-time value). `_remaining` is a readonly field, so
+        // it is read live through `this`; the show-remaining preference is read from Settings rather than the UseState
+        // above, which exists only to drive the toggle's own re-render.
+        Prop<string> label = Prop.Of(() =>
+        {
+            long pos = _b.ScrubTargetMs.Value ?? _b.SeekTargetMs.Value ?? _b.PositionMs.Value;
+            // `svc` is the render-time context value, not a signal: it is fixed for this component's life, so
+            // capturing it is safe (and a hook may not be called from inside a thunk). The PREFERENCE is read live
+            // off it, so the toggle lands on the next tick without needing a replacement thunk.
+            bool showRemainingNow = svc?.Settings.Get(WaveeSettings.PlayerBarShowRemaining) ?? true;
+            bool remainingNow = _remaining && showRemainingNow;
+            long ms = _remaining ? (remainingNow ? Math.Max(0, _b.DurationMs.Value - pos) : _b.DurationMs.Value) : pos;
+            if (!_remaining && (_b.Live.Value.IsLive || _b.IsLive.Value)) ms = ElapsedSinceTuneIn(_b, pos);
+            // ms == 0 in remaining mode means "there is nothing left" (paused exactly at/after the end) — "-0:00" reads
+            // as a negative countdown that never resolves; the sign belongs only to an ACTUAL remainder.
+            return (remainingNow && ms > 0 ? "-" : "") + PlayerBarContent.Fmt(ms);
+        });
         void ToggleDuration()
         {
             if (!rightDuration) return;
@@ -1167,8 +1184,8 @@ sealed class TimeText : Component
             Children =
             [
                 _ink is { } ink
-                    ? Caption(s) with { Color = ink, Wrap = TextWrap.NoWrap }
-                    : Caption(s).Secondary() with { Wrap = TextWrap.NoWrap },
+                    ? Caption("") with { Text = label, Color = ink, Wrap = TextWrap.NoWrap }
+                    : Caption("").Secondary() with { Text = label, Wrap = TextWrap.NoWrap },
             ],
         };
     }

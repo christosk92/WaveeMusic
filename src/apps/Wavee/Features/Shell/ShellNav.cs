@@ -56,7 +56,9 @@ static class ShellNav
             "artists"  => (Loc.Get(Strings.Nav.Artists), Icons.Contact),
             "liked"    => (Loc.Get(Strings.Nav.LikedSongs), Icons.Heart),
             "podcasts" => (Loc.Get(Strings.Nav.Podcasts), Icons.RadioTower),
-            "local"    => (Loc.Get(Strings.Nav.LocalFiles), Icons.Folder),
+            // W7: "local" (the Local Files collection page) is retired from every nav surface — dropped, not
+            // relabeled, per the user's call that it never went live. LocalSource still owns the `local:`/
+            // `wavee:local:*` uri space for local FILE playback, which is unrelated and stays.
             "history"  => (Loc.Get(Strings.Nav.History.Title), Icons.Clock),
             // Recently PLAYED (Features/Recents/RecentsPage) — a different destination from "history", which is the
             // app's NAVIGATION log. Headphones rather than Clock for exactly that reason: two surfaces wearing one

@@ -12,8 +12,10 @@ namespace Wavee;
 /// <summary>Cross-tab settings helpers shared by <see cref="SettingsPage"/> and <see cref="LogsPanel"/>.</summary>
 static class SettingsShared
 {
-    public static string AppDataRoot => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee");
+    /// <summary>Unpackaged file root — <c>%LOCALAPPDATA%\Wavee</c>, or <c>%LOCALAPPDATA%\Wavee-fake</c> for a
+    /// <c>--fake</c> process. One decision (<see cref="UnpackagedAppDataRoot"/>), so image-cache / settings UI / factory
+    /// measurements cannot drift from sidebar-layout.json.</summary>
+    public static string AppDataRoot => UnpackagedAppDataRoot.Current;
 
     public static void OpenFolder(string path)
     {

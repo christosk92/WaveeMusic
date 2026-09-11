@@ -25,7 +25,7 @@ public class ReconnectResyncTests
 
     static byte[] Rev(int counter, params byte[] hash)
     {
-        var b = new byte[4 + hash.Length];
+        var b = new byte[24];
         System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(b, counter);
         hash.CopyTo(b, 4);
         return b;
@@ -53,7 +53,7 @@ public class ReconnectResyncTests
         public readonly List<string> Seq = new();
         public readonly MutationEngine Mut;
         public readonly LibrarySync Sync;
-        readonly CancellationTokenSource _cts = new();
+        public readonly ReplicaTestHost Host;
 
         public Rig()
         {
@@ -65,24 +65,19 @@ public class ReconnectResyncTests
                     : "playlist";
                 lock (Seq) Seq.Add(tag);
                 if (tag == "rootlist") return new HttpResp(200, new Dictionary<string, string>(),
-                    new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev(1, 0x01)) }.ToByteArray());
+                    new Pl.SelectedListContent { Revision = ByteString.CopyFrom(Rev(1, 0x01)), Contents = new Pl.ListItems() }.ToByteArray());
                 if (tag == "collection") return new HttpResp(200, new Dictionary<string, string>(),
                     new Col.PageResponse { SyncToken = "tok", NextPageToken = "" }.ToByteArray());
                 if (tag == "diff") return new HttpResp(200, new Dictionary<string, string>(),
                     new Pl.SelectedListContent { UpToDate = true }.ToByteArray());
                 return new HttpResp(200, new Dictionary<string, string>(), Array.Empty<byte>());
             });
-            Task Hydrate(IReadOnlyList<string> uris, CancellationToken c) => Task.CompletedTask;
-            var pf = new PlaylistFetcher(http, () => "https://x", Store, Hydrate, () => "");
-            var revs = new Dictionary<string, string?>();
-            var cf = new CollectionFetcher(http, () => "https://x", () => "bob", Store,
-                s => revs.TryGetValue(s, out var r) ? r : null, (s, r) => revs[s] = r, Hydrate);
-            Mut = new MutationEngine(Store, new IMutationStrategy[] { new SetReplayStrategy() });
-            Sync = new LibrarySync(Store, pf, cf, Mut, new PlaylistResyncQueue(), new SeqTransport(Seq),
-                () => Ctx, () => "bob", default, _cts.Token);
+            Host = new ReplicaTestHost(store: Store);
+            Mut = Host.Mutations;
+            Sync = Host.AttachSync(http, new SeqTransport(Seq));
         }
 
-        public async ValueTask DisposeAsync() { await Sync.DisposeAsync(); _cts.Cancel(); _cts.Dispose(); }
+        public ValueTask DisposeAsync() => Host.DisposeAsync();
     }
 
     [Fact]
@@ -90,9 +85,9 @@ public class ReconnectResyncTests
     {
         await using var rig = new Rig();
         // a pending like queued during the gap + an open resident playlist with a revision.
-        rig.Mut.Save("liked", "spotify:track:t1", true);
+        await rig.Mut.SaveAsync("liked", "spotify:track:t1", true);
         var rows = new List<PlaylistMember> { new("i1", "spotify:track:t1", null, 0) };
-        rig.Store.SetMembership("spotify:playlist:open", rows, Rev(1, 0xAA));
+        await rig.Host.SeedPlaylistAsync("spotify:playlist:open", rows, Rev(1, 0xAA));
         rig.Sync.SetOpenContext("spotify:playlist:open");
 
         rig.Sync.Enqueue(new SyncCommand(SyncKind.ReconnectResync));
@@ -111,7 +106,7 @@ public class ReconnectResyncTests
         int diff = seq.IndexOf("diff");
         Assert.True(write >= 0 && root > write && firstCol > root && diff > firstCol,
             "expected write < rootlist < deltas < diff, got: " + string.Join(",", seq));
-        Assert.Equal(8, seq.FindAll(s => s == "collection").Count);   // 4 walks + the reconcile pass's 4 shadow walks
+        Assert.Equal(10, seq.FindAll(s => s == "collection").Count);   // 5 walks + the reconcile pass's 5 shadow walks
         Assert.Equal(0, rig.Mut.Pending);                    // the like reconciled
         Assert.Equal(1, rig.Sync.ReconnectResyncs);
         Assert.Equal(1, rig.Sync.DiffUpToDate);
@@ -151,8 +146,7 @@ public class ReconnectResyncTests
     public async Task ScheduleDrain_RoutesPostWriteDrainThroughTheLoop()
     {
         await using var rig = new Rig();
-        var src = new EngineMutationSource(rig.Store, rig.Mut, new SeqTransport(rig.Seq), () => Ctx);
-        src.ScheduleDrain = () => rig.Sync.Enqueue(new SyncCommand(SyncKind.DrainWrites));
+        var src = new EngineMutationSource(rig.Store, rig.Mut, rig.Sync);
 
         await src.SetSavedAsync("spotify:track:t1", true, Ct);   // returns WITHOUT draining inline
         Assert.True(rig.Store.IsSaved("liked", "spotify:track:t1"));   // optimistic applied inline

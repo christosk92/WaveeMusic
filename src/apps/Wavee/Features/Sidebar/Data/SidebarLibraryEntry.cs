@@ -70,6 +70,19 @@ public static class SidebarEntryKinds
 
     public static bool Has(SidebarEntryKindMask mask, SidebarEntryKind kind) => (mask & Of(kind)) != 0;
 
+    /// <summary>The route pin id of the Liked Songs collection (<c>SidebarPinId.FromRoute("liked")</c>) — spelled here so this
+    /// engine-free file can name the one route that counts as a playlist without reaching into the pin-id table.</summary>
+    public const string LikedRoutePinId = "liked";
+
+    /// <summary>Whether a lens admits an ENTRY: <see cref="Has"/> for every projected kind, plus the one exception a kind
+    /// cannot express — the Liked Songs route pin IS the saved-songs collection, a playlist in Spotify's own taxonomy, so
+    /// the Playlists lens (and All) admit it even though its Kind is AppRoute; every other route pin is a PAGE, admitted
+    /// only by the unfiltered lens. This is what lets a pinned Liked Songs survive the V3 lens filter at all.</summary>
+    public static bool Admits(SidebarEntryKindMask mask, in SidebarLibraryEntry e)
+        => e.Kind != SidebarEntryKind.AppRoute ? Has(mask, e.Kind)
+         : string.Equals(e.Id, LikedRoutePinId, StringComparison.Ordinal) ? (mask & SidebarEntryKindMask.Playlist) != 0
+         : mask == SidebarEntryKindMask.All;
+
     /// <summary>The V3 chip row → kinds. Playlists includes folders (a folder IS part of the playlist tree); every other
     /// chip is a single kind. Locked decision 10's chip set, made mechanical.</summary>
     public static SidebarEntryKindMask From(SidebarV3Filter filter) => filter switch
@@ -131,6 +144,11 @@ public readonly record struct SidebarLibraryEntry(
     /// played. This is what <see cref="SidebarSort.Recents"/> sorts on — NOT <see cref="LastVisitedTicksUtc"/>, which
     /// is navigation recency and feeds only the "recently opened" feed.</summary>
     public long LastPlayedMs { get; init; }
+
+    /// <summary>The row's most recent user ACTIVITY: the later of its last play (<see cref="LastPlayedMs"/>) and its server
+    /// add stamp (<see cref="AddedAtMs"/> — created / followed / saved at). 0 = neither is known. This is what
+    /// <see cref="SidebarSort.Recents"/> sorts on.</summary>
+    public long ActivityMs => LastPlayedMs > AddedAtMs ? LastPlayedMs : AddedAtMs;
 
     // Field-backed so a default(SidebarLibraryEntry) (a scratch-list slot) still reads "" rather than null — these are
     // display strings a row concatenates without a null check.

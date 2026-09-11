@@ -1,4 +1,4 @@
-﻿namespace Wavee.Core;
+namespace Wavee.Core;
 
 public enum LibraryItemKind { Track, Album, Artist, Playlist }
 
@@ -138,20 +138,11 @@ public sealed record DiscographyPage(IReadOnlyList<Album> Items, int Total);
 /// paths (Pathfinder + SpClient) behind one async surface the UI binds against.</summary>
 public interface IMusicLibrary
 {
-    // `level` = the hydration rung the caller needs before it paints (design §1.2). Defaulted to Open so every
-    // existing call keeps its meaning; the album page asks Rich, the below-the-fold panel Full, the artist page Rich.
-    Task<Playlist> GetPlaylistAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
-    Task<Album> GetAlbumAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
-    Task<Artist> GetArtistAsync(string id, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
+    Task<Playlist> GetPlaylistAsync(string id, CancellationToken ct = default);
+    Task<Album> GetAlbumAsync(string id, CancellationToken ct = default);
+    Task<Artist> GetArtistAsync(string id, CancellationToken ct = default);
 
-    /// <summary>Synchronous store peek (no Task, no network): the artist page's inline album drawer seeds its
-    /// UseResource with this on the click frame so a re-opened (or already-warm) album is Ready immediately instead of
-    /// flashing a shimmer for a fetch that would only re-confirm what the store already holds — see
-    /// docs/plans/wavee/artist-album-expander-implementation.md §2 (C3). Returns the resident album only when its
-    /// hydration has reached <see cref="HydrationLevel.Open"/> or better (a browsable tracklist); an Identity-only or
-    /// absent album answers false so the caller falls through to the real fetch. Default: nothing to peek — a source
-    /// with no persistent store (every fake/export/local source) is complete at construction, so it has no "cold vs.
-    /// warm" distinction to report; only <c>StoreLibrarySource</c> (routed here by <c>AggregateCatalog</c>) overrides it.</summary>
+    /// <summary>Passive normalized projection peek; never schedules provider work.</summary>
     bool TryPeekAlbum(string uri, out Album? album) { album = null; return false; }
 
     /// <summary>Page an artist's discography facet (the virtualized grid pulls windows as you scroll). Returns the slice
@@ -173,7 +164,7 @@ public interface IMusicLibrary
     // Per-collection read paths — the sidebar's "Your Library" rows route to their own page, each loading its own slice.
     Task<IReadOnlyList<Album>> GetAlbumsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
+    Task<IReadOnlyList<Track>> GetLikedSongsAsync(CancellationToken ct = default);
 
     // Sidebar IA read paths — the "Your Library" badge counts, the FLAT playlist list (what every pre-folder consumer
     // reads), and the folder-capable TREE beside it. Async so the shell can skeleton-load them like everything else.
@@ -206,7 +197,7 @@ public interface IMusicLibrary
 
     // Podcasts (federated to the Podcasts-capable sources): the library grid of shows + a single show's episodes.
     Task<IReadOnlyList<Show>> GetShowsAsync(CancellationToken ct = default);
-    Task<Show?> GetShowAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default);
+    Task<Show?> GetShowAsync(string uri, CancellationToken ct = default);
     /// <summary>Page the next block of a show's episodes into residency (see <see cref="IPodcastSource"/>). Returns the
     /// new paging cursor (<c>Show.PagedThrough</c>); unchanged (<c>== from</c>) means the show has no further members,
     /// so the episode list drops its load-more affordance.</summary>

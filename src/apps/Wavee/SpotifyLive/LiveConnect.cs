@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Wavee;
 using Wavee.Backend;
 using Wavee.Backend.MediaSources;
 using Wavee.Core;
@@ -82,19 +83,13 @@ public sealed partial class LiveConnect : IDisposable
     readonly Wavee.Backend.Modules.ModuleReloadPolicy _moduleReload = new();
     Action<string, string?>? _onLiveMetadata;                        // the ICY StreamTitle relay (detached on Dispose)
 
-    /// <param name="hydrator">THE hydration façade the now-playing projection upgrades a thin cluster row through
-    /// (design §1.5) — REQUIRED and POSITIONAL, never an optional tail parameter. The `?? NotOwnedEntityHydrator.Instance`
-    /// coalesce this used to carry is the exact shape wiring-discipline forbids: a composition-root miss became a session
-    /// where every now-playing upgrade silently answered "Unsupported".</param>
-    /// <param name="store">The store the upgraded row is read back from — REQUIRED for the same reason. The one caller
-    /// with genuinely no backend (SpotifyLibrarySync's CLI sync demo) passes the named stand-ins itself.</param>
     public LiveConnect(ITransport transport, string deviceId, ApConnection? apChannel,
-        IEntityHydrator hydrator, IStore store,
+        PlaybackQueueProjection queueProjection, IStore store,
         IContextResolver? contexts = null, WaveeLogger log = default,
         AudioPlaybackStack? audio = null, double initialVolume01 = 0.7,
         Func<CancellationToken, Task<string>>? refreshTokens = null, IAppSettings? settings = null)
     {
-        ArgumentNullException.ThrowIfNull(hydrator);
+        ArgumentNullException.ThrowIfNull(queueProjection);
         ArgumentNullException.ThrowIfNull(store);
         _apChannel = apChannel;
         _audio = audio;
@@ -105,9 +100,7 @@ public sealed partial class LiveConnect : IDisposable
         // Server-clock estimator: probes GET /melody/v1/time over the authenticated spclient pipeline; its corrected
         // "server now" feeds the projection's remote-position aging (the offset-dependent transit term).
         _clock = new SpotifyServerClock(ct => FetchServerTimeMs(transport, ct), log);
-        // The projection upgrades a thin now-playing row through THE façade and re-reads the store (design §1.5). Both
-        // seams arrive REQUIRED (see the ctor params) — no coalesce, no null seam anywhere on this path.
-        Projection = new NowPlayingProjection(deviceId, hydrator, store,
+        Projection = new NowPlayingProjection(deviceId, queueProjection,
             serverNowUnixMs: _clock.ServerNowUnixMs, initialVolume01: initialVolume01);
         Devices = new LiveConnectDevices();
         _ingest = new ClusterIngest(transport, Projection, Devices, deviceId, log, _clock.ObservePassive);
@@ -143,7 +136,7 @@ public sealed partial class LiveConnect : IDisposable
         // The video-media host: the VIDEO half of the ONE current media. Constructed regardless of the audio backend (it is
         // self-contained — a resolved PopOutVideoSource carries its own descriptor/relay), so the SilentAudioHost path still
         // has a real video host available for the swap.
-        settings ??= AppDataSettings.ForUnpackaged("Wavee", "Wavee");
+        settings ??= AppDataSettings.ForUnpackaged(UnpackagedAppDataRoot.CurrentFolderName, UnpackagedAppDataRoot.CurrentFolderName);
         _videoHost = new FluentVideoMediaHost(playbackLog, settings: settings);
         // Mute is a property of the CURRENT MEDIA, not of its audio half: the player bar / picker set it through
         // IAudioOutputDeviceControl, which only the audio host implements, so a mute set while (or before) a music video is
@@ -366,12 +359,13 @@ public sealed partial class LiveConnect : IDisposable
         //    (PlaybackController.SwitchHost), so audio goes straight back to the catalog length.
         //    This used to be scoped to `local:video:` keys only, which is precisely why a music video showed the song's length.
         //    NoteDuration stays local-only: it persists a fact about a user's attached FILE, not about the now-playing edit.
-        _onVideoDurationKnown = (key, ms) =>
+        _onVideoDurationKnown = async (key, ms) =>
         {
             if (Projection.CurrentTrack?.Uri is not { Length: > 0 } uri) return;
             Projection.SetDurationOverride(uri, ms);
-            if (key.StartsWith(Wavee.Backend.VideoOverride.SourceKeyPrefix, StringComparison.Ordinal))
-                overrides?.NoteDuration(uri, ms);
+            if (key.StartsWith(Wavee.Backend.VideoOverride.SourceKeyPrefix, StringComparison.Ordinal) && overrides is not null)
+                try { await overrides.NoteDurationAsync(uri, ms).ConfigureAwait(false); }
+                catch (Exception error) { _playbackLog.Info("video duration persistence failed: " + error.Message); }
             _playbackLog.Info($"video duration adopted for {uri}: {ms} ms (source {key})");
         };
         _videoHost.DurationKnown += _onVideoDurationKnown;

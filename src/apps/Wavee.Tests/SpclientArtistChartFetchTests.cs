@@ -1,90 +1,72 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
+using System.Linq;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
+using Wavee.Backend;
+using Wavee.Backend.Metadata;
+using Wavee.Backend.Persistence;
 using Wavee.Backend.Spotify;
-using Wavee.SpotifyLive.Hydration;
+using Wavee.Core;
+using Wavee.Core.Catalog;
+using Wavee.SpotifyLive;
+using Wavee.SpotifyLive.Catalog;
 using Xunit;
 
 namespace Wavee.Tests;
 
-// ── The chart port's best-effort contract, made true (design §2.2) ───────────────────────────────────────────────────
-// The class comment promises "a non-2xx or an unparsable body is an EMPTY list plus a structured event — never an
-// exception that could blank a painted chart". The 2xx half was enforced; the PARSE half was not, so a 200 carrying an
-// HTML error page (a captive portal, an edge node's 200-with-a-body-of-apology) threw JsonException straight through
-// the artist ladder into the provider hydrator's catch-all, turning the whole batch Failed. These pin both halves.
-public class SpclientArtistChartFetchTests
+public sealed class ArtistChartResourceTests
 {
-    const string ArtistUri = "spotify:artist:ar1";
-
-    sealed class ScriptedExchange(int status, byte[] body) : IHttpExchange
+    static readonly CatalogScope Scope = new("spotify", "me", "en", "US", "premium", 1, false);
+    static async Task<(ResourceResponse Response, string? Url)> Fetch(int status, string body)
     {
-        public string? LastUrl;
-        public Task<HttpResp> SendAsync(HttpReq req, CancellationToken ct)
+        string? url = null;
+        var http = new FakeExchange((request, _) =>
         {
-            LastUrl = req.Url;
-            return Task.FromResult(new HttpResp(status,
-                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), body));
-        }
+            url = request.Url;
+            return new HttpResp(status, new Dictionary<string, string>(), Encoding.UTF8.GetBytes(body));
+        });
+        var metadata = new ExtendedMetadataSource(http, () => "https://spclient.test",
+            () => new SessionContext("me", "US", "premium", "en", Tier.Premium, false));
+        var provider = new SpotifyCatalogResourceProvider(metadata, new MemoryDataPersistence(), new PathfinderClient(http),
+            http, () => "https://spclient.test", () => HomeModuleTitles.Default, TimeProvider.System);
+        var request = new ResourceRequest(new(Scope, "spotify:artist:ar1", FacetKind.ArtistPopular),
+            new(Scope, "me", 1, 0, 1), ResourcePriority.Visible);
+        return (Assert.Single(await provider.FetchAsync([request], TestContext.Current.CancellationToken)), url);
     }
 
-    static SpclientArtistChartFetch Fetch(IHttpExchange http) => new(http, () => "https://spclient.test");
-
-    static byte[] Utf8(string s) => Encoding.UTF8.GetBytes(s);
-
-    [Fact]
-    public async Task AnHtmlBodyBehindA200_IsAnEmptyList_NotAThrow()
+    [Theory]
+    [InlineData(200, "<html>bad gateway</html>")]
+    [InlineData(200, "{invalid")]
+    [InlineData(200, "")]
+    [InlineData(200, "{}")]
+    [InlineData(503, "unavailable")]
+    public async Task Failure_RemainsAnErrorInsteadOfAuthoritativeEmptyMembership(int status, string body)
     {
-        var fetch = Fetch(new ScriptedExchange(200, Utf8("<html><body>502 Bad Gateway</body></html>")));
-
-        Assert.Empty(await fetch.TopTrackUrisAsync(ArtistUri, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task ATruncatedJsonBody_IsAnEmptyList_NotAThrow()
-    {
-        var fetch = Fetch(new ScriptedExchange(200, Utf8("{\"tracks\":[{\"uri\":\"spotify:track:a\"")));
-
-        Assert.Empty(await fetch.TopTrackUrisAsync(ArtistUri, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task AnEmptyBody_IsAnEmptyList_NotAThrow()
-    {
-        var fetch = Fetch(new ScriptedExchange(200, Array.Empty<byte>()));
-
-        Assert.Empty(await fetch.TopTrackUrisAsync(ArtistUri, CancellationToken.None));
+        var (response, _) = await Fetch(status, body);
+        Assert.Equal(ResourceFetchStatus.Failed, response.Result.Status);
+        Assert.Null(response.Result.Patch);
+        Assert.NotNull(response.Result.Error);
     }
 
     [Fact]
-    public async Task ANonSuccessStatus_IsAnEmptyList()
+    public async Task CompleteOrderedChart_PreservesDuplicatesAndEndCoverage()
     {
-        var fetch = Fetch(new ScriptedExchange(503, Utf8("nope")));
-
-        Assert.Empty(await fetch.TopTrackUrisAsync(ArtistUri, CancellationToken.None));
+        var (response, url) = await Fetch(200, """{"tracks":[{"uri":"spotify:track:a"},{"uri":"spotify:track:b"},{"uri":"spotify:track:a"}]}""");
+        var page = Assert.IsType<RelationPageValue>(response.Result.Patch!.Apply(null));
+        Assert.Equal(new[] { "spotify:track:a", "spotify:track:b", "spotify:track:a" }, page.Items.Select(row => row.EntityUri));
+        Assert.Equal(3, page.Total);
+        Assert.Null(page.NextCursor);
+        Assert.Equal(3, page.Items.Select(row => row.OccurrenceKey).Distinct().Count());
+        Assert.Contains("artist-top-tracks-extensions", url);
     }
 
     [Fact]
-    public async Task AWellFormedBody_YieldsItsUris()
+    public async Task EmptyOrderedChart_IsPresentAndComplete()
     {
-        // The happy path stays intact — the guard must not have swallowed the answer with the errors.
-        var http = new ScriptedExchange(200, Utf8(
-            "{\"tracks\":[{\"uri\":\"spotify:track:a\"},{\"uri\":\"spotify:track:b\"},{\"noUri\":1}]}"));
-
-        var uris = await Fetch(http).TopTrackUrisAsync(ArtistUri, CancellationToken.None);
-
-        Assert.Equal(["spotify:track:a", "spotify:track:b"], uris);
-        Assert.Contains("artist-top-tracks-extensions", http.LastUrl);
-    }
-
-    [Fact]
-    public async Task ANonSpotifyArtist_NeverReachesTheTransport()
-    {
-        var http = new ScriptedExchange(200, Utf8("{}"));
-
-        Assert.Empty(await Fetch(http).TopTrackUrisAsync("local:artist:a1", CancellationToken.None));
-        Assert.Null(http.LastUrl);
+        var (response, _) = await Fetch(200, """{"tracks":[]}""");
+        Assert.Equal(ResourceFetchStatus.Present, response.Result.Status);
+        var page = Assert.IsType<RelationPageValue>(response.Result.Patch!.Apply(null));
+        Assert.Empty(page.Items); Assert.Equal(0, page.Total); Assert.Null(page.NextCursor);
     }
 }

@@ -5,45 +5,40 @@ using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Wavee.Backend;
+using Wavee.Backend.Catalog;
 using Wavee.Backend.Metadata;
+using Wavee.Core.Catalog;
 using Wavee.Core;
 using Xm = Wavee.Protocol.ExtendedMetadata;
 
 namespace Wavee.SpotifyLive;
 
-/// <summary>Spotify's below-the-fold album reads. Every method is best-effort and independently consumable by the
-/// UI; no failure here can invalidate the already-loaded album or track list. RETURN-ONLY for CARDS (design 3):
-/// similar albums and recommended playlists are display rows, so this service no longer mints thin store entities
-/// for them - anything that needs a real ENTITY (the artist behind "fans also like", a recommended playlist's
-/// header) asks <c>IEntityHydrator</c> for a rung and reads the store back, which is also what killed this file's
-/// second 205 projector and its second queryArtistOverview caller. The Pathfinder ops carry the rich JSON
-/// (about-artist / merch / similar albums); the NPV about-artist stays an authoritative artist projection.</summary>
+/// <summary>Finite below-the-fold album reads. Shared entity facts enter the catalog as conservative seeds;
+/// entity relationships and headers are read through the same typed queries as other surfaces.</summary>
 sealed class SpotifyAlbumEnrichmentService : IAlbumEnrichmentService
 {
     readonly PathfinderResource _pathfinder;
     readonly ExtendedMetadataSource _metadata;
-    readonly ExtensionEtagCache? _extensions;
-    readonly IStore _store;
-    readonly IEntityHydrator _hydrator;
+    readonly CatalogRepository _catalog;
+    readonly IResourceCoordinator _resources;
+    readonly IQueryService _queries;
+    readonly Func<string, CatalogScope> _scope;
     readonly WaveeLogger _log;
 
-    /// <param name="hydrator">REQUIRED. The one façade — "fans also like" asks for the artist's Rich rung through it
-    /// instead of issuing its own queryArtistOverview (design §1.5).</param>
-    public SpotifyAlbumEnrichmentService(PathfinderResource pathfinder, ExtendedMetadataSource metadata, IStore store,
-        IEntityHydrator hydrator, WaveeLogger log = default, ExtensionEtagCache? extensions = null)
+    public SpotifyAlbumEnrichmentService(PathfinderResource pathfinder, ExtendedMetadataSource metadata,
+        CatalogRepository catalog, IResourceCoordinator resources, IQueryService queries,
+        Func<string, CatalogScope> scope, WaveeLogger log = default)
     {
-        _pathfinder = pathfinder;
-        _metadata = metadata;
-        _extensions = extensions;
-        _store = store;
-        _hydrator = hydrator ?? throw new ArgumentNullException(nameof(hydrator));
-        _log = log;
+        _pathfinder = pathfinder; _metadata = metadata; _catalog = catalog;
+        _resources = resources; _queries = queries; _scope = scope; _log = log;
     }
 
     public async Task<NowPlayingInfo?> GetNowPlayingInfoAsync(string artistUri, string trackUri, CancellationToken ct = default)
     {
+        var scope = _scope(artistUri);
+        long epoch = _catalog.Epoch;
         if (artistUri.Length == 0 || trackUri.Length == 0)
-            return new NowPlayingInfo(_store.GetArtist(artistUri), null);
+            return new NowPlayingInfo(await ReadArtistAsync(scope, artistUri, ct).ConfigureAwait(false), null);
 
         using var doc = await _pathfinder.UseQueryAsync(PathfinderOps.QueryNpvArtist, PathfinderOps.QueryNpvArtistHash,
             w =>
@@ -57,12 +52,19 @@ sealed class SpotifyAlbumEnrichmentService : IAlbumEnrichmentService
             // Desktop identity + the desktop document: the captured client uses b2cedf7e… here, which is a strict
             // superset of the web-player variant (it adds onPlatformReputationTrait for the verified badge).
             }, PathfinderClient.Platform.Desktop, ct).ConfigureAwait(false);
-        if (doc is null) return new NowPlayingInfo(_store.GetArtist(artistUri), null);
+        RequireEpoch(epoch);
+        if (doc is null) return new NowPlayingInfo(await ReadArtistAsync(scope, artistUri, ct).ConfigureAwait(false), null);
 
         var mapped = SpotifyExportMapper.ArtistFromNpv(doc.RootElement);
-        if (mapped is not null) _store.UpsertArtist(mapped);
-        var about = _store.GetArtist(artistUri) ?? mapped;
-        return new NowPlayingInfo(about, SpotifyExportMapper.TrackNpvFromResponse(doc.RootElement));
+        if (mapped is not null)
+        {
+            var seeds = new List<CatalogSeed>();
+            CatalogDomainSeeds.Artist(scope, mapped, seeds);
+            await _catalog.SeedManyAsync(seeds, epoch, ct).ConfigureAwait(false);
+        }
+        // NPV's biography and track extras belong to this finite response. They do not claim overview authority.
+        return new NowPlayingInfo(mapped ?? await ReadArtistAsync(scope, artistUri, ct).ConfigureAwait(false),
+            SpotifyExportMapper.TrackNpvFromResponse(doc.RootElement));
     }
 
     public async Task<Artist?> GetAboutArtistAsync(string artistUri, string leadTrackUri, CancellationToken ct = default)
@@ -71,12 +73,9 @@ sealed class SpotifyAlbumEnrichmentService : IAlbumEnrichmentService
     public async Task<IReadOnlyList<Artist>> GetRelatedArtistsAsync(string artistUri, CancellationToken ct = default)
     {
         if (artistUri.Length == 0) return Array.Empty<Artist>();
-        // "Fans also like" is the artist overview's Related list — the SAME queryArtistOverview the artist ladder's
-        // Rich rung already owns. This used to be the SECOND caller of that operation, with its own copy of the
-        // stats-only-write rule; now it asks for the rung and reads the store, so an album page opened right after its
-        // artist page costs zero extra requests (design §2.3, ArtistHydration).
-        await _hydrator.EnsureAsync(artistUri, HydrationLevel.Rich, HydrationOptions.Default, ct).ConfigureAwait(false);
-        return _store.GetArtist(artistUri)?.Extras?.Related is { Count: > 0 } related
+        var result = await _queries.ReadOnceAsync(new ArtistDetailQuery(_scope(artistUri), artistUri),
+            QueryDemand.Initial, ct).ConfigureAwait(false);
+        return result.Value.Extras?.Related is { Count: > 0 } related
             ? Artists(related) : Array.Empty<Artist>();
     }
 
@@ -104,32 +103,24 @@ sealed class SpotifyAlbumEnrichmentService : IAlbumEnrichmentService
             w => { w.WriteString("uri", seedTrackUri); w.WriteNumber("limit", limit); w.WriteBoolean("albumsOnly", true); },
             PathfinderClient.Platform.Desktop, ct).ConfigureAwait(false);
         if (doc is null) return Array.Empty<Album>();
-        // RETURN-ONLY (design 3): the cards are display rows, not entities. Minting thin albums here made the
-        // store hold rows no ladder had hydrated, and a click already opens through GetAlbumAsync -> the album
-        // ladder, which fetches the real thing. Writing them twice bought nothing but a stale hero.
-        var albums = SpotifyExportMapper.SimilarAlbumsFromTrack(doc.RootElement);
-        return albums;
+        return SpotifyExportMapper.SimilarAlbumsFromTrack(doc.RootElement);
     }
 
-    // The recommended-playlist shelf: kind 151 (RECOMMENDED_PLAYLISTS) yields the ordered playlist refs for the
-    // album; the refs are then hydrated at Identity THROUGH THE FACADE, which is the one place a 205 is read and
-    // projected. This service reads the resulting headers back out of the store and returns cards.
+    // Extension 151 returns an ordered set of references. One coordinator batch resolves their header facts.
     public async Task<IReadOnlyList<PlaylistSummary>> GetRecommendedPlaylistsAsync(string albumUri, CancellationToken ct = default)
     {
         if (albumUri.Length == 0) return Array.Empty<PlaylistSummary>();
+        long epoch = _catalog.Epoch;
 
-        // The getAlbum Full upgrade used to be triggered from here by calling back into LiveSessionHost. It is now
-        // the album ladder's Full rung, asked for by DetailTrailing (the pane that needs it) through the façade — this
-        // service is return-only again: it reads, it never fetches an entity into the store (design §3).
         ByteString? refsPayload;
         try
         {
-            refsPayload = _extensions is not null
-                ? await _extensions.GetPayloadAsync(albumUri, Xm.ExtensionKind.RecommendedPlaylists, ct).ConfigureAwait(false)
-                : await _metadata.GetExtensionAsync(albumUri, Xm.ExtensionKind.RecommendedPlaylists, ct).ConfigureAwait(false);
+            refsPayload = await _metadata.GetExtensionAsync(albumUri, Xm.ExtensionKind.RecommendedPlaylists, ct)
+                .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { _log.Info("RECOMMENDED_PLAYLISTS fetch: " + ex.Message); return Array.Empty<PlaylistSummary>(); }
         if (refsPayload is null) return Array.Empty<PlaylistSummary>();
+        RequireEpoch(epoch);
 
         Xm.RecommendedPlaylists refs;
         try { refs = Xm.RecommendedPlaylists.Parser.ParseFrom(refsPayload); }
@@ -139,21 +130,38 @@ sealed class SpotifyAlbumEnrichmentService : IAlbumEnrichmentService
             .Distinct(StringComparer.Ordinal).Take(12).ToArray();
         if (uris.Length == 0) return Array.Empty<PlaylistSummary>();
 
-        // The refs are playlist POINTERS. Hydrating them is the facade's job at IDENTITY (step 0 is the same 205 read,
-        // through the etag cache and the ONE ProjectPlaylist projector) - this service used to carry a SECOND 205
-        // projector with its own cover picker, owner title-caser and header-minting write, which is exactly the kind of
-        // duplicate the facade exists to delete (hydration-facade-plan.md 1.6).
-        try { await _hydrator.EnsureManyAsync(uris, HydrationLevel.Identity, new HydrationOptions(Surface: TraitSurface.None), ct).ConfigureAwait(false); }
+        var keys = uris.Select(uri => new ResourceKey(_scope(uri), uri, FacetKind.PlaylistHeader)).ToArray();
+        try { await _resources.EnsureAsync(keys, ResourcePriority.Visible, ct: ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { throw; }
-        catch (Exception ex) { _log.Info("recommended-playlist hydrate: " + ex.Message); }
+        catch (Exception ex) { _log.Info("recommended-playlist headers: " + ex.Message); }
+        RequireEpoch(epoch);
 
+        // These headers were already resolved above. Await their local projection without adding any remote demand.
+        var reads = keys.Select(key => _queries.ReadOnceAsync(new PlaylistDetailQuery(key.Scope, key.Subject),
+            QueryDemand.None, ct)).ToArray();
+        var snapshots = await Task.WhenAll(reads).ConfigureAwait(false);
+        RequireEpoch(epoch);
         var result = new List<PlaylistSummary>(uris.Length);
-        foreach (var uri in uris)   // preserve the recommended order
+        for (int i = 0; i < uris.Length; i++)   // preserve the recommended order and captured scope
         {
-            if (_store.GetPlaylist(uri) is not { Name.Length: > 0 } p) continue;   // a nameless ref is not a renderable card
+            string uri = uris[i];
+            if (snapshots[i].Value is not { Name.Length: > 0 } p) continue;
             result.Add(new PlaylistSummary(uri, p.Name, p.OwnerName.Length > 0 ? p.OwnerName : "Spotify", p.TrackCount, p.Cover));
         }
         return result;
+    }
+
+    async Task<Artist?> ReadArtistAsync(CatalogScope scope, string uri, CancellationToken ct)
+    {
+        if (uri.Length == 0) return null;
+        var snapshot = await _queries.ReadOnceAsync(new ArtistIdentityQuery(scope, uri), QueryDemand.None, ct)
+            .ConfigureAwait(false);
+        return snapshot.Status.HasPrimaryData ? snapshot.Value : null;
+    }
+
+    void RequireEpoch(long expected)
+    {
+        if (_catalog.Epoch != expected) throw new OperationCanceledException("The catalog session changed.");
     }
 
     static IReadOnlyList<Artist> Artists(IReadOnlyList<RelatedArtist> related)

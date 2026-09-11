@@ -1,14 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
+using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using Wavee.Core.Sidebar;
 
 namespace Wavee;
@@ -49,15 +49,22 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     public const int RecencyCap = 40;
 
     readonly SidebarPreferences _prefs;
-    readonly LibraryStore _library;
+    readonly IQueryService _queries;
+    CatalogScope _scope;
+    QuerySignalBinding<LibraryQuerySnapshot>? _libraryQuery;
+    static readonly LibraryQuerySnapshot EmptyLibrary = new([], [], new LibraryStats(0, 0, 0, 0),
+        new Dictionary<string, long>());
+    readonly Dictionary<string, PinQuery> _pinQueries = new(StringComparer.Ordinal);
+    readonly Dictionary<object, HashSet<string>> _pinDemand = new();
+    sealed record PinQuery(string Uri, IQuerySignalBinding Binding, Func<SidebarLibraryEntry?> Read);
     readonly PlayLogStore? _playLog;
     readonly PlaybackBridge? _playback;
-    readonly IMusicLibrary? _catalog;
 
     // Rebuild buffers — allocated once, reused forever (the F.7.5 allocation contract).
     readonly List<SidebarLibraryEntry> _all = new(256);       // the full projection, source order (planner Library)
     readonly List<SidebarLibraryEntry> _tree = new(128);      // the flattened rootlist tree (planner PlaylistTree)
     readonly List<SidebarLibraryEntry> _pinRows = new(16);    // resolved pins, in pin order
+    readonly List<SidebarLibraryEntry> _unlistedPinRows = new(8);   // the subset the library projection does not contain
     readonly List<SidebarLibraryEntry> _visited = new(16);
     readonly List<SidebarLibraryEntry> _played = new(16);
     readonly List<SidebarLibraryEntry> _newReleases = new(8);
@@ -77,15 +84,6 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     readonly Func<string, bool> _isFolderExpanded;
     readonly Action _syncAction;
     readonly Action _onSourceChanged;
-    // A pin the live projection does not know (an editorial/Spotify-owned playlist, or any other entity never saved to
-    // the user's own library/rootlist) is hydrated through the SAME façade the detail page uses (Services.Library),
-    // rather than rendering a permanent blank cover + "0 songs". Keyed by pin id; populated on the UI thread once a
-    // fetch lands (see RequestPinHydration/HydratePinAsync), so ResolvePins can overlay it onto the pin's own offline
-    // display cache. _pinHydrationInFlight is "asked at least once" for the whole session: a HIT clears the pin's id
-    // (nothing left to dedupe once it is cached), but a MISS leaves the id in place — ResolvePins runs on every
-    // rebuild, so retrying a permanently-gone/unreachable pin there would hit the network once per rebuild forever.
-    readonly Dictionary<string, SidebarLibraryEntry> _pinHydration = new(StringComparer.Ordinal);
-    readonly HashSet<string> _pinHydrationInFlight = new(StringComparer.Ordinal);
     Action<Action>? _post;
 #if DEBUG || FLUENTGPU_DIAG
     readonly Action<string> _onSourceChangedWithId;
@@ -100,6 +98,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     // peek). Null until the pump's first effect runs; Read/Rebuild fall back to prefs.V3Search directly until then.
     IReadSignal<string>? _effectiveSearch;
     Action? _detachSources;
+    readonly List<ISidebarDataSourceDemandLifecycle> _demandSources = [];
     SidebarProjectionInput _input;
     SidebarBinderTriggers _lastTriggers;
     SidebarSourceState _libraryState = SidebarSourceState.Pending;
@@ -107,6 +106,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     int _playedRevision = -1;
     int _revision;
     bool _started;
+    bool _active = true;
     bool _rebuilding;
     bool _dirty = true;
 
@@ -125,18 +125,17 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     bool _diagHaveTriggers;
 #endif
 
-    public SidebarProjectionBinder(SidebarPreferences prefs, LibraryStore library,
-                                  PlayLogStore? playLog = null, PlaybackBridge? playback = null,
-                                  IMusicLibrary? catalog = null)
+    public SidebarProjectionBinder(SidebarPreferences prefs, IQueryService queries, CatalogScope scope,
+                                  PlayLogStore? playLog = null, PlaybackBridge? playback = null)
     {
         _prefs = prefs ?? throw new ArgumentNullException(nameof(prefs));
-        _library = library ?? throw new ArgumentNullException(nameof(library));
+        _queries = queries ?? throw new ArgumentNullException(nameof(queries));
+        _scope = scope;
         _playLog = playLog;
         _playback = playback;
-        _catalog = catalog;
         // Cached delegates: a rebuild must not allocate a closure per pass.
         _isFolderExpanded = prefs.IsFolderExpanded;
-        _syncAction = () => Sync();
+        _syncAction = () => { SyncPinQueries(); Sync(); };
         _onSourceChanged = OnSourceChanged;
 #if DEBUG || FLUENTGPU_DIAG
         _onSourceChangedWithId = OnSourceChanged;
@@ -153,6 +152,10 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     {
         _host = host;
         _table = sources ?? host as SidebarDataSourceTable;
+        _demandSources.Clear();
+        if (_table is not null)
+            foreach (var source in _table.All)
+                if (source is ISidebarDataSourceDemandLifecycle lifetime) _demandSources.Add(lifetime);
         Invalidate();
     }
 
@@ -174,18 +177,50 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     /// effect runs (same instance each time unless the pump itself remounts).</summary>
     internal void AttachSearch(IReadSignal<string> search) => _effectiveSearch = search;
 
+    /// <summary>Single-scope call site (kept for the current caller shape — see the two-scope overload below for the
+    /// account-gated rebind this now runs). Uses the binder's OWN previous scope as <c>previous</c>, which is exactly
+    /// what a caller that has not yet been updated to hand in both scopes would mean anyway.</summary>
+    public void RebindScope(CatalogScope scope) => RebindScope(_scope, scope);
+
     /// <summary>Idempotent start: capture the UI-thread marshaller, warm the cheap library cells, hand the marshaller to
-    /// every source that owns async work, subscribe their Changed, and do the first rebuild.</summary>
+    /// every source that owns async work, subscribe their Changed, and do the first rebuild.
+    ///
+    /// <para>Required-change C: re-acquiring the library query and every pin query is now GATED on
+    /// <see cref="ScopeRebindRules.RequiresReacquire"/> — a same-account session merely confirming itself (a
+    /// <c>ContextKnown</c> flip alone) keeps the existing handles instead of disposing and re-fetching them.</para></summary>
+    public void RebindScope(CatalogScope previous, CatalogScope next)
+    {
+        if (_scope == next) return;
+        bool reacquire = ScopeRebindRules.RequiresReacquire(previous, next);
+        _scope = next;
+        if (reacquire)
+        {
+            _libraryQuery?.Dispose(); _libraryQuery = null;
+            foreach (var query in _pinQueries.Values) query.Binding.Dispose();
+            _pinQueries.Clear();
+            if (_started && _post is { } post)
+            {
+                _libraryQuery = new(_queries.Acquire(new SidebarLibraryQuery(next)), post, _ => OnSourceChanged());
+                _libraryQuery.SetDemand(QueryDemand.Initial);
+                _libraryQuery.SetActive(_active);
+            }
+        }
+        Invalidate(); Sync(); SyncPinQueries();
+    }
+
     public void Start(Action<Action> post)
     {
         ArgumentNullException.ThrowIfNull(post);
         _post = post;
         if (_started) { Invalidate(); Sync(); return; }
         _started = true;
+        _active = true;
 
-        // The tree + added-at cells are cheap local reads, so a V3/Curated sidebar paints from warm cells on its first
-        // frame exactly as Classic does (LibraryStore.WarmCheap's own contract).
-        _library.WarmCheap();
+        _libraryQuery = new QuerySignalBinding<LibraryQuerySnapshot>(
+            _queries.Acquire(new SidebarLibraryQuery(_scope)), post, _ => OnSourceChanged());
+        _libraryQuery.SetDemand(QueryDemand.Initial);
+        _libraryQuery.SetActive(true);
+        SyncPinQueries();
         if (_table is not null)
         {
 #if DEBUG || FLUENTGPU_DIAG
@@ -207,6 +242,19 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         _detachSources?.Invoke();
         _detachSources = null;
         _started = false;
+        _libraryQuery?.Dispose();
+        _libraryQuery = null;
+        foreach (var pin in _pinQueries.Values) pin.Binding.Dispose();
+        _pinQueries.Clear();
+        _pinDemand.Clear();
+    }
+
+    void SetActive(bool active)
+    {
+        _active = active;
+        _libraryQuery?.SetActive(active);
+        foreach (var pin in _pinQueries.Values) pin.Binding.SetActive(active);
+        foreach (var source in _demandSources) source.SetActive(active);
     }
 
     /// <summary>Mount ONCE at the app root: a zero-size component that subscribes every rebuild trigger and calls
@@ -252,8 +300,11 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     public bool Sync()
     {
         if (_rebuilding) { _dirty = true; return false; }
+        bool forced = _dirty;   // Invalidate() was called: something outside the trigger fold moved (new host, new
+                                 // history store) — Rebuild must not trust the lane diff below to decide what to skip.
         var triggers = Read(subscribe: false);
-        if (!_dirty && triggers == _lastTriggers) return false;
+        if (!forced && triggers == _lastTriggers) return false;
+        var previous = _lastTriggers;
         _lastTriggers = triggers;
         _dirty = false;
 
@@ -263,13 +314,16 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
 #if DEBUG || FLUENTGPU_DIAG
             if (s_binderDiag) _diagRebuilds++;
 #endif
-            Rebuild();
+            Rebuild(in previous, in triggers, forced);
         }
         finally { _rebuilding = false; }
 
         // A source that fired Changed mid-rebuild (an inline fetch completion) only marked us dirty; settle now.
+        // Always a FORCED settle: whatever changed mid-rebuild is not necessarily reflected in the trigger lanes
+        // alone (the same reason Invalidate() forces above), so this pass takes the full path unconditionally.
         if (_dirty)
         {
+            var settledPrevious = _lastTriggers;
             _dirty = false;
             _lastTriggers = Read(subscribe: false);
             _rebuilding = true;
@@ -278,7 +332,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
 #if DEBUG || FLUENTGPU_DIAG
                 if (s_binderDiag) _diagRebuilds++;
 #endif
-                Rebuild();
+                Rebuild(in settledPrevious, in _lastTriggers, forceFull: true);
             }
             finally { _rebuilding = false; }
         }
@@ -313,53 +367,49 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
 
     // ─────────────────────────────────── the rebuild ───────────────────────────────────
 
-    void Rebuild()
+    // Whether STAGE ONE (the full library re-projection: _all/_tree/_index + the V3 buffer's own Build pass) ran at
+    // least once. Fields below cache its last output so a rebuild that skips it (see <see cref="Rebuild"/>) still has
+    // something correct to publish.
+    bool _hasRebuiltOnce;
+    SidebarEntriesShape _lastShape;
+    bool _lastQualifiers;
+
+    /// <summary><paramref name="forceFull"/>: the caller (<see cref="Sync"/>) already knows this pass must not trust
+    /// the lane diff — <see cref="Invalidate"/> was called (a new host/history store — nothing a trigger lane would
+    /// ever move) or this is the mid-rebuild settle pass (a source changed while THIS rebuild was still running, so
+    /// what exactly moved is not safe to infer from the two trigger snapshots alone).
+    ///
+    /// <para>Otherwise this stages the work behind which lane(s) actually moved: LIBRARY-relevant lanes (content,
+    /// history/play-log recency, the V3 filter/sort/search/culture/folder state) rebuild <c>_all</c>/<c>_tree</c>/
+    /// <c>_index</c> and the V3 buffer from scratch, exactly as before. A PINS-ONLY change (the common "pin/unpin
+    /// one row" case) reuses that untouched projection and only re-resolves pins + re-shapes (filter/sort are
+    /// idempotent re-runs over an already-filtered-and-sorted buffer; only the pins-first partition actually needs
+    /// to move). A change in neither set (feed/source health, Curated layout, playback) reuses the last shape
+    /// outright — the feeds/extensions/publish steps below already run unconditionally, which is what makes those
+    /// rebuilds show up at all.</para></summary>
+    void Rebuild(in SidebarBinderTriggers previous, in SidebarBinderTriggers current, bool forceFull)
     {
         var prefs = _prefs;
 
-        // 1 — the raw inputs, PEEKED (a service is not a computation; reading Value here would subscribe nothing and
-        //     reading it during someone else's render would be a phantom dependency).
-        var tree = _library.PlaylistTree.Value.Peek();
-        var albums = _library.Albums.Value.Peek();
-        var artists = _library.Artists.Value.Peek();
-        var shows = _library.Shows.Value.Peek();
-        var addedAt = _library.AddedAt.Value.Peek();
-        _treeState = CellState(_library.PlaylistTree);
-        _libraryState = Worst(CellState(_library.Albums), Worst(CellState(_library.Artists), CellState(_library.Shows)));
+        bool libraryRelevant = forceFull || !_hasRebuiltOnce
+            || current.LibraryEpoch != previous.LibraryEpoch
+            || current.HistoryVersion != previous.HistoryVersion
+            || current.PlayLogRevision != previous.PlayLogRevision
+            || current.CultureEpoch != previous.CultureEpoch
+            || current.FolderVersion != previous.FolderVersion
+            || current.V3State != previous.V3State
+            || current.SearchHash != previous.SearchHash
+            || current.OrderVersion != previous.OrderVersion;
+        bool pinsChanged = current.PinsVersion != previous.PinsVersion;
 
-        // 2 — navigation recency. F.7.6's exact join: the route key IS the entry id, so this is an identity lookup.
-        _visits.Clear();
-        var history = _history;
-        if (history is not null)
-        {
-            var log = history.Entries;
-            for (int i = 0; i < log.Count; i++)
-                _visits.Add(new SidebarVisit(log[i].Route.Name, log[i].VisitedAt.ToUniversalTime().Ticks));
-        }
-        var recency = history is null
-            ? SidebarRecency.Empty
-            : SidebarRecency.Build(history.Entries, static e => e.Route.Name,
-                                   static e => e.VisitedAt.ToUniversalTime().Ticks);
+        // The raw inputs, PEEKED (a service is not a computation; reading Value here would subscribe nothing and
+        // reading it during someone else's render would be a phantom dependency). Status can move independently of
+        // LibraryEpoch only if the epoch's own fold missed it, which it does not (LibraryEpochOf folds Status too).
+        var snapshot = _libraryQuery?.Snapshot.Peek();
+        var library = snapshot?.Value ?? EmptyLibrary;
+        _treeState = _libraryState = snapshot?.Status.HasPrimaryData == true
+            ? SidebarSourceState.Ready : SidebarSourceState.Pending;
 
-        // 3 — the first-observation map, seeded ONCE from the persisted document.
-        var firstSeen = _firstSeen ??= LoadFirstSeen(prefs.FirstSeen);
-
-        // 4 — THE projection. Fully flattened (folders AND all their children) because this list is the planner's
-        //     `Library` slice, the feeds' join index and the pin resolver: hiding a collapsed folder's playlists here
-        //     would hide them from an EntityList section too. Folder COLLAPSE is a V3-list concern, handled in step 6.
-        var lastPlayed = _playLog?.Recency;
-        var full = SidebarProjection.Build(_all, SidebarEntryKindMask.All, tree, albums, artists, shows, addedAt,
-                                           recency, firstSeen, includeFolderChildren: true, lastPlayed: lastPlayed);
-
-        // 5 — the tree slice the planner's PlaylistTree section walks: depth-stamped, folders carried as Folder rows.
-        SidebarProjection.Build(_tree, SidebarEntryKindMask.PlaylistTree, tree, Array.Empty<Album>(),
-                                Array.Empty<Artist>(), Array.Empty<Show>(), addedAt, recency, firstSeen,
-                                includeFolderChildren: true, lastPlayed: lastPlayed);
-
-        _index.Rebuild(_all);
-
-        // 6 — the PUBLISHED entry list (V3 / Classic read it). Built with its own kind mask and folder-collapse rule, then
-        //     filtered → sorted → pins-first by the pure pipeline.
         bool v3 = prefs.Design.Peek() == SidebarDesign.LibraryV3;
         var filter = v3 ? (SidebarV3Filter)prefs.V3Filter.Peek() : SidebarV3Filter.All;
         var qualifier = v3 ? (SidebarV3Qualifier)prefs.V3Qualifier.Peek() : SidebarV3Qualifier.Any;
@@ -369,21 +419,100 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         // of prefs.V3Search directly — the same text the trigger fold in Read(...) subscribed to, so a rebuild fired
         // by another trigger mid-typing can never run ahead of the debounced tick.
         string search = v3 ? SidebarSearch.Normalize((_effectiveSearch ?? (IReadSignal<string>)prefs.V3Search).Peek()) : "";
-        bool searching = search.Length > 0;
-        bool qualifiers = SidebarProjection.QualifiersAvailable(full.FlavorMask);
 
-        var buffer = prefs.Entries.Buffer;
-        var v3Result = SidebarProjection.Build(buffer, SidebarEntryKinds.From(filter), tree, albums, artists, shows,
-                                               addedAt, recency, firstSeen,
-                                               // Searching FLATTENS the tree; otherwise a folder is opaque until expanded.
-                                               includeFolderChildren: searching,
-                                               isFolderExpanded: searching ? null : _isFolderExpanded,
-                                               lastPlayed: lastPlayed);
+        SidebarEntriesShape shape;
+        bool qualifiers;
+        int newStamps = 0;
 
-        ResolvePins(prefs);
-        var query = new SidebarV3Query(filter, qualifier, sort, desc, search, qualifiers);
-        var shape = SidebarBinderPipeline.Shape(buffer, _scratch, in query, prefs.Pins.Items,
-                                                prefs.CanReorderV3 ? prefs.V3CustomOrder : null);
+        if (libraryRelevant)
+        {
+            var tree = library.Tree;
+            var albums = library.Albums;
+            var artists = library.Artists;
+            var shows = library.Shows;
+            var addedAt = library.AddedAt;
+
+            // navigation recency. F.7.6's exact join: the route key IS the entry id, so this is an identity lookup.
+            _visits.Clear();
+            var history = _history;
+            if (history is not null)
+            {
+                var log = history.Entries;
+                for (int i = 0; i < log.Count; i++)
+                    _visits.Add(new SidebarVisit(log[i].Route.Name, log[i].VisitedAt.ToUniversalTime().Ticks));
+            }
+            var recency = history is null
+                ? SidebarRecency.Empty
+                : SidebarRecency.Build(history.Entries, static e => e.Route.Name,
+                                       static e => e.VisitedAt.ToUniversalTime().Ticks);
+
+            // the first-observation map, seeded ONCE from the persisted document.
+            var firstSeen = _firstSeen ??= LoadFirstSeen(prefs.FirstSeen);
+
+            // THE projection. Fully flattened (folders AND all their children) because this list is the planner's
+            // `Library` slice, the feeds' join index and the pin resolver: hiding a collapsed folder's playlists here
+            // would hide them from an EntityList section too. Folder COLLAPSE is a V3-list concern, handled below.
+            var lastPlayed = _playLog?.Recency;
+            var full = SidebarProjection.Build(_all, SidebarEntryKindMask.All, tree, albums, artists, shows, addedAt,
+                                               recency, firstSeen, includeFolderChildren: true, lastPlayed: lastPlayed);
+
+            // the tree slice the planner's PlaylistTree section walks: depth-stamped, folders carried as Folder rows.
+            SidebarProjection.Build(_tree, SidebarEntryKindMask.PlaylistTree, tree, Array.Empty<Album>(),
+                                    Array.Empty<Artist>(), Array.Empty<Show>(), addedAt, recency, firstSeen,
+                                    includeFolderChildren: true, lastPlayed: lastPlayed);
+
+            _index.Rebuild(_all);
+
+            // the PUBLISHED entry list (V3 / Classic read it). Built with its own kind mask and folder-collapse rule,
+            // then filtered → sorted → pins-first by the pure pipeline.
+            bool searching = search.Length > 0;
+            qualifiers = SidebarProjection.QualifiersAvailable(full.FlavorMask);
+
+            var buffer = prefs.Entries.Buffer;
+            var v3Result = SidebarProjection.Build(buffer, SidebarEntryKinds.From(filter), tree, albums, artists, shows,
+                                                   addedAt, recency, firstSeen,
+                                                   // Searching FLATTENS the tree; otherwise a folder is opaque until expanded.
+                                                   includeFolderChildren: searching,
+                                                   isFolderExpanded: searching ? null : _isFolderExpanded,
+                                                   lastPlayed: lastPlayed);
+
+            ResolvePins(prefs);
+            // A pin the library does not contain (the Liked Songs route pin, an editorial playlist never saved, a pinned
+            // page) is absent from `buffer`, and Shape's PinsFirst cannot move what is absent — so V3 dropped exactly the
+            // pins Classic's band still drew. Append the ones this lens admits before shaping; they join the band like
+            // any other pin and answer the search like any other row.
+            SidebarBinderPipeline.AppendUnlistedPins(buffer, _unlistedPinRows, SidebarEntryKinds.From(filter));
+            var query = new SidebarV3Query(filter, qualifier, sort, desc, search, qualifiers);
+            shape = SidebarBinderPipeline.Shape(buffer, _scratch, in query, prefs.Pins.Items,
+                                                    prefs.CanReorderV3 ? prefs.V3CustomOrder : null);
+
+            newStamps = full.NewFirstSeenStamps + v3Result.NewFirstSeenStamps;
+        }
+        else if (pinsChanged)
+        {
+            // The library projection, the tree, the index and the V3 buffer's FILTERED+SORTED content are all
+            // untouched (none of the library-relevant lanes moved) — only re-resolve pins against the existing
+            // `_index` and re-shape the existing buffer. Shape's filter/sort passes are idempotent re-runs over an
+            // already-filtered-and-sorted list; only the pins-first partition actually needed this pass.
+            qualifiers = _lastQualifiers;
+            var buffer = prefs.Entries.Buffer;
+            ResolvePins(prefs);
+            SidebarBinderPipeline.AppendUnlistedPins(buffer, _unlistedPinRows, SidebarEntryKinds.From(filter));
+            var query = new SidebarV3Query(filter, qualifier, sort, desc, search, qualifiers);
+            shape = SidebarBinderPipeline.Shape(buffer, _scratch, in query, prefs.Pins.Items,
+                                                    prefs.CanReorderV3 ? prefs.V3CustomOrder : null);
+        }
+        else
+        {
+            // Neither the library nor pins moved (a feed/source-health, layout or playback-only trigger) — reuse the
+            // last published shape outright; the feed/extension/publish steps below still run unconditionally, which
+            // is what makes this kind of rebuild visible at all.
+            shape = _lastShape;
+            qualifiers = _lastQualifiers;
+        }
+        _lastShape = shape;
+        _lastQualifiers = qualifiers;
+        _hasRebuiltOnce = true;
 
         // 7 — the recency + playback feeds the planner's JumpBackIn / feed sections consume.
         _visited.Clear();
@@ -395,12 +524,17 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         // 8a — the two BUILT-IN feed kinds (NewReleases / Concerts) are served by the very same registered sources as
         //      their Extension-section form, so there is exactly one fetch, one cache and one health verdict per feed —
         //      never a second parallel input that can disagree with the contribution path.
-        FillFeed(SidebarContributions.NewReleases, _newReleases, 8);
-        FillFeed(SidebarContributions.Concerts, _concerts, 8);
+        foreach (var source in _demandSources) source.BeginDemandPass();
+        try
+        {
+            FillFeed(SidebarContributions.NewReleases, _newReleases, 8);
+            FillFeed(SidebarContributions.Concerts, _concerts, 8);
 
-        // 8b — contributions. Resolution happens AFTER the projection, so a source reading the snapshot sees this pass.
-        SidebarBinderPipeline.ResolveExtensions(prefs.Layout, _host, _extEntries, _slices, _cache, search);
-        ObserveExtensionSources(prefs.Layout);
+            // 8b — contributions. Resolution happens AFTER the projection, so a source reading the snapshot sees this pass.
+            SidebarBinderPipeline.ResolveExtensions(prefs.Layout, _host, _extEntries, _slices, _cache, search);
+            ObserveExtensionSources(prefs.Layout);
+        }
+        finally { foreach (var source in _demandSources) source.EndDemandPass(); }
 
         // 9 — publish the cell. ONE version bump per rebuild, never per entry. `_all` is also passed as the FULL
         //     projection gate: it is the planner's `Library` slice and, content-wise, a superset of `_tree` (both
@@ -410,9 +544,9 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         var (state, error) = PublishState(filter, shape.Count, anyPending);
         prefs.Entries.Publish(state, error, anyPending, qualifiers, shape.PinCount, _all);
 
-        // 10 — commit point #9: persist the document only when this pass actually observed something new.
-        int newStamps = full.NewFirstSeenStamps + v3Result.NewFirstSeenStamps;
-        if (newStamps > 0) CommitFirstSeen(prefs, firstSeen);
+        // 10 — commit point #9: persist the document only when this pass actually observed something new. `newStamps`
+        //      is 0 whenever the library-relevant stage above did not run — nothing new could have been observed.
+        if (newStamps > 0) CommitFirstSeen(prefs, _firstSeen!);
 
         // 11 — the planner input. Revision is the caller's composite epoch, echoed into every plan.
         _revision++;
@@ -445,6 +579,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     void ResolvePins(SidebarPreferences prefs)
     {
         _pinRows.Clear();
+        _unlistedPinRows.Clear();
         _pinnedIds.Clear();
         var pins = prefs.Pins.Items;
         for (int i = 0; i < pins.Count; i++)
@@ -454,120 +589,87 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
             _pinnedIds.Add(pin.Id);
             if (_index.TryGet(pin.Id, out var entry))
             {
-                _pinRows.Add(entry with { IsPinned = true, SourceOrder = i });
-                prefs.TouchPin(pin.Id, entry.Name);
+                // entry.Name can still be empty here — the library's mosaic cover/child-count resolve off the
+                // playlist's REPLICA (unconditional), independent of the PlaylistHeader facet that carries the name
+                // (see SidebarBinderPipeline.ResolveListedPin) — so fall back to the pin's own display cache instead
+                // of rendering a name-less row while the header is in flight.
+                _pinRows.Add(SidebarBinderPipeline.ResolveListedPin(pin, i, entry));
+                if (entry.Name.Length > 0) prefs.TouchPin(pin.Id, entry.Name);
                 continue;
             }
 
-            // Not in the user's own library/rootlist projection — an editorial/Spotify-owned playlist (or any other
-            // entity never saved to the library) never appears in `_index` (it is built from LibraryStore's rootlist
-            // tree + Albums/Artists/Shows only). Render the pin's own offline display cache immediately, overlaid with
-            // whatever RequestPinHydration has already resolved through the SAME catalog façade the detail page uses —
-            // and kick a hydration request the first time we see it unresolved.
-            SidebarLibraryEntry? hydrated = _pinHydration.TryGetValue(pin.Id, out var h) ? h : null;
-            _pinRows.Add(SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated));
-            if (hydrated is null) RequestPinHydration(pin);
+            var resolved = _pinQueries.TryGetValue(pin.Id, out var query) ? query.Read() : null;
+            var unlisted = SidebarBinderPipeline.ResolveUnlistedPin(pin, i, resolved);
+            _pinRows.Add(unlisted);
+            _unlistedPinRows.Add(unlisted);
+            if (resolved is { Name.Length: > 0 } latest) prefs.TouchPin(pin.Id, latest.Name);
         }
     }
 
-    // Fire-and-forget, deduped per pin id: ask Services.Library (the same façade DetailPage.LoadPlaylistAsync /
-    // LoadAlbumAsync use) for cover + track count, then post the result back onto the UI thread and nudge the binder
-    // dirty through the existing source-epoch signal — the same mechanism a contributed data source uses to say
-    // "I have more now" (OnSourceChanged). No catalog wired (a headless/offline build) ⇒ the pin stays on its display
-    // cache forever, which is the previous (correct) behaviour for those builds.
-    void RequestPinHydration(SidebarPin pin)
+    // Demand is updated from the pump effect, separately from the pure projection. An unresolved pin keeps an
+    // observable header query, including after failures; canonical freshness/backoff owns retry eligibility.
+    void SyncPinQueries()
     {
-        if (_catalog is null || pin.Uri.Length == 0) return;
-        if (!_pinHydrationInFlight.Add(pin.Id)) return;
-        _ = HydratePinAsync(pin.Id, pin.Uri, pin.Kind);
-    }
-
-    async Task HydratePinAsync(string id, string uri, SidebarEntryKind kind)
-    {
-        SidebarLibraryEntry? resolved = null;
-        try
+        if (!_started || _post is null) return;
+        var live = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var pin in _prefs.Pins.Items)
         {
-            resolved = kind switch
+            if (pin.Uri.Length == 0 || _index.TryGet(pin.Id, out _)) continue;
+            live.Add(pin.Id);
+            if (_pinQueries.TryGetValue(pin.Id, out var prior))
             {
-                SidebarEntryKind.Playlist => await HydratePlaylistAsync(uri).ConfigureAwait(false),
-                SidebarEntryKind.Album => await HydrateAlbumAsync(uri).ConfigureAwait(false),
-                SidebarEntryKind.Show => await HydrateShowAsync(uri).ConfigureAwait(false),
-                SidebarEntryKind.Artist => await HydrateArtistAsync(uri).ConfigureAwait(false),
-                _ => null,   // AppRoute / Folder / Track — no catalog fetch backs any of these
-            };
-        }
-        catch (Exception ex)
-        {
-            WaveeLog.Instance.Event(WaveeLogLevel.Warning, "sidebar", "sidebar.pin.hydrate_failed",
-                "Hydrating an unlisted pin's art/count failed.", ex: ex, fields: [WaveeLogField.Of("pin_id", id)]);
-        }
-
-        _post?.Invoke(() =>
-        {
-            if (resolved is { } r)
-            {
-                // Success: drop the in-flight marker (nothing left to dedupe) and let the row pick up the cache entry
-                // on the next ResolvePins pass.
-                _pinHydrationInFlight.Remove(id);
-                _pinHydration[id] = r;
-                OnSourceChanged();   // marks dirty + bumps _sourceEpoch, exactly like a contributed source's Changed.
+                if (prior.Uri == pin.Uri) continue;
+                prior.Binding.Dispose();
+                _pinQueries.Remove(pin.Id);
             }
-            // A miss (not found / no cover / a transport failure) DELIBERATELY stays in _pinHydrationInFlight rather
-            // than being retried next rebuild: ResolvePins runs on EVERY rebuild (a keystroke in search, a sort change,
-            // an unrelated pin mutation), and a pin pointing at a permanently-gone/unreachable entity would otherwise
-            // hit the network once per rebuild for the rest of the session. One attempt per pin per session is enough
-            // — the row still renders from its own offline display cache either way, and a restart (or the pin
-            // resolving into the library some other way) clears this set.
-        });
-    }
-
-    async Task<SidebarLibraryEntry?> HydratePlaylistAsync(string uri)
-    {
-        var p = await _catalog!.GetPlaylistAsync(uri, HydrationLevel.Open).ConfigureAwait(false);
-        if (p is null || (p.Cover is null && p.TrackCount == 0)) return null;
-        return Hydrated(SidebarEntryKind.Playlist, p.Cover, p.TrackCount, p.OwnerName);
-    }
-
-    async Task<SidebarLibraryEntry?> HydrateAlbumAsync(string uri)
-    {
-        var a = await _catalog!.GetAlbumAsync(uri, HydrationLevel.Open).ConfigureAwait(false);
-        if (a is null || (a.Cover is null && a.TrackCount == 0)) return null;
-        return Hydrated(SidebarEntryKind.Album, a.Cover, a.TrackCount, JoinArtistNames(a.Artists));
-    }
-
-    async Task<SidebarLibraryEntry?> HydrateShowAsync(string uri)
-    {
-        var s = await _catalog!.GetShowAsync(uri, HydrationLevel.Open).ConfigureAwait(false);
-        if (s is null || s.Cover is null) return null;
-        return Hydrated(SidebarEntryKind.Show, s.Cover, 0, s.Publisher);
-    }
-
-    async Task<SidebarLibraryEntry?> HydrateArtistAsync(string uri)
-    {
-        var a = await _catalog!.GetArtistAsync(uri, HydrationLevel.Open).ConfigureAwait(false);
-        if (a is null || a.Image is null) return null;
-        return Hydrated(SidebarEntryKind.Artist, a.Image, 0, "");
-    }
-
-    // A minimal carrier for the fields ResolveUnlistedPin overlays (Cover/ChildCount/Creator) — everything else on this
-    // instance is unused by the merge and never reaches a row.
-    static SidebarLibraryEntry Hydrated(SidebarEntryKind kind, Image? cover, int childCount, string creator) =>
-        new("", kind, "", "", creator, cover, null, ChildCount: childCount, AddedAtMs: 0, SortStamp: 0,
-            LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
-
-    static string JoinArtistNames(IReadOnlyList<ArtistRef> artists)
-    {
-        if (artists.Count == 0) return "";
-        if (artists.Count == 1) return artists[0].Name;
-        var sb = new StringBuilder(64);
-        int n = Math.Min(artists.Count, 3);
-        for (int i = 0; i < n; i++)
-        {
-            if (i > 0) sb.Append(", ");
-            sb.Append(artists[i].Name);
+            PinQuery? query = pin.Kind is SidebarEntryKind.Playlist or SidebarEntryKind.Album or SidebarEntryKind.Show or SidebarEntryKind.Artist
+                ? Watch(new EntityCardQuery(_scope, pin.Uri), pin.Uri,
+                    card => SidebarBinderPipeline.PinEntry(pin.Kind, card.Title, card.Image, card.ChildCount ?? 0, card.Subtitle ?? "")) : null;
+            if (query is not null) _pinQueries.Add(pin.Id, query);
         }
-        if (artists.Count > n) sb.Append('…');
-        return sb.ToString();
+        var removed = new List<string>();
+        foreach (var pair in _pinQueries) if (!live.Contains(pair.Key)) removed.Add(pair.Key);
+        foreach (var id in removed) { _pinQueries[id].Binding.Dispose(); _pinQueries.Remove(id); }
+        ApplyPinDemand();
+    }
+
+    /// <summary>Kept for the pane's realized-window effect (<c>SidebarPane.ApplyPinDemand</c>-side bookkeeping), but no
+    /// longer decides pin demand (see <see cref="ApplyPinDemand"/>) — a pin's header must resolve whether or not its
+    /// row happens to be scrolled into view (problem 2: an unlisted pinned entity below the fold sat at
+    /// <c>QueryDemand.None</c> forever, because "realized" for it was never true).</summary>
+    internal void SetPinDemand(object owner, IReadOnlySet<string>? subjects)
+    {
+        if (subjects is null || subjects.Count == 0)
+        {
+            if (!_pinDemand.Remove(owner)) return;
+        }
+        else
+        {
+            if (_pinDemand.TryGetValue(owner, out var prior) && prior.SetEquals(subjects)) return;
+            _pinDemand[owner] = new(subjects, StringComparer.Ordinal);
+        }
+        ApplyPinDemand();
+    }
+
+    /// <summary>W8/Required-B — pins are a HANDFUL of rows (unlike the library/rootlist projection, which is a
+    /// virtualized window over potentially thousands), so gating a pin's header query on the realized scroll window
+    /// is not the cost/benefit trade it is for the big lists: it bought nothing (the fetch is cheap and bounded by
+    /// the pin count) and cost a pinned-but-unlisted row's title a permanent skeleton whenever the row was not the
+    /// one currently on screen. Every pin binding therefore demands <c>Visible</c> unconditionally the moment it
+    /// exists (see <see cref="Watch{T}"/>); this method now only re-asserts that invariant after add/remove.</summary>
+    void ApplyPinDemand()
+    {
+        foreach (var pin in _pinQueries.Values)
+            pin.Binding.SetDemand(QueryDemand.Initial);
+    }
+
+    PinQuery Watch<T>(QuerySpec<T> specification, string uri, Func<T, SidebarLibraryEntry?> map)
+    {
+        var binding = new QuerySignalBinding<T>(_queries.Acquire(specification), _post!, _ => OnSourceChanged());
+        // Visible from the start (Required-B) — never QueryDemand.None waiting for a window effect to reach it.
+        binding.SetDemand(QueryDemand.Initial);
+        binding.SetActive(_active);
+        return new(uri, binding, () => map(binding.Snapshot.Peek().Value));
     }
 
     // RecentContexts allocates (a list + a dedupe set), so it is recomputed only when the log actually moved. This is also
@@ -682,36 +784,17 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         }
     }
 
-    // The skeleton gate is per CONTRIBUTING kind (a pending Shows load must not skeleton the Playlists filter).
     bool AnyContributingKindPending(SidebarV3Filter filter)
-    {
-        var kinds = SidebarEntryKinds.From(filter);
-        if ((kinds & SidebarEntryKindMask.PlaylistTree) != 0
-            && CellState(_library.PlaylistTree) == SidebarSourceState.Pending) return true;
-        if ((kinds & SidebarEntryKindMask.Album) != 0
-            && CellState(_library.Albums) == SidebarSourceState.Pending) return true;
-        if ((kinds & SidebarEntryKindMask.Artist) != 0
-            && CellState(_library.Artists) == SidebarSourceState.Pending) return true;
-        if ((kinds & SidebarEntryKindMask.Show) != 0
-            && CellState(_library.Shows) == SidebarSourceState.Pending) return true;
-        return false;
-    }
+        => _libraryQuery?.Snapshot.Peek().Status.HasPrimaryData != true;
 
     (LoadState State, Exception? Error) PublishState(SidebarV3Filter filter, int count, bool anyPending)
     {
-        var kinds = SidebarEntryKinds.From(filter);
-        // A FAILED contributing cell is the only thing that makes the whole list failed; everything else degrades to a
-        // (possibly empty) real list — the honest reading of "the library is what we could load".
-        if ((kinds & SidebarEntryKindMask.PlaylistTree) != 0 && _library.PlaylistTree.IsFailed)
-            return (LoadState.Failed, _library.PlaylistTree.Error);
-        if ((kinds & SidebarEntryKindMask.Album) != 0 && _library.Albums.IsFailed)
-            return (LoadState.Failed, _library.Albums.Error);
-        if ((kinds & SidebarEntryKindMask.Artist) != 0 && _library.Artists.IsFailed)
-            return (LoadState.Failed, _library.Artists.Error);
-        if ((kinds & SidebarEntryKindMask.Show) != 0 && _library.Shows.IsFailed)
-            return (LoadState.Failed, _library.Shows.Error);
-        // Pending ONLY while there is genuinely nothing to show: a warm list that is refreshing must not flash a skeleton.
-        return count == 0 && anyPending ? (LoadState.Pending, null) : (LoadState.Ready, null);
+        if (count > 0 || !anyPending) return (LoadState.Ready, null);
+        var snapshot = _libraryQuery?.Snapshot.Peek();
+        if (snapshot is { Status.IsRefreshing: false, Problems.Count: > 0 })
+            return (LoadState.Failed, new InvalidOperationException(snapshot.Problems[0].Error?.Message
+                ?? "The library is not available."));
+        return (LoadState.Pending, null);
     }
 
     static SidebarFirstSeen LoadFirstSeen(SidebarFirstSeenDto[]? stored)
@@ -742,15 +825,6 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         seen.ResetNewCount();
         prefs.PublishFirstSeen(dtos);
     }
-
-    static SidebarSourceState CellState<T>(Loadable<T> cell) => (LoadState)cell.State.Peek() switch
-    {
-        LoadState.Pending => SidebarSourceState.Pending,
-        LoadState.Failed => SidebarSourceState.Error,
-        _ => SidebarSourceState.Ready,
-    };
-
-    static SidebarSourceState Worst(SidebarSourceState a, SidebarSourceState b) => a > b ? a : b;
 
     // ─────────────────────────────────── triggers ───────────────────────────────────
 
@@ -812,31 +886,14 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
             PlaybackEpoch: playback);
     }
 
-    // A LibraryStore cell publishes a NEW list instance on every fill/refresh, so instance identity is an exact content
-    // epoch — a rename inside a same-length list moves it, which a Count-based epoch would miss. Reading the cell's Value
-    // signal is what SUBSCRIBES the pump to it.
+    // The decision (why VALUE identity, not Revision, is the right fold) lives in the pure, unit-tested
+    // SidebarBinderTriggers.LibraryEpochOf — LibraryDefinition.Read (CatalogQueryDefinitions.cs) always allocates a
+    // fresh LibraryQuerySnapshot when it actually re-projects, so object identity is a safe "changed" signal there.
     int Epoch(bool subscribe)
     {
-        unchecked
-        {
-            int h = 17;
-            h = h * 31 + Ref(_library.PlaylistTree, subscribe);
-            h = h * 31 + Ref(_library.Albums, subscribe);
-            h = h * 31 + Ref(_library.Artists, subscribe);
-            h = h * 31 + Ref(_library.Shows, subscribe);
-            h = h * 31 + Ref(_library.AddedAt, subscribe);
-            h = h * 31 + (subscribe ? _library.PlaylistTree.State.Value : _library.PlaylistTree.State.Peek());
-            h = h * 31 + (subscribe ? _library.Albums.State.Value : _library.Albums.State.Peek());
-            h = h * 31 + (subscribe ? _library.Artists.State.Value : _library.Artists.State.Peek());
-            h = h * 31 + (subscribe ? _library.Shows.State.Value : _library.Shows.State.Peek());
-            return h;
-        }
-    }
-
-    static int Ref<T>(Loadable<T> cell, bool subscribe)
-    {
-        var value = subscribe ? cell.Value.Value : cell.Value.Peek();
-        return value is null ? 0 : RuntimeHelpers.GetHashCode(value);
+        var snapshot = _libraryQuery is not { } query ? null
+            : subscribe ? query.Snapshot.Value : query.Snapshot.Peek();
+        return SidebarBinderTriggers.LibraryEpochOf(snapshot);
     }
 
     long PlaybackEpoch(bool subscribe)
@@ -956,6 +1013,8 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 _binder.Start(post);
             }, DepKey.FromRef(history));
             UseEffect(_binder._syncAction, DepKey.From(fold));
+            UseActivation(onActivated: () => _binder.SetActive(true), onDeactivated: () => _binder.SetActive(false));
+            UseEffect(() => (Action?)_binder.Stop, DepKey.Empty);
             return new BoxEl { HitTestVisible = false, Shrink = 0f };
         }
     }

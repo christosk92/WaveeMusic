@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -10,12 +10,13 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
 // "Your Library" — WaveeMusic's master–detail skeleton (AlbumsLibraryView / ArtistsLibraryView). A LEFT navigator (a
-// sort/view-size dropdown + filter, then a list-or-grid bound to the cached LibraryStore) and a RIGHT pane that is a
+// sort/view-size dropdown + filter, then a list-or-grid bound to a retained saved-items query) and a RIGHT pane that is a
 // COMPACT detail panel (104px hero + actions + content) for the selected item — NOT the full page. Albums/podcasts =
 // two columns; ARTISTS = three (artist list | discography | the picked release's tracks). Columns are GridSplitter-
 // resizable. Selection drives the panes via stable per-selection loadables (UseResource re-driven by the selection
@@ -64,9 +65,8 @@ sealed class LibraryPage : Component
     // the discography sync fired onDrill, skipping the collapsed discography level entirely. A programmatic sync is a
     // VIEW update, never a preference.
     bool _syncingSel;
-    // NoteNavKey's remembered identity from the PREVIOUS render — null until the first remount-diagnostic effect runs,
-    // so the very first mount never logs a spurious "remount" against nothing.
-    string? _lastOrderKey, _lastFactsKey; int _lastView = -1, _lastSize = -1, _lastCount;
+    IReadSignal<NavShape>? _navShape;
+    BoundItemsSource<NavItem>? _navSource;
 
     static readonly string[] NoSuggest = Array.Empty<string>();
     // Full-text search is the only debounced read (see Render): a fast typist fires ONE library search, not one per
@@ -116,14 +116,15 @@ sealed class LibraryPage : Component
         _aSize = new(Gi(LibraryStateKeys.AlbumSize(kind)));
     }
 
-    readonly record struct NavItem(Image? Cover, string Title, string Subtitle, string Uri, bool Circular, string RouteKey, int Year)
+    readonly record struct NavItem(Image? Cover, string Title, string Subtitle, string Uri, bool Circular, string RouteKey, int Year,
+        int SourceIndex)
     {
         public LibraryNavFacts Facts => new(Uri, Title, Subtitle, Year, Cover?.Url);
     }
 
     // One shape per render: the rows in display order plus the two identities the remount key is built from. Computed
     // ONCE so the wrapper key, the SyncNav effect key and the remount diagnostic all see the same sequence.
-    readonly record struct NavShape(NavItem[] Items, string OrderKey, string FactsKey);
+    readonly record struct NavShape(NavItem[] Items, int[] SourceIndices, string OrderKey);
 
     bool IsArtists => _kind == "artists";
     bool HasCreator => _kind != "artists";    // album → artist, podcast → publisher
@@ -133,21 +134,40 @@ sealed class LibraryPage : Component
     {
         var svc = UseContext(Services.Slot);
         _actsRef = UseContext(ActionServices.Slot);
-        var store = UseContext(LibraryStore.Slot);
         var bridge = UseContext(PlaybackBridge.Slot);
         var ui = UseContext(ShellUi.Slot);   // rail state (Task B4): the 3-column artist layout tightens its mid pane when the rail is open
-        if (svc is null || store is null) return new BoxEl { Grow = 1f };
+        if (svc is null) return new BoxEl { Grow = 1f };
         _svcRef = svc;
-        _ = svc.PlayLog.Version.Value;                                 // subscribe — a play re-orders "Recents" in place
-        var nav = Shape(Project(store), svc.PlayLog.Recency);
+        // Membership arrives independently of identity. This page owns the identities needed by its master list;
+        // the root LibraryStore query remains a membership/counts projection. Null specs preserve hook positions.
+        var albums = QueryHooks.UseMapped(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            _kind == "albums" ? new SavedAlbumsQuery(svc.CatalogScope) : null,
+            static values => values.Select((a, i) => new NavItem(a.Cover, a.Name,
+                a.Artists.Count > 0 ? a.Artists[0].Name : "", a.Uri, false, "album:" + a.Uri, a.Year, i)).ToArray(),
+            Array.Empty<NavItem>(), demand: QueryDemand.Initial);
+        var artistsMaster = QueryHooks.UseMapped(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            _kind == "artists" ? new SavedArtistsQuery(svc.CatalogScope) : null,
+            static values => values.Select((a, i) => new NavItem(a.Image, a.Name,
+                Loc.Get(Strings.Search.TypeArtist), a.Uri, true, "artist:" + a.Uri, 0, i)).ToArray(),
+            Array.Empty<NavItem>(), demand: QueryDemand.Initial);
+        var shows = QueryHooks.UseMapped(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            _kind == "podcasts" ? new SavedShowsQuery(svc.CatalogScope) : null,
+            static values => values.Select((s, i) => new NavItem(s.Cover, s.Name, s.Publisher,
+                s.Uri, false, "show:" + s.Uri, 0, i)).ToArray(),
+            Array.Empty<NavItem>(), demand: QueryDemand.Initial);
+        var master = _kind switch { "artists" => artistsMaster, "podcasts" => shows, _ => albums };
+        _ = master.Loadable.State.Value; // A successful empty result can reuse the seed array; readiness still advances.
+        var navShape = UseComputed(() =>
+        {
+            _ = svc.PlayLog.Version.Value;
+            return Shape(master.Loadable.Value.Value, svc.PlayLog.Recency);
+        });
+        _navShape = navShape;
+        _navSource = UseMemo(() => BoundItems.Project(navShape, static shape => shape.Items.Length,
+            static (shape, index) => shape.Items[index], default(NavItem)), DepKey.Empty);
+        var nav = navShape.Value;
         var shown = nav.Items;
-        // Warm the collection cover art at the kind-matched decode size the moment the list lands, so a first scroll
-        // reveals resident textures instead of decoding+uploading on the UI thread mid-scroll (the first-pass jank).
-        // Prefetch priority → background workers (visible cards still decode first); idempotent (a re-hit cache entry is a
-        // dictionary lookup), so a re-render costs nothing. The engine ImageCache + MemoryGovernor bound the residency.
-        int warmPx = _size.Value == 0 ? 64 : _size.Value == 2 ? 256 : 168;
-        foreach (var it in shown)
-            if (it.Cover?.Url is { Length: > 0 } warmUrl) PrefetchImage(warmUrl, warmPx);
+        var active = UseIsActive();
         // Full-text library search REPLACES the browse title-filter for the album/artist views: typing searches the
         // followed artists ▸ their albums ▸ tracks (artists view) or saved albums ▸ tracks (albums view), grouped +
         // highlighted. Podcasts keep the plain title filter. Cache-only + off-thread; keyed on kind+query so it re-drives
@@ -166,13 +186,19 @@ sealed class LibraryPage : Component
         // The un-answered window that the debounce opens is covered by `awaiting` below, which drives the shimmer.
         bool fullSearch = raw.Length > 0 && _kind != "podcasts" && svc.RealStore is not null;
 
+        UseEffect(() =>
+        {
+            bool browsing = !(_filter.Value.Trim().Length > 0 && _kind != "podcasts" && svc.RealStore is not null)
+                && (!_collapsed.Value || _depth.Value == 0);
+            master.Binding.Value?.SetDemand(browsing && active.Value
+                ? QueryDemand.Initial
+                : QueryDemand.None);
+        });
+
         // Keep the ItemsView SelectionModel pointed at the selected item across load/filter/sort/view + auto-select first.
         // Skips while the search results view is up — selection there is driven by result clicks. Includes fullSearch in
         // the key so toggling in/out of search re-syncs the browse selection.
         UseEffect(() => SyncNav(shown, fullSearch), nav.OrderKey + "|" + _selectedKey.Value + "|" + fullSearch);
-        // The remount diagnostic: which part of the navigator's identity changed. This is the line that names root-cause #E
-        // on a real library (a same-set republish must NOT show up here any more).
-        UseEffect(() => NoteNavKey(nav, _view.Value, _size.Value), nav.OrderKey + "|" + nav.FactsKey + "|" + _view.Value + "|" + _size.Value);
         // Persist per-kind page state (column widths persist on drag-end via the grips, NOT here). Keyed on a composite of
         // every persisted signal so it writes only on discrete user actions — never per-frame. Filter is excluded on purpose.
         UseEffect(SaveState, $"{_sort.Value}|{_desc.Value}|{_view.Value}|{_size.Value}|{_selectedKey.Value}|{_albumKey.Value}|{_aSort.Value}|{_aDesc.Value}|{_aView.Value}|{_aSize.Value}");
@@ -185,9 +211,23 @@ sealed class LibraryPage : Component
         // Hooks must NEVER be branched. All three kinds are the same LibraryPage type, so a branched hook count let the
         // reconciler reuse a sibling's hook slot → an EffectCell→AsyncResourceCell cast crash. Call all three loads
         // unconditionally in a FIXED order; the off-kind ones key on "" → resolve to Empty with no real fetch.
-        var detail = UseResource(ct => LoadDetail(svc, artists ? "" : sel, ct), DetailModel.Empty, artists ? "" : sel).Loadable;
-        var artist = UseResource(ct => LoadArtist(svc, artists ? sel : "", ct), EmptyArtist(""), artists ? sel : "").Loadable;
-        var albumTracks = UseResource(ct => LoadDetail(svc, artists ? albumKey : "", ct), DetailModel.Empty, artists ? albumKey : "").Loadable;
+        var albumDetail = QueryHooks.UseMapped(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            !artists && _kind != "podcasts" && sel.Length > 0
+                ? new AlbumDetailQuery(svc.CatalogScope, Strip(sel, "album:")) : null,
+            static album => DetailPage.MapAlbum(album), DetailModel.Empty);
+        var showDetail = QueryHooks.UseMapped(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            !artists && _kind == "podcasts" && sel.Length > 0
+                ? new ShowDetailQuery(svc.CatalogScope, Strip(sel, "show:")) : null,
+            DetailPage.MapShow, DetailModel.Empty);
+        var detailState = _kind == "podcasts" ? showDetail : albumDetail;
+        var detail = detailState.Loadable;
+        var artist = QueryHooks.Use(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            artists && sel.Length > 0 ? new ArtistIdentityQuery(svc.CatalogScope, Strip(sel, "artist:")) : null,
+            EmptyArtist("")).Loadable;
+        var albumState = QueryHooks.UseMapped(Context, static (page, value) => page.SetReady(value), svc.Queries,
+            artists && albumKey.Length > 0 ? new AlbumDetailQuery(svc.CatalogScope, Strip(albumKey, "album:")) : null,
+            static album => DetailPage.MapAlbum(album), DetailModel.Empty);
+        var albumTracks = albumState.Loadable;
         // KeepPreviousData IS the stale-while-revalidate this page used to hand-roll with a `_searchSnapshot` signal +
         // two effects: on a query change the resource holds the previous Ready results while the next ones load, so the
         // three panes never flash rows → ellipsis → rows. The snapshot is gone; the resource owns the kept value.
@@ -217,6 +257,22 @@ sealed class LibraryPage : Component
         // resets the drill-in to the master list (depth 0) so a narrow window always starts at the list.
         bool collapsed = _collapsed.Value;   // subscribe
         UseEffect(() => { if (collapsed) _depth.Value = 0; }, "collapse|" + collapsed);
+        int renderedDepth = _depth.Peek();
+        var renderedMaster = master.Loadable.Value.Peek();
+
+        // A populated master list is not the whole library reveal: its automatically selected detail pane can still
+        // be showing a skeleton. Capture only the selection represented by this render; a passive auto-selection
+        // after layout must wait for its own rendered content before it can produce the marker.
+        bool PrimaryContentReady() => _selectedKey.Peek() == sel && _albumKey.Peek() == albumKey
+            && _collapsed.Peek() == collapsed && _depth.Peek() == renderedDepth
+            && ReferenceEquals(master.Loadable.Value.Peek(), renderedMaster)
+            && _filter.Peek().Trim() == raw && (fullSearch
+                ? search.IsReady && !awaiting
+                : master.Loadable.IsReady && ((collapsed && _depth.Peek() == 0) || shown.Length == 0
+                    || (sel.Length > 0 && (artists
+                        ? artist.IsReady && (albumKey.Length == 0 || albumTracks.IsReady)
+                        : detail.IsReady && detail.Value.Peek().Title.Length > 0))));
+        var revealWatch = PageRevealWatch.Use(Context, PrimaryContentReady, "LibraryPrimaryContent");
 
         Element inner;
         if (collapsed)
@@ -236,7 +292,7 @@ sealed class LibraryPage : Component
 
         // Self-measure the content-area width (the real slot — accounts for the sidebar/rail without any ShellUi math) and
         // flip `_collapsed` across the breakpoint. Value-gated write → re-renders only on a boundary cross, no feedback loop.
-        return new BoxEl
+        return PageRevealWatch.Include(revealWatch, PrimaryContentReady(), new BoxEl
         {
             Direction = 1, Grow = 1f, AlignItems = FlexAlign.Stretch,
             OnBoundsChanged = r =>
@@ -245,8 +301,8 @@ sealed class LibraryPage : Component
                 bool c = LibraryLayoutBreakpoints.Collapsed(r.W, _collapsed.Peek());
                 if (c != _collapsed.Peek()) _collapsed.Value = c;
             },
-            Children = [inner],
-        };
+            Children = [Ctx.Provide(QueryView.Slot, fullSearch ? null : artists ? albumState.Binding : detailState.Binding, inner)],
+        });
     }
 
     void DrillToTracks() { if (_collapsed.Peek()) _depth.Value = 2; }
@@ -390,16 +446,6 @@ sealed class LibraryPage : Component
         }
     }
 
-    // ── data ──
-    NavItem[] Project(LibraryStore store) => _kind switch
-    {
-        "artists" => Warm(store.EnsureArtists, store.Artists).Select(a => new NavItem(a.Image, a.Name, Loc.Get(Strings.Search.TypeArtist), a.Uri, true, "artist:" + a.Uri, 0)).ToArray(),
-        "podcasts" => Warm(store.EnsureShows, store.Shows).Select(s => new NavItem(s.Cover, s.Name, s.Publisher, s.Uri, false, "show:" + s.Uri, 0)).ToArray(),
-        _ => Warm(store.EnsureAlbums, store.Albums).Select(a => new NavItem(a.Cover, a.Name, a.Artists.Count > 0 ? a.Artists[0].Name : "", a.Uri, false, "album:" + a.Uri, a.Year)).ToArray(),
-    };
-
-    static IReadOnlyList<T> Warm<T>(Action ensure, Loadable<IReadOnlyList<T>> cell) { ensure(); return cell.Value.Value; }
-
     // The rows in display order plus the two identities the remount key is built from (NavShape), computed ONCE per
     // render so the wrapper key, the SyncNav effect key and the remount diagnostic all agree on the same sequence. The
     // ORDER itself is a model decision (LibraryNavOrder), never a UI one: this hands over the source-ordered facts and
@@ -412,28 +458,16 @@ sealed class LibraryPage : Component
         for (int i = 0; i < arr.Length; i++) facts[i] = arr[i].Facts;
         var order = LibraryNavOrder.Order(facts, sort, desc, recency);
         var sorted = new NavItem[arr.Length];
+        var sourceIndices = new int[arr.Length];
         var sortedFacts = new LibraryNavFacts[arr.Length];
-        for (int i = 0; i < order.Length; i++) { sorted[i] = arr[order[i]]; sortedFacts[i] = facts[order[i]]; }
-        return new NavShape(sorted, LibraryNavOrder.OrderKey(sortedFacts), LibraryNavOrder.FactsKey(sortedFacts));
+        for (int i = 0; i < order.Length; i++)
+        { sorted[i] = arr[order[i]]; sourceIndices[i] = sorted[i].SourceIndex; sortedFacts[i] = facts[order[i]]; }
+        return new NavShape(sorted, sourceIndices, LibraryNavOrder.OrderKey(sortedFacts));
     }
 
     static string Strip(string key, string prefix) => key.StartsWith(prefix, StringComparison.Ordinal) ? key[prefix.Length..] : "";
     static Artist EmptyArtist(string uri) => new("", uri, "", null);
 
-    static Task<DetailModel> LoadDetail(Services svc, string routeKey, CancellationToken ct)
-    {
-        if (routeKey.Length == 0) return Task.FromResult(DetailModel.Empty);
-        var (kind, id) = DetailPage.ParseDetail(new Route(routeKey));
-        return DetailPage.LoadAsync(svc, kind, id, ct);
-    }
-
-    static Task<Artist> LoadArtist(Services svc, string routeKey, CancellationToken ct)
-    {
-        string uri = Strip(routeKey, "artist:");
-        return uri.Length == 0 ? Task.FromResult(EmptyArtist("")) : svc.Library.GetArtistAsync(uri, ct: ct);
-    }
-
-    // ── left navigator ──
     Element LeftColumn(NavShape nav, LibrarySearchResults sr, SearchSkelState skel, bool fullSearch, string sArtist, string sAlbum) => NavPanel with
     {
         Width = _leftW.Value, Shrink = 0f,
@@ -492,28 +526,26 @@ sealed class LibraryPage : Component
                 : new BoxEl { Padding = new Edges4(Spacing.M, Spacing.XL, Spacing.M, Spacing.XL), Children = [Caption("…").Secondary()] };
 
         bool grid = view >= 2; bool compact = view == 0 || view == 2;
-        // Remount ONLY when the frozen ItemsView would lie: a different row set/order (the template indexes `shown` by
-        // position), different row facts (a cover/name that landed after mount), or a different view/size (row extent +
-        // template shape). NEVER on selection and never on a same-set republish — the keys are deterministic functions of
-        // the rows (LibraryNavOrder), and _navScroll restores the offset across every remount that does happen.
-        string key = "nav:" + view + ":" + size + ":" + nav.OrderKey + ":" + nav.FactsKey;
-        var options = new ListOptions
+        string key = "nav:" + view + ":" + size;
+        var options = new ListOptions<NavItem>
         {
             SelectionMode = ItemsSelectionMode.Single, Selection = _navSel, Controller = _navCtl, Grow = 1f,
             // AccentPill IS the ListView chrome the List preset wore (SelectorVisuals.AccentPill); Border is the grid's.
             Selector = grid ? SelectorVisual.Border : SelectorVisual.AccentPill,
-            OnChange = () => OnNavSel(shown),
+            OnChange = () => OnNavSel(_navShape!.Peek().Items),
+            KeyOf = index => _navSource!.TryPeek(index, out var item) ? item.Uri ?? "empty:" + index : "empty:" + index,
             Scroll = _navScroll,
         };
         var layout = grid
             ? RepeatLayout.GridFit((compact ? 88f : 116f) + size * (compact ? 16f : 24f), 8f)
             : RepeatLayout.Stack(compact ? 40f : 60f);
-        Func<int, Element> template = grid ? i => NavCardContent(shown[i], compact) : i => NavRowContent(shown[i], compact);
+        Element Bind(BoundItemScope<NavItem> scope) => Embed.Comp(() => new LibraryBoundItem<NavItem>(scope.Item,
+            item => string.IsNullOrEmpty(item.Uri) ? new BoxEl() : grid ? NavCardContent(item, compact) : NavRowContent(item, compact)));
         return new BoxEl
         {
             Key = key, Grow = 1f, Direction = 1,
             Padding = grid ? new Edges4(Spacing.S, Spacing.S, Spacing.S, 0f) : new Edges4(0f, 0f, 0f, 0f),
-            Children = [ItemsView.Create(shown.Length, template, layout, options)],
+            Children = [ItemsView.CreateBound(_navSource!, Bind, layout, options)],
         };
     }
 
@@ -564,22 +596,6 @@ sealed class LibraryPage : Component
         if (_navSel.FirstSelectedIndex != idx) SyncSelect(_navSel, idx);
     }
 
-    // The always-on confirmation of root-cause #E: which part of the navigator's identity changed on this remount
-    // (view/size, a real order change, or a facts-only change — never selection, which is not an input to NavShape).
-    // A real library's first run states which of these actually fires on a click, instead of leaving it inferred.
-    void NoteNavKey(NavShape nav, int view, int size)
-    {
-        if (_lastOrderKey is not null)
-        {
-            string reason = view != _lastView || size != _lastSize ? "view" : nav.OrderKey != _lastOrderKey ? "order" : "facts";
-            WaveeLog.Instance.Info("ui", "library.nav.remount", "Library navigator remounted",
-                WaveeLogField.Of("kind", _kind), WaveeLogField.Of("reason", reason),
-                WaveeLogField.Of("before", _lastCount), WaveeLogField.Of("after", nav.Items.Length));
-        }
-        _lastOrderKey = nav.OrderKey; _lastFactsKey = nav.FactsKey; _lastView = view; _lastSize = size; _lastCount = nav.Items.Length;
-    }
-
-    // ── search-mode selection (drill-down) ──
     void AutoSelectTop(LibrarySearchResults sr, bool fullSearch)
     {
         if (!fullSearch) return;
@@ -885,7 +901,7 @@ sealed class LibraryPage : Component
             Key = "search:" + t.Uri + ":art=" + showArtwork, Animate = SearchRowChange,
             Direction = 0, Height = 44f, AlignItems = FlexAlign.Center, Gap = Spacing.M, ClipToBounds = true,
             Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.ControlAll,
-            OnClick = () => PlayTrack(albumUri, t.AlbumIndex),
+            OnClick = () => PlayTrack(t.AlbumIndex < 0 ? t.Uri : albumUri, t.AlbumIndex),
             Children = children.ToArray(),
         }.Interactive(Interaction.Subtle);
     }
@@ -1027,7 +1043,9 @@ sealed class LibraryDetailPane : Component
         var lib = UseContext(LibraryBridge.Slot);
         var st = (LoadState)_model.State.Value;   // subscribe
         var m = _model.Value.Value;               // subscribe
-        if (st != LoadState.Ready || m is null || m.Title.Length == 0) return Skeleton();
+        var revealWatch = UseContext(PageRevealWatch.Slot);
+        if (st != LoadState.Ready || m is null || m.Title.Length == 0)
+            return PageRevealWatch.Include(revealWatch, false, Skeleton());
 
         string uri = m.ContextUri ?? "";
         void Play() { if (uri.Length > 0) _ = _svc.Player.PlayAsync(uri, 0); }
@@ -1041,14 +1059,14 @@ sealed class LibraryDetailPane : Component
             ? ScrollView(CompactEpisodes(m.Episodes ?? Array.Empty<Episode>(), i => { if (uri.Length > 0) _ = _svc.Player.PlayAsync(uri, i); })) with { Grow = 1f }
             : Embed.Comp(() => new TrackList(_trackRoute, _model, _bridge, TrackHandlers(go, lib), showToolbar: false, embedded: true));
 
-        return new BoxEl
+        return PageRevealWatch.Include(revealWatch, true, new BoxEl
         {
             Direction = 1, Grow = 1f, ClipToBounds = true,
             // DetailNoticeBar between the actions and the list: the SAME strip the full detail page mounts, reading the
             // SAME model fact (DetailModel.Notice — for an album, "the rows below are still the minified gid-only
             // view"). Zero-height when there is nothing to say; no thin-checking here — the model already knows.
             Children = [Hero(m, go, navPreview), Actions(uri, m.Title, Play, Shuffle, _show ? null : ViewFullAlbum(m, uri, go, navPreview)), DetailNoticeBar.For(_model), body],
-        };
+        });
     }
 
     // The pane's SECOND way out (the hero title is the first — see Hero below): a plain navigation to the full album
@@ -1245,6 +1263,8 @@ sealed class LibraryArtistPane : Component
     readonly Signal<bool> _aDesc;
     readonly Signal<string> _aFilter;
     readonly Action? _onDrill;                   // collapsed drill-in: notify the host when a release is picked (→ tracks level)
+    IReadSignal<(Album[] Rows, LibraryNavFacts[] Facts, int[] SourceIndices)>? _shown;
+    BoundItemsSource<Album>? _albumSource;
     readonly SelectionModel _discoSel = new();   // discography grid single-selection (drives the 3rd column)
     readonly ItemsViewController _discoCtl = new();   // see SyncSelect: scroll a programmatically-moved pick into view
     bool _syncingSel;                            // see SyncSelect: a programmatic re-sync must not re-enter Pick
@@ -1267,9 +1287,24 @@ sealed class LibraryArtistPane : Component
         _ = svc?.PlayLog.Version.Value;
         var st = (LoadState)_artist.State.Value;   // subscribe
         var a = _artist.Value.Value;               // subscribe
-        var albums = a?.TopAlbums ?? Array.Empty<Album>();
-        var recency = svc?.PlayLog.Recency ?? EmptyRecency;
-        var (shown, facts) = FilterSortAlbums(albums, _aFilter.Value, _aSort.Value, _aDesc.Value, recency);   // subscribe (filter/sort/direction)
+        var releases = QueryHooks.Use(Context, static (page, value) => page.SetReady(value), svc?.Queries,
+            svc is not null && !string.IsNullOrEmpty(a.Uri) ? new ArtistReleasesQuery(svc.CatalogScope, a.Uri) : null,
+            new Wavee.Core.DiscographyPage([], 0), demand: QueryDemand.Initial);
+        var releaseState = (LoadState)releases.Loadable.State.Value;
+        var projection = UseComputed(() =>
+        {
+            _ = svc?.PlayLog.Version.Value;
+            return FilterSortAlbums(releases.Loadable.Value.Value.Items, _aFilter.Value,
+                _aSort.Value, _aDesc.Value, svc?.PlayLog.Recency ?? EmptyRecency);
+        });
+        _shown = projection;
+        _albumSource = UseMemo(() => BoundItems.Project(projection, static value => value.Rows.Length,
+            static (value, index) => value.Rows[index], default(Album)!), DepKey.Empty);
+        var (shown, facts, _) = projection.Value;
+        UseEffect(() =>
+        {
+            releases.Binding.Value?.SetDemand(QueryDemand.Initial);
+        });
         // Keep the discography selection synced to the chosen release — UNCONDITIONAL hook, BEFORE any early return (else
         // the effect-slot count changes when the artist flips Pending→Ready → an out-of-range hook crash). Driven off the
         // SHOWN (filtered/sorted) list so the selection index matches the rendered ItemsView. Keyed on OrderKey (not
@@ -1278,7 +1313,9 @@ sealed class LibraryArtistPane : Component
 
         // The toolbar (album sort/view controls + Filter + "Go to artist") renders even while the artist loads; only the
         // body swaps skeleton→grid/list. So the controls never flash in/out and stay put across a selection change.
-        Element body = (st != LoadState.Ready || a is null || a.Name.Length == 0) ? Skeleton() : Body(shown, facts, a?.Uri ?? "");
+        Element body = releaseState == LoadState.Failed ? ErrorState.Build(releases.Loadable.Error)
+            : (st != LoadState.Ready || a.Name.Length == 0 || releaseState != LoadState.Ready) ? Skeleton()
+            : Body(shown, facts, a.Uri);
         return new BoxEl
         {
             Direction = 1, Grow = 1f, ClipToBounds = true,
@@ -1337,17 +1374,20 @@ sealed class LibraryArtistPane : Component
 
     // Filter (title contains) + the shared library order over the artist's releases. Source order = the API's
     // (≈ release-date desc), which is what "Recents" falls back to for releases you have never played.
-    static (Album[] Rows, LibraryNavFacts[] Facts) FilterSortAlbums(IReadOnlyList<Album> albums, string filter, int sort, bool desc,
+    static (Album[] Rows, LibraryNavFacts[] Facts, int[] SourceIndices) FilterSortAlbums(IReadOnlyList<Album> albums, string filter, int sort, bool desc,
                                                                     IReadOnlyDictionary<string, long> recency)
     {
         string q = filter.Trim();
-        var arr = (q.Length == 0 ? albums : albums.Where(al => al.Name.Contains(q, StringComparison.OrdinalIgnoreCase))).ToArray();
+        var indices = Enumerable.Range(0, albums.Count)
+            .Where(i => q.Length == 0 || albums[i].Name.Contains(q, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var arr = indices.Select(i => albums[i]).ToArray();
         var facts = new LibraryNavFacts[arr.Length];
         for (int i = 0; i < arr.Length; i++) facts[i] = new(arr[i].Uri, arr[i].Name, "", arr[i].Year, arr[i].Cover?.Url);
         var order = LibraryNavOrder.Order(facts, (LibraryNavSort)sort, desc, recency);
-        var rows = new Album[arr.Length]; var sorted = new LibraryNavFacts[arr.Length];
-        for (int i = 0; i < order.Length; i++) { rows[i] = arr[order[i]]; sorted[i] = facts[order[i]]; }
-        return (rows, sorted);
+        var rows = new Album[arr.Length]; var sorted = new LibraryNavFacts[arr.Length]; var sourceIndices = new int[arr.Length];
+        for (int i = 0; i < order.Length; i++)
+        { rows[i] = arr[order[i]]; sorted[i] = facts[order[i]]; sourceIndices[i] = indices[order[i]]; }
+        return (rows, sorted, sourceIndices);
     }
 
     // Grid (view>=2) vs list, grid-size S/M/L — the SAME view-type semantics as the left picker's ListBody. Keyed by
@@ -1356,14 +1396,19 @@ sealed class LibraryArtistPane : Component
     Element Body(Album[] albums, LibraryNavFacts[] facts, string artistUri)
     {
         if (albums.Length == 0)
-            return _aFilter.Peek().Length > 0
-                ? EmptyState.Compact(Loc.Get(Strings.Library.NoMatch))
-                : new BoxEl { Padding = new Edges4(Spacing.M, Spacing.XL, Spacing.M, Spacing.XL), Children = [Caption("…").Secondary()] };
+            return EmptyState.Compact(Loc.Get(Strings.Library.NoMatch));
 
         int view = _aView.Value, size = _aSize.Value;   // subscribe
         bool grid = view >= 2, compact = view == 0 || view == 2;
-        string key = "disco:" + view + ":" + size + ":" + LibraryNavOrder.OrderKey(facts);
-        void Pick(int i) { if (_syncingSel || i < 0 || i >= albums.Length) return; _albumKey.Value = "album:" + albums[i].Uri; _onDrill?.Invoke(); }
+        string key = "disco:" + artistUri + ":" + view + ":" + size;
+        void Pick(int i)
+        {
+            var current = _shown!.Peek().Rows;
+            if (_syncingSel || i < 0 || i >= current.Length) return;
+            _albumKey.Value = "album:" + current[i].Uri; _onDrill?.Invoke();
+        }
+        Element Bind(BoundItemScope<Album> scope) => Embed.Comp(() => new LibraryBoundItem<Album>(scope.Item,
+            album => album is null ? new BoxEl() : grid ? DiscoCardContent(album, compact) : DiscoRowContent(album, compact)));
         // ScrollKey scoped to the artist: switching artists is a legitimate remount (a different discography), so each
         // one gets its own restored offset rather than inheriting the previous artist's scroll position.
         var scroll = new ScrollOptions { ScrollKey = "lib:disco:" + artistUri };
@@ -1373,9 +1418,9 @@ sealed class LibraryArtistPane : Component
             {
                 Key = key, Grow = 1f, Basis = 0f, MinHeight = 0f, Direction = 1, ClipToBounds = true,
                 Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-                Children = [ItemsView.Create(albums.Length, i => DiscoCardContent(albums[i], compact),
+                Children = [ItemsView.CreateBound(_albumSource!, Bind,
                     RepeatLayout.GridFit((compact ? 84f : 100f) + size * (compact ? 16f : 24f), 8f),
-                    new ListOptions { SelectionMode = ItemsSelectionMode.Single, Selection = _discoSel, Selector = SelectorVisual.Border, OnChange = () => Pick(_discoSel.FirstSelectedIndex), Controller = _discoCtl, Grow = 1f, Scroll = scroll })],
+                    new ListOptions<Album> { KeyOf = index => _albumSource!.TryPeek(index, out var album) ? album.Uri : "empty:" + index, SelectionMode = ItemsSelectionMode.Single, Selection = _discoSel, Selector = SelectorVisual.Border, OnChange = () => Pick(_discoSel.FirstSelectedIndex), Controller = _discoCtl, Grow = 1f, Scroll = scroll })],
             };
 
         return new BoxEl
@@ -1383,9 +1428,9 @@ sealed class LibraryArtistPane : Component
             Key = key, Grow = 1f, Basis = 0f, MinHeight = 0f, Direction = 1,
             // AccentPill: the same ListView chrome the ItemsView.List preset wore before this arm moved off it (see
             // LibraryPage.ListBody) — needed here only because ScrollOptions is otherwise unreachable through the preset.
-            Children = [ItemsView.Create(albums.Length, i => DiscoRowContent(albums[i], compact),
+            Children = [ItemsView.CreateBound(_albumSource!, Bind,
                 RepeatLayout.Stack(compact ? 44f : 60f),
-                new ListOptions { SelectionMode = ItemsSelectionMode.Single, Selection = _discoSel, Selector = SelectorVisual.AccentPill, OnChange = () => Pick(_discoSel.FirstSelectedIndex), Controller = _discoCtl, Grow = 1f, Scroll = scroll })],
+                new ListOptions<Album> { KeyOf = index => _albumSource!.TryPeek(index, out var album) ? album.Uri : "empty:" + index, SelectionMode = ItemsSelectionMode.Single, Selection = _discoSel, Selector = SelectorVisual.AccentPill, OnChange = () => Pick(_discoSel.FirstSelectedIndex), Controller = _discoCtl, Grow = 1f, Scroll = scroll })],
         };
     }
 
@@ -1476,4 +1521,10 @@ sealed class LibraryArtistPane : Component
         Direction = 1, Grow = 1f, Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, Spacing.M), Gap = Spacing.S,
         Children = Enumerable.Range(0, 8).Select(_ => (Element)new BoxEl { Height = 148f, Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardDefault }).ToArray(),
     };
+}
+
+// Each mounted row resolves the current item signal. Layout changes still key the containing navigator by geometry.
+sealed class LibraryBoundItem<T>(IReadSignal<T> item, Func<T, Element> template) : Component
+{
+    public override Element Render() => template(item.Value);
 }

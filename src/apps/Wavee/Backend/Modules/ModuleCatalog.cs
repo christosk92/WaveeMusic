@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using Wavee;
 using Wavee.Sdk;
 using Wavee.Sdk.Protocol;
 
@@ -89,13 +90,11 @@ public sealed class ModuleCatalog
     public static string DefaultBundledRoot => Path.Combine(AppContext.BaseDirectory, "modules");
 
     /// <summary>The user store: <c>%LOCALAPPDATA%\Wavee\modules</c>.</summary>
-    public static string DefaultUserRoot => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "modules");
+    public static string DefaultUserRoot => UnpackagedAppDataRoot.UnderCurrent("modules");
 
-    /// <summary>A module's private, writable data directory: <c>%LOCALAPPDATA%\Wavee\modules-data\&lt;id&gt;</c>.</summary>
+    /// <summary>A module's private, writable data directory: <c>{app-data-root}\modules-data\&lt;id&gt;</c>.</summary>
     /// <param name="moduleId">The module id.</param>
-    public static string DataDirFor(string moduleId) => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "modules-data", moduleId);
+    public static string DataDirFor(string moduleId) => UnpackagedAppDataRoot.UnderCurrent("modules-data", moduleId);
 
     /// <summary>An empty catalog — the honest answer for a build with no modules root at all.</summary>
     public static ModuleCatalog Empty { get; } =

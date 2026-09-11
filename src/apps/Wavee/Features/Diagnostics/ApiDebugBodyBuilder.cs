@@ -49,12 +49,20 @@ static class ApiDebugBodyBuilder
         return (lines, null);
     }
 
-    // THE routing-kind → catalogue-kind map, the same one every ladder uses. A playlist infers LIST_METADATA_V2 here
-    // too, which the old EntityRef-based copy could not express.
+    // Diagnostics accepts arbitrary XM requests; playlist headers in the application use playlist4 instead.
     static Xm.ExtensionKind InferKind(string uri)
     {
-        try { return XmKinds.CatalogKindOf(EntityUri.KindOf(uri)); }
-        catch { return Xm.ExtensionKind.UnknownExtension; }
+        return EntityUri.KindOf(uri) switch
+        {
+            Wavee.Core.EntityKind.Track => Xm.ExtensionKind.TrackV4,
+            Wavee.Core.EntityKind.Episode => Xm.ExtensionKind.EpisodeV4,
+            Wavee.Core.EntityKind.Album => Xm.ExtensionKind.AlbumV4,
+            Wavee.Core.EntityKind.Artist => Xm.ExtensionKind.ArtistV4,
+            Wavee.Core.EntityKind.Show => Xm.ExtensionKind.ShowV4,
+            Wavee.Core.EntityKind.User => Xm.ExtensionKind.UserProfile,
+            Wavee.Core.EntityKind.Playlist => Xm.ExtensionKind.ListMetadataV2,
+            _ => Xm.ExtensionKind.UnknownExtension,
+        };
     }
 
     public static (byte[] Gzipped, Xm.BatchedEntityRequest Plain, string? Error) BuildExtendedMetadata(

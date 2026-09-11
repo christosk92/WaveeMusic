@@ -3,8 +3,17 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Core;
+using Wavee.Backend.Sync;
 
 namespace Wavee.Backend;
+
+/// <summary>The write-back half of the pin sync bridge (App/SidebarPinSync.cs): pin/unpin in Spotify's ylpin set.
+/// Implemented by <see cref="EngineMutationSource"/> so the bridge is testable with a recording fake — same shape
+/// as <c>IMutationSource.SetSavedAsync</c> minus the set inference (a pin is a pin whatever the entity kind).</summary>
+public interface IPinMutations
+{
+    Task SetPinnedAsync(string wireUri, bool pinned, CancellationToken ct = default);
+}
 
 // ── §7 — the thin SEAM ADAPTERS (engines → Wavee.Core facets) ────────────────────────────────────────────────────────
 // The plan's "facet adapters present the engines as the seam." These wire the store + mutation/session engines behind the
@@ -13,21 +22,20 @@ namespace Wavee.Backend;
 
 /// <summary>IMutationSource over the store + the Mutation engine: SetSavedAsync = optimistic Save + drain; the Saved set
 /// mirrors the store and emits on every change (the bridge mirrors it into an engine Signal).</summary>
-public sealed class EngineMutationSource : IMutationSource, IDisposable
+public sealed class EngineMutationSource : IMutationSource, IPinMutations, IDisposable
 {
     readonly IStore _store;
     readonly MutationEngine _mut;
-    readonly ITransport _transport;
-    readonly Func<SessionContext> _ctx;
+    readonly IRootlistCommandQueue _commands;
     readonly string _setId;
     readonly SimpleSubject<IReadOnlySet<string>> _savedChanged;
     readonly IDisposable _sub;
     readonly object _savedGate = new();
     HashSet<string> _saved;   // immutable snapshot, swapped under _savedGate; readers (IsSaved/Saved) read the reference lock-free
 
-    public EngineMutationSource(IStore store, MutationEngine mut, ITransport transport, Func<SessionContext> ctx, string setId = "liked")
+    public EngineMutationSource(IStore store, MutationEngine mut, IRootlistCommandQueue commands, string setId = "liked")
     {
-        _store = store; _mut = mut; _transport = transport; _ctx = ctx; _setId = setId;
+        _store = store; _mut = mut; _commands = commands; _setId = setId;
         _saved = BuildUnion(store);
         _savedChanged = new SimpleSubject<IReadOnlySet<string>>(_saved);
         _sub = store.Changes.Subscribe(Observers.From<StoreChange>(OnStoreChange));
@@ -44,17 +52,25 @@ public sealed class EngineMutationSource : IMutationSource, IDisposable
     /// <summary>Set at go-live (§6 hardening): routes the post-write drain through the LibrarySync loop so replay/
     /// reconcile serializes with inbound diffs instead of racing them from the caller's thread. Null (offline / tests /
     /// fake backend) keeps the inline drain. GoOffline resets it to null.</summary>
-    public Action? ScheduleDrain { get; set; }
 
     public async Task SetSavedAsync(string uri, bool saved, CancellationToken ct = default)
     {
         // store.SetSaved → Bump → OnStoreChange updates _saved + emits, synchronously — no explicit recompute needed.
         // §2.5 — a playlist follow/unfollow is a rootlist ADD/REM (routed to Follow), NOT a collection set write; every other
         // uri kind is a collection save with the set inferred from the uri kind.
-        if (EntityUri.KindOf(uri) == EntityKind.Playlist) _mut.Follow(uri, saved);
-        else _mut.Save(SetForUri(uri), uri, saved);                        // optimistic + outbox; set inferred from the uri kind
-        if (ScheduleDrain is { } viaLoop) { viaLoop(); return; }           // §6 — the loop drains, serialized with inbound
-        await _mut.Drain(_transport, _ctx(), ct).ConfigureAwait(false);    // replay + reconcile (stub transport = succeeds)
+        if (EntityUri.KindOf(uri) == EntityKind.Playlist) await _mut.FollowAsync(uri, saved, ct: ct).ConfigureAwait(false);
+        else await _mut.SaveAsync(SetForUri(uri), uri, saved, ct).ConfigureAwait(false);                        // optimistic + outbox; set inferred from the uri kind
+        await _commands.DrainWritesAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Pin / unpin in Spotify's ylpin set (the "pins" logical set — <see cref="IPinMutations"/>). Same shape as
+    /// <see cref="SetSavedAsync"/> minus the set inference (a pin is a pin whatever the entity kind: a playlist, an
+    /// album, an artist, a show, or the Liked Songs collection), same drain routing. Deliberately NOT folded into
+    /// <see cref="AllSets"/>/<see cref="Saved"/> — a pinned album is not a saved album (§1.3).</summary>
+    public async Task SetPinnedAsync(string wireUri, bool pinned, CancellationToken ct = default)
+    {
+        await _mut.SaveAsync("pins", wireUri, pinned, ct).ConfigureAwait(false);                                   // optimistic Pending row + durable outbox op
+        await _commands.DrainWritesAsync(ct).ConfigureAwait(false);
     }
 
     // Incremental: a single change costs an O(1) IsSaved lookup, not an O(saved-set) rebuild + SetEquals on EVERY store

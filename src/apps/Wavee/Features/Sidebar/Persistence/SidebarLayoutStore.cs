@@ -73,9 +73,11 @@ public readonly record struct SidebarWriteResult(
 // _seq, so a burst of editor commands produces ONE file write.
 public sealed class SidebarLayoutStore
 {
-    /// <summary>2 = LAYOUT V2 (extension refs, action bindings, query uri sets). v1 upgrades by IDENTITY, so an existing
-    /// document loads unchanged and re-stamps itself on the next ordinary commit — see <see cref="SidebarLayoutMigrations"/>.</summary>
-    public const int CurrentVersion = 2;
+    /// <summary>3 = LAYOUT V3 (W7: the retired "local" route is pruned from every section, every child section and the
+    /// top bar). 2 = LAYOUT V2 (extension refs, action bindings, query uri sets); v1 upgrades by IDENTITY. Both steps
+    /// run automatically on load — see <see cref="SidebarLayoutMigrations"/> — so an existing document loads unchanged
+    /// apart from that one prune and re-stamps itself on the next ordinary commit.</summary>
+    public const int CurrentVersion = 3;
 
     /// <summary>The whole-document budget (the platform doc's 2 MiB). Checked against the SERIALIZED bytes, before any
     /// file is created: an over-budget snapshot is dropped whole and classified as
@@ -107,11 +109,10 @@ public sealed class SidebarLayoutStore
 
     public static SidebarLayoutStore ForApp() => new(DefaultPath());
 
-    /// <summary>%LOCALAPPDATA%\Wavee\WaveeMusic\sidebar-layout.json — BESIDE history.json (locked decision 8). Mirrors
-    /// <c>WaveeShell.HistoryFilePath()</c>. No directory is created here; the first write creates it.</summary>
-    public static string DefaultPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Wavee", "WaveeMusic", "sidebar-layout.json");
+    /// <summary>%LOCALAPPDATA%\{Wavee|Wavee-fake}\WaveeMusic\sidebar-layout.json — BESIDE history.json (locked
+    /// decision 8). Goes through <see cref="UnpackagedAppDataRoot"/> so a <c>--fake</c> run cannot write FakeData
+    /// titles into the real user's layout document. No directory is created here; the first write creates it.</summary>
+    public static string DefaultPath() => UnpackagedAppDataRoot.MusicFile("sidebar-layout.json");
 
     public string FilePath => _path;
     public string BakPath => _path + ".bak";

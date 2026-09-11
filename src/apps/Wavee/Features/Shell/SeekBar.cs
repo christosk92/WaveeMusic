@@ -33,8 +33,7 @@ enum SeekRailMode : byte
 //      fraction (scrubbing ? scrubFrac : playing ? interpolated : positionFrac).
 //   2. SMOOTH PLAYHEAD. The transport only reports position ~1 Hz, so a raw bind steps once a second (jerky). While
 //      playing we interpolate between ticks on a pixel-due UseInterval, anchored to the wall-clock at the last tick.
-//   3. CLICK-ANYWHERE SCRUB modeled on ScrollBar's thumb-drag (grab on down, normalized 0..1 on drag), committing on
-//      the drag-end (OnClick) so we issue ONE SeekAsync, not one per move.
+//   3. Audible local scrub previews are coalesced at 100 ms; release commits accurately and waits for its receipt.
 //
 // Cost discipline (signals-first): this is a leaf sub-component. The fill/thumb position is a compositor Transform BIND
 // reading ONE signal (_displayFrac) — it NEVER re-renders this component. While playing, a mounted SeekTicker advances
@@ -57,6 +56,14 @@ sealed class SeekBar : Component
     // The single value the fill/thumb compositor binds read. Advanced per frame by SeekTicker while playing; set
     // directly from PositionFrac when paused; set to the finger position while scrubbing.
     readonly FloatSignal _displayFrac = new(0f);
+    FluentGpu.Media.SeekPreviewScheduler _previews;
+    string? _gestureTrackUri;
+    long _gestureGeneration;
+    string? _gestureDevice;
+    long _gestureStartMs;
+    bool _previewIssued;
+    IOverlayService _overlay = null!;
+    OverlayHandle? _tip;
 
     NodeHandle _self;
     NodeHandle _thumb;
@@ -79,11 +86,20 @@ sealed class SeekBar : Component
         // never from Render, so it must not subscribe anything.
         LiveWindow live = _b.Live.Peek();
         bool dvr = live.IsLive && live.HasWindow;
-        bool advancing = _b.IsPlaying.Peek() && !_b.IsBuffering.Peek();
+        if (_b.SeekTargetMs.Peek() is { } target)
+        {
+            long duration = _b.DurationMs.Peek();
+            Publish(dvr ? (float)LiveRail.DisplayFrac(live.SeekableStartMs, live.SeekableEndMs, target, true)
+                : duration > 0 ? Math.Clamp(target / (float)duration, 0f, 1f) : 0f);
+            return;
+        }
+        var transport = _b.Transport.Peek();
+        bool advancing = transport.OutputAdvancing && !_b.IsBuffering.Peek();
         // The smooth playhead: the transport reports position ~1 Hz, so between ticks we extrapolate from the wall-clock
         // anchor. ONE playhead for both rails — a DVR window's fraction is computed from the same interpolated number a
         // track's is, so the fill advances at the playhead's rate and not at the window's republish rate.
         long est = advancing ? _tickPosMs + (Environment.TickCount64 - _tickWallMs) : live.PositionMs;
+        if (transport.PositionUpperBoundMs is { } submitted) est = Math.Min(est, submitted);
         if (dvr)
         {
             // AT EDGE the rail SNAPS FULL (LiveRail.DisplayFrac): the honest measurement against two ends that both keep
@@ -122,13 +138,15 @@ sealed class SeekBar : Component
     public override Element Render()
     {
         var b = _b;
+        _overlay = UseRequiredContext(Overlay.Service);
+        UseEffect(() => () => ReleaseGesture(), DepKey.Empty);
 
         // Derive `enabled` REACTIVELY from the bridge signals (NOT a ctor-frozen field). The reconciler reuses a mounted
         // ComponentEl across re-renders without re-invoking the factory (Reconciler.Update: same ComponentType → early
         // return), so a ctor-frozen flag would stick at its first-mount value (false, before the track resolves) forever.
         // Reading the signals here re-renders the bar on the enabling transition, which re-installs the interaction
         // handlers (OnClick/OnPointerDown/OnDrag run on every reconcile). Mirrors PlayerBar's `active`.
-        bool enabled = b.CurrentTrack.Value != null && b.Error.Value == null && !b.IsLoading.Value && b.CanSeek.Value;
+        bool enabled = b.CurrentTrack.Value != null && b.Error.Value == null && b.CanSeek.Value;
 
         // WHAT the rail is. Derived through a MEMO, not read straight off `Live`: the host republishes the window
         // several times a second (the positions inside it move), and this component only cares about the three-way
@@ -173,6 +191,18 @@ sealed class SeekBar : Component
             _tickPosMs = b.PositionMs.Peek();
             Recompute();
         }, playing);
+
+        UseEffect(() =>
+        {
+            _ = b.SeekTargetMs.Value;
+            var transport = b.Transport.Value;
+            string? device = transport.ItemGeneration > 0 ? null : b.ActiveDeviceId.Value;
+            string? uri = b.CurrentTrack.Value?.Uri;
+            if (_gestureTrackUri is not null && (uri != _gestureTrackUri || transport.ItemGeneration != _gestureGeneration
+                || device != _gestureDevice))
+                ReleaseGesture();
+            Recompute();
+        });
 
         // Fill: a full-width accent bar scaled from the LEFT edge by _displayFrac. TransformOriginX=0 makes the bound
         // Scale pivot on the left (SceneRecorder: world ∘ T(ox,oy) ∘ Local ∘ T(-ox,-oy), ox = W·OriginX = 0), so the
@@ -285,13 +315,16 @@ sealed class SeekBar : Component
         // panel rate via FrameClockPoller). Unmounts when paused/stopped so the frame loop idles. NEVER re-renders us.
         bool canAdvance = b.CurrentTrack.Peek() is not null && b.Error.Peek() is null && !b.IsLoading.Peek()
             && playing && !buffering;
-        Element? ticker = canAdvance ? Embed.Comp(() => new SeekTicker { Owner = this }) : null;
+        Element? ticker = canAdvance ? Embed.Comp(() => new SeekTicker { Owner = this }) with { Key = "position-ticker" } : null;
+        Element? previewTicker = _scrubbing.Value
+            ? Embed.Comp(() => new ScrubPreviewTicker { Owner = this }) with { Key = "preview-ticker" } : null;
 
         // The interactive row. Click-anywhere + drag scrub; OnClick is the drag-END commit edge (single SeekAsync).
         return new BoxEl
         {
             Grow = 1f, Height = HitHeight, Direction = 0, AlignItems = FlexAlign.Center,
             Role = AutomationRole.Slider,
+            Focusable = enabled,
             Cursor = enabled ? CursorId.Hand : (CursorId?)null,
             IsEnabled = enabled,
             // OnRealized is MOUNT-ONLY (BindNode wires it once and ignores it on re-render). Set it UNCONDITIONALLY so
@@ -303,7 +336,10 @@ sealed class SeekBar : Component
             OnDrag = enabled ? OnDrag : null,
             OnClick = enabled ? OnCommit : null,            // drag-end → commit
             OnDragCanceled = enabled ? OnCanceled : null,
-            Children = ticker is null ? [stack] : [stack, ticker],
+            OnKeyDown = enabled ? OnKeyDown : null,
+            Children = ticker is not null
+                ? previewTicker is not null ? [stack, ticker, previewTicker] : [stack, ticker]
+                : previewTicker is not null ? [stack, previewTicker] : [stack],
         };
     }
 
@@ -368,30 +404,39 @@ sealed class SeekBar : Component
 
     // Defensive re-derive for the pointer handlers (Peek — no render subscription). Handlers are only WIRED when enabled,
     // but this guards a stale fire during the disabling transition. Mirrors the Render derivation.
-    bool Enabled() => _b.CurrentTrack.Peek() != null && _b.Error.Peek() == null && !_b.IsLoading.Peek() && _b.CanSeek.Peek();
+    bool Enabled() => _b.CurrentTrack.Peek() != null && _b.Error.Peek() == null && _b.CanSeek.Peek();
 
     void OnDown(Point2 local)
     {
         if (!Enabled()) return;
         RefreshWidth();                                     // grip moves with the layout — re-read each gesture
+        _gestureTrackUri = _b.CurrentTrack.Peek()?.Uri;
+        _gestureGeneration = _b.Transport.Peek().ItemGeneration;
+        _gestureDevice = _gestureGeneration > 0 ? null : _b.ActiveDeviceId.Peek();
+        _gestureStartMs = _b.PositionMs.Peek();
+        _previews.Reset();
+        _previewIssued = false;
         _scrubbing.Value = true;
         _scrubFrac.Value = Frac(local.X);                  // click-anywhere: jump to the press point
         _displayFrac.Value = _scrubFrac.Peek();            // paint the jump immediately
+        QueuePreview();
+        OpenTip();
     }
 
     void OnDrag(Point2 local)
     {
-        if (!Enabled()) return;
+        if (!Enabled() || !GestureIsCurrent()) return;
         // OnDrag now delivers UNCLAMPED local coords — clamp the fraction ourselves.
         _scrubFrac.Value = Frac(local.X);
         _displayFrac.Value = _scrubFrac.Peek();
+        QueuePreview();
     }
 
     void OnCommit()
     {
         // Always release the scrub gate — bailing out with _scrubbing still true would freeze
         // _displayFrac at the abandoned finger position until the next successful commit.
-        if (!Enabled()) { OnCanceled(); return; }
+        if (!Enabled() || !GestureIsCurrent()) { ReleaseGesture(); return; }
         LiveWindow live = _b.Live.Peek();
         bool dvr = live.IsLive && live.HasWindow;
         long dur = _b.DurationMs.Peek();
@@ -402,18 +447,113 @@ sealed class SeekBar : Component
         long targetMs = dvr
             ? LiveRail.Seek(live.SeekableStartMs, live.SeekableEndMs, f)
             : Math.Clamp((long)(f * dur), 0, dur);
-        _b.CommitSeek(targetMs);                            // arms the latch, optimistically publishes PositionMs, issues the accurate seek
-        _b.PositionFrac.Value = f;                         // optimistic: paint the new position immediately (the DVR-rail fraction, not ms/dur)
-        _tickWallMs = Environment.TickCount64;
-        _tickPosMs = targetMs;
-        _scrubbing.Value = false;                          // release the scrub gate (PositionFrac/interp resume)
+        _previews.DiscardPending();
+        _b.CommitSeek(targetMs);
+        ReleaseGesture();
         Recompute();
     }
 
     void OnCanceled()
     {
-        _scrubbing.Value = false;
+        bool restore = _previewIssued && Enabled() && GestureIsCurrent();
+        long original = _gestureStartMs;
+        ReleaseGesture();
+        if (restore)
+        {
+            LiveWindow live = _b.Live.Peek();
+            if (live.IsLive && live.HasWindow)
+                original = Math.Clamp(original, live.SeekableStartMs, live.SeekableEndMs);
+            _b.CommitSeek(original);
+        }
         Recompute();
+    }
+
+    void ReleaseGesture()
+    {
+        if (_tip is { IsOpen: true } tip) tip.Close();
+        _tip = null;
+        _previews.Reset();
+        _gestureTrackUri = null;
+        _previewIssued = false;
+        _b.ScrubTargetMs.Value = null;
+        _scrubbing.Value = false;
+    }
+
+    bool GestureIsCurrent() => _scrubbing.Peek()
+        && _gestureTrackUri == _b.CurrentTrack.Peek()?.Uri
+        && _gestureGeneration == _b.Transport.Peek().ItemGeneration
+        && _gestureDevice == (_b.Transport.Peek().ItemGeneration > 0 ? null : _b.ActiveDeviceId.Peek());
+
+    void QueuePreview()
+    {
+        LiveWindow live = _b.Live.Peek();
+        long duration = _b.DurationMs.Peek();
+        long target = live.IsLive && live.HasWindow
+            ? LiveRail.Seek(live.SeekableStartMs, live.SeekableEndMs, _scrubFrac.Peek())
+            : Math.Clamp((long)(_scrubFrac.Peek() * duration), 0, Math.Max(0, duration));
+        _b.ScrubTargetMs.Value = target;
+        if (_b.CanPreviewSeek) _previews.Queue(target);
+        DrainPreview();
+    }
+
+    internal void DrainPreview()
+    {
+        if (!GestureIsCurrent() || !Enabled()) return;
+        if (_previews.TryTake(Environment.TickCount64, out long target))
+        {
+            _previewIssued = true;
+            _b.PreviewSeek(target);
+        }
+    }
+
+    void OpenTip()
+    {
+        if (_tip is { IsOpen: true } || _thumb.IsNull) return;
+        _tip = _overlay.Open(() => _thumb, () => new BoxEl
+        {
+            Acrylic = Tok.AcrylicFlyout,
+            BorderColor = Tok.StrokeFlyoutDefault,
+            BorderWidth = 1f,
+            Corners = Radii.ControlAll,
+            Shadow = Elevation.Flyout,
+            Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS),
+            HitTestVisible = false,
+            Children = [Caption("") with
+            {
+                Text = Prop.Of(() => TimeFormat.Clock(_b.ScrubTargetMs.Value ?? _b.SeekTargetMs.Value ?? _b.PositionMs.Value)),
+                Color = Tok.TextPrimary,
+            }],
+        }, FlyoutPlacement.Top, new PopupOptions(FocusTrap: false,
+            DismissBehavior: DismissBehavior.None, Chrome: PopupChrome.Raw));
+    }
+
+    void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Escape && _scrubbing.Peek())
+        {
+            e.Handled = true;
+            OnCanceled();
+            return;
+        }
+        if (!Enabled()) return;
+        long position = _b.SeekTargetMs.Peek() ?? _b.PositionMs.Peek();
+        long target;
+        switch (e.KeyCode)
+        {
+            case Keys.Left: case Keys.Down: target = position - 5_000; break;
+            case Keys.Right: case Keys.Up: target = position + 5_000; break;
+            case Keys.Home: target = 0; break;
+            case Keys.End: target = _b.DurationMs.Peek(); break;
+            default: return;
+        }
+        LiveWindow live = _b.Live.Peek();
+        if (live.IsLive && live.HasWindow)
+            target = e.KeyCode == Keys.End ? live.SeekableEndMs : e.KeyCode == Keys.Home
+                ? live.SeekableStartMs : Math.Clamp(target, live.SeekableStartMs, live.SeekableEndMs);
+        else target = Math.Clamp(target, 0, Math.Max(0, _b.DurationMs.Peek()));
+        e.Handled = true;
+        ReleaseGesture();
+        _b.CommitSeek(target);
     }
 
     float Frac(float x)

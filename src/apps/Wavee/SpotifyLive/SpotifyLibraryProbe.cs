@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Wavee.Backend;
 using Wavee.Backend.Collections;
-using Wavee.Backend.Hydration;
 using Wavee.Backend.Metadata;
 using Wavee.Backend.Playlists;
+using Wavee.Backend.Sync;
 using Wavee.Core;
 using EntityKind = Wavee.Core.EntityKind;   // disambiguate: Wavee.Backend.Metadata has its own PERSISTED kind enum; this file speaks the ROUTING one
 
@@ -20,25 +20,24 @@ public static class SpotifyLibraryProbe
         var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
         if (live is null) return 1;
 
-        var store = new InMemoryStore();
-        var fetcher = new PlaylistFetcher(live.Pipeline, () => live.BaseUrl, store, CatalogHydrate(live, store, log), () => live.Username);
+        var fetcher = new PlaylistFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username);
 
         log.Info("Fetching playlist " + uri + " ...");
-        try { await fetcher.FetchPlaylistAsync(uri, ct).ConfigureAwait(false); }
+        PlaylistReadResult read;
+        try { read = await fetcher.FetchPlaylistAsync(uri, ct).ConfigureAwait(false); }
         catch (Exception ex) { log.Info("playlist fetch failed: " + ex.Message); return 1; }
 
-        var membership = store.Membership(uri);
-        var rev = store.PlaylistRevision(uri);
-        var header = store.GetPlaylist(uri);
+        var membership = read.Members;
+        var rev = read.Revision;
+        var header = read.Header;
         log.Info("  name: " + (header?.Name ?? "(none)") + "   revision: " + (rev is null ? "(none)" : System.Convert.ToHexString(rev)));
-        log.Info("  " + membership.Count + " items:");
-        for (int i = 0; i < membership.Count; i++)
+        log.Info("  " + membership.Length + " items:");
+        for (int i = 0; i < membership.Length; i++)
         {
-            if (i >= 50) { log.Info("    ... (" + (membership.Count - 50) + " more)"); break; }
+            if (i >= 50) { log.Info("    ... (" + (membership.Length - 50) + " more)"); break; }
             var m = membership[i];
-            var t = store.GetTrack(m.ItemUri);
             string by = m.AddedBy is { Length: > 0 } a ? "  (added by " + a + ")" : "";
-            log.Info("    " + (i + 1) + ". " + (t is { } tt ? tt.Title + " - " + string.Join(", ", tt.Artists.Select(x => x.Name)) : m.ItemUri) + by);
+            log.Info("    " + (i + 1) + ". " + m.ItemUri + by);
         }
         return 0;
     }
@@ -48,16 +47,16 @@ public static class SpotifyLibraryProbe
         var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
         if (live is null) return 1;
 
-        var store = new InMemoryStore();
-        var fetcher = new PlaylistFetcher(live.Pipeline, () => live.BaseUrl, store, (uris, c) => Task.CompletedTask, () => live.Username);   // rootlist items are playlist uris
+        var fetcher = new PlaylistFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username);   // rootlist items are playlist uris
 
         string rootlistUri = "spotify:user:" + live.Username + ":rootlist";
         log.Info("Fetching rootlist " + rootlistUri + " ...");
-        try { await fetcher.FetchRootlistAsync(rootlistUri, ct).ConfigureAwait(false); }
+        RootlistReadResult read;
+        try { read = await fetcher.FetchRootlistAsync(rootlistUri, ct).ConfigureAwait(false); }
         catch (Exception ex) { log.Info("rootlist fetch failed: " + ex.Message); return 1; }
 
-        var rl = store.Rootlist();
-        log.Info("  " + rl.Count + " rootlist entries:");
+        var rl = read.Entries;
+        log.Info("  " + rl.Length + " rootlist entries:");
         foreach (var e in rl)
         {
             string indent = new string(' ', 4 + System.Math.Max(0, e.Depth) * 2);
@@ -72,51 +71,25 @@ public static class SpotifyLibraryProbe
         var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
         if (live is null) return 1;
 
-        var store = new InMemoryStore();
-        var revs = new Dictionary<string, string?>();
-        var fetcher = new CollectionFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username, store,
-            s => revs.TryGetValue(s, out var r) ? r : null, (s, r) => revs[s] = r, CatalogHydrate(live, store, log), log: log);
+        var fetcher = new CollectionFetcher(live.Pipeline, () => live.BaseUrl, () => live.Username, log);
 
         // The fetcher speaks WIRE sets (one walk of "collection" carries both liked and albums); the probe takes the
         // logical name the user knows and prints that set's members. The token is the wire set's.
         string wireSet = CollectionSets.WireSet(setId);
         if (CollectionSets.LogicalSetsForWireSet(wireSet).Count == 0) { log.Info("unknown collection set '" + setId + "'"); return 2; }
         log.Info("Fetching collection set '" + setId + "' (wire set '" + wireSet + "') ...");
-        try { await fetcher.FetchWireSetAsync(wireSet, ct).ConfigureAwait(false); }
+        CollectionReadResult read;
+        try { read = await fetcher.FetchWireSetAsync(wireSet, null, ct).ConfigureAwait(false); }
         catch (Exception ex) { log.Info("collection fetch failed: " + ex.Message); return 1; }
 
-        var items = store.SavedUris(setId);
-        log.Info("  " + items.Count + " items in '" + setId + "' (sync token " + (revs.GetValueOrDefault(CollectionSets.RevisionKey(wireSet)) ?? "none") + "):");
-        for (int i = 0; i < items.Count; i++)
+        var items = read.Items.Where(x => !x.Removed && CollectionSets.LogicalSetForItem(wireSet, x.Uri) == setId).Select(x => x.Uri).ToArray();
+        log.Info("  " + items.Length + " items in '" + setId + "' (sync token " + (read.Token ?? "none") + "):");
+        for (int i = 0; i < items.Length; i++)
         {
-            if (i >= 50) { log.Info("    ... (" + (items.Count - 50) + " more)"); break; }
-            log.Info("    " + (i + 1) + ". " + PrintItem(items[i], store));
+            if (i >= 50) { log.Info("    ... (" + (items.Length - 50) + " more)"); break; }
+            log.Info("    " + (i + 1) + ". " + items[i]);
         }
         return 0;
     }
 
-    /// <summary>The fetchers' hydrate delegate, built exactly as go-live builds it: THE catalogue arm (one mixed-kind
-    /// extended-metadata POST per 300 uris, etag-conditional) rather than a probe-only transport. The membership rows a
-    /// fetcher lands need Identity facts, which is precisely what this arm writes (hydration-facade-design.md §2.2).</summary>
-    static Func<IReadOnlyList<string>, CancellationToken, Task> CatalogHydrate(LiveSpclient live, IStore store, WaveeLogger log)
-    {
-        var source = new ExtendedMetadataSource(live.Pipeline, () => live.BaseUrl, () => live.Session);
-        var catalog = new XmCatalogFetch(new ExtensionEtagCache(source, () => live.Session, log), store, log);
-        return async (uris, ct) =>
-        {
-            var refs = new List<EntityUri>(uris.Count);
-            for (int i = 0; i < uris.Count; i++) refs.Add(EntityUri.Parse(uris[i]));
-            await catalog.FetchAsync(refs, null, TraitSurface.None, ct).ConfigureAwait(false);
-        };
-    }
-
-    static string PrintItem(string uri, IStore store) => EntityUri.KindOf(uri) switch
-    {
-        EntityKind.Track => store.GetTrack(uri) is { } t ? t.Title + " - " + string.Join(", ", t.Artists.Select(a => a.Name)) : uri,
-        EntityKind.Album => store.GetAlbum(uri)?.Name ?? uri,
-        EntityKind.Artist => store.GetArtist(uri)?.Name ?? uri,
-        EntityKind.Show => store.GetShow(uri)?.Name ?? uri,
-        EntityKind.Episode => store.GetEpisode(uri)?.Title ?? uri,
-        _ => uri,
-    };
 }

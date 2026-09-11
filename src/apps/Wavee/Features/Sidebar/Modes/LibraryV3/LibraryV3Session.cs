@@ -304,6 +304,29 @@ sealed class LibraryV3Session
         }
     }
 
+    /// <summary>W2/W8 — THE ONE row-count expression, shared by <see cref="LibraryV3Chrome"/> (the empty-state gate)
+    /// and <see cref="LibraryV3LensRow"/> (the count it displays), so the two can never disagree about how many
+    /// rows are on screen. Reading <c>Entries.Version.Value</c> SUBSCRIBES the caller: the count moves with the
+    /// projection, exactly like the state it used to be folded alongside.
+    ///
+    /// <para>W8 — NOT <c>View.Count</c> at the library root any more. <c>View</c> is rebuilt lazily by the pane's own
+    /// <c>ShapeInput</c>, which runs AFTER the chrome may already have read this count (the chrome and the pane are two
+    /// independent readers of the same mode epoch, with no ordering guarantee between them) — typing into search could
+    /// show "All · 0 matches" and the empty-state band while the list right below it was already showing a pinned
+    /// match. <c>prefs.Entries.Current</c> is the published projection itself — pins-first, already
+    /// searched/filtered/sorted — so every row it counts is a row the list will show, pin band included whether or not
+    /// the chrome draws it as a separate band, and reading it costs no rebuild ordering at all. A DRILLED level is the
+    /// one case <c>Current</c> cannot answer (it is one folder's children, a real subset <c>View</c> has already sliced
+    /// to), so drilled keeps reading <c>View.Count</c> exactly as before.</para></summary>
+    public int VisibleRowCount(in LibraryV3DocState state)
+    {
+        if (Prefs is not { } prefs) return 0;
+        _ = prefs.Entries.Version.Value;                    // subscribe: state/count move with the projection
+        if (!state.Drilled) return prefs.Entries.Current.Count;
+        int pinBand = state.PinsBandVisible ? prefs.Entries.PinCount : 0;
+        return View.Count + pinBand;
+    }
+
     /// <summary>Re-arm the projection (the chrome's retry banner). Invalidating + syncing the binder re-runs the
     /// contributing warmers, which is the only retry the sidebar itself owns (each store's refresh policy owns the rest).</summary>
     public void Retry()

@@ -8,40 +8,50 @@ using FluentGpu.WindowsApi.Power;
 namespace Wavee;
 
 /// <summary>
-/// Wavee's ambient-cadence POLICY (not a subsystem): when may the always-on ambient motion — the seek playhead, the
-/// now-playing equalizer, skeleton shimmer, the buffering spinner, the karaoke lyrics wipe — free-run at the panel's
-/// full refresh, and when should it be paced?
+/// Wavee's ambient-cadence POLICY (not a subsystem): the engine now paces every perpetual loop PER SOURCE —
+/// <c>AnimEngine.Keyframes</c>/<c>UseKeyframes</c> take a <see cref="Cadence"/> per slab row, and a bare
+/// <c>loop: true</c> row with no cadence resolves to <c>host.Animation.DefaultLoopHz</c> (Zed GPUI's
+/// <c>Animation::with_max_fps</c> model — a per-animation cap the host applies while it is not the foreground/active
+/// window, rather than one host-wide "ambient" rate a frame-loop heuristic had to infer). This policy's only job is
+/// setting that ONE knob from the machine's power state, plus the companion knob for an unfocused/inactive window.
 ///
-/// <para><b>The rule.</b> Always explicit ~30 fps while ambient motion is the only wake (plugged/focused OR
-/// battery/background). Ambient frames are full-window presents on this engine (translucent shell), so
-/// <see cref="AmbientRateMode.Uncapped"/> is never used — it made <c>AmbientCapEngaged</c> false and disabled the
-/// adaptive-FPS governor exactly when a 13 px equalizer could pin ~56% GPU. <see cref="AmbientRateMode.HalfRefresh"/>
-/// is also avoided: on a 120 Hz panel it resolves to 60 fps, which is still too hot for full-window Present of the
-/// Wavee shell (measured ~35% <c>engtype_3d</c> while playing).</para>
+/// <para><b>The two knobs.</b> <see cref="AppHost.Animation"/>.<c>DefaultLoopHz</c> (float) is the rate a
+/// cadence-less <c>loop: true</c> row runs at — this policy sets it from AC power alone (<see cref="PluggedLoopHz"/>
+/// plugged, <see cref="BatteryLoopHz"/> on battery). <c>host.InactiveFrameIntervalMs</c> is set once, unconditionally,
+/// to floor the gap between animation-only frames while the window is not the foreground/active one — that is the
+/// engine's own window-state throttle now, so this policy no longer tracks focus itself.</para>
 ///
-/// <para><b>Why the two inputs.</b> Battery is the economics an always-open music app actually pays; focus is the
-/// attention — a background window's shimmer is worth nothing at any rate. Neither input alone is enough (a plugged-in
-/// background window still burns the pipeline; a focused laptop on battery still drains).</para>
+/// <para><b>Why focus dropped out here.</b> Previously this policy read <c>WM_ACTIVATE</c> and switched the whole
+/// host's ambient rate on the edge, because the host had no notion of "unfocused" on its own. Now every source
+/// already declares its own cadence, and the host throttles animation-only frames to
+/// <c>InactiveFrameIntervalMs</c> whenever the window is inactive — attention is the engine's problem, not this
+/// policy's. What is NOT the engine's problem is battery economics, which is why <c>DefaultLoopHz</c> is still an
+/// app-level knob this policy drives.</para>
 ///
 /// <para><b>Debounce.</b> Power reads are debounced ~2 s (<see cref="DebounceSeconds"/>): an AC blip — a dock
-/// re-negotiating, a charger nudged — must not flip the render cadence, which is a visible change. Focus edges apply
-/// immediately: they are user-intent, never noise.</para>
+/// re-negotiating, a charger nudged — must not flip the render cadence, which is a visible change.</para>
 ///
 /// <para><b>Threading.</b> Every entry point runs on the UI thread (the attach site is the pre-loop
-/// <c>FluentApp.DiagnosticRun</c> hook; the focus/poll sites are component hooks), and
-/// <see cref="AppHost.AmbientRate"/> is a volatile scalar that is documented safe to flip live. No locks.</para>
+/// <c>FluentApp.DiagnosticRun</c> hook; the poll site is a component hook), and <c>host.Animation.DefaultLoopHz</c> is
+/// documented safe to flip live. No locks.</para>
 ///
-/// <para><b>Escape hatch.</b> <c>FG_ANIM_FPS</c> outranks this policy inside the host (see
-/// <see cref="AppHost.AmbientAnimationFps"/>), so a diagnostic capture pinned to a fixed cadence stays pinned.</para>
+/// <para><b>Untouched.</b> <c>UseInterval</c> sources — the now-playing equalizer analyser, the seek playhead
+/// (<c>DeckClock</c>), the deck's own tick — are self-paced timers, not slab animation rows, so they never read
+/// <c>DefaultLoopHz</c> and this policy does not govern them.</para>
 /// </summary>
 static class AmbientPowerPolicy
 {
     /// <summary>How long a NEW power reading must hold before it may change the cadence.</summary>
     private const double DebounceSeconds = 2.0;
-    /// <summary>Foreground ambient rate — explicit fps (full-window Present tax; not HalfRefresh).</summary>
-    private const int ForegroundAmbientFps = 30;
-    /// <summary>Background / battery ambient rate — explicit fps, refresh-independent.</summary>
-    private const int BackgroundAmbientFps = 24;
+    /// <summary>Plugged-in default loop rate (Hz) for a cadence-less <c>loop: true</c> row. Internal (not private) so
+    /// a self-paced <c>UseInterval</c> source that wants to mirror this rate (<c>DeckClock.TickMs</c>) can reference
+    /// it instead of carrying its own copy of the literal.</summary>
+    internal const float PluggedLoopHz = 30f;
+    /// <summary>Battery default loop rate (Hz) for a cadence-less <c>loop: true</c> row.</summary>
+    private const float BatteryLoopHz = 24f;
+    /// <summary>Floor on the gap between animation-only frames while the window is not the foreground/active one
+    /// (<c>AppHost.InactiveFrameIntervalMs</c>). Set once; it is the engine's window-state throttle, not power-driven.</summary>
+    private const int InactiveFrameIntervalMs = 33;
     /// <summary>Power-read cadence — deliberately equal to the debounce, so a real transition costs exactly two reads
     /// (~2-4 s to apply) and a blip shorter than one interval is usually never even sampled. It is NOT finer: the
     /// hosting <c>UseInterval</c> is a frame-clock timer that clamps the loop's idle wait, so every tick is a wake, and
@@ -56,7 +66,6 @@ static class AmbientPowerPolicy
     private const float PollMs = 2000f;
 
     private static AppHost? s_host;
-    private static bool s_focused = true;      // window activation (WM_ACTIVATE via InputHooks.IsWindowActive)
     private static bool s_plugged = true;      // the APPLIED power verdict
     private static bool s_pending = true;      // the most recent READ verdict, still inside the debounce window
     private static long s_pendingSince;        // QPC stamp of the read that started the current debounce window
@@ -68,14 +77,6 @@ static class AmbientPowerPolicy
         s_host = host;
         s_plugged = s_pending = ReadPlugged();
         s_pendingSince = Stopwatch.GetTimestamp();
-        Apply();
-    }
-
-    /// <summary>Window activation changed (applied immediately — user intent, not noise).</summary>
-    public static void SetFocused(bool focused)
-    {
-        if (s_focused == focused) return;
-        s_focused = focused;
         Apply();
     }
 
@@ -117,27 +118,21 @@ static class AmbientPowerPolicy
     private static void Apply()
     {
         if (s_host is not { } host) return;
-        // Never Uncapped / HalfRefresh: ambient Present is a full-window pass. Explicit fps only.
-        host.AmbientAnimationFps = (s_plugged && s_focused) ? ForegroundAmbientFps : BackgroundAmbientFps;
+        host.Animation.DefaultLoopHz = s_plugged ? PluggedLoopHz : BatteryLoopHz;
+        host.InactiveFrameIntervalMs = InactiveFrameIntervalMs;
     }
 
     /// <summary>
-    /// The policy's mount point: a zero-size, hit-test-invisible component whose only job is to own the two
-    /// subscriptions (activation + the power poll). A component rather than a raw callback because the engine's
-    /// activation signal (<c>InputHooks.WindowChromeEpoch</c>, bumped on WindowFocus/WindowBlur/WindowStateChanged) and
-    /// the auto-pausing frame-clock timer are both hook surfaces. It reads the epoch inside a signal EFFECT, so an
-    /// alt-tab re-runs five lines instead of re-rendering the shell.
+    /// The policy's mount point: a zero-size, hit-test-invisible component whose only job is to own the power poll.
+    /// A component rather than a raw callback because <c>UseInterval</c> is a hook surface (it auto-pauses via
+    /// <c>UseIsActive</c> while the window is parked/minimized). Focus/activation is no longer this policy's concern —
+    /// the engine throttles animation-only frames to <c>InactiveFrameIntervalMs</c> on its own while the window is
+    /// inactive — so the <c>Watcher</c> no longer reads <c>InputHooks.WindowChromeEpoch</c>.
     /// </summary>
     public sealed class Watcher : Component
     {
         public override Element Render()
         {
-            var hooks = UseContext(InputHooks.Current);
-            UseSignalEffect(() =>
-            {
-                _ = hooks.WindowChromeEpoch?.Value ?? 0;                 // subscribe: re-run on focus/blur/placement change
-                SetFocused(hooks.IsWindowActive?.Invoke() ?? true);      // pull the settled state (the epoch is only the edge)
-            });
             UseInterval(PollPower, PollMs);
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }

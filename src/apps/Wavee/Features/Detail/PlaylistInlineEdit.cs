@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
@@ -81,19 +81,6 @@ static class PlaylistInlineEdit
     /// <summary>The shared half of both gates, for the two OWNER affordances whose capability is neither items nor
     /// metadata (the overflow's Delete, the invite control's permission administration): the page is not under a notice.</summary>
     internal static bool Live(DetailModel m) => m.Notice == DetailNotice.None;
-
-    static void PatchDetail(Loadable<DetailModel> full, Func<DetailModel, DetailModel> patch)
-    {
-        if ((LoadState)full.State.Peek() != LoadState.Ready) return;
-        full.SetReady(patch(full.Value.Peek()));
-    }
-
-    static async Task RefreshPlaylistDetailAsync(Services? svc, Loadable<DetailModel> full, string uri, CancellationToken ct = default)
-    {
-        if (svc is null || !SpotifyEditsLive(svc)) return;
-        var fresh = await DetailPage.ReloadPlaylistDetailAsync(svc, uri, ct).ConfigureAwait(false);
-        if (fresh is not null) full.SetReady(fresh);
-    }
 
     // ── save plumbing ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -184,6 +171,54 @@ static class PlaylistInlineEdit
                     new TextEl(Strings.Detail.Edit.PendingCount(pending)) { Size = 11f, Weight = 600, Color = Tok.TextSecondary },
                 ],
             }, Loc.Get(Strings.Detail.Edit.PendingSync));
+        }
+    }
+
+    /// <summary>The header's SYNC chip: the client cannot yet prove its copy of this playlist matches Spotify's head. A
+    /// sibling of the pending chip, deliberately separate: "pending" is about OUR edits not having landed; this is about
+    /// the SERVER's answer not having been folded — a torn /changes reply whose revalidation is taking too long or failed.</summary>
+    internal static Element SyncChip(string uri)
+        => Embed.Comp(() => new PlaylistSyncChip(uri)) with { Key = "pl-sync:" + uri };
+
+    sealed class PlaylistSyncChip : Component
+    {
+        readonly string _uri;
+        public PlaylistSyncChip(string uri) => _uri = uri;
+
+        public override Element Render()
+        {
+            var lib = UseContext(LibraryBridge.Slot);
+            var svc = UseContext(Services.Slot);
+            if (lib is null) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            var entry = lib.ResyncState(_uri).Value;            // subscribe → this uri only
+            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var health = PlaylistSyncHealthRules.Decide(entry, now);
+            // Re-render exactly when a still-pending entry crosses the threshold (no polling; the timer re-arms per entry).
+            var crossed = UseSignal(0);
+            long wait = PlaylistSyncHealthRules.MsUntilSyncing(entry, now);
+            UseTimeout(() => crossed.Value++, wait > 0 ? wait : 0f, DepKey.From(HashCode.Combine(entry.Phase, entry.SinceUtcMs, entry.Attempts)));
+            if (health == PlaylistSyncHealth.None) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+
+            bool failed = health == PlaylistSyncHealth.Failed;
+            var children = new List<Element>(3)
+            {
+                Ui.Icon(failed ? Icons.StatusWarning : Icons.Refresh, 12f, failed ? Tok.SystemFillCaution : Tok.TextTertiary),
+                new TextEl(Loc.Get(failed ? Strings.Detail.Edit.SyncFailed : Strings.Detail.Edit.SyncingWithSpotify))
+                    { Size = 11f, Weight = 600, Color = Tok.TextSecondary },
+            };
+            if (failed && svc?.RealSync is { } sync)
+                children.Add(Button.Create(Loc.Get(Strings.Detail.Edit.RetrySync),
+                    () => sync.Enqueue(new Wavee.Backend.Sync.SyncCommand(Wavee.Backend.Sync.SyncKind.ResyncRevalidate, _uri, Attempt: 1)),
+                    ButtonAppearance.Subtle, ControlSize.Small));
+
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Shrink = 0f,
+                Padding = new Edges4(8f, 3f, 10f, 3f), Corners = CornerRadius4.All(12f),
+                Fill = Tok.FillSubtleSecondary,
+                Enter = new EnterExit(Opacity: 0f, Active: true),
+                Children = children.ToArray(),
+            };
         }
     }
 
@@ -415,8 +450,6 @@ static class PlaylistInlineEdit
                 async () =>
                 {
                     bool saved = await TryCoverPathAsync(lib, uri, path).ConfigureAwait(false);
-                    if (saved && svc?.RealStore?.GetPlaylist(uri) is { } header)
-                        PatchDetail(_full, m => m with { Cover = header.Cover });
                     return saved;
                 },
                 _status, () => ++_saveEpoch, () => _saveEpoch).ConfigureAwait(false);
@@ -569,7 +602,9 @@ static class PlaylistInlineEdit
                     new BoxEl
                     {
                         Direction = 0, Width = _width, Gap = 6f, Justify = FlexJustify.End,
-                        Children = status != StatusIdle ? [StatusChip(status), PendingChip(uri)] : [PendingChip(uri)],
+                        Children = status != StatusIdle
+                            ? [StatusChip(status), PendingChip(uri), SyncChip(uri)]
+                            : [PendingChip(uri), SyncChip(uri)],
                     },
                 ],
             });
@@ -587,7 +622,6 @@ static class PlaylistInlineEdit
             _ = RunSaveAsync(async () =>
             {
                 bool saved = await SaveDetailsAsync(lib, uri, next, null, null, _titleAtEditStart).ConfigureAwait(false);
-                if (saved) PatchDetail(_full, m => m with { Title = next });
                 return saved;
             }, _status, () => ++_saveEpoch, () => _saveEpoch);
         }
@@ -718,7 +752,6 @@ static class PlaylistInlineEdit
             _ = RunSaveAsync(async () =>
             {
                 bool saved = await SaveDetailsAsync(lib, uri, null, next, null).ConfigureAwait(false);
-                if (saved) PatchDetail(_full, m => m with { Description = next.Length == 0 ? null : next });
                 return saved;
             }, _status, () => ++_saveEpoch, () => _saveEpoch);
         }
@@ -822,7 +855,6 @@ static class PlaylistInlineEdit
                 InputHooks.Current.Default.Announce?.Invoke(Loc.Get(Strings.Auth.Copied), false);
             }
             else InputHooks.Current.Default.OpenUri?.Invoke(url);
-            if (full is not null) await RefreshPlaylistDetailAsync(svc, full, uri).ConfigureAwait(false);
             return copied;
         }
         catch (Exception ex) { PlaylistEditErrors.Toast(ex); return false; }
@@ -837,7 +869,6 @@ static class PlaylistInlineEdit
     static async Task<bool> SetCollaborativeAsync(LibraryBridge lib, Loadable<DetailModel> full, string uri, bool collaborative)
     {
         if (!await SaveDetailsAsync(lib, uri, null, null, collaborative).ConfigureAwait(false)) return false;
-        PatchDetail(full, m => m with { Capabilities = m.Capabilities with { IsCollaborative = collaborative } });
         return true;
     }
 
@@ -846,7 +877,6 @@ static class PlaylistInlineEdit
         try
         {
             await lib.SetPlaylistVisibilityAsync(uri, isPublic).ConfigureAwait(false);
-            PatchDetail(full, m => m with { IsPublic = isPublic });
             return true;
         }
         catch (Exception ex) { PlaylistEditErrors.Toast(ex); return false; }
@@ -926,7 +956,7 @@ static class PlaylistInlineEdit
 
     /// <summary>The "Invite &amp; access" flyout body: copy-invite CTA + collaborative/public toggles. A Component that
     /// reads live state from the <see cref="Loadable{T}"/> (component props freeze at mount), so the controlled toggles
-    /// re-render when the optimistic <c>PatchDetail</c> lands. <paramref name="lib"/>/<paramref name="svc"/> are stable
+    /// re-render when the catalog query publishes the staged edit. <paramref name="lib"/>/<paramref name="svc"/> are stable
     /// service instances — safe to capture at mount.</summary>
     sealed class PlaylistAccessFlyout : Component
     {

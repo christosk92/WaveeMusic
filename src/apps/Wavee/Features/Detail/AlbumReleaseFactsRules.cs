@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Wavee.Core;
+using Wavee.Core.Catalog;
 
 namespace Wavee;
 
@@ -43,29 +44,28 @@ public static class AlbumReleaseFactsRules
     /// Full) — a missing input simply drops its piece, it never blocks the others.</summary>
     public static AlbumReleaseFacts For(IReadOnlyList<Track> tracks, string? releaseDateIso, string? precision, int? year,
                                         DateTimeOffset? releaseInstant, string? label, string? courtesy, string? copyright,
-                                        DateTimeOffset now)
+                                        DateTimeOffset now, int? expectedCount = null)
     {
         tracks ??= Array.Empty<Track>();
 
         string? songs = null;
         string? length = null;
-        if (tracks.Count > 0)
+        if (tracks.Count > 0 && tracks.Count == (expectedCount ?? tracks.Count))
         {
             // On a PARTLY released album the plain count and the summed length both lie: the count includes tracks
             // that are not out, and the length silently omits their unknown durations, so "12 songs · 31 min" would
             // describe a record that does not exist yet. Report what is actually out, and measure only that.
             int outNow = 0;
-            long ms = 0;
             for (int i = 0; i < tracks.Count; i++)
             {
                 if (tracks[i].IsNotYetOut()) continue;
                 outNow++;
-                ms += tracks[i].DurationMs;
             }
             songs = outNow == tracks.Count
                 ? tracks.Count.ToString(CultureInfo.InvariantCulture)
                 : outNow.ToString(CultureInfo.InvariantCulture) + " of " + tracks.Count.ToString(CultureInfo.InvariantCulture);
-            if (ms > 0) length = TotalTimeLiteral(ms);
+            if (TrackMetadataReadiness.CompleteDuration(tracks, expectedCount ?? tracks.Count, releasedOnly: true) is { } ms)
+                length = TotalTimeLiteral(ms);
         }
 
         string? released = FormatReleaseDate(releaseDateIso, precision)

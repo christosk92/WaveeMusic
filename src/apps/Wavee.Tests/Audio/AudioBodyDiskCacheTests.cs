@@ -12,6 +12,16 @@ public class AudioBodyDiskCacheTests
 {
     static string TempDir() => Path.Combine(Path.GetTempPath(), "wavee-body-cache-" + Guid.NewGuid());
 
+    // A volume with room to spare, injected so these tests assert the CACHE's behavior rather than the
+    // developer's free disk space. Without it they pass or fail on how full C: happens to be — which is
+    // exactly how a completely dead cache (reserve 47.6 GiB vs 25.3 GiB free) went unnoticed.
+    static Func<string, (long Total, long Free, bool Ready)> FatVolume => _ => (1L << 40, 900L << 30, true);
+
+    // A volume whose free space sits below the cache's floor reserve (max(5 GiB, total/20) — 5 GiB for a
+    // 100 GiB volume), so a write must be REFUSED AND REPORTED rather than silently dropped. This is the
+    // shape of volume that made every write disappear on the dev machine without a single failing assertion.
+    static Func<string, (long Total, long Free, bool Ready)> TightVolume => _ => (100L << 30, 1L << 30, true);
+
     [Fact]
     public void WriteThenRead_RoundTripsChunk()
     {
@@ -73,7 +83,7 @@ public class AudioBodyDiskCacheTests
         var dir = TempDir();
         const int tail = 137;
         long size = AudioBodyDiskCache.ChunkBytes + tail;
-        using var cache = new ChunkDiskCache(dir);
+        using var cache = new ChunkDiskCache(dir, volumeProbe: FatVolume);
         cache.SetSize("tail", size);
         var data = A.Bytes(7, tail);
         cache.WriteChunk("tail", 1, data);
@@ -92,7 +102,7 @@ public class AudioBodyDiskCacheTests
     public void CorruptCiphertext_IsRejectedByDigest()
     {
         var dir = TempDir();
-        using var cache = new ChunkDiskCache(dir);
+        using var cache = new ChunkDiskCache(dir, volumeProbe: FatVolume);
         cache.SetSize("corrupt", AudioBodyDiskCache.ChunkBytes);
         cache.WriteChunk("corrupt", 0, A.Bytes(4, AudioBodyDiskCache.ChunkBytes));
         // WriteChunk is fire-and-forget now: without this wait, (a) the .enc below may not exist yet (GetFiles throws
@@ -153,7 +163,7 @@ public class AudioBodyDiskCacheTests
         string badMap = Path.Combine(dir, "ab", "deadbeefdeadbeef.map");
         File.WriteAllBytes(badMap, new byte[8]);
 
-        using var cache = new ChunkDiskCache(dir);
+        using var cache = new ChunkDiskCache(dir, volumeProbe: FatVolume);
         // Construction must stay CHEAP — the ctor-time sweep was the 16–31 s "Starting audio" login stall
         // (golive.audio_ms). The crashed-session leftovers are still on disk until the off-path WarmScan runs.
         Assert.True(File.Exists(staleTmp));
@@ -191,7 +201,7 @@ public class AudioBodyDiskCacheTests
     {
         var oldRoot = TempDir();
         var newParent = TempDir();
-        using var cache = new ChunkDiskCache(oldRoot);
+        using var cache = new ChunkDiskCache(oldRoot, volumeProbe: FatVolume);
         var data = A.Bytes(12, AudioBodyDiskCache.ChunkBytes);
         cache.SetSize("move-me", data.Length);
         cache.WriteChunk("move-me", 0, data);
@@ -204,6 +214,26 @@ public class AudioBodyDiskCacheTests
         Assert.Equal(data, read[..length]);
         Directory.Delete(oldRoot, true);
         Directory.Delete(newParent, true);
+    }
+
+    [Fact]
+    public void TightVolume_RefusesWrite_AndReportsBelowFreeSpaceReserve()
+    {
+        var dir = TempDir();
+        using var cache = new ChunkDiskCache(dir, volumeProbe: TightVolume);
+        var data = A.Bytes(8, AudioBodyDiskCache.ChunkBytes);
+        cache.SetSize("no-room", data.Length);
+        cache.WriteChunk("no-room", 0, data);
+        // WriteChunk is fire-and-forget; wait for the writer to actually attempt (and refuse) the commit before
+        // asserting on its outcome.
+        cache.WaitForPendingWrites();
+
+        // This is the assertion the original bug needed: a refused write must be REPORTED on the status snapshot,
+        // not just silently absent from disk. Before the volumeProbe seam, CanCommit's refusal was invisible —
+        // the cache looked "alive" because SetSize/EnsureMap bypasses the gate entirely.
+        Assert.Equal(ChunkAdmission.BelowFreeSpaceReserve, cache.Status().Admission);
+        Assert.Empty(Directory.GetFiles(dir, "*.enc", SearchOption.AllDirectories));
+        Directory.Delete(dir, true);
     }
 
     sealed class MutableSettings : IAppSettings

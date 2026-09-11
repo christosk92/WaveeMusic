@@ -267,7 +267,15 @@ sealed partial class SettingsPage
             [
                 SettingsExpander.Item(Loc.Get(Strings.Settings.Sound.CrossfadeDuration),
                     Strings.Settings.Sound.Seconds(((float)_crossSecs.Value).ToString("0.#", CultureInfo.InvariantCulture)),
-                    durationRow),
+                    new BoxEl
+                    {
+                        Direction = 1, Gap = Spacing.S, Grow = 1f, MinWidth = 0f,
+                        Children =
+                        [
+                            durationRow,
+                            Ui.Caption(Loc.Get(Strings.Settings.Sound.CrossfadeAlbumHint)).Secondary() with { MaxLines = 2 },
+                        ],
+                    }),
             ],
         });
     }

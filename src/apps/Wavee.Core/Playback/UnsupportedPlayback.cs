@@ -42,6 +42,7 @@ public sealed class UnsupportedPlaybackPlayer : IPlaybackPlayer, IPlaybackState
     // ── IPlaybackState — permanently empty (nothing ever plays locally) ─────────────────────────────────────────────
     public Track? CurrentTrack => null;
     public string? ContextUri => null;
+    public PlaybackTransportState Transport => default;
     public bool IsPlaying => false;
     public bool IsBuffering => false;
     public long PositionMs => 0;
@@ -103,7 +104,9 @@ public sealed class UnsupportedPlaybackPlayer : IPlaybackPlayer, IPlaybackState
     public Task PauseAsync(CancellationToken ct = default) => LocalPlayback?.PauseAsync(ct) ?? Done;
     public Task NextAsync(CancellationToken ct = default) => LocalPlayback?.NextAsync(ct) ?? Done;
     public Task PreviousAsync(CancellationToken ct = default) => LocalPlayback?.PreviousAsync(ct) ?? Done;
-    public Task SeekAsync(long positionMs, SeekMode mode, CancellationToken ct = default) => LocalPlayback?.SeekAsync(positionMs, mode, ct) ?? Done;
+    public Task<PlaybackCommandReceipt> SeekAsync(PlaybackSeekRequest request, CancellationToken ct = default)
+        => LocalPlayback is { } player ? player.SeekAsync(request, ct)
+            : Task.FromException<PlaybackCommandReceipt>(new InvalidOperationException("No playable media is selected."));
     public Task SetVolumeAsync(double volume01, CancellationToken ct = default) => LocalPlayback?.SetVolumeAsync(volume01, ct) ?? Done;
     public Task SetShuffleAsync(bool on, CancellationToken ct = default) => LocalPlayback?.SetShuffleAsync(on, ct) ?? Done;
     public Task SetRepeatAsync(RepeatMode mode, CancellationToken ct = default) => LocalPlayback?.SetRepeatAsync(mode, ct) ?? Done;

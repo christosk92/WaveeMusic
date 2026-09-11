@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Wavee.Backend;
@@ -21,7 +21,6 @@ public class PreSaveWriteTests
 {
 
     // The facade every StoreLibrarySource read goes through. Offline = store-only, never networks (design §1.3).
-    static SwitchableEntityHydrator Offline(IStore store) => new(new Wavee.Backend.Hydration.OfflineEntityHydrator(store));
     const string PreUri = "spotify:prerelease:0iqKCCqFwlqzSnJgV22Nmh";
     static SessionContext Ctx => new("bob", "US", "premium", "en", Tier.Premium, false);
 
@@ -101,7 +100,7 @@ public class PreSaveWriteTests
 
         var ok = await strat.Replay(op, t, Ctx, TestContext.Current.CancellationToken);
 
-        Assert.True(ok);
+        Assert.Equal(MutationReplayDisposition.Applied, ok.Disposition);
         Assert.Equal("/collection/v2/write", t.LastRequestRoute);
         Assert.Equal("POST", t.LastRequestMethod);
         Assert.Equal("application/vnd.collection-v2.spotify.proto", t.LastRequestHeaders!["Content-Type"]);
@@ -113,146 +112,88 @@ public class PreSaveWriteTests
     }
 
     [Fact]
-    public void Replay_AppliesTheOptimisticHeart_UnderTheLogicalSet()
+    public async Task Staging_publishes_presave_in_its_logical_set()
     {
-        var store = new InMemoryStore();
-        new SetReplayStrategy().ApplyOptimistic(new OutboxOp(1, "set", PreUri, "prerelease", true, 1, 0), store);
-
-        Assert.True(store.IsSaved("prerelease", PreUri));
-        Assert.False(store.IsSaved("albums", PreUri));            // the logical sets do not bleed into one another
+        await using var host = new ReplicaTestHost();
+        await host.Mutations.SaveAsync("prerelease", PreUri, true);
+        Assert.Single(host.Replicas.ReadCollection("prerelease").Items);
+        Assert.Empty(host.Replicas.ReadCollection("albums").Items);
+        Assert.Empty(host.Replicas.ReadConfirmedCollection("prerelease").Items);
     }
 
     [Fact]
-    public void Rollback_RevertsTheHeart_WhenTheWriteDeadLetters()
+    public async Task Terminal_rejection_removes_only_pending_presave()
     {
-        // The safety net for the inferred set: a 400 backs off, dead-letters, and rolls the heart back. Visible,
-        // reversible, never corrupting.
-        var store = new InMemoryStore();
-        var strat = new SetReplayStrategy();
-        var op = new OutboxOp(1, "set", PreUri, "prerelease", true, 1, 0);
-
-        strat.ApplyOptimistic(op, store);
-        Assert.True(store.IsSaved("prerelease", PreUri));
-
-        strat.Rollback(op, store);
-        Assert.False(store.IsSaved("prerelease", PreUri));
+        await using var host = new ReplicaTestHost();
+        var op = await host.Replicas.StageAsync("set", PreUri, "prerelease", true);
+        Assert.Single(host.Replicas.ReadCollection("prerelease").Items);
+        await host.Replicas.RejectAsync(op, PlaylistMutationFailure.Forbidden, "denied");
+        Assert.Empty(host.Replicas.ReadCollection("prerelease").Items);
     }
-
-    // ── the uri → set inference (EngineMutationSource.SetForUri, reached through the public seam) ─────────────────────
-
-    static EngineMutationSource Source(InMemoryStore store) =>
-        new(store, new MutationEngine(store, [new SetReplayStrategy()]), new StubTransport(), () => Ctx);
 
     [Fact]
     public async Task APreReleaseUri_RoutesToThePreReleaseSet_NotAlbums()
     {
-        var store = new InMemoryStore();
-        var src = Source(store);
-
-        await src.SetSavedAsync(PreUri, true);
-
-        Assert.True(store.IsSaved("prerelease", PreUri));
-        Assert.False(store.IsSaved("albums", PreUri));
-        Assert.False(store.IsSaved("liked", PreUri));
-        Assert.True(src.IsSaved(PreUri));                         // and it joins the one aggregated snapshot
-        Assert.Contains(PreUri, src.Saved);
-    }
-
-    [Fact]
-    public async Task ThePreSaveReachesTheWire_AsACollectionWrite()
-    {
-        var store = new InMemoryStore();
-        var stub = new StubTransport();
-        var src = new EngineMutationSource(store, new MutationEngine(store, [new SetReplayStrategy()]), stub, () => Ctx);
-
-        await src.SetSavedAsync(PreUri, true);
-
-        Assert.Equal("/collection/v2/write", stub.LastRequestRoute);
-        var wr = Col.WriteRequest.Parser.ParseFrom(stub.LastRequestBody);
-        Assert.Equal("collection", wr.Set);
-        Assert.Equal(PreUri, Assert.Single(wr.Items).Uri);
+        await using var h = new SyncHarness(_ => SyncHarness.Ok([]));
+        using var source = new EngineMutationSource(h.Store, h.Mut, h.Sync);
+        await source.SetSavedAsync(PreUri, true);
+        Assert.True(h.Store.IsSaved("prerelease", PreUri));
+        Assert.False(h.Store.IsSaved("albums", PreUri));
+        Assert.False(h.Store.IsSaved("liked", PreUri));
+        Assert.True(source.IsSaved(PreUri));
+        Assert.Contains(PreUri, source.Saved);
+        Assert.Equal("/collection/v2/write", h.Dealer.LastRequestRoute);
+        var request = Col.WriteRequest.Parser.ParseFrom(h.Dealer.LastRequestBody);
+        Assert.Equal("collection", request.Set);
+        Assert.Equal(PreUri, Assert.Single(request.Items).Uri);
     }
 
     [Fact]
     public async Task UnPreSaving_RemovesTheHeart_AndSendsTheRemoval()
     {
-        var store = new InMemoryStore();
-        var stub = new StubTransport();
-        var src = new EngineMutationSource(store, new MutationEngine(store, [new SetReplayStrategy()]), stub, () => Ctx);
+        await using var h = new SyncHarness(_ => SyncHarness.Ok([]));
+        using var source = new EngineMutationSource(h.Store, h.Mut, h.Sync);
+        await source.SetSavedAsync(PreUri, true);
+        await source.SetSavedAsync(PreUri, false);
+        Assert.False(h.Store.IsSaved("prerelease", PreUri));
+        Assert.False(source.IsSaved(PreUri));
+        Assert.True(Col.WriteRequest.Parser.ParseFrom(h.Dealer.LastRequestBody).Items[0].IsRemoved);
+    }
 
-        await src.SetSavedAsync(PreUri, true);
-        await src.SetSavedAsync(PreUri, false);
-
-        Assert.False(store.IsSaved("prerelease", PreUri));
-        Assert.False(src.IsSaved(PreUri));
-        Assert.True(Col.WriteRequest.Parser.ParseFrom(stub.LastRequestBody).Items[0].IsRemoved);
+    [Theory]
+    [InlineData("spotify:track:t", "liked")]
+    [InlineData("spotify:album:a", "albums")]
+    [InlineData("spotify:artist:r", "artists")]
+    [InlineData("spotify:show:s", "shows")]
+    [InlineData("spotify:episode:e", "episodes")]
+    public async Task Other_uri_kinds_keep_their_logical_set(string uri, string set)
+    {
+        await using var h = new SyncHarness(_ => SyncHarness.Ok([]));
+        using var source = new EngineMutationSource(h.Store, h.Mut, h.Sync);
+        await source.SetSavedAsync(uri, true);
+        Assert.True(h.Store.IsSaved(set, uri));
+        Assert.False(h.Store.IsSaved("prerelease", uri));
     }
 
     [Fact]
-    public async Task TheOtherUriKinds_StillRouteExactlyAsBefore()
+    public async Task Confirmed_presave_restores_the_saved_union()
     {
-        var store = new InMemoryStore();
-        var src = Source(store);
-
-        await src.SetSavedAsync("spotify:track:t", true);
-        await src.SetSavedAsync("spotify:album:a", true);
-        await src.SetSavedAsync("spotify:artist:r", true);
-        await src.SetSavedAsync("spotify:show:s", true);
-        await src.SetSavedAsync("spotify:episode:e", true);
-
-        Assert.True(store.IsSaved("liked", "spotify:track:t"));
-        Assert.True(store.IsSaved("albums", "spotify:album:a"));
-        Assert.True(store.IsSaved("artists", "spotify:artist:r"));
-        Assert.True(store.IsSaved("shows", "spotify:show:s"));
-        Assert.True(store.IsSaved("episodes", "spotify:episode:e"));
-        Assert.False(store.IsSaved("prerelease", "spotify:album:a"));
-    }
-
-    // ── BuildUnion: the heart survives a restart ──────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void APersistedPreSave_IsRestoredIntoTheSavedUnionAtConstruction()
-    {
-        // AllSets carries "prerelease" for exactly this: at boot the persisted collection_items rows are re-read, and
-        // without the set in that list the pre-save heart would come back grey even though the write succeeded.
-        var store = new InMemoryStore();
-        store.SetSaved("prerelease", PreUri, true, SyncState.Confirmed);   // what a cold load replays
-
-        var src = Source(store);
-
-        Assert.True(src.IsSaved(PreUri));
-        Assert.Contains(PreUri, src.Saved);
+        await using var host = new ReplicaTestHost(bootstrap: Wavee.Backend.Sync.ReplicaBootstrap.Empty with
+        { Collections = [new("prerelease", [new SavedItem(PreUri, 1)])] });
+        await host.Replicas.PublishInitialAsync();
+        using var source = new EngineMutationSource(host.Store, host.Mutations, new Wavee.Backend.Sync.RootlistCommandRouter(static () => null));
+        Assert.True(source.IsSaved(PreUri));
+        Assert.Contains(PreUri, source.Saved);
     }
 
     [Fact]
-    public void ABulkReload_KeepsThePreSaveInTheUnion()
+    public async Task Committed_presave_updates_the_saved_union()
     {
-        var store = new InMemoryStore();
-        var src = Source(store);
-        Assert.False(src.IsSaved(PreUri));
-
-        using (store.BeginBulk())
-            store.SetSaved("prerelease", PreUri, true, SyncState.Confirmed);
-
-        Assert.True(src.IsSaved(PreUri));      // the bulk signal triggers the full BuildUnion re-read
-    }
-
-    // ── no library fan-out ────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void APreSaveDoesNotWakeAnyLibraryCollection()
-    {
-        // StoreLibrarySource.KindOfUri deliberately returns null for spotify:prerelease: — no library page lists
-        // pre-saves, so there is no collection to invalidate. The heart re-skins through LibraryBridge's per-URI signal.
-        var store = new InMemoryStore();
-        using var lib = new StoreLibrarySource(store, Offline(store), OfflineOnlineCatalog.Instance);
-        var woken = new List<CollectionKind>();
-        using var sub = lib.CollectionsChanged.Subscribe(Observers.From<CollectionKind>(woken.Add));
-
-        store.SetSaved("prerelease", PreUri, true, SyncState.Confirmed);
-        Assert.Empty(woken);
-
-        store.SetSaved("albums", "spotify:album:a", true, SyncState.Confirmed);
-        Assert.Contains(CollectionKind.Albums, woken);      // …while an ordinary album save still does
+        await using var host = new ReplicaTestHost();
+        using var source = new EngineMutationSource(host.Store, host.Mutations, new Wavee.Backend.Sync.RootlistCommandRouter(static () => null));
+        Assert.False(source.IsSaved(PreUri));
+        var intent = await host.Replicas.StageAsync("set", PreUri, "prerelease", true);
+        await host.Replicas.CompleteAsync(intent, null, null, false);
+        Assert.True(source.IsSaved(PreUri));
     }
 }

@@ -224,7 +224,7 @@ public class SidebarLayoutJsonTests
     public void SerializedDocument_UsesCamelCaseMembersAndStringKinds()
     {
         string json = Json(Envelope(EveryKindLayout()));
-        Assert.Contains("\"version\": 2", json);
+        Assert.Contains("\"version\": 3", json);
         Assert.Contains("\"curated\"", json);
         Assert.Contains("\"kind\": \"entityEmbed\"", json);
         Assert.Contains("\"kind\": \"newReleases\"", json);

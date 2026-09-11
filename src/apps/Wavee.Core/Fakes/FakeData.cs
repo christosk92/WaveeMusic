@@ -338,6 +338,32 @@ public static class FakeData
     /// <summary>The big list (Liked Songs) — generated on demand so 50k stays cheap.</summary>
     public static Track[] LikedSongs(int count = 5000) => Tracks(count, 1000);
 
+    // ── the 1500-track scroll-probe fixture (WaveeNavProbe.RunTrackListScrollProbe) ─────────────────────────────
+    /// <summary>Non-numeric on purpose: every other playlist fixture is addressed by <see cref="IndexFromUri"/> reading
+    /// the trailing digits of its uri (spotify:playlist:pl0, pl1, …), so a numeric id here would silently alias one of
+    /// those. <see cref="SpotifyExportSource"/> special-cases this exact uri instead of running it through that parse.</summary>
+    public const string BigPlaylistUri = "spotify:playlist:pl-big";
+    const int BigPlaylistTrackCount = 1500;
+    const int BigPlaylistOffset = 5000;   // clear of every pl{N}/album/artist index range other fixtures use
+
+    /// <summary>A deterministic 1500-track playlist ("Q-top 1500 (fake)") — big enough that the detail track list
+    /// genuinely virtualizes under a real fling, for the tracklist-scroll perf probe. Distinct id/uri/album per track
+    /// (same generator every other fixture uses); non-curated so Added-By/Added-At render too (the heavier column set).</summary>
+    public static Playlist PlaylistBig()
+    {
+        var tracks = Tracks(BigPlaylistTrackCount, BigPlaylistOffset);
+        var now = DateTimeOffset.Now;
+        var stamped = new Track[tracks.Length];
+        for (int t = 0; t < tracks.Length; t++)
+            stamped[t] = tracks[t] with { AddedAt = now.AddDays(-(t * 2L + 3)), AddedBy = "Christos" };
+        return new Playlist("pl-big", BigPlaylistUri, "Q-top 1500 (fake)",
+            "A deterministic 1500-track fixture for the detail track-list scroll probe.",
+            "Christos", Cover(BigPlaylistOffset, 300), stamped.Length, stamped);
+    }
+
+    static PlaylistSummary BigPlaylistSummary() =>
+        new(BigPlaylistUri, "Q-top 1500 (fake)", "Christos", BigPlaylistTrackCount, Cover(BigPlaylistOffset, 300));
+
     // ── local files (the peer source: docs/plans/wavee/architecture.md "Local files") ────────────────────────────────────────────
     // Synthetic "imported" tracks — distinct names from the streamed catalog, TrackOrigin.Local, Source="local", and
     // wavee:local:* uris. The LocalSource serves these; ContextTracks resolves a local context so they actually play.
@@ -464,6 +490,7 @@ public static class FakeData
     {
         if (string.IsNullOrEmpty(contextUri)) return Array.Empty<Track>();
         if (contextUri == "spotify:collection:tracks") return LikedSongs(161);
+        if (contextUri == BigPlaylistUri) return PlaylistBig().Tracks ?? Array.Empty<Track>();
         if (contextUri.StartsWith("spotify:album:", StringComparison.Ordinal)) return Album(IndexFromUri(contextUri)).Tracks ?? Array.Empty<Track>();
         if (contextUri.StartsWith("spotify:playlist:", StringComparison.Ordinal)) return Playlist(IndexFromUri(contextUri)).Tracks ?? Array.Empty<Track>();
         if (contextUri.StartsWith("spotify:artist:", StringComparison.Ordinal)) return TopTracksOf(Artist(IndexFromUri(contextUri)));
@@ -514,6 +541,8 @@ public static class FakeData
         ]),
         new PlaylistLeaf(PlaylistSummary(5)),
         new PlaylistLeaf(PlaylistSummary(6)),
+        // The 1500-track scroll-probe fixture — loose (not nested), so a probe run finds it without expanding a folder.
+        new PlaylistLeaf(BigPlaylistSummary()),
     ];
 
     /// <summary>Flattened playlist summaries (folders expanded at EVERY depth) — used to seed the "+ New playlist"

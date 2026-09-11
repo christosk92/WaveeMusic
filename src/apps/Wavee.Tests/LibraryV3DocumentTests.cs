@@ -94,7 +94,7 @@ public sealed class LibraryV3DocumentTests
         var doc = LibraryV3Document.Build(in state);
         Assert.Equal(SidebarSectionKind.EntityList, Library(doc).Kind);
         Assert.Null(Find(doc, LibraryV3Document.PinsId));
-        Assert.Null(Find(doc, LibraryV3Document.LikedId));
+        Assert.Null(Find(doc, LibraryV3Document.SystemId));
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public sealed class LibraryV3DocumentTests
         Assert.False(LibraryV3Document.FoldersApply(in state));      // the level is already flat
         Assert.Equal(SidebarSectionKind.EntityList, Library(doc).Kind);
         Assert.Null(Find(doc, LibraryV3Document.PinsId));
-        Assert.Null(Find(doc, LibraryV3Document.LikedId));
+        Assert.Null(Find(doc, LibraryV3Document.SystemId));
     }
 
     // ── the view code → presentation / density / columns ───────────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ public sealed class LibraryV3DocumentTests
         Assert.Equal(library.GridColumns, pins.Opts.GridColumns);
     }
 
-    // ── the pin band + the Liked Songs shortcut ────────────────────────────────────────────────────────────────────────
+    // ── the pin band + the Liked Songs system row ───────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void ThePinBand_ExistsOnlyWhenAPinSurvivedTheLens()
@@ -168,34 +168,103 @@ public sealed class LibraryV3DocumentTests
     }
 
     [Fact]
-    public void ThePinBand_LeadsTheDocument_AndTheShortcutFollowsIt()
+    public void TheSystemRow_LeadsTheDocument_AheadOfThePinBand()
     {
-        // The order is now pins → the library. Liked Songs left the DOCUMENT when the chrome's destination strip
-        // took over every fixed destination (#85 H4, LibraryV3NavBand): one destination, one row.
+        // Liked Songs is the library's own saved-songs collection, so it reads as the FIRST row of the pinned band
+        // rather than a shelf above it — the order is system → pins → the library. With pins visible the pin band's
+        // own PinEnd gutter closes the band, so no divider rides between the two.
         var doc = LibraryV3Document.Build(State(hasPins: true));
-        Assert.Equal(new[] { LibraryV3Document.PinsId, LibraryV3Document.LibraryId }, IdsOf(doc));
+        Assert.Equal(new[] { LibraryV3Document.SystemId, LibraryV3Document.PinsId, LibraryV3Document.LibraryId },
+            IdsOf(doc));
+    }
+
+    [Fact]
+    public void TheSystemRow_IsAStaticLinksSectionCarryingOneLikedRoute()
+    {
+        var section = Find(LibraryV3Document.Build(State()), LibraryV3Document.SystemId);
+        Assert.NotNull(section);
+        Assert.Equal(SidebarSectionKind.StaticLinks, section!.Kind);
+        Assert.Null(section.Title);
+        Assert.Null(section.TitleLocKey);
+        Assert.False(section.Hidden);
+        Assert.False(section.Collapsed);
+
+        var item = Assert.Single(section.ItemList);
+        Assert.Equal(LibraryV3Document.SystemLikedItemId, item.Id);
+        Assert.Equal(SidebarItemTarget.Route, item.Target);
+        Assert.Equal(LibraryV3Document.LikedRouteKey, item.Key);
+        Assert.Equal("Heart", item.IconOverride);
+
+        // Cozy + Artwork + Subtitles selects the 44-DIP height the pin band and the library section share; the count
+        // stays in the subtitle (CountBadges off — StaticLinks cannot show the badge anyway), and the row still
+        // reaches the 56-DIP rail through the shared planner.
+        Assert.Equal(new SidebarDisplayOptions(Density: SidebarDensity.Cozy, Presentation: SidebarPresentation.List,
+            Artwork: true, Subtitles: true, CountBadges: false, CollapsedByDefault: false, ShowInRail: true),
+            section.Opts);
     }
 
     [Theory]
     [InlineData(SidebarV3Filter.All)]
     [InlineData(SidebarV3Filter.Playlists)]
+    public void TheSystemRow_RendersUnderTheLensesWhereASavedSongsShortcutIsTruthful(SidebarV3Filter filter)
+        => Assert.NotNull(Find(LibraryV3Document.Build(State(filter)), LibraryV3Document.SystemId));
+
+    [Theory]
     [InlineData(SidebarV3Filter.Albums)]
     [InlineData(SidebarV3Filter.Artists)]
     [InlineData(SidebarV3Filter.Podcasts)]
-    public void TheLikedShortcut_NeverRidesTheDocument_TheChromeStripCarriesIt(SidebarV3Filter filter)
+    public void TheSystemRow_IsAbsentOutsideThoseLenses(SidebarV3Filter filter)
+        => Assert.Null(Find(LibraryV3Document.Build(State(filter)), LibraryV3Document.SystemId));
+
+    [Fact]
+    public void TheSystemRow_IsAbsentWhileSearching()
+        => Assert.Null(Find(LibraryV3Document.Build(State(SidebarV3Filter.Playlists, searching: true)),
+                             LibraryV3Document.SystemId));
+
+    [Fact]
+    public void TheSystemRow_IsAbsentAtADrilledLevel()
+        => Assert.Null(Find(LibraryV3Document.Build(State(SidebarV3Filter.Playlists, drill: "f1")),
+                             LibraryV3Document.SystemId));
+
+    [Fact]
+    public void TheSystemRow_IsAbsentWhenLikedIsItselfPinned()
     {
-        // It used to be a list row scoped to the lenses where a saved-songs shortcut reads truthfully. It is now in
-        // the chrome instead (LibraryV3NavBand's destination strip), which is ALWAYS present and therefore truthful
-        // under every lens — so the document emits it under none of them.
-        Assert.Null(Find(LibraryV3Document.Build(State(filter)), LibraryV3Document.LikedId));
-        Assert.True(LibraryV3Document.ChromeCarriesDestinations);
+        // It is then rendered as pin #n instead — same place in the list, now reorderable — never twice.
+        Assert.Null(Find(LibraryV3Document.Build(State(hasPins: true, likedPinned: true)),
+                          LibraryV3Document.SystemId));
     }
 
     [Fact]
-    public void TheLikedShortcut_IsAbsentWhenItIsItselfPinned()
+    public void TheSystemRow_IsAbsentWhenTheShortcutBandAlreadyCarriesTheLikedRoute()
     {
-        // It is then rendered as pin #n — never twice.
-        Assert.Null(Find(LibraryV3Document.Build(State(hasPins: true, likedPinned: true)), LibraryV3Document.LikedId));
+        // The existing dedupe obligation: a user who put Liked Songs in the shortcut band must not get it twice.
+        var topBar = new[] { new SidebarItemSpec("itm_liked", SidebarItemTarget.Route, LibraryV3Document.LikedRouteKey) };
+        Assert.Null(Find(LibraryV3Document.Build(State(), topBar), LibraryV3Document.SystemId));
+
+        // …but removing it from the band brings the system row straight back — it is not dropped unconditionally.
+        var withoutLiked = new[] { new SidebarItemSpec("itm_home", SidebarItemTarget.Route, "home") };
+        Assert.NotNull(Find(LibraryV3Document.Build(State(), withoutLiked), LibraryV3Document.SystemId));
+    }
+
+    [Fact]
+    public void TheRuleDivider_FollowsTheSystemRow_OnlyWhenThePinBandIsNotVisible()
+    {
+        // No pins: the system row needs its own seam before the library.
+        var noPins = LibraryV3Document.Build(State(hasPins: false));
+        Assert.Equal(new[] { LibraryV3Document.SystemId, LibraryV3Document.SystemRuleId, LibraryV3Document.LibraryId },
+            IdsOf(noPins));
+
+        // With pins: the pinned band's own PinEnd gutter closes the whole band, so no extra rule rides along.
+        var withPins = LibraryV3Document.Build(State(hasPins: true));
+        Assert.DoesNotContain(LibraryV3Document.SystemRuleId, IdsOf(withPins));
+    }
+
+    [Fact]
+    public void TheRuleDivider_IsAbsentWhenTheSystemRowItselfIsAbsent()
+    {
+        // No system row (Albums lens, no pins) ⇒ no orphaned rule either.
+        var doc = LibraryV3Document.Build(State(SidebarV3Filter.Albums, hasPins: false));
+        Assert.DoesNotContain(LibraryV3Document.SystemRuleId, IdsOf(doc));
     }
 
     [Fact]
@@ -203,7 +272,8 @@ public sealed class LibraryV3DocumentTests
     {
         // The strip, the Classic section and anything else that needs "which routes are fixed library destinations"
         // read SidebarShortcutsSection.LibraryDestinations. A second copy is how the same row gets rendered twice.
-        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "local" },
+        // Local files is retired from every navigation surface, so the list is down to four.
+        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts" },
             SidebarShortcutsSection.LibraryDestinations);
         foreach (var key in SidebarShortcutsSection.LibraryDestinations)
             Assert.True(SidebarShortcutsSection.IsLibraryDestination(key));
@@ -250,23 +320,22 @@ public sealed class LibraryV3DocumentTests
     {
         // The five destinations were briefly seeded here. They are not any more: this is the ONE global band shared by
         // all three designs, so seeding it duplicated Classic's own "Your Library" section, saturated the reducer's
-        // 6-item cap on a fresh install, and needed a migration for every persisted band. V3 renders the destinations
-        // from its own chrome instead, which is also what let them become a compact strip rather than five rows.
+        // 6-item cap on a fresh install, and needed a migration for every persisted band. V3 renders Liked Songs from
+        // its own system row instead, which is also what makes it reachable without a customized band.
         var item = Assert.Single(SidebarCustomLayout.DefaultTopBar);
         Assert.Equal(SidebarItemTarget.Route, item.Target);
         Assert.Equal("home", item.Key);
     }
 
     [Fact]
-    public void TheDestinationStrip_MakesEveryFixedRouteReachable_OnADefaultInstall()
+    public void TheSystemRow_MakesLikedSongsReachable_OnADefaultInstall()
     {
-        // The point of H4: a default V3 install can reach all five without customizing anything. They are not in the
-        // document and not in the top bar — the chrome owns them — so this asserts the contract the chrome renders
-        // against, and that the document does not also emit one of them.
-        Assert.True(LibraryV3Document.ChromeCarriesDestinations);
+        // The point of H4: a default V3 install can reach Liked Songs without customizing anything. The default top
+        // bar carries only Home, so ContainsRoute never fires and the document's own system row is what makes the
+        // destination reachable — unlike the retired chrome strip, this one lives in the scrolling document.
         Assert.Contains(LibraryV3Document.LikedRouteKey, SidebarShortcutsSection.LibraryDestinations);
-        Assert.Null(Find(LibraryV3Document.Build(State(), SidebarCustomLayout.DefaultTopBar),
-                         LibraryV3Document.LikedId));
+        Assert.NotNull(Find(LibraryV3Document.Build(State(), SidebarCustomLayout.DefaultTopBar),
+                         LibraryV3Document.SystemId));
     }
 
     [Fact]
@@ -377,11 +446,16 @@ public sealed class LibraryV3DocumentTests
         string[] states =
         [
             .. IdsOf(LibraryV3Document.Build(State(hasPins: true))),
+            .. IdsOf(LibraryV3Document.Build(State(hasPins: false))),
             .. IdsOf(LibraryV3Document.Build(State(SidebarV3Filter.Playlists, SidebarV3View.Grid, hasPins: true))),
             .. IdsOf(LibraryV3Document.Build(State(SidebarV3Filter.Albums, searching: true, hasPins: true))),
         ];
         foreach (string id in states)
-            Assert.Contains(id, new[] { LibraryV3Document.PinsId, LibraryV3Document.LikedId, LibraryV3Document.LibraryId });
+            Assert.Contains(id, new[]
+            {
+                LibraryV3Document.SystemId, LibraryV3Document.SystemRuleId,
+                LibraryV3Document.PinsId, LibraryV3Document.LibraryId,
+            });
 
         Assert.Equal(IdsOf(LibraryV3Document.Build(State(hasPins: true))),
                      IdsOf(LibraryV3Document.Build(State(hasPins: true))));

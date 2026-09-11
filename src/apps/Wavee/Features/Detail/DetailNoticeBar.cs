@@ -16,7 +16,7 @@ namespace Wavee;
 /// (<c>PlaylistInlineEdit.Editable</c> reads the same <see cref="DetailModel.Notice"/>) but the rows they were reading
 /// stay on screen instead of collapsing into an error page that says less.</para>
 /// <para>A Component (not a static builder) so it re-renders off the LIVE loadable: the strip must appear the frame the
-/// tombstone push (or a thin album projection) lands and disappear the frame the model comes back whole, without the
+/// tombstone push lands and disappear the frame the model comes back whole, without the
 /// shell re-rendering.</para>
 /// </summary>
 sealed class DetailNoticeBar : Component
@@ -34,20 +34,6 @@ sealed class DetailNoticeBar : Component
         var go = UseContext(HistoryStore.NavCtx);
         var notice = _full.Value.Value.Notice;      // subscribe → appears/clears in place
         if (notice == DetailNotice.None) return new BoxEl { Height = 0f, HitTestVisible = false };
-
-        // MinifiedAlbum is its own shape: not terminal, and not this strip's job to fix — it says WHERE the details
-        // load (the full album page) and nothing more. The way there is the surface's own chrome (the library pane's
-        // "View full album" button, the full page's hero), never an action on the notice: the bar is a statement about
-        // the data, and the full page heals itself the moment its trailing band asks for Full.
-        if (notice == DetailNotice.MinifiedAlbum)
-            return new BoxEl
-            {
-                Direction = 1, Padding = new Edges4(16f, 8f, 16f, 4f), Shrink = 0f,
-                Children =
-                [
-                    InfoBar.Create(InfoBarSeverity.Informational, Loc.Get(Strings.Detail.Notice.MinifiedAlbum), "", isClosable: false),
-                ],
-            };
 
         string message = notice switch
         {

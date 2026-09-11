@@ -28,17 +28,27 @@ public static class PreparedNextPolicy
     /// (<see cref="MediaSwitchLogic.AllowCrossfade"/>).</summary>
     public static PrepareDecision Decide(
         PlayableKind currentKind, QueueEntry? current, QueueEntry? next, PlayableKind nextKind,
-        bool nextMayPrepare, RepeatMode repeat)
+        bool nextMayPrepare, RepeatMode repeat, bool shuffle = false)
     {
         if (current is null || currentKind == PlayableKind.Video) next = null;
         if (next is not null && nextKind == PlayableKind.Video) next = null;
         if (next is not null && !nextMayPrepare) next = null;
         bool allowOverlap = current is not null && next is not null
             && repeat != RepeatMode.Track
+            && current.Track.DurationMs > 0 && next.Track.DurationMs > 0
             && IsMusic(current.Track) && IsMusic(next.Track)
+            && CanOverlapAlbums(current.Track, next.Track, shuffle)
             && MediaSwitchLogic.AllowCrossfade(currentKind, nextKind);
         string? signature = next is null ? null : Signature(current!.ItemId, next.ItemId, allowOverlap);
         return new PrepareDecision(next is not null, allowOverlap, signature);
+    }
+
+    public static bool CanOverlapAlbums(Track current, Track next, bool shuffle)
+    {
+        string? a = current.Album?.Uri;
+        string? b = next.Album?.Uri;
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+        return shuffle || !string.Equals(a, b, StringComparison.Ordinal);
     }
 
     /// <summary>The identity signature a duplicate schedule call dedupes on: the (current, next) item ids + the overlap

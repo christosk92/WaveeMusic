@@ -46,7 +46,9 @@ skill. Engine work: the repo-root [fluentgpu](../fluentgpu/SKILL.md) skill.
       Classic                       Library V3                    Curated
    locked built-in doc         synthesized ephemeral doc       the user's doc
    SidebarBuiltInDocuments      LibraryV3Document.Build        prefs.Layout (persisted)
-   + read-only config           + LibraryV3Chrome as Head      + the customizer page
+   + read-only config           + LibraryV3Chrome as Head:     + the customizer page
+                                  nav band · header · chips ·
+                                  lens row · breadcrumb
 ```
 
 **Three modes, three kinds of document, one renderer.**
@@ -54,7 +56,7 @@ skill. Engine work: the repo-root [fluentgpu](../fluentgpu/SKILL.md) skill.
 | Mode | Document | Editable? | Mode component |
 |---|---|---|---|
 | Classic (`SidebarDesign.Classic`) | `SidebarBuiltInDocuments.Classic(pinnedOpen, libraryOpen, playlistsOpen)` — rebuilt from code every read, never persisted | no (`ReadOnly = true`) | `Features/Sidebar/WaveeSidebar.cs` (133 lines) |
-| Library V3 (`SidebarDesign.LibraryV3`) | `LibraryV3Document.Build(in LibraryV3DocState)` — ephemeral, synthesized from filter/qualifier/sort/view/search/drill | no (`ReadOnly = true`; its chrome owns the state) | `Modes/LibraryV3Sidebar.cs` + `Modes/LibraryV3/*` |
+| Library V3 (`SidebarDesign.LibraryV3`) | `LibraryV3Document.Build(in LibraryV3DocState)` — ephemeral, synthesized from filter/qualifier/sort/view/search/drill; chrome above it = nav band · header · chips · lens row · breadcrumb | no (`ReadOnly = true`; its chrome owns the state) | `Modes/LibraryV3Sidebar.cs` + `Modes/LibraryV3/*` |
 | Wavee Curated (`SidebarDesign.Curated`) | `SidebarPreferences.Layout` — the persisted user document in `sidebar-layout.json` | yes | `Modes/CuratedSidebar.cs` (98 lines) + `Curated/*` customizer |
 
 `Features/Sidebar/SidebarHost.cs` is the **one mount seam**: it reads `prefs.Design.Value` and mounts the mode

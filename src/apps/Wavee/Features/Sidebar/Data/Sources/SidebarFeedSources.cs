@@ -17,14 +17,6 @@ namespace Wavee;
 // THREADING: every fetch completes on a pool thread and marshals through the injected `post` before touching state; Fill
 // itself only reads already-published rows.
 
-/// <summary>A source that owns async work and therefore needs the binder's UI-thread marshaller. The binder calls
-/// <see cref="Attach"/> from <c>Start</c> and <see cref="Detach"/> on teardown.</summary>
-public interface ISidebarDataSourceLifecycle
-{
-    void Attach(Action<Action> post);
-    void Detach();
-}
-
 /// <summary><c>wavee.newReleases</c> — new releases/episodes from followed artists (the What's New feed). A null service
 /// (or an offline one) is an EMPTY section, not an error: <c>SidebarSourceMap.FromFeedState</c> maps Offline → Ready.</summary>
 public sealed class SidebarNewReleasesSource : SidebarDataSourceBase, ISidebarDataSourceLifecycle
@@ -241,122 +233,6 @@ public sealed class SidebarConcertsSource : SidebarDataSourceBase, ISidebarDataS
     {
         var post = _post;
         if (post is null) action();          // no marshaller attached (a headless/host-less run): run inline
-        else post(action);
-    }
-}
-
-/// <summary>
-/// <c>wavee.artist.topTracks</c> — an artist's popular tracks, over the existing artist-popular backend (the overview
-/// seed merged with the spclient extensions). Config: <c>{ artistUri, maxItems }</c>.
-///
-/// <para>KEYED BY ARTIST: one registered source serves any number of sections, each configured for a different artist, so
-/// the rows AND the health verdict are per-artist. <see cref="SidebarDataSourceBase.State"/> reports the artist of the most
-/// recent <c>Fill</c> — which is exactly the artist whose slice the resolver is about to record.</para>
-/// </summary>
-public sealed class SidebarArtistTopTracksSource : SidebarDataSourceBase, ISidebarDataSourceLifecycle
-{
-    /// <summary>How many artists' charts stay resident. A sidebar with more spotlighted artists than this is not a
-    /// sidebar; the oldest simply re-fetches.</summary>
-    public const int ArtistCacheCap = 8;
-
-    readonly IMusicLibrary? _library;
-    readonly Dictionary<string, List<SidebarLibraryEntry>> _byArtist = new(StringComparer.Ordinal);
-    readonly Dictionary<string, SidebarSourceState> _stateByArtist = new(StringComparer.Ordinal);
-    readonly List<string> _lru = new();
-    Action<Action>? _post;
-
-    public SidebarArtistTopTracksSource(IMusicLibrary? library)
-        : base(SidebarContributions.ArtistTopTracks)
-        => _library = library;
-
-    public override SidebarSourceItemType ItemType => SidebarSourceItemType.Track;
-    public override SidebarSourceSorts SupportedSorts => SidebarSourceSorts.SourceOrder;
-
-    public override SidebarConfigSchema ConfigSchema { get; } = new(1,
-    [
-        new SidebarConfigField("artistUri", SidebarConfigFieldKind.EntityUri, "sidebar.source.artistTopTracks.artist",
-            Required: true),
-        new SidebarConfigField("maxItems", SidebarConfigFieldKind.Int, "sidebar.source.artistTopTracks.maxItems",
-            DefaultJson: "5", Min: 1, Max: 50),
-    ]);
-
-    public void Attach(Action<Action> post) => _post = post;
-    public void Detach() => _post = null;
-
-    public override void EnsureFresh(in SidebarSourceRequest request)
-    {
-        string? artist = request.Config.Str("artistUri");
-        if (string.IsNullOrEmpty(artist) || _library is null) return;
-        if (_stateByArtist.ContainsKey(artist)) return;      // already resolved or in flight
-        _stateByArtist[artist] = SidebarSourceState.Pending;
-        Touch(artist);
-        _ = FetchAsync(artist, request.Config.Int("maxItems", 5));
-    }
-
-    async Task FetchAsync(string artistUri, int max)
-    {
-        IReadOnlyList<Track>? tracks = null;
-        var state = SidebarSourceState.Ready;
-        try
-        {
-            // The FULL rung IS the extended chart (overview seed ∪ artist-top-tracks-extensions, with counts) —
-            // one ask through the catalog replaces the seed-then-extend two-service dance. Offline the ladder stops at
-            // whatever is resident, so the pane renders the seed rather than nothing.
-            var artist = await _library!.GetArtistAsync(artistUri, HydrationLevel.Full).ConfigureAwait(false);
-            tracks = artist?.TopTracks ?? Array.Empty<Track>();
-        }
-        catch (OperationCanceledException) { return; }
-        catch (Exception) { state = SidebarSourceState.Error; }
-
-        Post(() =>
-        {
-            if (!_byArtist.TryGetValue(artistUri, out var rows)) _byArtist[artistUri] = rows = new List<SidebarLibraryEntry>(max);
-            rows.Clear();
-            SidebarSourceMap.Tracks(tracks, rows, ArtistPopularTracks.ExtendedCap);
-            _stateByArtist[artistUri] = state;
-            Touch(artistUri);
-            SetHealth(state);
-            Raise();
-        });
-    }
-
-    public override int Fill(List<SidebarLibraryEntry> into, in SidebarSourceRequest request)
-    {
-        string? artist = request.Config.Str("artistUri");
-        if (string.IsNullOrEmpty(artist))
-        {
-            // An unconfigured section is not broken — it is waiting for the customizer to pick an artist.
-            SetHealthQuiet(SidebarSourceState.Ready, "sidebar.source.artistTopTracks.unset");
-            return 0;
-        }
-
-        var state = _stateByArtist.TryGetValue(artist, out var s) ? s : SidebarSourceState.Pending;
-        SetHealthQuiet(state);
-        if (!_byArtist.TryGetValue(artist, out var rows) || rows.Count == 0) return 0;
-
-        int max = SidebarLibrarySource.Max(request, request.Config.Int("maxItems"), 5);
-        int n = rows.Count < max ? rows.Count : max;
-        for (int i = 0; i < n; i++) into.Add(rows[i]);
-        return n;
-    }
-
-    void Touch(string artistUri)
-    {
-        _lru.Remove(artistUri);
-        _lru.Add(artistUri);
-        while (_lru.Count > ArtistCacheCap)
-        {
-            string oldest = _lru[0];
-            _lru.RemoveAt(0);
-            _byArtist.Remove(oldest);
-            _stateByArtist.Remove(oldest);
-        }
-    }
-
-    void Post(Action action)
-    {
-        var post = _post;
-        if (post is null) action();
         else post(action);
     }
 }

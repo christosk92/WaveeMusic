@@ -95,6 +95,25 @@ sealed partial class SettingsPage
         Loc.Get(Strings.Settings.Choice.Romanization),
     ];
 
+    // The Now Playing presentation SelectorBar: Cover (NpvPlayerPrefs.Cover == 0) | the current style's short label
+    // (NpvPlayerPrefs.Player == 1). Index IS the stored value — same convention as ThemeMode/RowDensity above. Rebuilt
+    // per render (not hoisted like ZoomLabels) because the second item's label follows whichever style is selected.
+    static string[] NpvPresentationLabels(NpvPlayerCatalog.Preset style) =>
+    [
+        Loc.Get(Strings.Player.PresentationCover),
+        Loc.Get(style.ShortLabelKey),
+    ];
+
+    // The player-style ComboBox: all twelve presets in catalog order, index == preset id (NpvPlayerCatalog.IsPresetId
+    // convention — append-only, never renumbered).
+    static string[] NpvStyleLabels()
+    {
+        var presets = NpvPlayerCatalog.Presets;
+        var labels = new string[presets.Length];
+        for (int i = 0; i < presets.Length; i++) labels[i] = Loc.Get(presets[i].LabelKey);
+        return labels;
+    }
+
     /// <summary>An appearance on/off row. Takes <paramref name="settings"/> explicitly rather than closing over it, so
     /// the group builders below can reuse it without a per-render delegate.</summary>
     Element AppearanceToggle(IAppSettings? settings, SettingKey<bool> key)
@@ -123,6 +142,12 @@ sealed partial class SettingsPage
             settings.Get(WaveeSettings.DetailLikedRailWidth), settings.Get(WaveeSettings.DetailLikedRailCollapsed),
             settings.Get(WaveeSettings.DetailShowRailWidth), settings.Get(WaveeSettings.DetailShowRailCollapsed));
         int lyricsSecondary = Math.Clamp(settings?.Get(WaveeSettings.LyricsSecondaryLine) ?? 0, 0, LyricsSecondaryLabels().Length - 1);
+        // Now Playing player styles (docs/plans/wavee/npv-player-styles-implementation.md): reading the epoch here —
+        // like LyricsPrefs.Epoch above the lyrics writer — subscribes this render to EVERY surface that can change the
+        // presentation or style (header row, flyout, art context menu, palette), not only this page's own writes.
+        _ = NpvPlayerPrefs.Epoch.Value;
+        int npvPresentation = NpvPlayerPrefs.Presentation(settings);
+        var npvStyle = NpvPlayerCatalog.ById(NpvPlayerPrefs.Style(settings));
         // The zoom picker's mode: Auto/Dense show as the ONE head item ("Auto"); only Manual shows a ladder rung
         // selected. Clamp tolerates a value this build doesn't define (the int-enum convention).
         var zoomMode = (ZoomAutoMode)Math.Clamp(settings?.Get(WaveeSettings.ZoomMode) ?? (int)ZoomAutoMode.Auto, 0, 2);
@@ -237,6 +262,12 @@ sealed partial class SettingsPage
             Bump();
         }
 
+        // Both writers go straight through NpvPlayerPrefs — no page-local Bump(): NpvPlayerPrefs.Epoch (read above)
+        // already covers this row's own re-render, the same way LyricsPrefs.Epoch covers SetLyricsSecondary's siblings
+        // elsewhere in the app.
+        void SetNpvPresentation(int i) => NpvPlayerPrefs.SetPresentation(settings, i, NpvDiagnostics.SourceSettings);
+        void SetNpvStyle(int i) => NpvPlayerPrefs.SetStyle(settings, i, NpvDiagnostics.SourceSettings);
+
         return SettingsTabStack(
             SettingsSectionHeader(Loc.Get(Strings.Settings.Appearance.Title),
                 SettingsGlyphs.Section(SettingsTab.Appearance, "Theme"),
@@ -291,7 +322,21 @@ sealed partial class SettingsPage
             // A plain AppearanceToggle: its Bump() raises AppearancePrefs.Epoch, which ImmersiveLyricsSurface reads, so
             // flipping it starts/stops the drift on an OPEN surface — no restart.
             SettingsRow(Loc.Get(Strings.Settings.Appearance.LyricsBackdrop), Loc.Get(Strings.Settings.Appearance.LyricsBackdropSub),
-                AppearanceToggle(settings, WaveeSettings.LyricsAnimatedBackdrop), SettingsGlyphs.Row(SettingsTab.Appearance, "lyricsBackdrop")));
+                AppearanceToggle(settings, WaveeSettings.LyricsAnimatedBackdrop), SettingsGlyphs.Row(SettingsTab.Appearance, "lyricsBackdrop")),
+
+            // Now Playing player styles: its own group, same shape as Lyrics above — the pinned hero's Cover|Player
+            // switch and which of the twelve decks Player shows. Both rows write through NpvPlayerPrefs so the header
+            // row, flyout, art context menu and palette all agree with what this page shows.
+            SettingsSectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title),
+                SettingsGlyphs.Section(SettingsTab.Appearance, "Now playing"),
+                Loc.Get(Strings.Settings.NowPlaying.Subtitle)),
+            SettingsRow(Loc.Get(Strings.Settings.Appearance.NpvPresentation), Loc.Get(Strings.Settings.Appearance.NpvPresentationSub),
+                SelectorBar.Create(NpvPresentationLabels(npvStyle), new Signal<int>(npvPresentation), onChange: SetNpvPresentation),
+                SettingsGlyphs.Row(SettingsTab.Appearance, "npvPresentation")),
+            SettingsRow(Loc.Get(Strings.Settings.Appearance.NpvStyle), Loc.Get(Strings.Settings.Appearance.NpvStyleSub),
+                ComboBox.Create(NpvStyleLabels(), new Signal<int>(npvStyle.Id), width: 180f, isEnabled: settings is not null,
+                    onChange: SetNpvStyle),
+                SettingsGlyphs.Row(SettingsTab.Appearance, "npvStyle")));
     }
 
     // ── Lists → Row density ───────────────────────────────────────────────────────────────────────────────────────────

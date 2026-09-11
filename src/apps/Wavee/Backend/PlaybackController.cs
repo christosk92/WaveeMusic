@@ -104,7 +104,7 @@ public sealed class LiveOutboundControl : IOutboundControl
 
 public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 {
-    readonly PlaybackSession _session = new();
+    readonly PlaybackSession _session;
     QueueSnapshot _snap;                   // the latest atomic snapshot (published via ApplyLocalSnapshot); the ONE truth
     // ── the ONE current-media host (Milestone B) ────────────────────────────────────────────────────────────────────
     // The current media is EITHER audio or video, swapped under one clock. Common transport verbs go through _currentHost;
@@ -168,6 +168,62 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // RESUMED loads only — a fresh (0-target) load that ends at 0 is an ordinary short/empty playable, not a failure.
     long _loadResumeTargetMs;
     long _contextGeneration;
+    long _transportSequence;
+    long _intentGeneration;
+    long _resolvingGeneration;
+    CancellationTokenSource? _loadCts;
+    bool _playWhenReady;
+    bool _disposed;
+    QueueItemId _audibleItemId;
+    long _readyItemGeneration;
+    long _pendingLoadSequence;
+    PlaybackSeekState? _pendingSeek;
+    PlaybackSeekRequest? _pendingSeekRequest;
+    PlaybackEvent? _pendingSeekEvent;
+    // Finding #4 (library-v3-1): a seek parked during a deferred load's resolve carries its TARGET into the load as
+    // the initial position, but the load always mints its OWN fresh command (see MintLoadCommand) — reusing the
+    // seek's older id risked FluentMediaAudioHost.Load dropping it as IsOlder if anything (a Pause) minted a newer
+    // sequence while the resolve was in flight. This remembers which load command's outcome should ALSO resolve
+    // which seek operation, so OnHostSignal can settle _pendingSeek off a command that isn't its own id.
+    (PlaybackCommandId Load, PlaybackCommandId Seek)? _seekCarrier;
+    AudioTransitionSignal? _announcedTransition;
+
+    long CurrentTransportPositionMs => _resolvingGeneration != 0 && _resolvingGeneration == Volatile.Read(ref _contextGeneration)
+        ? (_pendingSeek?.TargetMs ?? 0) : _currentHost.ClockValid ? _currentHost.PositionMs : _projection.PositionMs;
+
+    PlaybackCommandId NextTransportCommand() => new(Volatile.Read(ref _contextGeneration), Interlocked.Increment(ref _transportSequence));
+
+    // Finding #4 (library-v3-1): mints the FRESH command every real Load must carry (never a reused older id — see
+    // _seekCarrier above) and folds a parked seek's target into the load's initial position. Returns the position
+    // the caller should actually load at (the seek's target when one was carried, else the caller's own resolved
+    // start).
+    PlaybackCommandId MintLoadCommand(ref long startPositionMs)
+    {
+        var loadCommand = NextTransportCommand();
+        if (_pendingSeek is { } carried)
+        {
+            _seekCarrier = (loadCommand, carried.Id);
+            startPositionMs = carried.TargetMs;
+        }
+        return loadCommand;
+    }
+
+    void SetPlayIntent(bool value, PlaybackPhase phase)
+    {
+        _playWhenReady = value;
+        _intentGeneration = Volatile.Read(ref _contextGeneration);
+        _projection.SetTransportIntent(NextTransportCommand(), value, phase);
+    }
+
+    // Every caller owns _lock. Yield it only around cold work, then restore that ownership even on cancellation.
+    // Callers must compare their captured item generation before applying the result.
+    async Task<T> AwaitColdAsync<T>(Task<T> work)
+    {
+        _lock.Release();
+        try { return await work.ConfigureAwait(false); }
+        finally { await _lock.WaitAsync().ConfigureAwait(false); }
+    }
+
     // The generation an EXPLICIT play intent (ExecutePlayAsync / PlayTrackAsync) minted before its resolve started —
     // read by MaybeScheduleSessionRecovery / RunSessionRecoveryAsync so a launch-recovery fold that is mid-resolve when
     // the user presses Play can never win the race and seed a stale cluster snapshot over the intent that is still
@@ -240,11 +296,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         _audioHost = host;
         _currentHost = host;                 // audio is the current media until a video boundary swaps it
         _videoHost = videoHost;
+        _session = new PlaybackSession(projection.QueueProjection);
         _snap = _session.Snapshot();
         _resolver = resolver;
         _fast = fast;
         _projection = projection;
-        _contexts = contexts;
+        _contexts = new PlaybackContextCatalogIngress(contexts, projection);
         _transferDecoder = transferDecoder;
         _ourDeviceId = ourDeviceId;
         _outbound = outbound;
@@ -454,12 +511,14 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         try
         {
             var track = await hydrate(uri, ct).ConfigureAwait(false);
-            if (track is null || string.IsNullOrEmpty(track.Uri)) return null;
+            if (track is null || track.Uri != uri) return null;
             // A RESTORED playable carries NO length. The persisted/cluster length is whatever the media engine last
             // measured — for a broadcast that is a sliding DVR window, i.e. a number that was never the playable's
             // duration and is stale the instant it is written down. The owner states the length when (and if) it
             // resolves; until then 0 is the honest answer and the one the LIVE rail is built on.
-            return track.DurationMs == 0 ? track : track with { DurationMs = 0 };
+            await _projection.ObserveOwnerTrackAsync(track with { DurationMs = 0 }, ct).ConfigureAwait(false);
+            var projected = _projection.QueueProjection.ReadTrack(uri);
+            return projected.DurationMs == 0 ? projected : projected with { DurationMs = 0 };
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -656,70 +715,20 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         string userMsg = reason != AudioKeyFailureReason.None ? reason.ToUserMessage() : "Couldn't play this track.";
         string detail = ex is AudioPlaybackException a ? (a.Message == reason.ToString() ? reason.ToString() : $"{reason}: {a.Message}") : ex.ToString();
         _log.Info("local playback error: " + detail);
+        long position = _projection.PositionMs;
+        Interlocked.Increment(ref _contextGeneration); // faulted ownership cannot accept a late successful load/seek
+        _readyItemGeneration = _pendingLoadSequence = 0;
+        _resolvingGeneration = 0;
+        _restorePendingLoad = true;
+        _playWhenReady = false;
+        var command = NextTransportCommand();
+        _currentHost.Submit(new(command, AudioTransportAction.Stop, false));
+        _projection.SetTransportIntent(command, false, PlaybackPhase.Failed);
+        _projection.OnHostSignal(AudioHostSignal.Fault(position, reason, detail) with { Command = command });
         OnPlaybackError?.Invoke(new PlaybackErrorInfo(reason, userMsg, detail));
     }
 
-    // Instant-start body supply: await the (parallel) key+CDN resolve and hand it to the host; a body failure surfaces
-    // as a typed playback error (the head already started, so this is the "couldn't continue" case).
-    //
-    // This used to defer the SupplyBody call by a fixed FastStartBodySupplyGrace (250ms) "so clear-head decode can
-    // queue first PCM" — a wall-clock guess that behaved differently on every machine. It bought two things, neither
-    // of which needs a timer: (1) ordering — the host's Enqueue pump already serializes LoadFastStartAsync before
-    // SupplyBodyAsync, so the clear head is always queued first regardless of when this method runs; (2) bandwidth —
-    // the newly-attached CDN body's read-ahead competing with the still-decoding clear head is now shaped at the
-    // source instead (SpotifyAudioStream pauses read-ahead across an eager attach and releases it itself on the
-    // decoder's first real body byte — see SpotifyAudioStream.AttachBodyCoreAsync / ReleaseBandwidthShapePauseIfArmed).
-    async Task SupplyBodyWhenReadyAsync(Task<AudioStreamHandle> body, string expectedTrackUri)
-    {
-        try
-        {
-            var h = await body.ConfigureAwait(false);
-            var current = _session.Current?.Uri ?? "";
-            if (!string.Equals(current, expectedTrackUri, StringComparison.Ordinal))
-            {
-                _log.Info($"fast-start body ignored as stale expected={expectedTrackUri} current={current} bodyTrack={h.TrackUri} file={h.FileIdHex}");
-            }
-            else if (_currentKind == PlayableKind.Video)
-            {
-                // The user switched THIS track to video while its encrypted body was still resolving. The audio host has been
-                // stopped by the swap; feeding it a body now would hand a stopped decoder work it must not do (and risks a
-                // second stream). The body is simply dropped — a swap back to audio reloads from scratch.
-                _log.Info($"fast-start body dropped — {expectedTrackUri} is now playing as video (file={h.FileIdHex})");
-            }
-            else
-            {
-                _log.Info($"fast-start body ready track={expectedTrackUri} file={h.FileIdHex}; supplying to audio host");
-                _audioHost.SupplyBody(h);   // audio-specific: this flow is only scheduled from the audio fast-start path
-                // SupplyBodyAsync's own first statement re-announces Buffering while it attaches/opens the body session —
-                // withheld now when the host has no play intent (FluentMediaAudioHost's gate), but this is the SAME
-                // belt-and-suspenders clear as the two after the Load calls above: a host without play intent RIGHT NOW
-                // (live-checked, not the initiallyPaused snapshot from when the load started — the user may have pressed
-                // Play while the body was still resolving, in which case a real buffering state must stay visible).
-                if (!_audioHost.PlayIntent) _projection.ClearTransientBuffering();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            _log.Info($"fast-start body task canceled expected={expectedTrackUri}");
-        }
-        catch (Exception ex)
-        {
-            var current = _session.Current?.Uri ?? "";
-            if (string.Equals(current, expectedTrackUri, StringComparison.Ordinal))
-            {
-                // Through the ONE teardown chokepoint (not a bare _audioHost.Stop()) — the audio host IS _currentHost
-                // here (this flow is only ever scheduled from the audio fast-start path), and this stop must arm
-                // _restorePendingLoad exactly like every other session-preserving stop, or a later Resume bare-Play()s
-                // over the decoder this just silenced.
-                StopHostKeepingSession($"fast-start body failed for active track={expectedTrackUri}; stopping audio host to unblock head stream: {ex.GetType().Name}: {ex.Message}");
-            }
-            else
-            {
-                _log.Info($"fast-start body failed for stale track expected={expectedTrackUri} current={current}: {ex.GetType().Name}: {ex.Message}");
-            }
-            ReportPlaybackError(ex);
-        }
-    }
+
 
     /// <summary>Re-attempt the current track after a surfaced playback error (the toast/player-bar "Retry" action).</summary>
     public async Task RetryCurrentAsync(CancellationToken ct = default)
@@ -1026,14 +1035,19 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         return playlistUri;
     }
 
-    public Task PauseAsync(CancellationToken ct = default)
+    public async Task PauseAsync(CancellationToken ct = default)
     {
-        // Capture the remote target in the same breath as the routing decision (see Forward): a cluster fold between the
-        // two reads would otherwise send the verb to an empty device id.
         var target = _projection.ActiveDeviceId;
-        return RouteLocal(target)
-            ? Local(() => { _currentHost.Pause(); EmitState(EvKind.Paused); })
-            : Forward("pause", target, ct);
+        if (!RouteLocal(target)) { await Forward("pause", target, ct).ConfigureAwait(false); return; }
+        await _lock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            SetPlayIntent(false, PlaybackPhase.Pausing);
+            _projection.NoteLocalCommand();
+            _currentHost.Submit(new(NextTransportCommand(), AudioTransportAction.Pause, false));
+            EmitState(EvKind.Paused);
+        }
+        finally { _lock.Release(); }
     }
 
     public async Task ResumeAsync(CancellationToken ct = default)
@@ -1062,14 +1076,46 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     /// media host ONLY (see <see cref="EmitSeeked"/>) — no cluster <c>Seeked</c> event, no prepared-next re-arm, no
     /// continuation fetch. Remotely it is DROPPED outright: <c>seek_to</c> is a committed action by definition and a scrub
     /// stream over Connect would spam the cluster; only the <see cref="SeekMode.Accurate"/> commit is forwarded.</para></summary>
-    public Task SeekAsync(long positionMs, SeekMode mode, CancellationToken ct = default)
+    public async Task<PlaybackCommandReceipt> SeekAsync(PlaybackSeekRequest request, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var target = _projection.ActiveDeviceId;
-        if (RouteLocal(target)) return Local(() => EmitSeeked(positionMs, mode));
-        // Remote device: previews are not sent. The gesture still commits — MediaSeekBar issues exactly one Accurate
-        // seek on release, and that is the one that crosses the wire.
-        if (mode == SeekMode.Keyframe) return Done;
-        return Forward("seek_to", target, ct, ("value", positionMs));
+        if (!RouteLocal(target))
+        {
+            var remoteId = NextTransportCommand();
+            if (request.Kind == PlaybackSeekKind.Preview) return new(remoteId);
+            _projection.BeginRemoteSeek(remoteId, request, target);
+            try
+            {
+                if (!await Forward("seek_to", target, ct, ("value", request.PositionMs)).ConfigureAwait(false))
+                    _projection.CompleteSeek(remoteId, PlaybackOperationStatus.Failed);
+                // A successful command response only acknowledges receipt. The cluster must observe the target.
+            }
+            catch { _projection.CompleteSeek(remoteId, PlaybackOperationStatus.Failed); throw; }
+            return new(remoteId);
+        }
+        await _lock.WaitAsync(ct).ConfigureAwait(false);
+        try { return SubmitSeekLocked(request); }
+        finally { _lock.Release(); }
+    }
+
+    PlaybackCommandReceipt SubmitSeekLocked(PlaybackSeekRequest request)
+    {
+        long position = Math.Max(0, request.PositionMs);
+        if (_projection.Live is { IsLive: true, HasWindow: true } live)
+            position = Math.Clamp(position, live.SeekableStartMs, live.SeekableEndMs);
+        else if (_projection.DurationMs > 0) position = Math.Min(position, _projection.DurationMs);
+        request = request with { PositionMs = position };
+        var id = NextTransportCommand();
+        _pendingSeek = new(id, position, null, PlaybackOperationStatus.Accepted);
+        _pendingSeekRequest = request;
+        _pendingSeekEvent = request.Kind == PlaybackSeekKind.Commit
+            ? BuildEvent(EvKind.Seeked, _snap.Current?.Track, CurrentTransportPositionMs, seekToMs: position)
+            : null;
+        _projection.NoteLocalCommand();
+        _projection.SetTransportIntent(id, _playWhenReady, PlaybackPhase.Seeking, request);
+        if (_resolvingGeneration == id.ItemGeneration) return new(id);
+        return _currentHost.Submit(new(id, AudioTransportAction.Seek, _playWhenReady, position, request.Mode, request.Kind));
     }
 
     public Task SetVolumeAsync(double volume01, CancellationToken ct = default)
@@ -1087,7 +1133,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             _lastVolume = volume01;              // suppress OnProjectionChanged echo; the explicit host write below owns it
             // volume + authoritative timeline publish atomically — but only when the host's clock is honest; a stale/
             // absent clock must not snap the timeline to 0 as a side effect of a volume change.
-            if (_currentHost.ClockValid) _projection.SetLocalVolume(volume01, _currentHost.PositionMs);
+            if (_currentHost.ClockValid) _projection.SetLocalVolume(volume01, CurrentTransportPositionMs);
             else _projection.SetLocalVolume(volume01);
             return Local(() => { _currentHost.SetVolume(volume01); EmitState(EvKind.VolumeChanged); });
         }
@@ -1129,7 +1175,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             return;
         }
         // Move slider without publishing a stale position — and never a 0-means-unknown one either, hence the ClockValid guard.
-        if (_currentHost.ClockValid) _projection.SetLocalVolume(slider01, _currentHost.PositionMs);
+        if (_currentHost.ClockValid) _projection.SetLocalVolume(slider01, CurrentTransportPositionMs);
         else _projection.SetLocalVolume(slider01);
         EmitState(EvKind.VolumeChanged);         // announce our device volume (coalesced PutState) — no outbound PUT
     }
@@ -1181,6 +1227,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     async Task EnqueueLocalAsync(QueuedTrack queued, CancellationToken ct)
     {
+        await _projection.ObserveTracksAsync([queued.Track], ct).ConfigureAwait(false);
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -1351,7 +1398,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             // Transfer-to-self = local resume: the shared ResumeCurrentLockedAsync covers the reject hook, the
             // restore-seeded pending-load fast-start, the plain resume, and the ghost/snapshot seed (§1).
             await _lock.WaitAsync(ct).ConfigureAwait(false);
-            try { await ResumeCurrentLockedAsync(ct).ConfigureAwait(false); }
+            try { SetPlayIntent(true, PlaybackPhase.Buffering); await ResumeCurrentLockedAsync(ct).ConfigureAwait(false); }
             finally { _lock.Release(); }
             return;
         }
@@ -1453,7 +1500,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     ConnectCommandOutcome ApplyInboundPauseLocked()
     {
         if (_session.Current is null) return ConnectCommandOutcome.NoOp;
-        _currentHost.Pause();
+        SetPlayIntent(false, PlaybackPhase.Pausing);
+        _currentHost.Submit(new(NextTransportCommand(), AudioTransportAction.Pause, false));
         EmitState(EvKind.Paused);
         return ConnectCommandOutcome.Applied;
     }
@@ -1476,6 +1524,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         try
         {
             if (IsPassiveViewer()) return ConnectCommandOutcome.NoOp;
+            SetPlayIntent(true, PlaybackPhase.Buffering);
             await ResumeCurrentLockedAsync(ct).ConfigureAwait(false);
             return ConnectCommandOutcome.Applied;
         }
@@ -1491,7 +1540,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         {
             if (Math.Abs(_projection.Volume - volume01) < 0.000001) return ConnectCommandOutcome.NoOp;
             _currentHost.SetVolume(volume01);
-            if (_currentHost.ClockValid) _projection.SetLocalVolume(volume01, _currentHost.PositionMs);
+            if (_currentHost.ClockValid) _projection.SetLocalVolume(volume01, CurrentTransportPositionMs);
             else _projection.SetLocalVolume(volume01);
             EmitState(EvKind.VolumeChanged);
             _log.Event(WaveeLogLevel.Info, "connect.volume.applied", "inbound Connect volume applied",
@@ -1816,6 +1865,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             // An EMPTY next_tracks + prev_tracks is not "nothing to do" — it's the wire's own shape for an explicit
             // CLEAR, and this used to bounce off an early return here that left the stale queue in place.
             string revision = ParseQueueRevisionString(cmd.Payload);
+            await _projection.ObserveTracksAsync(prev.Concat(next).Where(row => row.Track is not null).Select(row => row.Track!).ToArray()).ConfigureAwait(false);
             await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
@@ -2023,9 +2073,31 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         PlayableKind? mediaKind = null)
     {
         long generation = expectedGeneration == 0 ? Interlocked.Increment(ref _contextGeneration) : expectedGeneration;
+        await _lock.WaitAsync(ct).ConfigureAwait(false);
+        try { if (generation != Volatile.Read(ref _contextGeneration)) return false; SetPlayIntent(!initiallyPaused, PlaybackPhase.Resolving); }
+        finally { _lock.Release(); }
+        try
+        {
+            return await ResolveAndPlayContextAsync(spec, ct, generation, shuffle, seekToMs, repeat, mediaKind).ConfigureAwait(false);
+        }
+        catch
+        {
+            await RetireContextIntentAsync(generation).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    async Task<bool> ResolveAndPlayContextAsync(ContextSpec spec, CancellationToken ct, long generation,
+        bool? shuffle, long seekToMs, RepeatMode? repeat, PlayableKind? mediaKind)
+    {
         var resolved = await _contexts.ResolveAsync(spec, ct).ConfigureAwait(false);
         if (generation != Volatile.Read(ref _contextGeneration)) return false;
-        if (resolved.Count == 0) { _log.Info("play: context resolved to 0 tracks: " + spec.Uri); return false; }
+        if (resolved.Count == 0)
+        {
+            _log.Info("play: context resolved to 0 tracks: " + spec.Uri);
+            await RetireContextIntentAsync(generation).ConfigureAwait(false);
+            return false;
+        }
 
         IReadOnlyList<QueuedTrack> tracks = resolved.Tracks;
         int start = resolved.StartIndex;
@@ -2072,9 +2144,38 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         _log.Info($"play resolved ctx={resolved.ContextUri ?? spec.Uri} tracks={tracks.Count} start={start} " +
             $"current={(start < tracks.Count ? tracks[start].Uri : "-")}");
         return await LocalPlayTracksAsync(resolved.ContextUri ?? spec.Uri, tracks, start, ct,
-            nextPage, resolved.IsInfinite, resolved.Metadata ?? spec.Metadata, generation, initiallyPaused, shuffle,
+            nextPage, resolved.IsInfinite, resolved.Metadata ?? spec.Metadata, generation, !_playWhenReady, shuffle,
             seekToMs, repeat, mediaKind)
             .ConfigureAwait(false);
+    }
+
+    async Task RetireContextIntentAsync(long generation)
+    {
+        await _lock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (generation != Volatile.Read(ref _contextGeneration)) return;
+            Interlocked.CompareExchange(ref _explicitPlayGeneration, 0, generation);
+            if (_session.Current is null)
+            {
+                _resolvingGeneration = 0;
+                SetPlayIntent(false, PlaybackPhase.Idle);
+                return;
+            }
+            if (_resolvingGeneration != 0 || _pendingLoadSequence != 0)
+            {
+                // The abandoned context superseded an earlier item resolve/open. Restart that selected item so its
+                // discarded continuation cannot leave a permanent loading state behind the failed context command.
+                await LoadAndPlayCurrentAsync(EvKind.Started, CancellationToken.None, _loadResumeTargetMs,
+                    initiallyPaused: !_playWhenReady).ConfigureAwait(false);
+                return;
+            }
+            bool intent = _currentKind == PlayableKind.Video ? _currentHost.IsPlaying : _audioHost.PlayIntent;
+            if (_readyItemGeneration != 0) _readyItemGeneration = generation;
+            SetPlayIntent(intent, intent ? PlaybackPhase.Playing : PlaybackPhase.Paused);
+            _currentHost.Submit(new(NextTransportCommand(), AudioTransportAction.Adopt, intent));
+        }
+        finally { _lock.Release(); }
     }
 
     // Build the clicked track as a context row patched in as current (§7.3.2): hydrate for display, tag context_patched.
@@ -2092,10 +2193,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         long expectedGeneration = 0, bool initiallyPaused = false, bool? shuffle = null,
         long seekToMs = -1, RepeatMode? repeat = null, PlayableKind? mediaKind = null)
     {
+        await _projection.ObserveTracksAsync(tracks.Select(row => row.Track).ToArray(), ct).ConfigureAwait(false);
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             if (expectedGeneration != 0 && expectedGeneration != Volatile.Read(ref _contextGeneration)) return false;
+            if (expectedGeneration != 0 && _intentGeneration == expectedGeneration) initiallyPaused = !_playWhenReady;
             SetQueueContext(contextUri, tracks, startIndex, nextPageUrl, isInfinite, metadata);
             if (shuffle is { } shuffleValue) _snap = _session.SetShuffle(shuffleValue);
             // Applied right alongside the shuffle override above — both are player_options_override fields on the
@@ -2115,7 +2218,11 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     {
         // NO CATALOGUE OWNS THIS URI. Asking the hydrator about a `wavee:module:…` playable can only ever come back as
         // the uri-only placeholder, which is precisely the thin row a restart used to show. The owner speaks first.
-        if (await HydrateThroughOwnerAsync(uri, ct).ConfigureAwait(false) is { } owned) return new QueuedTrack(owned, "");
+        if (await HydrateThroughOwnerAsync(uri, ct).ConfigureAwait(false) is { } owned)
+        {
+            await _projection.ObserveTracksAsync([owned], ct).ConfigureAwait(false);
+            return new QueuedTrack(_projection.QueueProjection.ReadTrack(uri), "");
+        }
         try
         {
             var hydrated = await _contexts.HydrateAsync(new[] { new QueuedRef(uri, "") }, ct).ConfigureAwait(false);
@@ -2129,7 +2236,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     async Task LocalResumeAsync(CancellationToken ct = default)
     {
         await _lock.WaitAsync(ct).ConfigureAwait(false);
-        try { await ResumeCurrentLockedAsync(ct).ConfigureAwait(false); }
+        try
+        {
+            long pending = Volatile.Read(ref _explicitPlayGeneration);
+            bool contextPending = pending != 0 && pending == Volatile.Read(ref _contextGeneration);
+            if (_session.Current is not null || _projection.CurrentTrack is not null || contextPending)
+                SetPlayIntent(true, PlaybackPhase.Buffering);
+            if (_session.Current is null && contextPending) return;
+            await ResumeCurrentLockedAsync(ct).ConfigureAwait(false);
+        }
         finally { _lock.Release(); }
     }
 
@@ -2140,6 +2255,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         if (_session.Current is not null)
         {
             if (RejectLocalPlay()) return;
+            if (_resolvingGeneration == Volatile.Read(ref _contextGeneration)) return;
             // A recovery-seeded session (§1) OR a host StopHostKeepingSession tore down (a takeover, a stray-host
             // cleanup, a fast-start body failure) both leave the viewer showing "paused" over a host that holds
             // NOTHING — belt-and-braces on the SECOND condition (§2): even if some path reaches here with the latch
@@ -2156,26 +2272,68 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                     .ConfigureAwait(false);
                 return;
             }
-            _currentHost.Play(); EmitState(EvKind.Resumed);   // we have loaded local media → normal resume
+            _currentHost.Submit(new(NextTransportCommand(), AudioTransportAction.Play, true)); EmitState(EvKind.Resumed);   // we have loaded local media → normal resume
             return;
         }
         await GhostResumeAsync(ct).ConfigureAwait(false);   // cold/ghost → seed from the cluster (else the local snapshot)
     }
 
-    async Task LocalNextAsync(CancellationToken ct = default)
+    async Task LocalNextAsync(CancellationToken ct = default, bool natural = false)
     {
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            AudioTransitionSignal? announced;
+            lock (_prepareGate) announced = _announcedTransition;
+            if (announced is { } committed) CommitPreparedTransitionLocked(committed);
             _projection.NoteLocalCommand();
             QueueEntry? advanced = null;
-            if (_session.Next() is { } snap) { _snap = snap; advanced = snap.Current; }
+            bool intent = _playWhenReady;
+            if (!natural)
+            {
+                _currentHost.Submit(new(NextTransportCommand(), AudioTransportAction.Skip, intent));
+                // The host may acknowledge an already-audible boundary while accepting cancellation.
+                lock (_prepareGate) announced = _announcedTransition;
+                if (announced is { } boundary) CommitPreparedTransitionLocked(boundary);
+            }
+            if (_session.Next(natural ? QueueAdvanceReason.Natural : QueueAdvanceReason.Manual,
+                recordHistory: _snap.Current?.ItemId == _audibleItemId) is { } snap) { _snap = snap; advanced = snap.Current; }
             // Attribution: a queue STEP and a fresh context PLAY both end in the same silent LoadAndPlayCurrentAsync, so
             // without this line the log cannot tell "the user pressed Next" from "something re-resolved the context".
             _log.Info($"queue advance → {advanced?.Track.Uri ?? "(end of context)"}");
-            if (advanced is not null) await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct).ConfigureAwait(false);
+            if (advanced is not null)
+            {
+                string? token;
+                lock (_prepareGate) token = _preparedItemId == advanced.ItemId ? _preparedToken : null;
+                if (!natural && token is not null && _preparedHost is { } prepared)
+                {
+                    long generation = Interlocked.Increment(ref _contextGeneration);
+                    var command = NextTransportCommand();
+                    _projection.SetTransportIntent(command, intent, PlaybackPhase.Transitioning);
+                    _projection.ApplyLocalSnapshot(_snap, new PlaybackEvent(EvKind.Paused, advanced.Track, 0));
+                    bool promoted = await AwaitColdAsync(prepared.TryPromotePreparedAsync(new(token, command, advanced.ItemId, intent), ct)).ConfigureAwait(false);
+                    if (generation != Volatile.Read(ref _contextGeneration)) return;
+                    if (promoted)
+                    {
+                        _readyItemGeneration = generation;
+                        if (_playWhenReady && _currentHost.IsPlaying) _audibleItemId = advanced.ItemId;
+                        ClearPreparedToken(token);
+                        _currentIds = MintPlaybackIds(advanced.Track);
+                        Emit(BuildEvent(_playWhenReady ? EvKind.TrackChanged : EvKind.Paused, advanced.Track, 0));
+                        SchedulePreparedNext("manual-promotion");
+                        MaybeStartContinuationFetch();
+                        return;
+                    }
+                }
+                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct, initiallyPaused: !_playWhenReady).ConfigureAwait(false);
+            }
             else if (await TryContinueContextAsync(ct).ConfigureAwait(false)) { }
-            else { _currentHost.Stop(); Emit(BuildEvent(EvKind.Ended, null, 0, reasonEnd: "endplay")); }   // end-of-context
+            else
+            {
+                SetPlayIntent(false, PlaybackPhase.Ended);
+                _currentHost.Submit(new(NextTransportCommand(), AudioTransportAction.Stop, false));
+                Emit(BuildEvent(EvKind.Ended, null, 0, reasonEnd: "endplay"));
+            }
         }
         finally { _lock.Release(); }
     }
@@ -2187,17 +2345,18 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         {
             _projection.NoteLocalCommand();
             // Desktop semantics: >3 s into the track, "previous" restarts the current track instead of stepping back.
-            if (_currentHost.PositionMs > 3000) { _log.Info("queue back → restart current (>3s in)"); _currentHost.Seek(0, SeekMode.Accurate); return; }
+            if (CurrentTransportPositionMs > 3000) { _log.Info("queue back → restart current (>3s in)"); SubmitSeekLocked(new(0, SeekMode.Accurate, PlaybackSeekKind.Commit)); return; }
             if (_session.Prev() is { } snap)
             {
                 _snap = snap;
                 _log.Info($"queue back → {_snap.Current?.Track.Uri ?? "(none)"}");
-                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct).ConfigureAwait(false);
+                _currentHost.Submit(new(NextTransportCommand(), AudioTransportAction.Skip, _playWhenReady));
+                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct, initiallyPaused: !_playWhenReady).ConfigureAwait(false);
                 return;
             }
             // No history and no prior context row (a restored session, §2): into the track → restart; already at 0 → a
             // true no-op (the derived CanSkipPrev keeps the button disabled in exactly this state).
-            if (_currentHost.PositionMs > 0) { _log.Info("queue back → restart current (no history)"); _currentHost.Seek(0, SeekMode.Accurate); return; }
+            if (CurrentTransportPositionMs > 0) { _log.Info("queue back → restart current (no history)"); SubmitSeekLocked(new(0, SeekMode.Accurate, PlaybackSeekKind.Commit)); return; }
             _log.Info("queue back ignored — no history and at position 0");
         }
         finally { _lock.Release(); }
@@ -2220,7 +2379,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             return;
         }
         var ctxUri = _projection.ContextUri ?? track.Uri;
-        track = await ReHydrateThroughOwnerAsync(track, ct).ConfigureAwait(false);   // a module playable is re-asked, not re-used
+        long expectedGeneration = Volatile.Read(ref _contextGeneration);
+        track = await AwaitColdAsync(ReHydrateThroughOwnerAsync(track, ct)).ConfigureAwait(false);
+        if (expectedGeneration != Volatile.Read(ref _contextGeneration)) return;
         long generation = SeedSessionFromCluster(track, ctxUri);
         _restorePendingLoad = false;   // this path loads immediately
         MintCommand("playbtn");
@@ -2300,8 +2461,11 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                     var ctxUri = _projection.ContextUri ?? track.Uri;
                     // The cluster row for a uri no catalogue owns is OUR OWN publish from a previous session — a title
                     // and a length we wrote down once. Re-ask the owner before it becomes the restored now-playing.
-                    track = await ReHydrateThroughOwnerAsync(track, default).ConfigureAwait(false);
+                    long expectedGeneration = Volatile.Read(ref _contextGeneration);
+                    track = await AwaitColdAsync(ReHydrateThroughOwnerAsync(track, default)).ConfigureAwait(false);
+                    if (expectedGeneration != Volatile.Read(ref _contextGeneration) || _session.Current is not null) return;
                     long generation = SeedSessionFromCluster(track, ctxUri);
+                    SetPlayIntent(false, PlaybackPhase.Paused);
                     _restorePendingLoad = true;   // seeded, NOT loaded — the first Resume fast-starts (§1)
                     long pos = _projection.PositionMs;   // already extrapolated at the cluster fold
                     // The stale "us playing" echo must not flip the just-published Paused back for the next heartbeats.
@@ -2366,9 +2530,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         ResolvedContext resolved = ResolvedContext.Empty;
         try
         {
-            resolved = await _contexts.ResolveAsync(new ContextSpec(ctxUri, null, null,
+            resolved = await AwaitColdAsync(_contexts.ResolveAsync(new ContextSpec(ctxUri, null, null,
                 snap.CurrentUri, string.IsNullOrEmpty(snap.CurrentUid) ? null : snap.CurrentUid,
-                snap.CurrentIndex >= 0 ? snap.CurrentIndex : null), ct).ConfigureAwait(false);
+                snap.CurrentIndex >= 0 ? snap.CurrentIndex : null), ct)).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { _log.Info("snapshot restore: context resolve failed (offline?): " + ex.Message); }
@@ -2387,18 +2551,22 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         }
         else
         {
-            current = await HydrateOneAsync(snap.CurrentUri, ct).ConfigureAwait(false);
+            current = await AwaitColdAsync(HydrateOneAsync(snap.CurrentUri, ct)).ConfigureAwait(false);
+            if (generation != Volatile.Read(ref _contextGeneration)) return false;
             if (!string.IsNullOrEmpty(snap.CurrentUid)) current = current with { Uid = snap.CurrentUid };
             if (snap.CurrentIndex > 0) missCursor = snap.CurrentIndex - 1;   // §6.5 — Next() = the successor, not context[0]
         }
 
-        _snap = _session.SetTransferredContext(ctxUri, resolved.Tracks, current, clearUserQueue: true, missCursor);
+        IReadOnlyList<QueuedTrack> queued = Array.Empty<QueuedTrack>();
         if (snap.UserQueue.Count > 0)
         {
-            var queued = await _contexts.HydrateAsync(snap.UserQueue, ct).ConfigureAwait(false);
-            queued = await ReHydrateQueueThroughOwnersAsync(queued, ct).ConfigureAwait(false);
-            if (queued.Count > 0) _snap = _session.EnqueueUser(queued);
+            queued = await AwaitColdAsync(_contexts.HydrateAsync(snap.UserQueue, ct)).ConfigureAwait(false);
+            if (generation != Volatile.Read(ref _contextGeneration)) return false;
+            queued = await AwaitColdAsync(ReHydrateQueueThroughOwnersAsync(queued, ct)).ConfigureAwait(false);
+            if (generation != Volatile.Read(ref _contextGeneration)) return false;
         }
+        _snap = _session.SetTransferredContext(ctxUri, resolved.Tracks, current, clearUserQueue: true, missCursor);
+        if (queued.Count > 0) _snap = _session.EnqueueUser(queued);
         _snap = _session.SetShuffle(snap.Shuffle);
         _snap = _session.SetRepeat(snap.Repeat);
         _nextPageUrl = string.IsNullOrEmpty(resolved.NextPageUrl) ? null : resolved.NextPageUrl;
@@ -2503,16 +2671,17 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         finally { _lock.Release(); }
     }
 
-    async Task MaybeSeekEpisodeResumeAsync(Track track, CancellationToken ct)
+    async Task<long> ResolveStartPositionLockedAsync(Track track, long requested, long generation, CancellationToken ct)
     {
-        if (EntityUri.KindOf(track.Uri) != EntityKind.Episode || EpisodeResumeMicros is not { } fn)
-            return;
+        if (requested > 0) return requested;
+        if (EntityUri.KindOf(track.Uri) != EntityKind.Episode || EpisodeResumeMicros is not { } lookup) return 0;
         try
         {
-            long micros = await fn(track.Uri, ct).ConfigureAwait(false);
-            if (micros > 0) _currentHost.Seek(micros / 1000, SeekMode.Accurate);
+            long micros = await AwaitColdAsync(lookup(track.Uri, ct)).ConfigureAwait(false);
+            return generation == Volatile.Read(ref _contextGeneration) ? Math.Max(0, micros / 1000) : 0;
         }
-        catch (Exception ex) { _log.Info("episode resume lookup failed: " + ex.Message); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { _log.Info("episode resume lookup failed: " + ex.Message); return 0; }
     }
 
     void MintCommand(string reasonStart = "clickrow")
@@ -2561,21 +2730,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     /// reaches the Connect cluster, and the prepared-next/continuation re-arm — is COMMIT-only behaviour; firing it for
     /// every throttled preview would spam the cluster and thrash prepared-next several times a second during one drag.</summary>
     void EmitSeeked(long targetMs, SeekMode mode)
-    {
-        if (mode == SeekMode.Keyframe) { _currentHost.Seek(targetMs, SeekMode.Keyframe); return; }
-        _projection.NoteLocalCommand();
-        long fromMs = _currentHost.PositionMs;
-        _currentHost.Seek(targetMs, SeekMode.Accurate);
-        Emit(BuildEvent(EvKind.Seeked, _snap.Current?.Track, fromMs, seekToMs: targetMs));
-        // W2 (remaining-ms-keyed prepare): a seek that LANDS inside the ending-soon window re-arms prepared-next NOW —
-        // the signature dedupe makes this free when the slot is already prepared for the unchanged (current, next) pair —
-        // and gives a last-page continuation fetch its head start instead of waiting for track-end.
-        if (PreparedNextPolicy.SeekRequiresRearm(_snap.Current?.Track.DurationMs ?? 0, targetMs, 0))
-        {
-            SchedulePreparedNext("seek-ending-soon");
-            MaybeStartContinuationFetch();
-        }
-    }
+        => SubmitSeekLocked(new(targetMs, mode, mode == SeekMode.Keyframe ? PlaybackSeekKind.Preview : PlaybackSeekKind.Commit));
 
     static string ParseContextKind(string? contextUri)
     {
@@ -2610,6 +2765,18 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         // restore paths) passes it down so this checks against the SAME value it already validated — everyone else gets
         // a fresh one minted right here.
         long generation = expectedGeneration != 0 ? expectedGeneration : Interlocked.Increment(ref _contextGeneration);
+        _resolvingGeneration = generation;
+        _readyItemGeneration = _pendingLoadSequence = 0;
+        var previousLoad = _loadCts;
+        _loadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try { previousLoad?.Cancel(); } catch (ObjectDisposedException) { }
+        previousLoad?.Dispose();
+        SetPlayIntent(!initiallyPaused, PlaybackPhase.Resolving);
+        _pendingSeek = null;
+        _pendingSeekRequest = null;
+        _pendingSeekEvent = null;
+        _seekCarrier = null;   // finding #4: a fresh load owns its own resolution; any stale carrier can't apply here
+        _projection.ApplyLocalSnapshot(_snap, new PlaybackEvent(EvKind.Paused, cur, Math.Max(0, resumePositionMs)));
 
         // A DIFFERENT playable re-arms the video-recovery loop guard. The recovery's OWN reload keeps the same uri, so it
         // deliberately does NOT re-arm — that is what caps the fallback at one attempt per playable.
@@ -2627,7 +2794,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         {
             try
             {
-                if (await metaFn(cur, ct).ConfigureAwait(false) is { } meta)
+                if (await AwaitColdAsync(metaFn(cur, _loadCts.Token)).ConfigureAwait(false) is { } meta)
                 {
                     mediaId = meta.MediaId;
                     fileId = meta.FileId;
@@ -2679,40 +2846,41 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             // Instant-start: play the clear head immediately; the encrypted body (key + CDN) resolves in parallel and is
             // supplied to the host when ready — hiding key/derive latency behind the head's ~3 s of audio.
             FastStartPlan plan;
-            try { plan = await _fast.ResolveFastAsync(cur, ct).ConfigureAwait(false); }
+            try { plan = await AwaitColdAsync(_fast.ResolveFastAsync(cur, _loadCts!.Token)).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (generation != Volatile.Read(ref _contextGeneration)) { return; }
             catch (OperationCanceledException) { throw; }
-            catch (Exception ex) { await HandleUnplayableCurrentAsync(ex, skipOnUnplayable, initiallyPaused, ct).ConfigureAwait(false); return; }
+            catch (Exception ex) { if (generation == Volatile.Read(ref _contextGeneration)) await HandleUnplayableCurrentAsync(ex, skipOnUnplayable, !_playWhenReady, ct).ConfigureAwait(false); return; }
             if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while the fast-start plan resolved
-            _audioHost.LoadFastStart(plan.Start);   // audio-specific loading (guarded: current kind is audio/local here)
-            // Belt-and-suspenders for the buffering-bar-on-a-paused-restored-track fix: FluentMediaAudioHost now withholds
-            // its own Prebuffering/Buffering signals while it has no play intent, but this clears any transient flag
-            // regardless of how it got set (the same reasoning as SwitchHost's clear at :528) — nobody asked to hear this
-            // load yet, so nothing here may show as buffering.
-            if (initiallyPaused) _projection.ClearTransientBuffering();
-            if (!initiallyPaused) _currentHost.Play();
-            if (resumePositionMs > 0) _currentHost.Seek(resumePositionMs, SeekMode.Accurate);
-            else await MaybeSeekEpisodeResumeAsync(cur, ct).ConfigureAwait(false);
+            long startPosition = await ResolveStartPositionLockedAsync(cur, resumePositionMs, generation, ct).ConfigureAwait(false);
+            if (generation != Volatile.Read(ref _contextGeneration)) return;
+            _resolvingGeneration = 0;
+            var loadCommand = MintLoadCommand(ref startPosition);   // finding #4: always fresh; carries any parked seek's target
+            _pendingLoadSequence = loadCommand.Sequence;
+            _audioHost.Load(new(loadCommand, new(generation, _snap.Current!.ItemId), plan, startPosition, _playWhenReady));
+            if (!_playWhenReady) _projection.ClearTransientBuffering();
             WarmUpcomingFastTrack("after-start");
-            Emit(BuildEvent(kind, cur, Math.Max(0, resumePositionMs), mediaId, bitrateKbps, audioFormat, durationMs, fileId));
+            Emit(BuildEvent(_playWhenReady ? kind : EvKind.Paused, cur, startPosition, mediaId, bitrateKbps, audioFormat, durationMs, fileId));
             SchedulePreparedNext("after-start");
             MaybeStartContinuationFetch();
-            _ = SupplyBodyWhenReadyAsync(plan.Body, cur.Uri);
             return;
         }
 
         AudioStreamHandle handle;
-        try { handle = await _resolver.ResolveAsync(cur, ct).ConfigureAwait(false); }
+        try { handle = await AwaitColdAsync(_resolver.ResolveAsync(cur, _loadCts!.Token)).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (generation != Volatile.Read(ref _contextGeneration)) { return; }
         catch (OperationCanceledException) { throw; }
-        catch (Exception ex) { await HandleUnplayableCurrentAsync(ex, skipOnUnplayable, initiallyPaused, ct).ConfigureAwait(false); return; }   // no silent drop
+        catch (Exception ex) { if (generation == Volatile.Read(ref _contextGeneration)) await HandleUnplayableCurrentAsync(ex, skipOnUnplayable, !_playWhenReady, ct).ConfigureAwait(false); return; }   // no silent drop
         if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while the resolve was in flight
-        _audioHost.Load(handle);   // audio-specific loading (only reached when the current kind is audio/local)
-        // See the fast-start branch above — same belt-and-suspenders clear for the same paused-restore race.
-        if (initiallyPaused) _projection.ClearTransientBuffering();
-        if (!initiallyPaused) _currentHost.Play();
-        if (resumePositionMs > 0) _currentHost.Seek(resumePositionMs, SeekMode.Accurate);
-        else await MaybeSeekEpisodeResumeAsync(cur, ct).ConfigureAwait(false);
+        long plainStartPosition = await ResolveStartPositionLockedAsync(cur, resumePositionMs, generation, ct).ConfigureAwait(false);
+        if (generation != Volatile.Read(ref _contextGeneration)) return;
+        var plainPlan = new FastStartPlan(new(handle.TrackUri, handle.FileIdHex, handle.Format, handle.DurationMs, handle.NormalizationGainDb, default), Task.FromResult(handle));
+        _resolvingGeneration = 0;
+        var plainLoadCommand = MintLoadCommand(ref plainStartPosition);   // finding #4: always fresh; carries any parked seek's target
+        _pendingLoadSequence = plainLoadCommand.Sequence;
+        _audioHost.Load(new(plainLoadCommand, new(generation, _snap.Current!.ItemId), plainPlan, plainStartPosition, _playWhenReady));
+        if (!_playWhenReady) _projection.ClearTransientBuffering();
         WarmUpcomingFastTrack("after-start");
-        Emit(BuildEvent(kind, cur, Math.Max(0, resumePositionMs), mediaId, bitrateKbps, audioFormat, durationMs, fileId));
+        Emit(BuildEvent(_playWhenReady ? kind : EvKind.Paused, cur, plainStartPosition, mediaId, bitrateKbps, audioFormat, durationMs, fileId));
         SchedulePreparedNext("after-start");
         MaybeStartContinuationFetch();
     }
@@ -2770,7 +2938,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         // next / crossfade are skipped across a video boundary (MediaSwitchLogic.AllowCrossfade is false for any video
         // pair) — SchedulePreparedNext still runs so it CANCELS any prior audio-prepared token and, when the NEXT
         // playable will itself be video, fires PrefetchVideo (A4) ahead of the boundary.
-        Emit(BuildEvent(kind, cur, Math.Max(0, resumePositionMs), mediaId, bitrateKbps, audioFormat, durationMs, fileId));
+        Emit(BuildEvent(_playWhenReady ? kind : EvKind.Paused, cur, Math.Max(0, resumePositionMs), mediaId, bitrateKbps, audioFormat, durationMs, fileId));
         MaybeStartContinuationFetch();
         SchedulePreparedNext("video-start");
         var loadTask = RunVideoLoadAsync(loadVideo, cur, kind, mediaId, bitrateKbps, audioFormat, durationMs, fileId,
@@ -2835,7 +3003,17 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         // this line would land on a null player and be dropped. That is exactly why every audio→video switch used to
         // restart at 0. Applying it in the load also means the first frame shown is already at the right place.
         // A retry checkpoint on the same video travels the same path (the host seeks the live session instead of rebuilding).
-        if (!initiallyPaused) _currentHost.Play();
+        await _lock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (generation != Volatile.Read(ref _contextGeneration)) return;
+            _resolvingGeneration = 0;
+            _readyItemGeneration = generation;
+            if (_pendingSeek is { } pending && _pendingSeekRequest is { } request)
+                _currentHost.Submit(new(pending.Id, AudioTransportAction.Seek, _playWhenReady, request.PositionMs, request.Mode, request.Kind));
+            _currentHost.Submit(new(NextTransportCommand(), _playWhenReady ? AudioTransportAction.Play : AudioTransportAction.Pause, _playWhenReady));
+        }
+        finally { _lock.Release(); }
     }
 
     void MaybeStartContinuationFetch()
@@ -3056,6 +3234,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     async Task<bool> TryContinueContextAsync(CancellationToken ct)
     {
+        long generation = Volatile.Read(ref _contextGeneration);
         for (int attempt = 0; attempt < 2; attempt++)
         {
             var fetch = _continuationFetch ?? StartContinuationFetch(forceAutoplay: attempt > 0);
@@ -3071,9 +3250,10 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             Task completed;
             try
             {
-                completed = await Task.WhenAny(fetch, Task.Delay(TimeSpan.FromSeconds(3), ct)).ConfigureAwait(false);
+                completed = await AwaitColdAsync(Task.WhenAny(fetch, Task.Delay(TimeSpan.FromSeconds(3), ct))).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }
+            if (generation != Volatile.Read(ref _contextGeneration)) return true; // a newer selection owns continuation now
             if (completed != fetch)
             {
                 _log.Info("continuation: fetch exceeded 3s grace timeout");
@@ -3121,7 +3301,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 WaveeLogField.Of("track", next.Track.Uri),
                 WaveeLogField.Of("ctx", _session.ContextUri ?? ""),
                 WaveeLogField.Of("remainingContext", _session.RemainingInContext));
-            await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct).ConfigureAwait(false);
+            await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct, initiallyPaused: !_playWhenReady).ConfigureAwait(false);
             return true;
         }
 
@@ -3133,6 +3313,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // queue can never publish out of step with the track. Ownership is derived from the event kind, as before.
     void Publish(QueueSnapshot snap, in PlaybackEvent e)
     {
+        snap = _projection.QueueProjection.Materialize(snap);
+        var projectedEvent = e with { Track = e.Track is { } track ? _projection.QueueProjection.ReadTrack(track.Uri) : null };
         _snap = snap;
         // §8 — a quiet restore (a launch/snapshot restore, or the ownership-regained auto-reload) still folds into the
         // LOCAL projection so the viewer sees the right paused row, but must not announce on the wire: nobody pressed
@@ -3147,9 +3329,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         if (e.Kind is EvKind.Started or EvKind.Resumed or EvKind.TrackChanged && e.Track is not null) SetActiveOwner(true);
         else if (e.Kind is EvKind.Ended or EvKind.BecameInactive) SetActiveOwner(false);
         DiagnoseQueue("controller.publish." + e.Kind);
-        _projection.ApplyLocalSnapshot(snap, e);
+        _projection.ApplyLocalSnapshot(snap, projectedEvent);
         if (quiet && e.Kind == EvKind.Paused) return;   // local fold only — see above
-        for (int i = 0; i < _extra.Count; i++) _extra[i].OnEvent(e);
+        for (int i = 0; i < _extra.Count; i++) _extra[i].OnEvent(projectedEvent);
     }
 
     void Emit(in PlaybackEvent e) => Publish(_snap, e);
@@ -3169,7 +3351,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     {
         bool boundary = kind is EvKind.Started or EvKind.TrackChanged
             || !string.Equals(track?.Uri, _projection.CurrentTrack?.Uri, StringComparison.Ordinal);
-        return boundary ? 0 : (_currentHost.ClockValid ? _currentHost.PositionMs : _projection.PositionMs);
+        return boundary ? 0 : CurrentTransportPositionMs;
     }
 
     // Publish a session snapshot with a state event carrying its current track (queue mutations + options changes).
@@ -3246,7 +3428,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         var preview = _currentKind == PlayableKind.Video ? null : previewEntry;
         var decision = PreparedNextPolicy.Decide(_currentKind, current, preview,
             preview is null ? PlayableKind.Audio : KindFor(preview.Track),
-            preview is not null && MayPrepare(preview.Track), _snap.Repeat);
+            preview is not null && MayPrepare(preview.Track), _snap.Repeat, _snap.Shuffle);
         var next = decision.Prepare ? preview : null;
         bool allowOverlap = decision.AllowOverlap;
         string? signature = decision.Signature;
@@ -3290,39 +3472,23 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     async Task ResolvePreparedNextAsync(QueueEntry next, string token, bool allowOverlap, CancellationToken ct)
     {
+        var owner = new AudioItemIdentity(Volatile.Read(ref _contextGeneration), _snap.Current?.ItemId ?? QueueItemId.None);
         try
         {
-            AudioFastStart start;
-            Task<AudioStreamHandle>? pendingBody = null;
-            AudioStreamHandle resolvedBody = default;
-            if (_fast is not null)
-            {
-                var plan = await _fast.ResolveFastAsync(next.Track, ct).ConfigureAwait(false);
-                start = plan.Start;
-                pendingBody = plan.Body;
-            }
+            FastStartPlan plan;
+            if (_fast is not null) plan = await _fast.ResolveFastAsync(next.Track, ct).ConfigureAwait(false);
             else
             {
-                resolvedBody = await _resolver.ResolveAsync(next.Track, ct).ConfigureAwait(false);
-                start = new AudioFastStart(resolvedBody.TrackUri, resolvedBody.FileIdHex, resolvedBody.Format,
-                    resolvedBody.DurationMs, resolvedBody.NormalizationGainDb, default);
+                var body = await _resolver.ResolveAsync(next.Track, ct).ConfigureAwait(false);
+                plan = new(new(body.TrackUri, body.FileIdHex, body.Format, body.DurationMs, body.NormalizationGainDb, default), Task.FromResult(body));
             }
-
             if (!IsPreparedTokenCurrent(token)) return;
-            await _preparedHost!.PrepareNextAsync(new AudioPrepareRequest(token, start, allowOverlap), ct).ConfigureAwait(false);
+            await _preparedHost!.PrepareNextAsync(new(token, owner, next.ItemId, plan, allowOverlap), ct).ConfigureAwait(false);
             if (!IsPreparedTokenCurrent(token))
             {
                 await _preparedHost.CancelPreparedAsync(token, CancellationToken.None).ConfigureAwait(false);
                 return;
             }
-
-            var body = pendingBody is null ? resolvedBody : await pendingBody.ConfigureAwait(false);
-            if (!IsPreparedTokenCurrent(token))
-            {
-                await _preparedHost.CancelPreparedAsync(token, CancellationToken.None).ConfigureAwait(false);
-                return;
-            }
-            await _preparedHost.SupplyNextBodyAsync(token, body, ct).ConfigureAwait(false);
             _log.Info($"audio prepare ready token={token} item={next.ItemId.Value} track={next.Track.Uri}");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
@@ -3357,7 +3523,10 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     void OnAudioTransition(AudioTransitionSignal signal)
     {
         if (signal.Kind == AudioTransitionKind.Started)
+        {
+            lock (_prepareGate) _announcedTransition = signal;
             _ = CommitPreparedTransitionAsync(signal);
+        }
         else if (signal.Kind == AudioTransitionKind.Missed)
         {
             ClearPreparedToken(signal.Token);
@@ -3384,53 +3553,88 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     async Task CommitPreparedTransitionAsync(AudioTransitionSignal signal)
     {
         await _lock.WaitAsync().ConfigureAwait(false);
+        try { if (!_disposed) CommitPreparedTransitionLocked(signal); }
+        catch (Exception ex) { _log.Info("audio transition commit failed: " + ex.Message); }
+        finally { _lock.Release(); }
+    }
+
+    // Also called before a manual queue step: an already-announced audible boundary is committed first.
+    void CommitPreparedTransitionLocked(AudioTransitionSignal signal)
+    {
+        QueueItemId expectedItem;
+        lock (_prepareGate)
+        {
+            if (_announcedTransition?.Token == signal.Token) _announcedTransition = null;
+            if (!string.Equals(_preparedToken, signal.Token, StringComparison.Ordinal)) return;
+            expectedItem = _preparedItemId;
+        }
+        if (_snap.Current is { } selected && selected.ItemId == expectedItem && selected.Track.Uri == signal.TrackUri)
+        {
+            _audibleItemId = expectedItem;
+            _readyItemGeneration = Volatile.Read(ref _contextGeneration);
+            ClearPreparedToken(signal.Token);
+            return; // a manual promotion already selected this exact voice
+        }
+        var preview = _session.PreviewNext();
+        if (preview is null || preview.ItemId != expectedItem || preview.Track.Uri != signal.TrackUri)
+        {
+            ClearPreparedToken(signal.Token);
+            _log.Info($"audio transition identity mismatch token={signal.Token}; restoring selected item");
+            _ = ReloadTransitionMismatchAsync(Volatile.Read(ref _contextGeneration));
+            return;
+        }
+        var advanced = _session.Next();
+        if (advanced?.Current is not { } current || current.ItemId != expectedItem)
+            throw new InvalidOperationException("Prepared transition selection diverged from its validated preview.");
+        _snap = advanced;
+        Interlocked.Increment(ref _contextGeneration);
+        _readyItemGeneration = Volatile.Read(ref _contextGeneration);
+        _projection.SetTransportIntent(NextTransportCommand(), _playWhenReady, PlaybackPhase.Transitioning);
+        _currentHost.Submit(new(NextTransportCommand(), AudioTransportAction.Adopt, _playWhenReady));
+        _audibleItemId = current.ItemId;
+        ClearPreparedToken(signal.Token);
+        _projection.NoteLocalCommand();
+        MintCommand("trackdone");
+        _currentIds = MintPlaybackIds(current.Track);
+        Emit(BuildEvent(_playWhenReady ? EvKind.TrackChanged : EvKind.Paused, current.Track, Math.Max(0, signal.PositionMs), durationMs: current.Track.DurationMs));
+        WarmUpcomingFastTrack("after-handoff");
+        SchedulePreparedNext("after-handoff");
+        MaybeStartContinuationFetch();
+    }
+
+    async Task ReloadTransitionMismatchAsync(long generation)
+    {
+        await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
-            QueueItemId expectedItem;
-            lock (_prepareGate)
-            {
-                if (!string.Equals(_preparedToken, signal.Token, StringComparison.Ordinal))
-                {
-                    _log.Info($"audio transition rejected stale token={signal.Token} track={signal.TrackUri}");
-                    return;
-                }
-                expectedItem = _preparedItemId;
-            }
-
-            var preview = _session.PreviewNext();
-            if (preview is null || preview.ItemId != expectedItem
-                || !string.Equals(preview.Track.Uri, signal.TrackUri, StringComparison.Ordinal))
-            {
-                _log.Info($"audio transition identity mismatch token={signal.Token} expectedItem={expectedItem.Value} " +
-                    $"previewItem={preview?.ItemId.Value ?? 0} hostTrack={signal.TrackUri} previewTrack={preview?.Track.Uri ?? "(none)"}; reloading current");
-                ClearPreparedToken(signal.Token);
-                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, CancellationToken.None).ConfigureAwait(false);
-                return;
-            }
-
-            var advanced = _session.Next();
-            if (advanced?.Current is not { } current || current.ItemId != expectedItem)
-            {
-                _log.Info($"audio transition advance mismatch token={signal.Token} expectedItem={expectedItem.Value}");
-                ClearPreparedToken(signal.Token);
-                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, CancellationToken.None).ConfigureAwait(false);
-                return;
-            }
-
-            _snap = advanced;
-            ClearPreparedToken(signal.Token);
-            _projection.NoteLocalCommand();
-            MintCommand("trackdone");
-            _currentIds = MintPlaybackIds(current.Track);
-            Emit(BuildEvent(EvKind.TrackChanged, current.Track, Math.Max(0, signal.PositionMs),
-                durationMs: current.Track.DurationMs));
-            WarmUpcomingFastTrack("after-handoff");
-            SchedulePreparedNext("after-handoff");
-            MaybeStartContinuationFetch();
+            if (!_disposed && generation == Volatile.Read(ref _contextGeneration))
+                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, CancellationToken.None, initiallyPaused: !_playWhenReady).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) { _log.Info("audio transition reconciliation failed: " + ex.Message); }
+        finally { _lock.Release(); }
+    }
+
+    async Task CompleteSeekAsync(PlaybackCommandId command, PlaybackOperationStatus status, long positionMs)
+    {
+        await _lock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            _log.Info("audio transition commit failed: " + ex.Message);
+            if (_disposed || _pendingSeek is not { } pending || pending.Id != command) return;
+            _projection.CompleteSeek(command, status, status == PlaybackOperationStatus.Applied ? positionMs : null);
+            if (status == PlaybackOperationStatus.Accepted) return;
+            var committed = _pendingSeekEvent;
+            _pendingSeek = null;
+            _pendingSeekRequest = null;
+            _pendingSeekEvent = null;
+            if (status == PlaybackOperationStatus.Applied && committed is { } ev)
+            {
+                Emit(ev with { SeekToMs = positionMs });
+                if (PreparedNextPolicy.SeekRequiresRearm(_snap.Current?.Track.DurationMs ?? 0, positionMs, 0))
+                {
+                    SchedulePreparedNext("seek-ending-soon");
+                    MaybeStartContinuationFetch();
+                }
+            }
         }
         finally { _lock.Release(); }
     }
@@ -3442,6 +3646,34 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     void OnHostSignal(AudioHostSignal s)
     {
+        if (_disposed) return;
+        if (s.Command.ItemGeneration != 0 && s.Command.ItemGeneration != Volatile.Read(ref _contextGeneration)) return;
+        if (s.OperationStatus == PlaybackOperationStatus.Applied && s.Command.Sequence != 0
+            && s.Command.Sequence == Volatile.Read(ref _pendingLoadSequence))
+        {
+            _readyItemGeneration = Volatile.Read(ref _contextGeneration);
+            _pendingLoadSequence = 0;
+        }
+        if (s.IsPlaying && !s.IsBuffering && s.OperationStatus != PlaybackOperationStatus.Accepted
+            && _readyItemGeneration != 0 && _readyItemGeneration == Volatile.Read(ref _contextGeneration))
+            _audibleItemId = _snap.Current?.ItemId ?? QueueItemId.None;
+        if (s.OperationStatus is { } status)
+        {
+            // Finding #4: a load minted fresh (MintLoadCommand) still owes a settlement to the seek it carried —
+            // that seek's OWN id never travels to the host, so match on the load's command instead and resolve the
+            // carried seek id. Accepted is not terminal (the load itself may still report Applied/Superseded/Failed
+            // later); only a terminal status retires the carrier.
+            if (_seekCarrier is { } carrier && s.Command == carrier.Load)
+            {
+                if (status != PlaybackOperationStatus.Accepted) _seekCarrier = null;
+                _ = CompleteSeekAsync(carrier.Seek, status, s.PositionMs);
+            }
+            else
+            {
+                _ = CompleteSeekAsync(s.Command, status, s.PositionMs);
+            }
+        }
+
         // §4 — a remote device genuinely owns playback: SubscribeHost guards only host IDENTITY/generation, so a host
         // StopHostKeepingSession tore down still has a live subscription and can still deliver a late signal (a
         // position tick already in flight, a Paused edge racing the takeover). Feeding that into the projection would
@@ -3500,6 +3732,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     void ReportHostError(in AudioHostSignal s)
     {
+        _log.Info($"media host failure track={_session.Current?.Uri ?? "-"} kind={_currentKind} generation={s.Command.ItemGeneration} positionMs={s.PositionMs} reason={s.FailureReason} detail={s.Detail ?? "-"}");
         // A VIDEO that errored out (and whose recovery hook declined) is the second way video "doesn't happen": the app's
         // surface is mounted on availability, which is still true, so it would keep waiting on a dead session.
         if (_currentKind == PlayableKind.Video && _session.Current is { } videoTrack) NotifyVideoUnavailable(videoTrack);
@@ -3549,11 +3782,16 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         finally { _lock.Release(); }
     }
 
-    async Task AutoAdvanceAsync() { try { await LocalNextAsync(default).ConfigureAwait(false); } catch (Exception ex) { _log.Info("auto-advance error: " + ex.Message); } }
+    async Task AutoAdvanceAsync() { try { await LocalNextAsync(default, natural: true).ConfigureAwait(false); } catch (Exception ex) { _log.Info("auto-advance error: " + ex.Message); } }
 
     // ── forwarding (we are the controller of another device) — the real desktop envelope; ack_id parsed, not block-waited ─
     static Task Done => Task.CompletedTask;
-    Task Local(Action a) { a(); return Done; }
+    async Task Local(Action action)
+    {
+        await _lock.WaitAsync().ConfigureAwait(false);
+        try { if (!_disposed) action(); }
+        finally { _lock.Release(); }
+    }
 
     readonly record struct PlayRequest(
         string ContextUri, int StartIndex, IReadOnlyList<QueuedRef>? OrderedTracks,
@@ -3578,50 +3816,61 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     async Task ExecutePlayAsync(PlayRequest request, string origin, CancellationToken ct)
     {
-        var target = _projection.ActiveDeviceId;
-        bool local = RouteLocal(target);
-        LogPlayIntent(origin, request.ContextUri, request.StartIndex, request.SkipTrackUri, request.SkipTrackUid,
-            request.OrderedTracks?.Count ?? 0, local);
-        if (!local) { await ForwardPlayAsync(request, target, ct).ConfigureAwait(false); return; }
-        ClearRemotePlaybackIds();
-        MintCommand("playbtn");
-        // §7 — mint (and latch) the generation BEFORE the resolve: an explicit play intent is, by construction, the
-        // newest thing that happened, so a launch/session recovery that is mid-resolve when the user presses Play must
-        // never win the race and seed a stale cluster snapshot out from under it.
-        long generation = Interlocked.Increment(ref _contextGeneration);
-        Volatile.Write(ref _explicitPlayGeneration, generation);
-        if (request.OrderedTracks is { Count: > 0 })
+        try
         {
-            var spec = new ContextSpec(request.ContextUri, null, request.OrderedTracks,
-                request.SkipTrackUri, request.SkipTrackUid, request.StartIndex);
-            await LocalPlaySpecAsync(spec, ct, generation).ConfigureAwait(false);
-            return;
+            var target = _projection.ActiveDeviceId;
+            bool local = RouteLocal(target);
+            LogPlayIntent(origin, request.ContextUri, request.StartIndex, request.SkipTrackUri, request.SkipTrackUid,
+                request.OrderedTracks?.Count ?? 0, local);
+            if (!local) { await ForwardPlayAsync(request, target, ct).ConfigureAwait(false); return; }
+            ClearRemotePlaybackIds();
+            MintCommand("playbtn");
+            // §7 — mint (and latch) the generation BEFORE the resolve: an explicit play intent is, by construction, the
+            // newest thing that happened, so a launch/session recovery that is mid-resolve when the user presses Play must
+            // never win the race and seed a stale cluster snapshot out from under it.
+            long generation = Interlocked.Increment(ref _contextGeneration);
+            Volatile.Write(ref _explicitPlayGeneration, generation);
+            if (request.OrderedTracks is { Count: > 0 })
+            {
+                var spec = new ContextSpec(request.ContextUri, null, request.OrderedTracks,
+                    request.SkipTrackUri, request.SkipTrackUid, request.StartIndex);
+                await LocalPlaySpecAsync(spec, ct, generation).ConfigureAwait(false);
+                return;
+            }
+            await LocalPlaySpecAsync(new ContextSpec(
+                request.ContextUri,
+                null,
+                null,
+                request.SkipTrackUri,
+                request.SkipTrackUid,
+                request.StartIndex), ct, generation).ConfigureAwait(false);
         }
-        await LocalPlaySpecAsync(new ContextSpec(
-            request.ContextUri,
-            null,
-            null,
-            request.SkipTrackUri,
-            request.SkipTrackUid,
-            request.StartIndex), ct, generation).ConfigureAwait(false);
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _log.Warn($"play intent failed origin={origin} ctx={request.ContextUri} index={request.StartIndex}: " +
+                $"{ex.GetType().Name}: {ex.Message}");
+            throw;
+        }
     }
 
     // `target` is a SINGLE READ captured by the caller at the same moment it evaluated RouteLocal() — never re-read
     // here. An empty capture means a cluster fold landed between routing and sending and there is no one left to
     // send to; that is a real, user-visible failure (not a silent drop), so it logs AND fires OnRemoteCommandFailed
     // exactly like a rejected send does below.
-    async Task Forward(string endpoint, string target, CancellationToken ct, params (string Key, object Value)[] args)
+    async Task<bool> Forward(string endpoint, string target, CancellationToken ct, params (string Key, object Value)[] args)
     {
         if (string.IsNullOrEmpty(target))
         {
             _log.Info($"outbound {endpoint} → (no target): dropped — the active-device id was empty at send time");
             OnRemoteCommandFailed?.Invoke();
-            return;
+            return false;
         }
-        if (_outbound is null) return;
+        if (_outbound is null) { OnRemoteCommandFailed?.Invoke(); return false; }
         var json = OutboundEnvelope.Command(_ourDeviceId, endpoint, args, NewId(), NewId(), Now(), NewId());
         var r = await _outbound.SendAsync(target, json, ct).ConfigureAwait(false);
         if (!r.Ok) _log.Info($"outbound {endpoint} → {target}: failed ({r.Status})");
+        if (!r.Ok) OnRemoteCommandFailed?.Invoke();
+        return r.Ok;
     }
 
     async Task ForwardPlayAsync(PlayRequest request, string target, CancellationToken ct)
@@ -3921,7 +4170,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // xlarge→large→url, artist_uri/album_uri riding the metadata dict) so the set_queue and cluster paths agree on
     // what a wire track looks like. Null when the row is too thin to be worth it (no title) — the fallback stays
     // ContextResolve.Synthetic for those, exactly as before.
-    static Track? TrackFromWireMetadata(string uri, IReadOnlyDictionary<string, string>? meta)
+    internal static Track? TrackFromWireMetadata(string uri, IReadOnlyDictionary<string, string>? meta)
     {
         if (meta is null || !meta.TryGetValue("title", out var title) || string.IsNullOrEmpty(title)) return null;
         string Get(string k) => meta.TryGetValue(k, out var v) ? v : "";
@@ -3977,6 +4226,11 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        Interlocked.Increment(ref _contextGeneration);
+        try { _loadCts?.Cancel(); } catch (ObjectDisposedException) { }
+        _loadCts?.Dispose();
         CancellationTokenSource? prepareCts;
         string? preparedToken;
         lock (_prepareGate)
@@ -3994,6 +4248,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         _transitionSub?.Dispose();
         _hostSub.Dispose();
         _projSub.Dispose();
-        _lock.Dispose();
+        // Cold completions restore lock ownership before seeing their stale generation. Keep the managed
+        // semaphore alive until those continuations release it; no native wait handle is ever requested.
     }
 }

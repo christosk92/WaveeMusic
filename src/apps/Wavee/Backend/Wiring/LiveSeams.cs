@@ -23,10 +23,8 @@ public static class LiveSeams
     public const string Lyrics = "Lyrics";
 
     // ── the hydration façade + the online-read seam (design §2.3 / §2.7) ──
-    public const string SpotifyHydration = "SpotifyHydration";
-    public const string OnlineCatalog = "OnlineCatalog";
-    public const string HomeFeedRevalidate = "HomeFeedRevalidate";
     public const string HomeFacet = "HomeFacet";
+    public const string CatalogProvider = "CatalogProvider";
 
     // ── the return-only catalogue services (design §3) ──
     public const string AlbumEnrichment = "AlbumEnrichment";
@@ -48,7 +46,6 @@ public static class LiveSeams
     public const string PlaybackResolveVideoSource = "Playback.ResolveVideoSource";
     public const string PlaybackRepublishConnectState = "Playback.RepublishConnectState";
     public const string PlaybackVideoMedia = "Playback.VideoMedia";
-    public const string PlaybackStore = "Playback.Store";
     public const string PlaybackLocalOutputs = "Playback.LocalOutputs";
     public const string PlaybackLocalPlaybackSupported = "Playback.LocalPlaybackSupported";
     /// <summary>The local-audio runtime/provisioning status feed (AudioRuntimeStatusService.Changed → the bridge's
@@ -68,9 +65,7 @@ public static class LiveSeams
     public const string SessionAccount = "SessionAccount";
     public const string RealSync = "RealSync";
     public const string PlaylistTuning = "PlaylistTuning";
-    public const string MutationScheduleDrain = "RealMutationSource.ScheduleDrain";
     public const string PlaylistMutationsHttp = "RealPlaylistMutations.Http";
-    public const string PlaylistMutationsScheduleDrain = "RealPlaylistMutations.ScheduleDrain";
     public const string SpclientBaseUrl = "SpclientBaseUrl";
     /// <summary>The Spotify half of the module→host services (<c>host/auth/token</c>, <c>host/auth/context</c>,
     /// <c>spotify/audioKey</c>, all gated on <c>permission:auth.spotify</c>). Session-scoped by construction: they
@@ -88,14 +83,14 @@ public static class LiveSeams
     public static readonly string[] All =
     [
         Player, Devices, Session, Connectivity, Lyrics,
-        SpotifyHydration, OnlineCatalog, HomeFeedRevalidate, HomeFacet,
+        HomeFacet, CatalogProvider,
         AlbumEnrichment, PreRelease, TrackCredits, TrackExpansion, PlaylistPopcount, ContentFilters,
         Concerts, Browse, WhatsNew, HomeSections, Recents, Friends, SpotifyNotifications, UserTop,
-        PlaybackResolveVideoSource, PlaybackRepublishConnectState, PlaybackVideoMedia, PlaybackStore,
+        PlaybackResolveVideoSource, PlaybackRepublishConnectState, PlaybackVideoMedia,
         PlaybackLocalOutputs, PlaybackLocalPlaybackSupported, PlaybackRuntimeStatus,
         CoverColorFiller, HomeBaselinePreviews,
         LiveHost, LiveHttp, MutTransport, SessionAccount, RealSync, PlaylistTuning,
-        MutationScheduleDrain, PlaylistMutationsHttp, PlaylistMutationsScheduleDrain, SpclientBaseUrl,
+        PlaylistMutationsHttp, SpclientBaseUrl,
         ModuleHostServices,
         PlayPlayProvisioner, AudioBodyCache, AudioLicenseCache, AudioBodyDiskArena,
     ];

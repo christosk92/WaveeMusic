@@ -43,9 +43,11 @@ public static class SidebarPinId
     /// <see cref="PinnableRoutePrefixes"/>) are also pinnable when reached; their instances only exist at runtime, so
     /// they are recognised by prefix rather than enumerated here.</summary>
     /// <remarks>"recents" is the full recently-played page. It is offered by the CUSTOMIZER only and is deliberately NOT
-    /// in <c>SidebarCustomLayout.DefaultTopBar</c> — a destination a user may add, not one the shell mandates.</remarks>
+    /// in <c>SidebarCustomLayout.DefaultTopBar</c> — a destination a user may add, not one the shell mandates.
+    /// W7: "local" dropped — the Local Files collection page is retired from every nav surface, so it is no longer an
+    /// offerable pin (a persisted "local" pin is pruned on load; see <c>SidebarPinStore.LoadFrom</c>).</remarks>
     public static readonly string[] PinnableRoutes =
-        ["home", "search", "albums", "artists", "liked", "podcasts", "local", "history", "recents"];
+        ["home", "search", "albums", "artists", "liked", "podcasts", "history", "recents"];
 
     /// <summary>Real, durable pages that <see cref="FromRoute"/> accepts but that the curated picker deliberately does
     /// NOT seed — the concerts hub is reachable from an artist page, and offering it in the pin picker alongside Home
@@ -93,6 +95,10 @@ public static class SidebarPinId
     public static string? Canonical(string? idOrUri)
     {
         if (string.IsNullOrEmpty(idOrUri)) return null;
+        // A pin persisted before the liked spellings were unified could carry the collection under the playlist
+        // prefix; left alone it stays a "Playlist" whose header can never resolve (a collection has no playlist
+        // header), so its name would be a skeleton forever. Every liked spelling collapses onto the route pin.
+        if (KindOf(idOrUri) == SidebarEntryKind.Playlist && EntityUri.IsLikedCollection(UriOf(idOrUri))) return "liked";
         if (KindOf(idOrUri) != SidebarEntryKind.AppRoute) return idOrUri;   // already a prefixed pin id
         if (idOrUri.StartsWith("spotify:", StringComparison.Ordinal)
             || idOrUri.StartsWith("wavee:", StringComparison.Ordinal))
@@ -162,6 +168,20 @@ public static class SidebarPinId
     }
 
     public static bool IsPinnableRoute(string? routeKey) => FromRoute(routeKey) is not null;
+
+    /// <summary>Route keys a pin may STILL carry from an older install but whose page no longer exists. A persisted pin
+    /// with one of these ids is pruned on load (<c>SidebarPinStore.LoadFrom</c>) — a deliberate retirement, distinct from
+    /// "unknown id renders disabled" (iron rule 9): a route pin has no entity to resolve later and no menu offers it
+    /// back. Append-only; "local" is the Local Files page retired with Library V3.1 (#104).</summary>
+    public static readonly string[] RetiredRoutes = ["local"];
+
+    public static bool IsRetiredRoute(string? pinId)
+    {
+        if (string.IsNullOrEmpty(pinId)) return false;
+        for (int i = 0; i < RetiredRoutes.Length; i++)
+            if (string.Equals(RetiredRoutes[i], pinId, StringComparison.Ordinal)) return true;
+        return false;
+    }
 
     /// <summary>A rootlist group id → its pin id. Folders are pinnable (locked decision 4) even though they never navigate.</summary>
     public static string ForFolder(string folderId) => FolderPrefix + folderId;

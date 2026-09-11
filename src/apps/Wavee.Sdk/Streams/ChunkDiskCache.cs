@@ -35,6 +35,9 @@ public enum AudioCacheRelocationMode
 /// <param name="FreeBytes">Free bytes on the volume.</param>
 /// <param name="ReserveBytes">Free space the cache refuses to consume.</param>
 /// <param name="WriteEnabled">False when writes are turned off by policy.</param>
+/// <param name="Admission">Why a write would (or wouldn't) be admitted right now — see
+/// <see cref="ChunkAdmission"/>. Computed as if a zero-growth write were attempted, so it reflects the
+/// cache's standing state rather than any one write's outcome.</param>
 public readonly record struct AudioBodyCacheStatus(
     string Directory,
     bool Available,
@@ -42,7 +45,8 @@ public readonly record struct AudioBodyCacheStatus(
     long? BudgetBytes,
     long FreeBytes,
     long ReserveBytes,
-    bool WriteEnabled);
+    bool WriteEnabled,
+    ChunkAdmission Admission);
 
 /// <summary>The settings-free snapshot a <see cref="ChunkDiskCache"/> re-reads on every operation. Hosts that keep
 /// their cache configuration in user settings hand the cache a provider that builds one of these on demand.</summary>
@@ -80,7 +84,6 @@ public sealed class ChunkDiskCache : IDisposable
     const int HeaderCoreBytes = 20;             // magic + chunk size + total size + chunk count
     const int HeaderBytes = HeaderCoreBytes + 32;
     const int EntryBytes = 1 + 32;              // committed marker + SHA-256
-    const long MinimumReserveBytes = 5L << 30;
     const string MarkerFileName = ".wavee-audio-cache";
     const string MarkerText = "Wavee encrypted audio cache v2";
     const string RootMutexPrefix = "Wavee.AudioCache.";
@@ -89,6 +92,13 @@ public sealed class ChunkDiskCache : IDisposable
     readonly Func<ChunkCachePolicy>? _policyProvider;
     readonly StreamLogger _log;
     readonly string _defaultDirectory;
+
+    // Injected by tests (and, in principle, a host that wants a synthetic volume) to replace the real DriveInfo
+    // probe. When set, it is called DIRECTLY on every Capacity() — bypassing the static, cross-instance
+    // _driveCache below entirely — so two ChunkDiskCache instances in the same test process, each given a
+    // different fake volume, never see each other's cached numbers.
+    readonly Func<string, (long Total, long Free, bool Ready)>? _volumeProbe;
+
     readonly object _stateGate = new();
     readonly object _trimLock = new();
     readonly ConcurrentDictionary<string, object> _fileLocks = new(StringComparer.OrdinalIgnoreCase);
@@ -113,6 +123,10 @@ public sealed class ChunkDiskCache : IDisposable
     int _pendingWrites;
     Thread? _writerThread;
     int _disposed;   // 0/1 — guards WriteChunk against racing a Dispose() and makes Dispose() itself idempotent
+
+    // Free-space refusal is logged once PER TRANSITION into the refused state, not per chunk (a track can be
+    // thousands of 64 KiB chunks) — see CanCommit/LogFreeSpaceRefusal. 0 = not currently refusing, 1 = refusing.
+    int _freeSpaceRefusalActive;
 
     readonly record struct PendingChunk(byte[] Buffer, int Length);
     readonly record struct PendingWrite(string FileId, int ChunkIndex, string Key, PendingChunk Chunk);
@@ -141,11 +155,15 @@ public sealed class ChunkDiskCache : IDisposable
     /// <param name="log">Optional logger; <c>default</c> is a no-op.</param>
     /// <param name="defaultDirectory">The host's canonical cache root — a root equal to it counts as owned even when
     /// its marker file is missing. Empty = only the marker file confers ownership.</param>
+    /// <param name="volumeProbe">Test/host seam replacing the real <see cref="DriveInfo"/> read. When given, it is
+    /// called directly on every capacity check and the static, cross-instance drive-info cache is bypassed entirely
+    /// for this instance — see the field doc on <c>_volumeProbe</c>. Null (the default) is today's behaviour.</param>
     public ChunkDiskCache(string directory, long budgetBytes = DefaultFixedBudgetBytes, StreamLogger log = default,
-        string? defaultDirectory = null)
+        string? defaultDirectory = null, Func<string, (long Total, long Free, bool Ready)>? volumeProbe = null)
     {
         _log = log;
         _defaultDirectory = defaultDirectory ?? "";
+        _volumeProbe = volumeProbe;
         _staticDirectory = Path.GetFullPath(directory);
         _staticBudget = Math.Max(MinBudgetBytes, budgetBytes);
         EnsureActiveDirectory(CurrentPolicy().Directory);
@@ -157,10 +175,14 @@ public sealed class ChunkDiskCache : IDisposable
     /// <param name="policyProvider">Called on every operation; must be cheap and never throw.</param>
     /// <param name="log">Optional logger; <c>default</c> is a no-op.</param>
     /// <param name="defaultDirectory">The host's canonical cache root — see the other constructor.</param>
-    public ChunkDiskCache(Func<ChunkCachePolicy> policyProvider, StreamLogger log = default, string? defaultDirectory = null)
+    /// <param name="volumeProbe">Test/host seam replacing the real <see cref="DriveInfo"/> read — see the other
+    /// constructor.</param>
+    public ChunkDiskCache(Func<ChunkCachePolicy> policyProvider, StreamLogger log = default, string? defaultDirectory = null,
+        Func<string, (long Total, long Free, bool Ready)>? volumeProbe = null)
     {
         _log = log;
         _defaultDirectory = defaultDirectory ?? "";
+        _volumeProbe = volumeProbe;
         _policyProvider = policyProvider;
         var policy = CurrentPolicy();
         _staticDirectory = policy.Directory;
@@ -565,14 +587,78 @@ public sealed class ChunkDiskCache : IDisposable
         return Math.Max(0, next - old);
     }
 
+    /// <summary>Thin wrapper: reads the volume + policy, hands them to <see cref="ChunkCacheAdmission.Decide"/>, and
+    /// — for anything other than <see cref="ChunkAdmission.Allow"/> — tries to fix it before refusing, since a
+    /// refusal here is silent to the caller (<c>WriteChunkCore</c> just returns) and this is the only place that
+    /// finds out.</summary>
     bool CanCommit(ChunkCachePolicy policy, string root, long growth)
     {
-        var capacity = Capacity(root, policy);
-        if (!capacity.Available || capacity.FreeBytes - growth < capacity.ReserveBytes) return false;
-        if (capacity.BudgetBytes is not { } budget) return true;
-        if (Volatile.Read(ref _approxBytes) + growth <= budget) return true;
-        TrimInternal(root, budget);
-        return Volatile.Read(ref _approxBytes) + growth <= budget;
+        var capacity = Capacity(root, policy, _volumeProbe);
+        long approx = Volatile.Read(ref _approxBytes);
+        var admission = ChunkCacheAdmission.Decide(capacity.Available, capacity.FreeBytes, capacity.TotalBytes, policy, approx, growth);
+
+        if (admission != ChunkAdmission.BelowFreeSpaceReserve)
+            Interlocked.Exchange(ref _freeSpaceRefusalActive, 0);   // any other outcome ends a standing refusal
+
+        switch (admission)
+        {
+            case ChunkAdmission.Allow:
+                return true;
+
+            case ChunkAdmission.VolumeUnavailable:
+                return false;
+
+            case ChunkAdmission.BelowFreeSpaceReserve:
+                return CanCommitAfterFreeSpaceRefusal(root, policy, capacity, approx, growth);
+
+            default: // OverBudget — TrimInternal only runs here today; still true after the free-space branch grew one.
+                long budget = capacity.BudgetBytes!.Value;
+                TrimInternal(root, budget);
+                return Volatile.Read(ref _approxBytes) + growth <= budget;
+        }
+    }
+
+    /// <summary>The free-space branch used to just refuse — forever, on a nearly-full drive, since nothing else ever
+    /// shrinks the cache when <see cref="AudioCacheBudgetMode.Unlimited"/> leaves <c>Trim()</c> a no-op. The cache's
+    /// own bytes are part of what filled the drive, so it can also be part of what empties it: this sheds the
+    /// LRU-oldest entries down to (approximately) the size that would satisfy the reserve, then re-decides.
+    /// <para>Reuses <see cref="TrimInternal"/> — the same eviction loop the budget branch already uses — rather than
+    /// a second implementation, by handing it a computed target (the biggest the cache is allowed to be right now
+    /// for the reserve to hold) instead of a real <see cref="ChunkCachePolicy"/> budget. That target has no policy
+    /// meaning on its own; it only exists to reuse the loop, which is why it's computed here and not exposed.</para>
+    /// </summary>
+    bool CanCommitAfterFreeSpaceRefusal(string root, ChunkCachePolicy policy, CapacityState capacity, long approxBytes, long growth)
+    {
+        LogFreeSpaceRefusalOnce(capacity, approxBytes, growth);
+
+        long deficit = ChunkCacheAdmission.ReserveBytes(capacity.TotalBytes) - (capacity.FreeBytes - growth);
+        long trimTarget = Math.Max(0, approxBytes - deficit);
+        long freed = TrimInternal(root, trimTarget);
+        if (freed <= 0) return false;
+
+        long freeAfterTrim = capacity.FreeBytes + freed;   // freed bytes leave the cache's own footprint, so the volume gets them back
+        long approxAfterTrim = Volatile.Read(ref _approxBytes);
+        var recheck = ChunkCacheAdmission.Decide(capacity.Available, freeAfterTrim, capacity.TotalBytes, policy, approxAfterTrim, growth);
+        if (recheck != ChunkAdmission.Allow) return false;
+        Interlocked.Exchange(ref _freeSpaceRefusalActive, 0);
+        return true;
+    }
+
+    /// <summary>Logs once per transition INTO the refused state, not once per chunk — a track can be thousands of
+    /// 64 KiB chunks, and this would otherwise fire that often. Follows the shape of the file's other log event
+    /// (<c>audio.cache.scan</c>).</summary>
+    void LogFreeSpaceRefusalOnce(CapacityState capacity, long approxBytes, long growth)
+    {
+        if (Interlocked.Exchange(ref _freeSpaceRefusalActive, 1) != 0) return;
+        _log.Event(StreamLogLevel.Warning, "audio.cache.freeSpaceRefused",
+            "Audio body cache write refused: committing would breach the free-space reserve", 0,
+            [
+                StreamLogField.Of("freeBytes", capacity.FreeBytes),
+                StreamLogField.Of("reserveBytes", ChunkCacheAdmission.ReserveBytes(capacity.TotalBytes)),
+                StreamLogField.Of("totalBytes", capacity.TotalBytes),
+                StreamLogField.Of("approxBytes", approxBytes),
+                StreamLogField.Of("growth", growth),
+            ]);
     }
 
     /// <summary>Root, occupancy, budget and headroom right now (measures the directory).</summary>
@@ -580,16 +666,20 @@ public sealed class ChunkDiskCache : IDisposable
     {
         var policy = CurrentPolicy();
         string root = EnsureActiveDirectory(policy.Directory);
-        var cap = Capacity(root, policy);
+        var cap = Capacity(root, policy, _volumeProbe);
+        var admission = ChunkCacheAdmission.Decide(cap.Available, cap.FreeBytes, cap.TotalBytes, policy, Volatile.Read(ref _approxBytes), 0);
         return new AudioBodyCacheStatus(root, cap.Available, DirectoryBytes(), cap.BudgetBytes,
-            cap.FreeBytes, cap.ReserveBytes, policy.WriteEnabled);
+            cap.FreeBytes, cap.ReserveBytes, policy.WriteEnabled, admission);
     }
 
-    readonly record struct CapacityState(bool Available, long FreeBytes, long ReserveBytes, long? BudgetBytes);
+    readonly record struct CapacityState(bool Available, long FreeBytes, long ReserveBytes, long? BudgetBytes, long TotalBytes);
 
     // DriveInfo.AvailableFreeSpace is a syscall; Capacity used to make one per chunk write (potentially thousands per
     // track). Free space doesn't move fast enough to need a live read every time, so this caches per volume for a few
-    // seconds — see the field doc on _driveCache.
+    // seconds — see the field doc on _driveCache. Only used when no _volumeProbe is injected (see Capacity below):
+    // an injected probe bypasses this cache entirely, since it's static and shared across every instance in the
+    // assembly — a test-injected fake volume must never be able to poison, or be poisoned by, another instance's
+    // real (or differently-fake) reading for the same path.
     static (long Total, long Free) ReadDriveInfoCached(string volumeRoot)
     {
         long now = DateTime.UtcNow.Ticks;
@@ -602,26 +692,34 @@ public sealed class ChunkDiskCache : IDisposable
         return (fresh.TotalSize, fresh.AvailableFreeSpace);
     }
 
-    static CapacityState Capacity(string root, ChunkCachePolicy policy)
+    /// <summary>Reads the volume (via <paramref name="volumeProbe"/> when given, the real, cached <see cref="DriveInfo"/>
+    /// otherwise) and delegates the reserve/budget arithmetic to <see cref="ChunkCacheAdmission"/> — this method now
+    /// owns only the I/O.</summary>
+    static CapacityState Capacity(string root, ChunkCachePolicy policy, Func<string, (long Total, long Free, bool Ready)>? volumeProbe)
     {
         try
         {
             string? volumeRoot = Path.GetPathRoot(Path.GetFullPath(root));
-            if (string.IsNullOrEmpty(volumeRoot)) return new(false, 0, MinimumReserveBytes, null);
+            if (string.IsNullOrEmpty(volumeRoot)) return new(false, 0, ChunkCacheAdmission.ReserveBytes(0), null, 0);
+
             long total, free;
-            try { (total, free) = ReadDriveInfoCached(volumeRoot); }
-            catch { return new(false, 0, MinimumReserveBytes, null); }
-            long reserve = Math.Max(MinimumReserveBytes, total / 20);
-            long? budget = policy.Mode switch
+            if (volumeProbe is not null)
             {
-                AudioCacheBudgetMode.Unlimited => null,
-                AudioCacheBudgetMode.FixedBytes => Math.Max(MinBudgetBytes, policy.FixedBytes),
-                _ when policy.Percent == 0 => Math.Clamp(total / 10, 16L << 30, 128L << 30),
-                _ => Math.Max(MinBudgetBytes, (long)(total * (policy.Percent / 100d))),
-            };
-            return new(true, free, reserve, budget);
+                bool ready;
+                (total, free, ready) = volumeProbe(volumeRoot);
+                if (!ready) return new(false, 0, ChunkCacheAdmission.ReserveBytes(total), null, total);
+            }
+            else
+            {
+                try { (total, free) = ReadDriveInfoCached(volumeRoot); }
+                catch { return new(false, 0, ChunkCacheAdmission.ReserveBytes(0), null, 0); }
+            }
+
+            long reserve = ChunkCacheAdmission.ReserveBytes(total);
+            long? budget = ChunkCacheAdmission.BudgetBytes(total, policy);
+            return new(true, free, reserve, budget, total);
         }
-        catch { return new(false, 0, MinimumReserveBytes, null); }
+        catch { return new(false, 0, ChunkCacheAdmission.ReserveBytes(0), null, 0); }
     }
 
     void EnsureMap(string root, string fileId, long totalSize)
@@ -771,12 +869,19 @@ public sealed class ChunkDiskCache : IDisposable
     /// <summary>Evict least-recently-used entries until the root fits <paramref name="budgetBytes"/>. Returns bytes freed.</summary>
     public long TrimToBudget(long budgetBytes) => TrimInternal(EnsureActiveDirectory(CurrentPolicy().Directory), Math.Max(MinBudgetBytes, budgetBytes));
 
-    /// <summary>Trim to the policy's current budget (no-op when unlimited). Returns bytes freed.</summary>
+    /// <summary>Trim to the policy's current SIZE budget (no-op under <see cref="AudioCacheBudgetMode.Unlimited"/>,
+    /// where there is none). Returns bytes freed. Free-space-driven trimming is deliberately NOT folded in here: it
+    /// only needs to run reactively, exactly when a write is actually about to be refused for lack of free space —
+    /// which is on the write path, in <c>CanCommitAfterFreeSpaceRefusal</c> — not on every call to this
+    /// general-purpose "shrink to budget" API (this is also called from <see cref="SetBudget"/>, where a free-space
+    /// check would be a non sequitur). That keeps the two trim triggers (over budget vs. drive nearly full)
+    /// independent and lets the free-space one self-heal even under <see cref="AudioCacheBudgetMode.Unlimited"/>,
+    /// where this method alone would never trim anything.</summary>
     public long Trim()
     {
         var policy = CurrentPolicy();
         string root = EnsureActiveDirectory(policy.Directory);
-        var budget = Capacity(root, policy).BudgetBytes;
+        var budget = Capacity(root, policy, _volumeProbe).BudgetBytes;
         return budget is null ? 0 : TrimInternal(root, budget.Value);
     }
 

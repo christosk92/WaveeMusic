@@ -1,4 +1,4 @@
-﻿namespace Wavee.Core;
+namespace Wavee.Core;
 
 // Core domain records. A deliberately small, clean projection of the WaveeMusic domain
 // (which today is UI DTOs over proto-backed *CacheEntry storage + a polymorphic ITrackItem).
@@ -86,27 +86,8 @@ public sealed record Artist(
     // Pathfinder discography.latest + popularReleasesAlbums — the artist-page Releases column (masthead + strip). Distinct
     // from TopAlbums (the full facet grids). Null ⇒ UI falls back / hides.
     Album? LatestRelease = null,
-    IReadOnlyList<Album>? PopularReleases = null,
-    // SWR freshness stamp: when the rich overview (TopTracks/stats/palette/bio) was last fetched. default = never/old →
-    // treated as stale and re-fetched on next open (which heals records persisted by an earlier build, whose deserialized
-    // FetchedAt is default). Set ONLY by a full-overview write; the store merge keeps the newer value so a thin
-    // extended-metadata / NPV / album-derived write never resets the clock.
-    DateTimeOffset FetchedAt = default,
-    // The OVERVIEW's own stamp (design §2.3: "Age: Rich/Full fresh iff now - OverviewFetchedAt ≤ ArtistRichTtl").
-    // FetchedAt is a max-of across every writer, so it answers "when did anything touch this artist?" — which is NOT the
-    // question the Rich age gate asks, and NOT the question `MergeExtras`' authoritative-absence discriminator asks.
-    // Both need "when did queryArtistOverview last speak?", and only the overview write stamps this field. Optional and
-    // last ⇒ documents persisted before it existed deserialize with default (= never) and simply re-fetch once.
-    DateTimeOffset OverviewFetchedAt = default,
-    // The extended CHART's own stamp — when artist-top-tracks-extensions last answered for this artist, whatever it
-    // answered. It exists because PRESENCE cannot express "the chart step ran": HydrationLevels.Of(Artist) calls an
-    // artist Full only when TopTracks.Count > ArtistPopularTracks.OverviewSeedCap, so a niche artist whose real chart
-    // is 6 tracks long can never reach Full — and ArtistHydration's "already extended AND fresh" gate, keyed on the
-    // rung, therefore re-fired the spclient GET on every ask past ExhaustedPlayableTtl (10 min), forever. A chart that
-    // legitimately has ≤ the seed cap of rows counts as REACHED once it has been fetched, and this is the fact that
-    // says so. Only EnsureChartAsync stamps it (never a V4/overview/merge write), so it answers exactly "when did the
-    // chart transport last speak?". Optional and last ⇒ older persisted documents deserialize with default = never.
-    DateTimeOffset ChartFetchedAt = default);
+    IReadOnlyList<Album>? PopularReleases = null);
+
 
 /// <summary>Per-facet discography helpers on <see cref="Artist"/> (kept next to the model; the facet split itself is
 /// <see cref="DiscographyKind"/> in Library.cs).</summary>
@@ -252,10 +233,11 @@ public sealed record RelatedArtist(string Id, string Uri, string Name, Image? Im
 /// (<c>itemV2.data.uri</c>). They are not always the same entity, which is why navigation goes through
 /// <see cref="TargetUri"/> instead of reading either field directly.
 ///
-/// Everything past the original six is nullable WITH a null default on purpose: <c>ArtistOverviewDoc</c> persists this
-/// record through STJ positional-record binding (see Backend/Persistence/ArtistOverview.cs), so a document written by
-/// an older build has only six values in its JSON. Nullable-with-default is what lets those legacy docs bind to
-/// <c>default(T)</c> instead of failing — adding a non-nullable or non-defaulted parameter here is a cache migration.</summary>
+/// Everything past the original six is nullable WITH a null default on purpose: <c>ArtistOverviewValue.Pinned</c>
+/// (Backend/Catalog/CatalogPayloadCodec.cs) persists this record through STJ binding, so a document written by an
+/// older build has only six values in its JSON. Nullable-with-default is what lets those older documents bind to
+/// <c>default(T)</c> instead of failing — adding a non-nullable or non-defaulted parameter here is a cache-format
+/// break, not merely a schema reset (a reset clears the cache; this would need every stored payload to decode too).</summary>
 public sealed record PinnedItem(
     string Eyebrow, string Title, string Subtitle, string Comment, Image? Cover, string Uri,
     string? ItemUri = null,               // itemV2.data.uri — what the pin points at
@@ -285,10 +267,6 @@ public sealed record TourBanner(string Eyebrow, string Headline, string Subline,
 /// the track rows show a per-track artist (compilations are various-artists).</summary>
 public enum AlbumKind { Single, EP, Album, Compilation }
 
-/// <summary>How complete an album read-model is. Summary rows come from search/home, Tracks from extended metadata,
-/// and Full from Pathfinder getAlbum. Stores must never replace a higher level with a lower one.</summary>
-public enum AlbumHydrationLevel { Summary, Tracks, Full }
-
 public sealed record Album(
     string Id, string Uri, string Name, Image? Cover,
     IReadOnlyList<ArtistRef> Artists, int Year, int TrackCount,
@@ -302,8 +280,7 @@ public sealed record Album(
     IReadOnlyList<Album>? OtherVersions = null,
     // Remaining getAlbum envelope fields used by the release panel and actions.
     string? CourtesyLine = null, string? ReleaseDatePrecision = null, int DiscCount = 1,
-    string? ShareUrl = null, bool IsPreRelease = false, DateTimeOffset? PreReleaseEnd = null,
-    AlbumHydrationLevel Hydration = AlbumHydrationLevel.Summary);
+    string? ShareUrl = null, bool IsPreRelease = false, DateTimeOffset? PreReleaseEnd = null);
 
 public sealed record Track(
     string Id, string Uri, string Title,
@@ -334,7 +311,7 @@ public sealed record Track(
     DateTimeOffset? AvailableAt = null,
     string? Source = null,
     // Per-context membership uid (PlaylistMember.ItemId) for Connect skip_to.track_uid + embedded page uids. READ-MODEL
-    // ONLY: stamped on the JoinMembership copy, never passed to UpsertTrack (EntityJson omits nulls → never persisted).
+    // ONLY: stamped on the JoinMembership copy, never passed to UpsertTrack (the catalog payload codec omits nulls → never persisted).
     string? ContextUid = null,
     // ISRC recording id (e.g. "USRC17607839"), sourced from the extended-metadata Track.external_id (type "isrc"). Drives
     // the lyrics search's exact-recording fast-path (Musixmatch track_isrc). Null when unknown (thin cluster / Pathfinder).
@@ -350,7 +327,7 @@ public sealed record Track(
     // which is descending weight. Null = not fetched; empty is a real "this track has none".
     IReadOnlyList<string>? Tags = null,
     // Linked-URI canonical playable (TrackV4 canonical_uri). Null = unknown-or-self. Null-coalesce merge like Isrc;
-    // EntityJson omit-null → free persist. Video miss-bridge + recovery promotion stamp it.
+    // omit-null persistence → free persist. Video miss-bridge + recovery promotion stamp it.
     string? CanonicalUri = null,
     // Album release year from TrackV4 nested album.date.year. 0 = unknown (lean used to drop field 6). Same 0-is-unknown
     // merge as Album.Year: a later thin upsert must not blank a year the catalogue already wrote.
@@ -473,7 +450,11 @@ public sealed record Playlist(
     // Chart-playlist header facts (format_attributes on a format=="chart" list: `new_entries_count`, `last_updated`,
     // `rank_type`). 0 / null = unknown or not a chart. Drives the "N new entries · <date>" caption on the detail rail
     // and vertical hero, mirroring the daylist window fields above.
-    int ChartNewEntries = 0, long ChartUpdatedAtMs = 0, string? ChartRankType = null);
+    int ChartNewEntries = 0, long ChartUpdatedAtMs = 0, string? ChartRankType = null)
+{
+    /// <summary>The query adopted a membership baseline, including an authoritative empty playlist.</summary>
+    public bool MembershipLoaded { get; init; }
+}
 
 public enum QueueBucket { NowPlaying, UserQueue, NextUp, History }
 

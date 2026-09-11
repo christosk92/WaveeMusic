@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Wavee.Backend;
-using Wavee.Backend.Hydration;
 using Wavee.Backend.Metadata;
 using Wavee.Core;
 using Wavee.SpotifyLive;
@@ -13,7 +12,7 @@ using Pl = Wavee.Protocol.Playlist;
 
 namespace Wavee.Tests;
 
-public class LiveContextResolverTests
+public class LiveContextResolverTests : PlaybackCatalogTestBase
 {
     static byte[] ArtistListBody()
     {
@@ -38,11 +37,8 @@ public class LiveContextResolverTests
             Interlocked.Increment(ref wireCalls);
             return new Resp(true, ArtistListBody(), 200);
         });
-        var store = new InMemoryStore();
-        // The resolver hydrates the resolved order through THE façade now (Identity, surface Context) instead of
-        // owning a metadata client. These tests exercise the WIRE + ordering, so the store-only hydrator is exactly
-        // right: it never fetches, and every row falls through to the uri-only placeholder as before.
-        var resolver = new LiveContextResolver(transport, new OfflineEntityHydrator(store), store, () => SessionContext.LoggedOut);
+        // Wire ordering is independent of metadata availability; the catalog returns passive placeholders.
+        var resolver = new LiveContextResolver(transport, Catalog.Queue, () => SessionContext.LoggedOut);
 
         var r1 = await resolver.ResolveAsync(ContextSpec.ForUri("spotify:artist:abc", 0));
         var r2 = await resolver.ResolveAsync(ContextSpec.ForUri("spotify:artist:abc", 2));
@@ -69,10 +65,9 @@ public class LiveContextResolverTests
     }
 
     // ── inspiredby-mix/v2/seed_to_playlist (explicit "Start radio" seed → radio playlist uri) ─────────────────────────
-    static LiveContextResolver MakeResolver(ITransport transport)
+    LiveContextResolver MakeResolver(ITransport transport)
     {
-        var store = new InMemoryStore();
-        return new LiveContextResolver(transport, new OfflineEntityHydrator(store), store, () => SessionContext.LoggedOut);
+        return new LiveContextResolver(transport, Catalog.Queue, () => SessionContext.LoggedOut);
     }
 
     [Fact]

@@ -19,7 +19,7 @@ namespace Wavee.Tests;
 //   (c) transport verbs (Play/Pause/Seek) route to the CURRENT host only, and exactly one host feeds the signal channel,
 //   (d) KindFor follows ShouldPlayAsVideo (and stays Audio when the hooks are unwired — the kill-switch / audio-only shape),
 //   (e) a video playable with no resolvable source falls back to AUDIO instead of leaving the user in silence.
-public class PlaybackControllerHostSwapTests
+public class PlaybackControllerHostSwapTests : PlaybackCatalogTestBase
 {
     // ── the fakes ────────────────────────────────────────────────────────────────────────────────────────────────────
     /// <summary>A host signal channel that reports its live subscriber count, so "exactly one host feeds OnHostSignal"
@@ -48,6 +48,10 @@ public class PlaybackControllerHostSwapTests
 
     sealed class FakeAudioHost(List<string> shared) : IAudioHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, Sig.Emit);
+        public void Load(AudioLoadRequest request) => global::Wavee.Tests.RecordingHostOperations.Load(this, request, Sig.Emit);
+        public bool PlayIntent => IsPlaying;
+
         public readonly List<string> Calls = new();
         public readonly TestSignals Sig = new();
         void Note(string call) { Calls.Add(call); shared.Add("audio:" + call); }
@@ -72,6 +76,8 @@ public class PlaybackControllerHostSwapTests
     /// happens through the controller's LoadCurrentVideoAsync hook — exactly like FluentVideoMediaHost.LoadVideo).</summary>
     sealed class FakeVideoHost(List<string> shared) : IMediaHost
     {
+        public PlaybackCommandReceipt Submit(AudioTransportRequest request) => global::Wavee.Tests.RecordingHostOperations.Submit(this, request, Sig.Emit);
+
         public readonly List<string> Calls = new();
         public readonly TestSignals Sig = new();
         void Note(string call) { Calls.Add(call); shared.Add("video:" + call); }
@@ -94,6 +100,7 @@ public class PlaybackControllerHostSwapTests
 
     sealed class Harness : IDisposable
     {
+        readonly PlaybackCatalogTestHost Catalog;
         public readonly List<string> Log = new();
         public readonly FakeAudioHost Audio;
         public readonly FakeVideoHost? Video;
@@ -115,18 +122,17 @@ public class PlaybackControllerHostSwapTests
         public long LastVideoStartAtMs = -1;
         /// <summary>The most recent detached video-load task (StartVideoLoadDetached → RunVideoLoadAsync,
         /// video-smooth-switching Milestone C). The controller never awaits this itself — the fake hooks below
-        /// complete synchronously, so a SUCCESSFUL load has already settled by the time PlayAsync/RefreshCurrentMediaKindAsync
-        /// returns; only the no-source→audio fallback re-acquires the controller's lock (still held by the outer call at
-        /// the moment it is spawned) and therefore genuinely completes later — <see cref="AwaitVideoLoadAsync"/> is for
-        /// exactly that case.</summary>
+        /// complete synchronously, but final play intent is committed under the controller lock after the command
+        /// returns. Tests await this operation before asserting host output or starting their next scenario.</summary>
         Task? _pendingVideoLoad;
 
-        public Harness(bool wireHooks = true, bool injectVideoHost = true, bool wireLoadHook = true,
+        public Harness(PlaybackCatalogTestHost catalog, bool wireHooks = true, bool injectVideoHost = true, bool wireLoadHook = true,
             string[]? contextTracks = null, bool videoOnly = false)
         {
+            Catalog = catalog;
             Audio = new FakeAudioHost(Log);
             Video = injectVideoHost ? new FakeVideoHost(Log) : null;
-            Projection = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+            Projection = Catalog.Projection("us", () => 0);
             Contexts = new FakeContextResolver(contextTracks ?? ["spotify:track:a", "spotify:track:b"]);
             Controller = new PlaybackController(Audio, new StubTrackResolver(), Projection, Contexts, "us", videoHost: Video);
             Controller.VideoLoadSpawnedForTest = t => _pendingVideoLoad = t;
@@ -146,9 +152,7 @@ public class PlaybackControllerHostSwapTests
             };
         }
 
-        /// <summary>Await the most recently spawned detached video load — needed ONLY when it can fall back to audio
-        /// (VideoSourceAvailable = false), since that fallback re-enters the controller's lock and therefore cannot
-        /// finish until the outer PlayAsync/RefreshCurrentMediaKindAsync call has released it.</summary>
+        /// <summary>Await source readiness and the serialized intent commit, including a possible audio fallback.</summary>
         public async Task AwaitVideoLoadAsync()
         {
             if (_pendingVideoLoad is { } t) await t;
@@ -195,8 +199,9 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task UnwiredHooks_EveryPlayableIsAudio_AndTheVideoHostIsNeverTouched()
     {
-        using var h = new Harness(wireHooks: false);
+        using var h = new Harness(Catalog, wireHooks: false);
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);
         Assert.Contains("audio:load:spotify:track:a", h.Log);
@@ -208,27 +213,32 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task VideoIntent_MakesTheCurrentKindVideo_AndTheAudioIntentMakesItAudioAgain()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);
 
         h.VideoIntent = true;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
 
         h.VideoIntent = false;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);
     }
 
     [Fact]
     public async Task RefreshCurrentMediaKind_IsANoOp_WhenTheKindIsUnchanged()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         int before = h.Log.Count;
 
         await h.Controller.RefreshCurrentMediaKindAsync();   // intent still audio → nothing to swap
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(before, h.Log.Count);
     }
@@ -236,12 +246,14 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task RefreshCurrentMediaKind_IsANoOp_WhenTheHooksAreUnwired()
     {
-        using var h = new Harness(wireHooks: false);
+        using var h = new Harness(Catalog, wireHooks: false);
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         int before = h.Log.Count;
 
         h.VideoIntent = true;                                // ignored — ShouldPlayAsVideo is null (kill switch off)
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(before, h.Log.Count);
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);
@@ -251,12 +263,15 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task AudioToVideoToAudio_NeverHasTwoHostsPlaying()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         h.VideoIntent = true;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
         h.VideoIntent = false;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         AssertNeverTwoHostsPlaying(h.Log);
         Assert.False(h.Audio.IsPlaying && h.Video!.IsPlaying);
@@ -265,12 +280,14 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task AudioToVideo_StopsTheAudioHostBeforeTheVideoHostPlays()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         Assert.True(h.Audio.IsPlaying);
 
         h.VideoIntent = true;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         int audioPause = First(h.Log, "audio:pause");
         int audioStop = First(h.Log, "audio:stop");
@@ -285,14 +302,16 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task VideoToAudio_StopsTheVideoHostBeforeTheAudioHostLoadsAndPlays()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         h.VideoIntent = true;
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
         Assert.True(h.Video!.IsPlaying);
 
         h.VideoIntent = false;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         int videoStop = First(h.Log, "video:stop");
         int audioLoad = Last(h.Log, "audio:load:spotify:track:a");
@@ -310,10 +329,12 @@ public class PlaybackControllerHostSwapTests
     {
         // The stop happens at the SWITCH, i.e. before the (async, networked) source resolve — so there is no window in
         // which the song is still playing while the video is being resolved.
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         h.VideoIntent = true;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         int audioStop = First(h.Log, "audio:stop");
         int loadVideo = First(h.Log, "video:loadvideo:spotify:track:a");
@@ -324,14 +345,15 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task TransportVerbs_RouteToTheCurrentHostOnly()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         h.VideoIntent = true;
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         int audioCallsAfterSwap = h.Audio.Calls.Count;
         int videoCallsAfterSwap = h.Video!.Calls.Count;
 
         await h.Controller.PauseAsync();
-        await h.Controller.SeekAsync(5000, SeekMode.Accurate);
+        await h.Controller.SeekAsync(new(5000, SeekMode.Accurate, PlaybackSeekKind.Commit));
         await h.Controller.ResumeAsync();
 
         // Every verb landed on the video host…
@@ -346,17 +368,19 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task ExactlyOneHostFeedsTheSignalChannel_AcrossEverySwap()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         Assert.Equal(1, h.Audio.Sig.SubscriberCount);
         Assert.Equal(0, h.Video!.Sig.SubscriberCount);
 
         h.VideoIntent = true;
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(0, h.Audio.Sig.SubscriberCount);
         Assert.Equal(1, h.Video.Sig.SubscriberCount);
 
         h.VideoIntent = false;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(1, h.Audio.Sig.SubscriberCount);
         Assert.Equal(0, h.Video.Sig.SubscriberCount);
     }
@@ -365,11 +389,12 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task NoResolvableVideoSource_FallsBackToAudio_RatherThanSilence()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         h.VideoIntent = true;
         h.VideoSourceAvailable = false;
 
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
         // The video branch resolves off-lock now (video-smooth-switching Milestone C): "no source" is discovered
         // AFTER PlayAsync's own lock hold has already released, so the audio fallback lands on a separate, later
         // continuation — await it explicitly rather than assuming it already ran.
@@ -386,10 +411,11 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task VideoIntentWithNoLoadHook_FallsBackToAudio()
     {
-        using var h = new Harness(wireLoadHook: false);
+        using var h = new Harness(Catalog, wireLoadHook: false);
         h.VideoIntent = true;
 
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);
         Assert.True(h.Audio.IsPlaying);
@@ -404,10 +430,11 @@ public class PlaybackControllerHostSwapTests
     {
         // Audio-only build shape: HostFor(Video) degrades to the audio host, so there is no host to swap to and the kind
         // must not be left claiming Video (Connect would then advertise track_player="video" over an audio stream).
-        using var h = new Harness(injectVideoHost: false, wireLoadHook: false);
+        using var h = new Harness(Catalog, injectVideoHost: false, wireLoadHook: false);
         h.VideoIntent = true;
 
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);
         Assert.Contains("audio:load:spotify:track:a", h.Log);
@@ -418,8 +445,8 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task WiredButAudioIntent_KeepsTheAudioPathIdenticalToTheUnwiredBuild()
     {
-        using var wired = new Harness();
-        using var unwired = new Harness(wireHooks: false);
+        using var wired = new Harness(Catalog.Fork());
+        using var unwired = new Harness(Catalog.Fork(), wireHooks: false);
         await wired.Controller.PlayAsync("spotify:playlist:p");
         await unwired.Controller.PlayAsync("spotify:playlist:p");
 
@@ -430,15 +457,17 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task ARemoteDeviceIsActive_RefreshNeverReloadsLocally()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         await h.Controller.PlayAsync("spotify:playlist:p");
-        h.Projection.OnCluster(new ClusterDelta("other-device", false, default, "spotify:playlist:ctx",
+        await h.AwaitVideoLoadAsync();
+        Catalog.Cluster(h.Projection, new ClusterDelta("other-device", false, default, "spotify:playlist:ctx",
             false, true, false, 0, 0, 0, 0, false, RepeatMode.Off,
             Array.Empty<ConnectDeviceRow>(), Array.Empty<RemoteTrack>()));
         int videoCalls = h.Video!.Calls.Count;
 
         h.VideoIntent = true;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);
         Assert.Equal(videoCalls, h.Video.Calls.Count);
@@ -452,12 +481,14 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task AudioToVideo_CarriesPositionIntoTheLoad()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         await h.Controller.PlayAsync("spotify:playlist:ctx");
+        await h.AwaitVideoLoadAsync();
         h.Audio.PositionMs = 80_000;   // 1:20 into the song
 
         h.VideoIntent = true;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
         Assert.Equal(80_000, h.LastVideoStartAtMs);
@@ -469,14 +500,16 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task VideoToAudio_CarriesPositionBack()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         h.VideoIntent = true;
         await h.Controller.PlayAsync("spotify:playlist:ctx");
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
         h.Video!.PositionMs = 45_000;   // 0:45 into the video edit
 
         h.VideoIntent = false;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);
         Assert.Contains("audio:seek:45000", h.Log);
@@ -488,13 +521,15 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task ForcedSameKindVideoReload_CarriesPosition()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         h.VideoIntent = true;
         await h.Controller.PlayAsync("spotify:playlist:ctx");
+        await h.AwaitVideoLoadAsync();
         h.Video!.PositionMs = 30_000;
         h.LastVideoStartAtMs = -1;
 
         await h.Controller.RefreshCurrentMediaKindAsync(forceReloadIfVideo: true);
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
         Assert.Equal(30_000, h.LastVideoStartAtMs);
@@ -505,15 +540,17 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task VideoToAudio_ClampsCarryToCatalogDuration()
     {
-        using var h = new Harness();
+        using var h = new Harness(Catalog);
         h.VideoIntent = true;
         await h.Controller.PlayAsync("spotify:playlist:ctx");
+        await h.AwaitVideoLoadAsync();
         long catalogMs = h.Projection.DurationMs;
         Assert.True(catalogMs > 0, "the stub track must carry a catalog duration for this test to mean anything");
         h.Video!.PositionMs = catalogMs + 60_000;   // the video edit ran long past the song
 
         h.VideoIntent = false;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         Assert.Contains("audio:seek:" + catalogMs, h.Log);
     }
@@ -540,10 +577,11 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task VideoOnlyPlayable_StaysOnTheVideoHost_AcrossTheSurfaceTeardown_TheRetry_AndARefresh()
     {
-        using var h = new Harness(contextTracks: [ModulePlayable], videoOnly: true);
+        using var h = new Harness(Catalog, contextTracks: [ModulePlayable], videoOnly: true);
         h.VideoIntent = true;
 
         await h.Controller.PlayAsync(ModuleContext);
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
         Assert.True(h.Video!.IsPlaying);
         Assert.Equal(1, h.LoadVideoCalls);
@@ -551,14 +589,17 @@ public class PlaybackControllerHostSwapTests
         // 1 — the cluster echo took the one-play video scope down: the app no longer says "play this as video".
         h.VideoIntent = false;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
 
         // 2 — the playback-error toast's Retry re-enters LoadAndPlayCurrentAsync with the intent still false.
         await h.Controller.RetryCurrentAsync();
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
 
         // 3 — an availability refresh on the same (intent-less) state.
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
 
         Assert.DoesNotContain(h.Log, IsAudioLoad);
@@ -575,14 +616,16 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task WithoutTheVideoOnlyHook_TheSameSequenceFallsToAudio()
     {
-        using var h = new Harness(contextTracks: [ModulePlayable]);
+        using var h = new Harness(Catalog, contextTracks: [ModulePlayable]);
         h.VideoIntent = true;
 
         await h.Controller.PlayAsync(ModuleContext);
+        await h.AwaitVideoLoadAsync();
         Assert.Equal(PlayableKind.Video, h.Controller.CurrentMediaKind);
 
         h.VideoIntent = false;
         await h.Controller.RefreshCurrentMediaKindAsync();
+        await h.AwaitVideoLoadAsync();
 
         Assert.Equal(PlayableKind.Audio, h.Controller.CurrentMediaKind);
         Assert.Contains(h.Log, IsAudioLoad);
@@ -594,9 +637,10 @@ public class PlaybackControllerHostSwapTests
     [Fact]
     public async Task AOneItemSpotifyContext_StillAsksForItsAutoplayStation()
     {
-        using var h = new Harness(contextTracks: ["spotify:track:a"]);
+        using var h = new Harness(Catalog, contextTracks: ["spotify:track:a"]);
 
         await h.Controller.PlayAsync("spotify:playlist:p");
+        await h.AwaitVideoLoadAsync();
 
         Assert.True(h.Contexts.AutoplayCalls > 0, "a Spotify context at the end of its window must prefetch autoplay");
     }

@@ -12,21 +12,24 @@ namespace Wavee.Tests;
 // PublishStateChanged: the out-of-band PutState behind connect-state video parity. A music-video association landing under
 // an already-playing track changes what remote controllers must see (associated_video_id + the switch-to-video offer) but
 // swaps no host, so no playback event fires and the steady-state change gate would swallow a normal publish.
-public class DeviceStateRepublishTests
+public class DeviceStateRepublishTests : PlaybackCatalogTestBase
 {
     static Track T(string uri) => new(uri[(uri.LastIndexOf(':') + 1)..], uri, uri,
         Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
 
     sealed class Harness
     {
+        readonly PlaybackCatalogTestHost Catalog;
         public readonly StubTransport Transport = new();
-        public readonly NowPlayingProjection Proj = new("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        public readonly NowPlayingProjection Proj;
         public readonly SimpleSubject<string?> ConnId = new(null);
         public readonly List<PutStateReasonKind> Reasons = new();
         public readonly DeviceStatePublisher Publisher;
 
-        public Harness()
+        public Harness(PlaybackCatalogTestHost catalog)
         {
+            Catalog = catalog;
+            Proj = Catalog.Projection("us", () => 0);
             Publisher = new DeviceStatePublisher(Transport, "us", Proj, ConnId, () => "c1",
                 (reason, snap, mid, active) =>
                 {
@@ -39,7 +42,7 @@ public class DeviceStateRepublishTests
         public void Play(string uri)
         {
             var e = new PlaybackEvent(EvKind.Started, T(uri), 0);
-            Proj.OnEvent(e);
+            Catalog.Event(Proj, e);
             Publisher.OnEvent(e);
         }
     }
@@ -49,7 +52,7 @@ public class DeviceStateRepublishTests
     [Fact]
     public async Task PublishStateChanged_PublishesExactlyOnce_EvenThoughNothingInTheChangeGateMoved()
     {
-        var h = new Harness();
+        var h = new Harness(Catalog);
         h.Play("spotify:track:a");
         await SettleAsync();
         int before = h.Transport.PublishCount;
@@ -65,7 +68,7 @@ public class DeviceStateRepublishTests
     [Fact]
     public async Task PublishStateChanged_AfterOwnershipRetired_PublishesNothing()
     {
-        var h = new Harness();
+        var h = new Harness(Catalog);
         h.Play("spotify:track:a");
         h.Publisher.PublishInactive();   // playback handed to another device — the event path is muted from here
         await SettleAsync();
@@ -80,7 +83,7 @@ public class DeviceStateRepublishTests
     [Fact]
     public async Task PublishStateChanged_WithNoCurrentTrack_PublishesNothing()
     {
-        var h = new Harness();
+        var h = new Harness(Catalog);
         await SettleAsync();
         int before = h.Transport.PublishCount;
 

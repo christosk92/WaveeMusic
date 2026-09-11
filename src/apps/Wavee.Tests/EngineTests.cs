@@ -15,40 +15,10 @@ static class T
 public class StoreTests
 {
     [Fact]
-    public void UpsertAndGet()
-    {
-        var s = new InMemoryStore();
-        var t = T.Trk("spotify:track:1", "Alpha", "A");
-        s.UpsertTrack(t);
-        Assert.Same(t, s.GetTrack("spotify:track:1"));
-        Assert.Null(s.GetTrack("spotify:track:none"));
-    }
-
-    [Fact]
-    public void Query_FilterAndSort_CaseInsensitive()
-    {
-        var s = new InMemoryStore();
-        s.UpsertTrack(T.Trk("spotify:track:1", "Beta", "Z"));
-        s.UpsertTrack(T.Trk("spotify:track:2", "alpha", "A"));
-        Assert.Single(s.QueryTracks("ALPHA"));
-        var sorted = s.QueryTracks(null, TrackSort.Title);
-        Assert.Equal("alpha", sorted[0].Title);   // NOCASE-ish ordinal-ignore-case
-    }
-
-    [Fact]
-    public void Query_SortByDuration()
-    {
-        var s = new InMemoryStore();
-        s.UpsertTrack(T.Trk("spotify:track:1", "Long", "A", 300_000));
-        s.UpsertTrack(T.Trk("spotify:track:2", "Short", "A", 100_000));
-        Assert.Equal("Short", s.QueryTracks(null, TrackSort.DurationAsc)[0].Title);
-    }
-
-    [Fact]
     public void Bump_FiresChangeSignal()
     {
         var s = new InMemoryStore();
-        s.UpsertTrack(T.Trk("spotify:track:1", "A", "A"));
+        s.Bump("spotify:track:1");
         bool fired = false;
         using var sub = s.Changes.Subscribe(new Obs(_ => fired = true));
         fired = false;   // discard the replay of the last change
@@ -111,36 +81,36 @@ public class MutationTests
 {
     static SessionContext Ctx => new("me", "US", "premium", "en", Tier.Premium, false);
 
-    sealed class FailTransport : ITransport
+    sealed class StatusTransport(int status) : ITransport
     {
         public Task<Resp> Request(Channel ch, string route, ReadOnlyMemory<byte> body, CancellationToken ct = default,
             string? method = null, IReadOnlyDictionary<string, string>? headers = null)
-            => Task.FromResult(new Resp(false, [], 500));
+            => Task.FromResult(new Resp(status is >= 200 and < 300, [], status));
         public IObservable<WireEvent> Events(string p) => new SimpleSubject<WireEvent>();
         public IObservable<WireRequest> Requests(string p) => new SimpleSubject<WireRequest>();
         public Task Reply(string id, RequestResult result) => Task.CompletedTask;
-        public Task<Resp> Publish(string deviceId, string connectionId, ReadOnlyMemory<byte> putState, CancellationToken ct = default) => Task.FromResult(new Resp(false, [], 500));
+        public Task<Resp> Publish(string deviceId, string connectionId, ReadOnlyMemory<byte> putState, CancellationToken ct = default) => Task.FromResult(new Resp(status is >= 200 and < 300, [], status));
     }
 
-    static MutationEngine Engine(IStore store) => new(store, [new SetReplayStrategy()]);
-
     [Fact]
-    public void Save_IsOptimistic_AndOnePendingRow()
+    public async Task Save_IsOptimistic_AndOnePendingRow()
     {
         var store = new InMemoryStore();
-        var m = Engine(store);
-        m.Save("liked", "spotify:track:1", true);
+        await using var host = new ReplicaTestHost(account: "me", store: store);
+        var m = host.Mutations;
+        await m.SaveAsync("liked", "spotify:track:1", true);
         Assert.True(store.IsSaved("liked", "spotify:track:1"));
         Assert.Equal(1, m.Pending);
     }
 
     [Fact]
-    public void Save_SameEntity_Coalesces()
+    public async Task Save_SameEntity_Coalesces()
     {
-        var m = Engine(new InMemoryStore());
-        m.Save("liked", "spotify:track:1", true);
-        m.Save("liked", "spotify:track:1", false);
-        m.Save("liked", "spotify:track:1", true);
+        await using var host = new ReplicaTestHost(account: "me");
+        var m = host.Mutations;
+        await m.SaveAsync("liked", "spotify:track:1", true);
+        await m.SaveAsync("liked", "spotify:track:1", false);
+        await m.SaveAsync("liked", "spotify:track:1", true);
         Assert.Equal(1, m.Pending);
     }
 
@@ -148,21 +118,23 @@ public class MutationTests
     public async Task Drain_Success_Reconciles()
     {
         var store = new InMemoryStore();
-        var m = Engine(store);
-        m.Save("liked", "spotify:track:1", true);
-        await m.Drain(new StubTransport(), Ctx);
+        await using var host = new ReplicaTestHost(account: "me", store: store);
+        var m = host.Mutations;
+        await m.SaveAsync("liked", "spotify:track:1", true);
+        await m.Drain(new StatusTransport(200), Ctx);
         Assert.Equal(0, m.Pending);
         Assert.True(store.IsSaved("liked", "spotify:track:1"));
     }
 
     [Fact]
-    public async Task Drain_TerminalFailure_DeadLettersAndRollsBack()
+    public async Task Drain_RetryExhaustion_DeadLettersAndRollsBack()
     {
         var store = new InMemoryStore();
         var clock = DateTime.UtcNow;
-        var m = new MutationEngine(store, [new SetReplayStrategy()], null, () => clock);   // inject a clock so the §8.3 backoff is deterministic
-        m.Save("liked", "spotify:track:1", true);
-        var fail = new FailTransport();
+        await using var host = new ReplicaTestHost(account: "me", store: store, clock: () => clock);
+        var m = host.Mutations;
+        await m.SaveAsync("liked", "spotify:track:1", true);
+        var fail = new StatusTransport(429);
         for (int i = 0; i < 10; i++) { await m.Drain(fail, Ctx); clock = clock.AddSeconds(120); }   // advance past the backoff each time → 10 attempts → terminal
         Assert.Single(m.DeadLetter);
         Assert.Equal(0, m.Pending);

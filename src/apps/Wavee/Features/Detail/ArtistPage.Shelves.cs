@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
+using System.IO;
 using System.Threading.Tasks;
 using FluentGpu;
 using FluentGpu.Controls;
@@ -23,6 +23,9 @@ namespace Wavee;
 // gallery, and the "fans also like" / related shelves.
 sealed partial class ArtistPage : Component
 {
+    // ConcertStub: M padding + the 36-DIP day numeral column. Reserved so the shelf never probes.
+    const float ConcertCardHeight = 80f;
+
     // ── on-tour banner ───────────────────────────────────────────────────────────────────────────────────
     Element TourBannerCard(TourBanner t, Action onClick) => new BoxEl
     {
@@ -55,38 +58,44 @@ sealed partial class ArtistPage : Component
     // ArtistPage.Body where the section list is built.)
 
     // ── music videos (16:9 shelf) ────────────────────────────────────────────────────────────────────────
-    Element MusicVideosShelf(IReadOnlyList<MusicVideo> videos, Action<string> play) => new BoxEl
+    Element MusicVideosShelf(IReadOnlyList<MusicVideo> videos, Action<string> play)
     {
-        Direction = 1,
-        Children =
-        [
-            PagedShelf.Create(
-                Math.Min(videos.Count, 16),
-                cardAt: (i, w) => MediaCard.VideoCard(videos[i].Thumbnail, videos[i].Title, Dur(videos[i].DurationMs),
-                    videos[i].TrackUri, () => play(videos[i].TrackUri), () => play(videos[i].TrackUri), w,
-                    menu: CardMenu(videos[i].TrackUri, videos[i].Title, videos[i].Thumbnail, Dur(videos[i].DurationMs)),
-                    // A music-video card stands for its TRACK. No Track object is in scope here (the shelf carries a
-                    // MusicVideo), so the payload is uri-only: pinnable, and refused with a cue on a playlist.
-                    drag: CardDrag(WaveeResourceKind.Track, videos[i].TrackUri, videos[i].Title, videos[i].Thumbnail)),
-                measured: true, header: AccentHeader(Loc.Get(Strings.Artist.MusicVideos))),
-        ],
-    };
+        return new BoxEl
+        {
+            Direction = 1,
+            Children =
+            [
+                PagedShelf.Create(
+                    videos,
+                    cardAt: (item, i, w) => MediaCard.VideoCard(item.Thumbnail, item.Title, Dur(item.DurationMs),
+                        item.TrackUri, () => play(item.TrackUri), () => play(item.TrackUri), w,
+                        menu: CardMenu(item.TrackUri, item.Title, item.Thumbnail, Dur(item.DurationMs)),
+                        // A music-video card stands for its TRACK. No Track object is in scope here (the shelf carries a
+                        // MusicVideo), so the payload is uri-only: pinnable, and refused with a cue on a playlist.
+                        drag: CardDrag(WaveeResourceKind.Track, item.TrackUri, item.Title, item.Thumbnail)),
+                    cardHeight: MediaCard.VideoCardHeight, header: AccentHeader(Loc.Get(Strings.Artist.MusicVideos)), keyOf: (item, i) => item.TrackUri, maxItems: 16),
+            ],
+        };
+    }
 
     // ── playlists and discovery ──────────────────────────────────────────────────────────────────────────
-    Element PlaylistsShelf(IReadOnlyList<PlaylistRef> pls, Action<string, string?> go, Action<string> play) => new BoxEl
+    Element PlaylistsShelf(IReadOnlyList<PlaylistRef> pls, Action<string, string?> go, Action<string> play)
     {
-        Direction = 1,
-        Children =
-        [
-            PagedShelf.Create(
-                Math.Min(pls.Count, 16),
-                cardAt: (i, w) => MediaCard.Shelf(pls[i].Cover, pls[i].Name, pls[i].Subtitle, pls[i].Uri,
-                    () => go("pl:" + pls[i].Uri, pls[i].Name), () => play(pls[i].Uri), w,
-                    menu: CardMenu(pls[i].Uri, pls[i].Name, pls[i].Cover, pls[i].Subtitle),
-                    drag: CardDrag(WaveeResourceKind.Playlist, pls[i].Uri, pls[i].Name, pls[i].Cover)),
-                measured: true, header: AccentHeader(Loc.Get(Strings.Artist.PlaylistsDiscovery))),
-        ],
-    };
+        return new BoxEl
+        {
+            Direction = 1,
+            Children =
+            [
+                PagedShelf.Create(
+                    pls,
+                    cardAt: (item, i, w) => MediaCard.Shelf(item.Cover, item.Name, item.Subtitle, item.Uri,
+                        () => go("pl:" + item.Uri, item.Name), () => play(item.Uri), w,
+                        menu: CardMenu(item.Uri, item.Name, item.Cover, item.Subtitle),
+                        drag: CardDrag(WaveeResourceKind.Playlist, item.Uri, item.Name, item.Cover)),
+                    cardHeight: MediaCard.ShelfHeight, header: AccentHeader(Loc.Get(Strings.Artist.PlaylistsDiscovery)), keyOf: (item, i) => item.Uri, maxItems: 16),
+            ],
+        };
+    }
 
     // ── upcoming concerts ────────────────────────────────────────────────────────────────────────────────
     Element ConcertsRow(IReadOnlyList<Concert> concerts, Action<string, string?> go) => new BoxEl
@@ -95,10 +104,10 @@ sealed partial class ArtistPage : Component
         Children =
         [
             PagedShelf.Create(
-                Math.Min(concerts.Count, 12),
-                cardAt: (i, w) => ConcertStub(concerts[i],
-                    () => go(ConcertRoutes.Detail(concerts[i].Uri), concerts[i].Title ?? concerts[i].Venue)),
-                measured: true, header: AccentHeader(Loc.Get(Strings.Artist.UpcomingConcerts))),
+                concerts,
+                cardAt: (item, i, w) => ConcertStub(item,
+                    () => go(ConcertRoutes.Detail(item.Uri), item.Title ?? item.Venue)),
+                cardHeight: static _ => ConcertCardHeight, header: AccentHeader(Loc.Get(Strings.Artist.UpcomingConcerts)), keyOf: (item, i) => item.Uri, maxItems: 12),
         ],
     };
 
@@ -139,9 +148,9 @@ sealed partial class ArtistPage : Component
         Children =
         [
             PagedShelf.Create(
-                Math.Min(merch.Count, 12),
-                cardAt: (i, w) => MerchCard(merch[i], w),
-                measured: true, header: AccentHeader(Loc.Get(Strings.Artist.Merch))),
+                merch,
+                cardAt: (item, i, w) => MerchCard(item, w),
+                cardHeight: MediaCard.ShelfHeight, header: AccentHeader(Loc.Get(Strings.Artist.Merch)), keyOf: (item, i) => item.Name, maxItems: 12),
         ],
     };
 
@@ -167,11 +176,11 @@ sealed partial class ArtistPage : Component
         Children =
         [
             PagedShelf.Create(
-                Math.Min(photos.Count, 16),
-                cardAt: (i, w) => new BoxEl { Width = w, Height = w, Corners = CornerRadius4.All(Radii.Card), ClipToBounds = true,
+                photos,
+                cardAt: (item, i, w) => new BoxEl { Width = w, Height = w, Corners = CornerRadius4.All(Radii.Card), ClipToBounds = true,
                     OnClick = () => OpenGallery(photos, i), Cursor = CursorId.Hand, HoverScale = WaveeMotion.ScaleStandard.Hover, PressScale = WaveeMotion.ScaleStandard.Press,
-                    Children = [ Surfaces.Artwork(photos[i], i, w, w, Radii.Card, decodePx: 480) ] },
-                measured: true, header: AccentHeader(Loc.Get(Strings.Artist.Gallery))),
+                    Children = [ Surfaces.Artwork(item, i, w, w, Radii.Card, decodePx: 480) ] },
+                cardHeight: static w => w, header: AccentHeader(Loc.Get(Strings.Artist.Gallery)), keyOf: (item, i) => item.Url, maxItems: 16),
         ],
     };
 
@@ -198,13 +207,13 @@ sealed partial class ArtistPage : Component
         Children =
         [
             PagedShelf.Create(
-                related.Count,
-                cardAt: (i, w) => MediaCard.Shelf(related[i].Image, related[i].Name, Loc.Get(Strings.Search.TypeArtist), related[i].Uri,
-                    () => go("artist:" + related[i].Uri, related[i].Name), () => play(related[i].Uri), w, circular: true,
-                    menu: CardMenu(related[i].Uri, related[i].Name, related[i].Image,
+                related,
+                cardAt: (item, i, w) => MediaCard.Shelf(item.Image, item.Name, Loc.Get(Strings.Search.TypeArtist), item.Uri,
+                    () => go("artist:" + item.Uri, item.Name), () => play(item.Uri), w, circular: true,
+                    menu: CardMenu(item.Uri, item.Name, item.Image,
                         Loc.Get(Strings.Search.TypeArtist), circular: true),
-                    drag: CardDrag(WaveeResourceKind.Artist, related[i].Uri, related[i].Name, related[i].Image)),
-                measured: true, header: AccentHeader(Loc.Get(Strings.Detail.FansAlsoLike))),
+                    drag: CardDrag(WaveeResourceKind.Artist, item.Uri, item.Name, item.Image)),
+                cardHeight: MediaCard.ShelfHeight, header: AccentHeader(Loc.Get(Strings.Detail.FansAlsoLike)), keyOf: (item, i) => item.Uri),
         ],
     };
 
@@ -214,13 +223,13 @@ sealed partial class ArtistPage : Component
         Children =
         [
             PagedShelf.Create(
-                fans.Count,
-                cardAt: (i, w) => MediaCard.Shelf(fans[i].Image, fans[i].Name, Loc.Get(Strings.Search.TypeArtist), fans[i].Uri,
-                    () => go("artist:" + fans[i].Uri, fans[i].Name), () => play(fans[i].Uri), w, circular: true,
-                    menu: CardMenu(fans[i].Uri, fans[i].Name, fans[i].Image,
+                fans,
+                cardAt: (item, i, w) => MediaCard.Shelf(item.Image, item.Name, Loc.Get(Strings.Search.TypeArtist), item.Uri,
+                    () => go("artist:" + item.Uri, item.Name), () => play(item.Uri), w, circular: true,
+                    menu: CardMenu(item.Uri, item.Name, item.Image,
                         Loc.Get(Strings.Search.TypeArtist), circular: true),
-                    drag: CardDrag(WaveeResourceKind.Artist, fans[i].Uri, fans[i].Name, fans[i].Image)),
-                measured: true, header: AccentHeader(Loc.Get(Strings.Detail.FansAlsoLike))),
+                    drag: CardDrag(WaveeResourceKind.Artist, item.Uri, item.Name, item.Image)),
+                cardHeight: MediaCard.ShelfHeight, header: AccentHeader(Loc.Get(Strings.Detail.FansAlsoLike)), keyOf: (item, i) => item.Uri),
         ],
     };
 }

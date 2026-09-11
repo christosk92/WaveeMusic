@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using FluentGpu;          // FluentApp (OS theme facade + SystemColorsChanged relay)
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;   // Diag.EnvFlag (the screenshot/probe harness switches)
@@ -12,6 +12,11 @@ namespace Wavee;
 // (and starts a fake session + playback so the shell is live), then renders the shell. The whole app blur-rises in.
 sealed class WaveeApp : Component
 {
+    // The hard deadline for StartupActivation's deferred Window ladder (see the mount effect below) — the OS media
+    // surfaces (SMTC, taskbar, Jump List, network-cost hooks) always appear by this long after launch even if the
+    // first route never fires PageRevealWatch.FirstContentRevealed.
+    const double WindowLadderFallbackMs = 2000;
+
     readonly Services _services;
 
     internal static PlaybackBridge? ProbePlayback;
@@ -59,6 +64,7 @@ sealed class WaveeApp : Component
                 if (Tok.Epoch != oldEpoch) requestTheme?.Invoke(250f);
             }
             FluentApp.SystemColorsChanged += OnSystemColorsChanged;
+            NavigationFrameWatch.Attach();
             return () => FluentApp.SystemColorsChanged -= OnSystemColorsChanged;
         }, DepKey.Empty);
 
@@ -66,6 +72,7 @@ sealed class WaveeApp : Component
         var loginSession = UseRef<System.Threading.CancellationTokenSource?>(null);
         var wasAuthed = UseRef(false);   // have we EVER authenticated this run? (fake demo: logout → takeover, but no initial-launch flash)
         var governorTimer = UseRef<System.Threading.Timer?>(null);   // rooted here so the periodic MemoryGovernor poll isn't GC-collected (the app root never unmounts)
+        var windowLadderFallback = UseRef<System.Threading.Timer?>(null);   // rooted so the Window-ladder deadline timer isn't GC-collected before it fires
         var volumeSaveTimer = UseRef<System.Threading.Timer?>(null); // remember-volume: debounced persist of the slider value
         var zoomSaveTimer = UseRef<System.Threading.Timer?>(null);   // app zoom: debounced persist of FluentApp.Zoom (chords/wheel never write the store themselves)
         var resumeInFlight = UseRef(false);   // one silent resume at a time (launch kick + the chip's Reconnect share it)
@@ -200,105 +207,261 @@ sealed class WaveeApp : Component
 
         Context.UseEffect(() =>
         {
-            // Remember-volume: seed the slider before the first frame the user sees; the live session seeds the device
-            // announce/local host from the same setting (LiveSessionHost). Saved back below, debounced.
-            if (_services.Settings.Get(WaveeSettings.RememberVolume))
-                bridge.Volume.Value = Math.Clamp(_services.Settings.Get(WaveeSettings.SavedVolume), 0f, 1f);
+            var auth = bridge.AuthState.Value;
+            if (auth == ShellAuthState.Live) return;
+            // Transport startup has an explicit offline conclusion too. This does not drive page readiness.
+            _ = FinishConnectionIntent(auth == ShellAuthState.Connecting, _services.Data.Catalog.Epoch);
+        });
+        async System.Threading.Tasks.Task FinishConnectionIntent(bool connecting, long epoch)
+        {
+            try { await _services.Data.SetConnectionIntentAsync(connecting, epoch).ConfigureAwait(false); }
+            catch (ObjectDisposedException) { }
+            catch (Exception error) { System.Diagnostics.Trace.TraceError("Catalog startup transition failed: {0}", error); }
+        }
 
-            bridge.Activate(post);
-            PowerBridge.Attach(bridge, post, _services);
-            // Scheduled pre-save release drops: attached after the library bridge exists (it reconciles off the saved-set
-            // signal, which fires once on subscribe and therefore doubles as the launch reconcile).
-            ReleaseNotifier.Attach(_services.Settings, libBridge, _services.PreRelease);
-            DaylistNotifier.Attach(_services.Settings);
-            libBridge.Activate(post);
-            friendsBridge.Activate(post);
-            notifications.Activate(post);
-            store.Activate(post);
-            _services.Sidebar.Activate(post);
-            // The cover-colour plane bumps its epoch from background batch completions; art tiles subscribe to it, so
-            // the bump has to land on the UI thread like every other bridge signal. Activating here ALSO pre-warms the
-            // persisted colour table off-thread, so no art slot ever pays the cold disk read inside Render().
-            Wavee.SpotifyLive.CoverColorPlane.Current.Activate(post);
+        // -- Startup activation: a SCHEDULE, not a straight line ----------------------------------------------------
+        // This one mount effect used to activate everything inline, and it measurably WAS the first frame. Native ARM64
+        // tours showed the first completed frame at 109-143 ms with unaccounted=106-134 - i.e. essentially all of it
+        // after submit, inside the engine's passive-effect drain - with `[playback.buckets] startup - bridge -
+        // activated` landing +73..98 ms into that window and `[app] Online; shell up from cache` +17..24 ms after it.
+        // What sat in there: a WinRT activation (SMTC), shell COM (CoCreateInstance(CLSID_TaskbarList) plus four
+        // synchronous .ico loads; the Jump List's per-item CoCreateInstance(CLSID_ShellLink) chain ending in a
+        // .customDestinations-ms disk write), ~9 HKCU writes plus one-or-two CoRegisterClassObject (the toast
+        // activator), a Network List Manager Advise, and a DPAPI unprotect of the stored credential. None of that is
+        // work a rendered frame has any business paying for.
+        //
+        // The engine's poster is NOT the fix by itself: it drains at the TOP of the next frame, so posting the same
+        // blob only moves the stall. And almost none of this work is legal off the UI thread - those wrappers cache
+        // raw, un-marshalled COM pointers and issue an unbalanced CoInitializeEx(APARTMENTTHREADED), which on a pool
+        // thread flips a shared thread to a non-pumping STA (the engine says so in as many words), while
+        // NetworkStatus.Subscribe on a bare pool thread returns a silently INERT subscription. So each step declares a
+        // phase instead (see StartupActivation):
+        //   Core   - inside THIS frame. Signal subscriptions, query bindings and field writes only: no disk, no
+        //            registry, no COM, no WinRT, no credential store. The transport accepts commands from the end of
+        //            this phase, and anything that arrived early is RELEASED there rather than dropped.
+        //   Window - the same UI thread, but one step per POSTED DRAIN, for the HWND/apartment-affine OS surfaces. The
+        //            engine's drain snapshots the queue length before it runs, so a step that posts the next one is
+        //            guaranteed to land in a LATER drain instead of collapsing back into a single stall.
+        //   Worker - the thread pool, for the steps with no affinity at all.
+        // Order within a phase is list order, and two orderings are load-bearing: the toast activator must register
+        // before the Jump List (the shell keys a custom destination list by AUMID, which is empty until then) and
+        // before the release/daylist toast scheduling.
+        //
+        // -- The Window ladder is GATED, not fired the instant Run collects it -----------------------------------
+        // A native tour with the ladder starting immediately still showed 124.8 ms of UI-thread time (toast-register
+        // 4.2, smtc 40.8, taskbar 17.9, power-os 11.0, jumplist 50.8) landing in the first ~150 ms after the first
+        // route — interleaved with the route's own first content frames (frame.slow seq=38 unaccounted=27.4ms and
+        // seq=63 77.9ms) and stretching the startup reveal (navId=1 revealMs=122.4, target <=100 ms) even though none
+        // of those steps are charged to any frame. None of SMTC/taskbar/jump-list/network-cost is needed until the
+        // user actually reaches for it, so the ladder now waits for BOTH: the app's first-content-reveal signal
+        // (PageRevealWatch.FirstContentRevealed — fires once, off the first route's page.reveal) AND one more posted
+        // drain after it (the closest proxy to "the dispatch queue is idle" available without an engine-exposed queue
+        // depth: posting again means whatever was already queued when reveal fired gets to run first, FIFO). A hard
+        // fallback deadline starts it regardless after WindowLadderFallbackMs, so the OS surfaces always appear even
+        // on a route that never reveals.
+        Context.UseEffect(() =>
+        {
+            bool fakeChallenge = Diag.EnvFlag("WAVEE_FAKE_CHALLENGE");
+            var activation = new StartupActivation(
+                post: post,
+                // ONE hand-off for the whole worker phase, so its steps stay sequential relative to each other.
+                worker: static work => _ = System.Threading.Tasks.Task.Run(work),
+                measured: static (step, phase, ms) =>
+                    Wavee.Backend.PlaybackBucketDiagnostics.ActivationStep(step, phase.ToString(), ms),
+                phaseCompleted: static (phase, steps, ms) =>
+                    Wavee.Backend.PlaybackBucketDiagnostics.ActivationPhase(phase.ToString(), steps, ms),
+                failed: static (step, error) =>
+                    Wavee.Backend.PlaybackBucketDiagnostics.ActivationStepFailed(step, error),
+                // The SAME gate the bridge holds: one owner for "core before commands", not two that can drift.
+                commands: bridge.Commands,
+                // The hard fallback: a Timer (off the UI thread — StartWindowLadder itself hops back via `post`), so
+                // the ladder starts even if the first route never reveals (a stuck query, a crash-looping page).
+                scheduleFallback: (callback, delayMs) =>
+                    windowLadderFallback.Value = new System.Threading.Timer(_ => callback(), null,
+                        dueTime: (int)delayMs, period: System.Threading.Timeout.Infinite),
+                windowLadderFallbackMs: WindowLadderFallbackMs);
 
-            // Persist volume changes (local intents AND remote echoes both land on bridge.Volume) with a coarse poll —
-            // Peek is a plain field read, and the registry write happens only when the value actually moved.
-            volumeSaveTimer.Value ??= new System.Threading.Timer(_ =>
-            {
-                if (!_services.Settings.Get(WaveeSettings.RememberVolume)) return;
-                float v = bridge.Volume.Peek();
-                if (Math.Abs(v - _services.Settings.Get(WaveeSettings.SavedVolume)) > 0.004f)
-                    _services.Settings.Set(WaveeSettings.SavedVolume, v);
-            }, null, dueTime: 2_000, period: 2_000);
+            // The reveal-triggered half of the race above. One more `post` after the reveal is the idle proxy (see the
+            // remark above); StartWindowLadder is idempotent, so if the fallback timer already fired this is a no-op.
+            // Unsubscribed on cleanup even though the app root never actually unmounts, for the same reason every
+            // other static-event subscription in this file is — a static event outliving its one subscriber is a leak
+            // by construction if that ever stops being true.
+            void OnFirstContentRevealed() => post(activation.StartWindowLadder);
+            PageRevealWatch.FirstContentRevealed += OnFirstContentRevealed;
 
-            // Persist app-zoom changes the same way (the SavedVolume shape above): the chords, the Ctrl+wheel hook and
-            // the palette all mutate FluentApp.Zoom without touching the store — a held-down Ctrl+= or a wheel spin
-            // must not write the registry once per rung. No Remember gate: zoom has no opt-out, the setting IS the
-            // memory. A Settings-page pick writes immediately at the picker and lands here as an already-equal no-op.
-            zoomSaveTimer.Value ??= new System.Threading.Timer(_ =>
-            {
-                float z = FluentApp.Zoom;
-                if (MathF.Abs(z - _services.Settings.Get(WaveeSettings.ZoomLevel)) > 0.004f)
-                    _services.Settings.Set(WaveeSettings.ZoomLevel, z);
-            }, null, dueTime: 2_000, period: 2_000);
-
-            // Publish the app-side census contributor (entity store + detail caches) for the engine's FG_MEM_DIAG
-            // [memcensus] block. Program's DiagnosticRun composes it into AppHost.GpuDetail once per launch; the string is
-            // built only when the census invokes the hook (census cadence, never per frame).
-            Services.MemCensusHook = () => _services.CensusLine();
-
-            // Drive the MemoryGovernor from a periodic OS-memory-pressure poll. The Timer fires on a background thread but
-            // marshals Trim to the UI thread (post) so the UI-thread-affine detail caches shed safely. At rest (no pressure)
-            // it sheds nothing — each cache's LRU cap already bounds steady state; under real pressure it sheds further.
-            governorTimer.Value ??= new System.Threading.Timer(_ =>
-            {
-                var info = GC.GetGCMemoryInfo();
-                double load = info.HighMemoryLoadThresholdBytes > 0 ? (double)info.MemoryLoadBytes / info.HighMemoryLoadThresholdBytes : 0.0;
-                var level = load >= 1.0 ? Wavee.Backend.Residency.MemoryPressure.Critical
-                          : load >= 0.85 ? Wavee.Backend.Residency.MemoryPressure.Moderate
-                          : Wavee.Backend.Residency.MemoryPressure.Normal;
-                post(() => _services.Residency.Trim(level));
-            }, null, dueTime: 30_000, period: 30_000);
-
-            // Arm the metadata-cache GC (design §C) with the SAME UI-thread marshaller the governor poll uses above: it
-            // must snapshot Services.BuildPinSet on the UI thread (the detail caches are UI-thread-affine — critique
-            // #10) before every pass. The sequence itself — warm → +30 s → GC → one-time VACUUM → every 6 h — runs off
-            // the UI thread inside EntityCacheGc, so nothing here touches first paint. Null on the fake backend.
-            _services.CacheGc?.Start(post);
-
-            if (Diag.EnvFlag("WAVEE_FAKE_CHALLENGE"))
-            {
-                // Deterministic login screenshots (no network): seed a canned pairing challenge so the takeover renders the
-                // marquee hero. The gate below forces the takeover whenever this flag is set.
-                bridge.ReportLogin(new LoginSnapshot(LoginPhase.AwaitingApproval,
-                    new LoginChallenge("WZY5-Q6TX", "https://spotify.com/pair", "https://spotify.com/pair?code=WZY5Q6TX", DateTimeOffset.UtcNow.AddSeconds(872))));
-                _services.Log.Info("app", "WAVEE_FAKE_CHALLENGE: seeded a canned pairing challenge for the login takeover");
-            }
-            else if (Services.UseRealBackend)
-            {
-                // Cache-first shell: with a stored credential the shell already mounted this frame (see needsSignIn
-                // below) — kick the silent resume that authenticates BEHIND it. With none on disk there is nothing to
-                // resume; the sign-in surface is already mounted instead, and its own SignIn page owns the interactive
-                // device-code/browser flow exactly as before.
-                if (Wavee.SpotifyLive.SpotifyLiveLogin.HasStoredCredential())
+            activation.Run(
+            [
+                // -- Core ------------------------------------------------------------------------------------------
+                new StartupStep("volume", StartupAffinity.Core, () =>
                 {
-                    SilentResume();
-                    _services.Log.Info("app", "Online; shell up from cache, resuming the stored session silently.");
-                }
-                else
+                    // Remember-volume: seed the slider before the first frame the user sees; the live session seeds the
+                    // device announce/local host from the same setting (LiveSessionHost). Saved back below, debounced.
+                    if (_services.Settings.Get(WaveeSettings.RememberVolume))
+                        bridge.Volume.Value = Math.Clamp(_services.Settings.Get(WaveeSettings.SavedVolume), 0f, 1f);
+                }),
+                new StartupStep("bridge", StartupAffinity.Core, () => bridge.Activate(post)),
+                // The toast activator's DISPATCHER (two field writes) - separate from its registration, which is a
+                // window step below, so an activation arriving in the first milliseconds already has somewhere to land.
+                new StartupStep("toast-dispatcher", StartupAffinity.Core, () => WaveeNativeBoot.InstallDispatcher(post)),
+                new StartupStep("power", StartupAffinity.Core, () => PowerBridge.Attach(bridge, post, _services)),
+                new StartupStep("bridges", StartupAffinity.Core, () =>
                 {
-                    _services.Log.Info("app", "Online; no stored credential — the sign-in surface owns the Spotify login (device code / browser).");
-                }
-            }
-            else
-            {
-                // Fake demo: connect the fake session instantly so the INITIAL launch lands on the shell (no takeover flash,
-                // --screenshot renders the shell). Playback is NOT auto-started — local playback is unsupported, so a play
-                // intent shows the "choose a remote device" toast; the bar rests at "Nothing playing". After a logout the
-                // gate shows the demo two-pane instead.
-                _ = _services.Session.ConnectAsync();
-                _services.Log.Info("app", "Demo backend; fake session started (playback remote-only)");
-            }
+                    libBridge.Activate(post);
+                    friendsBridge.Activate(post);
+                    notifications.Activate(post);
+                    store.Activate(post);
+                    _services.Sidebar.Activate(post);
+                    _services.PinSync?.Activate(post);
+                }),
+                // The cover-colour plane bumps its epoch from background batch completions; art tiles subscribe to it,
+                // so the bump has to land on the UI thread like every other bridge signal. Activating here ALSO
+                // pre-warms the persisted colour table off-thread, so no art slot ever pays the cold disk read inside
+                // Render() - the Activate call itself is a field write plus a Task.Run.
+                new StartupStep("cover-colors", StartupAffinity.Core,
+                    () => Wavee.SpotifyLive.CoverColorPlane.Current.Activate(post)),
+                new StartupStep("timers", StartupAffinity.Core, () =>
+                {
+                    // Persist volume changes (local intents AND remote echoes both land on bridge.Volume) with a coarse
+                    // poll - Peek is a plain field read, and the registry write happens only when the value moved.
+                    volumeSaveTimer.Value ??= new System.Threading.Timer(_ =>
+                    {
+                        if (!_services.Settings.Get(WaveeSettings.RememberVolume)) return;
+                        float v = bridge.Volume.Peek();
+                        if (Math.Abs(v - _services.Settings.Get(WaveeSettings.SavedVolume)) > 0.004f)
+                            _services.Settings.Set(WaveeSettings.SavedVolume, v);
+                    }, null, dueTime: 2_000, period: 2_000);
+
+                    // Persist app-zoom changes the same way (the SavedVolume shape above): the chords, the Ctrl+wheel
+                    // hook and the palette all mutate FluentApp.Zoom without touching the store - a held-down Ctrl+= or
+                    // a wheel spin must not write the registry once per rung. No Remember gate: zoom has no opt-out,
+                    // the setting IS the memory. A Settings-page pick writes immediately at the picker and lands here
+                    // as an already-equal no-op.
+                    zoomSaveTimer.Value ??= new System.Threading.Timer(_ =>
+                    {
+                        float z = FluentApp.Zoom;
+                        if (MathF.Abs(z - _services.Settings.Get(WaveeSettings.ZoomLevel)) > 0.004f)
+                            _services.Settings.Set(WaveeSettings.ZoomLevel, z);
+                    }, null, dueTime: 2_000, period: 2_000);
+
+                    // Drive the MemoryGovernor from a periodic OS-memory-pressure poll. The Timer fires on a background
+                    // thread but marshals Trim to the UI thread (post) so the UI-thread-affine detail caches shed
+                    // safely. At rest (no pressure) it sheds nothing - each cache's LRU cap already bounds steady
+                    // state; under real pressure it sheds further.
+                    governorTimer.Value ??= new System.Threading.Timer(_ =>
+                    {
+                        var info = GC.GetGCMemoryInfo();
+                        double load = info.HighMemoryLoadThresholdBytes > 0 ? (double)info.MemoryLoadBytes / info.HighMemoryLoadThresholdBytes : 0.0;
+                        var level = load >= 1.0 ? Wavee.Backend.Residency.MemoryPressure.Critical
+                                  : load >= 0.85 ? Wavee.Backend.Residency.MemoryPressure.Moderate
+                                  : Wavee.Backend.Residency.MemoryPressure.Normal;
+                        post(() => _services.Residency.Trim(level));
+                    }, null, dueTime: 30_000, period: 30_000);
+
+                    // Publish the app-side census contributor (entity store + detail caches) for the engine's
+                    // FG_MEM_DIAG [memcensus] block. Program's DiagnosticRun composes it into AppHost.GpuDetail once
+                    // per launch; the string is built only when the census invokes the hook (census cadence, never per
+                    // frame).
+                    Services.MemCensusHook = () => _services.CensusLine();
+                }),
+                new StartupStep("login-seed", StartupAffinity.Core, () =>
+                {
+                    if (fakeChallenge)
+                    {
+                        // Deterministic login screenshots (no network): seed a canned pairing challenge so the takeover
+                        // renders the marquee hero. The gate below forces the takeover whenever this flag is set.
+                        bridge.ReportLogin(new LoginSnapshot(LoginPhase.AwaitingApproval,
+                            new LoginChallenge("WZY5-Q6TX", "https://spotify.com/pair", "https://spotify.com/pair?code=WZY5Q6TX", DateTimeOffset.UtcNow.AddSeconds(872))));
+                        _services.Log.Info("app", "WAVEE_FAKE_CHALLENGE: seeded a canned pairing challenge for the login takeover");
+                    }
+                    else if (!Services.UseRealBackend)
+                    {
+                        // Fake demo: connect the fake session instantly so the INITIAL launch lands on the shell (no
+                        // takeover flash, --screenshot renders the shell). Playback is NOT auto-started - local playback
+                        // is unsupported, so a play intent shows the "choose a remote device" toast; the bar rests at
+                        // "Nothing playing". After a logout the gate shows the demo two-pane instead.
+                        _ = _services.Session.ConnectAsync();
+                        _services.Log.Info("app", "Demo backend; fake session started (playback remote-only)");
+                    }
+                }),
+
+                // -- Window (UI thread, one step per posted drain) ---------------------------------------------------
+                // FIRST, because both the Jump List and the scheduled toasts are keyed by the AUMID it publishes.
+                // Measured (native tour, ladder starting immediately): 4.2 ms — well inside budget, one drain.
+                new StartupStep("toast-register", StartupAffinity.Window, WaveeNativeBoot.Register),
+                // SMTC was ONE 40.8 ms step; split into its four stages (see SystemMediaControlsBridge.ActivateStep),
+                // each its own drain. Acquire (the WinRT GetForWindow activation) is expected to carry most of that
+                // 40.8 ms; enable/seed/timeline are the three cheap tail calls, each well under budget on its own.
+                new StartupStep("smtc-acquire", StartupAffinity.Window, bridge.ActivateMediaControls),
+                new StartupStep("smtc-enable", StartupAffinity.Window, bridge.ActivateMediaControls),
+                new StartupStep("smtc-seed", StartupAffinity.Window, bridge.ActivateMediaControls),
+                new StartupStep("smtc-timeline", StartupAffinity.Window, bridge.ActivateMediaControls),
+                // Taskbar was ONE 17.9 ms step; split into wiring (cheap: HWND + event subscriptions, icons already
+                // resolved by the "taskbar-icons" Worker step below) and the actual shell apply
+                // (ThumbBarAddButtons + overlay + progress — the one part TaskbarBridge.ActivateStep's remarks explain
+                // cannot be split further from this file: the engine's ThumbButton only accepts an icon PATH, so
+                // LoadImageW still runs inside the same apartment-bound call as ThumbBarAddButtons).
+                new StartupStep("taskbar-wire", StartupAffinity.Window, bridge.ActivateTaskbar),
+                new StartupStep("taskbar-apply", StartupAffinity.Window, bridge.ActivateTaskbar),
+                new StartupStep("notifiers", StartupAffinity.Window, () =>
+                {
+                    // Scheduled pre-save release drops: attached after the library bridge exists (it reconciles off the
+                    // saved-set signal, which fires once on subscribe and therefore doubles as the launch reconcile).
+                    // After toast-register: both of these SCHEDULE Windows toasts, which needs the AUMID.
+                    ReleaseNotifier.Attach(_services.Settings, libBridge, _services.PreRelease);
+                    DaylistNotifier.Attach(_services.Settings, _services.Data.Catalog);
+                }),
+                new StartupStep("power-os", StartupAffinity.Window, PowerBridge.InstallOsHooks),
+                // LAST of the window steps: the most expensive surface (an unavoidable, single O(items)
+                // CoCreateInstance(ShellLink)+IPropertyStore chain inside JumpList.SetCategory plus a shell disk
+                // write — see ActivateJumpList's remarks for why this file cannot split that call itself further) and
+                // the least urgent - nobody can see a Jump List until they right-click the taskbar button. The
+                // "jumplist-prep" Worker step already did the CPU-only title/route resolution, so this drain pays for
+                // the COM call alone; expected well under the unprepared 50.8 ms.
+                new StartupStep("jumplist", StartupAffinity.Window, bridge.ActivateJumpList),
+
+                // -- Worker ------------------------------------------------------------------------------------------
+                // Prep for the "taskbar-apply" / "jumplist" Window steps above: pure CPU/disk work with no HWND or COM
+                // affinity, done here so those drains have as little left to do as the engine's API surface allows.
+                new StartupStep("taskbar-icons", StartupAffinity.Worker, bridge.PrepareTaskbarIcons),
+                new StartupStep("jumplist-prep", StartupAffinity.Worker, bridge.PrepareJumpList),
+                // Cache-first shell: with a stored credential the shell ALREADY mounted this frame (see needsSignIn
+                // below - it reads the AuthState the bridge seeded at construction, which is already-in-memory state),
+                // so the only thing left is to authenticate BEHIND it. The probe itself is a DPAPI unprotect plus a
+                // file read, so it happens HERE and the decision comes back through the poster; with nothing on disk
+                // there is nothing to resume and the sign-in surface is already mounted instead, its own SignIn page
+                // owning the interactive device-code/browser flow exactly as before.
+                new StartupStep("session-resume", StartupAffinity.Worker, () =>
+                {
+                    if (fakeChallenge || !Services.UseRealBackend) return;
+                    bool stored = Wavee.SpotifyLive.SpotifyLiveLogin.HasStoredCredential();
+                    post(() =>
+                    {
+                        if (stored)
+                        {
+                            SilentResume();
+                            _services.Log.Info("app", "Online; shell up from cache, resuming the stored session silently.");
+                        }
+                        else
+                        {
+                            _services.Log.Info("app", "Online; no stored credential - the sign-in surface owns the Spotify login (device code / browser).");
+                        }
+                    });
+                }),
+                // Cache maintenance snapshots active query demand and runs through the shared data owner.
+                new StartupStep("cache-gc", StartupAffinity.Worker, () => _services.CacheGc?.Start()),
+                // The app-update poll (30 s after launch, then daily). Scheduled from the app root rather than the
+                // composition root so it never runs in a headless/CLI process: activation is the moment a real UI
+                // session exists. The updater is app-scoped (one per process) and `Settings` was seeded by the
+                // composition root long before this. A Timer registration, so it has no thread affinity at all.
+                new StartupStep("update-poll", StartupAffinity.Worker, () =>
+                {
+                    if (!OperatingSystem.IsWindowsVersionAtLeast(8, 0)) return;
+                    if (AppInstallerUpdateService.Instance is { } updater && bridge.Settings is { } updateSettings)
+                        AppUpdateScheduler.Start(updater, updateSettings);
+                }),
+            ]);
+
+            return (Action?)(() => PageRevealWatch.FirstContentRevealed -= OnFirstContentRevealed);
         }, DepKey.Empty);
 
         // Keep-awake is edge-triggered off IsPlaying + VideoSurface. Auto-tracked so those reads subscribe THIS

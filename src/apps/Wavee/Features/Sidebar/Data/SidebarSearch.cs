@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 
 namespace Wavee;
@@ -49,6 +50,19 @@ public static class SidebarSearch
     /// <summary>Normalize a raw search box value into the query the matcher expects (trimmed, never null). Called ONCE
     /// per keystroke by the surface, never per row.</summary>
     public static string Normalize(string? raw) => raw is null ? "" : raw.Trim();
+
+    /// <summary>W8 — the highlight range for a row's title: the first UTF-16 occurrence of <paramref name="query"/> in
+    /// <paramref name="name"/>, ordinal case-insensitive. Deliberately a SIMPLER rule than <see cref="Matches"/>
+    /// above: <c>Matches</c> decides row MEMBERSHIP (diacritics-folded, so "cafe" finds "Café"), while this only
+    /// decides what run of the already-matched title to paint in accent — an index into the diacritics-folded match
+    /// would not even line up with the literal string's char offsets. No match ⇒ <c>(-1, 0)</c>, which every caller
+    /// treats as "nothing to highlight" (an index-safe sentinel, never a thrown range).</summary>
+    public static (int Start, int Length) Find(string? name, string query)
+    {
+        if (string.IsNullOrEmpty(name) || query.Length == 0) return (-1, 0);
+        int i = name.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+        return i < 0 ? (-1, 0) : (i, query.Length);
+    }
 
     /// <summary>One substring test, on whichever path this runtime supports.</summary>
     public static bool Contains(string haystack, string needle)
