@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
-## [0.2.9] - unreleased
+## [0.2.9] - 2026-09-11
 
 The engine underneath is FluentGpu's "Operation ultra-fast" work, and much of the app side is what that engine
 exposed — retained pages, per-frame component churn, art slots that never repainted. On top of it: the Now Playing
