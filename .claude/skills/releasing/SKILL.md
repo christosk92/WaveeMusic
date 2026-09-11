@@ -44,6 +44,15 @@ Get-WaveeFeedVersion christosk92/WaveeMusic wavee-stable arm64   # the feed head
 The **Microsoft Store leg is a separate runbook**: `ops\release\wavee-store-submit.ps1`, run after the feed release
 from the same tag (`-DryRun` / `-Resume` / `-Abort` / `-Status`) — see `docs/guide/microsoft-store-onboarding.md`.
 
+Store releases require one SDK-built **arm64 + x64 .msixbundle** inside the upload, never two loose MSIX files
+in a ZIP or a single-architecture repair. Use the Store script's `-PackageDir` to adopt verified archived Store
+packages and `-SourceRoot` to keep application source pinned while fixing tooling in a separate checkout.
+Verify real executable hashes and matching native symbol evidence; never create placeholder source files to
+satisfy release gates. Before commit, verify the complete replacement/deletion set, including older retained
+packages. Ingestion happens after commit: a successful upload or entry into certification is not publication.
+Keep automatic publishing as configured; inspect the recognized bundle and final active package inventory.
+Detailed commands and interrupted-run recovery are in `docs/guide/releasing-wavee.md` §5c.
+
 **Full runbook — prerequisites, the `-DryRun` review, the phase table, failure/recovery, rollback, the local E2E
 harness (`ops/release/tests/local-update-e2e.ps1 -Scenario inapp|os`, elevated) and the scratch-feed rehearsal:
 `docs/guide/releasing-wavee.md`.**

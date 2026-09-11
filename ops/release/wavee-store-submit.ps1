@@ -17,12 +17,12 @@
       1  packArm64   pack-wavee-msix.ps1 -Channel store -Arch arm64 (unsigned: the Store signs)
          packX64     pack-wavee-msix.ps1 -Channel store -Arch x64   (or -X64Msix <path> to adopt a prebuilt
                      STORE-channel package; identity is re-verified either way)
-      2  msixupload  both .msix flat into one Wavee_<quad>_store.msixupload
+      2  msixupload  one SDK dual-architecture bundle inside the upload
       3  notes       store-listing.txt (adopted from the feed release's notes, or rendered by Wavee.ReleaseTool)
       4  draft       msstore publish --noCommit - the FIRST mutating msstore call; record submissionId
       5  metadata    patch en-US BaseListing.ReleaseNotes, submission update, re-get, assert the round-trip
-      6  commit      msstore submission publish (the point of no return: a committed submission cannot be recalled)
-      7  poll        submission status every 30 s up to -PollMinutes; certification itself takes 1-3 business days
+      6  commit      verify the full package set and ownership, then submit for ingestion
+      7  poll        verify ingested bundle and Published inventory, bounded by -PollMinutes
 
   -DryRun stops after phase 3 and prints the exact msstore commands a real run would issue next. An API-created
   submission must NEVER be opened or edited in Partner Center: a hand-edit desyncs the API's view and the next
@@ -43,7 +43,7 @@
 
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-store-submit.ps1 -Abort
-  Delete this run's uncommitted draft submission and remove the staging folder. Refused once committed.
+  Delete this run's owned uncommitted draft; retain staging evidence. Refused for uncertain upload/commit state.
 
 .LINK
   docs\guide\microsoft-store-onboarding.md
@@ -56,16 +56,16 @@ param(
     # Defaults to the props semver; a value that disagrees with Wavee.Version.props is refused in preflight,
     # because the store quad folds the props BUILD COUNTER and only HEAD's props carry the released one.
     [string]$Semver = '',
-    [string[]]$Arch = @('arm64', 'x64'),
-    [ValidateSet('arm64', 'x64')][string]$SkipArch,
     [string]$X64Msix,
+    [string]$SourceRoot = '',
+    [string]$PackageDir = '',
     [switch]$DryRun,
     [switch]$Resume,
     [switch]$Abort,
     [switch]$Status,
     [switch]$SkipTests,
     [switch]$Force,
-    [string]$ProductId = '9NJPVWTQPT9H',
+    [ValidatePattern('^[A-Za-z0-9]+$')][string]$ProductId = '9NJPVWTQPT9H',
     [string]$IdentityName = 'cproducts.Wavee',
     # Partner Center's package identity publisher ("View product identity"), never our Trusted Signing subject:
     # the Store re-signs every package under this CN.
@@ -83,10 +83,15 @@ param(
     [int]$UploadTimeoutSeconds = 900)
 
 $ErrorActionPreference = 'Stop'
-$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-Import-Module (Join-Path $root 'ops\build\Wavee.Build.psm1') -Force -DisableNameChecking
+$toolRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$root = $toolRoot
+if ($SourceRoot) { $root = (Resolve-Path -LiteralPath $SourceRoot).Path }
+if ($PackageDir) { $PackageDir = (Resolve-Path -LiteralPath $PackageDir).Path }
+if ($X64Msix) { $X64Msix = (Resolve-Path -LiteralPath $X64Msix).Path }
+Import-Module (Join-Path $toolRoot 'ops\build\Wavee.Build.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'Wavee.Release.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'Wavee.Store.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'Wavee.StoreSubmission.psm1') -Force -DisableNameChecking
 
 $EmDash = [char]0x2014
 
@@ -151,7 +156,7 @@ function ConvertTo-StateHashtable {
     if ($Object -is [object[]]) {
         $a = @()
         foreach ($i in $Object) { $a += , (ConvertTo-StateHashtable $i) }
-        return $a
+        return ,$a
     }
     $Object
 }
@@ -220,12 +225,23 @@ function Assert-Checks {
 # ===============================================================================================================
 
 if ($DryRun -and ($Resume -or $Abort -or $Status)) { throw '-DryRun excludes -Resume / -Abort / -Status' }
-if ($Status -and ($Resume -or $Abort -or $SkipTests -or $Force -or $X64Msix -or $SkipArch)) { throw '-Status excludes every other switch' }
-if ($Abort -and ($Resume -or $Status -or $SkipTests -or $Force -or $X64Msix -or $SkipArch)) { throw '-Abort excludes every other switch' }
-if ($X64Msix -and $SkipArch -eq 'x64') { throw '-X64Msix excludes -SkipArch x64' }
+if ($Status -and ($Resume -or $Abort -or $SkipTests -or $Force -or $X64Msix -or $PackageDir)) { throw '-Status excludes mutating switches' }
+if ($Abort -and ($Resume -or $Status -or $SkipTests -or $Force -or $X64Msix -or $PackageDir)) { throw '-Abort excludes build switches' }
+if ($X64Msix -and $PackageDir) { throw '-PackageDir excludes -X64Msix' }
+if ($Force) { throw '-Force is not supported for Store submissions; coverage and source gates cannot be bypassed' }
 
-$arches = @($Arch | Where-Object { $_ -ne $SkipArch })
-if ($arches.Count -eq 0) { throw 'no architectures left after -SkipArch' }
+$arches = @('arm64', 'x64')
+
+# Serialize mutating runs for this product across local processes. The Store API has no draft-creation CAS;
+# external operators must still avoid creating/editing drafts during an automated submission.
+$submissionMutex = $null
+if (-not $Status -and -not $DryRun) {
+    $submissionMutex = New-Object Threading.Mutex($false, "Global\Wavee.Store.$ProductId")
+    try { $lockTaken = $submissionMutex.WaitOne(0) }
+    catch [Threading.AbandonedMutexException] { $lockTaken = $true }
+    if (-not $lockTaken) { $submissionMutex.Dispose(); throw 'Another Store release process already owns this product' }
+}
+try {
 
 # ===============================================================================================================
 # Paths and identity of this run
@@ -244,14 +260,14 @@ $codename = $props.Codename
 
 $tag = "wavee-v$semver"
 $stageRoot = $OutputDir
-if (-not [IO.Path]::IsPathRooted($stageRoot)) { $stageRoot = Join-Path $root ($OutputDir -replace '/', '\') }
+if (-not [IO.Path]::IsPathRooted($stageRoot)) { $stageRoot = Join-Path $toolRoot ($OutputDir -replace '/', '\') }
 $stageSuffix = ''
 if ($DryRun) { $stageSuffix = '-dryrun' }
 $stage = Join-Path $stageRoot ($semver + $stageSuffix)
 $script:StatePath = Join-Path $stage 'store-state.json'
 
 function Get-StoreMsixName { param([string]$Quad, [string]$A) "Wavee_${Quad}_$A.msix" }
-function Get-MsixUploadName { param([string]$Quad) "Wavee_${Quad}_store.msixupload" }
+function Get-MsixUploadName { param([string]$Quad) "Wavee_${Quad}_arm64_x64_store.msixupload" }
 
 $script:MsStoreVersion = ''
 function Assert-MsStoreCli {
@@ -269,8 +285,11 @@ function Get-CurrentSubmissionState {
     # ConvertFrom-MsStoreJson correctly parses as "no JSON here" (Status=None, Pending=$false), silently hiding a
     # real pending submission. 'submission get' returns the same Id/Status/StatusDetails as full structured JSON
     # (the last published submission's, prefixed with explanatory prose, when nothing is pending) - use that.
-    $text = Invoke-MsStore -Arguments @('submission', 'get', $ProductId) -AllowFailure
-    Get-StoreSubmissionState -StatusJson $text
+    $text = Invoke-MsStore -Arguments @('submission', 'get', $ProductId)
+    $state = Get-StoreSubmissionState -StatusJson $text
+    if (-not $state.SubmissionId -or $state.Status -eq 'None') { throw 'Store did not return a verifiable submission status' }
+    $script:LastSubmission = ConvertFrom-MsStoreJson -Text $text
+    $state
 }
 
 # ===============================================================================================================
@@ -282,6 +301,8 @@ function Invoke-Status {
     Note "msstore $(Assert-MsStoreCli)"
 
     $st = Get-CurrentSubmissionState
+    @(Get-JsonProperty $script:LastSubmission 'applicationPackages') |
+        Select-Object FileName,Version,Architecture,FileStatus | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
     if ($st.SubmissionId -or $st.Status) {
         [pscustomobject]@{
             SubmissionId = $st.SubmissionId
@@ -329,12 +350,12 @@ function Invoke-StoreAbort {
     Step "Abort the store submission for $tag"
     $st = Get-ReleaseState $script:StatePath
     if (-not $st) { throw "no store-state.json under $stage - nothing to abort" }
-    if ($st.committed) {
+    if ($st.productId -ne $ProductId) { throw 'Abort product does not match the ledger; refusing cross-product deletion' }
+    if ($st.committed -or $st.commitAttempted -or ($st.uploadAttempted -and -not $st.submissionId)) {
         throw ('this run already committed its submission; a committed submission cannot be recalled from here. ' +
             'Wait for certification and use -Status; a CertificationFailed submission is deleted with ' +
             "'msstore submission delete $($st.productId)' and re-run")
     }
-    if ($st.productId) { $ProductId = "$($st.productId)" }
 
     if ($st.submissionId) {
         Assert-MsStoreCli | Out-Null
@@ -346,6 +367,7 @@ function Invoke-StoreAbort {
             throw "the pending submission is $($cur.SubmissionId) but this run created $($st.submissionId); refusing to delete a submission this run did not make"
         }
         else {
+            if ($cur.Status -ne 'PendingCommit') { throw 'Abort requires an exact-ID PendingCommit draft, not a committed or unknown state' }
             Note "deleting draft submission $($st.submissionId)"
             Invoke-MsStore -Arguments @('submission', 'delete', $ProductId) | Out-Null
         }
@@ -354,11 +376,7 @@ function Invoke-StoreAbort {
         Note 'no draft submission was created; only staging is removed'
     }
 
-    if (Test-Path $stage) {
-        Note "removing $stage"
-        Remove-Item $stage -Recurse -Force
-    }
-    Good 'aborted; the Store and the tree are back to where they started'
+    Good "draft aborted; staging and ledger retained for diagnosis at $stage"
 }
 
 if ($Abort) { Invoke-StoreAbort; return }
@@ -371,6 +389,21 @@ if ($Resume) {
     $loaded = Get-ReleaseState $script:StatePath
     if (-not $loaded) { throw "nothing to resume in $stage" }
     $script:State = ConvertTo-StateHashtable $loaded
+    if ($script:State.schema -ne 2) { throw 'This ledger predates bundle verification. Use -Status; do not resume its publication.' }
+    if ($script:State.ContainsKey('packageDir') -and $script:State.ContainsKey('x64Msix')) {
+        if ($PackageDir -and $PackageDir -ne $script:State.packageDir) { throw 'Resume cannot change the archived package directory' }
+        if ($X64Msix -and $X64Msix -ne $script:State.x64Msix) { throw 'Resume cannot change the adopted x64 package' }
+        $PackageDir = [string]$script:State.packageDir
+        $X64Msix = [string]$script:State.x64Msix
+        if (-not $PackageDir -and -not $script:State.engineCommit) { throw 'Rebuild resume lacks pinned engine provenance' }
+    }
+    elseif ($script:State.phases.packArm64 -ne 'done' -or $script:State.phases.packX64 -ne 'done' -or $script:State.phases.msixupload -ne 'done') {
+        throw 'Incomplete ledger lacks recorded adoption inputs; refusing to rebuild on resume'
+    }
+    if ($script:State.sourceRoot -ne $root) { throw 'Resume requires the original -SourceRoot' }
+    if ($script:State.productId -ne $ProductId) { throw 'Resume product does not match the ledger' }
+    if ($script:State.identityName -ne $IdentityName -or $script:State.publisher -ne $StorePublisher) { throw 'Resume identity does not match the ledger' }
+    if (@($script:State.artifacts).Count) { Assert-WaveeStoreArtifactHashes -Artifacts @($script:State.artifacts) }
     if (-not $script:State.phases) { $script:State.phases = @{} }
     $semver = "$($script:State.semver)"
     $codename = "$($script:State.codename)"
@@ -388,7 +421,14 @@ else {
     $commit = ''
     $buildDate = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     $script:State = @{
-        schema           = 1
+        schema           = 2
+        sourceRoot       = $root
+        identityName     = $IdentityName
+        publisher        = $StorePublisher
+        packageDir       = $PackageDir
+        x64Msix          = $X64Msix
+        artifacts        = @()
+        packageEvidence  = @()
         semver           = $semver
         codename         = $codename
         quad             = $storeQuad
@@ -428,23 +468,22 @@ if (-not (Test-PhaseDone 'preflight')) {
     }
     Add-Check "tag $tag" 'hard' {
         # The Store submission always follows the feed release: the tag must exist here AND on origin, and the
-        # working copy must BE that commit so the packed bytes are the released bytes. -Force downgrades only the
-        # HEAD equality (pack from HEAD anyway) - never the tag's existence.
-        Invoke-Git @('fetch', 'origin', '--tags') -AllowFailure | Out-Null
+        # working copy must BE that commit. No dirty-source or tag override is supported.
         $local = Invoke-Git @('rev-list', '-n', '1', $tag) -AllowFailure
         if ($local.ExitCode -ne 0 -or -not $local.Text) { throw "tag $tag does not exist locally; run ops\release\wavee-release.ps1 first (the feed release cuts the tag)" }
-        if (-not (Invoke-Git @('ls-remote', '--tags', 'origin', "refs/tags/$tag")).Text) { throw "tag $tag is not on origin; push it first" }
+        $remote = (Invoke-Git @('ls-remote', '--tags', 'origin', "refs/tags/$tag", "refs/tags/$tag^{}")).Lines
+        $peeled = @($remote | Where-Object { $_ -match '\^\{\}$' })
+        $remoteCommit = if ($peeled.Count) { ($peeled[0] -split '\s+')[0] } elseif ($remote.Count) { ($remote[0] -split '\s+')[0] } else { '' }
+        if ($remoteCommit -ne $local.Text) { throw "tag $tag does not match origin" }
         $head = (Invoke-Git @('rev-parse', 'HEAD')).Text
         if ($head -ne $local.Text) {
-            if ($Force) { return "SKIP: HEAD $($head.Substring(0,7)) != $tag $($local.Text.Substring(0,7)), packing from HEAD by -Force" }
-            throw "HEAD $($head.Substring(0,7)) != $tag $($local.Text.Substring(0,7)); check out the tag commit (or -Force to pack from HEAD)"
+            throw "HEAD differs from $tag; use -SourceRoot pointing to the clean release checkout"
         }
         "$tag @ $($local.Text.Substring(0,7)), HEAD matches"
     }
     Add-Check 'working tree clean' 'hard' {
-        if ($Force) { return 'SKIP: -Force' }
         $dirty = (Invoke-Git @('status', '--porcelain')).Lines
-        if ($dirty.Count -gt 0) { throw "$($dirty.Count) modified path(s), first: $($dirty[0]) (use -Force to pack a dirty tree)" }
+        if ($dirty.Count -gt 0) { throw "$($dirty.Count) modified source path(s); use a clean -SourceRoot" }
         'clean'
     }
     Add-Check 'store quad' 'hard' {
@@ -454,8 +493,8 @@ if (-not (Test-PhaseDone 'preflight')) {
         "quad $q"
     }
     Add-Check 'staging folder' 'hard' {
-        # A previous rehearsal's folder is disposable (it carries no submission state), so -DryRun replaces it.
-        if ((Test-Path $stage) -and -not $Force -and -not $DryRun -and -not $Resume) { throw "$stage already exists (use -Force to replace it, or -Resume to continue it)" }
+        # Retain earlier staging and evidence, including dry runs.
+        if (Test-Path -LiteralPath $stage) { throw "$stage already exists; use -Resume or a fresh -OutputDir" }
         $stage
     }
     Add-Check 'store notes' 'hard' {
@@ -504,35 +543,46 @@ if (-not (Test-PhaseDone 'preflight')) {
     }
     Add-Check 'Windows SDK tools' 'hard' { "$((Get-Tools).Version)" }
     Add-Check 'x64 cross toolchain' 'hard' {
+        if ($PackageDir) { return 'SKIP: verifying both archived packages instead of rebuilding' }
         if ($arches -notcontains 'x64') { return 'SKIP: x64 not requested' }
         if ($X64Msix) {
             if (-not (Test-Path $X64Msix)) { throw "-X64Msix path not found: $X64Msix" }
             return "SKIP: adopting $X64Msix"
         }
         $x = Test-X64CrossToolchain
-        if (-not $x.Ok) { throw "$($x.Reason) (use -SkipArch x64, or -X64Msix <prebuilt store .msix>)" }
+        if (-not $x.Ok) { throw "$($x.Reason) (use -PackageDir with both verified Store packages, or -X64Msix)" }
         "$($x.LinkExe)"
     }
     Add-Check 'PlayPlay junction' 'hard' {
+        if ($PackageDir) { return 'SKIP: both archived executables must pass symbol/hash provenance before upload' }
         if (-not (Test-Path $playPlayProbe)) { throw 'src\apps\Wavee.PlayPlay junction missing; a Store package is PlayPlay-inclusive like every release build' }
         'present'
+    }
+    Add-Check 'engine source provenance' 'hard' {
+        if ($PackageDir) { return 'SKIP: archived binaries include their original engine; no rebuild' }
+        $enginePath = [IO.Path]::GetFullPath((Join-Path $root '..\fluent-gpu'))
+        $engineHead = Invoke-Native 'git' @('-C', $enginePath, 'rev-parse', 'HEAD')
+        $engineDirty = Invoke-Native 'git' @('-C', $enginePath, 'status', '--porcelain')
+        if (@($engineDirty.Output | Where-Object { "$($_)".Trim() }).Count) { throw 'Engine checkout has outstanding changes; use verified archived packages or a clean engine checkout' }
+        $script:State.engineRoot = $enginePath
+        $script:State.engineCommit = (@($engineHead.Output) -join '').Trim()
+        $script:State.engineCommit
     }
     Add-Check 'gates' 'hard' {
         # Only the release tooling's own Pester suite: the tagged commit already passed the full Debug+Release
         # build and Wavee.Tests gate when the feed release was cut, and this run rebuilds those same sources.
         if ($SkipTests) { return 'SKIP: -SkipTests' }
-        $pester = Invoke-Pester -Path (Join-Path $root 'ops\release\tests') -PassThru -Quiet
+        $pester = Invoke-Pester -Path (Join-Path $toolRoot 'ops\release\tests') -PassThru -Quiet
         if ($pester.FailedCount -gt 0) { throw ('Pester: ' + $pester.FailedCount + ' failed') }
         'Pester ' + $pester.PassedCount + '/0'
     }
 
     Assert-Checks
 
-    if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
     $storeQuad = $script:PreflightQuad
-    if (-not $commit) { $commit = (Invoke-Git @('rev-parse', '--short=7', 'HEAD')).Text }
+    if (-not $commit) { $commit = (Invoke-Git @('rev-parse', 'HEAD')).Text }
     $script:State.quad = $storeQuad
     $script:State.commit = $commit
     $script:State.arches = $arches
@@ -545,7 +595,75 @@ else {
 Get-Tools | Out-Null
 
 $upload = Join-Path $stage (Get-MsixUploadName $storeQuad)
+$bundle = Join-Path $stage "Wavee_${storeQuad}_arm64_x64.msixbundle"
 $listingPath = Join-Path $stage 'store-listing.txt'
+
+function Register-Artifact {
+    param([string]$Path)
+    $resolved = (Resolve-Path -LiteralPath $Path).Path
+    $script:State.artifacts = @($script:State.artifacts | Where-Object { $_.path -ne $resolved }) + @(@{
+        path = $resolved; sha256 = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash
+    })
+    Save-State
+}
+
+function Assert-ReleaseInputs {
+    if ((Invoke-Git @('rev-parse', 'HEAD')).Text -ne $script:State.commit) { throw 'Release source HEAD changed' }
+    if ((Invoke-Git @('rev-list', '-n', '1', $tag)).Text -ne $script:State.commit) { throw 'Release tag changed' }
+    if ((Invoke-Git @('status', '--porcelain')).Lines.Count) { throw 'Release source checkout is no longer clean' }
+    if ($script:State.engineCommit) {
+        $engineHead = Invoke-Native 'git' @('-C', $script:State.engineRoot, 'rev-parse', 'HEAD')
+        $engineDirty = Invoke-Native 'git' @('-C', $script:State.engineRoot, 'status', '--porcelain')
+        if ((@($engineHead.Output) -join '').Trim() -ne $script:State.engineCommit -or @($engineDirty.Output | Where-Object { "$($_)".Trim() }).Count) { throw 'Engine source changed during this release' }
+    }
+    if (@($script:State.arches | Sort-Object -Unique) -join ',' -ne 'arm64,x64') { throw 'Both architectures are mandatory' }
+    if (@($script:State.artifacts).Count) { Assert-WaveeStoreArtifactHashes -Artifacts @($script:State.artifacts) }
+    if (Test-PhaseDone 'msixupload') {
+        $required = @($bundle, $upload) + @($arches | ForEach-Object { Join-Path $stage (Get-StoreMsixName $storeQuad $_) })
+        if (Test-PhaseDone 'notes') { $required += $listingPath }
+        foreach ($path in $required) {
+            if (@($script:State.artifacts | Where-Object { $_.path -eq $path }).Count -ne 1) { throw "Mandatory artifact is absent from ledger: $path" }
+        }
+        $children = @(Assert-WaveeStoreBundle -Bundle $bundle -IdentityName $IdentityName -Publisher $StorePublisher -Quad $storeQuad)
+        if (@($script:State.packageEvidence).Count -ne 2) { throw 'Both package evidence records are required' }
+        foreach ($child in $children) {
+            $evidence = @($script:State.packageEvidence | Where-Object { $_.Architecture -eq $child.Architecture })
+            if ($evidence.Count -ne 1 -or -not $evidence[0].PlayPlayIncluded -or $evidence[0].Sha256 -ne $child.Sha256) { throw 'Bundle bytes do not match verified release evidence' }
+        }
+    }
+}
+
+function Get-OwnedSubmission {
+    $app = ConvertFrom-MsStoreJson -Text (Invoke-MsStore -Arguments @('apps', 'get', $ProductId))
+    $pending = Get-JsonProperty $app 'pendingApplicationSubmission'
+    if (-not $pending -or (Get-JsonProperty $pending 'id') -ne $script:State.submissionId) {
+        throw 'The pending Store submission is not the submission owned by this run; refusing mutation'
+    }
+    $sub = ConvertFrom-MsStoreJson -Text (Invoke-MsStore -Arguments @('submission', 'get', $ProductId))
+    if (-not $sub -or (Get-JsonProperty $sub 'id') -ne $script:State.submissionId -or (Get-JsonProperty $sub 'status') -ne 'PendingCommit') {
+        throw 'Owned submission is not an editable PendingCommit draft; refusing mutation'
+    }
+    return $sub
+}
+
+function Save-SubmissionEvidence {
+    param($Submission, [string]$Name)
+    # Deliberately exclude FileUploadUrl, credentials, and listing/test-account details.
+    $snapshot = @{
+        id = Get-JsonProperty $Submission 'id'; status = Get-JsonProperty $Submission 'status'
+        targetPublishMode = Get-JsonProperty $Submission 'targetPublishMode'
+        packages = @(Get-JsonProperty $Submission 'applicationPackages' | Select-Object Id,FileName,Version,Architecture,FileStatus)
+    }
+    Set-ReleaseState (Join-Path $stage $Name) $snapshot
+}
+
+Assert-ReleaseInputs
+if ($Resume) {
+    $remoteRelease = (Invoke-Git @('ls-remote', '--tags', 'origin', "refs/tags/$tag", "refs/tags/$tag^{}")).Lines
+    $peeledRelease = @($remoteRelease | Where-Object { $_ -match '\^\{\}$' })
+    $remoteReleaseCommit = if ($peeledRelease.Count) { ($peeledRelease[0] -split '\s+')[0] } elseif ($remoteRelease.Count) { ($remoteRelease[0] -split '\s+')[0] } else { '' }
+    if ($remoteReleaseCommit -ne $script:State.commit) { throw 'Origin release tag changed since staging' }
+}
 
 # ===============================================================================================================
 # 1  pack (per architecture, store channel)
@@ -553,11 +671,20 @@ $listingPath = Join-Path $stage 'store-listing.txt'
 
 function Invoke-StorePack {
     param([Parameter(Mandatory = $true)][string]$A)
+    Assert-ReleaseInputs
 
     $msix = Join-Path $stage (Get-StoreMsixName $storeQuad $A)
 
-    if ($A -eq 'x64' -and $X64Msix) {
+    $symbolsDir = Join-Path $stage "symbols\$storeQuad\win-$A"
+    if ($PackageDir) {
+        $sourceMsix = Join-Path $PackageDir (Get-StoreMsixName $storeQuad $A)
+        $symbolsDir = Join-Path $PackageDir "symbols\$storeQuad\win-$A"
+        Get-WaveeStorePackageEvidence -Msix $sourceMsix -SymbolsDir $symbolsDir -Commit $commit -Quad $storeQuad -Architecture $A -IdentityName $IdentityName -Publisher $StorePublisher | Out-Null
+        Copy-Item -LiteralPath $sourceMsix -Destination $msix
+    }
+    elseif ($A -eq 'x64' -and $X64Msix) {
         Step 'Adopt the prebuilt x64 store package'
+        $symbolsDir = Join-Path (Split-Path -Parent $X64Msix) "symbols\$storeQuad\win-x64"
         Copy-Item $X64Msix $msix -Force
     }
     else {
@@ -573,7 +700,7 @@ function Invoke-StorePack {
             '-Channel', 'store',
             '-Codename', $codename,
             '-IdentityName', $IdentityName,
-            '-Commit', $commit,
+            '-Commit', $commit.Substring(0,7),
             '-BuildDate', $buildDate,
             '-Publisher', $StorePublisher,
             '-OutputDir', $stage,
@@ -597,6 +724,11 @@ function Invoke-StorePack {
     if ($id.Publisher -ne $StorePublisher) {
         throw "publisher mismatch in $(Split-Path -Leaf $msix): '$($id.Publisher)' != '$StorePublisher' (that is a feed-channel package; the Store needs Partner Center's identity)"
     }
+    $evidence = Get-WaveeStorePackageEvidence -Msix $msix -SymbolsDir $symbolsDir -Commit $commit -Quad $storeQuad -Architecture $A -IdentityName $IdentityName -Publisher $StorePublisher
+    $script:State.packageEvidence = @($script:State.packageEvidence | Where-Object { $_.Architecture -ne $A }) + @($evidence)
+    Register-Artifact $msix
+    Register-Artifact (Join-Path $symbolsDir 'SYMBOLS.txt')
+    Register-Artifact (Join-Path $symbolsDir 'Wavee.map.xml')
     Good "$(Split-Path -Leaf $msix)  $([math]::Round((Get-Item $msix).Length / 1MB, 2)) MB"
 }
 
@@ -612,13 +744,16 @@ foreach ($a in $arches) {
 }
 
 # ===============================================================================================================
-# 2  msixupload (both packages in one container)
+# 2  msixupload (one verified SDK bundle in the container)
 # ===============================================================================================================
 
 if (-not (Test-PhaseDone 'msixupload')) {
     Step 'Assemble the .msixupload'
     $msixPaths = @($arches | ForEach-Object { Join-Path $stage (Get-StoreMsixName $storeQuad $_) })
-    New-WaveeMsixUpload -Msix $msixPaths -OutFile $upload -IdentityName $IdentityName -Publisher $StorePublisher -Quad $storeQuad | Out-Null
+    New-WaveeMsixBundle -Msix $msixPaths -OutFile $bundle -MakeAppx (Get-Tools).MakeAppx -IdentityName $IdentityName -Publisher $StorePublisher -Quad $storeQuad | Out-Null
+    New-WaveeMsixUpload -Bundle $bundle -OutFile $upload -IdentityName $IdentityName -Publisher $StorePublisher -Quad $storeQuad | Out-Null
+    Register-Artifact $bundle
+    Register-Artifact $upload
     Good "$(Split-Path -Leaf $upload)  $([math]::Round((Get-Item $upload).Length / 1MB, 2)) MB ($($arches -join ' + '))"
     Complete-Phase 'msixupload'
 }
@@ -661,6 +796,7 @@ function Invoke-StoreNotes {
 
 if (-not (Test-PhaseDone 'notes')) {
     Invoke-StoreNotes
+    Register-Artifact $listingPath
     Complete-Phase 'notes'
 }
 else {
@@ -682,8 +818,8 @@ if ($DryRun) {
     Write-Host ''
     Write-Host "   msstore publish `"$upload`" -id $ProductId --noCommit --uploadTimeout $UploadTimeoutSeconds -v"
     Write-Host "   msstore submission get $ProductId                     # record the draft's submissionId (via Status/Id in the JSON)"
-    Write-Host "   msstore submission get $ProductId                     # saved as submission-before.json"
-    Write-Host "   msstore submission update $ProductId `"<the full submission JSON with en-us BaseListing.ReleaseNotes patched, passed as ONE argument; saved as submission-after.json>`""
+    Write-Host "   msstore submission get $ProductId                     # redacted inventory saved as submission-before.json"
+    Write-Host "   msstore submission update $ProductId `"<full metadata with explicit package retirement and verified release notes>`""
     Write-Host "   msstore submission publish $ProductId                 # the point of no return"
     Write-Host "   msstore submission get $ProductId                     # then poll every 30 s, up to $PollMinutes min"
     Write-Host ''
@@ -695,8 +831,27 @@ if ($DryRun) {
 # 4  draft (msstore publish --noCommit: the first mutating call of the run)
 # ===============================================================================================================
 
+if ($Resume -and $script:State.commitAttempted -and -not (Test-PhaseDone 'commit')) {
+    $remoteCommitState = Get-CurrentSubmissionState
+    if ($remoteCommitState.SubmissionId -ne $script:State.submissionId) { throw 'Cannot reconcile interrupted commit: Store submission ID changed' }
+    if ($remoteCommitState.Status -notin @('CommitStarted','PreProcessing','Certification','PendingPublication','Publishing','Release','Published')) {
+        throw "Interrupted commit has status $($remoteCommitState.Status); do not automatically repeat publication"
+    }
+    $script:State.committed = $true
+    Complete-Phase 'commit'
+    Note 'Recovered the exact submitted ID after an interrupted commit; monitoring without republishing'
+}
+
 function Invoke-Draft {
     Step 'Create the draft submission and upload the packages'
+    Assert-ReleaseInputs
+    if (-not (Test-PhaseDone 'msixupload') -or @($script:State.packageEvidence).Count -ne 2) { throw 'Complete dual-architecture evidence is required before uploading' }
+    $appNow = ConvertFrom-MsStoreJson -Text (Invoke-MsStore -Arguments @('apps', 'get', $ProductId))
+    Test-StoreAppIdentity -AppJson $appNow -ProductId $ProductId -IdentityName $IdentityName -Pfn $Pfn | Out-Null
+    if (Get-JsonProperty $appNow 'pendingApplicationSubmission') { throw 'A pending submission appeared; refusing CLI automatic draft deletion' }
+    if ($script:State.uploadAttempted) { throw 'An upload was interrupted. Reconcile its remote state before retrying; automatic draft replacement is forbidden.' }
+    $script:State.uploadAttempted = $true
+    Save-State
     # 'msstore publish' clones a new pending submission from the last published one and deletes any existing
     # pending draft first - which is why the no-pending-submission gate ran, and why nothing before this line may
     # write to the Store.
@@ -707,8 +862,9 @@ function Invoke-Draft {
 
     $st = Get-CurrentSubmissionState
     if (-not $st.SubmissionId) { throw "msstore publish succeeded but 'submission status' reports no submission id; inspect with -Status before retrying" }
-    $raw = Invoke-MsStore -Arguments @('submission', 'get', $ProductId)
-    [IO.File]::WriteAllText((Join-Path $stage 'submission-before.json'), $raw, (New-Object System.Text.UTF8Encoding $false))
+    $sub = ConvertFrom-MsStoreJson -Text (Invoke-MsStore -Arguments @('submission', 'get', $ProductId))
+    if (-not $sub -or (Get-JsonProperty $sub 'id') -ne $st.SubmissionId -or (Get-JsonProperty $sub 'status') -ne 'PendingCommit') { throw 'Upload returned an unexpected submission; refusing to continue' }
+    Save-SubmissionEvidence $sub 'submission-before.json'
 
     $script:State.submissionId = "$($st.SubmissionId)"
     $script:State.packagesUploaded = $true
@@ -733,16 +889,20 @@ function Invoke-Metadata {
     Step 'Patch the en-US release notes'
     # Always patch the submission the Store holds NOW (a -Resume may land here hours later), never the
     # submission-before.json snapshot.
-    $sub = ConvertFrom-MsStoreJson -Text (Invoke-MsStore -Arguments @('submission', 'get', $ProductId))
+    Assert-ReleaseInputs
+    $sub = Get-OwnedSubmission
     if (-not $sub) { throw "'msstore submission get $ProductId' returned no JSON" }
 
+    $sub = Set-WaveeStorePackageSet -Submission $sub -SubmissionId $script:State.submissionId -UploadName (Split-Path -Leaf $upload) -Quad $storeQuad
     $updated = Set-StoreSubmissionReleaseNotes -Submission $sub -ReleaseNotes $releaseNotes
-    [IO.File]::WriteAllText((Join-Path $stage 'submission-after.json'), $updated, (New-Object System.Text.UTF8Encoding $false))
+    Get-OwnedSubmission | Out-Null
     # The whole submission body travels as ONE argv element; Invoke-MsStore hands the array straight to the exe,
     # so no quoting layer can split it.
     Invoke-MsStore -Arguments @('submission', 'update', $ProductId, $updated) | Out-Null
 
     $verify = ConvertFrom-MsStoreJson -Text (Invoke-MsStore -Arguments @('submission', 'get', $ProductId))
+    Assert-WaveeStorePackageSet -Submission $verify -SubmissionId $script:State.submissionId -UploadName (Split-Path -Leaf $upload) -Quad $storeQuad
+    Save-SubmissionEvidence $verify 'submission-after.json'
     $listing = Get-JsonProperty (Get-JsonProperty $verify 'listings') 'en-us'
     $roundTrip = Get-JsonProperty (Get-JsonProperty $listing 'baseListing') 'releaseNotes'
     if ("$roundTrip" -ne $releaseNotes) {
@@ -765,6 +925,13 @@ else {
 
 if (-not (Test-PhaseDone 'commit')) {
     Step 'Commit the submission'
+    Assert-ReleaseInputs
+    $beforeCommit = Get-OwnedSubmission
+    Assert-WaveeStorePackageSet -Submission $beforeCommit -SubmissionId $script:State.submissionId -UploadName (Split-Path -Leaf $upload) -Quad $storeQuad
+    $notesBeforeCommit = Get-JsonProperty (Get-JsonProperty (Get-JsonProperty $beforeCommit 'listings') 'en-us') 'baseListing'
+    if ((Get-JsonProperty $notesBeforeCommit 'releaseNotes') -ne $releaseNotes) { throw 'Release notes changed before commit' }
+    $script:State.commitAttempted = $true
+    Save-State
     Invoke-MsStore -Arguments @('submission', 'publish', $ProductId) | Out-Null
     $script:State.committed = $true
     Save-State
@@ -782,19 +949,28 @@ else {
 function Invoke-Poll {
     Step "Poll the submission (every 30 s, up to $PollMinutes min)"
     $statusCmd = "powershell -File ops\release\wavee-store-submit.ps1 -Status"
-    $waiting = @('CommitStarted', 'PendingCommit', 'PreProcessing')
+    $waiting = @('CommitStarted', 'PendingCommit', 'PreProcessing', 'Certification', 'PendingPublication', 'Publishing', 'Release')
     $deadline = [DateTime]::UtcNow.AddMinutes($PollMinutes)
     while ($true) {
-        $st = Get-CurrentSubmissionState
+        $raw = Invoke-MsStore -Arguments @('submission', 'get', $ProductId)
+        $sub = ConvertFrom-MsStoreJson -Text $raw
+        $st = Get-StoreSubmissionState -StatusJson $raw
+        if ($st.SubmissionId -ne $script:State.submissionId) { throw 'Store returned a different or missing submission while monitoring' }
+        Save-SubmissionEvidence $sub 'submission-latest.json'
         if ($st.Failed) {
             $errs = (@($st.Errors) | Where-Object { $_ }) -join '; '
             throw "submission $($st.SubmissionId) failed: $($st.Status)$(if ($errs) { " $EmDash $errs" }). Fix it, 'msstore submission delete $ProductId', re-run"
         }
-        if ($st.Terminal -or ($st.Status -and $waiting -notcontains $st.Status)) {
+        if ($st.Status -in @('Certification','PendingPublication','Publishing','Release','Published')) {
+            Assert-WaveeStorePackageSet -Submission $sub -SubmissionId $script:State.submissionId -UploadName (Split-Path -Leaf $upload) -Quad $storeQuad -Ingested
+            $script:State.ingestedVerified = $true
+            Save-State
+        }
+        if ($st.Status -eq 'Published') {
             Good "submission $($st.SubmissionId) is $($st.Status)"
-            Note "certification takes 1-3 business days; check later with: $statusCmd"
             return $true
         }
+        if ($waiting -notcontains $st.Status) { throw "Unexpected status '$($st.Status)'; publication is not verified" }
         if ([DateTime]::UtcNow -ge $deadline) {
             Warn "still $($st.Status) after $PollMinutes minutes; the Store gets there on its own"
             Note "check later with: $statusCmd"
@@ -811,7 +987,7 @@ if (-not (Test-PhaseDone 'poll')) {
     if ($polled) { Complete-Phase 'poll' }
 }
 else {
-    Note 'already past PreProcessing'
+    $polled = Invoke-Poll
 }
 
 # ===============================================================================================================
@@ -832,8 +1008,12 @@ Step 'Summary'
 } | Format-List | Out-String -Width 200 | Write-Host
 
 if ($polled) {
-    Good "Wavee $semver $EmDash $codename ($storeQuad) is submitted; the Store takes it from here."
+    Good "Wavee $semver $EmDash $codename ($storeQuad) is Published with its verified dual-architecture bundle."
 }
 else {
     Note "the submission is committed; only the poll timed out. Re-check with -Status (or -Resume to poll again)."
+}
+}
+finally {
+    if ($submissionMutex) { $submissionMutex.ReleaseMutex(); $submissionMutex.Dispose() }
 }
