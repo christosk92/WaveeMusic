@@ -83,8 +83,8 @@ public sealed class SidebarTemplateTests
         // Liked Songs FIRST — the ordering divergence from today's sidebar.
         var shortcuts = l.Sections[4];
         Assert.Equal("sidebar.yourLibrary", shortcuts.TitleLocKey);
-        // Cozy + Subtitles:true = the 44-DIP glyph row with the SAME 32-DIP art column every content row shares (W7) —
-        // pixel parity with Classic's locked document (R3), reached without a Comfortable density override any more.
+        // Cozy + Subtitles:false = the 40-DIP glyph row (Task C) with the SAME 32-DIP art column every content row
+        // shares — pixel parity with Classic's locked document (R3), reached without a Comfortable density override.
         Assert.Equal(SidebarDensity.Cozy, shortcuts.Opts.Density);
         Assert.True(shortcuts.Opts.CountBadges);
         Assert.True(shortcuts.Opts.ShowInRail);

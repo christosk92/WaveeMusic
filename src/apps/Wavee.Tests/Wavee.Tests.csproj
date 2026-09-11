@@ -390,6 +390,8 @@
     <!-- the pure "the pop-out's own fullscreen mode lives only while the placement is Detached" rule (System only) —
          DetachedFullscreenRuleTests -->
     <Compile Include="..\Wavee\App\DetachedFullscreenRule.cs" Link="DetachedFullscreenRule.cs" />
+    <!-- the pure per-surface video stage input rules (drag-to-move opt-in, cursor hiding; System only) — VideoStageInputTests -->
+    <Compile Include="..\Wavee\App\VideoStageInput.cs" Link="VideoStageInput.cs" />
     <!-- the pure rail<->docked-video coupling rules + the RailMode enum they're keyed on (System only) — RailVideoCouplingTests -->
     <Compile Include="..\Wavee\App\RailVideoCoupling.cs" Link="RailVideoCoupling.cs" />
     <!-- which of the two docked HOSTS (the rail's card vs the watch page's in-page stage) owns the one live video
@@ -478,6 +480,9 @@
     <Compile Include="..\Wavee\Features\Player\QueueMovePlan.cs" />
     <!-- artist hero height response (Wavee.Core + BCL only) — ArtistHeroLayoutTests -->
     <Compile Include="..\Wavee\Features\Detail\ArtistHeroLayout.cs" />
+    <!-- artist "Top tracks" chart row geometry tier, with resize hysteresis (BCL only; S2 audit #8) —
+         ArtistPopularLayoutTests -->
+    <Compile Include="..\Wavee\Features\Detail\ArtistPopularLayout.cs" />
     <!-- the artist drawer's single verdict — one identity-checked decision (selected vs loaded album, rows, columns,
          cap/show-all, panel + slot heights), Wavee.Core + BCL only — AlbumDrawerVerdictTests -->
     <Compile Include="..\Wavee\Features\Detail\AlbumDrawerVerdict.cs" />
@@ -568,6 +573,9 @@
     <Compile Include="..\Wavee\SpotifyLive\TransferStateDecoder.cs" />
     <Compile Include="..\Wavee\SpotifyLive\SpotifyClientIdentity.cs" />
     <Compile Include="..\Wavee\SpotifyLive\ConnectStateBuilder.cs" />
+    <!-- ClusterMapper + ClusterIngest (the cluster wire boundary) — ClusterMapperTests drives Map/OnCluster/
+         OnAnnounceResponse directly against production code. -->
+    <Compile Include="..\Wavee\SpotifyLive\ClusterMapper.cs" />
     <!-- Part 7.3's module→host services (the LiveConnect partial): Wavee.Sdk + Backend\Modules + SessionContext only, by
          construction — the session facts arrive through ISpotifyHostSession, so none of the login stack comes with it.
          ModuleHostServicesSpotifyTests drive the REAL registration + permission gate over the in-memory module. -->
@@ -593,6 +601,27 @@
          Engine-free/BCL-only by construction (System.Threading only) — SingleFlightMemoTests drive the real dedupe/TTL/
          cancellation-detach/invalidate/failure-not-cached contract against production code, not a mock of it. -->
     <Compile Include="..\Wavee\App\SingleFlightMemo.cs" />
+    <!-- Now Playing player styles (docs/plans/wavee/npv-player-styles-implementation.md), Part 1 — engine-free by
+         construction. NpvPlayerCatalog.cs is `using System;` only (NpvPlayerCatalogTests). NpvPlayerPrefs.cs depends
+         only on FluentGpu.Signals.Signal<T> (the real engine type, transitively referenced, same precedent as
+         DeveloperMode.cs above) plus the IAppSettings/WaveeSettings/NpvPlayerKeys shim above (NpvPlayerPrefsTests).
+         NpvDiagnostics.cs depends only on WaveeLog/WaveeLogField from the already-included Diagnostics\*.cs. -->
+    <Compile Include="..\Wavee\Features\Player\NpvPlayerCatalog.cs" />
+    <Compile Include="..\Wavee\Features\Player\NpvPlayerPrefs.cs" />
+    <Compile Include="..\Wavee\Features\Player\NpvDiagnostics.cs" />
+    <!-- Lyrics blur-strength policy (LyricsBlurPolicyTests): `using System;` only — no FluentGpu reference, same
+         engine-free-by-construction precedent as NpvPlayerCatalog.cs above. -->
+    <Compile Include="..\Wavee\Features\Player\LyricsBlurPolicy.cs" />
+    <!-- The lyrics QPC->media-ms mapping (LyricsMediaClockTests): `using System;`/`using System.Diagnostics;` only
+         (Stopwatch.Frequency as the injectable-QPC-rate ctor default) — no FluentGpu reference, same
+         engine-free-by-construction precedent as LyricsBlurPolicy.cs above. -->
+    <Compile Include="..\Wavee\Features\Player\LyricsMediaClock.cs" />
+    <!-- S3 #18: the now-playing equalizer's tick/still-shape decision (`using System;`-only, no FluentGpu reference) —
+         EqualizerMotionPolicyTests pin it against production code instead of a copy of the branch. -->
+    <Compile Include="..\Wavee\Components\EqualizerMotionPolicy.cs" />
+    <!-- S3 #16: the search facet row's loading-skeleton gate (`using System;`-only, no FluentGpu reference) —
+         SearchChipSkeletonPolicyTests pin it against production code instead of a copy of the branch. -->
+    <Compile Include="..\Wavee\Features\Search\SearchChipSkeletonPolicy.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -627,6 +656,19 @@
          provider returned, kept verbatim so a parser change is regression-tested against reality rather than against a
          synthetic body someone wrote to match their own assumptions. -->
     <Content Include="Lyrics\Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Now Playing player styles (docs/plans/wavee/npv-player-styles-implementation.md), Part 3 — the DECK PHYSICS.
+         Everything under Deck\Model\ is engine-free BY CONSTRUCTION (no `using FluentGpu.*`: BCL + Wavee.Core only,
+         which is why one glob is safe and correct here) — DeckInput/DeckBoundaryRules, DeckFrame/IDeckModel/DeckEase,
+         PositionInterpolator, SpinIntegrator, ProgressModel, plus the per-deck machines (TonearmMachine/RecordModel,
+         TapeMachine, DiscMachine, MeterBallistics, LevelSynth, DriftPath). The engine-bound half of the deck
+         (DeckHost/DeckClock/DeckSignals/DeckArt/DeckGesture/NpvDeck and Deck\Faces\) is deliberately NOT included.
+         Drives: DeckBoundaryRulesTests, DeckEaseTests, PositionInterpolatorTests, SpinIntegratorTests,
+         TonearmMachineTests, TonearmGeometryTests, TapeMachineTests, DiscMachineTests, MeterBallisticsTests,
+         LevelSynthTests. -->
+    <Compile Include="..\Wavee\Features\Player\Deck\Model\*.cs" />
   </ItemGroup>
 
 </Project>

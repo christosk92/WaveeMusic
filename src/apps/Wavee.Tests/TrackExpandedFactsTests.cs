@@ -479,6 +479,36 @@ public class TrackExpandedFactsTests
         else Assert.Equal(expected, Pick(facts, TrackFactKind.AddedBy).Value);
     }
 
+    /// <summary>When the page resolved the full collaborator profile, the AddedBy fact carries it as
+    /// <see cref="TrackFact.Person"/> — that is what lets the strip draw the same avatar chip the Added-by column
+    /// draws instead of a bare name (<c>TrackFactsStrip.AddedByChip</c>).</summary>
+    [Fact]
+    public void AddedBy_WithResolvedProfile_CarriesThePerson()
+    {
+        var jane = new Owner("u1", "Jane", null);
+        var f = Pick(TrackExpandedFacts.For(T(addedBy: "u1"), new TrackFactsOptions(
+            AddedByName: jane.Name, AddedByProfile: jane,
+            Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc)),
+            TrackFactKind.AddedBy);
+
+        Assert.Equal("Jane", f.Value);
+        Assert.Equal(jane, f.Person);
+    }
+
+    /// <summary>Unresolved membership (no profile on the page, only the raw playlist membership id) falls back to the
+    /// plain string — <see cref="TrackFact.Person"/> stays null, so the strip draws the raw id as text, never an
+    /// avatar for someone it never resolved.</summary>
+    [Fact]
+    public void AddedBy_Unresolved_FallsBackToTheRawId()
+    {
+        var f = Pick(TrackExpandedFacts.For(T(addedBy: "raw-id"), new TrackFactsOptions(
+            Culture: CultureInfo.InvariantCulture, Zone: TimeZoneInfo.Utc)),
+            TrackFactKind.AddedBy);
+
+        Assert.Equal("raw-id", f.Value);
+        Assert.Null(f.Person);
+    }
+
     /// <summary>Descriptors ride as ONE chips fact carrying the server's own order (descending weight), not as N facts:
     /// they are one row of pills, and splitting them would interleave them with the flags.</summary>
     [Fact]

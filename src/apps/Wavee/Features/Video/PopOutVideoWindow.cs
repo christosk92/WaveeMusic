@@ -12,8 +12,11 @@ namespace Wavee.Features.Video;
 /// <summary>
 /// Root content of the detached, always-on-top pop-out video window (its own composited AppHost + swapchain + video
 /// presenter). Reads the resolved <see cref="PopOutVideoSource"/> for the CONTENT IDENTITY and mounts a keyed
-/// <see cref="PopOutVideoStage"/>, which PRESENTS the player owned by <c>FluentVideoMediaHost</c>. The OS window frame
-/// handles move/resize/close; the host sets always-on-top.
+/// <see cref="PopOutVideoStage"/>, which PRESENTS the player owned by <c>FluentVideoMediaHost</c>. The window is
+/// chromeless (<c>CustomFrame</c>): the OS frame keeps only the resize borders, and dragging the PICTURE moves the window
+/// through the OS move loop (<c>MediaPlayerElement.DragMovesWindow</c> — Aero Snap included; see
+/// <see cref="VideoStageInput"/>). Close it via the ⋯ menu's "Turn off video", Alt+F4 or Alt+Space; the host sets
+/// always-on-top.
 ///
 /// <see cref="Source"/>/<see cref="Player"/> are FROZEN signals on purpose: app <c>Ctx.Provide</c> chains do NOT cross
 /// the AppHost boundary (a detached window builds its own reconciler + ambient map), so the bridge's signals are handed
@@ -208,6 +211,14 @@ sealed class PopOutVideoStage : Component
         // placement), so the remount arm is a safety net rather than a routine path.
         bool suppress = Host is { } h && h.Owner.Value != h.Identity;
         var fullscreen = Host?.FullscreenRequested;
+        // The surface's input affordances (VideoStageInput — pure, tested): the pop-out alone drags its chromeless window
+        // by the picture and lets the idle cursor hide with the chrome. Both are pure functions of (Identity,
+        // IsHostFullscreen) — the identity is constant per host and the fullscreen bit is already in the key below — so the
+        // element's frozen props stay correct without a new key segment.
+        bool dragMovesWindow = Host is { } hd && VideoStageInput.DragMovesWindow(hd.Identity, IsHostFullscreen);
+        var cursorAutoHide = Host is { } hc && VideoStageInput.HidesCursorWindowed(hc.Identity)
+            ? CursorAutoHidePolicy.Always
+            : CursorAutoHidePolicy.FullscreenOnly;
         return Embed.Comp(() => new MediaPlayerElement
             {
                 Player = player, Stretch = MediaStretch.Uniform,
@@ -231,6 +242,10 @@ sealed class PopOutVideoStage : Component
                 // "This surface is ALREADY fullscreen" — the element ORs it into PresentingFullscreen, which is what
                 // makes the glyph, the ⋯ label and Escape agree with reality instead of always offering to enter.
                 IsHostFullscreen = IsHostFullscreen,
+                // The pop-out: drag the picture to move the window (a click is still a click, a double-click still
+                // fullscreen, a right-click still the player menu), and the cursor idles away with the chrome.
+                DragMovesWindow = dragMovesWindow,
+                CursorAutoHide = cursorAutoHide,
             })
             with
             {

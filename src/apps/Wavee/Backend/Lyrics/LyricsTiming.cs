@@ -100,11 +100,62 @@ public static class LyricsTiming
         return gap >= SquashMinGapMs && dur * SquashDenominator < gap;
     }
 
+    /// <summary>A document that runs well past the track it is supposed to caption did not get real timing for this
+    /// recording — the tell behind Musixmatch's anti-scraping decoy (206 lines running to 13:56 on a 3:30 track).
+    /// Generous on purpose (15% + 5s) so a trailing outro line on a correctly-timed lyric never trips it.
+    /// <paramref name="durationMs"/> ≤ 0 (unknown track length) always returns false.</summary>
+    public static bool ExceedsTrackDuration(LyricsDocument doc, long durationMs)
+    {
+        if (durationMs <= 0 || doc.Lines.Count == 0) return false;
+        var last = doc.Lines[^1];
+        long end = last.EndMs ?? last.StartMs;
+        return end > (long)(durationMs * 1.15) + 5000;
+    }
+
+    /// <summary>True when a document's lines march forward at an exactly-uniform step (and, where ends exist, an
+    /// exactly-uniform duration) — the other half of the same decoy tell: 206 lines every 4000ms apart is not a human
+    /// transcription, it is a generator. Needs at least 20 lines so a short, legitimately regular verse cannot trip it.
+    /// "Identical within 1ms" tolerates integer rounding without accepting any real variation.</summary>
+    public static bool HasUniformLineDurations(LyricsDocument doc)
+    {
+        if (doc.Lines.Count < 20) return false;
+        long? step = null, lineDur = null;
+        for (int i = 0; i < doc.Lines.Count; i++)
+        {
+            var l = doc.Lines[i];
+            if (i > 0)
+            {
+                long d = l.StartMs - doc.Lines[i - 1].StartMs;
+                if (step is null) step = d;
+                else if (Math.Abs(d - step.Value) > 1) return false;
+            }
+            if (l.EndMs is { } e)
+            {
+                long dur = e - l.StartMs;
+                if (lineDur is null) lineDur = dur;
+                else if (Math.Abs(dur - lineDur.Value) > 1) return false;
+            }
+        }
+        return true;
+    }
+
+    static long UniformStepMs(LyricsDocument doc)
+        => doc.Lines.Count >= 2 ? doc.Lines[1].StartMs - doc.Lines[0].StartMs : 0L;
+
+    static string Fmt(long ms)
+    {
+        if (ms < 0) ms = 0;
+        long m = ms / 60000, s = (ms % 60000) / 1000;
+        return $"{m}:{s:00}";
+    }
+
     /// <summary>One human-readable verdict on a document's timings — the string the inspector shows and every saved
     /// bundle records. Two families: STRUCTURAL (timestamps that go backwards, never got set, or end before they start;
     /// syllables outside their own line) and PLAUSIBILITY (timings that are internally consistent but far too compressed
-    /// to be sung). The second family is what catches a scale mistake in a body parser.</summary>
-    public static string Describe(LyricsDocument doc)
+    /// to be sung). The second family is what catches a scale mistake in a body parser. <paramref name="durationMs"/> is
+    /// the track's own length (0 when not in scope at the call site) — it unlocks the two decoy tells above, which the
+    /// per-line loop below cannot see on its own.</summary>
+    public static string Describe(LyricsDocument doc, long durationMs = 0)
     {
         if (doc.Sync == LyricsSyncKind.Unsynced)
             return "unsynced document — it carries no timings at all, so the UI cannot follow it";
@@ -146,6 +197,14 @@ public static class LyricsTiming
         if (HasImplausibleWordTiming(doc, out _, out _))
             parts.Add("VERDICT: the word-timing gate rejects this — the reranker demotes it to the line tier and the "
                 + "winner's syllables are stripped, so the view falls back to line-level highlighting on the (correct) starts");
+        if (ExceedsTrackDuration(doc, durationMs))
+        {
+            var last = doc.Lines[^1];
+            long end = last.EndMs ?? last.StartMs;
+            parts.Add($"runs to {Fmt(end)} on a {Fmt(durationMs)} track");
+        }
+        if (HasUniformLineDurations(doc))
+            parts.Add($"{doc.Lines.Count} lines all exactly {UniformStepMs(doc)} ms — uniform decoy timing");
 
         return parts.Count == 0
             ? "clean — monotonic lines, plausible durations, every timestamp inside its line"

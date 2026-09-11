@@ -371,3 +371,8 @@ Verified reference counts across all of `src/apps`, including the tests.
 | `SidebarPaneConfig.RailHead` | **NOT deleted — re-added (W3), for exactly one mode.** Phase 1 had removed it on the theory that the Shortcuts band would always be an ordinary document section; that stays true for Classic/Curated, which still pass `RailHead = null` and get their rail tiles from `ShowInRail`. Library V3 is the one exception: its nav band left the document (`LibraryV3NavBand.cs` is fixed chrome, not a section), so it has no section for the rail to draw from and supplies `RailHead` instead (`Modes/LibraryV3Sidebar.BuildRailHead`). `Pane/SidebarPaneRail.Build` prepends `Config.RailHead?.Invoke()` ahead of the plan's own tiles (a divider follows), and — because those tiles are no longer part of any plan — `SidebarPane`'s rail memo folds `Prefs.LayoutVersion.Value` into its own `DepKey` whenever `Config.RailHead` is non-null, so a TopBar edit still repaints the rail even though it moves no section. |
 | `AppActions.All` | Declared at `Actions/AppAction.cs:96-108` with **zero** code references anywhere — every mention is a doc comment. Dead-but-retained. Do not add the first reference; the registry is the path. |
 | loc `player.play` / `player.pause` in `nl`/`ko` | Dead override keys — not present in en-US and referenced nowhere. |
+
+- **A leading visual must be a hard-sized box.** `SidebarCover.Liked` used to hand the row a bare `Embed.Comp`
+  anchor (no Width/Height/Shrink); the measured extent of that one row exceeded its section's height and the
+  virtualized list wrote it back — a single taller row in a band (rule 4). Wrap any per-slot component in the same
+  `Width = Height = art, Shrink = 0` box the static arms use.

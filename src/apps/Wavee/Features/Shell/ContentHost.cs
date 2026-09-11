@@ -27,6 +27,8 @@ sealed class ContentHost : Component
     // The shell's Go, refreshed from context on every render. PageFor runs inside the keep-alive boundary's own
     // computation, where a hook (UseContext) cannot be called — so the value is parked here by Render instead.
     Action<string, string?> _go = static (_, _) => { };
+    // The shell material's owner for every destination that has no colour of its own (search, settings, library, …).
+    readonly object _neutralMaterialOwner = new();
     public ContentHost(Signal<Route> route, Signal<NavTransitionKind> motion, Func<int> activeTabId, IAppSettings? settings = null)
     { _route = route; _motion = motion; _activeTabId = activeTabId; _settings = settings; }
 
@@ -38,8 +40,19 @@ sealed class ContentHost : Component
         // disappearing from the tree would remount the KeepAlive subtree and cold-restart every cached page.
         var bridge = UseContext(PlaybackBridge.Slot);
         var ui = UseContext(ShellUi.Slot);
+        var material = UseContext(ShellMaterial.Slot);
         _go = UseContext(HistoryStore.NavCtx);
         float reserve = bridge?.FloatingSurfaceReserve.Value ?? 0f;   // subscribe → re-inset as the surface comes and goes
+
+        // The NEUTRAL half of the shell material hand-over. Pages never clear the material (ShellMaterial.Publish), so a
+        // destination with no colour of its own would keep the previous page's; this boundary claims it neutral for
+        // exactly the routes no page publishes for — disjoint from the pages' own claims, so the two effects need no
+        // order (the ActiveStagePlayable rule below). Neutral is a real ground colour, so the chrome eases to it.
+        UseSignalEffect(() =>
+        {
+            if (!PublishesShellMaterial(_route.Value))
+                ShellMaterial.Publish(material, _neutralMaterialOwner, isClaim: true, definite: true, tint: null, wash: null);
+        });
 
         // The CLEARING half of ShellUi.ActiveStagePlayable (ModulePage writes the claim; its doc-comment states the
         // whole contract). This boundary is the only thing that knows a navigation happened AT ALL when the
@@ -128,6 +141,9 @@ sealed class ContentHost : Component
     // length of its exit: navigating away from a watch page is exactly as exposed as navigating to one. The
     // classification lives HERE and not in PageNavMotion because that file is source-included into Wavee.Tests, which
     // cannot compile ModulePages — the motion stays pure, the route knowledge stays in the shell.
+    //
+    // A tab's FIRST page (a fresh tab opened straight onto a destination) asks too: the old token is then
+    // KeepAliveOptions.FirstActivation, not a PageSlot, so it gets the ordinary recipe for its direction.
     LayoutTransition? PageTransition(object oldToken, object newToken)
     {
         if (newToken is not PageSlot slot) return null;
@@ -162,6 +178,12 @@ sealed class ContentHost : Component
         || r.Name.StartsWith("show:", StringComparison.Ordinal) || r.Name == "liked" || r.Name == "local";
 
     static bool IsArtist(Route r) => r.Name.StartsWith("artist:", StringComparison.Ordinal);
+
+    // The routes whose page claims the shell material itself: the cover tint (detail, artist) or Home's wash (Home, a
+    // home/browse section, Recents). Keep in step with PageFor.
+    static bool PublishesShellMaterial(Route r) =>
+        r.Name == "home" || r.Name == "recents" || string.Equals(r.Name, NavRouteNormalizer.LegacyRecentsRoute, StringComparison.Ordinal)
+        || HomeSectionRoutes.Is(r.Name) || BrowseSectionRoutes.Is(r.Name) || IsArtist(r) || IsDetail(r);
 
     Element PageFor(Route r)
     {
@@ -217,6 +239,11 @@ sealed class ContentHost : Component
         if (r.Name == PlaybackRuntimeDiagnosticsPage.Route)
             return new BoxEl { Key = "page:" + PlaybackRuntimeDiagnosticsPage.Route, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
                 Children = [ Embed.Comp(() => new PlaybackRuntimeDiagnosticsPage()) ] };
+
+        // Connect ownership diagnostics (Step C) — same shape as the runtime-diagnostics route above.
+        if (r.Name == ConnectDiagnosticsPage.Route)
+            return new BoxEl { Key = "page:" + ConnectDiagnosticsPage.Route, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
+                Children = [ Embed.Comp(() => new ConnectDiagnosticsPage()) ] };
 
         // The full-page sidebar customizer (§C4.1). An ordinary destination — tabs, back/forward, history and KeepAlive
         // all behave — because it edits the LIVE preference document instead of owning any state of its own.

@@ -30,8 +30,12 @@ namespace Wavee;
 public static class WaveeMotion
 {
     // ── Interaction scale tiers ────────────────────────────────────────────────────────────────────────────────
-    /// <summary>Chips, list/track rows, small toggles, settings rows, inline pickers — a surface the pointer crosses
-    /// often. Barely-there, so a scrolling list doesn't shimmer.</summary>
+    /// <summary>Chips, small toggles, settings rows, inline pickers — a surface the pointer crosses often.
+    /// Barely-there, so a scrolling list doesn't shimmer.
+    /// <para>NOT a near-full-width track/list row: even this "subtle" 2%/2% swing moves each edge several DIP in
+    /// opposite directions on a ~1000px-wide row, which reads as the whole row shrinking and springing back and
+    /// visibly blurs the title/artist text mid-scale (S3 #14). A wide row's press acknowledgement is its
+    /// <c>PressedFill</c> alone — no <c>PressScale</c>.</para></summary>
     public static readonly ScaleTier ScaleSubtle = new(1.02f, 0.98f);
 
     /// <summary>Buttons, CTAs, pills, secondary circles — a deliberate, discrete target. This is the WaveeCta media
@@ -120,6 +124,38 @@ public static class WaveeEntrance
     /// <summary>Assign to <c>BoxEl.Animate</c> on the item's own wrapper box (never on a node whose Opacity is already
     /// bound — a bound channel and an Enter opacity track fight over the same row).</summary>
     public static LayoutTransition Row(int index) => Rise with { DelayMs = DelayMs(index) };
+}
+
+/// <summary>Arms once the pointer has demonstrably MOVED — never on the first sample. A card's hover-driven effects
+/// (scale, fill, FAB reveal) must not light from the engine's own stationary-cursor hover re-resolve
+/// (FluentGpu <c>InputDispatcher.RefreshHoverAfterLayoutMove</c>/<c>RefreshHoverAfterScroll</c>, input-a11y.md
+/// §5.4/§15): that path re-fires a node's <c>OnPointerMoveWithin</c> at the SAME on-screen point whenever new content
+/// lands under a cursor that never actually moved — exactly the back-navigation case, where a grid mounts fresh cards
+/// under a mouse that has been resting there the whole time. With nothing to distinguish it from a genuine hover-enter,
+/// the card used to scale up the instant it appeared, with no pointer edge behind it at all (S3 #14).
+/// <para>One gate per card instance (a field on a stateful <c>Component</c>, or a local captured by the card's own
+/// closures for the static factories). The FIRST sample it ever sees is always recorded as a baseline, never treated
+/// as a hover — only a LATER sample landing somewhere else proves the pointer is genuinely in motion. Once armed it
+/// stays armed for the component's lifetime: this is a one-shot "has real input happened since mount" latch, not a
+/// per hover-cycle re-check — a page the user is already interacting with must not re-litigate every hover-out/in.</para></summary>
+public struct HoverMotionGate
+{
+    Point2 _baseline;
+    bool _hasBaseline;
+    bool _armed;
+
+    /// <summary>Feed every <c>OnPointerMoveWithin</c> sample. Returns whether the card may now treat itself as
+    /// genuinely hovered — false while every sample so far has been a single stationary re-hover.</summary>
+    public bool Observe(Point2 pos)
+    {
+        if (_armed) return true;
+        // Sub-pixel jitter from re-hit-testing the same float geometry must not itself read as "moved".
+        if (_hasBaseline && (MathF.Abs(pos.X - _baseline.X) > 0.5f || MathF.Abs(pos.Y - _baseline.Y) > 0.5f))
+        { _armed = true; return true; }
+        _baseline = pos;
+        _hasBaseline = true;
+        return false;
+    }
 }
 
 /// <summary>One interaction scale tier: the authored hover/press targets plus the reduced-motion-safe accessors every

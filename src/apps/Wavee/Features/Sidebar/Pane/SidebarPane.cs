@@ -262,6 +262,9 @@ sealed class SidebarPane : Component
     internal WaveeExtensionRegistry? Registry;
     internal PlaybackBridge? Playback;
     internal LibraryStore? Store;
+    /// <summary>The click→detail handoff (S2 #7's sidebar half): resolved here so <see cref="Navigate(string,string?,in SidebarLibraryEntry)"/>
+    /// can stash a Playlist/Album row's preview the same way a Home card does, before navigating.</summary>
+    internal NavPreviewStore? Preview;
     /// <summary>The first section whose header row exists — it hosts the quick sidebar-layout menu button, which is
     /// Classic's placement (§C6.4: the switch must be reachable from the pane itself, never only from Settings). Null when
     /// the mode puts those rows in its own chrome instead (<c>Config.ShowLayoutMenu == false</c>).</summary>
@@ -459,6 +462,7 @@ sealed class SidebarPane : Component
         MenuOverlay = UseContext(Overlay.Service);
         Playback = UseContext(PlaybackBridge.Slot);
         Store = UseContext(LibraryStore.Slot);
+        Preview = UseContext(NavPreviewStore.Slot);
         // The registry is the ONE lookup path for a bound action row (never AppActions.All — the M3 forward-compat
         // guardrail). Context first, then the action bag, so a host that provides only one of them still resolves.
         Registry = UseContext(WaveeExtensionRegistry.Slot) ?? Acts?.Extensions;
@@ -2678,6 +2682,41 @@ sealed class SidebarPane : Component
     }
 
     internal void Navigate(string routeKey, string? arg) => _go(routeKey, arg);
+
+    /// <summary>Navigate exactly as <see cref="Navigate(string,string?)"/>, but first stash the SAME click→detail
+    /// preview a Home card gets (S2 #7's sidebar half — <c>HomeCardNav.Open</c> → <c>DetailNav.OpenAlbum</c>/
+    /// <c>OpenPlaylist</c>) when <paramref name="entry"/> is a Playlist or Album: the destination's header paints
+    /// from it on frame one instead of a header-less skeleton that reshapes once the full model lands. Every other
+    /// kind (route, folder, track, artist, show) is untouched — this only ADDS a preview, it never changes what a
+    /// row navigates to.</summary>
+    internal void Navigate(string routeKey, string? arg, in SidebarLibraryEntry entry)
+    {
+        StashPreview(routeKey, in entry);
+        _go(routeKey, arg);
+    }
+
+    /// <summary>Prefers the library store's own record (real Daylist rollover window + payload accent — see
+    /// <see cref="SidebarNavPreview.FindPlaylist"/>/<see cref="SidebarNavPreview.FindAlbum"/>); falls back to the
+    /// row's own display cache (<see cref="SidebarNavPreview.PlaylistSummaryOf"/>/<see cref="SidebarNavPreview.AlbumOf"/>)
+    /// for a uri the store has not resolved — an unlisted pin (e.g. a pinned daylist never saved to the library), which
+    /// still gets a real title/cover header even though it cannot carry the countdown.</summary>
+    void StashPreview(string routeKey, in SidebarLibraryEntry entry)
+    {
+        if (Preview is not { } preview) return;
+        switch (entry.Kind)
+        {
+            case SidebarEntryKind.Playlist:
+                var pl = SidebarNavPreview.FindPlaylist(Store?.Playlists.Value.Peek(), entry.Uri)
+                         ?? SidebarNavPreview.PlaylistSummaryOf(in entry);
+                preview.Set(routeKey, DetailPreview.FromPlaylist(pl));
+                break;
+            case SidebarEntryKind.Album:
+                var al = SidebarNavPreview.FindAlbum(Store?.Albums.Value.Peek(), entry.Uri)
+                         ?? SidebarNavPreview.AlbumOf(in entry);
+                preview.Set(routeKey, DetailPreview.FromAlbum(al));
+                break;
+        }
+    }
 
     internal void OpenCustomizer() => Config.OnCustomize?.Invoke();
 

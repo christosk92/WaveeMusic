@@ -96,9 +96,11 @@ internal static class TrackExpandedFacts
 
         // ── membership ──────────────────────────────────────────────────────────────────────────────────────────────
         // The resolved display name when the page has the profile; the raw playlist membership id otherwise — a
-        // collaborative playlist is the only surface that carries either, so absence here is the common case.
+        // collaborative playlist is the only surface that carries either, so absence here is the common case. When the
+        // full profile resolved, the fact also carries the Owner (Person) so the strip can draw the same avatar chip
+        // the Added-by COLUMN draws (TrackRow.AddedByCell) instead of a bare name.
         if (options.AddedByName is { Length: > 0 } who)
-            facts.Add(new TrackFact(TrackFactKind.AddedBy, TrackFactForm.Value, who));
+            facts.Add(new TrackFact(TrackFactKind.AddedBy, TrackFactForm.Value, who, Person: options.AddedByProfile));
         else if (track.AddedBy is { Length: > 0 } raw)
             facts.Add(new TrackFact(TrackFactKind.AddedBy, TrackFactForm.Value, raw));
 
@@ -332,9 +334,12 @@ public enum KeyMode : byte { Unknown, Major, Minor }
 /// <summary>One fact. <paramref name="Value"/> is the formatted display string (empty for a flag, whose label IS the
 /// fact); <paramref name="LinkUri"/> is set only on <see cref="TrackFactForm.Link"/>; <paramref name="Chips"/> only on
 /// <see cref="TrackFactForm.Chips"/>.</summary>
+/// <para><paramref name="Person"/> is set only on the <see cref="TrackFactKind.AddedBy"/> fact, and only when the page
+/// resolved the full profile (not just a display name) — it is what lets the strip draw the same avatar chip the
+/// Added-by column draws instead of a bare name.</para>
 internal readonly record struct TrackFact(
     TrackFactKind Kind, TrackFactForm Form, string Value,
-    string? LinkUri = null, IReadOnlyList<string>? Chips = null);
+    string? LinkUri = null, IReadOnlyList<string>? Chips = null, Owner? Person = null);
 
 /// <summary>One hero fact's two halves — see <see cref="TrackExpandedFacts.HeroSplit"/>. <paramref name="Value"/> is
 /// the FIGURE the display face draws and is never null or empty for a hero fact (a pending one carries
@@ -355,6 +360,7 @@ internal readonly record struct TrackFactsOptions(
     bool PlaysPending = false,
     bool HasVideo = false,
     string? AddedByName = null,
+    Owner? AddedByProfile = null,
     CultureInfo? Culture = null,
     TimeZoneInfo? Zone = null,
     string? MajorWord = null,

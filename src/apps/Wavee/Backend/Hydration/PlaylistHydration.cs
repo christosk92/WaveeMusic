@@ -113,11 +113,17 @@ public sealed class PlaylistHydration : IKindHydration
 
             // ── Open ─────────────────────────────────────────────────────────────────────────────────────────────────
             // No baseline ⇒ there is nothing to paint, so the open BLOCKS on LibrarySync's real open. With a baseline
-            // it is a revalidation: enqueue and let the loop's own 5-minute/dirty gates decide whether anything fetches.
+            // that is still FRESH, it is a background revalidation: enqueue and let the loop's own gates decide
+            // whether anything fetches — the page already painted the cache. With a baseline that NEEDS revalidation
+            // (dirty / past the window / rolling-identity — LibrarySync.NeedsRevalidation, S2 #6), await the SAME real
+            // open LibrarySync already knows how to run on a resident baseline (its own header-heal + dirty/stale/
+            // rolling branch inside OpenPlaylistCoreAsync): whether that wait actually reaches the caller or the
+            // caller detaches from it after a bounded deadline is StoreLibrarySource's call (OpenPolicy's plan), not
+            // this ladder's — this only decides whether the ask is worth AWAITING at all versus fired-and-forgotten.
             bool hadBaseline = _store.HasMembership(uri);
             try
             {
-                if (!hadBaseline) await _opener.OpenAsync(uri, ct).ConfigureAwait(false);
+                if (!hadBaseline || _opener.NeedsRevalidation(uri)) await _opener.OpenAsync(uri, ct).ConfigureAwait(false);
                 else _opener.Revalidate(uri);
             }
             catch (OperationCanceledException) { throw; }

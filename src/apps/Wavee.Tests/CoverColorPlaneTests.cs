@@ -214,12 +214,22 @@ public class CoverColorPlaneTests
                     new CoverColorPlane.GradedColors?[] { new CoverColorPlane.GradedColors(Dark, Light, false) });
         };
 
+        // Await CoverColorPlane's own "batch settled" seam rather than polling a fixed wall-clock budget: the pump is
+        // debounced (PumpDebounceMs) and then dispatched via Task.Run, so under a thread-pool-starved full suite run a
+        // capped poll can expire before the pump ever gets scheduled — this awaits however long that actually takes.
+        TaskCompletionSource? waiter = null;
+        plane.BatchSettled = () => waiter?.TrySetResult();
+
+        // The 30 s bound is not a timing budget — it only turns a regression (the pump never settling) into a failure
+        // instead of a hung suite; a starved-but-healthy run settles in well under a second.
+        waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.False(plane.TryGetTint(Large, false, out _));
-        for (int i = 0; i < 100 && calls == 0; i++) await Task.Delay(25);
+        await waiter.Task.WaitAsync(TimeSpan.FromSeconds(30));   // the failing batch has settled — its ids are freed from _queued for a retry
 
         // A transport failure must not poison the image: the slot asks again on its next render.
+        waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.False(plane.TryGetTint(Large, false, out _));
-        for (int i = 0; i < 100 && calls < 2; i++) await Task.Delay(25);
+        await waiter.Task.WaitAsync(TimeSpan.FromSeconds(30));   // the retried batch has settled
         Assert.Equal(2, calls);
         Assert.True(plane.TryGetTint(Large, false, out _));
     }

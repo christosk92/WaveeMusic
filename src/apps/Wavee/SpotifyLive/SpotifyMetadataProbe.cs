@@ -15,7 +15,7 @@ public static class SpotifyMetadataProbe
 {
     public static async Task<int> RunAsync(string uri, WaveeLogger log, CancellationToken ct, string language = "en")
     {
-        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
+        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language, clearStoredOnReject: false).ConfigureAwait(false);
         if (live is null) return 1;
 
         // wire the metadata chain (a one-shot InMemoryStore — no persistence needed for the probe).

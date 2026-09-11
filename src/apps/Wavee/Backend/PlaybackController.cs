@@ -12,12 +12,16 @@ using Wavee.Core;
 namespace Wavee.Backend;
 
 // ── Stage E — the PlaybackController (the live IPlaybackPlayer orchestrator + Connect command arbitration) ────────────
-// Routing spine (see docs/plans/wavee-playback-arbitration-rules.md): for EVERY verb,
-//   LOCAL  ⇔ cluster.ActiveDeviceId is empty OR == us   (we take over / we are the player)
-//   REMOTE ⇔ another device is active                   (forward the command to it)
-// The cluster is the single source of truth for "who is active" — no local flag. Ghost resume seeds local playback from
-// the cluster snapshot when the play button is pressed while nothing is loaded locally. Inbound REQUEST commands (we are
-// the target) always execute LOCALLY regardless of the routing rule (the dealer only routes them to us when we're active).
+// Routing spine (see docs/plans/wavee-playback-arbitration-rules.md): every verb decides with ONE snapshot of the Connect
+// ownership authority (NowPlayingProjection.Ownership — Backend/PlaybackOwnership.cs):
+//   LOCAL  ⇔ the owner is Us or Nobody        (we play / nobody does, so we may)
+//   REMOTE ⇔ the owner is Foreign(X)          (forward the verb to X — the same snapshot names the target)
+// There is no second opinion here: no sticky "we own it" flag, no raw active-device id, no pending window. A path that
+// starts or resumes audible LOCAL playback CLAIMS first (the owner becomes Us; the server's answer to the claim's
+// put-state is the verdict), every load asks PlaybackOwnership.AllowsLoad, and the host never runs while another device
+// owns playback (OnOwnershipChanged stops it on every Foreign fold; OnHostSignal stops a stray one). Ghost resume seeds
+// local playback from the cluster snapshot when the play button is pressed over a departed device's (or an empty) local
+// session. Inbound REQUEST commands (we are the target) always execute LOCALLY; the ones that start playback claim first.
 
 public interface ITrackResolver
 {
@@ -130,13 +134,11 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     readonly IPreparedAudioHost? _preparedHost;
     readonly IDisposable? _transitionSub;
     readonly IDisposable _projSub;
+    readonly WaveeLogger _connectLog;       // the same sink, [connect] category — connect.owner / claim.rejected / pull
     readonly SemaphoreSlim _lock = new(1, 1);
-    readonly object _ownershipGate = new();
-    string _lastActive = "";
     double _lastVolume = -1;
     double _lastIntentVolume = double.NaN;
     readonly TrailingCoalescer _remoteVolumeTx = new(400);
-    bool _ownsActivePlayback;
     string? _nextPageUrl;
     bool _contextIsInfinite;
     string? _autoplayLatchedFor;
@@ -185,24 +187,30 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // 0 = armed, 1 = running, 2 = seeded/done. Armed again after an attempt that found nothing to seed, so a later
     // cluster fold (reconnect with a still-empty session) can retry; a successful seed is once-per-session.
     int _recoveryState;
-    // The session was SEEDED (cluster recovery) but nothing was loaded on the host yet — the first Resume must go through
-    // LoadAndPlayCurrentAsync (fast-start at the stored position), not a bare host.Play() over empty media (§1).
-    bool _restorePendingLoad;
     // Launch/ghost restore is audio-first, exactly like Connect-originated playback: video restores PLACEMENT only, never
     // live playback (§8). Cleared by ClearRemotePlaybackIds (an explicit local media intent).
     bool _restoreAudioFirst;
     // One skip-to-next per restored playable whose resolve failed (§6.6) — a second failure reports instead of looping.
     string? _unplayableSkippedUri;
-    // Seam B (local ownership lifecycle, §3) — the uri an ownership-regained auto-reload has already been scheduled
-    // for, so a flapping cluster fold (active → us → active → us again before the first attempt has cleared
-    // _restorePendingLoad) cannot schedule the same reload twice. Follows the _videoRecoveryUri / _unplayableSkippedUri
-    // pattern: it self-supersedes the moment the current track changes, and the scheduled task itself clears it once
-    // the attempt is done (success, bail, or failure) so a LATER teardown of the SAME track can still auto-reload.
-    string? _ownershipReloadUri;
-    // Set immediately before a load that must not be seen by the outside world: a launch/snapshot restore (§8) or the
-    // ownership-regained auto-reload (§3) both load PAUSED so the next real Play() is instant, but neither is a user
-    // action, so the wire (_extra fan-out) must not be told. Consumed — and always cleared — by the very next Publish.
+    // Set immediately before a load that must not be seen by the outside world: a launch/snapshot restore (§8) loads
+    // PAUSED so the next real Play() is instant, but it is not a user action, so the wire (_extra fan-out) must not be
+    // told. Consumed — and always cleared — by the very next Publish. (Independent of ownership: a restore happens while
+    // nobody owns playback, and this only mutes the event fan-out.)
     bool _quietRestorePublish;
+    // The playable the CURRENT host was last handed — set where a load actually reaches the host (LoadFastStart / Load,
+    // an opened video, a prepared hand-off the host performed itself), cleared by every Stop and host swap. It is half of
+    // HostHoldsCurrent(), which replaces the old _restorePendingLoad latch: a latch every session-preserving stop had to
+    // remember to arm (and the ownership auto-reload consumed) is exactly what the 14:58 flip loop re-armed forever; a
+    // derived fact cannot be forgotten. Volatile: StopHost clears it off-lock (a takeover on the dealer thread).
+    volatile string? _loadedUri;
+    // OUR OWN playhead for OUR playable (uri + ms) — where a reload of the current resumes once the host no longer holds
+    // it. Fed only by positions this controller knows are local truth: the host's clock (its ticks while it holds the
+    // playable, a capture right before every StopHost), a load's own resume target, a committed seek, a prepared hand-off,
+    // a recovery seed. NEVER a cluster fold: another device's playhead applied to our track is the 1137/1788/2578/6448
+    // incident class (the phone's position on a different song). Tiny gate: host ticks (5 Hz) write it off-thread.
+    readonly object _playheadGate = new();
+    string? _playheadUri;
+    long _playheadMs;
 
     readonly record struct PlaybackFailureCheckpoint(string TrackUri, long PositionMs);
 
@@ -251,9 +259,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         _extra = extraProjections ?? Array.Empty<IPlaybackProjection>();
         _log = log;
         _featureVersion = playFeatureVersion ?? OutboundEnvelope.DefaultFeatureVersion;
+        _connectLog = log.With("connect");
         _hostSub = SubscribeHost(_currentHost, _hostGeneration);
         _preparedHost = host as IPreparedAudioHost;   // prepared-next/crossfade is an AUDIO-host capability only
         _transitionSub = _preparedHost?.Transitions.Subscribe(Observers.From<AudioTransitionSignal>(OnAudioTransition));
+        // The one ownership authority lives on the projection (it folds every cluster); its transitions drive the host.
+        projection.Ownership.Changed += OnOwnershipChanged;
         _projSub = projection.Changes.Subscribe(Observers.From<IPlaybackState>(OnProjectionChanged));
         PlaybackBucketDiagnostics.Startup("controller", "created",
             WaveeLogField.Of("device", ourDeviceId),
@@ -265,10 +276,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     public IPlaybackState State => _projection;
 
     /// <summary>See <see cref="IPlaybackPlayer.ShouldPauseOnSuspend"/>: a sleeping laptop must pause OUR OWN audible
-    /// playback, never a remote device's — RouteLocal() alone isn't enough (an empty active-device id also reads as
-    /// local, but might mean "nothing is loaded here at all"), so ClockValid narrows it to "and this host actually
-    /// has media running."</summary>
-    public bool ShouldPauseOnSuspend => RouteLocal() && _currentHost.ClockValid;
+    /// playback, never a remote device's — local routing alone isn't enough (Nobody routes local too, but might mean
+    /// "nothing is loaded here at all"), so ClockValid narrows it to "and this host actually has media running."</summary>
+    public bool ShouldPauseOnSuspend => PlaybackOwnership.RoutesLocal(Owner) && _currentHost.ClockValid;
 
     /// <summary>When set, LOCAL playback is rejected at every point that would start/seed the (silent) local host: the hook
     /// fires (the app shows the "playback on this device isn't supported yet — choose a remote device" toast) and the
@@ -286,13 +296,6 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     /// NULL (unit tests, an unwired build) is the identical "no extrapolation" answer. Wired by the live bootstrap
     /// (<c>LiveConnect</c>) to its <c>SpotifyServerClock</c> instance.</summary>
     public Func<long>? ServerNowUnixMs { get; set; }
-
-    /// <summary>Tell the WIRE ONLY that we're inactive (an empty active-device-id cluster echo — see
-    /// <see cref="OnProjectionChanged"/>) — never through Publish/EmitState, which would also fold BecameInactive
-    /// into the LOCAL projection and poison the position/play-state for a transition that never touched the local
-    /// host. Null (unit tests, an unwired build) is a silent no-op. Wired by the live bootstrap (<c>LiveConnect</c>)
-    /// to its <c>DeviceStatePublisher.PublishInactive</c>.</summary>
-    public Action? PublishInactiveOnWire { get; set; }
 
     /// <summary>Publish our CURRENT player state to the wire UNGATED (the same <c>force</c> path the music-video badge
     /// upgrade uses) — called by <see cref="TransferToAsync"/> immediately before forwarding a transfer we own, so the
@@ -521,6 +524,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             outgoing.Stop();
         }
         _currentHost = target;
+        _loadedUri = null;   // the incoming host holds nothing until the caller's load reaches it
         // Disposing the outgoing subscription orphans any BUFFERING state that host had published: it can no longer
         // deliver the Playing/Ended edge that would clear it, so the spinner would latch over the incoming media (the
         // observed "closed the video, audio played, buffering spun forever"). Retire it at the swap — the incoming host
@@ -597,11 +601,10 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         CancellationToken ct = default)
     {
         if (ShouldPlayAsVideo is null) return;   // hooks unwired → the kind can never be anything but audio
-        // A genuine, non-empty foreign active device ALWAYS refuses a local reload — deliberately NOT RouteLocal(),
-        // whose LocalOwnershipPending OR-clause exists for a transport verb pressed right after "transfer to this
-        // computer", not for re-evaluating media kind while another device is actually, currently active.
-        var aid = _projection.ActiveDeviceId;
-        if (!string.IsNullOrEmpty(aid) && aid != _ourDeviceId) return;
+        // Only the OWNER re-hosts its media. Foreign never loads here, and Nobody has nothing audible to re-host — a
+        // media-kind toggle is not a claim (the next Play picks the kind up through KindFor). Checked before any side
+        // effect, so a refused refresh does not even clear the Connect ids.
+        if (!PlaybackOwnership.AllowsLoad(Owner, LoadOrigin.MediaKindRefresh, paused: false)) return;
         if (clearConnectAudioFirst) ClearRemotePlaybackIds();   // explicit local media intent ends Connect's audio-first preference
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -628,7 +631,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             if (next != PlayableKind.Video && cur.DurationMs > 0 && carry > cur.DurationMs)
                 carry = cur.DurationMs;   // heading to audio: the catalog length is known here, so clamp before the load
             MintCommand("playbtn");
-            await LoadAndPlayCurrentAsync(EvKind.Started, ct, carry).ConfigureAwait(false);
+            await LoadAndPlayCurrentAsync(LoadOrigin.MediaKindRefresh, EvKind.Started, ct, carry, posSource: "host")
+                .ConfigureAwait(false);
         }
         finally { _lock.Release(); }
     }
@@ -669,7 +673,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // the newly-attached CDN body's read-ahead competing with the still-decoding clear head is now shaped at the
     // source instead (SpotifyAudioStream pauses read-ahead across an eager attach and releases it itself on the
     // decoder's first real body byte — see SpotifyAudioStream.AttachBodyCoreAsync / ReleaseBandwidthShapePauseIfArmed).
-    async Task SupplyBodyWhenReadyAsync(Task<AudioStreamHandle> body, string expectedTrackUri)
+    async Task SupplyBodyWhenReadyAsync(Task<AudioStreamHandle> body, string expectedTrackUri, LoadOrigin origin, bool initiallyPaused)
     {
         try
         {
@@ -678,6 +682,16 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             if (!string.Equals(current, expectedTrackUri, StringComparison.Ordinal))
             {
                 _log.Info($"fast-start body ignored as stale expected={expectedTrackUri} current={current} bodyTrack={h.TrackUri} file={h.FileIdHex}");
+            }
+            else if (!string.Equals(_loadedUri, expectedTrackUri, StringComparison.Ordinal))
+            {
+                // The host no longer holds this load — a takeover (or any other StopHost) silenced it while the body was
+                // still resolving. Supplying it now would hand a stopped decoder work it must not do.
+                _log.Info($"fast-start body dropped — the host no longer holds {expectedTrackUri} (file={h.FileIdHex})");
+            }
+            else if (!PlaybackOwnership.AllowsLoad(Owner, origin, initiallyPaused))
+            {
+                LogLoadRefused(origin, EvKind.Started, initiallyPaused, expectedTrackUri, Owner, "body");
             }
             else if (_currentKind == PlayableKind.Video)
             {
@@ -705,117 +719,223 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         catch (Exception ex)
         {
             var current = _session.Current?.Uri ?? "";
-            if (string.Equals(current, expectedTrackUri, StringComparison.Ordinal))
+            bool active = string.Equals(current, expectedTrackUri, StringComparison.Ordinal);
+            if (active)
             {
                 // Through the ONE teardown chokepoint (not a bare _audioHost.Stop()) — the audio host IS _currentHost
-                // here (this flow is only ever scheduled from the audio fast-start path), and this stop must arm
-                // _restorePendingLoad exactly like every other session-preserving stop, or a later Resume bare-Play()s
-                // over the decoder this just silenced.
-                StopHostKeepingSession($"fast-start body failed for active track={expectedTrackUri}; stopping audio host to unblock head stream: {ex.GetType().Name}: {ex.Message}");
+                // here (this flow is only ever scheduled from the audio fast-start path). StopHost clears _loadedUri, so
+                // HostHoldsCurrent() reads false and a later Resume reloads instead of bare-Play()ing the silenced decoder.
+                StopHost($"fast-start body failed for active track={expectedTrackUri}; stopping audio host to unblock head stream: {ex.GetType().Name}: {ex.Message}");
             }
             else
             {
                 _log.Info($"fast-start body failed for stale track expected={expectedTrackUri} current={current}: {ex.GetType().Name}: {ex.Message}");
             }
             ReportPlaybackError(ex);
+            // The load failed terminally and nothing of ours is audible any more: give the slot up rather than keep
+            // telling the wire is_active over a silent player. The error surface's Retry claims again.
+            if (active) ReleaseOwnership(ReleaseCause.LoadFailed);
         }
     }
 
     /// <summary>Re-attempt the current track after a surfaced playback error (the toast/player-bar "Retry" action).</summary>
     public async Task RetryCurrentAsync(CancellationToken ct = default)
     {
+        // A Retry is a local play of OUR failed playable. While another device owns playback it is stale (the user is
+        // listening elsewhere) — it must not pull playback here as a side effect of an old toast.
+        if (!PlaybackOwnership.RoutesLocal(Owner)) { _log.Info("retry ignored — another device owns playback"); return; }
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             if (_session.Current is { } current)
             {
+                if (!ClaimLocalPlayback(ClaimCause.UserPlay)) return;
                 long resume = _failureCheckpoint is { } checkpoint
                     && string.Equals(checkpoint.TrackUri, current.Uri, StringComparison.Ordinal)
                     ? checkpoint.PositionMs
                     : -1;
-                await LoadAndPlayCurrentAsync(EvKind.Started, ct, resume).ConfigureAwait(false);
+                await LoadAndPlayCurrentAsync(LoadOrigin.Claim, EvKind.Started, ct, resume,
+                    posSource: resume >= 0 ? "checkpoint" : "none").ConfigureAwait(false);
                 _failureCheckpoint = null;
             }
         }
         finally { _lock.Release(); }
     }
 
-    // The routing spine: local iff nobody is active, we are, or a transfer-in just started local playback and the
-    // cluster hasn't folded us in as active yet (LocalOwnershipPending — see NowPlayingProjection). Without the last
-    // term, a transport verb pressed right after "transfer to this computer" could still race a stale fold and land
-    // on the device we just transferred FROM. (No _localActive flag — the cluster is otherwise the truth.)
-    bool RouteLocal() => RouteLocal(_projection.ActiveDeviceId);
+    // ── Connect ownership — the one authority (NowPlayingProjection.Ownership, Backend/PlaybackOwnership.cs) ─────────
+    // Every verb reads this ONCE and decides with that snapshot: route local vs. forward and — when forwarding — the
+    // target (owner.DeviceId). A cluster fold landing between the decision and the send can therefore never route to a
+    // device the decision did not name, or to an empty id.
+    OwnerState Owner => _projection.Ownership.Current;
 
-    // The same decision, taking a PRE-CAPTURED active-device id: the remote-forwarding verbs read ActiveDeviceId
-    // exactly once — at the same moment they evaluate the routing decision — and thread that one read down into the
-    // outbound helper as `target`, instead of the helper re-reading _projection.ActiveDeviceId at send time. Without
-    // this, a cluster fold landing between the routing check and the actual send could route local (or route remote
-    // to device A) and then send to whatever ActiveDeviceId reads as by then — including empty.
-    bool RouteLocal(string aid) => string.IsNullOrEmpty(aid) || aid == _ourDeviceId || _projection.LocalOwnershipPending;
+    /// <summary>Do WE own playback — the wire's is_active? The Connect state builder gates the CURRENT track's
+    /// authoritative <c>track_player</c>/<c>media.*</c> overwrite on this (bug 2): a viewer echoing another device's row
+    /// must never stamp its own idle CurrentMediaKind (default Audio) over the wire's claim. Derived from the one
+    /// ownership authority (a claim, or a cluster that adopted it) — never from "the host happens to be playing".</summary>
+    public bool OwnsPlaybackOnWire => PlaybackOwnership.IsActiveOnWire(_projection.Ownership.Current);
 
-    // "Another device became active" → stop our local host so we don't double-play. Public: the Connect state builder
-    // gates the CURRENT track's authoritative `track_player`/`media.*` overwrite on this (bug 2) — a viewer echoing
-    // another device's row must never have its OWN idle CurrentMediaKind (default Audio) stamped over the wire's claim.
-    public bool IsActiveOwner()
+    /// <summary>Give playback up: a transfer away the server accepted, the end of the context, a load that failed
+    /// terminally, logout. The effects (host stop + BecameInactive for a hand-off/logout, the inactive put-state for all)
+    /// arrive through the ownership transition exactly like a takeover's do — <see cref="OnOwnershipChanged"/> here, the
+    /// publisher's own PublishInactive reaction on the wire. A no-op unless we own playback; pause never releases.</summary>
+    public void ReleaseOwnership(ReleaseCause cause) => _projection.Ownership.Release(cause);
+
+    // Nobody owns playback because the device that did went away (a phone flap, DEVICES_DISAPPEARED): the display still
+    // shows ITS snapshot, so the first local intent acts on that — never on a stale local session the user cannot see.
+    static bool IsDepartedForeign(in OwnerState owner) => owner.Kind == OwnerKind.Nobody && owner.Cause == NobodyCause.FromForeign;
+
+    // Every path that starts or resumes audible LOCAL playback claims first (→ Us; the server's answer to the claim's
+    // put-state is the verdict, PlaybackOwnership P1–P4). False = local playback is rejected on this build (the hook
+    // fired and the caller aborts) — nothing is claimed.
+    bool ClaimLocalPlayback(ClaimCause cause)
     {
-        lock (_ownershipGate)
+        if (UserIntentWentStale(cause)) return false;
+        if (RejectLocalPlay()) return false;
+        _projection.Ownership.Claim(cause);
+        return true;
+    }
+
+    // A user verb routes on the owner it read at entry, then waits for _lock (behind the eager continuation apply, a
+    // recovery, another verb). A takeover folding on the dealer thread in that gap makes the routing stale: claiming now
+    // would pull playback straight back from the device that just took it. A user play/resume/skip never claims over a
+    // foreign owner on purpose — its entry check forwards instead — while inbound commands (the server addressed US) and
+    // the transfer-to-self fallback do, so only the user causes are refused. Checked again before a verb mutates the
+    // session, so a stale Next does not step a queue nobody will hear. Caller holds _lock.
+    bool UserIntentWentStale(ClaimCause? cause)
+    {
+        if (cause is not (ClaimCause.UserPlay or ClaimCause.UserResume)) return false;
+        var owner = Owner;
+        if (owner.Kind != OwnerKind.Foreign) return false;
+        _connectLog.Event(WaveeLogLevel.Info, "connect.intent.stale",
+            "local " + cause + " dropped — " + owner.DeviceId + " took playback while it waited",
+            fields: [WaveeLogField.Of("cause", cause.ToString()), WaveeLogField.Of("owner", owner.Describe())]);
+        return true;
+    }
+
+    // The host holds the CURRENT playable, so a bare Play() resumes it. False after any Stop (a takeover, a stray host, a
+    // body failure), before the first load, and after a recovery seed that loaded nothing — the next Resume then goes
+    // through LoadAndPlayCurrentAsync at our playhead. IsPlaying keeps a host that is already playing but whose clock is
+    // not live yet (mid-open) from being reloaded under itself — the same reading the old resume branch had.
+    // Caller holds _lock (reads the live session).
+    bool HostHoldsCurrent()
+        => (_currentHost.ClockValid || _currentHost.IsPlaying)
+           && _loadedUri is { } loaded && string.Equals(loaded, _session.Current?.Uri, StringComparison.Ordinal);
+
+    void NoteLocalPlayhead(string? uri, long ms)
+    {
+        if (string.IsNullOrEmpty(uri)) return;
+        lock (_playheadGate) { _playheadUri = uri; _playheadMs = Math.Max(0, ms); }
+    }
+
+    bool TryLocalPlayhead(string? uri, out long ms)
+    {
+        lock (_playheadGate)
         {
-            if (_ownsActivePlayback) return true;
-            if (_projection.ActiveDeviceId != _ourDeviceId) return false;
-            _ownsActivePlayback = true;
-            return true;
+            if (uri is not null && string.Equals(_playheadUri, uri, StringComparison.Ordinal)) { ms = _playheadMs; return true; }
         }
+        ms = 0;
+        return false;
     }
 
-    void SetActiveOwner(bool value)
+    // The host's last honest reading of OUR current playable, else our playhead for it — never a projected/cluster
+    // position, and never the host's clock for a DIFFERENT playable (a skip whose load is still resolving leaves the host
+    // on the previous track). Read BEFORE a Stop(): Stop marks the host's clock stale synchronously
+    // (FluentMediaAudioHost.Stop sets _clockStale before returning), so a read after it is already the 0-means-unknown
+    // case. Safe off-lock (_snap is immutable).
+    long CapturePositionMs()
     {
-        lock (_ownershipGate) _ownsActivePlayback = value;
+        var uri = _snap.Current?.Track.Uri;
+        if (_currentHost.ClockValid && uri is not null && string.Equals(_loadedUri, uri, StringComparison.Ordinal))
+            return Math.Max(0, _currentHost.PositionMs);
+        return TryLocalPlayhead(uri, out long ms) ? ms : 0;
     }
 
-    // The ONE teardown chokepoint for every session-PRESERVING stop (a takeover, a stray-host cleanup, a fast-start
-    // body failure): stopping the host must never leave the queue session behind with nothing marking the host as
-    // "holds nothing", because that is exactly the shape that made ResumeCurrentLockedAsync take its "we already have
-    // local media loaded" branch and call a bare Play() over a disposed decoder — a permanent no-op the only escape
-    // from was a track change. Arming _restorePendingLoad here is the fix: the next Resume goes through
-    // LoadAndPlayCurrentAsync's fast-start instead. LoadAndPlayCurrentAsync consumes the latch on any real load
-    // ("any real load consumes the recovery seed's deferred-load latch"), so the arm/consume pair stays symmetric.
-    void StopHostKeepingSession(string reason)
+    // THE session-preserving host teardown (a takeover, a stray host while another device owns playback, a failed body):
+    // the session survives, the host holds nothing (HostHoldsCurrent() reads false, so the next Resume reloads through
+    // LoadAndPlayCurrentAsync at the playhead captured here), and any load still in flight for the silenced playable is
+    // void — the generation bump is what makes its next check bail before it touches the host (§5). Safe off-lock (a
+    // takeover runs it on the dealer thread): the host verbs are non-blocking, the rest is Interlocked / volatile / its
+    // own gate.
+    void StopHost(string reason)
     {
-        _restorePendingLoad = _session.Current is not null;
+        if (_currentHost.ClockValid && _loadedUri is { } held) NoteLocalPlayhead(held, _currentHost.PositionMs);
+        long gen = Interlocked.Increment(ref _contextGeneration);
+        StopHostCore();
+        _log.Event(WaveeLogLevel.Info, "playback.host.stop", reason,
+            fields:
+            [
+                WaveeLogField.Of("gen", gen),
+                WaveeLogField.Of("owner", Owner.Describe()),
+            ]);
+    }
+
+    void StopHostCore()
+    {
         _currentHost.Stop();
-        _log.Info(reason);
+        _loadedUri = null;
     }
 
-    public void DeactivateIfActiveOwner()
+    // ── ownership effects ────────────────────────────────────────────────────────────────────────────────────────────
+    // Raised by ConnectOwnership OUTSIDE its lock, on whichever thread caused the transition: the dealer (a cluster fold —
+    // the projection runs the ownership fold BEFORE it folds the frame itself), the put-state response path, the
+    // protection timer, or a controller verb claiming/releasing while it holds _lock. So this NEVER takes _lock — the
+    // discipline the old projection-callback teardown already followed: host verbs, the generation fence and EmitState
+    // are all safe off-lock. StopHost is LEVEL-triggered: every Foreign fold raises it again, so a host that started late
+    // (a load that slipped past its last ownership check) is still stopped on the next heartbeat, while a repeat over a
+    // host that already holds nothing is silent (no Stop, no log line — the 1 Hz heartbeat stays free).
+    void OnOwnershipChanged(OwnerTransition t)
     {
-        bool deactivate;
-        lock (_ownershipGate)
-        {
-            deactivate = _ownsActivePlayback;
-            if (deactivate) _ownsActivePlayback = false;
-        }
-        if (!deactivate) return;
-        // Capture BEFORE Stop(): Stop marks the host's clock stale synchronously (FluentMediaAudioHost.Stop sets
-        // _clockStale before returning), so reading PositionMs after it would already be the 0-means-unknown case this
-        // seam exists to avoid. The captured value is the last honest reading, so it — not the projected fallback — is
-        // what BecameInactive carries.
-        long pos = _currentHost.PositionMs;
-        // A takeover invalidates any LoadAndPlayCurrentAsync that was already resolving for the playable we are about
-        // to silence — without this, a resolve started just before the takeover could land AFTER the host below is
-        // stopped and call LoadFastStart/Play over it (§5).
-        Interlocked.Increment(ref _contextGeneration);
-        StopHostKeepingSession("another device became active — stopping local playback, keeping the session for a later reload");
-        EmitState(EvKind.BecameInactive, pos);
+        bool hostPlaying = _currentHost.IsPlaying, clockValid = _currentHost.ClockValid;
+        bool transition = !SameOwner(t.From, t.To);
+        bool stop = (t.Fx & OwnerFx.StopHost) != 0 && (hostPlaying || clockValid);
+        bool becameInactive = (t.Fx & OwnerFx.EmitBecameInactive) != 0;
+        if (transition || stop)
+            _connectLog.Event(WaveeLogLevel.Info, "connect.owner",
+                "owner " + t.From.Describe() + " → " + t.To.Describe() + " (" + t.Cause + ")",
+                fields:
+                [
+                    WaveeLogField.Of("from", t.From.Describe()),
+                    WaveeLogField.Of("to", t.To.Describe()),
+                    WaveeLogField.Of("cause", t.Cause),
+                    WaveeLogField.Of("claim", t.To.ClaimId),
+                    WaveeLogField.Of("claimMsg", (long)t.To.ClaimMsgId),
+                    WaveeLogField.Of("startedAt", t.To.ClaimStartedAtMs),
+                    WaveeLogField.Of("fence", t.To.FenceServerTs),
+                    WaveeLogField.Of("fx", t.Fx.ToString()),
+                    WaveeLogField.Of("hostPlaying", hostPlaying),
+                    WaveeLogField.Of("clockValid", clockValid),
+                ]);
+        // The server answered our claim by keeping another device (its put-state response named it, or the protection
+        // window ran out after a push that did). "ours" is the started_playing_at our claim carried; the winner's own
+        // stamp is on the connect.echo line for the same response.
+        if ((t.Fx & OwnerFx.ClaimRejected) != 0)
+            _connectLog.Event(WaveeLogLevel.Warning, "connect.claim.rejected",
+                "the server kept " + t.To.DeviceId + " over our claim #" + t.From.ClaimId,
+                fields:
+                [
+                    WaveeLogField.Of("ours", t.From.ClaimStartedAtMs),
+                    WaveeLogField.Of("by", t.To.DeviceId),
+                    WaveeLogField.Of("claim", t.From.ClaimId),
+                    WaveeLogField.Of("claimMsg", (long)t.From.ClaimMsgId),
+                    WaveeLogField.Of("cause", t.Cause),
+                ]);
+
+        // The last honest position rides BecameInactive — captured before the stop below makes the host's clock stale.
+        long pos = becameInactive ? CapturePositionMs() : 0;
+        if (stop)
+            StopHost(t.To.Describe() + " owns playback (" + t.Cause + ") — stopping the local host, keeping the session");
+        else if (t.From.Kind == OwnerKind.Us && t.To.Kind != OwnerKind.Us)
+            // Nothing audible to silence, but a load still RESOLVING for a playback we no longer own must not land after
+            // the fact (§5) — e.g. the takeover's transitional empty frame + the phone, arriving while our claim resolved.
+            Interlocked.Increment(ref _contextGeneration);
+        // We WERE the owner and lost it: close the local playback segment (Gabo) and tell the publisher, exactly once
+        // per loss — the fold raises this only on the transition out of Us, never on the level-triggered repeats.
+        if (becameInactive) EmitState(EvKind.BecameInactive, pos);
     }
 
-    void StopStrayLocalHost(string message)
-    {
-        // ClockValid alone (not just IsPlaying) — a host can hold a PAUSED-but-loaded session (honest clock, not
-        // playing) after a prior teardown; IsPlaying-only left that stray host un-stopped and TransferToAsync's
-        // non-owner arm shares this gate.
-        if (!_currentHost.IsPlaying && !_currentHost.ClockValid) return;
-        StopHostKeepingSession(message);
-    }
+    static bool SameOwner(in OwnerState a, in OwnerState b)
+        => a.Kind == b.Kind && a.Claim == b.Claim && a.Cause == b.Cause && a.ClaimId == b.ClaimId
+           && a.ClaimMsgId == b.ClaimMsgId && string.Equals(a.DeviceId, b.DeviceId, StringComparison.Ordinal);
 
     void OnProjectionChanged(IPlaybackState s)
     {
@@ -827,86 +947,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         // Apply a volume change (incl. one a remote controller made to the active device) to the local host when WE are
         // active. Silent host = no-op today, but correct once real audio lands; never loops (the host has no readback).
         double vol = s.Volume;
-        if (Math.Abs(vol - _lastVolume) > 0.0009) { _lastVolume = vol; _lastIntentVolume = vol; if (RouteLocal()) _currentHost.SetVolume(vol); }
-
-        var aid = s.ActiveDeviceId ?? "";
-        if (aid == _ourDeviceId) SetActiveOwner(true);
-        // Gated on an ACTUAL transition (below the aid == _lastActive early-return), not "every projection change with
-        // this aid" — a launch/session recovery's OWN seed (RunSessionRecoveryAsync's ApplyLocalSnapshot) re-enters
-        // this callback synchronously (FireChanges) with the SAME aid it just recorded; without this gate, that
-        // self-triggered echo raced the recovery's own _restorePendingLoad latch and quietly preloaded the track
-        // before the very first real Resume ever ran, consuming the latch the test/UI still expected to see.
-        if (aid == _lastActive) return;
-        MaybeAutoReloadOnOwnershipRegained(aid);
-        var previousActive = _lastActive;
-        _lastActive = aid;
-        // A NON-EMPTY foreign id is a genuine takeover. An EMPTY one is NOT: our own put-states announce
-        // active=False on Ended/BecameInactive (DeviceStatePublisher), and the echo comes back here as an empty
-        // ActiveDeviceId — treating that as "another device took over" tore our own host down out from under
-        // itself the instant playback ended or paused (the log shows "put-state … active=False" immediately
-        // followed by "another device became active — stopping local playback" on the same fold).
-        if (!string.IsNullOrEmpty(aid) && aid != _ourDeviceId && (previousActive == _ourDeviceId || IsActiveOwner()))
+        if (Math.Abs(vol - _lastVolume) > 0.0009)
         {
-            _log.Info("another device became active — stopping local playback");
-            DeactivateIfActiveOwner();
+            _lastVolume = vol;
+            _lastIntentVolume = vol;
+            if (PlaybackOwnership.RoutesLocal(Owner)) _currentHost.SetVolume(vol);
         }
-        else if (!string.IsNullOrEmpty(aid) && aid != _ourDeviceId)
-        {
-            StopStrayLocalHost("another device became active - stopping stray local playback");
-        }
-        else if (string.IsNullOrEmpty(aid) && previousActive == _ourDeviceId)
-        {
-            // Nobody active ⇒ our own echo, not a takeover. Give up ownership so a later fold can reclaim it and
-            // tell the wire we're inactive, but leave the host and the projection's position/play-state alone —
-            // RouteLocal() already treats an empty id as local, so there is nothing here that needs correcting.
-            SetActiveOwner(false);
-            PublishInactiveOnWire?.Invoke();
-        }
-    }
-
-    // Seam B §3 — auto-reload on regaining ownership. StopHostKeepingSession arms _restorePendingLoad on every
-    // takeover teardown, and the belt-and-braces in ResumeCurrentLockedAsync (§2) means the FIRST Resume after
-    // ownership returns would already recover on its own — but "the first Resume" is very often a REMOTE Resume
-    // command arriving the instant the cluster hands the slot back, and that command would otherwise block on a full
-    // resolve before the phone/desktop ever hears back. Preparing the host PAUSED here, the moment ownership returns,
-    // means that Resume is just a Play() by the time it runs. Only a pre-check: the real work (and the authoritative
-    // re-check) happens in the scheduled task under _lock — this must never block the projection callback itself
-    // (the same discipline MaybeScheduleSessionRecovery already follows from this exact callback).
-    void MaybeAutoReloadOnOwnershipRegained(string aid)
-    {
-        if (aid != _ourDeviceId && !string.IsNullOrEmpty(aid)) return;   // still someone else's slot
-        if (!_restorePendingLoad || !HasLocalSession) return;
-        var uri = _snap.Current?.Track.Uri;
-        if (uri is null || string.Equals(_ownershipReloadUri, uri, StringComparison.Ordinal)) return;
-        _ownershipReloadUri = uri;
-        _ = AutoReloadOnOwnershipRegainedAsync(uri, Volatile.Read(ref _contextGeneration));
-    }
-
-    async Task AutoReloadOnOwnershipRegainedAsync(string uri, long generation)
-    {
-        try
-        {
-            await _lock.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                // Re-check everything under the lock: the pre-check above is a best-effort hint, not a decision.
-                if (!_restorePendingLoad) return;                         // already reloaded (or never needed to be)
-                if (_session.Current is not { } cur || !string.Equals(cur.Uri, uri, StringComparison.Ordinal)) return;
-                if (generation != Volatile.Read(ref _contextGeneration)) return;   // superseded by a real play/transfer meanwhile
-                long pos = _projection.PositionMs;
-                _quietRestorePublish = true;   // this is a silent re-arm, not a user action — never announce on the wire (§8)
-                await LoadAndPlayCurrentAsync(EvKind.Paused, CancellationToken.None, pos > 0 ? pos : -1,
-                    initiallyPaused: true, skipOnUnplayable: true).ConfigureAwait(false);
-            }
-            finally { _lock.Release(); }
-        }
-        catch (Exception ex) { _log.Info($"ownership-regained auto-reload failed for {uri}: {ex.Message}"); }
-        finally
-        {
-            // Arm-scoped, not session-scoped: clearing here (rather than leaving it latched forever) lets a LATER
-            // teardown of this same track auto-reload again instead of being silently swallowed by a stale latch.
-            if (string.Equals(_ownershipReloadUri, uri, StringComparison.Ordinal)) _ownershipReloadUri = null;
-        }
+        // Who owns playback is NOT decided here: the ownership authority raises its own transitions (OnOwnershipChanged,
+        // level-triggered). This used to infer takeovers from active-id TRANSITIONS and auto-reload the host when an
+        // (empty) id "came back" — the 14:58 flip loop, reloading our track at the phone's playhead on every flap.
     }
 
     // ── IPlaybackPlayer (UI intents) — each verb routes local vs. forward ─────────────────────────────────────────────
@@ -946,9 +995,10 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     public async Task PlayTrackAsync(string trackUri, CancellationToken ct = default)
     {
-        if (!RouteLocal())
+        var owner = Owner;
+        if (!PlaybackOwnership.RoutesLocal(owner))
         {
-            await ExecutePlayAsync(PlayRequest.Default(trackUri, 0), "play-track-uri", ct).ConfigureAwait(false);
+            await ExecutePlayAsync(PlayRequest.Default(trackUri, 0), "play-track-uri", ct, owner).ConfigureAwait(false);
             return;
         }
 
@@ -959,12 +1009,14 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         long generation = Interlocked.Increment(ref _contextGeneration);
         Volatile.Write(ref _explicitPlayGeneration, generation);
         var track = await HydrateOneAsync(trackUri, ct).ConfigureAwait(false);
-        await LocalPlayTracksAsync(trackUri, new[] { track }, 0, ct, expectedGeneration: generation).ConfigureAwait(false);
+        await LocalPlayTracksAsync(trackUri, new[] { track }, 0, ClaimCause.UserPlay, ct, expectedGeneration: generation)
+            .ConfigureAwait(false);
     }
 
     public Task PlayTrackAsync(Track track, CancellationToken ct = default)
     {
-        if (!RouteLocal())
+        var owner = Owner;
+        if (!PlaybackOwnership.RoutesLocal(owner))
         {
             // bug 4: the app's own video-surface intent (the same predicate LOCAL loads consult) is the strongest
             // signal available here — fail-soft to "unknown" exactly like KindFor's own use of the same hook.
@@ -974,14 +1026,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 try { if (predicate(track)) mediaKind = PlayableKind.Video; }
                 catch (Exception ex) { _log.Info($"ShouldPlayAsVideo threw for {track.Uri} while forwarding play; treating as unknown: {ex.GetType().Name}: {ex.Message}"); }
             }
-            return ExecutePlayAsync(PlayRequest.Default(track.Uri, 0, mediaKind), "play-track", ct);
+            return ExecutePlayAsync(PlayRequest.Default(track.Uri, 0, mediaKind), "play-track", ct, owner);
         }
         LogPlayIntent("play-track", track.Uri, 0, track.Uri, null, 0, local: true);
         ClearRemotePlaybackIds();
         MintCommand("playbtn");
         long generation = Interlocked.Increment(ref _contextGeneration);
         Volatile.Write(ref _explicitPlayGeneration, generation);
-        return LocalPlayTracksAsync(track.Uri, new[] { new QueuedTrack(track, "") }, 0, ct, expectedGeneration: generation);
+        return LocalPlayTracksAsync(track.Uri, new[] { new QueuedTrack(track, "") }, 0, ClaimCause.UserPlay, ct,
+            expectedGeneration: generation);
     }
 
     // Apple-Music-style "Start radio" (radio-inspiredby-mix-design §5.3): resolve the seed → a radio playlist, then park
@@ -998,7 +1051,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         // Idle here, or a remote device owns playback → play the radio playlist via the normal routed play path (which
         // forwards to the active device / honors the local-unsupported reject). "Park after current" is a LOCAL-session op
         // that only applies when WE are the active local player with a track already playing.
-        if (!RouteLocal() || _session.Current is null)
+        if (!PlaybackOwnership.RoutesLocal(Owner) || _session.Current is null)
         {
             await PlayAsync(playlistUri!, 0, ct).ConfigureAwait(false);
             return playlistUri;
@@ -1028,33 +1081,42 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     public Task PauseAsync(CancellationToken ct = default)
     {
-        // Capture the remote target in the same breath as the routing decision (see Forward): a cluster fold between the
-        // two reads would otherwise send the verb to an empty device id.
-        var target = _projection.ActiveDeviceId;
-        return RouteLocal(target)
+        // ONE owner snapshot decides the route AND names the target (see Owner): a cluster fold between two reads would
+        // otherwise send the verb to a device the routing decision never saw. Pause never claims and never releases.
+        var owner = Owner;
+        return PlaybackOwnership.RoutesLocal(owner)
             ? Local(() => { _currentHost.Pause(); EmitState(EvKind.Paused); })
-            : Forward("pause", target, ct);
+            : Forward("pause", owner.DeviceId, ct);
     }
 
+    /// <summary>The play button. Foreign → forward resume to the owner. Nobody after that owner went away → the DISPLAYED
+    /// snapshot (its track, queue and position) becomes local playback, never the stale local session behind it. Else →
+    /// resume the local session (claiming playback first).</summary>
     public async Task ResumeAsync(CancellationToken ct = default)
     {
-        var target = _projection.ActiveDeviceId;
-        if (!RouteLocal(target)) { await Forward("resume", target, ct).ConfigureAwait(false); return; }
-        await LocalResumeAsync(ct).ConfigureAwait(false);
+        var owner = Owner;
+        if (!PlaybackOwnership.RoutesLocal(owner)) { await Forward("resume", owner.DeviceId, ct).ConfigureAwait(false); return; }
+        await _lock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (IsDepartedForeign(owner)) await GhostResumeAsync(ct, ClaimCause.UserResume, forced: true).ConfigureAwait(false);
+            else await ResumeCurrentLockedAsync(ct, ClaimCause.UserResume, owner).ConfigureAwait(false);
+        }
+        finally { _lock.Release(); }
     }
 
     public async Task NextAsync(CancellationToken ct = default)
     {
-        var target = _projection.ActiveDeviceId;
-        if (!RouteLocal(target)) { await Forward("skip_next", target, ct).ConfigureAwait(false); return; }
-        await LocalNextAsync(ct).ConfigureAwait(false);
+        var owner = Owner;
+        if (!PlaybackOwnership.RoutesLocal(owner)) { await Forward("skip_next", owner.DeviceId, ct).ConfigureAwait(false); return; }
+        await LocalNextAsync(ct, ClaimCause.UserPlay, seedFromCluster: IsDepartedForeign(owner)).ConfigureAwait(false);
     }
 
     public async Task PreviousAsync(CancellationToken ct = default)
     {
-        var target = _projection.ActiveDeviceId;
-        if (!RouteLocal(target)) { await Forward("skip_prev", target, ct).ConfigureAwait(false); return; }
-        await LocalPrevAsync(ct).ConfigureAwait(false);
+        var owner = Owner;
+        if (!PlaybackOwnership.RoutesLocal(owner)) { await Forward("skip_prev", owner.DeviceId, ct).ConfigureAwait(false); return; }
+        await LocalPrevAsync(ct, ClaimCause.UserPlay, seedFromCluster: IsDepartedForeign(owner)).ConfigureAwait(false);
     }
 
     /// <summary>Seek the current media, carrying the seek FIDELITY the seek bar computed.
@@ -1064,12 +1126,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     /// stream over Connect would spam the cluster; only the <see cref="SeekMode.Accurate"/> commit is forwarded.</para></summary>
     public Task SeekAsync(long positionMs, SeekMode mode, CancellationToken ct = default)
     {
-        var target = _projection.ActiveDeviceId;
-        if (RouteLocal(target)) return Local(() => EmitSeeked(positionMs, mode));
+        var owner = Owner;
+        if (PlaybackOwnership.RoutesLocal(owner)) return Local(() => EmitSeeked(positionMs, mode));
         // Remote device: previews are not sent. The gesture still commits — MediaSeekBar issues exactly one Accurate
         // seek on release, and that is the one that crosses the wire.
         if (mode == SeekMode.Keyframe) return Done;
-        return Forward("seek_to", target, ct, ("value", positionMs));
+        return Forward("seek_to", owner.DeviceId, ct, ("value", positionMs));
     }
 
     public Task SetVolumeAsync(double volume01, CancellationToken ct = default)
@@ -1079,8 +1141,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             return Done;
         _lastIntentVolume = volume01;
 
-        var target = _projection.ActiveDeviceId;
-        bool local = RouteLocal(target);
+        var owner = Owner;
+        var target = owner.DeviceId;
+        bool local = PlaybackOwnership.RoutesLocal(owner);
         _projection.NoteLocalCommand();          // optimistic: a stale cluster echo won't snap the slider back
         if (local)
         {
@@ -1120,7 +1183,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         _lastVolume = slider01;                  // suppress the OnProjectionChanged echo-down to the host
         _lastIntentVolume = slider01;
         _projection.NoteLocalCommand();          // a stale cluster echo must not snap the slider back (LocalCmdWindow)
-        if (!RouteLocal())
+        if (!PlaybackOwnership.RoutesLocal(Owner))
         {
             // Another device is active: this OS-level tweak has no local host clock to sample and nothing local
             // actually changed play-state-wise — move the slider only. No EmitState (there is no local event to
@@ -1136,8 +1199,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     public async Task SetShuffleAsync(bool on, CancellationToken ct = default)
     {
-        var target = _projection.ActiveDeviceId;
-        if (!RouteLocal(target)) { await Forward("set_shuffling_context", target, ct, ("value", on)).ConfigureAwait(false); return; }
+        var owner = Owner;
+        if (!PlaybackOwnership.RoutesLocal(owner)) { await Forward("set_shuffling_context", owner.DeviceId, ct, ("value", on)).ConfigureAwait(false); return; }
         await _lock.WaitAsync(ct).ConfigureAwait(false);   // SetShuffle rebuilds the context list — one lock per mutation
         try
         {
@@ -1151,8 +1214,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     public async Task SetRepeatAsync(RepeatMode mode, CancellationToken ct = default)
     {
-        var target = _projection.ActiveDeviceId;
-        if (RouteLocal(target))
+        var owner = Owner;
+        if (PlaybackOwnership.RoutesLocal(owner))
         {
             await _lock.WaitAsync(ct).ConfigureAwait(false);
             try { EmitSnap(_session.SetRepeat(mode), EvKind.OptionsChanged); }
@@ -1160,22 +1223,22 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             return;
         }
         // Remote: split + always send BOTH explicit modes so Track->Off / Track->Context can't leave the target stuck.
-        await Forward("set_repeating_track", target, ct, ("value", mode == RepeatMode.Track)).ConfigureAwait(false);
-        await Forward("set_repeating_context", target, ct, ("value", mode == RepeatMode.Context)).ConfigureAwait(false);
+        await Forward("set_repeating_track", owner.DeviceId, ct, ("value", mode == RepeatMode.Track)).ConfigureAwait(false);
+        await Forward("set_repeating_context", owner.DeviceId, ct, ("value", mode == RepeatMode.Context)).ConfigureAwait(false);
     }
 
     public async Task EnqueueAsync(string trackUri, CancellationToken ct = default)
     {
-        var target = _projection.ActiveDeviceId;
-        if (!RouteLocal(target)) { await ForwardAddToQueueAsync(trackUri, target, ct).ConfigureAwait(false); return; }
+        var owner = Owner;
+        if (!PlaybackOwnership.RoutesLocal(owner)) { await ForwardAddToQueueAsync(trackUri, owner.DeviceId, ct).ConfigureAwait(false); return; }
         var queued = await HydrateOneAsync(trackUri, ct).ConfigureAwait(false);
         await EnqueueLocalAsync(queued, ct).ConfigureAwait(false);
     }
 
     public async Task EnqueueAsync(Track track, CancellationToken ct = default)
     {
-        var target = _projection.ActiveDeviceId;
-        if (!RouteLocal(target)) { await ForwardAddToQueueAsync(track, target, ct).ConfigureAwait(false); return; }
+        var owner = Owner;
+        if (!PlaybackOwnership.RoutesLocal(owner)) { await ForwardAddToQueueAsync(track, owner.DeviceId, ct).ConfigureAwait(false); return; }
         await EnqueueLocalAsync(new QueuedTrack(track, ""), ct).ConfigureAwait(false);
     }
 
@@ -1186,9 +1249,10 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         {
             if (_session.Current is null)   // add-to-queue while idle → start playing it (rule §3)
             {
-                if (RejectLocalPlay()) return;   // can't start local playback → toast + abort (don't seed a phantom local queue)
+                // Starting playback claims it; can't start local playback → toast + abort (don't seed a phantom local queue).
+                if (!ClaimLocalPlayback(ClaimCause.UserPlay)) return;
                 SetQueueContext(queued.Track.Uri, new[] { queued }, 0);
-                await LoadAndPlayCurrentAsync(EvKind.Started, ct).ConfigureAwait(false);
+                await LoadAndPlayCurrentAsync(LoadOrigin.Claim, EvKind.Started, ct).ConfigureAwait(false);
             }
             else EmitSnap(_session.EnqueueUser(new[] { queued }), EvKind.QueueChanged);   // active device mints the q-uid (§7.4)
             WarmFastTrack(queued.Track, "enqueue");
@@ -1210,8 +1274,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         var refs = ToQueuedRefs(tracks);
         if (refs.Length == 0) return;
         int at = Math.Max(0, index);
-        var target = _projection.ActiveDeviceId;
-        if (RouteLocal(target))
+        var owner = Owner;
+        var target = owner.DeviceId;
+        if (PlaybackOwnership.RoutesLocal(owner))
         {
             if (RejectLocalPlay()) return;   // a local insert would seed a local queue that can never play → toast + abort
             var hydrated = await _contexts.HydrateAsync(refs, ct).ConfigureAwait(false);
@@ -1221,10 +1286,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 if (_session.Current is null && hydrated.Count > 0)
                 {
                     // Rule §3, the same one EnqueueLocalAsync applies: with NOTHING playing there is no "next" to
-                    // insert before — parking rows in a queue that never runs is the silent-no-op reading. Start them.
+                    // insert before — parking rows in a queue that never runs is the silent-no-op reading. Start them —
+                    // which is a local play, so it claims first.
+                    if (!ClaimLocalPlayback(ClaimCause.UserPlay)) return;
                     SetQueueContext(hydrated[0].Track.Uri, hydrated, 0);
                     WarmFastTrack(hydrated[0].Track, "queue-insert");
-                    await LoadAndPlayCurrentAsync(EvKind.Started, ct).ConfigureAwait(false);
+                    await LoadAndPlayCurrentAsync(LoadOrigin.Claim, EvKind.Started, ct).ConfigureAwait(false);
                 }
                 else
                 {
@@ -1279,8 +1346,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     public async Task SkipToQueueItemAsync(QueueItemId id, CancellationToken ct = default)
     {
         if (id.IsNone) return;
-        var target = _projection.ActiveDeviceId;
-        if (RouteLocal(target))
+        var owner = Owner;
+        var target = owner.DeviceId;
+        if (PlaybackOwnership.RoutesLocal(owner))
         {
             await _lock.WaitAsync(ct).ConfigureAwait(false);
             try
@@ -1289,7 +1357,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 if (_session.SkipToItem(id) is { } snap)
                 {
                     _snap = snap;
-                    await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct).ConfigureAwait(false);
+                    if (ClaimLocalPlayback(ClaimCause.UserPlay))
+                        await LoadAndPlayCurrentAsync(LoadOrigin.Claim, EvKind.TrackChanged, ct).ConfigureAwait(false);
                 }
             }
             finally { _lock.Release(); }
@@ -1310,7 +1379,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     public async Task MoveQueueItemAsync(QueueItemId id, int newPos, CancellationToken ct = default)
     {
-        if (!RouteLocal()) { _log.Info("queue move ignored — another device is active"); return; }   // the active device owns its queue
+        if (!PlaybackOwnership.RoutesLocal(Owner)) { _log.Info("queue move ignored — another device is active"); return; }   // the active device owns its queue
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try { if (_session.MoveItem(id, newPos) is { } snap) EmitSnap(snap, EvKind.QueueChanged); }
         finally { _lock.Release(); }
@@ -1318,7 +1387,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     public async Task RemoveQueueItemAsync(QueueItemId id, CancellationToken ct = default)
     {
-        if (!RouteLocal()) { _log.Info("queue remove ignored — another device is active"); return; }
+        if (!PlaybackOwnership.RoutesLocal(Owner)) { _log.Info("queue remove ignored — another device is active"); return; }
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try { if (_session.RemoveItem(id) is { } snap) EmitSnap(snap, EvKind.QueueChanged); }
         finally { _lock.Release(); }
@@ -1328,7 +1397,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // no-op (no wire verb; the panel hides the button in viewer mode).
     public async Task ClearQueueAsync(CancellationToken ct = default)
     {
-        if (!RouteLocal()) { _log.Info("queue clear ignored — another device is active"); return; }
+        if (!PlaybackOwnership.RoutesLocal(Owner)) { _log.Info("queue clear ignored — another device is active"); return; }
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try { EmitSnap(_session.ClearUserQueue(), EvKind.QueueChanged); }
         finally { _lock.Release(); }
@@ -1336,35 +1405,69 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     public async Task ClearHistoryAsync(CancellationToken ct = default)
     {
-        if (!RouteLocal()) { _log.Info("history clear ignored — another device is active"); return; }
+        if (!PlaybackOwnership.RoutesLocal(Owner)) { _log.Info("history clear ignored — another device is active"); return; }
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try { EmitSnap(_session.ClearHistory(), EvKind.QueueChanged); }
         finally { _lock.Release(); }
     }
 
-    /// <summary>Device-picker hand-off. Self = ghost-resume (the HTTP transfer endpoint 400s for self); another = forward
-    /// the transfer + stop our local host so we don't double-play.</summary>
+    /// <summary>Device-picker hand-off. To ANOTHER device: forward the transfer (from whoever owns playback) and, when that
+    /// was us, give ownership up. To US: depends on who owns playback —
+    /// <list type="bullet">
+    /// <item>Foreign(X): PULL — POST <c>/connect/transfer/from/X/to/us</c> (only self→self is a 400). No local load: the
+    /// server answers with a <c>transfer</c> command whose TransferState (X's context, queue, position) the inbound path
+    /// claims and loads. If the POST fails, fastpotify's client-side pull: claim and ghost-resume X's cluster snapshot.</item>
+    /// <item>Nobody after X went away: claim and ghost-resume the DISPLAYED snapshot, not the stale local session.</item>
+    /// <item>Nobody otherwise / Us: claim and resume the local session.</item>
+    /// </list>
+    /// The 15:22:59 incident was the old "self = local resume" rule applied while the phone owned playback: our stale
+    /// session resumed at the phone's playhead, and nothing ever asked the server for the slot.</summary>
     public async Task TransferToAsync(string targetDeviceId, CancellationToken ct = default)
     {
+        var owner = Owner;
         if (targetDeviceId == _ourDeviceId)
         {
-            // Transfer-to-self = local resume: the shared ResumeCurrentLockedAsync covers the reject hook, the
-            // restore-seeded pending-load fast-start, the plain resume, and the ghost/snapshot seed (§1).
+            if (owner.Kind == OwnerKind.Foreign)
+            {
+                var (pulled, status) = await TryForwardTransferAsync(_ourDeviceId, owner, ct, reportFailure: false).ConfigureAwait(false);
+                if (pulled)
+                {
+                    _connectLog.Event(WaveeLogLevel.Info, "connect.pull", "pulled playback from " + owner.DeviceId + " — awaiting its transfer",
+                        fields: [WaveeLogField.Of("from", owner.DeviceId), WaveeLogField.Of("status", status)]);
+                    return;
+                }
+                _connectLog.Event(WaveeLogLevel.Warning, "connect.pull.failed",
+                    "transfer from " + owner.DeviceId + " to us failed (" + status + ") — claiming and resuming its snapshot here",
+                    fields: [WaveeLogField.Of("from", owner.DeviceId), WaveeLogField.Of("status", status)]);
+                await _lock.WaitAsync(ct).ConfigureAwait(false);
+                try { await GhostResumeAsync(ct, ClaimCause.NobodyTransferToSelf, forced: true).ConfigureAwait(false); }
+                finally { _lock.Release(); }
+                return;
+            }
             await _lock.WaitAsync(ct).ConfigureAwait(false);
-            try { await ResumeCurrentLockedAsync(ct).ConfigureAwait(false); }
+            try
+            {
+                if (IsDepartedForeign(owner))
+                    await GhostResumeAsync(ct, ClaimCause.NobodyTransferToSelf, forced: true).ConfigureAwait(false);
+                else
+                    await ResumeCurrentLockedAsync(ct, owner.IsUs ? ClaimCause.UserResume : ClaimCause.NobodyTransferToSelf, owner)
+                        .ConfigureAwait(false);
+            }
             finally { _lock.Release(); }
             return;
         }
-        bool wasActiveOwner = IsActiveOwner();
+        bool weOwn = owner.IsUs;
         // The cluster's last-known state for us can be seconds stale by the time the user actually presses "transfer"
         // (nothing re-announces on a timer) — publish our LIVE position/play-state right now, ungated, so the target
         // device picks up where the user actually is instead of wherever we last happened to PUT. Only meaningful when
-        // we are the one actually playing; forwarding while some OTHER device owns playback has no local truth to give.
-        if (wasActiveOwner) PublishFreshStateOnWire?.Invoke();
-        bool ok = await TryForwardTransferAsync(targetDeviceId, ct).ConfigureAwait(false);
+        // we own playback; forwarding while some OTHER device owns it has no local truth to give.
+        if (weOwn) PublishFreshStateOnWire?.Invoke();
+        var (ok, _) = await TryForwardTransferAsync(targetDeviceId, owner, ct).ConfigureAwait(false);
         if (!ok) return;
-        if (wasActiveOwner) DeactivateIfActiveOwner();
-        else StopStrayLocalHost("remote transfer accepted while Wavee was not active - stopping stray local playback");
+        // The server accepted the hand-off: release (host stop + BecameInactive + the inactive put-state arrive through the
+        // ownership transition). Not ours → there is nothing to release; the target becoming active in the cluster is a
+        // Foreign fold, which stops any host of ours level-triggered.
+        if (weOwn) ReleaseOwnership(ReleaseCause.TransferAway);
     }
 
     // ── Inbound remote commands (WE are the target) — ALWAYS local, regardless of the routing rule ───────────────────
@@ -1393,7 +1496,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                     break;
                 case ConnectCmd.Resume: outcome = await HandleInboundResumeAsync(ct).ConfigureAwait(false); break;
                 case ConnectCmd.SkipNext: outcome = await HandleInboundSkipNextAsync(cmd).ConfigureAwait(false); break;
-                case ConnectCmd.SkipPrev: await LocalPrevAsync(ct).ConfigureAwait(false); outcome = ConnectCommandOutcome.Applied; break;
+                case ConnectCmd.SkipPrev: await LocalPrevAsync(ct, ClaimCause.InboundSkip).ConfigureAwait(false); outcome = ConnectCommandOutcome.Applied; break;
                 case ConnectCmd.SeekTo:
                     await _lock.WaitAsync(ct).ConfigureAwait(false);
                     // An inbound Connect seek_to is a COMMITTED remote action — always the accurate arm.
@@ -1432,18 +1535,6 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         }
     }
 
-    // A late/stale inbound command addressed to us must not GHOST-RESUME the remote device's track when we hold
-    // nothing locally to act on — that combination (cluster has genuinely handed the active slot to someone else AND
-    // there's no local session) is a pure viewer echo. This guard is deliberately narrow to that one danger; it is
-    // NOT a general "we're not the target" check — HandleRemoteCommandAsync's dispatch is "WE are always the target"
-    // regardless of what the cluster's active-device id says (see InboundCommand_AlwaysLocal_EvenWhenClusterShowsAnotherActive).
-    // Caller holds _lock.
-    bool IsPassiveViewer()
-    {
-        var aid = _projection.ActiveDeviceId;
-        return !string.IsNullOrEmpty(aid) && aid != _ourDeviceId && _session.Current is null;
-    }
-
     // The blind inbound Pause used to call _currentHost.Pause() + EmitState unconditionally: over a torn-down/disposed
     // host that Pause() is a silent no-op anyway, exactly like calling it on a live one. No session at all ⇒ nothing
     // to pause (NoOp, no publish). A session that exists calls Pause() and folds the state regardless of the host's
@@ -1467,16 +1558,20 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         return ConnectCommandOutcome.Applied;
     }
 
-    // The inbound Resume half of the same guard — kept separate from the public ResumeAsync/LocalResumeAsync path
-    // (transfer-to-self, the UI Resume button) so the passive-viewer check applies ONLY to a command addressed to us
-    // by the dealer, never to the ghost/transfer-to-self resume that deliberately runs with no local session yet.
+    // The inbound Resume — kept separate from the public ResumeAsync (the UI play button, transfer-to-self) so the
+    // passive-viewer guard applies ONLY to a command addressed to us by the dealer: a late/stale resume that arrives
+    // while ANOTHER device owns playback and we hold nothing locally is a pure viewer echo, and ghost-resuming that
+    // device's track from it would steal playback. Deliberately narrow — NOT a general "we're not the target" check:
+    // HandleRemoteCommandAsync's dispatch is "WE are always the target" whatever the cluster says (see
+    // InboundCommand_AlwaysLocal_EvenWhenClusterShowsAnotherActive); with a local session the resume claims and plays.
     async Task<ConnectCommandOutcome> HandleInboundResumeAsync(CancellationToken ct)
     {
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (IsPassiveViewer()) return ConnectCommandOutcome.NoOp;
-            await ResumeCurrentLockedAsync(ct).ConfigureAwait(false);
+            var owner = Owner;
+            if (owner.Kind == OwnerKind.Foreign && _session.Current is null) return ConnectCommandOutcome.NoOp;
+            await ResumeCurrentLockedAsync(ct, ClaimCause.InboundResume, owner).ConfigureAwait(false);
             return ConnectCommandOutcome.Applied;
         }
         finally { _lock.Release(); }
@@ -1511,7 +1606,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     {
         if (string.IsNullOrEmpty(cmd.TrackUri) && string.IsNullOrEmpty(cmd.TrackUid))
         {
-            await LocalNextAsync().ConfigureAwait(false);
+            await LocalNextAsync(default, ClaimCause.InboundSkip).ConfigureAwait(false);
             return ConnectCommandOutcome.Applied;
         }
         await _lock.WaitAsync().ConfigureAwait(false);
@@ -1521,14 +1616,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             if (_session.SkipToUid(cmd.TrackUid, cmd.TrackUri) is { } snap)
             {
                 _snap = snap;
-                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, default).ConfigureAwait(false);
+                if (ClaimLocalPlayback(ClaimCause.InboundSkip))
+                    await LoadAndPlayCurrentAsync(LoadOrigin.Claim, EvKind.TrackChanged, default).ConfigureAwait(false);
                 return ConnectCommandOutcome.Applied;
             }
         }
         finally { _lock.Release(); }
         // identity miss (the target isn't in our resolved session) → fall back to a plain advance.
         _log.Info($"inbound next_track: row uid={cmd.TrackUid} uri={cmd.TrackUri} not found in session — advancing one");
-        await LocalNextAsync().ConfigureAwait(false);
+        await LocalNextAsync(default, ClaimCause.InboundSkip).ConfigureAwait(false);
         return ConnectCommandOutcome.Applied;
     }
 
@@ -1553,8 +1649,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 LogPlayIntent("remote-" + cmd.Kind + "-from-" + (string.IsNullOrEmpty(cmd.SenderDeviceId) ? "?" : cmd.SenderDeviceId),
                     intent.Context.Uri, intent.Context.SkipToIndex ?? 0, intent.Context.SkipToTrackUri,
                     intent.Context.SkipToTrackUid, intent.Context.EmbeddedPages?.Count ?? 0, local: true);
-                if (!await LocalPlaySpecAsync(intent.Context, default, generation, intent.InitiallyPaused, intent.Shuffle,
-                        intent.SeekToMs, intent.Repeat, intent.MediaKind)
+                if (!await LocalPlaySpecAsync(intent.Context, ClaimCause.InboundPlay, default, generation, intent.InitiallyPaused,
+                        intent.Shuffle, intent.SeekToMs, intent.Repeat, intent.MediaKind)
                     .ConfigureAwait(false))
                 {
                     _connectOriginatedPlayback = previousConnectOrigin;
@@ -1580,10 +1676,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     async Task<ConnectCommandOutcome> HandleInboundTransferAsync(ConnectCommand cmd)
     {
+        // Every path below hands playback to US, so each one claims before it loads (a transfer is the server's own
+        // hand-off — it outranks whatever the last cluster said, and the claim's put-state carries that to the wire).
         if (_transferDecoder is null || !TryExtractTransfer(cmd.Payload, out var encoded, out var modes))
         {
             _log.Info("remote transfer has no decodable inner data; falling back to cluster resume");
-            await LocalResumeAsync(default).ConfigureAwait(false);
+            await LocalResumeAsync(default, ClaimCause.InboundTransfer).ConfigureAwait(false);
             return ConnectCommandOutcome.NoOp;
         }
 
@@ -1592,13 +1690,13 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         catch (FormatException)
         {
             _log.Warn("remote transfer data was not valid base64; falling back to cluster resume");
-            await LocalResumeAsync(default).ConfigureAwait(false);
+            await LocalResumeAsync(default, ClaimCause.InboundTransfer).ConfigureAwait(false);
             return ConnectCommandOutcome.NoOp;
         }
         if (!_transferDecoder.TryDecode(bytes, out var state))
         {
             _log.Warn($"remote transfer protobuf could not be decoded ({bytes.Length} bytes); falling back to cluster resume");
-            await LocalResumeAsync(default).ConfigureAwait(false);
+            await LocalResumeAsync(default, ClaimCause.InboundTransfer).ConfigureAwait(false);
             return ConnectCommandOutcome.NoOp;
         }
 
@@ -1643,7 +1741,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         else
         {
             _log.Warn("transfer inner state contained no usable current track; falling back to cluster resume");
-            await LocalResumeAsync(default).ConfigureAwait(false);
+            await LocalResumeAsync(default, ClaimCause.InboundTransfer).ConfigureAwait(false);
             return ConnectCommandOutcome.NoOp;
         }
         if (!string.IsNullOrEmpty(currentUid) && string.IsNullOrEmpty(current.Uid))
@@ -1711,8 +1809,11 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             _contextIsInfinite = resolved.IsInfinite || ContextResolve.IsInfinite(contextUri);
             _autoplayLatchedFor = null;
             _continuationFetch = null;
-            await LoadAndPlayCurrentAsync(paused ? EvKind.Paused : EvKind.Started, default, position, paused,
-                expectedGeneration: generation, mediaKindOverride: forcedKind).ConfigureAwait(false);
+            // The claim happens even for a PAUSED hand-off: the session is ours now (ownership is not audibility), so
+            // the next put-state says is_active and the bar's transport routes here.
+            if (ClaimLocalPlayback(ClaimCause.InboundTransfer))
+                await LoadAndPlayCurrentAsync(LoadOrigin.Claim, paused ? EvKind.Paused : EvKind.Started, default, position, paused,
+                    expectedGeneration: generation, mediaKindOverride: forcedKind, posSource: "transfer").ConfigureAwait(false);
         }
         finally { _lock.Release(); }
 
@@ -1793,9 +1894,10 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             {
                 if (_session.Current is null)
                 {
-                    if (RejectLocalPlay()) return ConnectCommandOutcome.NoOp;   // inbound add-to-queue while idle would start local playback → toast + abort
+                    // Inbound add-to-queue while idle starts local playback — a claim; unsupported locally → toast + abort.
+                    if (!ClaimLocalPlayback(ClaimCause.InboundQueueStart)) return ConnectCommandOutcome.NoOp;
                     SetQueueContext(hydrated[0].Uri, hydrated, 0);
-                    await LoadAndPlayCurrentAsync(EvKind.Started, default).ConfigureAwait(false);
+                    await LoadAndPlayCurrentAsync(LoadOrigin.Claim, EvKind.Started, default).ConfigureAwait(false);
                 }
                 else EmitSnap(_session.EnqueueUser(hydrated), EvKind.QueueChanged);   // active device mints q-uids for uid:"" rows (§7.4)
                 return ConnectCommandOutcome.Applied;
@@ -2014,6 +2116,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     const int SkipHuntMaxPages = 40;
     async Task<bool> LocalPlaySpecAsync(
         ContextSpec spec,
+        ClaimCause claim,
         CancellationToken ct,
         long expectedGeneration = 0,
         bool initiallyPaused = false,
@@ -2071,7 +2174,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         // two-line story — including HOW LONG the resolve took, which is what makes a play look spontaneous.
         _log.Info($"play resolved ctx={resolved.ContextUri ?? spec.Uri} tracks={tracks.Count} start={start} " +
             $"current={(start < tracks.Count ? tracks[start].Uri : "-")}");
-        return await LocalPlayTracksAsync(resolved.ContextUri ?? spec.Uri, tracks, start, ct,
+        return await LocalPlayTracksAsync(resolved.ContextUri ?? spec.Uri, tracks, start, claim, ct,
             nextPage, resolved.IsInfinite, resolved.Metadata ?? spec.Metadata, generation, initiallyPaused, shuffle,
             seekToMs, repeat, mediaKind)
             .ConfigureAwait(false);
@@ -2087,8 +2190,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         return new QueuedTrack(q.Track, spec.SkipToTrackUid ?? "", "context", meta);
     }
 
-    async Task<bool> LocalPlayTracksAsync(string contextUri, IReadOnlyList<QueuedTrack> tracks, int startIndex, CancellationToken ct,
-        string? nextPageUrl = null, bool isInfinite = false, IReadOnlyDictionary<string, string>? metadata = null,
+    async Task<bool> LocalPlayTracksAsync(string contextUri, IReadOnlyList<QueuedTrack> tracks, int startIndex, ClaimCause claim,
+        CancellationToken ct, string? nextPageUrl = null, bool isInfinite = false, IReadOnlyDictionary<string, string>? metadata = null,
         long expectedGeneration = 0, bool initiallyPaused = false, bool? shuffle = null,
         long seekToMs = -1, RepeatMode? repeat = null, PlayableKind? mediaKind = null)
     {
@@ -2096,16 +2199,21 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         try
         {
             if (expectedGeneration != 0 && expectedGeneration != Volatile.Read(ref _contextGeneration)) return false;
+            if (UserIntentWentStale(claim)) return true;   // handled: dropped, never forwarded late
             SetQueueContext(contextUri, tracks, startIndex, nextPageUrl, isInfinite, metadata);
             if (shuffle is { } shuffleValue) _snap = _session.SetShuffle(shuffleValue);
             // Applied right alongside the shuffle override above — both are player_options_override fields on the
             // SAME inbound play/transfer intent.
             if (repeat is { } repeatValue) _snap = _session.SetRepeat(repeatValue);
+            // The play claims RIGHT BEFORE it loads — not before the resolve, so a resolve that comes back empty (or is
+            // superseded) never leaves us announcing is_active over nothing. A local play and an inbound play command
+            // (even while the cluster still names another device) both land here as Us, so the load is allowed.
             // SetQueueContext just minted its OWN generation (it always bumps _contextGeneration) — that, not the
             // pre-context-switch value we validated above, is what THIS load must be checked against (§5).
-            await LoadAndPlayCurrentAsync(initiallyPaused ? EvKind.Paused : EvKind.Started, ct,
-                seekToMs, initiallyPaused: initiallyPaused, expectedGeneration: Volatile.Read(ref _contextGeneration),
-                mediaKindOverride: mediaKind).ConfigureAwait(false);
+            if (ClaimLocalPlayback(claim))
+                await LoadAndPlayCurrentAsync(LoadOrigin.Claim, initiallyPaused ? EvKind.Paused : EvKind.Started, ct,
+                    seekToMs, initiallyPaused: initiallyPaused, expectedGeneration: Volatile.Read(ref _contextGeneration),
+                    mediaKindOverride: mediaKind, posSource: seekToMs > 0 ? "command" : "none").ConfigureAwait(false);
             return true;
         }
         finally { _lock.Release(); }
@@ -2126,110 +2234,158 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         return new QueuedTrack(SyntheticTrack(uri), "");
     }
 
-    async Task LocalResumeAsync(CancellationToken ct = default)
+    async Task LocalResumeAsync(CancellationToken ct, ClaimCause cause)
     {
         await _lock.WaitAsync(ct).ConfigureAwait(false);
-        try { await ResumeCurrentLockedAsync(ct).ConfigureAwait(false); }
+        try { await ResumeCurrentLockedAsync(ct, cause, Owner).ConfigureAwait(false); }
         finally { _lock.Release(); }
     }
 
     // The one local resume ladder (§1 + §8 read order), shared by ResumeAsync / inbound resume / transfer-to-self.
-    // Caller holds _lock.
-    async Task ResumeCurrentLockedAsync(CancellationToken ct)
+    // <paramref name="owner"/> is the snapshot the caller routed on, taken BEFORE this claims — a claim flips what the
+    // projection shows, and the reload position must be judged against what was on screen. Caller holds _lock.
+    async Task ResumeCurrentLockedAsync(CancellationToken ct, ClaimCause cause, OwnerState owner)
     {
-        if (_session.Current is not null)
+        if (_session.Current is { } cur)
         {
-            if (RejectLocalPlay()) return;
-            // A recovery-seeded session (§1) OR a host StopHostKeepingSession tore down (a takeover, a stray-host
-            // cleanup, a fast-start body failure) both leave the viewer showing "paused" over a host that holds
-            // NOTHING — belt-and-braces on the SECOND condition (§2): even if some path reaches here with the latch
-            // unset, a host with neither an honest clock nor a playing decoder cannot be resumed by a bare Play(), so
-            // treat it exactly like the pending-load case rather than trust the empty host. Either way the first
-            // Resume fast-starts through LoadAndPlayCurrentAsync at the stored position (Herodotus only at 0), and
-            // EvKind.Resumed is only ever emitted below, on the branch that actually played something.
-            if (_restorePendingLoad || (!_currentHost.ClockValid && !_currentHost.IsPlaying))
+            if (!ClaimLocalPlayback(cause)) return;
+            // A recovery-seeded session (§1), or a host a StopHost silenced (a takeover, a stray host, a failed body):
+            // the host does not hold the current, so a bare Play() would be a permanent no-op over nothing. Reload
+            // through LoadAndPlayCurrentAsync's fast-start instead, at OUR position for this track (Herodotus only at 0);
+            // EvKind.Resumed is only ever emitted below, on the branch that actually has media to play.
+            if (!HostHoldsCurrent())
             {
-                _restorePendingLoad = true;
-                long pos = Math.Max(0, _projection.PositionMs);
+                var (pos, source) = ReloadPosition(cur, owner);
                 MintCommand("playbtn");
-                await LoadAndPlayCurrentAsync(EvKind.Started, ct, pos > 0 ? pos : -1, skipOnUnplayable: true)
-                    .ConfigureAwait(false);
+                await LoadAndPlayCurrentAsync(LoadOrigin.Claim, EvKind.Started, ct, pos > 0 ? pos : -1, skipOnUnplayable: true,
+                    posSource: source).ConfigureAwait(false);
                 return;
             }
-            _currentHost.Play(); EmitState(EvKind.Resumed);   // we have loaded local media → normal resume
+            _currentHost.Play(); EmitState(EvKind.Resumed);   // the host holds the current → normal resume
             return;
         }
-        await GhostResumeAsync(ct).ConfigureAwait(false);   // cold/ghost → seed from the cluster (else the local snapshot)
+        await GhostResumeAsync(ct, cause, forced: false).ConfigureAwait(false);   // cold → seed from the cluster (else the local snapshot)
     }
 
-    async Task LocalNextAsync(CancellationToken ct = default)
+    // Where a reload of OUR current resumes: our own playhead for it (host-fed, captured at every stop), else the
+    // projection — but only while it shows the LOCAL session and names this very track. Never a cluster position: that
+    // is another device's playhead, and applied to our track it is the 1137/1788/2578/6448 incident (the phone's position
+    // on a different song, reloaded here). Caller holds _lock.
+    (long Ms, string Source) ReloadPosition(Track cur, in OwnerState owner)
+    {
+        if (TryLocalPlayhead(cur.Uri, out long ms)) return (ms, "playhead");
+        if (PlaybackOwnership.ShowsLocalNowPlaying(owner, HasLocalSession)
+            && string.Equals(_projection.CurrentTrack?.Uri, cur.Uri, StringComparison.Ordinal))
+            return (Math.Max(0, _projection.PositionMs), "projection");
+        return (-1, "none");
+    }
+
+    // <paramref name="claim"/> null = the host's own Ended (AutoAdvance): an Advance, never a claim — it only runs while
+    // the owner still allows loads. Non-null = a user/remote skip, which claims before it loads. seedFromCluster: see
+    // NextAsync (a departed device's snapshot is what the skip steps through).
+    async Task LocalNextAsync(CancellationToken ct, ClaimCause? claim, bool seedFromCluster = false)
     {
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            if (UserIntentWentStale(claim)) return;
             _projection.NoteLocalCommand();
+            var seed = seedFromCluster ? await SeedFromDisplayedClusterAsync(ct).ConfigureAwait(false) : null;
             QueueEntry? advanced = null;
             if (_session.Next() is { } snap) { _snap = snap; advanced = snap.Current; }
             // Attribution: a queue STEP and a fresh context PLAY both end in the same silent LoadAndPlayCurrentAsync, so
             // without this line the log cannot tell "the user pressed Next" from "something re-resolved the context".
             _log.Info($"queue advance → {advanced?.Track.Uri ?? "(end of context)"}");
-            if (advanced is not null) await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct).ConfigureAwait(false);
-            else if (await TryContinueContextAsync(ct).ConfigureAwait(false)) { }
-            else { _currentHost.Stop(); Emit(BuildEvent(EvKind.Ended, null, 0, reasonEnd: "endplay")); }   // end-of-context
+            if (advanced is not null)
+            {
+                if (claim is { } c && !ClaimLocalPlayback(c)) return;
+                await LoadAndPlayCurrentAsync(claim is null ? LoadOrigin.Advance : LoadOrigin.Claim, EvKind.TrackChanged, ct,
+                    expectedGeneration: seed?.Generation ?? 0).ConfigureAwait(false);
+                if (seed is { } s) ScheduleQueueHeal(_session.ContextUri ?? s.ContextUri, s.Generation);
+            }
+            else if (await TryContinueContextAsync(ct, claim).ConfigureAwait(false)) { }
+            else
+            {
+                // End of the context: nothing left to play here, so the slot goes back (Nobody, and the publisher says
+                // is_active=false) — the host is already silent, the release only stops us claiming it.
+                StopHostCore();
+                Emit(BuildEvent(EvKind.Ended, null, 0, reasonEnd: "endplay"));
+                ReleaseOwnership(ReleaseCause.EndOfContext);
+            }
         }
         finally { _lock.Release(); }
     }
 
-    async Task LocalPrevAsync(CancellationToken ct = default)
+    async Task LocalPrevAsync(CancellationToken ct, ClaimCause claim, bool seedFromCluster = false)
     {
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            if (UserIntentWentStale(claim)) return;
             _projection.NoteLocalCommand();
+            var seed = seedFromCluster ? await SeedFromDisplayedClusterAsync(ct).ConfigureAwait(false) : null;
+            // "How far into the track" is the host's clock only while it holds the current — a silenced host's stale
+            // clock (or a seeded session's absent one) is not a position to restart from.
+            long pos = HostHoldsCurrent() ? _currentHost.PositionMs : 0;
             // Desktop semantics: >3 s into the track, "previous" restarts the current track instead of stepping back.
-            if (_currentHost.PositionMs > 3000) { _log.Info("queue back → restart current (>3s in)"); _currentHost.Seek(0, SeekMode.Accurate); return; }
+            if (pos > 3000) { _log.Info("queue back → restart current (>3s in)"); _currentHost.Seek(0, SeekMode.Accurate); return; }
             if (_session.Prev() is { } snap)
             {
                 _snap = snap;
                 _log.Info($"queue back → {_snap.Current?.Track.Uri ?? "(none)"}");
-                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct).ConfigureAwait(false);
+                if (!ClaimLocalPlayback(claim)) return;
+                await LoadAndPlayCurrentAsync(LoadOrigin.Claim, EvKind.TrackChanged, ct, expectedGeneration: seed?.Generation ?? 0)
+                    .ConfigureAwait(false);
+                if (seed is { } s) ScheduleQueueHeal(_session.ContextUri ?? s.ContextUri, s.Generation);
                 return;
             }
             // No history and no prior context row (a restored session, §2): into the track → restart; already at 0 → a
             // true no-op (the derived CanSkipPrev keeps the button disabled in exactly this state).
-            if (_currentHost.PositionMs > 0) { _log.Info("queue back → restart current (no history)"); _currentHost.Seek(0, SeekMode.Accurate); return; }
+            if (pos > 0) { _log.Info("queue back → restart current (no history)"); _currentHost.Seek(0, SeekMode.Accurate); return; }
             _log.Info("queue back ignored — no history and at position 0");
         }
         finally { _lock.Release(); }
     }
 
-    // Ghost resume: the play button while nothing is loaded locally → seed context/track/position + the next-up queue
-    // from the cluster snapshot, then play locally through the ONE LoadAndPlayCurrentAsync pipeline (fix §4 — fast-start,
-    // continuation prefetch, prepared-next; the old audio-only duplicate that always Play()ed and inverted the episode
-    // rule is gone). Empty cluster → the persisted local session is the fallback, restored PAUSED (§8). Caller holds _lock.
-    async Task GhostResumeAsync(CancellationToken ct)
+    readonly record struct ClusterSeed(string ContextUri, long Generation, long PositionMs);
+
+    // The DISPLAYED cluster snapshot becomes the local session: its current (re-asked of its owner when no catalogue owns
+    // it), queue and history, through SeedSessionFromCluster. Null when the cluster names nothing this machine can play
+    // (our own masked ConnectUriMask echo included). The position is read here, BEFORE any claim — a claim flips what the
+    // projection shows, and this is the displayed device's own playhead ON ITS OWN track (which is what we now play).
+    // Caller holds _lock.
+    async Task<ClusterSeed?> SeedFromDisplayedClusterAsync(CancellationToken ct)
+    {
+        var track = _projection.CurrentTrack;
+        if (track is null || !PlayableHere(track.Uri)) return null;
+        var ctxUri = _projection.ContextUri ?? track.Uri;
+        track = await ReHydrateThroughOwnerAsync(track, ct).ConfigureAwait(false);   // a module playable is re-asked, not re-used
+        long generation = SeedSessionFromCluster(track, ctxUri);
+        return new ClusterSeed(ctxUri, generation, _projection.PositionMs);
+    }
+
+    // Ghost resume: the play button with no local session (or over a departed device's snapshot, or as the pull
+    // fallback — <paramref name="forced"/>) → seed context/track/position + the next-up queue from the cluster snapshot,
+    // claim, and play locally through the ONE LoadAndPlayCurrentAsync pipeline (fix §4 — fast-start, continuation
+    // prefetch, prepared-next). Nothing playable on display → a forced caller falls back to the local session if there is
+    // one, else the persisted local snapshot is restored PAUSED (§8) — which is not a claim. Caller holds _lock.
+    async Task GhostResumeAsync(CancellationToken ct, ClaimCause cause, bool forced)
     {
         if (RejectLocalPlay()) return;   // local audio unsupported → toast + abort (covers cold resume / self-transfer / bare inbound transfer)
-        var track = _projection.CurrentTrack;
-        // …and a cluster current nothing here can play is the same as no cluster current at all (see the recovery path:
-        // it is our own ConnectUriMask display shape echoed back). Fall through to the persisted local session.
-        if (track is null || !PlayableHere(track.Uri))
+        if (await SeedFromDisplayedClusterAsync(ct).ConfigureAwait(false) is not { } seed)
         {
+            if (forced && _session.Current is not null) { await ResumeCurrentLockedAsync(ct, cause, Owner).ConfigureAwait(false); return; }
             if (!await TryRestoreFromSnapshotAsync(ct).ConfigureAwait(false))
                 _log.Info("ghost resume: nothing in the cluster to resume");
             return;
         }
-        var ctxUri = _projection.ContextUri ?? track.Uri;
-        track = await ReHydrateThroughOwnerAsync(track, ct).ConfigureAwait(false);   // a module playable is re-asked, not re-used
-        long generation = SeedSessionFromCluster(track, ctxUri);
-        _restorePendingLoad = false;   // this path loads immediately
+        _projection.Ownership.Claim(cause);   // RejectLocalPlay answered above
         MintCommand("playbtn");
         // Cluster position wins when > 0; EpisodeResumeMicros runs only when it is 0 (fix §5 — the resume seek inside
         // LoadAndPlayCurrentAsync already encodes exactly that rule).
-        long pos = _projection.PositionMs;
-        await LoadAndPlayCurrentAsync(EvKind.Started, ct, pos > 0 ? pos : -1, skipOnUnplayable: true,
-            expectedGeneration: generation).ConfigureAwait(false);
-        ScheduleQueueHeal(_session.ContextUri ?? ctxUri, generation);
+        await LoadAndPlayCurrentAsync(LoadOrigin.Claim, EvKind.Started, ct, seed.PositionMs > 0 ? seed.PositionMs : -1,
+            skipOnUnplayable: true, expectedGeneration: seed.Generation, posSource: "cluster").ConfigureAwait(false);
+        ScheduleQueueHeal(_session.ContextUri ?? seed.ContextUri, seed.Generation);
     }
 
     // Full session recovery from the last cluster (§8, F9): replay the raw cluster rows through ReplaceFromCluster so the
@@ -2259,13 +2415,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     }
 
     // ── launch SessionRecovery (findings §1) ─────────────────────────────────────────────────────────────────────────
-    // Trigger: any projection change (a cluster fold fires one) while NO local session exists and either nobody is
-    // active or the cluster still (stale) names US active. Another device active → we stay a viewer, unchanged.
+    // Trigger: any projection change (a cluster fold fires one) while NO local session exists and NOBODY owns playback —
+    // which includes a cluster that still (stale) names US: without a claim this process, that is Nobody(StaleSelf), not
+    // ownership. Foreign → we stay a viewer, unchanged; Us → a claim is already starting something. Recovery NEVER claims:
+    // it seeds paused, and only an explicit intent makes us the owner (the 15:21:32 launch slot steal was a recovery seed
+    // reaching the wire as is_active=true).
     void MaybeScheduleSessionRecovery(IPlaybackState s)
     {
         if (Volatile.Read(ref _recoveryState) != 0) return;
-        var aid = s.ActiveDeviceId ?? "";
-        if (!string.IsNullOrEmpty(aid) && aid != _ourDeviceId) return;   // viewer — the cluster owns the session
+        if (Owner.Kind != OwnerKind.Nobody) return;
         if (_projection.LastCluster is null) return;                     // nothing folded yet (nothing to recover from)
         if (_snap.Current is not null) return;                           // a local session already exists
         // §7 — an explicit play intent already minted the newest generation before this fold arrived: recovery seeding
@@ -2291,19 +2449,21 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 // MaybeScheduleSessionRecovery and this task actually acquiring _lock.
                 long explicitGen = Volatile.Read(ref _explicitPlayGeneration);
                 if (explicitGen != 0 && explicitGen == Volatile.Read(ref _contextGeneration)) return;
-                var aid = _projection.ActiveDeviceId;
-                if (!string.IsNullOrEmpty(aid) && aid != _ourDeviceId) return;   // became a viewer meanwhile
+                var owner = Owner;
+                if (owner.Kind != OwnerKind.Nobody) return;   // became a viewer (or something claimed) meanwhile
                 if (_projection.LastCluster is { HasTrack: true } && _projection.CurrentTrack is { } track
                     && PlayableHere(track.Uri))
                 {
-                    bool weAreStaleActive = aid == _ourDeviceId;
+                    bool weAreStaleActive = owner.Cause == NobodyCause.StaleSelf;
                     var ctxUri = _projection.ContextUri ?? track.Uri;
                     // The cluster row for a uri no catalogue owns is OUR OWN publish from a previous session — a title
                     // and a length we wrote down once. Re-ask the owner before it becomes the restored now-playing.
                     track = await ReHydrateThroughOwnerAsync(track, default).ConfigureAwait(false);
                     long generation = SeedSessionFromCluster(track, ctxUri);
-                    _restorePendingLoad = true;   // seeded, NOT loaded — the first Resume fast-starts (§1)
-                    long pos = _projection.PositionMs;   // already extrapolated at the cluster fold
+                    // Seeded, NOT loaded (the host holds nothing, so the first Resume fast-starts, §1) — at this position,
+                    // the seeded track's own (already extrapolated at the cluster fold).
+                    long pos = _projection.PositionMs;
+                    NoteLocalPlayhead(track.Uri, pos);
                     // The stale "us playing" echo must not flip the just-published Paused back for the next heartbeats.
                     if (weAreStaleActive) _projection.NoteLocalCommand();
                     // Publish PAUSED to the viewer ONLY (ApplyLocalSnapshot, never the Publish fan-out): recovery must not
@@ -2407,7 +2567,6 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         _continuationFetch = null;
         _unplayableSkippedUri = null;
         _restoreAudioFirst = true;   // audio-only restore; video restores placement, never live playback (§8)
-        _restorePendingLoad = false; // this path loads (paused) right away
         _projection.SetContextMetadata(resolved.Metadata);
         MintCommand("appload");
         _log.Event(WaveeLogLevel.Info, "queue.recovery.snapshot", "session restored from the local snapshot (paused)",
@@ -2420,8 +2579,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 WaveeLogField.Of("matched", idx >= 0),
             ]);
         _quietRestorePublish = true;   // launch must not claim the cluster's active slot — the first real Play() announces (§8)
-        await LoadAndPlayCurrentAsync(EvKind.Paused, ct, snap.PositionMs > 0 ? snap.PositionMs : -1,
-            initiallyPaused: true, skipOnUnplayable: true, expectedGeneration: generation).ConfigureAwait(false);
+        // A PAUSED Restore is the one load PlaybackOwnership allows while nobody owns playback — and it claims nothing.
+        await LoadAndPlayCurrentAsync(LoadOrigin.Restore, EvKind.Paused, ct, snap.PositionMs > 0 ? snap.PositionMs : -1,
+            initiallyPaused: true, skipOnUnplayable: true, expectedGeneration: generation, posSource: "snapshot").ConfigureAwait(false);
         return true;
     }
 
@@ -2566,6 +2726,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         _projection.NoteLocalCommand();
         long fromMs = _currentHost.PositionMs;
         _currentHost.Seek(targetMs, SeekMode.Accurate);
+        // A committed local seek is where WE are now — even over a host that holds nothing (the next Resume lands here).
+        NoteLocalPlayhead(_snap.Current?.Track.Uri, targetMs);
         Emit(BuildEvent(EvKind.Seeked, _snap.Current?.Track, fromMs, seekToMs: targetMs));
         // W2 (remaining-ms-keyed prepare): a seek that LANDS inside the ending-soon window re-arms prepared-next NOW —
         // the signature dedupe makes this free when the slot is already prepared for the unchanged (current, next) pair —
@@ -2584,7 +2746,13 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         return parts.Length >= 3 ? parts[1] : "playlist";
     }
 
+    // THE load chokepoint. <paramref name="origin"/> is required: it is what PlaybackOwnership.AllowsLoad judges — Foreign
+    // never loads; Nobody loads only a PAUSED Restore (launch recovery, which claims nothing); Us loads everything. A path
+    // that starts playback claims BEFORE calling this (origin Claim), so its load is allowed by construction; the host's
+    // own advance (Advance), a media-kind swap (MediaKindRefresh) and a video recovery (VideoRecovery) are only ever
+    // allowed while we still own playback. posSource says where resumePositionMs came from, for the playback.load line.
     async Task LoadAndPlayCurrentAsync(
+        LoadOrigin origin,
         EvKind kind,
         CancellationToken ct,
         long resumePositionMs = -1,
@@ -2594,22 +2762,43 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         // A remote play/transfer's player_options_override.modes.media — bypasses the ordinary ShouldPlayAsVideo /
         // Connect-audio-first resolution for exactly THIS load (a parameter, like resumePositionMs, never a sticky
         // flag: the next track this session advances to via a plain Next() resolves its kind normally).
-        PlayableKind? mediaKindOverride = null)
+        PlayableKind? mediaKindOverride = null,
+        string posSource = "none")
     {
         if (RejectLocalPlay()) return;   // local audio unsupported → toast + abort (covers play / next / prev / enqueue-idle / inbound)
         var cur = _session.Current;
-        if (cur is null) { _currentHost.Stop(); return; }
-        _restorePendingLoad = false;   // any real load consumes the recovery seed's deferred-load latch
+        if (cur is null) { StopHostCore(); return; }
+        var owner = Owner;
+        if (!PlaybackOwnership.AllowsLoad(owner, origin, initiallyPaused))
+        {
+            LogLoadRefused(origin, kind, initiallyPaused, cur.Uri, owner, "start");
+            _quietRestorePublish = false;   // a refused load publishes nothing — its quiet latch must not mute a later event
+            return;
+        }
         _loadResumeTargetMs = Math.Max(0, resumePositionMs);   // 0 for a fresh start; the Ended guard only fires above the threshold
 
         // Takeover-vs-in-flight-load race (§5): capture the generation THIS load owns and re-check it after every await
-        // below, bailing BEFORE the load actually touches the host. DeactivateIfActiveOwner bumps the counter the moment
-        // a takeover tears the host down, so a resolve already in flight when that happens must not land afterwards and
-        // Play()/LoadFastStart over a host another device now owns. Mirrors the guard LocalPlaySpecAsync and
+        // below, bailing BEFORE the load actually touches the host. Losing ownership bumps the counter (OnOwnershipChanged,
+        // StopHost), so a resolve already in flight when a takeover lands must not land afterwards and
+        // Play()/LoadFastStart over a host another device now owns — and LoadMayTouchHost re-asks the owner too, for the
+        // transitions that bump nothing (Nobody → Foreign under a paused restore). Mirrors the guard LocalPlaySpecAsync and
         // HandleInboundTransferAsync already carry; a caller that pre-minted its own generation (the transfer path, the
         // restore paths) passes it down so this checks against the SAME value it already validated — everyone else gets
         // a fresh one minted right here.
         long generation = expectedGeneration != 0 ? expectedGeneration : Interlocked.Increment(ref _contextGeneration);
+        _log.Event(WaveeLogLevel.Info, "playback.load",
+            "load " + origin + " " + kind + " track=" + cur.Uri + " pos=" + resumePositionMs + " (" + posSource + ")",
+            fields:
+            [
+                WaveeLogField.Of("origin", origin.ToString()),
+                WaveeLogField.Of("kind", kind.ToString()),
+                WaveeLogField.Of("paused", initiallyPaused),
+                WaveeLogField.Of("pos", resumePositionMs),
+                WaveeLogField.Of("posSource", posSource),
+                WaveeLogField.Of("owner", owner.Describe()),
+                WaveeLogField.Of("gen", generation),
+                WaveeLogField.Of("track", cur.Uri),
+            ]);
 
         // A DIFFERENT playable re-arms the video-recovery loop guard. The recovery's OWN reload keeps the same uri, so it
         // deliberately does NOT re-arm — that is what caps the fallback at one attempt per playable.
@@ -2638,7 +2827,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             }
             catch { }
         }
-        if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while meta resolved
+        // A takeover/other play won the race while meta resolved — checked before the host swap and the video branch's
+        // track-changed publish, neither of which may happen for a load that is no longer allowed.
+        if (!LoadMayTouchHost(generation, origin, kind, initiallyPaused, cur.Uri)) { _quietRestorePublish = false; return; }
         if (string.IsNullOrEmpty(_commandIdHex)) MintCommand(kind == EvKind.TrackChanged ? "trackdone" : "playbtn");
         _currentIds = MintPlaybackIds(cur, mediaId);
 
@@ -2647,7 +2838,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         var mediaKind = SwitchCurrentMedia(cur, mediaKindOverride);
         if (mediaKind == PlayableKind.Video)
         {
-            if (StartVideoLoadDetached(cur, kind, mediaId, bitrateKbps, audioFormat, durationMs, fileId,
+            if (StartVideoLoadDetached(origin, cur, kind, mediaId, bitrateKbps, audioFormat, durationMs, fileId,
                 resumePositionMs, initiallyPaused, skipOnUnplayable, generation))
                 return;
             // LoadCurrentVideoAsync is unwired (unit tests / audio-only build — ShouldPlayAsVideo is null too and we
@@ -2662,15 +2853,49 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             NotifyVideoUnavailable(cur);   // the app still thinks this playable has a video → its surface would spin forever
         }
 
-        await LoadAudioCurrentLockedAsync(kind, cur, ct, resumePositionMs, initiallyPaused, skipOnUnplayable, generation,
+        await LoadAudioCurrentLockedAsync(origin, kind, cur, ct, resumePositionMs, initiallyPaused, skipOnUnplayable, generation,
             mediaId, bitrateKbps, audioFormat, durationMs, fileId).ConfigureAwait(false);
+    }
+
+    // The load's last word before it touches the host: its generation is still the newest AND the owner still allows it.
+    // The second half catches what the generation cannot — an ownership change that bumped nothing (Nobody → Foreign while
+    // a paused restore resolved) — and is logged, so a refused in-flight load is visible. Safe off-lock.
+    bool LoadMayTouchHost(long generation, LoadOrigin origin, EvKind kind, bool initiallyPaused, string uri)
+    {
+        if (generation != Volatile.Read(ref _contextGeneration)) return false;   // a takeover/other play won the race
+        var owner = Owner;
+        if (PlaybackOwnership.AllowsLoad(owner, origin, initiallyPaused)) return true;
+        LogLoadRefused(origin, kind, initiallyPaused, uri, owner, "in-flight");
+        return false;
+    }
+
+    void LogLoadRefused(LoadOrigin origin, EvKind kind, bool paused, string uri, in OwnerState owner, string stage)
+        => _log.Event(WaveeLogLevel.Info, "playback.load.refused",
+            "load " + origin + " " + kind + " refused (" + stage + ") — owner " + owner.Describe() + " track=" + uri,
+            fields:
+            [
+                WaveeLogField.Of("origin", origin.ToString()),
+                WaveeLogField.Of("kind", kind.ToString()),
+                WaveeLogField.Of("paused", paused),
+                WaveeLogField.Of("owner", owner.Describe()),
+                WaveeLogField.Of("stage", stage),
+                WaveeLogField.Of("gen", Volatile.Read(ref _contextGeneration)),
+                WaveeLogField.Of("track", uri),
+            ]);
+
+    // The host was just handed <paramref name="uri"/> at <paramref name="resumePositionMs"/>: it holds the current now
+    // (HostHoldsCurrent), and that is our playhead until its own clock says otherwise.
+    void NoteHostLoaded(string uri, long resumePositionMs)
+    {
+        _loadedUri = uri;
+        NoteLocalPlayhead(uri, Math.Max(0, resumePositionMs));
     }
 
     // The AUDIO tail of LoadAndPlayCurrentAsync, extracted verbatim (A5 / Milestone C: video-smooth-switching-
     // implementation.md §3) so the video branch above can return before ever touching it. Fast-start when wired, else
     // the plain resolve — body byte-identical to what used to run inline. Caller holds _lock; every await below still
-    // re-checks `generation` before touching the host, exactly as when this lived inline in LoadAndPlayCurrentAsync.
-    async Task LoadAudioCurrentLockedAsync(EvKind kind, Track cur, CancellationToken ct, long resumePositionMs,
+    // re-checks (LoadMayTouchHost) before touching the host, exactly as when this lived inline in LoadAndPlayCurrentAsync.
+    async Task LoadAudioCurrentLockedAsync(LoadOrigin origin, EvKind kind, Track cur, CancellationToken ct, long resumePositionMs,
         bool initiallyPaused, bool skipOnUnplayable, long generation, byte[]? mediaId, int bitrateKbps,
         string audioFormat, long durationMs, byte[]? fileId)
     {
@@ -2681,9 +2906,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             FastStartPlan plan;
             try { plan = await _fast.ResolveFastAsync(cur, ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { throw; }
-            catch (Exception ex) { await HandleUnplayableCurrentAsync(ex, skipOnUnplayable, initiallyPaused, ct).ConfigureAwait(false); return; }
-            if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while the fast-start plan resolved
+            catch (Exception ex) { await HandleUnplayableCurrentAsync(ex, origin, skipOnUnplayable, initiallyPaused, ct).ConfigureAwait(false); return; }
+            // A takeover/other play won while the plan resolved. This load publishes nothing now, so a quiet-restore latch
+            // it armed must not survive to mute some later, unrelated event (we still hold _lock: nothing re-armed it).
+            if (!LoadMayTouchHost(generation, origin, kind, initiallyPaused, cur.Uri)) { _quietRestorePublish = false; return; }
             _audioHost.LoadFastStart(plan.Start);   // audio-specific loading (guarded: current kind is audio/local here)
+            NoteHostLoaded(cur.Uri, resumePositionMs);
             // Belt-and-suspenders for the buffering-bar-on-a-paused-restored-track fix: FluentMediaAudioHost now withholds
             // its own Prebuffering/Buffering signals while it has no play intent, but this clears any transient flag
             // regardless of how it got set (the same reasoning as SwitchHost's clear at :528) — nobody asked to hear this
@@ -2696,16 +2924,18 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             Emit(BuildEvent(kind, cur, Math.Max(0, resumePositionMs), mediaId, bitrateKbps, audioFormat, durationMs, fileId));
             SchedulePreparedNext("after-start");
             MaybeStartContinuationFetch();
-            _ = SupplyBodyWhenReadyAsync(plan.Body, cur.Uri);
+            _ = SupplyBodyWhenReadyAsync(plan.Body, cur.Uri, origin, initiallyPaused);
             return;
         }
 
         AudioStreamHandle handle;
         try { handle = await _resolver.ResolveAsync(cur, ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { throw; }
-        catch (Exception ex) { await HandleUnplayableCurrentAsync(ex, skipOnUnplayable, initiallyPaused, ct).ConfigureAwait(false); return; }   // no silent drop
-        if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while the resolve was in flight
+        catch (Exception ex) { await HandleUnplayableCurrentAsync(ex, origin, skipOnUnplayable, initiallyPaused, ct).ConfigureAwait(false); return; }   // no silent drop
+        // A takeover/other play won while the resolve was in flight — same quiet-latch hygiene as the fast-start branch.
+        if (!LoadMayTouchHost(generation, origin, kind, initiallyPaused, cur.Uri)) { _quietRestorePublish = false; return; }
         _audioHost.Load(handle);   // audio-specific loading (only reached when the current kind is audio/local)
+        NoteHostLoaded(cur.Uri, resumePositionMs);
         // See the fast-start branch above — same belt-and-suspenders clear for the same paused-restore race.
         if (initiallyPaused) _projection.ClearTransientBuffering();
         if (!initiallyPaused) _currentHost.Play();
@@ -2721,7 +2951,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // second failure (or nothing left to skip to) reports, so a fully dead window is one toast, never a loop. Non-restore
     // paths (skipOnUnplayable false) keep the report-immediately behavior. The paused-ness of the original load carries
     // over, so a paused launch restore whose current is dead never autoplays the successor. Caller holds _lock.
-    async Task HandleUnplayableCurrentAsync(Exception ex, bool skipOnUnplayable, bool initiallyPaused, CancellationToken ct)
+    async Task HandleUnplayableCurrentAsync(Exception ex, LoadOrigin origin, bool skipOnUnplayable, bool initiallyPaused, CancellationToken ct)
     {
         var cur = _session.Current;
         if (skipOnUnplayable && cur is not null
@@ -2733,21 +2963,25 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             _snap = snap;
             _log.Info($"restore: current unplayable ({ex.GetType().Name}: {ex.Message}); skipping to next → "
                 + (snap.Current?.Track.Uri ?? "(none)"));
-            await LoadAndPlayCurrentAsync(initiallyPaused ? EvKind.Paused : EvKind.TrackChanged, ct,
+            // The skip is part of the SAME load (same origin): a paused Restore stays a paused Restore, a claim stays ours.
+            await LoadAndPlayCurrentAsync(origin, initiallyPaused ? EvKind.Paused : EvKind.TrackChanged, ct,
                 initiallyPaused: initiallyPaused).ConfigureAwait(false);
             return;
         }
         // A PAUSED launch restore is not a play attempt — the user has asked for nothing yet, so a media that will not
         // open right now (an expired module locator, an offline body, a playable whose form is only known after an
-        // out-of-process resolve) must not greet them with an error toast at startup. Keep the seeded session, re-arm the
-        // deferred-load latch so the first Resume runs the load through the ONE fast-start path, and report honestly THEN.
+        // out-of-process resolve) must not greet them with an error toast at startup. Keep the seeded session — the host
+        // holds nothing of it, so the first Resume runs the load through the ONE fast-start path — and report honestly THEN.
         if (skipOnUnplayable && initiallyPaused)
         {
-            _restorePendingLoad = true;
             _log.Info($"restore: current not loadable yet ({ex.GetType().Name}: {ex.Message}); staying seeded — the first Resume will load it");
             return;
         }
         ReportPlaybackError(ex);
+        // Terminal: this load failed. When nothing of ours is audible any more (the first track of a play, or a host that
+        // already went quiet) the slot goes back — is_active over a silent player is a lie to every other device. A skip
+        // whose successor failed while the PREVIOUS track still plays keeps ownership: that audio is still ours.
+        if (!_currentHost.IsPlaying) ReleaseOwnership(ReleaseCause.LoadFailed);
     }
 
     // Video branch of LoadAndPlayCurrentAsync (A4/A5, Milestone C: video-smooth-switching-implementation.md §3): kicks
@@ -2760,7 +2994,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // null too and we never get here in practice), so the caller falls through to the existing SYNCHRONOUS audio
     // fallback; TRUE means the load is in flight (fire-and-forget) and the caller must return without touching the
     // host again — the resolve/open must NEVER run while _lock is held. Caller holds _lock.
-    bool StartVideoLoadDetached(Track cur, EvKind kind, byte[]? mediaId, int bitrateKbps, string audioFormat,
+    bool StartVideoLoadDetached(LoadOrigin origin, Track cur, EvKind kind, byte[]? mediaId, int bitrateKbps, string audioFormat,
         long durationMs, byte[]? fileId, long resumePositionMs, bool initiallyPaused, bool skipOnUnplayable, long generation)
     {
         if (LoadCurrentVideoAsync is not { } loadVideo) return false;
@@ -2773,7 +3007,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         Emit(BuildEvent(kind, cur, Math.Max(0, resumePositionMs), mediaId, bitrateKbps, audioFormat, durationMs, fileId));
         MaybeStartContinuationFetch();
         SchedulePreparedNext("video-start");
-        var loadTask = RunVideoLoadAsync(loadVideo, cur, kind, mediaId, bitrateKbps, audioFormat, durationMs, fileId,
+        var loadTask = RunVideoLoadAsync(loadVideo, origin, cur, kind, mediaId, bitrateKbps, audioFormat, durationMs, fileId,
             resumePositionMs, initiallyPaused, skipOnUnplayable, generation);
         VideoLoadSpawnedForTest?.Invoke(loadTask);   // test seam only (internal, null in production) — see its doc comment
         return true;
@@ -2785,8 +3019,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // in flight always wins outright; past a lost race this never touches _currentHost/_currentKind again. Caller does
     // NOT hold _lock; this re-acquires it ONLY for the no-source→audio fallback's state mutation (mirrors the same
     // re-enter-for-the-mutation-only shape as RecoverVideoAsync/FallbackVideoToAudioAsync below).
-    async Task RunVideoLoadAsync(Func<Track, long, CancellationToken, Task<bool>> loadVideo, Track cur, EvKind kind,
-        byte[]? mediaId, int bitrateKbps, string audioFormat, long durationMs, byte[]? fileId,
+    async Task RunVideoLoadAsync(Func<Track, long, CancellationToken, Task<bool>> loadVideo, LoadOrigin origin, Track cur,
+        EvKind kind, byte[]? mediaId, int bitrateKbps, string audioFormat, long durationMs, byte[]? fileId,
         long resumePositionMs, bool initiallyPaused, bool skipOnUnplayable, long generation)
     {
         bool ok;
@@ -2802,10 +3036,20 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         {
             if (generation != Volatile.Read(ref _contextGeneration)) return;   // superseded — the error belongs to a load nobody is waiting on
             ReportPlaybackError(ex);   // handled (surfaced) — do not also start audio
+            // Terminal: give the slot back unless something of ours is still audible (see HandleUnplayableCurrentAsync).
+            if (!_currentHost.IsPlaying) ReleaseOwnership(ReleaseCause.LoadFailed);
             return;
         }
 
         if (generation != Volatile.Read(ref _contextGeneration)) return;   // a takeover/other play won the race while the video resolve/open was in flight
+        if (ok && !LoadMayTouchHost(generation, origin, kind, initiallyPaused, cur.Uri))
+        {
+            // The open took seconds OFF-lock and ownership moved meanwhile without bumping the generation (Nobody → Foreign
+            // under a paused restore): the video host now holds an opened session another device's playback must not
+            // share. Silence it here rather than wait for the next level-triggered fold to notice.
+            StopHost($"video {cur.Uri} opened after another device took playback — stopping it");
+            return;
+        }
 
         if (!ok)
         {
@@ -2822,13 +3066,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 SwitchHost(_audioHost);
                 _currentKind = MediaSwitchLogic.KindOf(false, cur.Origin == TrackOrigin.Local);
                 NotifyVideoUnavailable(cur);   // the app still thinks this playable has a video → its surface would spin forever
-                await LoadAudioCurrentLockedAsync(kind, cur, CancellationToken.None, resumePositionMs, initiallyPaused,
+                await LoadAudioCurrentLockedAsync(origin, kind, cur, CancellationToken.None, resumePositionMs, initiallyPaused,
                     skipOnUnplayable, generation, mediaId, bitrateKbps, audioFormat, durationMs, fileId).ConfigureAwait(false);
             }
             finally { _lock.Release(); }
             return;
         }
 
+        // The video host holds this playable now (HostHoldsCurrent) — set only here, once the open actually reached it.
+        NoteHostLoaded(cur.Uri, resumePositionMs);
         // NO follow-up Seek here: the resume position was handed to `loadVideo` above and is applied INSIDE the load, after
         // the session opens and before it plays. That ordering is the whole point — at an audio→video switch the video
         // player does not exist yet (the host serializes teardown→build→open through its load pump), so a seek issued at
@@ -2899,6 +3145,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 PlaybackBucketDiagnostics.Continuation("continuation.eager-skip", "prefetch was already consumed or superseded",
                     WaveeLogField.Of("resultCount", result.Count));
                 return;   // already consumed/superseded by track-end
+            }
+            if (Owner.Kind == OwnerKind.Foreign)
+            {
+                // Another device took playback while this resolved: appending now is a live LOCAL publish of a session
+                // nobody is playing here (the 14:57 "continuation while remote-active" line). Leave the result parked for
+                // the track-end consumer — it applies when (if) this session plays again.
+                PlaybackBucketDiagnostics.Continuation("continuation.eager-skip", "another device owns playback; prefetch left for track-end",
+                    WaveeLogField.Of("resultCount", result.Count));
+                return;
             }
             _continuationFetch = null;
             PlaybackBucketDiagnostics.Continuation("continuation.eager-apply", "applying prefetched continuation before track-end",
@@ -3054,7 +3309,8 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         return true;
     }
 
-    async Task<bool> TryContinueContextAsync(CancellationToken ct)
+    // <paramref name="claim"/>: see LocalNextAsync — null = the host's own advance, else the skip claims before it loads.
+    async Task<bool> TryContinueContextAsync(CancellationToken ct, ClaimCause? claim)
     {
         for (int attempt = 0; attempt < 2; attempt++)
         {
@@ -3121,7 +3377,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 WaveeLogField.Of("track", next.Track.Uri),
                 WaveeLogField.Of("ctx", _session.ContextUri ?? ""),
                 WaveeLogField.Of("remainingContext", _session.RemainingInContext));
-            await LoadAndPlayCurrentAsync(EvKind.TrackChanged, ct).ConfigureAwait(false);
+            if (claim is { } c && !ClaimLocalPlayback(c)) return true;   // the session moved; local playback is rejected here
+            await LoadAndPlayCurrentAsync(claim is null ? LoadOrigin.Advance : LoadOrigin.Claim, EvKind.TrackChanged, ct)
+                .ConfigureAwait(false);
             return true;
         }
 
@@ -3130,22 +3388,19 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     // The ONE atomic publish (§5): the current snapshot + the event fold into the projection under a single lock / single
     // FireChanges (ApplyLocalSnapshot), then the same event fans out to the extra projections (the PutState publisher) — the
-    // queue can never publish out of step with the track. Ownership is derived from the event kind, as before.
+    // queue can never publish out of step with the track. Ownership is NOT derived from events any more: a Started no
+    // longer makes us the owner (the claim before the load did), and an Ended no longer releases it (the end-of-context
+    // path does, explicitly) — the event kinds used to be a second ownership authority.
     void Publish(QueueSnapshot snap, in PlaybackEvent e)
     {
         _snap = snap;
-        // §8 — a quiet restore (a launch/snapshot restore, or the ownership-regained auto-reload) still folds into the
-        // LOCAL projection so the viewer sees the right paused row, but must not announce on the wire: nobody pressed
-        // Play, so the cluster must hear nothing until they do. Single-use — cleared here regardless of this event's
-        // kind, so a stray non-Paused event racing in right after the latch was armed (or the eventual real Resume,
-        // which is EvKind.Started) can never inherit a suppression it was never meant to have.
+        // §8 — a quiet restore (a launch/snapshot restore) still folds into the LOCAL projection so the viewer sees the
+        // right paused row, but must not announce on the wire: nobody pressed Play, so the cluster must hear nothing
+        // until they do. Single-use — cleared here regardless of this event's kind, so a stray non-Paused event racing in
+        // right after the latch was armed (or the eventual real Resume, which is EvKind.Started) can never inherit a
+        // suppression it was never meant to have.
         bool quiet = _quietRestorePublish;
         _quietRestorePublish = false;
-        // Paused is deliberately excluded: a RESTORED-paused session (recovery seeding the slab paused, nothing
-        // actually decoding yet) must not claim the active slot on its own — only a fold that actually started or
-        // resumed audible playback may.
-        if (e.Kind is EvKind.Started or EvKind.Resumed or EvKind.TrackChanged && e.Track is not null) SetActiveOwner(true);
-        else if (e.Kind is EvKind.Ended or EvKind.BecameInactive) SetActiveOwner(false);
         DiagnoseQueue("controller.publish." + e.Kind);
         _projection.ApplyLocalSnapshot(snap, e);
         if (quiet && e.Kind == EvKind.Paused) return;   // local fold only — see above
@@ -3165,11 +3420,16 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // (a track that had played 0 ms, stamped with the previous song's position). LoadAndPlayCurrentAsync's own
     // terminal Emit always carries the real resume target (or 0) directly and never goes through this helper, so
     // nothing here has a resume target to honor — 0 is the only honest answer at a boundary.
+    // And the projection's estimate only while it shows OUR session: under a foreign (or departed) owner's display it is
+    // THAT device's playhead, even on a track uri we share — our own playhead for the track is the honest fallback there.
     long PublishPositionMs(EvKind kind, Track? track)
     {
         bool boundary = kind is EvKind.Started or EvKind.TrackChanged
             || !string.Equals(track?.Uri, _projection.CurrentTrack?.Uri, StringComparison.Ordinal);
-        return boundary ? 0 : (_currentHost.ClockValid ? _currentHost.PositionMs : _projection.PositionMs);
+        if (boundary) return 0;
+        if (_currentHost.ClockValid) return _currentHost.PositionMs;
+        if (PlaybackOwnership.ShowsLocalNowPlaying(Owner, HasLocalSession)) return _projection.PositionMs;
+        return TryLocalPlayhead(track?.Uri, out long ms) ? ms : 0;
     }
 
     // Publish a session snapshot with a state event carrying its current track (queue mutations + options changes).
@@ -3184,7 +3444,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     // the current off the immutable _snap (never the live _session) so it is safe on the unlocked inbound paths (F7).
     void EmitState(EvKind kind) => Emit(BuildEvent(kind, _snap.Current?.Track, PublishPositionMs(kind, _snap.Current?.Track)));
 
-    // The captured-position overload (DeactivateIfActiveOwner et al.): the caller already read the host's clock BEFORE
+    // The captured-position overload (OnOwnershipChanged's BecameInactive): the caller already read the host's clock BEFORE
     // an imminent Stop() makes it stale, so the position travels in rather than being re-read here (too late).
     void EmitState(EvKind kind, long atMs) => Emit(BuildEvent(kind, _snap.Current?.Track, atMs));
 
@@ -3357,7 +3617,18 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
     void OnAudioTransition(AudioTransitionSignal signal)
     {
         if (signal.Kind == AudioTransitionKind.Started)
+        {
+            // A gapless hand-off is the host moving on BY ITSELF. While another device owns playback the host must not
+            // be running at all — stop it (level-triggered, like any host signal under a Foreign owner) instead of
+            // committing an advance nobody asked this device for.
+            if (Owner.Kind == OwnerKind.Foreign)
+            {
+                ClearPreparedToken(signal.Token);
+                StopHost($"prepared hand-off to {signal.TrackUri} while another device owns playback — stopping the local host");
+                return;
+            }
             _ = CommitPreparedTransitionAsync(signal);
+        }
         else if (signal.Kind == AudioTransitionKind.Missed)
         {
             ClearPreparedToken(signal.Token);
@@ -3404,7 +3675,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 _log.Info($"audio transition identity mismatch token={signal.Token} expectedItem={expectedItem.Value} " +
                     $"previewItem={preview?.ItemId.Value ?? 0} hostTrack={signal.TrackUri} previewTrack={preview?.Track.Uri ?? "(none)"}; reloading current");
                 ClearPreparedToken(signal.Token);
-                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, CancellationToken.None).ConfigureAwait(false);
+                await LoadAndPlayCurrentAsync(LoadOrigin.Advance, EvKind.TrackChanged, CancellationToken.None).ConfigureAwait(false);
                 return;
             }
 
@@ -3413,12 +3684,14 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             {
                 _log.Info($"audio transition advance mismatch token={signal.Token} expectedItem={expectedItem.Value}");
                 ClearPreparedToken(signal.Token);
-                await LoadAndPlayCurrentAsync(EvKind.TrackChanged, CancellationToken.None).ConfigureAwait(false);
+                await LoadAndPlayCurrentAsync(LoadOrigin.Advance, EvKind.TrackChanged, CancellationToken.None).ConfigureAwait(false);
                 return;
             }
 
             _snap = advanced;
             ClearPreparedToken(signal.Token);
+            // The host performed this hand-off itself: it holds the new current now, at the join's position.
+            NoteHostLoaded(current.Track.Uri, signal.PositionMs);
             _projection.NoteLocalCommand();
             MintCommand("trackdone");
             _currentIds = MintPlaybackIds(current.Track);
@@ -3442,15 +3715,29 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
 
     void OnHostSignal(AudioHostSignal s)
     {
-        // §4 — a remote device genuinely owns playback: SubscribeHost guards only host IDENTITY/generation, so a host
-        // StopHostKeepingSession tore down still has a live subscription and can still deliver a late signal (a
-        // position tick already in flight, a Paused edge racing the takeover). Feeding that into the projection would
-        // overwrite the cluster-derived position anchor with the stopped host's own 0 — the "UI reads 0:00 while a
-        // phone plays" defect. Ended/Error still pass through unconditionally: AutoAdvance, the video-recovery ladder
-        // and ReportPlaybackError all need them regardless of who currently owns playback. Closed HERE (not inside
-        // NowPlayingProjection.OnHostSignal) so the projection stays a pure fold over whatever it is handed.
-        if (s.Kind != AudioHostSignalKind.Ended && s.Kind != AudioHostSignalKind.Error && !RouteLocal() && !IsActiveOwner())
+        // §4 — another device owns playback, so the host must not run. SubscribeHost guards only host IDENTITY/generation:
+        // a host a takeover silenced still has a live subscription and can deliver a late signal (a position tick already
+        // in flight, a Paused edge racing the stop), and a load that slipped past its last ownership check can have
+        // started it again. A non-terminal signal is proof the host is doing something — stop it (level-triggered, like
+        // every Foreign fold; the old guard only dropped the signal and left the host playing under the phone's display,
+        // the 15:23 "audio here while the bar says iPhone" state). NOTHING folds into the projection: its display is the
+        // cluster's, and a stopped host's 0 over it was the "UI reads 0:00 while a phone plays" defect. A terminal signal
+        // (Ended/Error) from a host we are silencing neither advances the queue nor toasts an error at a user who is
+        // listening to another device. Closed HERE (not in NowPlayingProjection.OnHostSignal) so the projection stays a
+        // pure fold over whatever it is handed.
+        if (Owner.Kind == OwnerKind.Foreign)
+        {
+            if (s.Kind is AudioHostSignalKind.Ended or AudioHostSignalKind.Error)
+                _log.Info($"host {s.Kind} ignored — another device owns playback");
+            else
+                StopHost($"host signal {s.Kind} while another device owns playback — stopping the local host");
             return;
+        }
+        // The host's own clock is our playhead while it holds a playable (a live reading only: Buffering/Prebuffering carry
+        // no position worth keeping, and a stale clock reports 0 for "unknown").
+        if ((s.Kind is AudioHostSignalKind.PositionTick or AudioHostSignalKind.Playing or AudioHostSignalKind.Paused)
+            && _currentHost.ClockValid && _loadedUri is { } held)
+            NoteLocalPlayhead(held, s.PositionMs);
         _projection.OnHostSignal(s);
         if (s.Kind == AudioHostSignalKind.Ended)
         {
@@ -3460,6 +3747,9 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
                 _failureCheckpoint = null;
                 ReportPlaybackError(new AudioPlaybackException(AudioKeyFailureReason.None,
                     $"playback ended at pos={s.PositionMs}, behind the resume target {_loadResumeTargetMs} — the reopen failed silently"));
+                // A reopen that never played is a load that failed terminally, and the host has ended: nothing of ours is
+                // audible, so the slot goes back (the error surface's Retry claims again).
+                ReleaseOwnership(ReleaseCause.LoadFailed);
                 return;
             }
             _failureCheckpoint = null;
@@ -3528,7 +3818,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         }
         _log.Info($"video open failed for {track.Uri} — recovered; reloading the playable");
         await _lock.WaitAsync().ConfigureAwait(false);
-        try { await LoadAndPlayCurrentAsync(EvKind.Started, CancellationToken.None).ConfigureAwait(false); }
+        try { await LoadAndPlayCurrentAsync(LoadOrigin.VideoRecovery, EvKind.Started, CancellationToken.None).ConfigureAwait(false); }
         catch (Exception ex) { _log.Info("video recovery reload failed: " + ex.Message); }
         finally { _lock.Release(); }
     }
@@ -3542,14 +3832,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         try
         {
             if (!string.Equals(_session.Current?.Uri, track.Uri, StringComparison.Ordinal)) return;
-            await LoadAndPlayCurrentAsync(
-                EvKind.Started, CancellationToken.None, Math.Max(0, positionMs)).ConfigureAwait(false);
+            await LoadAndPlayCurrentAsync(LoadOrigin.VideoRecovery,
+                EvKind.Started, CancellationToken.None, Math.Max(0, positionMs), posSource: "host").ConfigureAwait(false);
         }
         catch (Exception ex) { _log.Info("video-to-audio fallback failed: " + ex.Message); }
         finally { _lock.Release(); }
     }
 
-    async Task AutoAdvanceAsync() { try { await LocalNextAsync(default).ConfigureAwait(false); } catch (Exception ex) { _log.Info("auto-advance error: " + ex.Message); } }
+    // The host's own Ended: an Advance, never a claim — it lands only while the owner still allows loads.
+    async Task AutoAdvanceAsync() { try { await LocalNextAsync(default, claim: null).ConfigureAwait(false); } catch (Exception ex) { _log.Info("auto-advance error: " + ex.Message); } }
 
     // ── forwarding (we are the controller of another device) — the real desktop envelope; ack_id parsed, not block-waited ─
     static Task Done => Task.CompletedTask;
@@ -3576,13 +3867,15 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         => _log.Info($"play intent origin={origin} route={(local ? "local" : "forward")} ctx={contextUri} index={startIndex} " +
             $"skipUri={(string.IsNullOrEmpty(skipUri) ? "-" : skipUri)} skipUid={(string.IsNullOrEmpty(skipUid) ? "-" : skipUid)} ordered={orderedCount}");
 
-    async Task ExecutePlayAsync(PlayRequest request, string origin, CancellationToken ct)
+    // <paramref name="owner"/>: the snapshot a caller already routed on (PlayTrackAsync forwarding through here), so one
+    // verb never decides on two different reads.
+    async Task ExecutePlayAsync(PlayRequest request, string origin, CancellationToken ct, OwnerState? owner = null)
     {
-        var target = _projection.ActiveDeviceId;
-        bool local = RouteLocal(target);
+        var o = owner ?? Owner;
+        bool local = PlaybackOwnership.RoutesLocal(o);
         LogPlayIntent(origin, request.ContextUri, request.StartIndex, request.SkipTrackUri, request.SkipTrackUid,
             request.OrderedTracks?.Count ?? 0, local);
-        if (!local) { await ForwardPlayAsync(request, target, ct).ConfigureAwait(false); return; }
+        if (!local) { await ForwardPlayAsync(request, o.DeviceId, ct).ConfigureAwait(false); return; }
         ClearRemotePlaybackIds();
         MintCommand("playbtn");
         // §7 — mint (and latch) the generation BEFORE the resolve: an explicit play intent is, by construction, the
@@ -3594,7 +3887,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         {
             var spec = new ContextSpec(request.ContextUri, null, request.OrderedTracks,
                 request.SkipTrackUri, request.SkipTrackUid, request.StartIndex);
-            await LocalPlaySpecAsync(spec, ct, generation).ConfigureAwait(false);
+            await LocalPlaySpecAsync(spec, ClaimCause.UserPlay, ct, generation).ConfigureAwait(false);
             return;
         }
         await LocalPlaySpecAsync(new ContextSpec(
@@ -3603,13 +3896,12 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
             null,
             request.SkipTrackUri,
             request.SkipTrackUid,
-            request.StartIndex), ct, generation).ConfigureAwait(false);
+            request.StartIndex), ClaimCause.UserPlay, ct, generation).ConfigureAwait(false);
     }
 
-    // `target` is a SINGLE READ captured by the caller at the same moment it evaluated RouteLocal() — never re-read
-    // here. An empty capture means a cluster fold landed between routing and sending and there is no one left to
-    // send to; that is a real, user-visible failure (not a silent drop), so it logs AND fires OnRemoteCommandFailed
-    // exactly like a rejected send does below.
+    // `target` is the owner.DeviceId of the SAME owner snapshot the caller routed on — never re-read here. It cannot be
+    // empty for a Foreign owner; the guard stays as the loud answer to a caller that got that wrong (a real, user-visible
+    // failure rather than a silent drop, so it logs AND fires OnRemoteCommandFailed exactly like a rejected send below).
     async Task Forward(string endpoint, string target, CancellationToken ct, params (string Key, object Value)[] args)
     {
         if (string.IsNullOrEmpty(target))
@@ -3695,17 +3987,21 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         if (!r.Ok) _log.Info($"outbound add_to_queue → {target}: failed ({r.Status})");
     }
 
-    async Task<bool> TryForwardTransferAsync(string target, CancellationToken ct)
+    // POST /connect/transfer/from/{from}/to/{target}. `from` is whoever owns playback in the SAME snapshot the caller
+    // decided on: the foreign owner (a viewer handing the phone's session to a speaker, or PULLING it here — from the
+    // phone to us; only self→self is a 400, wavee-playback-arbitration-rules.md), else us. reportFailure: false for the
+    // pull, whose failure has a fallback of its own (no "couldn't reach that device" toast for a play that still happens).
+    async Task<(bool Ok, int Status)> TryForwardTransferAsync(string target, OwnerState owner, CancellationToken ct, bool reportFailure = true)
     {
-        if (_outbound is null) { _log.Info($"transfer to {target} ignored - no outbound control"); return false; }
-        var from = string.IsNullOrEmpty(_projection.ActiveDeviceId) ? _ourDeviceId : _projection.ActiveDeviceId;
+        if (_outbound is null) { _log.Info($"transfer to {target} ignored - no outbound control"); return (false, 0); }
+        var from = owner.Kind == OwnerKind.Foreign ? owner.DeviceId : _ourDeviceId;
         // bug 8: a hand-off away from a locally-hosted video must say so, or the target has no reason to keep video mode.
-        bool hostingVideo = IsActiveOwner() && _currentKind == PlayableKind.Video;
+        bool hostingVideo = owner.Kind == OwnerKind.Us && _currentKind == PlayableKind.Video;
         var r = await _outbound.TransferAsync(from, target, ct, hostingVideo).ConfigureAwait(false);
-        if (r.Ok) { _log.Info($"connect transfer {from} -> {target}: ok ({r.Status})"); return true; }
+        if (r.Ok) { _log.Info($"connect transfer {from} -> {target}: ok ({r.Status})"); return (true, r.Status); }
         _log.Info($"connect transfer {from} -> {target}: failed ({r.Status})");
-        OnRemoteCommandFailed?.Invoke();
-        return false;
+        if (reportFailure) OnRemoteCommandFailed?.Invoke();
+        return (false, r.Status);
     }
 
     static string NewId() => Guid.NewGuid().ToString("N");
@@ -3993,6 +4289,7 @@ public sealed class PlaybackController : IPlaybackPlayer, IDisposable
         _remoteVolumeTx.Dispose();
         _transitionSub?.Dispose();
         _hostSub.Dispose();
+        _projection.Ownership.Changed -= OnOwnershipChanged;
         _projSub.Dispose();
         _lock.Dispose();
     }

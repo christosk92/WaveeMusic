@@ -52,6 +52,7 @@ public class ConnectEndToEndTests
     {
         long now = 0;
         var proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
+        proj.Ownership.Claim(ClaimCause.UserPlay);   // host signals fold only while WE own playback → measure the PLAYING read
         proj.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.Playing, 0));
         long delta = ConnectHarness.AllocDelta(() => { now += 10; _ = proj.PositionMs; }, iters: 1000);
         Assert.True(delta < 1024, $"position read should be ~zero-alloc, was {delta} bytes / 1000 reads");

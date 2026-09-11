@@ -168,6 +168,10 @@ internal static class TrackFactsStrip
     static Element ProseRun(in TrackFact f, Action<string, string?> go)
     {
         if (f.Form == TrackFactForm.Link) return LinkValue(f, go);
+        // Added by, resolved: the same avatar chip the Added-by COLUMN draws (TrackRow.AddedByCell), at the strip's
+        // caption size — a name alone reads as a fact, but a collaborative playlist's membership is a PERSON, and the
+        // column already established that face as how this app shows one.
+        if (f.Kind == TrackFactKind.AddedBy && f.Person is { } person) return AddedByChip(person);
         if (!NeedsLabel(f.Kind)) return ProseText(f.Value);
 
         var caption = Ui.Caption("");
@@ -183,6 +187,32 @@ internal static class TrackFactsStrip
             LineStacking = caption.LineStacking,
             LineBounds = caption.LineBounds,
             Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f, Shrink = 1f,
+        };
+    }
+
+    /// <summary>The resolved Added-by chip: "Added by" at the tertiary lead-in rung, then the same
+    /// <c>PersonPicture</c> avatar the Added-by COLUMN draws (<c>TrackRow.AddedByCell</c>) at a slightly smaller size
+    /// for the strip's caption scale, then the name. It carries no <c>OnClick</c> — this tree has no per-user profile
+    /// route (<c>RichText.RouteForUri</c> resolves playlist/album/artist/show/liked only, and
+    /// <c>ContentHost</c>/<c>ShellRoutes</c> register no <c>"user:"</c> destination) — so the chip states the
+    /// collaborator rather than pretending to open them.</summary>
+    static Element AddedByChip(Owner person)
+    {
+        var caption = Ui.Caption("");
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XXS, Shrink = 0f, MinWidth = 0f,
+            Children =
+            [
+                Ui.Caption(Loc.Get(TrackExpandedFacts.LabelKey(TrackFactKind.AddedBy)) + " ") with { Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f },
+                PersonPicture.Create("", 20f, displayName: person.Name, imageSourcePath: person.Avatar?.Url),
+                new TextEl(person.Name)
+                {
+                    Size = caption.Size, Weight = caption.ResolvedWeight, LineHeight = caption.LineHeight,
+                    Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                    MaxLines = 1, MinWidth = 0f, Shrink = 1f,
+                },
+            ],
         };
     }
 

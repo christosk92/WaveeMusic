@@ -195,17 +195,35 @@ public class EntityResidencyTests
 
     // A minimal in-memory cold tier (the CachedStoreTests MemCold shape) that counts GetEntity calls so a test can assert
     // the cold-fallback gate. Uses the interface's default GetEntity (a LoadAllEntities scan) wrapped to count.
+    //
+    // Lock-guarded, unlike a naive fake: CachedStore's ctor kicks off a REAL background warm pass (Warm(), Task.Run) that
+    // reads this store concurrently with whatever the test does on its own thread right after construction (e.g.
+    // SetSaved → UpsertTrack, which persists synchronously on the pin-reachability write gate). The production
+    // IColdStore (SqliteColdStore) is safe under that concurrency by construction (_readLock/_connLock); a plain
+    // Dictionary + int here is not, and racing a write into it from the test thread against a concurrent read from the
+    // warm thread is exactly what made ColdFallback_IsUnconditional_NotGatedOnEviction flaky under a parallel full
+    // suite run (more genuine thread interleaving) despite passing in isolation.
     sealed class FakeCold : IColdStore
     {
-        public readonly Dictionary<string, (EntityKind Kind, byte[] Payload)> Entities = new();
-        public int GetEntityCalls;
-        public IEnumerable<ColdEntity> LoadAllEntities() { foreach (var kv in Entities) yield return new ColdEntity(kv.Key, kv.Value.Kind, kv.Value.Payload); }
+        readonly object _gate = new();
+        readonly Dictionary<string, (EntityKind Kind, byte[] Payload)> _entities = new();
+        int _getEntityCalls;
+        public int GetEntityCalls { get { lock (_gate) return _getEntityCalls; } set { lock (_gate) _getEntityCalls = value; } }
+        public IEnumerable<ColdEntity> LoadAllEntities()
+        {
+            List<KeyValuePair<string, (EntityKind Kind, byte[] Payload)>> snapshot;
+            lock (_gate) snapshot = new List<KeyValuePair<string, (EntityKind Kind, byte[] Payload)>>(_entities);
+            foreach (var kv in snapshot) yield return new ColdEntity(kv.Key, kv.Value.Kind, kv.Value.Payload);
+        }
         public ColdEntity? GetEntity(string uri)
         {
-            GetEntityCalls++;
-            return Entities.TryGetValue(uri, out var e) ? new ColdEntity(uri, e.Kind, e.Payload) : null;
+            lock (_gate)
+            {
+                _getEntityCalls++;
+                return _entities.TryGetValue(uri, out var e) ? new ColdEntity(uri, e.Kind, e.Payload) : null;
+            }
         }
-        public void UpsertEntity(string uri, EntityKind kind, byte[] payload) => Entities[uri] = (kind, payload);
+        public void UpsertEntity(string uri, EntityKind kind, byte[] payload) { lock (_gate) _entities[uri] = (kind, payload); }
         public IEnumerable<ColdSaved> LoadAllSaved() { yield break; }
         public void UpsertSaved(string setId, string uri, bool saved, SyncState sync, long addedAtMs = 0) { }
         public IEnumerable<ColdVideoAssoc> LoadAllVideoAssociations() { yield break; }

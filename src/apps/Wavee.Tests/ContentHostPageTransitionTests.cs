@@ -1,5 +1,6 @@
 using System.Linq;
 using FluentGpu.Controls;
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using Xunit;
@@ -31,6 +32,15 @@ namespace Wavee.Tests;
 //  4. Symmetric page-slide double-exposure (A/B/D recordings). RecipeFor used MotionRecipes.PageSlideForward/Back —
 //     250ms opacity mix of two full-bleed pages at mismatched scroll offsets. ContentHost now uses fade-through
 //     (exit in place, enter delayed); the shared PageSlide recipes stay on SearchPage's facet swap.
+//
+//  5. Readable double-exposure on every swap (visual-continuity audit, S2 #5). The fade-through exit ran on
+//     Easing.FluentAccelerate, which that curve's OWN doc-comment says is wrong for a value fade (holds near 1 for
+//     most of t, snaps out only at the very end — "reads as '1, 1, 1, then suddenly gone'"). So the outgoing page was
+//     still ~70% opaque when the incoming page's fade-in started at DelayMs — 1-2 superimposed, unreadable frames on
+//     30/48 measured transitions. Fixed by swapping to Easing.EaseOut (the curve that doc-comment recommends). The
+//     slide distance was also Expressive.DistLarge (30 DIP, "check badge appear") rather than Expressive.DistBase
+//     (8 DIP, the token file's own "page slide" distance) — at 30 DIP the incoming page's first rendered frame already
+//     covered half its travel and back-navigation showed a late few-pixel trickle after the fade looked done.
 public class ContentHostPageTransitionTests
 {
     // ── 2. slot identity ────────────────────────────────────────────────────────────────────────────────────────────
@@ -210,4 +220,53 @@ public class ContentHostPageTransitionTests
     [Fact]
     public void NeutralHasNoVideoSafeRecipe()
         => Assert.Null(PageNavMotion.RecipeForVideoSafe(NavTransitionKind.Neutral));
+
+    // ── 6. audit fix S2 #5 — no full-opacity crossfade overlap, correct slide distance ─────────────────────────────────
+    [Fact]
+    public void FadeThroughExit_IsNearlyGone_BeforeEnterStarts()
+    {
+        // The regression this pins: at the moment the incoming page starts fading in (DelayMs into the exit window),
+        // the outgoing page must already be almost fully transparent — not still ~70% opaque (FluentAccelerate) —
+        // or the two full-bleed pages superimpose into unreadable mixed text for 1-2 frames.
+        foreach (var motion in new[] { NavTransitionKind.Forward, NavTransitionKind.Back })
+        {
+            var recipe = PageNavMotion.RecipeFor(motion);
+            float exitDurationMs = recipe.ExitDynamics!.Value.DurationMs;
+            float progressAtEnterStart = recipe.DelayMs / exitDurationMs;
+            float exitEasedAtEnterStart = Easings.Ease(recipe.ExitDynamics.Value.Easing, progressAtEnterStart);
+            float opacityRemaining = 1f - exitEasedAtEnterStart;   // Exit.Opacity == 0f, so eased progress IS the fade amount
+            Assert.True(opacityRemaining < 0.1f,
+                $"{motion}: outgoing page is still {opacityRemaining:P0} opaque when the incoming page starts fading in");
+        }
+    }
+
+    [Fact]
+    public void FadeThroughExit_UsesEaseOut_NotFluentAccelerate()
+    {
+        // FluentAccelerate's own doc-comment calls this shape out as wrong for a value fade: "sits near 0 for most of
+        // t and lunges only at the end ... reads as '1, 1, 1, then suddenly gone'".
+        foreach (var motion in new[] { NavTransitionKind.Forward, NavTransitionKind.Back })
+        {
+            var recipe = PageNavMotion.RecipeFor(motion);
+            Assert.Equal(Easing.EaseOut, recipe.ExitDynamics!.Value.Easing.NamedOr(Easing.Linear));
+        }
+    }
+
+    [Fact]
+    public void PageSlides_UseDistBase_NotDistLarge()
+    {
+        // DistLarge (30 DIP) is Expressive's "check badge appear" distance; DistBase (8 DIP) is its own "page slide"
+        // distance. Both the fade-through pair and the video-safe pair used DistLarge.
+        var fwd = PageNavMotion.RecipeFor(NavTransitionKind.Forward);
+        var back = PageNavMotion.RecipeFor(NavTransitionKind.Back);
+        Assert.Equal(Expressive.DistBase, fwd.Enter.Dx);
+        Assert.Equal(-Expressive.DistBase, back.Enter.Dx);
+
+        var vsFwd = PageNavMotion.RecipeForVideoSafe(NavTransitionKind.Forward)!.Value;
+        var vsBack = PageNavMotion.RecipeForVideoSafe(NavTransitionKind.Back)!.Value;
+        Assert.Equal(Expressive.DistBase, vsFwd.Enter.Dx);
+        Assert.Equal(-Expressive.DistBase, vsFwd.Exit.Dx);
+        Assert.Equal(-Expressive.DistBase, vsBack.Enter.Dx);
+        Assert.Equal(Expressive.DistBase, vsBack.Exit.Dx);
+    }
 }

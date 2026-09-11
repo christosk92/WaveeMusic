@@ -99,6 +99,7 @@ sealed partial class SettingsPage : Component
             int crossMs = Math.Clamp(svc.Settings.Get(WaveeSettings.CrossfadeMs), 0, 12_000);
             _crossSecs.Value = crossMs / 1000.0;
             _crossSlider.Value = (float)(crossMs / 1000.0);
+            _lyricsBlurSlider.Value = LyricsBlurPolicy.Resolve(svc.Settings.Get(WaveeSettings.LyricsBlurStrength), GpuProfile.IsWeak);
             _language.Value = LanguageIndex(svc.Settings.Get(WaveeSettings.UiCulture));
         }, DepKey.Empty);
 

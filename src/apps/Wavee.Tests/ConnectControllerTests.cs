@@ -33,10 +33,10 @@ public class ConnectControllerTests
         public long PositionMs { get; set; }
         public bool IsPlaying { get; private set; }
         public bool IsBuffering => false;
-        // Stateful, unlike the other fakes: teardown tests (BecameInactive/DeactivateIfActiveOwner) need a host whose
-        // clock actually goes stale on Stop() and recovers on the next Load, so they exercise the ClockValid fallback
-        // path (PlaybackController.PublishPositionMs) rather than trivially always reading true. Starts false, like
-        // the real FluentMediaAudioHost: a never-opened host has no honest clock either.
+        // Stateful, unlike the other fakes: teardown tests (BecameInactive / ReleaseOwnership / a takeover) need a host
+        // whose clock actually goes stale on Stop() and recovers on the next Load, so they exercise the ClockValid
+        // fallback paths (PublishPositionMs, the reload position) rather than trivially always reading true. Starts
+        // false, like the real FluentMediaAudioHost: a never-opened host has no honest clock either.
         public bool ClockValid { get; private set; }
         public void Load(in AudioStreamHandle s) { Calls.Add("load:" + s.TrackUri); ClockValid = true; }
         public void LoadFastStart(in AudioFastStart s) { Calls.Add("faststart:" + s.TrackUri); ClockValid = true; }
@@ -109,16 +109,60 @@ public class ConnectControllerTests
 
     static RemoteTrack Remote(string uri, long dur = 200000) => new(uri, "G", "A", "spotify:artist:a", "Al", "spotify:album:al", null, dur);
 
+    /// <summary>A resolver that parks ONE uri's resolve until released — how a test holds a load in flight while the
+    /// ownership moves underneath it (every other uri resolves at once, like <see cref="StubTrackResolver"/>).</summary>
+    sealed class GatedResolver : ITrackResolver
+    {
+        public readonly TaskCompletionSource Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public string? GateUri;
+        public async Task<AudioStreamHandle> ResolveAsync(Track track, CancellationToken ct = default)
+        {
+            if (track.Uri == GateUri) await Gate.Task.ConfigureAwait(false);
+            return new AudioStreamHandle(track.Uri, "", "", default, AudioFormat.OggVorbis320, track.DurationMs, 0f);
+        }
+    }
+
     PlaybackController Make(out RecordingAudioHost host, out NowPlayingProjection proj, out RecordingOutbound outbound,
         IContextResolver? ctx = null, Func<long>? clock = null, IReadOnlyList<IPlaybackProjection>? extra = null,
-        ITransferStateDecoder? transferDecoder = null)
+        ITransferStateDecoder? transferDecoder = null, ITrackResolver? resolver = null)
     {
         host = new RecordingAudioHost();
         proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), clock ?? (() => 0));
         outbound = new RecordingOutbound();
-        return new PlaybackController(host, new StubTrackResolver(), proj,
+        return new PlaybackController(host, resolver ?? new StubTrackResolver(), proj,
             ctx ?? Ctx("spotify:track:a", "spotify:track:b"), "us", outbound, extra,
             transferDecoder: transferDecoder);
+    }
+
+    /// <summary>A real inbound <c>transfer</c> command (the dealer shape) carrying a TransferState whose current is
+    /// <paramref name="trackUri"/> at <paramref name="positionMs"/> — what the server sends us after a pull.</summary>
+    static ConnectCommand TransferCommand(string trackUri, long positionMs, bool paused)
+    {
+        var transfer = new TransferState
+        {
+            Options = new TransferPlayerOptions(),
+            Playback = new TransferPlayback
+            {
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                PositionAsOfTimestamp = positionMs,
+                Speed = 1.0,
+                Paused = paused,
+                CurrentTrack = new TransferContextTrack { Uri = trackUri, Uid = "current" },
+            },
+            CurrentSession = new TransferSession
+            {
+                CurrentUid = "current",
+                Context = new TransferContext { Uri = "spotify:playlist:transfer", Url = "context://transfer" },
+            },
+            Queue = new TransferQueue(),
+        };
+        string body = "{\"message_id\":90,\"sent_by_device_id\":\"phone\",\"command\":{" +
+            "\"endpoint\":\"transfer\",\"data\":\"" + Convert.ToBase64String(transfer.ToByteArray()) + "\"," +
+            "\"options\":{\"restore_paused\":\"restore\",\"restore_position\":\"extrapolate\"," +
+            "\"restore_track\":\"always_play_something\",\"retain_session\":\"do_not_retain\"}}}";
+        ConnectCommand.TryParse(new WireRequest("transfer", "hm://connect-state/v1/player/command",
+            Encoding.UTF8.GetBytes(body), NoHeaders), out var command);
+        return command;
     }
 
     [Fact]
@@ -291,7 +335,7 @@ public class ConnectControllerTests
         Assert.Contains("load:spotify:track:b", host.Calls);
     }
 
-    // A RESUMED reopen (a nonzero seek target — the takeover/regain-ownership reload) whose Ended lands BEHIND that
+    // A RESUMED reopen (a nonzero seek target — the reload after the host was silenced) whose Ended lands BEHIND that
     // target (here, at 0) never actually played what it opened — a natural end lands at/after where it started. This
     // is a FAILED REOPEN wearing an end-of-track costume (a reopen racing a just-attached, still-streaming body), and
     // auto-advancing on it is exactly the "pressed play 4-5 times before a song actually played" defect: every failed
@@ -304,11 +348,11 @@ public class ConnectControllerTests
         var errors = new List<PlaybackErrorInfo>();
         c.OnPlaybackError = errors.Add;
         await c.PlayAsync("spotify:playlist:p");   // a, playing
-        host.PositionMs = 3000;                    // "a" is 3 s in when ownership is taken away
-        c.DeactivateIfActiveOwner();                // simulates the takeover teardown (arms the reload latch)
+        host.PositionMs = 3000;                    // "a" is 3 s in when playback is handed away
+        c.ReleaseOwnership(ReleaseCause.TransferAway);   // the host is stopped (our playhead captured at 3000), session kept
         host.Calls.Clear();
 
-        await c.ResumeAsync();                      // ownership-regain-style reload: resumes "a" at 3000 ms
+        await c.ResumeAsync();                      // the play button reloads "a" at OUR playhead (3000 ms)
         Assert.Contains("seek:3000", host.Calls);   // the reopen really did ask to resume at 3000
         host.Calls.Clear();
 
@@ -607,28 +651,26 @@ public class ConnectControllerTests
         Assert.Equal(0, events.Count(EvKind.BecameInactive));
     }
 
-    // An empty active-device id is our OWN echo (a put-state announcing active=False), never a takeover: the host
-    // keeps playing and the LOCAL projection hears nothing (no BecameInactive fold, which would poison the local
-    // position/play-state for a transition that never touched the host) — only the wire is told, through the new
-    // PublishInactiveOnWire seam (mirroring LiveConnect's real DeviceStatePublisher.PublishInactive wiring), so a
-    // remote controller still sees us go inactive. Ownership release itself is exercised by that seam firing at
-    // all: PublishInactiveOnWire is invoked from the one branch that also releases ownership (see OnProjectionChanged).
+    // An empty active-device id while we own playback is NOT a loss of ownership (PlaybackOwnership A3): it is the
+    // takeover's transitional frame, a masked context the server will not adopt, or our own echo — the NEXT frame
+    // decides. So the host keeps playing, nothing folds BecameInactive, and we still own the slot on the wire. (This
+    // used to release ownership and publish is_active=false on the empty frame, which is why the real takeover that
+    // follows it was then misread as a "stray" stop — no BecameInactive, no generation bump.)
     [Fact]
-    public async Task ActiveOwner_ActiveDeviceClears_PublishesInactiveOnce()
+    public async Task ActiveOwner_EmptyActiveFrame_KeepsPlaying_AndStaysTheOwner()
     {
         var events = new RecordingProjection();
         using var c = Make(out var host, out var proj, out _, extra: new[] { events });
-        int wireInactiveCalls = 0;
-        c.PublishInactiveOnWire = () => wireInactiveCalls++;
         await c.PlayAsync("spotify:playlist:p");
-        proj.OnCluster(Cluster("us", Remote("spotify:track:a"), playing: true));
+        proj.OnCluster(Cluster("us", Remote("spotify:track:a"), playing: true));   // adopted
         host.Calls.Clear();
 
         proj.OnCluster(Cluster(""));
 
         Assert.DoesNotContain("stop", host.Calls);
+        Assert.True(host.IsPlaying);
         Assert.Equal(0, events.Count(EvKind.BecameInactive));
-        Assert.Equal(1, wireInactiveCalls);
+        Assert.True(c.OwnsPlaybackOnWire);
     }
 
     [Fact]
@@ -1293,27 +1335,27 @@ public class ConnectControllerTests
         Assert.False(c.HasLocalSession);   // the cluster owns the session; we mirror it
     }
 
-    // ── bug 2: IsActiveOwner() — the ONE predicate the Connect state builder gates the CURRENT track's authoritative
+    // ── bug 2: OwnsPlaybackOnWire — the ONE predicate the Connect state builder gates the CURRENT track's authoritative
     // track_player/media.* overwrite on. A Wavee that has never played must answer false here even though the
     // projection mirrors another device's now-playing row (proj.CurrentTrack is not null); otherwise a viewer echo's
     // idle "Audio" CurrentMediaKind gets stamped over the wire's own (possibly "video") claim.
     [Fact]
-    public async Task IsActiveOwner_FalseWhilePassivelyViewingAnotherDevice_EvenThoughATrackMirrors()
+    public async Task OwnsPlaybackOnWire_FalseWhilePassivelyViewingAnotherDevice_EvenThoughATrackMirrors()
     {
         using var c = Make(out _, out var proj, out _);
         proj.OnCluster(Cluster("other-device", Remote("spotify:track:remote"), pos: 5_000, playing: true));
         await Task.Delay(20);
 
-        Assert.NotNull(proj.CurrentTrack);   // the viewer DOES mirror a track…
-        Assert.False(c.IsActiveOwner());     // …but never claims ownership of it
+        Assert.NotNull(proj.CurrentTrack);      // the viewer DOES mirror a track…
+        Assert.False(c.OwnsPlaybackOnWire);     // …but never claims ownership of it
     }
 
     [Fact]
-    public async Task IsActiveOwner_TrueOnceWePlayLocally()
+    public async Task OwnsPlaybackOnWire_TrueOnceWePlayLocally()
     {
         using var c = Make(out _, out _, out _);
         await c.PlayAsync("spotify:playlist:p");
-        Assert.True(c.IsActiveOwner());
+        Assert.True(c.OwnsPlaybackOnWire);
     }
 
     [Fact]
@@ -1600,5 +1642,320 @@ public class ConnectControllerTests
         Assert.Empty(host.Calls);
         Assert.Null(proj.CurrentTrack);
         Assert.Empty(outbound.Sent);
+    }
+
+    // ── Connect ownership: one authority (Backend/PlaybackOwnership.cs) — the 2026-09-11 incidents, at the controller ──
+    // No acknowledger is attached in these rigs unless a test says so, so a claim settles Us/Unadopted at once and any
+    // later frame naming another device is a takeover (A2) — the fold rules themselves are PlaybackOwnershipTests'.
+
+    [Fact]
+    public async Task Takeover_ThenEmptyFlap_NeverReloads()
+    {
+        // 14:57–14:58: the phone took over, then flapped in and out (DEVICES_DISAPPEARED frames with an EMPTY active id
+        // and the phone's player_state). The old controller treated every empty id as "ownership regained" and reloaded
+        // our track at the PHONE's playhead (seek deferred ms=1137/1788/2578) — a loop that re-armed on every flap.
+        var events = new RecordingProjection();
+        using var c = Make(out var host, out var proj, out _, extra: new[] { events });
+        await c.PlayAsync("spotify:playlist:p");
+        host.PositionMs = 2_578;
+
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), pos: 1_788, playing: true));   // takeover
+        Assert.Contains("stop", host.Calls);
+        Assert.False(host.IsPlaying);
+        Assert.Equal(1, events.Count(EvKind.BecameInactive));
+        host.Calls.Clear();
+
+        for (int i = 0; i < 3; i++)
+        {
+            proj.OnCluster(Cluster("", Remote("spotify:track:x"), pos: 2_578));      // the phone disappeared …
+            proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), pos: 2_578)); // … and came back
+        }
+        proj.OnCluster(Cluster("", Remote("spotify:track:x"), pos: 2_578));
+        await Task.Delay(60);
+
+        Assert.DoesNotContain(host.Calls, x => x.StartsWith("load:", StringComparison.Ordinal)
+                                            || x.StartsWith("faststart:", StringComparison.Ordinal)
+                                            || x.StartsWith("seek:", StringComparison.Ordinal)
+                                            || x == "play");
+        Assert.Equal(1, events.Count(EvKind.BecameInactive));   // one loss, one segment close — never per flap
+        Assert.False(c.OwnsPlaybackOnWire);
+    }
+
+    [Fact]
+    public async Task Takeover_WithEmptyTransitionalFrame_EmitsBecameInactive_CancelsInflightLoad()
+    {
+        // 15:21:38.428 (reason 2, active "") then 38.943 (active=PHONE): the server's usual takeover pair. The old code
+        // demoted us on the empty frame, so the real takeover read as a "stray" stop — no BecameInactive, no generation
+        // bump, and a resolve already in flight could still land on the host afterwards.
+        var resolver = new GatedResolver();
+        var events = new RecordingProjection();
+        using var c = Make(out var host, out var proj, out _, extra: new[] { events }, resolver: resolver);
+        await c.PlayAsync("spotify:playlist:p");                 // "a" loads and plays
+        resolver.GateUri = "spotify:track:b";
+        host.Calls.Clear();
+
+        var next = c.NextAsync();                               // "b" is resolving — the load is in flight
+        Assert.False(next.IsCompleted);
+        proj.OnCluster(Cluster("us", Remote("spotify:track:a"), playing: true));    // adopted (A1)
+        proj.OnCluster(Cluster("", Remote("spotify:track:x")));                     // the transitional empty frame (A3)
+        Assert.True(c.OwnsPlaybackOnWire);                                           // still ours — the next frame decides
+        Assert.Equal(0, events.Count(EvKind.BecameInactive));
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), playing: true)); // … and the phone (A2)
+
+        Assert.Equal(1, events.Count(EvKind.BecameInactive));
+        Assert.Contains("stop", host.Calls);
+        resolver.Gate.SetResult();
+        await next;
+
+        Assert.DoesNotContain("load:spotify:track:b", host.Calls);   // the in-flight load died at its generation check
+        Assert.DoesNotContain("play", host.Calls);
+        Assert.False(c.OwnsPlaybackOnWire);
+    }
+
+    [Fact]
+    public async Task UserNext_QueuedBehindTheLock_WhenATakeoverLands_IsDroppedNotClaimed()
+    {
+        // The same takeover, but the Next has not reached its load yet: it routed local when it entered (we owned
+        // playback) and is still WAITING for _lock — here behind a play whose resolve is in flight; under a loaded suite
+        // it was the eager continuation apply. Claiming once it runs would pull playback straight back from the phone
+        // that just took it, so a user intent whose owner went foreign while it waited is dropped.
+        var resolver = new GatedResolver { GateUri = "spotify:track:a" };
+        using var c = Make(out var host, out var proj, out _, resolver: resolver);
+        var play = c.PlayAsync("spotify:playlist:p");          // claims, then holds _lock while "a" resolves
+        Assert.False(play.IsCompleted);
+        var next = c.NextAsync();                              // routed local — now waits for _lock
+        Assert.False(next.IsCompleted);
+
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), playing: true));   // the takeover lands meanwhile (A2)
+        resolver.Gate.SetResult();
+        await play;
+        await next;
+
+        Assert.DoesNotContain(host.Calls, x => x.StartsWith("load:", StringComparison.Ordinal) || x == "play");
+        Assert.False(c.OwnsPlaybackOnWire);
+        Assert.Equal("spotify:track:a", c.SnapForTest.Current?.Track.Uri);   // the stale Next never stepped the queue
+    }
+
+    [Fact]
+    public async Task Foreign_StrayHostSignal_StopsHost()
+    {
+        // A host that is still (or again) doing something while another device owns playback is stopped by its own
+        // signal — the old guard only DROPPED the signal and left the host audible under the phone's display (15:23).
+        using var c = Make(out var host, out var proj, out _);
+        await c.PlayAsync("spotify:playlist:p");
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), playing: true));
+        host.Calls.Clear();
+
+        host.Emit(new AudioHostSignal(AudioHostSignalKind.PositionTick, 12_000));
+
+        Assert.Contains("stop", host.Calls);
+        Assert.NotEqual(12_000, proj.PositionMs);   // and the stray tick never reached the (cluster-owned) display
+    }
+
+    [Fact]
+    public async Task TransferToSelf_WhileForeign_PostsPull_FromForeignToUs_NoLocalLoad()
+    {
+        // 15:22:59: "This computer" in the picker while the phone played. The old rule was "self = local resume": our
+        // stale session resumed at the phone's playhead and the server was never asked for the slot. Now it is a pull —
+        // transfer FROM the phone TO us — and the load waits for the server's transfer command.
+        using var c = Make(out var host, out var proj, out var outbound);
+        await c.PlayAsync("spotify:playlist:p");   // a stale local session ("a") is lying around
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), pos: 6_448, playing: true));
+        host.Calls.Clear();
+
+        await c.TransferToAsync("us");
+
+        Assert.Equal(("phone", "us", false), Assert.Single(outbound.Transfers));
+        Assert.DoesNotContain(host.Calls, x => x.StartsWith("load:", StringComparison.Ordinal)
+                                            || x.StartsWith("faststart:", StringComparison.Ordinal)
+                                            || x.StartsWith("seek:", StringComparison.Ordinal)
+                                            || x == "play");
+        Assert.False(c.OwnsPlaybackOnWire);   // the claim arrives with the transfer command, not with the pull
+    }
+
+    [Fact]
+    public async Task TransferToSelf_PullFails_ClaimsAndGhostResumesTheClusterTrack()
+    {
+        // The pull POST failed → fastpotify's client-side pull: claim and play the PHONE's track at the phone's
+        // position — the displayed cluster snapshot — never our stale session at the phone's playhead.
+        using var c = Make(out var host, out var proj, out var outbound);
+        int failures = 0;
+        c.OnRemoteCommandFailed = () => failures++;
+        await c.PlayAsync("spotify:playlist:p");   // stale local "a"
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), pos: 6_448, playing: true));
+        outbound.TransferOk = false;
+        host.Calls.Clear();
+
+        await c.TransferToAsync("us");
+
+        Assert.Equal(("phone", "us", false), Assert.Single(outbound.Transfers));   // the pull was tried first
+        Assert.Contains("load:spotify:track:x", host.Calls);
+        Assert.DoesNotContain("load:spotify:track:a", host.Calls);
+        Assert.Contains("seek:6448", host.Calls);
+        Assert.Contains("play", host.Calls);
+        Assert.True(c.OwnsPlaybackOnWire);
+        Assert.Equal(0, failures);   // the fallback played — no "couldn't reach that device" toast
+    }
+
+    [Fact]
+    public async Task NobodyFromForeign_Play_ResumesClusterTrack_NotStaleSession()
+    {
+        // The phone went away (F5): the display keeps ITS snapshot, paused. Play claims and ghost-resumes THAT track —
+        // not the stale local session hiding behind it.
+        using var c = Make(out var host, out var proj, out _);
+        await c.PlayAsync("spotify:playlist:p");   // our session: "a"
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), pos: 57_150, playing: true));
+        proj.OnCluster(Cluster("", Remote("spotify:track:x"), pos: 57_150));   // DEVICES_DISAPPEARED
+        Assert.Equal(NobodyCause.FromForeign, proj.Ownership.Current.Cause);
+        host.Calls.Clear();
+
+        await c.ResumeAsync();
+
+        Assert.Contains("load:spotify:track:x", host.Calls);
+        Assert.DoesNotContain("load:spotify:track:a", host.Calls);
+        Assert.Contains("seek:57150", host.Calls);
+        Assert.True(c.OwnsPlaybackOnWire);
+    }
+
+    [Fact]
+    public async Task NobodyFromForeign_Next_StepsTheDisplayedQueue_NotTheStaleSession()
+    {
+        // The same rule for a skip: the first local intent over a departed device's snapshot seeds from THAT snapshot.
+        using var c = Make(out var host, out var proj, out _);
+        await c.PlayAsync("spotify:playlist:p");   // our session: a → b
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), playing: true) with { NextTracks = [Remote("spotify:track:y")] });
+        proj.OnCluster(Cluster("", Remote("spotify:track:x")) with { NextTracks = [Remote("spotify:track:y")] });
+        host.Calls.Clear();
+
+        await c.NextAsync();
+
+        Assert.Contains("load:spotify:track:y", host.Calls);
+        Assert.DoesNotContain("load:spotify:track:b", host.Calls);
+        Assert.True(c.OwnsPlaybackOnWire);
+    }
+
+    [Fact]
+    public async Task ClaimRejected_StopsHost_AndPlayButtonForwards()
+    {
+        // The claim's own put-state RESPONSE names the phone: the server kept it (P3). The host stops at once (not after
+        // the protection window) and the owner is the phone — so the bar's play button now forwards to it instead of
+        // playing here under a bar that says "Playing on iPhone".
+        var events = new RecordingProjection();
+        using var c = Make(out var host, out var proj, out var outbound, extra: new[] { events });
+        proj.Ownership.AttachAcknowledger();                   // a publisher is attached: claims wait for the verdict
+        await c.PlayAsync("spotify:playlist:p");               // UserPlay claim → Us/Protected, "a" audible
+        Assert.Equal(ClaimPhase.Protected, proj.Ownership.Current.Claim);
+        Assert.True(host.IsPlaying);
+        proj.Ownership.OnPutSent(7, isActive: true);           // the claim's carrier put-state went out as msg 7
+
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), playing: true)
+            with { Origin = ClusterOrigin.PutResponse, PutMsgId = 7 });   // …and its response named the phone
+
+        Assert.Contains("stop", host.Calls);
+        Assert.False(host.IsPlaying);
+        Assert.Equal(1, events.Count(EvKind.BecameInactive));
+        Assert.False(c.OwnsPlaybackOnWire);
+        host.Calls.Clear();
+
+        await c.ResumeAsync();
+
+        Assert.Contains(outbound.Sent, s => s.Target == "phone" && s.Json.Contains("\"endpoint\":\"resume\""));
+        Assert.DoesNotContain("play", host.Calls);
+    }
+
+    [Fact]
+    public async Task Resume_UsesLocalPlayhead_NeverForeignPosition()
+    {
+        // Our session "a" was 30 s in when the phone took over; the phone's own track is 90 s in. When playback comes
+        // back to our session (a stale "us" frame: Nobody(StaleSelf)), Play reloads "a" at OUR 30 s — never at the
+        // phone's 90 s, which is a position on a different song (the 6448-on-40x5K8 incident).
+        using var c = Make(out var host, out var proj, out _);
+        await c.PlayAsync("spotify:playlist:p");
+        host.PositionMs = 30_000;
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), pos: 90_000, playing: true));   // takeover: playhead captured
+        proj.OnCluster(Cluster("us", Remote("spotify:track:x"), pos: 90_000, playing: true));      // stale self (F6)
+        Assert.Equal(NobodyCause.StaleSelf, proj.Ownership.Current.Cause);
+        host.Calls.Clear();
+
+        await c.ResumeAsync();
+
+        Assert.Contains("load:spotify:track:a", host.Calls);
+        Assert.Contains("seek:30000", host.Calls);
+        Assert.DoesNotContain("seek:90000", host.Calls);
+    }
+
+    [Fact]
+    public async Task InboundTransfer_WhileClusterNamesPhone_ClaimsAndLoads()
+    {
+        // The server's transfer command (what a pull produces) arrives while the last cluster still names the phone:
+        // inbound commands claim first, so the owner is Us and the load is allowed — and the wire/bar follow the claim.
+        using var c = Make(out var host, out var proj, out _, ctx: new FakeContextResolver("spotify:track:t1", "spotify:track:t2"),
+            transferDecoder: new ProtoTransferStateDecoder());
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:t2"), pos: 5_000, playing: true));
+        Assert.False(c.OwnsPlaybackOnWire);
+
+        var outcome = await c.HandleRemoteCommandAsync(TransferCommand("spotify:track:t2", 5_000, paused: false));
+
+        Assert.Equal(ConnectCommandOutcome.Applied, outcome);
+        Assert.True(c.OwnsPlaybackOnWire);
+        Assert.Contains("load:spotify:track:t2", host.Calls);
+        Assert.Contains("seek:5000", host.Calls);
+        Assert.Contains("play", host.Calls);
+    }
+
+    [Fact]
+    public async Task LoadRefused_WhileForeign()
+    {
+        // A paused launch restore is resolving (Nobody may load exactly that) when the phone takes playback (F3 — a
+        // transition that bumps no generation, since nothing of ours was playing). The load re-asks the owner before it
+        // touches the host, and refuses.
+        var resolver = new GatedResolver { GateUri = "spotify:track:b" };
+        using var c = Make(out var host, out var proj, out _, resolver: resolver);
+        c.RestoreSnapshot = () => new PlaybackSessionSnapshot(
+            ContextUri: "spotify:playlist:saved", CurrentUri: "spotify:track:b", CurrentUid: "", CurrentIndex: 1,
+            PositionMs: 33_000, Shuffle: false, Repeat: RepeatMode.Off,
+            UserQueue: Array.Empty<QueuedRef>(), AutoplayActive: false);
+
+        var resume = c.ResumeAsync();                         // empty cluster → the paused snapshot restore, resolving "b"
+        Assert.False(resume.IsCompleted);
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:x"), playing: true));
+        resolver.Gate.SetResult();
+        await resume;
+
+        Assert.DoesNotContain(host.Calls, x => x.StartsWith("load:", StringComparison.Ordinal) || x == "play");
+        Assert.Equal(OwnerKind.Foreign, proj.Ownership.Current.Kind);
+    }
+
+    [Fact]
+    public async Task RecoverySeed_NeverClaims()
+    {
+        // 15:21:32: the launch recovery seed reached the wire as is_active=true and stole the slot from the phone.
+        // Recovery seeds paused and claims NOTHING — only an explicit intent makes us the owner.
+        using var c = Make(out var host, out var proj, out _);
+
+        proj.OnCluster(Cluster("", Remote("spotify:track:ghost"), pos: 42_000));
+
+        Assert.True(await Settle(() => c.HasLocalSession), "recovery did not seed the session");
+        Assert.Equal(OwnerKind.Nobody, proj.Ownership.Current.Kind);
+        Assert.False(c.OwnsPlaybackOnWire);
+        Assert.DoesNotContain(host.Calls, x => x.StartsWith("load:", StringComparison.Ordinal) || x == "play");
+    }
+
+    [Fact]
+    public async Task PausedInboundTransfer_OwnsSession()
+    {
+        // Ownership is not audibility: a PAUSED hand-off still makes the session ours (is_active on the wire, the bar's
+        // transport routing here) — it just doesn't play yet.
+        using var c = Make(out var host, out var proj, out _, ctx: new FakeContextResolver("spotify:track:t1", "spotify:track:t2"),
+            transferDecoder: new ProtoTransferStateDecoder());
+        proj.OnCluster(Cluster("phone", Remote("spotify:track:t2"), pos: 5_000));
+
+        var outcome = await c.HandleRemoteCommandAsync(TransferCommand("spotify:track:t2", 5_000, paused: true));
+
+        Assert.Equal(ConnectCommandOutcome.Applied, outcome);
+        Assert.True(c.OwnsPlaybackOnWire);
+        Assert.Contains("load:spotify:track:t2", host.Calls);
+        Assert.DoesNotContain("play", host.Calls);
+        Assert.False(proj.IsPlaying);
     }
 }

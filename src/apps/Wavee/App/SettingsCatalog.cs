@@ -42,6 +42,7 @@ public static class SettingsCatalog
         new(SettingsTab.Appearance, "Lists", "List"),
         new(SettingsTab.Appearance, "Sidebar", "DockLeft"),
         new(SettingsTab.Appearance, "Lyrics", "Microphone"),
+        new(SettingsTab.Appearance, "Now playing", "Album"),
 
         new(SettingsTab.Playback, "Audio", "MusicNote"),
         new(SettingsTab.Playback, "Sound", "Speakers"),
@@ -82,6 +83,9 @@ public static class SettingsCatalog
         new(SettingsTab.Appearance, "Sidebar", "sidebarCustomize", "Edit"),
         new(SettingsTab.Appearance, "Lyrics", "lyricsSecondary", "Globe"),
         new(SettingsTab.Appearance, "Lyrics", "lyricsBackdrop", "RefineSparkle"),
+        new(SettingsTab.Appearance, "Lyrics", "lyricsBlur", "Filter"),
+        new(SettingsTab.Appearance, "Now playing", "npvPresentation", "Picture"),
+        new(SettingsTab.Appearance, "Now playing", "npvStyle", "Settings"),
 
         new(SettingsTab.Playback, "Audio", "audioQuality", "Headphones"),
         new(SettingsTab.Playback, "Audio", "meteredQuality", "RadioTower"),

@@ -57,6 +57,22 @@ public class EntityUriTests
         Assert.Equal(kind, EntityUri.KindOf(uri));   // KindOf must never disagree with Parse
     }
 
+    // FolderIdOf (the ylpin folder wire shape, captured 2026-09-11): prefix + 1..32 hex chars and NOTHING else.
+    [Theory]
+    [InlineData("spotify:folder:36405e1711f88d9c", "36405e1711f88d9c")]
+    [InlineData("spotify:folder:a", "a")]
+    [InlineData("spotify:folder:12345678901234567890123456789012", "12345678901234567890123456789012")]  // 32 hex chars
+    [InlineData("spotify:folder:", "")]                             // no id at all
+    [InlineData("spotify:folder:123456789012345678901234567890123", "")]  // 33 hex chars — over the cap
+    [InlineData("spotify:folder:zz", "")]                           // not hex
+    [InlineData("spotify:folder:36405e1711f88d9c:x", "")]           // trailing segment after a valid id
+    [InlineData("spotify:playlist:36405e1711f88d9c", "")]           // right shape id, wrong prefix
+    [InlineData("SPOTIFY:FOLDER:ABC", "")]                          // the prefix itself is case-sensitive (Ordinal)
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void FolderIdOf_Table(string? uri, string expected)
+        => Assert.Equal(expected, EntityUri.FolderIdOf(uri));
+
     [Theory]
     [InlineData("")]
     [InlineData("not-a-uri")]

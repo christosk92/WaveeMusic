@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Wavee.Backend;
 using Wavee.Core;
 using Xunit;
@@ -156,5 +157,34 @@ public class QueueRecoveryTests
 
         Assert.Equal("spotify:track:q", Assert.Single(snap.UserQueue).Track.Uri);
         Assert.Equal("spotify:track:c", Assert.Single(snap.Upcoming).Track.Uri);
+    }
+
+    // The launch shape of 15:21:31.9: the first cluster still names US active and playing — our own last publish from the
+    // previous run. Without a claim this process that is Nobody(StaleSelf), not ownership: recovery seeds the session
+    // PAUSED from it and claims nothing, so the next put-state says is_active=false and the phone keeps its slot (the old
+    // path reached the wire as is_active=true and stole it).
+    [Fact]
+    public async Task RecoverySeed_NeverClaims_EvenWhenAClusterNamesUsStale()
+    {
+        var host = new SilentAudioHost(() => 0);
+        var proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        using var c = new PlaybackController(host, new StubTrackResolver(), proj,
+            new FakeContextResolver("spotify:track:now", "spotify:track:c"), "us");
+
+        proj.OnCluster(new ClusterDelta("us", true,
+            new RemoteTrack("spotify:track:now", "Now", "Artist", "spotify:artist:a", "Album", "spotify:album:al", null, 180_000, "u0", "context"),
+            "spotify:playlist:ctx", IsPlaying: true, IsPaused: false, IsBuffering: false,
+            PositionAsOfMs: 42_000, TimestampMs: 0, ServerTimestampMs: 0, DurationMs: 180_000,
+            Shuffle: false, Repeat: RepeatMode.Off,
+            Devices: Array.Empty<ConnectDeviceRow>(),
+            NextTracks: new[] { new RemoteTrack("spotify:track:c", "C", "", "", "", "", null, 180_000, "u1", "context") }));
+
+        for (int i = 0; i < 200 && !c.HasLocalSession; i++) await Task.Delay(10);
+
+        Assert.True(c.HasLocalSession, "recovery did not seed from the stale-self cluster");
+        Assert.Equal(OwnerKind.Nobody, proj.Ownership.Current.Kind);
+        Assert.Equal(NobodyCause.StaleSelf, proj.Ownership.Current.Cause);
+        Assert.False(c.OwnsPlaybackOnWire);
+        Assert.False(host.IsPlaying);   // seeded, never started
     }
 }

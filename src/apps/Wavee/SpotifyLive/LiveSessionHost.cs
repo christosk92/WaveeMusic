@@ -904,6 +904,13 @@ public sealed class LiveSessionHost : IAsyncDisposable
             var envelopes = new PathfinderEnvelopeFetch(pathfinderResource);
             var chart = new SpclientArtistChartFetch(live.Pipeline, () => live.BaseUrl, artistLog);
             var opener = new LibrarySyncPlaylistOpener(sync, fetcher);
+            // The library source asks the same opener whether a resident baseline is stale, so a stale mix/daylist open
+            // waits (bounded) for the fresh copy instead of painting yesterday's; logout detaches it, never a dead loop.
+            var librarySource = svc.RealLibrarySource
+                ?? throw new InvalidOperationException("Services.CreateReal must build RealLibrarySource before go-live.");
+            wiring.Set(Wavee.Backend.Wiring.LiveSeams.PlaylistOpener,
+                () => librarySource.AttachPlaylistOpener(opener),
+                () => librarySource.AttachPlaylistOpener(null));
             Wavee.Backend.Hydration.IKindHydration[] ladders =
             [
                 new Wavee.Backend.Hydration.PlayableHydration(EntityKind.Track, store, envelopes, metadataLog.With("hydration.track")),

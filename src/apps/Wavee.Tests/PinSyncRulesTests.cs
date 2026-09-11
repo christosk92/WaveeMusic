@@ -18,20 +18,18 @@ public class PinSyncRulesTests
         => Assert.Equal(expectedUri, PinSyncRules.TryWireUri(pinId, User));
 
     [Fact]
-    public void LikedRoute_MapsToTheUserNamespacedCollectionUri()
-        // TODO(pin-sync-liked-uri): best-supported guess, unconfirmed against a live capture (§5).
-        => Assert.Equal("spotify:user:bob:collection", PinSyncRules.TryWireUri("liked", User));
+    public void LikedRoute_MapsToTheBareCollectionUri()
+        => Assert.Equal("spotify:collection", PinSyncRules.TryWireUri("liked", User));
 
     [Fact]
-    public void LikedRoute_WithNoUsernameYet_IsNotSyncable()
+    public void LikedRoute_IsSyncable_EvenBeforeTheUsernameIsKnown()
     {
-        Assert.Null(PinSyncRules.TryWireUri("liked", ""));
-        Assert.False(PinSyncRules.IsSyncable("liked", ""));
+        Assert.Equal("spotify:collection", PinSyncRules.TryWireUri("liked", ""));
+        Assert.True(PinSyncRules.IsSyncable("liked", ""));
     }
 
     [Theory]
     [InlineData("pl:wavee:playlist:x")]     // session-local provider — never syncs
-    [InlineData("folder:6a1f2c")]
     [InlineData("home")]
     [InlineData("search")]
     [InlineData("albums")]
@@ -46,13 +44,22 @@ public class PinSyncRulesTests
         Assert.False(PinSyncRules.IsSyncable(pinId, User));
     }
 
+    [Fact]
+    public void FolderPin_MapsToTheSpotifyFolderUri()
+        => Assert.Equal("spotify:folder:36405e1711f88d9c",
+            PinSyncRules.TryWireUri("folder:36405e1711f88d9c", User));
+
+    [Fact]
+    public void FolderWireUri_MapsBackToTheFolderPin()
+        => Assert.Equal("folder:36405e1711f88d9c", PinSyncRules.TryPinId("spotify:folder:36405e1711f88d9c"));
+
     [Theory]
     [InlineData("pl:spotify:playlist:x", true)]
     [InlineData("album:spotify:album:x", true)]
     [InlineData("artist:spotify:artist:x", true)]
     [InlineData("show:spotify:show:x", true)]
     [InlineData("liked", true)]
-    [InlineData("folder:x", false)]
+    [InlineData("folder:x", true)]
     [InlineData("home", false)]
     [InlineData("pl:wavee:playlist:x", false)]
     public void IsSyncable_MatchesTryWireUri(string pinId, bool expected)
@@ -66,8 +73,10 @@ public class PinSyncRulesTests
     public void WireUris_MapBackToTheirPinId(string wireUri, string expectedId)
         => Assert.Equal(expectedId, PinSyncRules.TryPinId(wireUri));
 
-    // Every spelling EntityUri.IsLikedCollection recognises collapses onto the one "liked" route pin (§0.1).
+    // Every spelling EntityUri.IsLikedCollection recognises collapses onto the one "liked" route pin (§0.1), plus the
+    // bare "spotify:collection" the ylpin set actually carries on the wire (captured 2026-09-11).
     [Theory]
+    [InlineData("spotify:collection")]
     [InlineData("spotify:collection:tracks")]
     [InlineData("spotify:user:bob:collection")]
     [InlineData("spotify:user:bob:collection:tracks")]
@@ -78,6 +87,9 @@ public class PinSyncRulesTests
     [InlineData("spotify:track:4cOdK2wGLETKBW3PvgPWqT")]   // tracks are never pinnable
     [InlineData("spotify:episode:512ojhOuo1ktJprKbVcKyQ")]  // nor episodes
     [InlineData("wavee:playlist:x")]                        // not a spotify: uri
+    [InlineData("spotify:folder:")]                         // no hex id
+    [InlineData("spotify:folder:zz:1")]                     // non-hex + trailing segment
+    [InlineData("spotify:folder:36405e1711f88d9c:x")]        // trailing segment after a valid id
     [InlineData("")]
     [InlineData(null)]
     public void UnpinnableOrUnrecognisedWireUris_YieldNoPinId(string? wireUri)

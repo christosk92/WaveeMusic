@@ -37,7 +37,7 @@ public static class SpotifyVideoManifestProbe
 
     static async Task<int> ProbeAsync(string uri, WaveeLogger log, CancellationToken ct, string language)
     {
-        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
+        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language, clearStoredOnReject: false).ConfigureAwait(false);
         if (live is null) return 1;
 
         // The metadata chain wired exactly like SpotifyMetadataProbe (a one-shot InMemoryStore — the probe persists

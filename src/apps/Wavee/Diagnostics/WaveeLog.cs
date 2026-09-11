@@ -215,7 +215,20 @@ public sealed class WaveeLog : IWaveeLog
     /// that must survive the Info file gate. Allocation-free ordinal prefix/substring checks on the incoming line.</summary>
     static bool GpuForensic(string s) =>
         s.StartsWith("[d3d12.adapter]", StringComparison.Ordinal)
+        // The compositor-clock latch silently drops production from vblank pacing to a wall-clock timer for the rest of
+        // the session (docs/plans/wavee/scroll-feel-investigation-2026-09-10.md §3.4); it must reach the Info file.
+        || s.StartsWith("[compositor-clock]", StringComparison.Ordinal)
         || s.StartsWith("[device-lost]", StringComparison.Ordinal)
+        // The always-on wake census: one line per 30 s naming the frame rate and WHICH wake term held the loop awake.
+        // It has to clear the Info gate or it answers nothing after the fact - "pinned at panel rate, cause unknown"
+        // is precisely the report this instrument exists to make answerable.
+        || s.StartsWith("[wake]", StringComparison.Ordinal)
+        // The present-queue depth and the window's actual monitor/refresh are both invisible from the outside: a queue
+        // two frames deep still reports a healthy frame rate (how depth 2 hid ~1 frame of input lag), and a window on
+        // a 50 Hz secondary reports the same fps as one on the 120 Hz panel unless the mode line says otherwise.
+        // Both are once-per-edge, so the Info file gets the pacing contract without chatter.
+        || s.StartsWith("[d3d12.present]", StringComparison.Ordinal)
+        || s.StartsWith("[d3d12.display]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12.stall]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12] ", StringComparison.Ordinal)
         || s.Contains("dwmGlitches", StringComparison.Ordinal);

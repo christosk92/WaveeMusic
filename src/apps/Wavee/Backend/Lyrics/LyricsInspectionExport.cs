@@ -179,7 +179,7 @@ public static class LyricsInspectionExport
             foreach (var c in insp.Candidates)
                 sb.Append("- ").Append(c.SourceId).Append("  ").Append(c.Document.Sync).Append("  ")
                   .Append(c.Document.Lines.Count).Append(" lines  basis=").Append(c.Basis)
-                  .Append("\n    timing: ").Append(LyricsTiming.Describe(c.Document)).Append('\n');
+                  .Append("\n    timing: ").Append(LyricsTiming.Describe(c.Document, r?.DurationMs ?? 0)).Append('\n');
 
         if (insp?.Final is { } final) sb.Append('\n').Append(BuildParsed("final", final));
         return sb.ToString();

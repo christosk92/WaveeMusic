@@ -205,6 +205,7 @@ public static class SidebarRowPlanner
     {
         ArgumentNullException.ThrowIfNull(layout);
         var st = Begin(buffers);
+        st.ExcludePinned = HasPinnedSection(layout);
 
         var sections = layout.Sections;
         for (int i = 0; i < sections.Count; i++) PlanSection(sections[i], 0, in input, ref st);
@@ -218,6 +219,7 @@ public static class SidebarRowPlanner
     {
         ArgumentNullException.ThrowIfNull(layout);
         var st = Begin(buffers);
+        st.ExcludePinned = HasPinnedSection(layout);
         int tiles = 0;
 
         var sections = layout.Sections;
@@ -312,7 +314,12 @@ public static class SidebarRowPlanner
             return;
         }
 
-        if (s.Title is not null || s.TitleLocKey is not null)
+        // The shortcuts/top-bar band (Home, Search, …) is never collapsible chrome — it is the fixed strip the quick
+        // layout menu used to anchor to (SidebarPaneSlot.Header, PHASE 1) — so it must never claim a SectionHeader row
+        // of its own (Task G). TitleLocKey stays on the spec (the customizer and SidebarShortcutsSectionTests still
+        // name the band); this only suppresses the ROW. With no header row here, the quick layout menu host simply
+        // falls through to the next SectionHeader — which SidebarPane already picks as the plan's first header row.
+        if ((s.Title is not null || s.TitleLocKey is not null) && !SidebarIds.IsTopBar(s.Id))
             Add(ref st, new SidebarRow(SidebarRowKind.SectionHeader, s.Id, depth, -1, 0, s.Id));
 
         if (s.Collapsed) return;
@@ -543,9 +550,21 @@ public static class SidebarRowPlanner
         IReadOnlyList<SidebarLibraryEntry> tree, in SidebarProjectionInput input, ref PlanState st)
     {
         int emitted = 0;
+        int hidePinDepth = -1;   // >= 0 while walking a pinned folder's subtree (reachable through the pin, not here)
         for (int i = 0; i < tree.Count && emitted < DynamicSectionRowCap; i++)
         {
             var e = tree[i];
+            if (hidePinDepth >= 0)
+            {
+                if (e.Depth > hidePinDepth) continue;
+                hidePinDepth = -1;
+            }
+            if (HiddenByPin(in input, in st, in e))
+            {
+                if (e.Kind == SidebarEntryKind.Folder) hidePinDepth = e.Depth;
+                continue;
+            }
+
             byte d = (byte)Math.Min(depth + e.Depth, byte.MaxValue);
             int at = st.Entries.Count;
             st.Entries.Add(e);
@@ -571,9 +590,20 @@ public static class SidebarRowPlanner
     {
         var q = SidebarSectionKinds.EffectiveQuery(SidebarSectionKind.PlaylistTree, s.Query);
         int start = st.Entries.Count;
+        int hidePinDepth = -1;
         for (int i = 0; i < tree.Count && st.Entries.Count - start < DynamicSectionRowCap; i++)
         {
             var e = tree[i];
+            if (hidePinDepth >= 0)
+            {
+                if (e.Depth > hidePinDepth) continue;
+                hidePinDepth = -1;
+            }
+            if (HiddenByPin(in input, in st, in e))
+            {
+                if (e.Kind == SidebarEntryKind.Folder) hidePinDepth = e.Depth;
+                continue;
+            }
             if (e.Kind == SidebarEntryKind.Folder || !TreeLeafMatches(q, in e, search)) continue;
             st.Entries.Add(e);
         }
@@ -647,6 +677,7 @@ public static class SidebarRowPlanner
         cursors.Clear();
         ancestors.Clear();
 
+        int hidePinDepth = -1;
         for (int i = 0; i < tree.Count; i++)
         {
             var e = tree[i];
@@ -656,11 +687,17 @@ public static class SidebarRowPlanner
             int parent = ancestors.Count == 0 ? -1 : ancestors[^1];
             parents.Add(parent);
             visible.Add(0);
+
+            bool inHiddenSubtree = hidePinDepth >= 0 && e.Depth > hidePinDepth;
+            if (!inHiddenSubtree && hidePinDepth >= 0) hidePinDepth = -1;   // exited a previously hidden subtree
+
             if (e.Kind == SidebarEntryKind.Folder)
             {
                 ancestors.Add(i);
+                if (!inHiddenSubtree && HiddenByPin(in input, in st, in e)) hidePinDepth = e.Depth;
                 continue;
             }
+            if (inHiddenSubtree || HiddenByPin(in input, in st, in e)) continue;
             if (!TreeLeafMatches(q, in e, search: null)) continue;
 
             visible[i] = 1;
@@ -712,6 +749,7 @@ public static class SidebarRowPlanner
                     (e.Kind != SidebarEntryKind.Playlist || !e.MatchesQualifier((byte)q.Qualifier))) continue;
                 if (!UriMatches(q, in e)) continue;
                 if (search is not null && !SidebarSearch.Matches(in e, search)) continue;
+                if (HiddenByPin(in input, in st, in e)) continue;
                 st.Entries.Add(e);
             }
 
@@ -774,6 +812,8 @@ public static class SidebarRowPlanner
 
             if (item.Target == SidebarItemTarget.Route)
             {
+                // A pinned route (e.g. "liked", or Home) already draws as a pin — skip the shortcut's own row.
+                if (IsRouteHiddenByPin(in input, in st, item.Key)) continue;
                 // Routes are glyph rows — a hand-picked page has no artwork and never resolves against the projection.
                 Add(ref st, new SidebarRow(iconRows ? SidebarRowKind.IconRow : SidebarRowKind.EntityRow,
                     s.Id, depth, -1, 0, item.Key));
@@ -786,9 +826,18 @@ public static class SidebarRowPlanner
             {
                 // A track has no detail route, and a HAND-PLACED track is not part of the library projection either (only
                 // a feed source — queue / now playing / artist top tracks — emits SidebarEntryKind.Track rows): the row
-                // renders from the item spec and PLAYS on click.
+                // renders from the item spec and PLAYS on click. Tracks are never pinnable (SidebarPinId.IsPinnable), so
+                // no HiddenByPin check applies here.
                 Add(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, depth, idx, 0, item.Key));
                 emitted++;
+                continue;
+            }
+
+            // An ENTITY item whose resolved entry is pinned already draws as a pin — skip the shortcut's own row. An
+            // unresolved item (idx < 0) has nothing to test and keeps the existing Placeholder behaviour.
+            if (idx >= 0 && HiddenByPin(in input, in st, st.Entries[idx]))
+            {
+                st.Entries.RemoveAt(idx);   // Resolve just appended it at the tail — undo so no orphan entry lingers
                 continue;
             }
 
@@ -878,7 +927,15 @@ public static class SidebarRowPlanner
             if (skipHidden && IsHiddenOverride(s, src[i])) continue;
             int idx = st.Entries.Count;
             st.Entries.Add(src[i]);
-            if (!AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, idx, 0, src[i].Id), ref tiles))
+            // A pinned (or Jump-Back-In) FOLDER needs the same FolderHeader tile `RailTree` draws for a library-tree
+            // folder — a folder glyph, opening the rail's side flyout — never an EntityRow. An EntityRow tile resolves
+            // its art through `SidebarCover.Art(entry.Cover, entry.MosaicTiles, …)`, which bypasses `ForEntry`'s
+            // Folder special case; a folder's `Cover` is null but its `MosaicTiles` carries its first children's
+            // covers (SidebarLibraryEntry.MosaicTiles), so `Surfaces.Artwork` substituted a CHILD PLAYLIST'S cover for
+            // the tile. `RouteKey` is also `null` for a folder (SidebarLibraryEntry.RouteKey), so the EntityRow arm's
+            // click stayed null too — one wrong row kind explained both the wrong art and the dead tap.
+            var kind = src[i].IsFolder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow;
+            if (!AddTile(ref st, new SidebarRow(kind, s.Id, 0, idx, 0, src[i].Id), ref tiles))
             {
                 st.Entries.RemoveAt(idx);   // the cap swallowed the tile — do not leak an orphan entry
                 return;
@@ -897,6 +954,7 @@ public static class SidebarRowPlanner
 
             if (item.Target == SidebarItemTarget.Route)
             {
+                if (IsRouteHiddenByPin(in input, in st, item.Key)) continue;
                 if (!AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, item.Key), ref tiles))
                     return;
                 continue;
@@ -905,6 +963,11 @@ public static class SidebarRowPlanner
 
             int idx = Resolve(in input, item.Key, ref st);
             if (idx < 0) continue;                                   // placeholder items are skipped
+            if (HiddenByPin(in input, in st, st.Entries[idx]))
+            {
+                st.Entries.RemoveAt(idx);
+                continue;
+            }
             if (!AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, idx, 0, item.Key), ref tiles))
             {
                 st.Entries.RemoveAt(idx);
@@ -932,9 +995,20 @@ public static class SidebarRowPlanner
         {
             var q = SidebarSectionKinds.EffectiveQuery(SidebarSectionKind.PlaylistTree, s.Query);
             int start = st.Entries.Count;
+            int hidePinDepth = -1;
             for (int i = 0; i < tree.Count && st.Entries.Count - start < DynamicSectionRowCap; i++)
             {
                 var entry = tree[i];
+                if (hidePinDepth >= 0)
+                {
+                    if (entry.Depth > hidePinDepth) continue;
+                    hidePinDepth = -1;
+                }
+                if (HiddenByPin(in input, in st, in entry))
+                {
+                    if (entry.Kind == SidebarEntryKind.Folder) hidePinDepth = entry.Depth;
+                    continue;
+                }
                 if (entry.Kind == SidebarEntryKind.Folder || !TreeLeafMatches(q, in entry, search)) continue;
                 st.Entries.Add(entry);
             }
@@ -981,6 +1055,11 @@ public static class SidebarRowPlanner
                 int parentSlot = st.TreeParents[i] + 1;
                 e = tree[st.TreeLeaves[st.TreeCursors[parentSlot]++]];
             }
+            // A pinned top-level entry (or folder) already has its own rail tile from the Pinned section — skip it here.
+            // Tested against the DRAWN entry, not the walked source slot: with a query, TreeCursors can reassign a
+            // different (reordered) leaf onto this position, so `source` and `e` diverge and only `e` is what the tile
+            // would actually show.
+            if (HiddenByPin(in input, in st, in e)) continue;
             int idx = st.Entries.Count;
             st.Entries.Add(e);
             var kind = e.Kind == SidebarEntryKind.Folder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow;
@@ -1009,6 +1088,7 @@ public static class SidebarRowPlanner
             if (q.Qualifier != SidebarPlaylistQualifier.Any &&
                 (e.Kind != SidebarEntryKind.Playlist || !e.MatchesQualifier((byte)q.Qualifier))) continue;
             if (!UriMatches(q, in e)) continue;
+            if (HiddenByPin(in input, in st, in e)) continue;
             st.Entries.Add(e);
         }
 
@@ -1039,6 +1119,9 @@ public static class SidebarRowPlanner
         public bool DividerPending;
         public string? DividerSectionId;
         public byte DividerDepth;
+        // Set once by Build/BuildRail (HasPinnedSection): does the document have a visible Pinned section? Gates
+        // HiddenByPin/IsRouteHiddenByPin — stays false for BuildEdit, whose customize canvas must show every item.
+        public bool ExcludePinned;
     }
 
     static PlanState Begin(SidebarPlanBuffers? buffers)
@@ -1156,6 +1239,42 @@ public static class SidebarRowPlanner
 
     static bool IsExpanded(in SidebarProjectionInput input, string folderId)
         => input.ExpandedFolders is null || input.ExpandedFolders.Contains(folderId);
+
+    /// <summary>Once an item is pinned it must not ALSO appear in the normal lists — one predicate, applied everywhere a
+    /// library entry or tree entry is walked (PlanEntityList / the PlaylistTree walkers / the rail mirrors / the V3 lens
+    /// list, which is just <see cref="PlanEntityList"/> or <see cref="PlanSourcePlaylistTree"/> under V3's document).
+    /// <c>PlanPinned</c> itself is untouched — this only hides an entry from EVERYTHING ELSE.
+    /// <para><see cref="PlanState.ExcludePinned"/> gates the whole rule: a document WITHOUT a visible
+    /// <see cref="SidebarSectionKind.Pinned"/> section (a Curated user removed it; V3 while searching/drilled where the
+    /// band is absent) keeps showing pinned items in place — otherwise they would vanish from the sidebar entirely.</para></summary>
+    static bool HiddenByPin(in SidebarProjectionInput input, in PlanState st, in SidebarLibraryEntry e)
+        => st.ExcludePinned && (e.IsPinned || (input.PinnedIds is { } p && p.Contains(e.Id)));
+
+    /// <summary>The shortcut-item mirror of <see cref="HiddenByPin"/> for a <c>Route</c> target (Classic's "Liked Songs"
+    /// row, a pinned "Home", …), which has no projected <see cref="SidebarLibraryEntry"/> to test — only the route's own
+    /// pin identity (<see cref="SidebarPinId.FromRoute"/>) against the pin set.</summary>
+    static bool IsRouteHiddenByPin(in SidebarProjectionInput input, in PlanState st, string routeKey)
+    {
+        if (!st.ExcludePinned || input.PinnedIds is not { } pins) return false;
+        return SidebarPinId.FromRoute(routeKey) is { } pinId && pins.Contains(pinId);
+    }
+
+    /// <summary>Does the document have a visible Pinned section — top-level or one level deep inside a CustomGroup (the
+    /// only nesting a section may have)? Computed once per <c>Build</c>/<c>BuildRail</c> and stashed on <c>PlanState</c>
+    /// so every walker reads a flag instead of re-scanning the document.</summary>
+    static bool HasPinnedSection(SidebarCustomLayout layout)
+    {
+        var sections = layout.Sections;
+        for (int i = 0; i < sections.Count; i++)
+        {
+            var s = sections[i];
+            if (s.Kind == SidebarSectionKind.Pinned && !s.Hidden) return true;
+            var kids = s.ChildList;
+            for (int j = 0; j < kids.Count; j++)
+                if (kids[j].Kind == SidebarSectionKind.Pinned && !kids[j].Hidden) return true;
+        }
+        return false;
+    }
 
     static string FolderId(in SidebarLibraryEntry entry)
         => entry.FolderId.Length > 0 ? entry.FolderId : SidebarPinId.FolderIdOf(entry.Id);

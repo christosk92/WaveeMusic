@@ -86,6 +86,16 @@ static class WaveeSettings
     // keys above). Only the flag itself is mirrored; the per-scope detail.rail.* width/collapsed pairs are not (this
     // shim never mirrored those either — DetailRailPolicyTests exercises the pure resolution rule directly).
     public static readonly SettingKey<bool> DetailRailUniform = new("detail.rail.uniform", false);
+    // ── Now Playing presentation — MIRRORS src/apps/Wavee/Platform/AppSettings.cs VERBATIM (same rule as the sidebar
+    // keys above): NpvPlayerPrefsTests assert against these exact names and defaults.
+    public static readonly SettingKey<int> NpvPresentation = new("npv.presentation", 0);
+    public static readonly SettingKey<int> NpvPlayerStyle = new("npv.player.style", 0);
+}
+
+// Per-preset deck options — MIRRORS src/apps/Wavee/Platform/AppSettings.cs VERBATIM, same rule as the sidebar keys above.
+static class NpvPlayerKeys
+{
+    public static SettingKey<int> Option(string presetSlug, string optionSlug) => new($"npv.player.{presetSlug}.{optionSlug}", 0);
 }
 
 // The per-design sidebar keys (F.3.1), mirroring the production SidebarKeys. Depends on SidebarDesignInfo.Slug/Tiers —

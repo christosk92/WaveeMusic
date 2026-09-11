@@ -176,26 +176,16 @@ sealed class HomeSectionPage : Component
         var pick = washesDisabled ? null : HomeWashSource.Pick(washCard, Surfaces.ChromeSchemeFor);
         HomeWash? wash = pick is null ? null : new HomeWash(new WashLayer(pick.Value.Color, pick.Value.Key), null, null);
 
-        // Owner-gated exactly like HomePage/DetailShell/RecentsPage: a page clears the material only while it is still
-        // the owner, so a "park this page + activate the destination" nav lands on the destination's material whichever
-        // effect fires first. Disabled ⇒ this page still CLAIMS ownership with a null wash, which is what clears the
-        // previous page's material and leaves only the deterministic ground.
-        void SetWash(HomeWash? w)
+        // The same hand-over as HomePage/DetailShell/RecentsPage (ShellMaterial.Publish): claim on the first publish and
+        // on reactivation, refresh while still the owner, never clear. Disabled ⇒ this page claims definitely neutral.
+        var washClaimed = UseRef(false);
+        void PublishWash(bool isClaim) => ShellMaterial.Publish(shellMaterial, _washOwner, isClaim, washesDisabled, tint: null, wash);
+        UseEffect(() =>
         {
-            if (shellMaterial is not null) shellMaterial.Value = new ShellMaterialState(_washOwner, null, w);
-        }
-        void ClearWash()
-        {
-            if (shellMaterial is not null && ReferenceEquals(shellMaterial.Peek().Owner, _washOwner))
-                shellMaterial.Value = default;
-        }
-        UseEffect(() => SetWash(wash),
-            DepKey.From(HashCode.Combine(washesDisabled, pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
-        // A KeepAlive-cached page does not re-run its mount effect, so reactivation re-publishes…
-        UseActivation(onActivated: () => SetWash(wash), onDeactivated: ClearWash);
-        // …and UNMOUNT clears too, because onDeactivated fires only on PARK: a nav that evicts this page without
-        // parking it would otherwise leave a wash owned by a gone page. Owner-gated, so it can never clobber the next.
-        UseEffect(() => (Action?)ClearWash, DepKey.Empty);
+            PublishWash(isClaim: !washClaimed.Value);
+            washClaimed.Value = true;
+        }, DepKey.From(HashCode.Combine(washesDisabled, pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
+        UseActivation(onActivated: () => PublishWash(isClaim: true));
 
         void PlayTrack(string uri) { if (svc is not null) _ = svc.Player.PlayTrackAsync(uri); }
         void Open(HomeCard card) => HomeCardNav.Open(card, navPreview, go, PlayTrack);

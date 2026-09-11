@@ -158,18 +158,24 @@ public sealed class ConnectStateBuilder
         return c;
     }
 
-    /// <summary>Serialize a PutStateRequest from OUR local playback snapshot (null = empty player_state, for the initial
-    /// NewConnection announce). Matches the DeviceStatePublisher's builder delegate. <paramref name="nowMs"/> overridable
-    /// for deterministic tests. <paramref name="currentKind"/> is the controller's LIVE media kind
-    /// (<c>PlaybackController.CurrentMediaKind</c>) and makes the current track's <c>track_player</c> truthful — video iff the
-    /// video host is what is actually playing. Null (the default) keeps the legacy per-track wire heuristic, for callers that
-    /// genuinely do not know the kind.</summary>
+    /// <summary>Serialize a PutStateRequest from OUR local playback snapshot (null = empty/IDLE player_state — the initial
+    /// NewConnection announce, or (contract item 2) every PUT sent while we are NOT the active device: librespot publishes
+    /// an idle player_state plus our own volume rather than mirroring the foreign device's row). Matches the
+    /// DeviceStatePublisher's builder delegate. <paramref name="ownVolume01"/> is OUR device volume, read for
+    /// <c>DeviceInfo.Volume</c> only when <paramref name="snap"/> is null — when a snapshot is present its own
+    /// <c>Volume01</c> is authoritative instead. <paramref name="nowMs"/> overridable for deterministic tests.
+    /// <paramref name="currentKind"/> is the controller's LIVE media kind (<c>PlaybackController.CurrentMediaKind</c>) and
+    /// makes the current track's <c>track_player</c> truthful — video iff the video host is what is actually playing. Null
+    /// (the default) keeps the legacy per-track wire heuristic, for callers that genuinely do not know the kind.</summary>
     public byte[] BuildPutState(PutStateReasonKind reason, LocalPlaybackSnapshot? snap, uint messageId, bool isActive,
-        long? nowMs = null, PlayableKind? currentKind = null,
+        double ownVolume01 = 0, long? nowMs = null, PlayableKind? currentKind = null,
         string? lastCommandSentByDeviceId = null, uint lastCommandMessageId = 0)
     {
         long ts = nowMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        if (snap is { } sv) SetVolume((int)Math.Round(Math.Clamp(sv.Volume01, 0, 1) * MaxVolume));   // DeviceInfo.Volume from our live volume
+        // DeviceInfo.Volume always reports OUR OWN volume: from the live snapshot when we have one, else from the
+        // caller's separately-supplied own-volume (contract item 2) — a non-active Wavee still reports its real volume.
+        if (snap is { } sv) SetVolume((int)Math.Round(Math.Clamp(sv.Volume01, 0, 1) * MaxVolume));
+        else SetVolume((int)Math.Round(Math.Clamp(ownVolume01, 0, 1) * MaxVolume));
         var ps = snap is { } s ? BuildPlayerState(s, ts, currentKind) : new ProtoPlayerState { Timestamp = ts };
         var req = new PutStateRequest
         {
@@ -194,6 +200,9 @@ public sealed class ConnectStateBuilder
         if (snap is { } s2)
         {
             if (s2.StartedPlayingAtMs > 0) req.StartedPlayingAt = (ulong)s2.StartedPlayingAtMs;
+            // Computed since the very first PUT (DeviceStatePublisher.BuildSnapshot) but never written until now —
+            // the proto field exists (has_been_playing_for_ms = 11) and remote controllers use it for "time played".
+            if (s2.HasBeenPlayingForMs > 0) req.HasBeenPlayingForMs = (ulong)s2.HasBeenPlayingForMs;
         }
         if (!string.IsNullOrEmpty(lastCommandSentByDeviceId))
             req.LastCommandSentByDeviceId = lastCommandSentByDeviceId;

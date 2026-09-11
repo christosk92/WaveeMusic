@@ -24,6 +24,9 @@ public static class LiveSeams
 
     // ── the hydration façade + the online-read seam (design §2.3 / §2.7) ──
     public const string SpotifyHydration = "SpotifyHydration";
+    /// <summary>The library source's view of the sync loop's playlist freshness (a stale baseline blocks its open,
+    /// bounded). Session-scoped: the loop dies with the session, and a signed-out open must never wait on it.</summary>
+    public const string PlaylistOpener = "RealLibrarySource.PlaylistOpener";
     public const string OnlineCatalog = "OnlineCatalog";
     public const string HomeFeedRevalidate = "HomeFeedRevalidate";
     public const string HomeFacet = "HomeFacet";
@@ -88,7 +91,7 @@ public static class LiveSeams
     public static readonly string[] All =
     [
         Player, Devices, Session, Connectivity, Lyrics,
-        SpotifyHydration, OnlineCatalog, HomeFeedRevalidate, HomeFacet,
+        SpotifyHydration, PlaylistOpener, OnlineCatalog, HomeFeedRevalidate, HomeFacet,
         AlbumEnrichment, PreRelease, TrackCredits, TrackExpansion, PlaylistPopcount, ContentFilters,
         Concerts, Browse, WhatsNew, HomeSections, Recents, Friends, SpotifyNotifications, UserTop,
         PlaybackResolveVideoSource, PlaybackRepublishConnectState, PlaybackVideoMedia, PlaybackStore,

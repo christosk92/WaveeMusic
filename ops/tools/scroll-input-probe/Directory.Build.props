@@ -1,0 +1,5 @@
+<Project>
+  <!-- Deliberately empty and NOT importing the repo root props: this is a throwaway CoreCLR measurement tool
+       (classic [ComImport] interop, no engine reference), not an app project. It must build even when the
+       engine checkout is absent, and it does not share the app's warning-as-error / AOT posture. -->
+</Project>

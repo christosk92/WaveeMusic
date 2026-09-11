@@ -26,7 +26,7 @@ public static class SpotifyLibrarySync
     public static async Task<int> RunAsync(WaveeLogger log, CancellationToken ct, string language = "en")
     {
         language = SpotifyHeaders.NormalizeLanguage(language);
-        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, retainApChannel: true, language: language).ConfigureAwait(false);
+        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, retainApChannel: true, language: language, clearStoredOnReject: false).ConfigureAwait(false);
         if (live is null) return 1;
 
         string dbPath = System.IO.Path.Combine(

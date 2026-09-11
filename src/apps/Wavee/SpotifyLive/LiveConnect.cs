@@ -123,20 +123,27 @@ public sealed partial class LiveConnect : IDisposable
         // bug 6 / M0: the current track's Connect `track_player` must come from the controller's LIVE media kind (the ONE
         // truth about which host is playing), not from a bare has-video flag on the wire snapshot. The controller does not
         // exist yet here, so the publisher's build delegate reads it through this late-bound thunk (Audio until then).
-        // bug 2: gated on IsActiveOwner() — null (not Audio) while we are merely a passive VIEWER mirroring another
+        // bug 2: gated on OwnsPlaybackOnWire — null (not Audio) while we are merely a passive VIEWER mirroring another
         // device's row, so BuildPutState falls back to the wire's own track_player instead of stamping our idle
         // "Audio" over an explicit remote claim of "video". Only a device that is ACTUALLY decoding is authoritative.
         Func<PlayableKind?>? mediaKind = null;
         // The SINGLE PutState writer: NewConnection announce on the connection-id + our local player_state on playback
         // changes (so other devices/controllers see us as the active player). Re-injects the response cluster.
-        _publisher = new DeviceStatePublisher(transport, deviceId, Projection, _connect.ConnectionId, () => _connect.CurrentConnectionId,
-            (reason, snap, mid, isActive, attribution) => builder.BuildPutState(reason, snap, mid, isActive,
+        _publisher = new DeviceStatePublisher(transport, deviceId, Projection, Projection.Ownership,
+            _connect.ConnectionId, () => _connect.CurrentConnectionId,
+            (reason, snap, mid, isActive, ownVolume, attribution) => builder.BuildPutState(reason, snap, mid, isActive,
+                ownVolume01: ownVolume,
                 currentKind: mediaKind?.Invoke(),
                 lastCommandSentByDeviceId: attribution.SenderDeviceId,
                 lastCommandMessageId: attribution.MessageId),
             onCluster: _ingest.OnAnnounceResponse, log: log)
         {
             CurrentMediaKind = () => mediaKind?.Invoke(),
+            // The announce-response Cluster never crosses the dealer socket (DeviceStatePublisher re-injects it
+            // locally), so the dealer archive can only learn of it through this callback — kept a callback, not a
+            // direct DealerArchive reference, so Backend/DeviceStatePublisher.cs stays free of Diagnostics types.
+            OnPutResponseArchive = (mid, reason, isActive, body) =>
+                DealerArchive.Instance.RecordPutResponse(mid, reason.ToString(), isActive, body),
         };
 
         _host = audio is not null ? audio.Host : new SilentAudioHost();
@@ -188,12 +195,13 @@ public sealed partial class LiveConnect : IDisposable
             fast: (IFastTrackResolver?)media ?? fast, videoHost: _videoHost,
             transferDecoder: new ProtoTransferStateDecoder());
         // close the late-bound `track_player` loop (see above): null while merely viewing another device's session.
-        mediaKind = () => Controller.IsActiveOwner() ? Controller.CurrentMediaKind : (PlayableKind?)null;
+        mediaKind = () => Controller.OwnsPlaybackOnWire ? Controller.CurrentMediaKind : (PlayableKind?)null;
         Controller.EpisodeResumeMicros = (uri, ct) => herodotus.TryGetEpisodeResumeMicrosAsync(uri, ct);
         // Same corrected clock the projection's own remote-position aging reads — an inbound transfer ages its
         // restored position against it too, rather than our own (possibly unsynced/skewed) wall clock.
         Controller.ServerNowUnixMs = _clock.ServerNowUnixMs;
-        Controller.PublishInactiveOnWire = _publisher.PublishInactive;
+        // PublishInactiveOnWire is gone: the publisher reacts to OwnerFx.PublishInactive on ConnectOwnership.Changed
+        // itself now (DeviceStatePublisher.OnOwnershipChanged) — no controller push needed.
         Controller.PublishFreshStateOnWire = _publisher.PublishStateChanged;
         if (media is not null)
         {
@@ -368,6 +376,14 @@ public sealed partial class LiveConnect : IDisposable
         //    NoteDuration stays local-only: it persists a fact about a user's attached FILE, not about the now-playing edit.
         _onVideoDurationKnown = (key, ms) =>
         {
+            // Bug 3: a late DurationKnown from a video source the host has already switched away from must not be
+            // adopted — see VideoDurationAdoption's doc comment for the log evidence this closes.
+            string currentKey = _videoHost.CurrentSourceKey;
+            if (!Wavee.Backend.VideoDurationAdoption.ShouldAdopt(currentKey, key))
+            {
+                _playbackLog.Info($"video duration ignored for stale source key={key} ms={ms} — current key={currentKey}");
+                return;
+            }
             if (Projection.CurrentTrack?.Uri is not { Length: > 0 } uri) return;
             Projection.SetDurationOverride(uri, ms);
             if (key.StartsWith(Wavee.Backend.VideoOverride.SourceKeyPrefix, StringComparison.Ordinal))
@@ -487,7 +503,7 @@ public sealed partial class LiveConnect : IDisposable
         { try { liveMetaSource.MetadataKnown -= metaRelay; } catch { } _onLiveMetadata = null; }
         try { _moduleRelay.CurrentPlayableExpired -= OnModulePlayableExpired; } catch { }
         try { _moduleRelay.Dispose(); } catch { }
-        try { Controller.DeactivateIfActiveOwner(); } catch { }   // best-effort clean is_active=false hand-off on logout
+        try { Controller.ReleaseOwnership(ReleaseCause.Logout); } catch { }   // best-effort clean is_active=false hand-off on logout
         _commands.Dispose();
         _publisher.Dispose();
         _resume?.Dispose();

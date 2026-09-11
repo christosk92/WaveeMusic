@@ -59,6 +59,25 @@ public readonly record struct EntityUri(string Uri, string Provider, EntityKind 
     /// collection cover are all written with.</summary>
     public const string LikedCollection = "spotify:collection:tracks";
 
+    /// <summary>A rootlist folder's wire prefix (<c>spotify:folder:&lt;hex&gt;</c>) — the collection2v2 "ylpin" spelling
+    /// of a client-minted group id, captured 2026-09-11 with <c>--spotify-collection pins</c>. Not an <see cref="EntityKind"/>
+    /// (the id has no catalog entity behind it — <see cref="KindOf"/> answers Unknown), only a wire-uri shape
+    /// <see cref="FolderIdOf"/> recognises for <c>PinSyncRules</c>.</summary>
+    public const string FolderPrefix = "spotify:folder:";
+
+    /// <summary>The rootlist group id inside a folder wire uri, or "" when <paramref name="uri"/> is not exactly
+    /// <see cref="FolderPrefix"/> followed by 1..32 hex characters and nothing else — allocation-free span check, no
+    /// substring unless the shape matches.</summary>
+    public static string FolderIdOf(string? uri)
+    {
+        if (string.IsNullOrEmpty(uri) || !uri.StartsWith(FolderPrefix, StringComparison.Ordinal)) return "";
+        var id = uri.AsSpan(FolderPrefix.Length);
+        if (id.Length == 0 || id.Length > 32) return "";
+        foreach (char c in id)
+            if (c is not (>= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F')) return "";
+        return uri[FolderPrefix.Length..];
+    }
+
     /// <summary>Is this uri the Liked Songs collection, in ANY of the spellings the wire uses? THE predicate — the
     /// canonical form, the user-namespaced <c>spotify:user:&lt;u&gt;:collection</c> that Home and recents section items
     /// carry, and the facet-suffixed <c>spotify:user:&lt;u&gt;:collection:tracks</c>.

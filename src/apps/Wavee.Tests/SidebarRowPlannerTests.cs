@@ -145,6 +145,29 @@ public sealed class SidebarRowPlannerTests
         }
     }
 
+    /// <summary>Task G: the shortcuts/top-bar band (SidebarIds.TopBarSection — never collapsible chrome) emits NO
+    /// SectionHeader row, whatever title it carries — unlike an ordinary section with the same shape (StaticLinks +
+    /// TitleLocKey), which still gets one. Its item rows come first with nothing ahead of them, so the pane's first
+    /// SectionHeader row (the quick layout menu host) lands on the NEXT real section instead.</summary>
+    [Fact]
+    public void TopBarBand_EmitsNoSectionHeader_AndItsRowsComeFirst()
+    {
+        var input = FullInput();
+        var topBar = new SidebarSectionSpec(SidebarIds.TopBarSection, SidebarSectionKind.StaticLinks,
+            Title: null, TitleLocKey: SidebarShortcutsSection.TitleLocKey, Hidden: false, Collapsed: false,
+            Display: SidebarDisplayOptions.Links, Items: [Route("i1", "home"), Route("i2", "search")]);
+        var next = Sec("real", SidebarSectionKind.Pinned);
+
+        var plan = SidebarRowPlanner.Build(Doc(topBar, next), input);
+
+        Assert.Equal(new[]
+        {
+            SidebarRowKind.IconRow, SidebarRowKind.IconRow,                              // the band, header-less
+            SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.EntityRow,  // the real section
+        }, KindsOf(plan));
+        Assert.Equal("real", plan.Rows[2].SectionId);   // the FIRST SectionHeader row now names the real section
+    }
+
     [Fact]
     public void UnknownSectionKind_EmitsNothing()
     {
@@ -979,5 +1002,182 @@ public sealed class SidebarRowPlannerTests
         Assert.Equal(KindsOf(collapsed), KindsOf(reCollapsed));
         for (int i = 0; i < collapsed.Rows.Count; i++)
             Assert.Equal(collapsed.Rows[i], reCollapsed.Rows[i]);
+    }
+
+    // ── "once pinned, never also in the normal list" (every design, pane and rail) ──────────────────────────────────────
+
+    static bool ContainsEntry(SidebarRowPlan plan, string sectionId, string entryId)
+    {
+        foreach (var r in plan.Rows)
+            if (r.SectionId == sectionId && r.EntryIndex >= 0 &&
+                string.Equals(plan.Entries[r.EntryIndex].Id, entryId, StringComparison.Ordinal))
+                return true;
+        return false;
+    }
+
+    [Fact]
+    public void PinnedEntry_IsExcludedFromPlaylistTreeAndEntityList_WhenTheDocumentHasAPinnedSection()
+    {
+        var pinned = Playlist("1", "Alpha mix", order: 0);
+        var other = Playlist("2", "Beta mix", order: 1);
+        var input = new SidebarProjectionInput
+        {
+            Library = new[] { pinned, other },
+            PlaylistTree = new[] { pinned, other },
+            Pins = new[] { pinned },
+            PinnedIds = new HashSet<string>(StringComparer.Ordinal) { pinned.Id },
+        };
+
+        var doc = Doc(
+            Sec("p", SidebarSectionKind.Pinned),
+            Sec("e", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default),
+            Sec("t", SidebarSectionKind.PlaylistTree));
+
+        var plan = SidebarRowPlanner.Build(doc, input);
+
+        Assert.True(ContainsEntry(plan, "p", pinned.Id));
+        Assert.False(ContainsEntry(plan, "e", pinned.Id));
+        Assert.False(ContainsEntry(plan, "t", pinned.Id));
+        // The un-pinned entry is unaffected in either place.
+        Assert.True(ContainsEntry(plan, "e", other.Id));
+        Assert.True(ContainsEntry(plan, "t", other.Id));
+    }
+
+    [Fact]
+    public void PinnedEntry_StillShowsInTheList_WhenTheDocumentHasNoPinnedSection()
+    {
+        // A Curated user who removed the Pinned section, or V3 while searching/drilled where the band is absent — the
+        // item must not simply vanish from the sidebar.
+        var pinned = Playlist("1", "Alpha mix", order: 0);
+        var input = new SidebarProjectionInput
+        {
+            Library = new[] { pinned },
+            PinnedIds = new HashSet<string>(StringComparer.Ordinal) { pinned.Id },
+        };
+
+        var plan = SidebarRowPlanner.Build(
+            Doc(Sec("e", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default)), input);
+
+        Assert.Single(plan.Entries);
+        Assert.Equal(pinned.Id, plan.Entries[0].Id);
+    }
+
+    [Fact]
+    public void PinnedFolder_HidesItsWholeSubtree_InTheSourceOrderTreeWalker()
+    {
+        var folder = Folder("f1", "Chill", depth: 0, order: 0);
+        var child = Playlist("a", "Inner A", order: 1, depth: 1);
+        var top = Playlist("b", "Top level", order: 2, depth: 0);
+        var input = new SidebarProjectionInput
+        {
+            PlaylistTree = new[] { folder, child, top },
+            Pins = new[] { folder },
+            PinnedIds = new HashSet<string>(StringComparer.Ordinal) { folder.Id },
+            ExpandedFolders = new HashSet<string>(StringComparer.Ordinal) { "f1" },
+        };
+        var doc = Doc(Sec("p", SidebarSectionKind.Pinned), Sec("t", SidebarSectionKind.PlaylistTree));
+
+        var plan = SidebarRowPlanner.Build(doc, input);
+
+        Assert.DoesNotContain(plan.Rows, r => r.SectionId == "t" && r.Kind == SidebarRowKind.FolderHeader);
+        Assert.False(ContainsEntry(plan, "t", child.Id));
+        Assert.True(ContainsEntry(plan, "t", top.Id));
+        // The folder pin itself still draws — the subtree is reachable through it.
+        Assert.True(ContainsEntry(plan, "p", folder.Id));
+    }
+
+    [Fact]
+    public void PinnedFolder_HidesItsWholeSubtree_InTheFlatSearchWalker()
+    {
+        var folder = Folder("f1", "Chill", depth: 0, order: 0);
+        var child = Playlist("alpha-inner", "Alpha inner", order: 1, depth: 1);
+        var top = Playlist("alpha-top", "Alpha top", order: 2, depth: 0);
+        var input = new SidebarProjectionInput
+        {
+            PlaylistTree = new[] { folder, child, top },
+            Pins = new[] { folder },
+            PinnedIds = new HashSet<string>(StringComparer.Ordinal) { folder.Id },
+            Search = "Alpha",
+        };
+        var doc = Doc(Sec("p", SidebarSectionKind.Pinned), Sec("t", SidebarSectionKind.PlaylistTree));
+
+        var plan = SidebarRowPlanner.Build(doc, input);
+
+        // "Alpha inner" matches the search but sits inside the pinned folder's subtree — hidden regardless. "Alpha top"
+        // is outside it and still shows.
+        Assert.False(ContainsEntry(plan, "t", child.Id));
+        Assert.True(ContainsEntry(plan, "t", top.Id));
+    }
+
+    [Fact]
+    public void PinnedRoute_HidesTheMatchingShortcutItem()
+    {
+        var input = new SidebarProjectionInput
+        {
+            PinnedIds = new HashSet<string>(StringComparer.Ordinal) { "liked" },
+        };
+        var doc = Doc(
+            Sec("p", SidebarSectionKind.Pinned),
+            Sec("c", SidebarSectionKind.CollectionShortcuts, items: [Route("i1", "liked"), Route("i2", "albums")]));
+
+        var plan = SidebarRowPlanner.Build(doc, input);
+
+        Assert.DoesNotContain(plan.Rows, r => r.SectionId == "c" && r.Key == "liked");
+        Assert.Contains(plan.Rows, r => r.SectionId == "c" && r.Key == "albums");
+    }
+
+    [Fact]
+    public void JumpBackIn_StillListsAPinnedPlaylist()
+    {
+        // Feeds (JumpBackIn/NewReleases/Concerts/…) are recency feeds, not the library list — PlanPinned's exclusion
+        // rule never reaches them.
+        var pinned = Playlist("1", "Alpha mix", visited: 500, order: 0);
+        var input = new SidebarProjectionInput
+        {
+            Visited = new[] { pinned },
+            Pins = new[] { pinned },
+            PinnedIds = new HashSet<string>(StringComparer.Ordinal) { pinned.Id },
+        };
+        var doc = Doc(Sec("p", SidebarSectionKind.Pinned), Sec("j", SidebarSectionKind.JumpBackIn));
+
+        var plan = SidebarRowPlanner.Build(doc, input);
+
+        Assert.True(ContainsEntry(plan, "p", pinned.Id));
+        Assert.True(ContainsEntry(plan, "j", pinned.Id));
+    }
+
+    [Fact]
+    public void Rail_MirrorsThePane_PinnedEntriesExcludedFromTreeEntityListAndShortcuts()
+    {
+        var pinned = Playlist("1", "Alpha mix", order: 0);
+        var other = Playlist("2", "Beta mix", order: 1);
+        var input = new SidebarProjectionInput
+        {
+            Library = new[] { pinned, other },
+            PlaylistTree = new[] { pinned, other },
+            Pins = new[] { pinned },
+            PinnedIds = new HashSet<string>(StringComparer.Ordinal) { pinned.Id },
+        };
+        var doc = Doc(
+            Sec("p", SidebarSectionKind.Pinned),
+            Sec("e", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default),
+            Sec("t", SidebarSectionKind.PlaylistTree));
+
+        var rail = SidebarRowPlanner.BuildRail(doc, input);
+
+        Assert.True(ContainsEntry(rail, "p", pinned.Id));
+        Assert.False(ContainsEntry(rail, "e", pinned.Id));
+        Assert.False(ContainsEntry(rail, "t", pinned.Id));
+        Assert.True(ContainsEntry(rail, "e", other.Id));
+        Assert.True(ContainsEntry(rail, "t", other.Id));
+
+        // A pinned route's shortcut tile is likewise skipped in the rail.
+        var liked = new SidebarProjectionInput { PinnedIds = new HashSet<string>(StringComparer.Ordinal) { "liked" } };
+        var shortcutDoc = Doc(
+            Sec("p", SidebarSectionKind.Pinned),
+            Sec("c", SidebarSectionKind.CollectionShortcuts, items: [Route("i1", "liked"), Route("i2", "albums")]));
+        var shortcutRail = SidebarRowPlanner.BuildRail(shortcutDoc, liked);
+        Assert.DoesNotContain(shortcutRail.Rows, r => r.SectionId == "c" && r.Key == "liked");
+        Assert.Contains(shortcutRail.Rows, r => r.SectionId == "c" && r.Key == "albums");
     }
 }

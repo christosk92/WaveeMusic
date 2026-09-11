@@ -12,7 +12,13 @@ namespace Wavee.SpotifyLive;
 // folds (mirrors CollectionWireMapper). ClusterIngest subscribes the dealer cluster topic + the announce-response echo.
 public static class ClusterMapper
 {
-    public static ClusterDelta Map(P.Cluster cluster, string ourDeviceId)
+    /// <summary><paramref name="origin"/>/<paramref name="putMsgId"/>/<paramref name="updateReason"/>/
+    /// <paramref name="changedDevices"/> carry the ClusterUpdate envelope a dealer PUSH has and a bare put-state RESPONSE
+    /// Cluster does not (Origin=PutResponse, updateReason=0, changedDevices=null for a response — see ClusterIngest).
+    /// <c>Cluster.started_playing_at_timestamp</c> (field 11, optional) is read here either way — it exists on both.</summary>
+    public static ClusterDelta Map(P.Cluster cluster, string ourDeviceId,
+        ClusterOrigin origin = ClusterOrigin.Push, uint putMsgId = 0, int updateReason = 0,
+        IReadOnlyList<string>? changedDevices = null)
     {
         var ps = cluster.PlayerState;
         bool hasTrack = ps?.Track is not null && !string.IsNullOrEmpty(ps.Track.Uri);
@@ -60,7 +66,12 @@ public static class ClusterMapper
             ps?.PlaybackSpeed ?? 1.0,
             activeVol,
             ps?.QueueRevision ?? "",
-            prev);
+            prev,
+            Origin: origin,
+            PutMsgId: putMsgId,
+            UpdateReason: updateReason,
+            ChangedDevices: changedDevices,
+            ActiveStartedPlayingAt: cluster.HasStartedPlayingAtTimestamp ? (long)cluster.StartedPlayingAtTimestamp : 0);
     }
 
     static RemoteTrack MapTrack(P.ProvidedTrack t, long fallbackDuration)
@@ -101,6 +112,9 @@ public sealed class ClusterIngest : IDisposable
     readonly WaveeLogger _log;
     readonly Action<long>? _onServerTimestamp;   // feeds the server-clock estimator a free passive sample per cluster
     readonly IDisposable _sub;
+    // connect.cluster dedup (brief): one line per DISTINCT (origin, active, changed devices, track, playing, paused)
+    // tuple — a steady 1 Hz heartbeat naming the same owner must not spam the log, but any real change always logs.
+    string _lastClusterLogKey = "";
 
     public ClusterIngest(ITransport transport, NowPlayingProjection projection, LiveConnectDevices devices,
         string ourDeviceId, WaveeLogger log = default, Action<long>? onServerTimestamp = null)
@@ -113,32 +127,86 @@ public sealed class ClusterIngest : IDisposable
         _sub = transport.Events("hm://connect-state/v1/cluster").Subscribe(Observers.From<WireEvent>(OnEvent));
     }
 
-    // Dealer cluster pushes are a ClusterUpdate (wraps the Cluster).
+    // Dealer cluster pushes are a ClusterUpdate (wraps the Cluster + the reason/changed-devices envelope).
     void OnEvent(WireEvent e)
     {
         try
         {
             var update = P.ClusterUpdate.Parser.ParseFrom(e.Payload);
-            if (update.Cluster is not null) Apply(update.Cluster);
+            if (update.Cluster is not null)
+                Apply(update.Cluster, ClusterOrigin.Push, putMsgId: 0, (int)update.UpdateReason, update.DevicesThatChanged);
         }
         catch (Exception ex) { _log.Info("cluster parse failed: " + ex.Message); }
     }
 
-    /// <summary>The PUT-state announce RESPONSE body is a Cluster (not a ClusterUpdate) — re-injected here so the
-    /// announce-response and the live pushes share one fold path.</summary>
-    public void OnAnnounceResponse(byte[] clusterBytes)
+    /// <summary>The PUT-state announce RESPONSE body is a bare Cluster (not a ClusterUpdate) — re-injected here, tagged
+    /// Origin=PutResponse/PutMsgId=<paramref name="msgId"/>, so the announce-response and the live pushes share one fold
+    /// path. This is the ONE frame that proves whether the server adopted our claim (findings §0) — logged as
+    /// <c>connect.echo</c> and recorded to <see cref="ConnectDiagnostics.RecordEcho"/> in addition to the normal
+    /// <c>connect.cluster</c> fold line.</summary>
+    public void OnAnnounceResponse(byte[] body, uint msgId)
     {
-        try { Apply(P.Cluster.Parser.ParseFrom(clusterBytes)); }
+        try
+        {
+            var cluster = P.Cluster.Parser.ParseFrom(body);
+            var delta = Apply(cluster, ClusterOrigin.PutResponse, msgId, updateReason: 0, changedDevices: null);
+            LogEcho(delta, msgId);
+        }
         catch (Exception ex) { _log.Info("announce-response cluster parse failed: " + ex.Message); }
     }
 
-    void Apply(P.Cluster cluster)
+    ClusterDelta Apply(P.Cluster cluster, ClusterOrigin origin, uint putMsgId, int updateReason, IReadOnlyList<string>? changedDevices)
     {
-        var delta = ClusterMapper.Map(cluster, _ourDeviceId);
+        var delta = ClusterMapper.Map(cluster, _ourDeviceId, origin, putMsgId, updateReason, changedDevices);
         _onServerTimestamp?.Invoke(delta.ServerTimestampMs);   // refresh the clock BEFORE the fold reads its offset
-        _devices.Update(delta.Devices);
-        _projection.OnCluster(delta);
+        // The ownership fold decides FIRST (NowPlayingProjection.OnCluster calls Ownership.OnCluster before anything
+        // else) — the roster only moves when the frame was actually folded (not F0-dropped as stale), or a slow
+        // response landing after a newer push would drag the roster backwards with it.
+        bool folded = _projection.OnCluster(delta);
+        if (folded) _devices.Update(delta.Devices);
+        LogCluster(delta, folded);
+        return delta;
     }
+
+    void LogCluster(in ClusterDelta d, bool folded)
+    {
+        string changed = d.ChangedDevices is { Count: > 0 } cd ? string.Join(",", cd) : "-";
+        string track = d.HasTrack ? d.Track.Uri : "-";
+        string dedupKey = string.Join("|", d.Origin, d.ActiveDeviceId, changed, track, d.IsPlaying, d.IsPaused);
+        if (dedupKey == _lastClusterLogKey) return;
+        _lastClusterLogKey = dedupKey;
+
+        string originText = d.Origin == ClusterOrigin.PutResponse ? "resp#" + d.PutMsgId : "push";
+        WaveeLog.Instance.Info("connect", "connect.cluster",
+            $"{originText} reason={d.UpdateReason} srvTs={d.ServerTimestampMs} active={Short(d.ActiveDeviceId)} " +
+            $"startedAt={d.ActiveStartedPlayingAt} changed={changed} pos={d.PositionAsOfMs} playing={d.IsPlaying} " +
+            (folded ? "folded" : "stale"),
+            WaveeLogField.Of("origin", originText),
+            WaveeLogField.Of("reason", d.UpdateReason),
+            WaveeLogField.Of("srvTs", d.ServerTimestampMs),
+            WaveeLogField.Of("active", d.ActiveDeviceId),
+            WaveeLogField.Of("startedAt", d.ActiveStartedPlayingAt),
+            WaveeLogField.Of("changed", changed),
+            WaveeLogField.Of("pos", d.PositionAsOfMs),
+            WaveeLogField.Of("playing", d.IsPlaying),
+            WaveeLogField.Of("folded", folded));
+    }
+
+    void LogEcho(in ClusterDelta d, uint msgId)
+    {
+        bool adopted = d.ActiveDeviceId == _ourDeviceId;
+        WaveeLog.Instance.Info("connect", "connect.echo",
+            $"put-state response msgId={msgId} active={Short(d.ActiveDeviceId)} srvTs={d.ServerTimestampMs} " +
+            $"startedAt={d.ActiveStartedPlayingAt} adopted={adopted}",
+            WaveeLogField.Of("msgId", msgId),
+            WaveeLogField.Of("active", d.ActiveDeviceId),
+            WaveeLogField.Of("srvTs", d.ServerTimestampMs),
+            WaveeLogField.Of("startedAt", d.ActiveStartedPlayingAt),
+            WaveeLogField.Of("adopted", adopted));
+        ConnectDiagnostics.RecordEcho(msgId, d.ActiveDeviceId, d.ServerTimestampMs, d.ActiveStartedPlayingAt, adopted);
+    }
+
+    static string Short(string id) => id.Length > 8 ? id[..8] : id;
 
     public void Dispose() => _sub.Dispose();
 }

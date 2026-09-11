@@ -97,13 +97,13 @@ public class LaunchRecoveryBufferingTests
     // it. With no Play() ever called, nothing retires the flag: the state-pump ticker that would normally clear it on
     // the next Playing/Ended edge only starts from Play()/auto-resume.
     //
-    // The fix has two halves. FluentMediaAudioHost now withholds those signals while it has no play intent
-    // (PlayIntentGate.ShouldAnnounceBuffering — not exercisable here, the host cannot be built headlessly), so in
-    // production a signal shaped like this never reaches OnHostSignal in the first place. What IS exercisable at this
-    // level is the belt-and-suspenders half: PlaybackController now calls the SAME ClearTransientBuffering() SwitchHost
-    // already uses (PlaybackProjection.cs:528) both right after an initiallyPaused load and when SupplyBodyWhenReadyAsync
-    // completes for a host with no play intent — so even a signal that DID slip through (the race the gate alone cannot
-    // fully close) does not latch.
+    // The fix has three layers now. FluentMediaAudioHost withholds those signals while it has no play intent
+    // (PlayIntentGate.ShouldAnnounceBuffering — not exercisable here, the host cannot be built headlessly). The projection
+    // folds host signals ONLY while WE own playback (Backend/PlaybackOwnership.cs), and a paused restore never claims —
+    // so a stray signal from that restore's load is not adopted at all. And the belt-and-suspenders half:
+    // PlaybackController calls the SAME ClearTransientBuffering() SwitchHost uses both right after an initiallyPaused load
+    // and when SupplyBodyWhenReadyAsync completes for a host with no play intent — so a buffering flag a host DID raise
+    // (the race the gate alone cannot fully close) does not latch.
 
     [Fact]
     public void SnapshotRestore_PausedFold_ThenAStrayHostBufferingSignal_IsRetiredByClearTransientBuffering()
@@ -116,12 +116,16 @@ public class LaunchRecoveryBufferingTests
         Assert.False(p.IsBuffering);
 
         // A host-reported Buffering signal for the fast-start head/body attach of that same paused load (what
-        // FluentMediaAudioHost used to emit unconditionally, and what the play-intent gate now withholds — this pins
-        // the OTHER half: even adopted, it must not survive the controller's own no-play-intent clear).
+        // FluentMediaAudioHost used to emit unconditionally, and what the play-intent gate now withholds): nobody owns
+        // playback yet — the restore never claims — so the projection does not even adopt it.
         p.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.Buffering, 1785));
-        Assert.True(p.IsBuffering);   // OnHostSignal itself has no play-intent concept — it adopts whatever it's told
+        Assert.False(p.IsBuffering);
 
-        // PlaybackController.SupplyBodyWhenReadyAsync's belt-and-suspenders clear, for a host with no play intent.
+        // Once WE own playback (a host swap mid-play, say) a host's Buffering IS adopted — and the controller's
+        // belt-and-suspenders clear, for a host with no play intent, still retires it.
+        p.Ownership.Claim(ClaimCause.UserResume);
+        p.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.Buffering, 1785));
+        Assert.True(p.IsBuffering);
         p.ClearTransientBuffering();
 
         Assert.False(p.IsBuffering);
@@ -138,9 +142,10 @@ public class LaunchRecoveryBufferingTests
         p.ApplyLocalSnapshot(Snap(Local(uri)), new PlaybackEvent(EvKind.Paused, Local(uri), 1785));
         Assert.False(p.IsBuffering);
 
-        // The user presses Play (PlaybackController.Play → the audio host's Resumed fold): there IS play intent now,
-        // so a buffering signal that lands afterward is a REAL wait on audio and must reach the UI, not be swallowed
-        // by the same clear that protects the paused-restore window.
+        // The user presses Play (PlaybackController.Play CLAIMS playback, then the audio host's Resumed fold): there IS
+        // play intent now, so a buffering signal that lands afterward is a REAL wait on audio and must reach the UI, not
+        // be swallowed by the same clear that protects the paused-restore window.
+        p.Ownership.Claim(ClaimCause.UserResume);
         p.ApplyLocalSnapshot(Snap(Local(uri)), new PlaybackEvent(EvKind.Resumed, Local(uri), 1785));
         p.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.Buffering, 1785));
 

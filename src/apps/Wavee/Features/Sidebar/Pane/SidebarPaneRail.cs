@@ -119,7 +119,7 @@ static class SidebarPaneRail
                 var snapshot = entry;
                 Action? click = null;
                 if (entry.IsTrack) click = () => owner.PlayTrack(snapshot.Uri);
-                else if (route is { Length: > 0 } r) click = () => owner.Navigate(r, snapshot.Name);
+                else if (route is { Length: > 0 } r) click = () => owner.Navigate(r, snapshot.Name, in snapshot);
                 bool selected = route is { Length: > 0 } && string.Equals(route, sel, StringComparison.Ordinal);
                 // An EDITABLE playlist cover is a real deposit target even at 56 DIP: the quick path for the two or three
                 // playlists a user keeps at the top of their rail, without waiting out the pane's peek dwell. Everything

@@ -375,7 +375,7 @@ public class MediaProviderSeamTests
 
         public PublisherHarness()
         {
-            Publisher = new DeviceStatePublisher(Transport, "us", Proj, ConnId, () => CurrentConnId,
+            Publisher = new DeviceStatePublisher(Transport, "us", Proj, Proj.Ownership, ConnId, () => CurrentConnId,
                 (reason, snap, mid, active) =>
                 {
                     LastSnapshot = snap;
@@ -387,8 +387,11 @@ public class MediaProviderSeamTests
         public void Connect(string id) { CurrentConnId = id; ConnId.OnNext(id); }
         public void SetQueue(params QueueEntry[] q) => Proj.SetLocalQueue(q);
 
+        // Claims ownership before the event reaches the publisher (contract item 1) — without it is_active would be
+        // false and BuildSnapshot would never run, so LastSnapshot (what these tests read) would stay null.
         public void Play(string trackUri)
         {
+            Proj.Ownership.Claim(ClaimCause.UserPlay);
             var e = new PlaybackEvent(EvKind.Started, T(trackUri), 0);
             Proj.OnEvent(e);
             Publisher.OnEvent(e);

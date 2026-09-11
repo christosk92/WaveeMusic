@@ -10,13 +10,42 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.2.9] - unreleased
 
-A performance release: no new features. The engine underneath it is FluentGpu's "Operation ultra-fast" work, and
+A performance release with one new feature, the Now Playing player styles. The engine underneath it is FluentGpu's "Operation ultra-fast" work, and
 the app-side changes below are what that engine exposed — retained pages, per-frame component churn and art
 slots that never repainted. It also lands the always-on frame instrumentation, without which none of it could be
 measured.
 
+### Added
+
+- **Appearance › Lyrics blur.** A strength slider (0–100 %) for the lyrics depth-of-field and glow blur; 0 removes
+  every lyrics blur layer. Auto picks 40 % on a weak GPU tier (the Snapdragon's Adreno) and 100 % elsewhere. The
+  depth-of-field ramp now writes in the renderer's own 0.5 σ buckets, and the active line's glow never nests inside a
+  blurred layer, so a line hand-off no longer re-blurs the voice row every frame. Moving the slider applies at once,
+  playing or paused, instead of at the next line. (#141)
+- **The track expander shows who added the track.** "Added by" carries the same avatar + name chip as the Added-by
+  column instead of a bare name. (#135)
+- **Sidebar pins sync with Spotify.** The Pinned section mirrors the account's own pins (Spotify's `ylpin` set):
+  playlists — including editorial ones like the daylist — albums, artists, shows, Liked Songs and playlist folders,
+  read on sign-in and on every push, and written back when you pin or unpin in Wavee. Liked Songs uses the spelling
+  Spotify actually sends (`spotify:collection`), a folder syncs by its rootlist id and renders disabled with a reason
+  until its rootlist entry arrives, and pins Wavee cannot show (Your Episodes, Local Files, audiobooks) are left
+  untouched on the server. A pinned item no longer appears a second time in Playlists, Your Library, the Library V3
+  list or the rail — in every design, and a Liked Songs pin that arrives from Spotify is a proper route pin:
+  titled, clickable and the same height as its neighbours. In the collapsed rail a pinned folder is a folder tile
+  that opens the folder, not a playlist cover that does nothing. (#102)
+- **Player styles for Now Playing.** The Now Playing rail's cover gets a header with a Cover | Player switch and a Player style flyout: twelve
+  players in three rows — Record, Cassette, Reel-to-reel, CD/MiniDisc; Turntable, iPod Classic, Winamp, Hi-fi VU; Zune, WMP visualizer, Canvas
+  drift, Picture disc — each with its own options (vinyl finish, size and speed, cassette shell and label, iPod body, Winamp skin, …). The
+  record's tonearm cues, lifts on pause, seeks, rides the run-out into a locked groove and returns to its rest the way a turntable does. The
+  choice is remembered per user and is also reachable from the artwork's right-click menu, Settings › Appearance › Now playing and the command
+  palette. (#n)
+
 ### Changed
 
+- **Sidebar shortcut rows are 40 DIP, and the Shortcuts band has no header.** Glyph rows (Your Library, DevTools,
+  any Curated shortcut section) used the subtitle pitch of 44 while never showing a subtitle, so they read taller
+  than the pinned rows beside them; they now take the ladder's Cozy-without-subtitle height in the pane and the
+  rail. Home sits directly under the title bar; the quick layout menu moved to the Pinned header. (#134)
 - **The app measures its own frames.** `frame.slow` writes one line per frame over the panel's refresh interval
   — rate-limited but counted — with the phase split, GC deltas and, when the render census fired, which
   components rendered and which allocated. `nav.frames` rolls the four seconds after a route change up into fps,
@@ -39,9 +68,95 @@ measured.
 - Every shelf passes its collection rather than a count, following the engine's retained-shelf rework (21 call
   sites across 9 files). A shelf now does its own capping, so a card callback can no longer be handed an index
   past the end. Mechanical port: no shelf changes its reserved height, page size or measurement mode.
+- Ambient motion is paced per source (`DefaultLoopHz`), not by a host-inferred cap.
+- Scrolling and pointer motion feel closer to the finger: the present queue no longer holds a finished frame
+  back a whole refresh, and the render loop picks the frame to show after the present slot opens rather than
+  before. Roughly one to one and a half refreshes less latency at the same frame rate.
 
 ### Fixed
 
+- **The render loop never went idle, and the GPU sat at ~70 % with the Lyrics panel open.** A pointer resting over a
+  scrollable view held a scrollbar row forever, parked scroll bodies stayed "active", and layout re-posted an
+  identical scroll frame every frame — each alone enough to keep every frame awake, and an awake frame re-submits the
+  scene whenever a pixel moves. The engine now separates "needs a frame" from "has a row", ignores parked bodies for
+  wake, posts a scroll frame only when it changed, names the term in its `[wake]` line, and reports the real
+  `blurHeld` count. (#136)
+- **Lyrics: Musixmatch's anti-scraping decoy could win.** 206 uniform four-second nonsense lines running to 13:56 on
+  a 3:30 track were chosen because an ISRC match was verified by construction, tier beat score, and a better provider
+  could never replace the first winner. A document longer than the track or with uniform line timing is rejected as a
+  decoy, a verified candidate must align with the reference text, the background pass replaces an unverified winner,
+  and Musixmatch's own status code (captcha / quota) is honoured with a token refresh. (#137)
+- **The karaoke wipe stepped, even with lyrics blur at 0.** Lyrics extrapolated media time from the 15.6 ms system
+  tick and applied every position sample as a jump, so at 120 Hz the wipe advanced 0 or 15.6 ms a frame and froze
+  after a backward correction; and the engine's render-thread capture skipped a node written every frame until the
+  next full capture, about five times a second. Lyrics now extrapolate from timestamped position samples to the
+  frame's own present time and correct drift by a bounded rate change, never a step; the capture records every write.
+  The record player's clock reads the same frame time. `lyrics.clock` logs zero-advance frames and the largest step
+  every 30 s. (#n)
+- Lyrics no longer open with the provider's title/credit header when it carries a bracketed annotation or a
+  trailing "title - artist" line (Kugou's Chinese credit block). (#n)
+- **The pop-out video window could not be moved.** It lost its title bar when it became chromeless and nothing took
+  the title bar's place. Dragging the picture now moves the window through Windows' own move loop (Aero Snap, shake
+  and the snap bar included); a click, double-click or right-click keeps its meaning and a press on a control never
+  moves the window. (#n)
+- **Video controls hid and showed like a flickering overlay.** Only real user activity shows them now — a slow mouse
+  creep counts, a resting hand's jitter does not; buffering, a quality switch or a new track never pop them up;
+  hovering them, an open menu, seeking or a pause keeps them; leaving the window hides them within half a second.
+  They fade in 150 ms and out 400 ms from wherever they are (the fade used to start at its end value, so it cut), the
+  seek bar keeps its colour and thumb while it fades, and in the pop-out the cursor hides with them. Main-window
+  fullscreen controls respond to the mouse again — an invisible click shield sat on top of them. (#n)
+- **Navigation no longer flashes the window's colour.** The chrome tint (sidebar, title bar, player bar) dropped to a
+  darker neutral for a few frames at almost every navigation and sometimes jumped back to the previous page's colour:
+  a page cleared the tint when it left, the next page's colour was not graded yet, "no colour" was painted as
+  transparent black, and a page still fading out could republish over its successor. Pages now hand the tint over —
+  the incoming page claims it and keeps the current colour until its own is ready, only the current owner may
+  refresh it, pages with no colour of their own ease to a real neutral, and a clicked card's already-graded colour
+  seeds the destination. (#n)
+- **Page transitions no longer superimpose two pages.** The outgoing page faded on an accelerate curve and was still
+  ~70 % opaque when the incoming one started, so every navigation showed a frame of mixed, unreadable text; it now
+  fades out fast first, and the incoming page slides 8 DIP instead of 30. (#n)
+- **Late data no longer moves what you are reading.** The player bar changes track in one step — no old artwork, no
+  old position against the new duration, no Play glyph flicker, and a reserved slot for the video button; its title
+  no longer ping-pong scrolls while idle. An album page no longer shows the "Minified album view" notice or a wrong
+  total duration while its rows load, and "About this release" appears once, complete. Artist pages keep one
+  play-count format and never re-create the Top tracks rows when the column width settles. A daylist's countdown
+  ticks. A playlist or mix opened after it changed waits briefly for the fresh copy instead of painting yesterday's
+  and swapping it, and its rows only animate for real edits. Sidebar clicks hand the page a preview like Home cards
+  do. Search and Browse skeletons have the shape of the page they stand in for. (#n)
+- **Less motion that was not asked for.** Wide track rows no longer shrink when pressed, cards under a resting
+  pointer no longer grow right after navigating back, the sidebar equaliser honours reduced motion, and a lyric line's
+  hand-off dims and brightens at the same pace. (#n)
+- **Connect: who owns playback is decided in one place.** Six incidents had one cause — two ownership authorities
+  (the controller's own flag and active-device transitions, the projection's raw active id with a 5 s wall-clock
+  grace) and several writers that told Spotify `is_active=true` without asking who owns playback. While a phone
+  played, Wavee restarted its last track every ten seconds at the phone's position and stopped it again as "stray";
+  picking "This computer" resumed Wavee's stale session at the phone's playhead while the bar still said "Playing on
+  iPhone", and the play button then went to the phone (403); a launch announced Wavee active over a playing phone;
+  the transport showed Play while audio played; a takeover that arrives as an empty frame and then the phone's was
+  read as a stray. Ownership is now one state — this device, another device, or nobody — folded from the server's own
+  timestamps, with the server's answer to our claim as the verdict; routing, the audio host, now playing and the wire
+  all read it. Picking this computer while another device plays asks Spotify to transfer playback here, a claim that
+  loses is stopped at once, and a click queued behind a takeover is dropped instead of pulling playback back.
+  Settings › Playback links a Connect diagnostics page, and `connect.owner`, `connect.cluster`, `connect.echo` and
+  `playback.load` lines log every decision. (#138)
+- **The player bar repeated a line: "LP / LP", "Damiano David / Damiano David".** When "Playing on <device>" appeared
+  above the title, the title and artist lines had no identity of their own and the engine matched them by position,
+  so the title slot reused the artist line (frozen at mount) and a fresh artist line mounted under it. Both lines are
+  keyed now, and the engine matches unkeyed siblings by their order among unkeyed siblings, so a keyed line inserted
+  in front no longer shifts them. The track metadata was never wrong. (#139)
+- **Video: the previous video's duration was adopted for the new track on a host switch**, so the seek bar jumped.
+  Duration events are accepted only for the host's current source. (#140)
+- **Storage & cache cards overlapped on narrow windows.** The per-location cards kept their intrinsic width and,
+  once a description wrapped, painted under the next card: their accent-bar wrapper was a row, so the card never
+  stretched and its wrapped height never reached the layout. It is a column now. (#132)
+- **Collaborators showed raw user ids.** The face pile captured the playlist model at mount and never read the
+  re-mapped model that carries the hydrated profiles, while the Added-by column beside it did. It now reads the
+  page's live model, like the owner row. (#133)
+- **Command-line probes were blind in Release builds.** `--spotify-collection`, `--spotify-login` and the other
+  `--spotify-*` / `--backend-selftest` / `--qr-dump` / `--connect-live` arms logged only to the daily file, exited
+  before the log queue drained, and — worst — a probe whose stored login Spotify rejected wiped the app's own signed-in
+  credential. They now echo to the terminal, flush before exiting, print `added_at` per collection item, and never
+  clear the credential; `.claude/skills/wavee/probes.md` says how to run them. (#131)
 - **Syllable-synced (karaoke) lyrics played a whole track with no wipe and no held-note glow, then worked on the
   next play.** A lyric row freezes its line at mount, and the upgrade gate compared the per-line text alone — so
   when the aggregator answered with Spotify's line-synced transcription first and published the word-synced

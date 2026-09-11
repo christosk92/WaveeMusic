@@ -84,6 +84,10 @@ public static class WaveeEqualizer
             if (p is null) return new BoxEl();
             bool animate = p.Playing.Value;           // subscribe — a bound row's play↔pause flip re-renders THIS host in place
             bool paused = p.Paused?.Value ?? false;   // subscribe — pause without remount
+            // S3 #18: a 40x40 sidebar now-playing tile was presenting a full frame 30x/s with nothing to show for it —
+            // reduced motion, and a background/inactive window. See EqualizerMotionPolicy's doc for why the window-
+            // inactive half needs no code here at all; reduced motion is read as a VALUE (never a hook branch).
+            bool reducedMotion = Motion.ReducedMotion;
             float scale = UseContext(Viewport.Scale);
             if (scale <= 0f) scale = 1f;
 
@@ -94,10 +98,16 @@ public static class WaveeEqualizer
             UseEffect(() =>
             {
                 if (!animate) { WriteAll(0.4f); return; }
+                // A settled, non-uniform snapshot states "this is playing" without ever looping — flat 0.4 bars would
+                // read identically to the paused branch above, and looping is exactly the continuous motion reduced
+                // motion asks the app not to run.
+                if (EqualizerMotionPolicy.ShouldShowStillShape(animate, reducedMotion)) { WriteStillPlaying(); return; }
                 _startMs = Environment.TickCount64;
                 Tick(p.Height, scale);
             }, animate);
-            UseInterval(() => Tick(p.Height, scale), TickMs, enabled: animate && !paused);
+            // ShouldTick's reducedMotion leg also stops a mid-playback toggle on the next render; UseInterval's own
+            // activation fold (see EqualizerMotionPolicy's doc) already covers the minimized/suspended half.
+            UseInterval(() => Tick(p.Height, scale), TickMs, enabled: EqualizerMotionPolicy.ShouldTick(animate, paused, reducedMotion));
 
             return new BoxEl
             {
@@ -145,6 +155,23 @@ public static class WaveeEqualizer
             void Write()
             {
                 for (int i = 0; i < 3; i++) if (v != _scaleY[i].Peek()) _scaleY[i].Value = v;
+            }
+            if (Context.Runtime is { } rt) rt.Batch(Write); else Write();
+        }
+
+        // Reduced motion's "playing" shape: each bar sampled from its own loop PATTERN at the same fixed instant
+        // (u = 0.3), so the three settle at different heights — legible as "an equalizer" at a glance — and then
+        // never move again. Never ticked: this is a one-time write, not a frozen mid-loop frame (see the render-time
+        // guard above), so it never depends on the wall clock or how long reduced motion has been on.
+        void WriteStillPlaying()
+        {
+            void Write()
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    float v = Sample(Patterns[i], 0.3f);
+                    if (v != _scaleY[i].Peek()) _scaleY[i].Value = v;
+                }
             }
             if (Context.Runtime is { } rt) rt.Batch(Write); else Write();
         }

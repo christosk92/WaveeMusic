@@ -257,10 +257,16 @@ sealed class PlayerBarContent : Component
         var titleLinkHover = UseSignal(false);
         // titleHot is read INSIDE the Prop.Of thunks below (albumNav && titleLinkHover.Value) so the hover recolor stays
         // live — a render-time bool snapshot would freeze at mount (replacement thunks are ignored after reconcile).
+        // Key BOTH now-playing lines (title here, artists below in metaKids): the remote-device-line is a KEYED insert
+        // that can precede them, and the engine only matches an UNKEYED child against the old child at the same
+        // ABSOLUTE INDEX (Reconciler.ReconcileChildrenCore) — entering/leaving remote mode shifted title/artists by one
+        // slot, so the title slot reused the mounted ARTISTS MarqueeHost (its Text field frozen at mount) and vice
+        // versa, showing the wrong string on the wrong line (#139). A Key makes the slot immune to how many keyed
+        // siblings precede it.
         Element titleEl = marqueeDisabled
             ? new BoxEl
             {
-                ClipToBounds = true,
+                Key = "np-title", ClipToBounds = true,
                 Children = [new TextEl(Prop.Of(() => NowPlaying(b).Title))
                 {
                     Size = 14f, Weight = 700,
@@ -274,10 +280,17 @@ sealed class PlayerBarContent : Component
                     FontSize = 14f, Weight = 700,
                     Foreground = Prop.Of(() => albumNav && titleLinkHover.Value ? Tok.AccentTextPrimary : NowPlaying(b).Color),
                     Speed = 18f, CycleMs = MarqueeCycleMs, EndPauseMs = MarqueeEndPauseMs,
-                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.PauseOnHover,
+                    // Hover, not PauseOnHover (audit S2 #12): PauseOnHover scrolls WHILE NOT hovered and only pauses
+                    // on hover (a stock-ticker mode) — the opposite of this bar's own intent (line ~122: "idle =
+                    // static + edge fade"), which is exactly TriggerMode.Hover's behavior (MarqueeScroller.Render:
+                    // `Hover => Hovered.Value`). The bug shipped as a 27-second ping-pong scroll with the pointer
+                    // nowhere near the bar; the edge fade (MarqueeHost, unconditional on overflow) still shows the
+                    // static idle title has more to it.
+                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Hover,
                 },
-                scrollWhen: titleHover);
-        if (albumNav)   // make the marquee VIEWPORT itself the stable click target; no wrapper/input-boundary ambiguity
+                scrollWhen: titleHover) with { Key = "np-title" };
+        if (albumNav)   // make the marquee VIEWPORT itself the stable click target; no wrapper/input-boundary ambiguity —
+                        // the with below only touches these fields, so Key="np-title" set above rides through untouched
             titleEl = ((BoxEl)titleEl) with
             {
                 Cursor = CursorId.Hand, OnClick = NavAlbum,
@@ -300,15 +313,19 @@ sealed class PlayerBarContent : Component
         metaKids.Add(titleEl);
         if (showSubtitle && track is not null && err is null)
         {
+            // Same np-title rationale above: this is titleEl's metaKids sibling, so it needs the matching "np-artists"
+            // key or the remote-device-line insert/removal shifts IT by one slot instead (title's own key already
+            // protects the row above; without a key here the artists slot would reuse the title's frozen MarqueeHost).
             metaKids.Add(marqueeDisabled
-                ? new BoxEl { ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(() => new NowPlayingArtistLinks(compact: true)) with { Key = "npartists:c" }] }
+                ? new BoxEl { Key = "np-artists", ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(() => new NowPlayingArtistLinks(compact: true)) with { Key = "npartists:c" }] }
                 : Marquee.Content(() => new NowPlayingArtistLinks(),
                     new Marquee.Style
                     {
                         Speed = 18f, CycleMs = MarqueeCycleMs, EndPauseMs = MarqueeEndPauseMs,
-                        Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.PauseOnHover,
+                        // See the matching np-title marquee above (S2 #12): Hover, not PauseOnHover.
+                        Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Hover,
                     },
-                    scrollWhen: titleHover));
+                    scrollWhen: titleHover) with { Key = "np-artists" });
         }
 
         var metaCol = new BoxEl
@@ -505,10 +522,20 @@ sealed class PlayerBarContent : Component
         // chevron menu below, the narrow-layout overflow's cascading Flyout (PlayerMoreMenu), and the video's own
         // transport More menu all call it, so the three pickers cannot drift apart.
 
-        if (active && hasVideo && showQueue)
+        // RESERVE the slot whenever a video COULD show for this track (active && showQueue), not only once hasVideo
+        // resolves true. CurrentTrackHasVideo is detected ASYNCHRONOUSLY after the track already resolved (finding
+        // S1 #4), so gating the MOUNT on it made the split button pop into the row mid-playback — under
+        // Animate=ItemMotion (SizeMode.Reflow) that slides every sibling right of it (Queue/Devices/Expand/More) by
+        // its ~1.5-slot width and shrinks the seek bar out from under the user's eye. The button is now ALWAYS
+        // structurally present under these conditions (so its width is always accounted for — no reflow, ever, when
+        // hasVideo flips), and hasVideo instead controls only whether the slot is VISIBLE/interactive (Opacity +
+        // HitTestVisible below) — Rule #5 (fluentgpu skill): presence via Visible collapses layout, Opacity is the
+        // right channel for "still flowing but not shown".
+        if (active && showQueue)
         {
             // DERIVED state — the ONE resolved placement. The button faces reflect what is actually mounted, so they
-            // cannot get stuck or disagree with each other.
+            // cannot get stuck or disagree with each other. Both read false/None when there is no video, which is
+            // exactly right while the slot sits invisible.
             bool videoActive = b.VideoActive();
             var placement = b.VideoPlacementNow();
 
@@ -534,6 +561,11 @@ sealed class PlayerBarContent : Component
             rightKids.Add(new BoxEl
             {
                 Key = "video", Direction = 0, AlignItems = FlexAlign.Center, Animate = ItemMotion,
+                // The slot's WIDTH is unconditional (reserved above); its FACE is not — invisible and inert until
+                // hasVideo resolves true, so a video-less track (the common case) never shows a dim ghost movie icon,
+                // and a track that DOES have one fades the button in with zero layout movement anywhere else in the row.
+                Opacity = hasVideo ? 1f : 0f,
+                HitTestVisible = hasVideo,
                 OnRealized = h => videoAnchor.Value = h,
                 OnContextRequested = _ => OpenVideoMenu(),
                 Children =
@@ -541,14 +573,14 @@ sealed class PlayerBarContent : Component
                     ToolTip.Wrap(
                         // Lit whenever video is live, in ANY placement — the primary reflects "am I watching?", not
                         // "am I watching in one specific surface?" (which is what made it read as stuck).
-                        Transport(Icons.Movie, b.ToggleVideo, true, videoActive, accent, buttonBox, buttonGlyph),
+                        Transport(Icons.Movie, b.ToggleVideo, hasVideo, videoActive, accent, buttonBox, buttonGlyph),
                         Loc.Get(videoActive ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo)),
                     ToolTip.Wrap(
                         // active: false — a disclosure never lights. NARROW but FULL-HEIGHT (WinUI SplitButton's
                         // secondary half is Width=SecondaryButtonSize, Height=ControlHeight): a shorter box would top-
                         // align against the primary, because ToolTip.Wrap's wrapper sets AlignSelf=Start and a child's
                         // AlignSelf beats this row's AlignItems=Center — which is what put the chevron ~8px high.
-                        Transport(Icons.ChevronDownSmall, OpenVideoMenu, true, false, accent,
+                        Transport(Icons.ChevronDownSmall, OpenVideoMenu, hasVideo, false, accent,
                             SplitChevronW, SplitChevronGlyph, boxHeight: buttonBox),
                         Loc.Get(Strings.Player.VideoOptions)),
                 ],
@@ -712,12 +744,13 @@ sealed class PlayerBarContent : Component
     internal static PlaybackDevice? RemoteDevice(PlaybackBridge b)
     {
         var devices = b.Devices.Value;
+        // ActiveDeviceId is OWNER-DERIVED (PlaybackOwnership: Us -> our id, Foreign -> its id, Nobody -> "") — the one
+        // verdict on who plays. There used to be a second opinion here — a fallback to the roster's own per-device
+        // IsActive flag — but that flag is a raw cluster snapshot the owner fold can already have overruled (a departed
+        // phone, a stale echo), and falling back to it is exactly how the bar said "Playing on iPhone" while ownership
+        // said otherwise (connect incident 2026-09-11). No fallback: an empty owner id means no remote device, full stop.
         string? activeId = b.ActiveDeviceId.Value;
-        PlaybackDevice? active = null;
-
-        if (!string.IsNullOrEmpty(activeId))
-            active = devices.FirstOrDefault(d => d.Id == activeId);
-        active ??= devices.FirstOrDefault(d => d.IsActive);
+        PlaybackDevice? active = string.IsNullOrEmpty(activeId) ? null : devices.FirstOrDefault(d => d.Id == activeId);
 
         return active is { Kind: not DeviceKind.ThisDevice } ? active : null;
     }

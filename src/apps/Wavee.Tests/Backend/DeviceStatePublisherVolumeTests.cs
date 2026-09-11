@@ -29,7 +29,7 @@ public class DeviceStatePublisherVolumeTests
         public Harness(int windowMs = 400)
         {
             Proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => Clock);
-            Publisher = new DeviceStatePublisher(Transport, "us", Proj, ConnId, () => CurrentConnId,
+            Publisher = new DeviceStatePublisher(Transport, "us", Proj, Proj.Ownership, ConnId, () => CurrentConnId,
                 (reason, snap, _, _) =>
                 {
                     Publishes.Add((reason, snap?.Volume01 ?? -1));
@@ -61,6 +61,10 @@ public class DeviceStatePublisherVolumeTests
 
         public void StartTrack()
         {
+            // A real local play claims ownership before the event reaches the publisher (contract item 1) — without
+            // this, is_active would be false and BuildSnapshot would never run, so snap.Volume01 (what these tests
+            // read) would never be populated.
+            Proj.Ownership.Claim(ClaimCause.UserPlay);
             var track = T("spotify:track:a");
             Proj.OnEvent(new PlaybackEvent(EvKind.Started, track, 0));
             Publisher.OnEvent(new PlaybackEvent(EvKind.Started, track, 0));

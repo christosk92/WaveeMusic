@@ -478,6 +478,10 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     void RequestPinHydration(SidebarPin pin)
     {
         if (_catalog is null || pin.Uri.Length == 0) return;
+        // A route pin (Liked Songs et al.) has no library entity behind it — HydratePinAsync's own switch already
+        // falls through to null for AppRoute, but only after burning an in-flight dedupe slot for a fetch that was
+        // never going to happen. Refuse it here instead.
+        if (pin.Kind == SidebarEntryKind.AppRoute) return;
         if (!_pinHydrationInFlight.Add(pin.Id)) return;
         _ = HydratePinAsync(pin.Id, pin.Uri, pin.Kind);
     }

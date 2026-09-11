@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>scroll-input-probe</AssemblyName>
+    <RootNamespace>ScrollInputProbe</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- A console window next to the probe window is wanted: the live status line prints there. -->
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+</Project>

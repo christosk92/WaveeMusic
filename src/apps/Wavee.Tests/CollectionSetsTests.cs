@@ -49,12 +49,22 @@ public class CollectionSetsTests
     [InlineData("spotify:album:1", true)]
     [InlineData("spotify:artist:1", true)]
     [InlineData("spotify:show:1", true)]
+    [InlineData("spotify:collection", true)]              // Liked Songs, the actual wire spelling (captured 2026-09-11)
     [InlineData("spotify:collection:tracks", true)]
     [InlineData("spotify:user:bob:collection", true)]
+    [InlineData("spotify:folder:36405e1711f88d9c", true)]  // a rootlist folder
     [InlineData("spotify:track:1", false)]
     [InlineData("spotify:episode:1", false)]
     [InlineData("wavee:playlist:1", false)]
     [InlineData("not-a-uri", false)]
+    // Unrepresentable server pins (§3 preservation invariant): never admitted into the local mirror, so they can
+    // never become a local pin and never trigger a write that would erase them off the server.
+    [InlineData("spotify:collection:your-episodes", false)]
+    [InlineData("spotify:user:bob:collection:your-episodes", false)]
+    [InlineData("spotify:local-files", false)]
+    [InlineData("spotify:audiobook:x", false)]
+    [InlineData("spotify:prerelease:x", false)]
+    [InlineData("spotify:station:x", false)]
     public void AcceptsUri_Pins_OnlyPinnableSpotifyEntitiesAndLiked(string uri, bool expected)
         => Assert.Equal(expected, CollectionSets.AcceptsUri("pins", uri));
 

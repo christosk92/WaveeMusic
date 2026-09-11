@@ -905,6 +905,23 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
             catch { }
             TrySeedPermissionForOpen(uri);   // the heal is a header LANDING too (P1.3, cold deep link)
         }
+        if (IsStaleOrDirtyOrRolling(uri, header)) await PlaylistRevalidateAsync(uri).ConfigureAwait(false);
+    }
+
+    /// <summary>THE freshness test (dirty / past the on-open SWR window / rolling-identity), factored out of
+    /// <see cref="OpenPlaylistCoreAsync"/>'s own baseline branch so a caller that already holds a resident baseline
+    /// can ask it BEFORE ever reaching this loop — the SWR blocking-vs-background decision (OpenPolicy — design §2.1;
+    /// stale-daylist-open fix, S2 #6). Exposed on <see cref="IPlaylistOpener"/> (<c>NeedsRevalidation</c>) for exactly
+    /// that; this stays the ONE place the three clauses are evaluated, so the two callers (this and the exposed
+    /// method) can never drift apart. Gates unchanged from the pre-existing inline check.</summary>
+    public bool NeedsRevalidation(string uri)
+    {
+        if (!_store.HasMembership(uri)) return true;   // no baseline: the caller already blocks unconditionally
+        return IsStaleOrDirtyOrRolling(uri, _store.GetPlaylist(uri));
+    }
+
+    bool IsStaleOrDirtyOrRolling(string uri, Playlist? header)
+    {
         bool dirty = IsDirty(uri);
         bool stale = !TryGetLastRevalidated(uri, out var last) || (DateTime.UtcNow - last) > OpenRevalidateWindow;
         // A ROLLING-IDENTITY playlist (a daylist and its future siblings) can roll to a wholly new edition well inside
@@ -913,7 +930,7 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         // just must not veto one for a container whose identity moves on its own clock (cause 3 of the stale-daylist
         // defect — see PlaylistSnapshotFacts.IsRollingIdentity).
         bool rolling = PlaylistSnapshotFacts.IsRollingIdentity(header?.Format, header?.DaylistExpiresAtMs ?? 0);
-        if (dirty || stale || rolling) await PlaylistRevalidateAsync(uri).ConfigureAwait(false);
+        return dirty || stale || rolling;
     }
 
     // Revision-gated /diff (§2.6, fixes RC5): an unchanged playlist costs one up-to-date round-trip (usually a 304); a

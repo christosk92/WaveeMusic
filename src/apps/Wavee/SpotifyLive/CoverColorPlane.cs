@@ -73,6 +73,15 @@ public sealed class CoverColorPlane
     /// had none). Installed by the live session; null ⇒ cache-only (offline, logged out, tests).</summary>
     public Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyList<GradedColors?>>>? Filler { get; set; }
 
+    /// <summary>Test seam: called once a pump's batch attempt has fully settled — a successful grading (after <c>_map</c>
+    /// and <see cref="Epoch"/>/<see cref="Watch"/> are updated) or a failed one (after the failed ids are freed from
+    /// <c>_queued</c> so a retry is possible). A test awaits a <see cref="TaskCompletionSource"/> completed from here
+    /// instead of polling a wall-clock deadline for the debounced background pump, which is what made
+    /// <c>CoverColorPlaneTests.FailedBatch_IsRetriedByTheNextRender</c> flaky under a thread-pool-starved full suite run
+    /// (the fixed poll budget could expire before the debounced, <c>Task.Run</c>-dispatched pump ever got scheduled).
+    /// Never set in production.</summary>
+    public Action? BatchSettled { get; set; }
+
     /// <summary>One image's graded colours as a feed hands them over.</summary>
     public readonly record struct GradedColors(Scheme Dark, Scheme? Light, bool BestFitIsLight);
 
@@ -348,6 +357,7 @@ public sealed class CoverColorPlane
                 {
                     // A failed batch must not poison the images: forget they were queued so a later render retries.
                     lock (_gate) foreach (var id in batch) _queued.Remove(IdentityOf(id).ToString());
+                    BatchSettled?.Invoke();
                     return;
                 }
 
@@ -371,6 +381,7 @@ public sealed class CoverColorPlane
                     _epoch.Value = _epoch.Peek() + 1;
                     foreach (var sig in watched) sig.Value = sig.Peek() + 1;
                 });
+                BatchSettled?.Invoke();
             }
         }
         finally { lock (_gate) _pumping = false; }
@@ -477,5 +488,69 @@ public sealed class CoverColorPlane
             w.WriteNumberValue(s.TextBrightAccent);
             w.WriteEndArray();
         }
+    }
+}
+
+/// <summary>
+/// The shell-material HAND-OVER rule: exactly one page's <c>CoverShellTintBinder</c> leaf may be the owner of record
+/// for the shell's one material slot (<c>App/ShellMaterial.cs</c>'s <c>ShellMaterialState</c>) at a time. Kept
+/// engine-free (object/bool/enum only — no <c>ColorF</c>, no <c>ShellMaterialState</c>) so it rides the same
+/// source-include as <see cref="CoverColorPlane"/> above and <c>ShellTintOwnershipTests</c> can drive it directly
+/// without a window, a page or a signal graph.
+///
+/// <para>Two audited bugs, one rule each:</para>
+/// <list type="bullet">
+/// <item><b>S1 #1 — the neutral flash.</b> A page used to CLEAR the slot the instant it deactivated, and the
+/// incoming page's own colour often was not known for a few more frames (a cache miss still enqueued, a grading
+/// still in flight) — so every navigation dipped to "no colour" and then popped to the real one. The fix is a HAND
+/// OVER: a page that deactivates never writes at all (there is no "clear" request in this API), and a page that is
+/// CLAIMING the slot but does not yet know its own colour keeps whatever is already there (<see cref="Outcome.WriteHeldColor"/>)
+/// instead of blanking it.</item>
+/// <item><b>S1 #2 — the two-publisher race.</b> <c>Flow.KeepAlive</c> keeps an outgoing page mounted and drawing
+/// (not yet parked) for the length of its exit transition, so its effects can still fire — and unconditionally
+/// re-publish its own colour — WHILE the incoming page is already current. The fix is single ownership: once a page
+/// has CLAIMED the slot, every other page's ordinary (non-claim) publish is checked against the CURRENT owner and
+/// dropped if it does not match (<see cref="Outcome.NoWrite"/>), regardless of that page's own parked/active state.</item>
+/// </list>
+/// </summary>
+public static class ShellTintOwnership
+{
+    /// <summary>One publish attempt from a binder leaf.</summary>
+    /// <param name="Owner">The publishing page's identity token (reference identity only — never compared by value).</param>
+    /// <param name="IsClaim">True at the two edges that make a page "become current": its own first mount, and a
+    /// <c>KeepAlive</c> reactivation (<c>UseActivation</c>'s <c>onActivated</c>). False for an ordinary re-render.</param>
+    /// <param name="Definite">True when the page has DECIDED it carries no colour (colour washes off, or this layout
+    /// does not apply a tint) — as opposed to simply not having graded a cover YET, which is transient.</param>
+    /// <param name="HasColor">True when the page currently has a real, graded colour to show.</param>
+    public readonly record struct Request(object Owner, bool IsClaim, bool Definite, bool HasColor);
+
+    /// <summary>What the caller should do with the slot. <see cref="NoWrite"/> means "touch nothing" — the write
+    /// must not happen at all, not merely happen to reproduce the current value, because a no-op write would still
+    /// need somewhere to source its colour from and this decision is precisely that a stray publisher gets none.</summary>
+    public enum Outcome
+    {
+        /// <summary>Leave the slot exactly as it is.</summary>
+        NoWrite,
+        /// <summary>Write the caller's own known colour as this page's tint.</summary>
+        WriteKnownColor,
+        /// <summary>Write the neutral ground — this page has DEFINITELY decided it carries no colour.</summary>
+        WriteNeutral,
+        /// <summary>Take ownership, but keep painting whatever the slot already shows (the hand-over).</summary>
+        WriteHeldColor,
+    }
+
+    /// <summary>The one decision every <c>CoverShellTintBinder</c> publish goes through.</summary>
+    public static Outcome Resolve(object? currentOwner, Request req)
+    {
+        bool amOwner = req.Owner is not null && ReferenceEquals(currentOwner, req.Owner);
+        // Not the current owner and not claiming ⇒ a superseded/stray publish (S1 #2). Never lands.
+        if (!req.IsClaim && !amOwner) return Outcome.NoWrite;
+
+        if (req.Definite) return req.HasColor ? Outcome.WriteKnownColor : Outcome.WriteNeutral;
+        if (req.HasColor) return Outcome.WriteKnownColor;
+
+        // Colour genuinely not known yet: a claim hands over silently (S1 #1); an ordinary refresh from the
+        // already-current owner has nothing new to say, so it writes nothing rather than repeat itself.
+        return req.IsClaim ? Outcome.WriteHeldColor : Outcome.NoWrite;
     }
 }

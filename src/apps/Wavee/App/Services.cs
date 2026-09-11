@@ -525,6 +525,7 @@ public sealed class Services
         var providers = MediaProviders;
         stub.CanPlayLocally = uri => providers?.OwnerOf(uri) is not null;
         Playback.LocalPlaybackSupported.Value = true;
+        Playback.Levels = (_preLogin.AudioHost as Wavee.Backend.IAudioLevelSource)?.Levels;
         return stub;
     }
 
@@ -785,6 +786,7 @@ public sealed class Services
         svc._preLoginFactory = preLoginFactory;
         svc._preLogin = preLogin;
         svc.Playback.LocalPlaybackSupported.Value = true;
+        svc.Playback.Levels = (preLogin.AudioHost as Wavee.Backend.IAudioLevelSource)?.Levels;
         svc.MutTransport = mutTransport;
         svc.RealCold = cold;
         svc.RealMutations = mutEngine;
@@ -806,7 +808,8 @@ public sealed class Services
         svc.PinSync = new SidebarPinSync(store, svc.Sidebar.Pins, mutations, settings,
             () => sessionHost.Current.Account,
             () => cold.GetCollectionRevision("ylpin") is not null,
-            uri => mutEngine.HasPending("pins", uri));
+            uri => mutEngine.HasPending("pins", uri),
+            id => ShellNav.Dest(id).Title);
         svc.RealPlaylistMutations = playlistMutations;
         svc.RealExtender = extender;
         svc.RealSpclientBaseUrl = spclientBaseUrl;
@@ -855,6 +858,10 @@ public sealed class Services
         wiring.Swap<ILyricsProvider>(Wavee.Backend.Wiring.LiveSeams.Lyrics,
             l => (Lyrics as Wavee.Backend.SwitchableLyrics)?.SetInner(l), lyrics,
             static () => new NoLyricsProvider());          // no lyrics until the next live login
+        // Re-point the level tap at the live stack (AttachLive already ran — see its ordering contract): null when
+        // this device is a pure Connect VIEWER of another device's playback (LiveConnect.Audio is the local-decode
+        // stack only, absent for a viewer), same as the pre-login local host being replaced above.
+        Playback.Levels = (LiveHost?.Connect.Audio?.Host as Wavee.Backend.IAudioLevelSource)?.Levels;
         Log.Info("app", "playback backend swapped to LIVE (Connect device + now-playing + remote control + account active)"
             + " + real lyrics feed (aggregator + reranker)");
     }

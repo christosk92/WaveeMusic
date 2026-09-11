@@ -225,31 +225,25 @@ sealed class HomePage : Component
         WatchArtwork(HomeWashSource.PlaneUrl(washCards.Weekly));
         WatchArtwork(HomeWashSource.PlaneUrl(washCards.Mix));
         var picks = colorWashesDisabled ? default : HomeWashSource.Select(washCards, Surfaces.ChromeSchemeFor);
-        // Disabled ⇒ no material at all (Wash null, Tint null): Home still CLAIMS ownership, so the previous page's
-        // tint is cleared and only the deterministic ground remains.
+        // Disabled ⇒ no material at all: Home still CLAIMS the slot, as definitely neutral.
         HomeWash? wash = colorWashesDisabled
             ? null
             : new HomeWash(Layer(picks.Hero), Layer(picks.Weekly), Layer(picks.Mix));
 
-        // Owner-gated exactly like DetailShell: a page clears the material only while it is still the owner, so a
-        // "park Home + activate the destination" nav lands on the destination's material whichever effect fires first.
-        void SetWash(HomeWash? w)
+        // The hand-over (ShellMaterial.Publish): CLAIM on the first publish and on REACTIVATION (a KeepAlive-cached page
+        // does not re-run its mount effect), refresh on a real colour/artwork change while still the owner, never clear.
+        // A claim before any artwork is graded keeps the previous page's material instead of dipping to neutral.
+        var washClaimed = UseRef(false);
+        void PublishWash(bool isClaim) => ShellMaterial.Publish(shellMaterial, _washOwner, isClaim, colorWashesDisabled, tint: null, wash);
+        UseEffect(() =>
         {
-            if (shellMaterial is not null) shellMaterial.Value = new ShellMaterialState(_washOwner, null, w);
-        }
-        void ClearWash()
-        {
-            if (shellMaterial is not null && ReferenceEquals(shellMaterial.Peek().Owner, _washOwner))
-                shellMaterial.Value = default;
-        }
-        // SET on mount + on any real colour/artwork change (UseEffect, keyed on the resolved legs) and on REACTIVATION
-        // (a KeepAlive-cached page does not re-run its mount effect); CLEAR on park…
-        UseEffect(() => SetWash(wash),
-            DepKey.From(HashCode.Combine(colorWashesDisabled, HomeWashSource.Fingerprint(picks))));
+            PublishWash(isClaim: !washClaimed.Value);
+            washClaimed.Value = true;
+        }, DepKey.From(HashCode.Combine(colorWashesDisabled, HomeWashSource.Fingerprint(picks))));
         UseActivation(
             onActivated: () =>
             {
-                SetWash(wash);
+                PublishWash(isClaim: true);
                 // The epoch COMPARE, not a refetch. An epoch this page has not applied means the cache superseded the
                 // feed on screen, so re-read once; an epoch it HAS applied means nothing is known to have moved, and
                 // the only thing worth spending is the cheap head probe — which resolves nothing itself: if the
@@ -261,11 +255,7 @@ sealed class HomePage : Component
                         (e, feed) => ApplyFeed(svc, home, e, feed, LiveCatalogConcluded(), ChromeConcluded), home, default);
                 else if (svc.HomeFeedRevalidate is { } revalidate)
                     _ = revalidate(default);
-            },
-            onDeactivated: ClearWash);
-        // …and on UNMOUNT too, because onDeactivated fires only on PARK: a nav that evicts Home without parking it would
-        // otherwise leave a wash owned by a gone page. Owner-gated, so it can never clobber the next page's material.
-        UseEffect(() => (Action?)ClearWash, DepKey.Empty);
+            });
         // The in-flight facet read is page state for the same reason: an unmount must not leave a request racing to
         // publish into a loadable whose page is gone, nor a live CancellationTokenSource behind it.
         UseEffect(() => (Action?)(() =>

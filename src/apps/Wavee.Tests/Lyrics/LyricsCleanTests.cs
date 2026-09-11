@@ -338,6 +338,114 @@ public class LyricsCleanTests
         Assert.Equal("Girl: you know I love you", clean.Lines[0].Text);
     }
 
+    // ── the CJK header-annotation bug: a bracketed franchise/TV-tie-in note must not defeat the overlap ratio ─────────
+    // A Chinese-provider header reads "Title (annotation) - Artist", and the annotation shares no words with the
+    // track's own title/artist. Counting the annotation's tokens toward the row's total used to drag the overlap ratio
+    // below HeaderOverlap (0.8) and let the header survive as if it were the first sung lyric — exactly what a user
+    // saw for "The Night We Met" by Lord Huron: a Kugou/QQ/NetEase-shaped header naming the Chinese TV series the
+    // track was used in, ahead of the real lyrics ("Ohoo", "Ohoo", … "I am not the only traveler").
+
+    [Fact]
+    public void ATitleHeaderWithABracketedCjkAnnotation_IsDropped()
+    {
+        // The exact header text reported: "The Night We Met (《十三个原因 第一季》电视剧插曲) - Lord Huron". Tokenized
+        // whole, only 6 of its 9 tokens are title/artist words (0.667 < 0.8) — the annotation ("十三个原因"/"第一季"/
+        // "电视剧插曲", the show's name/season/"TV drama insert song") is what makes up the difference.
+        var doc = Doc("kugou", LyricsSyncKind.Line,
+            Plain(0, "The Night We Met (《十三个原因 第一季》电视剧插曲) - Lord Huron"),
+            Plain(12000, "Ohoo"),
+            Plain(14000, "Ohoo"),
+            Plain(20000, "I am not the only traveler"));
+
+        var clean = LyricsClean.Apply(doc, "The Night We Met", "Lord Huron");
+
+        Assert.Equal(3, clean.Lines.Count);
+        Assert.Equal("Ohoo", clean.Lines[0].Text);
+        Assert.DoesNotContain(clean.Lines, l => l.Text.Contains("十三个原因", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ATitleHeaderWithAParenthesizedFeat_IsDropped()
+    {
+        // "feat." asides are the English-language flavour of the same shape: the featured artist is not necessarily
+        // part of the request's own artist metadata, and must not save the header from being dropped.
+        var doc = Doc("qq", LyricsSyncKind.Line,
+            Plain(0, "The Night We Met (feat. Someone Else) - Lord Huron"),
+            Plain(9000, "the first real lyric"));
+
+        var clean = LyricsClean.Apply(doc, "The Night We Met", "Lord Huron");
+
+        Assert.Single(clean.Lines);
+        Assert.Equal("the first real lyric", clean.Lines[0].Text);
+    }
+
+    [Fact]
+    public void ARepeatedHeaderAtTheBottom_IsDropped()
+    {
+        // Some providers duplicate the literal header line at the end of the document too.
+        var doc = Doc("netease", LyricsSyncKind.Line,
+            Plain(1000, "the first real lyric"),
+            Plain(4000, "the last real lyric"),
+            Plain(200000, "The Night We Met (《十三个原因 第一季》电视剧插曲) - Lord Huron"));
+
+        var clean = LyricsClean.Apply(doc, "The Night We Met", "Lord Huron");
+
+        Assert.Equal(2, clean.Lines.Count);
+        Assert.Equal("the last real lyric", clean.Lines[^1].Text);
+    }
+
+    [Fact]
+    public void ATrailingTitleLineWithNoSeparator_Survives_EvenAfterALongOutroGap()
+    {
+        // The "isolated by a time gap" corroboration is LEADING-only: silence before the first line is a pre-roll,
+        // but a song legitimately ending on its own restated hook after an instrumental outro is completely ordinary,
+        // so a bare trailing title line needs the explicit "Title - Artist" separator to be judged a header.
+        var doc = Doc("lrclib", LyricsSyncKind.Line,
+            Plain(1000, "the first real lyric"),
+            Plain(4000, "the last real lyric"),
+            Plain(200000, "The Night We Met"));
+
+        var clean = LyricsClean.Apply(doc, "The Night We Met", "Lord Huron");
+
+        Assert.Equal(3, clean.Lines.Count);
+        Assert.Equal("The Night We Met", clean.Lines[^1].Text);
+    }
+
+    [Fact]
+    public void ALyricThatEchoesTheTitleInsideParens_IsNotEaten()
+    {
+        // A genuine lyric can legitimately put a parenthetical ad-lib around the title's own words. With those words
+        // removed by StripBracketedAnnotations the remainder ("again") shares nothing with the title/artist, so the
+        // overlap ratio never gets close to being judged a header in the first place.
+        var doc = Doc("lrclib", LyricsSyncKind.Line,
+            Plain(1000, "some other opening line entirely"),
+            Plain(200000, "(the night we met) again"));
+
+        var clean = LyricsClean.Apply(doc, "The Night We Met", "Lord Huron");
+
+        Assert.Equal(2, clean.Lines.Count);
+        Assert.Equal("(the night we met) again", clean.Lines[^1].Text);
+    }
+
+    [Theory]
+    // StripBracketedAnnotations is a raw text transform (no case-folding — that is Normalize's job downstream), and it
+    // removes a bracket run whole, including its own delimiters, which is why a space on each side of the run survives.
+    [InlineData("The Night We Met (《十三个原因 第一季》电视剧插曲) - Lord Huron", "The Night We Met  - Lord Huron")]
+    [InlineData("Title (feat. Someone)", "Title ")]
+    [InlineData("A (nested (thing)) B", "A  B")]
+    [InlineData("no brackets here", "no brackets here")]
+    public void StripBracketedAnnotations_RemovesEveryBracketFamilyWhole(string input, string expected)
+        => Assert.Equal(expected, LyricsClean.StripBracketedAnnotations(input));
+
+    [Fact]
+    public void StripBracketedAnnotations_LeavesUnbalancedTextUntouched()
+    {
+        // A stray "(" with no matching close could otherwise be read as "annotation to the end of the line", eating
+        // real lyric text past the opener. Safer to change nothing than to guess where it was meant to end.
+        const string unbalanced = "oh (that's the night we met";
+        Assert.Equal(unbalanced, LyricsClean.StripBracketedAnnotations(unbalanced));
+    }
+
     // ── why this exists: the reranker comparison ─────────────────────────────────────────────────────────────────────
 
     [Fact]

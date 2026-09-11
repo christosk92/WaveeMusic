@@ -1137,4 +1137,79 @@ public class LibrarySyncTests
         Assert.Equal(0, h.Sync.PermissionSeeds);
         Assert.Empty(h.TransportRoutes);
     }
+
+    // ── NeedsRevalidation (S2 #6 — the stale-daylist-open fix): the freshness half of OpenPlaylistCoreAsync's own
+    // baseline branch, exposed so a caller holding a baseline can ask it BEFORE ever reaching this loop (OpenPolicy —
+    // design §2.1). These pin that the exposed method agrees with the loop's own internal gates, refactored out of
+    // OpenPlaylistCoreAsync rather than re-derived — one clock, never two.
+
+    [Fact]
+    public async Task NeedsRevalidation_NoBaseline_IsTrue()
+    {
+        await using var h = new SyncHarness(_ => Ok(Array.Empty<byte>()));
+        Assert.True(h.Sync.NeedsRevalidation("spotify:playlist:never-opened"));
+    }
+
+    [Fact]
+    public async Task NeedsRevalidation_FreshlyRevalidatedPlainBaseline_IsFalse()
+    {
+        const string uri = "spotify:playlist:fresh";
+        await using var h = new SyncHarness(req => req.Url.Contains("/diff?")
+            ? Ok(new Pl.SelectedListContent { UpToDate = true }.ToByteArray())
+            : Ok(Array.Empty<byte>()));
+        h.Store.UpsertPlaylist(new Playlist("fresh", uri, "Fresh", null, "me", null, 1,
+            Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: false, CanEditMetadata: false,
+                IsCollaborative: false, IsOwner: false, CanAdministratePermissions: false)));
+        h.Store.SetMembership(uri, [new PlaylistMember("i0", "spotify:track:t1", "alice", 1_700_000_000_000L)], Rev24(1));
+
+        // The FIRST ask into the loop is itself "stale" (never revalidated) regardless of the window, so it always
+        // takes the /diff branch once — exactly the on-open plan every real caller already gets.
+        await h.Sync.OpenPlaylistAsync(uri, TestContext.Current.CancellationToken);
+
+        Assert.False(h.Sync.NeedsRevalidation(uri));
+    }
+
+    [Fact]
+    public async Task NeedsRevalidation_RollingIdentityBaseline_IsTrueEvenWhenFresh()
+    {
+        const string uri = "spotify:playlist:daylist1";
+        await using var h = new SyncHarness(req => req.Url.Contains("/diff?")
+            ? Ok(new Pl.SelectedListContent { UpToDate = true }.ToByteArray())
+            : Ok(Array.Empty<byte>()));
+        // A daylist header: format_attributes' format_string == "daylist" (PlaylistSnapshotFacts.IsRollingIdentity).
+        // A revision-gated /diff only applies list OPS — it never rewrites the header — so this Format survives the
+        // OpenPlaylistAsync call below exactly like it would across a real revalidation.
+        h.Store.UpsertPlaylist(new Playlist("daylist1", uri, "Your Daylist", null, "me", null, 1, Format: "daylist",
+            Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: false, CanEditMetadata: false,
+                IsCollaborative: false, IsOwner: false, CanAdministratePermissions: false)));
+        h.Store.SetMembership(uri, [new PlaylistMember("i0", "spotify:track:t1", "alice", 1_700_000_000_000L)], Rev24(1));
+
+        await h.Sync.OpenPlaylistAsync(uri, TestContext.Current.CancellationToken);
+
+        // Freshly revalidated and never marked dirty — a PLAIN baseline in this shape would read back false (see
+        // NeedsRevalidation_FreshlyRevalidatedPlainBaseline_IsFalse above). The daylist format alone still forces true.
+        Assert.True(h.Sync.NeedsRevalidation(uri));
+    }
+
+    [Fact]
+    public async Task NeedsRevalidation_DirtyBaseline_IsTrueEvenWhenRecentlyRevalidated()
+    {
+        const string uri = "spotify:playlist:willgodirty";
+        await using var h = new SyncHarness(req => req.Url.Contains("/diff?")
+            ? Ok(new Pl.SelectedListContent { UpToDate = true }.ToByteArray())
+            : Ok(Array.Empty<byte>()));
+        h.Store.UpsertPlaylist(new Playlist("willgodirty", uri, "Will Go Dirty", null, "me", null, 1,
+            Capabilities: new PlaylistCapabilities(CanView: true, CanEditItems: false, CanEditMetadata: false,
+                IsCollaborative: false, IsOwner: false, CanAdministratePermissions: false)));
+        h.Store.SetMembership(uri, [new PlaylistMember("i0", "spotify:track:t1", "alice", 1_700_000_000_000L)], Rev24(1));
+        await h.Sync.OpenPlaylistAsync(uri, TestContext.Current.CancellationToken);
+        Assert.False(h.Sync.NeedsRevalidation(uri));   // fresh, exactly like the plain-baseline case above
+
+        // A "new head" push with no parent/ops (gate 4) while the uri is NOT the open context marks it dirty without
+        // costing a round trip (anti-herd) — the same shape the PushMarkedDirty tests above use.
+        h.Sync.Enqueue(new SyncCommand(SyncKind.PlaylistPush, uri, NewRev: Rev24(2), Ops: Array.Empty<PlaylistOp>()));
+        await h.Sync.WaitForIdleAsync();
+
+        Assert.True(h.Sync.NeedsRevalidation(uri));
+    }
 }

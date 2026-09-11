@@ -20,10 +20,9 @@ namespace Wavee;
 sealed partial class ArtistPage : Component
 {
     readonly Signal<Route> _route;
-    // Identity for race-free last-writer-wins on ShellMaterial, and it survives KeepAlive park/reactivate (which is
-    // what the owner check in CoverShellTintBinder's clear path needs). NOT a cross-artist token: ContentHost's
-    // SlotKey is tab + route.Name + route.Arg, so artist→artist mounts a NEW ArtistPage with a new owner — the
-    // outgoing page clears its own tint on unmount and the incoming one publishes its own.
+    // This page's identity as the shell material's owner (ShellMaterial.Publish); it survives KeepAlive park/reactivate.
+    // NOT a cross-artist token: ContentHost's SlotKey is tab + route.Name + route.Arg, so artist→artist mounts a NEW
+    // ArtistPage with a new owner, which claims the material from the outgoing one.
     readonly object _tintOwner = new();
     // The context band's scroll-spy registry: the page's scroll viewport + one node per pivot-visible section. Written
     // from OnRealized, read by ContextPivot's scroll effect — never an ancestor relationship, so the band can live
@@ -95,10 +94,11 @@ sealed partial class ArtistPage : Component
         bool artistReady = artist.State.Value == (byte)LoadState.Ready;
         var currentArtist = artist.Value.Value;
         string? paletteUrl = PaletteImageUrl(currentArtist);
-        // The shell material tint is published from a leaf: the Watch subscription, the derived tone and the
-        // owner-gated set/clear effects all live inside CoverPaletteLeaves.ShellTint, so a graded batch repaints one
-        // zero-size node instead of rebuilding the magazine tree. Flat arm only (Wash: null) — the three-layer radial
-        // wash belongs to Home.
+        // The shell material tint is published from a leaf: the Watch subscription, the derived tone and the claim /
+        // refresh effects all live inside CoverPaletteLeaves.ShellTint, so a graded batch repaints one zero-size node
+        // instead of rebuilding the magazine tree. Flat arm only (Wash: null) — the three-layer radial wash belongs to
+        // Home. Gated on the full artist: the pending one has no header image, so its avatar colour would be a first
+        // step before the header's; until then the claim holds the previous page's colour.
         Element tintBinder = CoverPaletteLeaves.ShellTint(
             paletteUrl, artistReady, colorWashesDisabled, apply: true, _tintOwner, shellMaterial,
             key: "artist-tint:" + routeKey);

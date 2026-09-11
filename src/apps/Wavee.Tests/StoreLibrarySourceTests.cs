@@ -21,6 +21,7 @@ public class StoreLibrarySourceTests
     // store-only, never networks, never throws. A test that cares about WHAT was asked for passes a RecordingHydrator.
     static SwitchableEntityHydrator Offline(IStore store) => new(new Wavee.Backend.Hydration.OfflineEntityHydrator(store));
     static SwitchableEntityHydrator Recording(RecordingHydrator rec) => new(rec);
+    static SwitchableEntityHydrator Gated(DelayedHydrator gated) => new(gated);
 
     [Fact]
     public async Task GetAlbums_JoinsSavedSetWithStore_SkippingUnhydrated()
@@ -759,4 +760,102 @@ public class StoreLibrarySourceTests
         Assert.Equal(7_000, Assert.Single(store.SavedItems("liked")).AddedAtMs);
         Assert.Equal(after, col.All.Count);                                           // no extra change signal
     }
+
+    // ── S2 #6 (the stale-daylist-open fix): GetPlaylistAsync applies OpenPolicy's bounded wait ──────────────────────
+    // A stale/dirty/rolling-identity baseline (AttachPlaylistOpener's IPlaylistOpener.NeedsRevalidation == true) makes
+    // the open BLOCK on the revalidation instead of merely painting the cache — but capped at
+    // OpenPolicy.PlaylistRevalidateDeadline so a slow/never-landing ensure cannot hang the page.
+
+    [Fact]
+    public async Task GetPlaylist_NeedsRevalidation_BlocksUntilTheEnsureLands_WithinTheDeadline()
+    {
+        const string uri = "spotify:playlist:stale";
+        var store = new InMemoryStore();
+        store.UpsertPlaylist(new Playlist("stale", uri, "Yesterday", null, "Me", null, 1));
+        store.SetMembership(uri, [new PlaylistMember("i0", "spotify:track:t1", null, 0)], null);
+        store.UpsertTrack(Trk("t1"));
+
+        var gated = new DelayedHydrator(store);
+        // Simulates the /diff landing: a real revalidation would replace the header + membership on the store: this
+        // is what GetPlaylistAsync's blocking wait must actually observe before composing its result.
+        gated.OnLand = s =>
+        {
+            s.UpsertPlaylist(new Playlist("stale", uri, "Today", null, "Me", null, 2));
+            s.SetMembership(uri, [new PlaylistMember("i0", "spotify:track:t1", null, 0), new PlaylistMember("i1", "spotify:track:t2", null, 0)], null);
+            s.UpsertTrack(Trk("t2"));
+        };
+        var src = new StoreLibrarySource(store, Gated(gated), OfflineOnlineCatalog.Instance);
+        src.AttachPlaylistOpener(new FakePlaylistOpener { NeedsRevalidationFn = _ => true });
+        // Release well inside PlaylistRevalidateDeadline, from a separate task so GetPlaylistAsync's own await is what
+        // observes the landing rather than a synchronous race with Release().
+        _ = Task.Run(async () => { await Task.Delay(20); gated.Release(); });
+
+        var playlist = await src.GetPlaylistAsync(uri);
+
+        Assert.Equal("Today", playlist!.Name);
+        Assert.Equal(2, playlist.Tracks!.Count);
+    }
+
+    [Fact]
+    public async Task GetPlaylist_NeedsRevalidation_DeadlineTrips_PaintsTheBaselineInstead()
+    {
+        const string uri = "spotify:playlist:stale2";
+        var store = new InMemoryStore();
+        store.UpsertPlaylist(new Playlist("stale2", uri, "Yesterday", null, "Me", null, 1));
+        store.SetMembership(uri, [new PlaylistMember("i0", "spotify:track:t1", null, 0)], null);
+        store.UpsertTrack(Trk("t1"));
+
+        var gated = new DelayedHydrator(store);   // deliberately never released during the assertion
+        var src = new StoreLibrarySource(store, Gated(gated), OfflineOnlineCatalog.Instance);
+        src.AttachPlaylistOpener(new FakePlaylistOpener { NeedsRevalidationFn = _ => true });
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var playlist = await src.GetPlaylistAsync(uri);
+        sw.Stop();
+
+        // Bounded: the wait stopped near the deadline rather than hanging indefinitely on the never-landing ensure.
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(4), $"GetPlaylistAsync took {sw.Elapsed} — the deadline did not bound it");
+        // ...and it painted the cached baseline rather than nothing.
+        Assert.Equal("Yesterday", playlist!.Name);
+        Assert.Single(playlist.Tracks!);
+
+        gated.Release();   // let the detached ensure finish so it doesn't outlive the test process
+    }
+}
+
+/// <summary>An <see cref="IEntityHydrator"/> whose single-uri <see cref="EnsureAsync"/> hangs until
+/// <see cref="Release"/> is called — the controllable stand-in for "the /diff has not landed yet" in the bounded-wait
+/// tests above. Every OTHER member answers instantly and inertly (the owner-lookup background asks GetPlaylistAsync
+/// also fires are never the thing under test here).</summary>
+sealed class DelayedHydrator : IEntityHydrator
+{
+    readonly IStore _store;
+    readonly Wavee.Backend.Hydration.OfflineEntityHydrator _levels;
+    readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public DelayedHydrator(IStore store) { _store = store; _levels = new Wavee.Backend.Hydration.OfflineEntityHydrator(store); }
+
+    /// <summary>Applied to the store the moment <see cref="Release"/> unblocks the pending <see cref="EnsureAsync"/> —
+    /// the test's stand-in for a landed revalidation.</summary>
+    public Action<IStore>? OnLand { get; set; }
+
+    public void Release() => _gate.TrySetResult();
+
+    public HydrationLevel LevelOf(string uri) => _levels.LevelOf(uri);
+
+    public async Task<HydrationOutcome> EnsureAsync(string uri, HydrationLevel level, HydrationOptions opts = default,
+        CancellationToken ct = default)
+    {
+        await _gate.Task.WaitAsync(ct).ConfigureAwait(false);
+        OnLand?.Invoke(_store);
+        return new HydrationOutcome(level, HydrationStatus.Reached);
+    }
+
+    public Task<HydrationBatchOutcome> EnsureManyAsync(IReadOnlyList<string> uris, HydrationLevel level,
+        HydrationOptions opts = default, CancellationToken ct = default)
+        => Task.FromResult(new HydrationBatchOutcome(Array.Empty<string>(), uris, HydrationStatus.Unsupported));
+
+    public Task EnsureTraitsAsync(IReadOnlyList<string> uris, TraitSurface surface, CancellationToken ct = default) => Task.CompletedTask;
+    public Task EnsureTraitsAsync(IReadOnlyList<string> uris, TraitSet traits, TraitSurface surface, CancellationToken ct = default) => Task.CompletedTask;
+    public void Invalidate(string uri) { }
 }

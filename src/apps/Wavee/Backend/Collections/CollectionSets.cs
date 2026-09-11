@@ -75,12 +75,14 @@ public static class CollectionSets
 
     /// <summary>Whether an item off the wire may be folded into a logical set at all. Every prefix-filtered set says yes
     /// to whatever its prefix admits; the prefix-less "pins" set — the one place a mixed, partly-opaque set can leak a
-    /// non-uri into the store — admits only pinnable Spotify entity uris and the Liked Songs collection.</summary>
+    /// non-uri into the store — admits only pinnable Spotify entity uris, a rootlist folder, and the Liked Songs
+    /// collection (bare <c>spotify:collection</c> on this set, per <c>PinSyncRules.LikedWireUri</c>).</summary>
     public static bool AcceptsUri(string setId, string uri)
     {
         if (setId != "pins") return true;
         if (!uri.StartsWith("spotify:", StringComparison.Ordinal)) return false;
         if (EntityUri.IsLikedCollection(uri)) return true;
+        if (EntityUri.FolderIdOf(uri).Length > 0) return true;
         return EntityUri.KindOf(uri) is EntityKind.Playlist or EntityKind.Album or EntityKind.Artist or EntityKind.Show;
     }
 

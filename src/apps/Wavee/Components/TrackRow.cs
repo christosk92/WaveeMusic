@@ -376,7 +376,12 @@ internal static class TrackRow
                 Fill = oddZebra ? WaveeColors.RowZebra : ColorF.Transparent,
                 HoverFill = oddZebra ? WaveeColors.RowHoverZebra : WaveeColors.RowHover,
                 PressedFill = oddZebra ? WaveeColors.RowPressedZebra : WaveeColors.RowPressed,
-                PressScale = WaveeMotion.ScaleSubtle.Press, BorderWidth = 1f,
+                // NO PressScale: this row spans near the full content width (~1060px on a wide pane). Even the
+                // "subtle" 0.98 tier moves each edge ~6px in opposite directions — on a row this wide that reads as
+                // the WHOLE row shrinking and springing back, and the title/artist text visibly blurs mid-scale
+                // (S3 #14). The pressed-fill above is the row's only press acknowledgement, matching the bound
+                // detail-table row's press feel — a click state, not a shrink.
+                BorderWidth = 1f,
                 BorderColor = oddZebra ? Tok.StrokeCardDefault : ColorF.Transparent,
                 HoverBorderColor = Tok.StrokeCardDefault,
                 Role = AutomationRole.Button, OnClick = m.OnPlay,

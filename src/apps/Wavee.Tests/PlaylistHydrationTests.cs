@@ -113,6 +113,26 @@ public class PlaylistHydrationTests
         Assert.Equal(1, h.Opener.RevalidateCalls);
     }
 
+    // S2 #6 (the stale-daylist-open fix): a baseline that NEEDS revalidation (LibrarySync's own dirty/stale/rolling
+    // test — IPlaylistOpener.NeedsRevalidation) is awaited through the SAME real open a no-baseline ask uses, instead
+    // of the fire-and-forget Revalidate. Whether that await actually reaches the page or is capped by a deadline is
+    // OpenPolicy/StoreLibrarySource's call (see OpenPolicyTests / StoreLibrarySourceTests) — this only pins that the
+    // ladder itself is willing to wait when asked to.
+    [Fact]
+    public async Task WithBaseline_NeedsRevalidation_AwaitsTheRealOpen_NotFireAndForgetRevalidate()
+    {
+        using var h = new Harness();
+        Seed(h.Store, "spotify:track:t1");
+        h.Opener.NeedsRevalidationFn = _ => true;
+
+        await h.Hydrator.EnsureAsync(Uri, HydrationLevel.Open);
+        await DrainAsync(h.Pump);
+
+        Assert.Equal(1, h.Opener.OpenCalls);
+        Assert.Equal(0, h.Opener.RevalidateCalls);
+        Assert.True(h.Opener.NeedsRevalidationCalls >= 1);
+    }
+
     [Fact]
     public async Task NeverWritesMembership()
     {

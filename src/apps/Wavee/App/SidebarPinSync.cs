@@ -9,7 +9,10 @@ using Wavee.Core;
 namespace Wavee;
 
 /// <summary>Two-way bridge between the store's "pins" set (the ylpin mirror) and the sidebar's pin list
-/// (<c>docs/plans/wavee/pin-spotify-sync-implementation.md</c> §1.5).
+/// (<c>docs/plans/wavee/pin-spotify-sync-implementation.md</c> §1.5). Folders ARE syncable (<c>PinSyncRules</c> maps
+/// <c>folder:&lt;hex&gt;</c> ↔ <c>spotify:folder:&lt;hex&gt;</c>), so <see cref="MigrateLocalPins"/> pushes a local
+/// folder pin absent from the server set on the first converged walk exactly like it does a playlist — intended, not
+/// a gap.
 ///
 /// <para>UI-thread affine on the <see cref="SidebarPinStore"/> side (every mutation goes through the dispatcher handed
 /// to <see cref="Activate"/>); store subscriptions fire on the sync loop / drain thread. Engine-free apart from the
@@ -33,6 +36,7 @@ public sealed class SidebarPinSync : IDisposable
     readonly Func<string> _username;
     readonly Func<bool> _converged;          // () => cold.GetCollectionRevision("ylpin") is not null
     readonly Func<string, bool> _hasPending; // (uri) => mutEngine.HasPending("pins", uri)
+    readonly Func<string, string>? _routeTitle; // (routeKey) => its display title, e.g. ShellNav.Dest(key).Title
     readonly IDisposable _sub;
     readonly object _queueGate = new();
     readonly List<Action> _queuedBeforeActivate = new();
@@ -40,7 +44,8 @@ public sealed class SidebarPinSync : IDisposable
     bool _migrated;
 
     public SidebarPinSync(IStore store, SidebarPinStore pins, IPinMutations mutations, IAppSettings settings,
-        Func<string> username, Func<bool> converged, Func<string, bool> hasPending)
+        Func<string> username, Func<bool> converged, Func<string, bool> hasPending,
+        Func<string, string>? routeTitle = null)
     {
         _store = store;
         _pins = pins;
@@ -49,6 +54,7 @@ public sealed class SidebarPinSync : IDisposable
         _username = username;
         _converged = converged;
         _hasPending = hasPending;
+        _routeTitle = routeTitle;
         _migrated = settings.Get(SidebarKeys.PinsMigratedToServer);
         _pins.OnLocalPinChanged = OnLocalPinChanged;
         _sub = store.Changes.Subscribe(Observers.From<StoreChange>(OnStoreChange));
@@ -91,7 +97,12 @@ public sealed class SidebarPinSync : IDisposable
         foreach (var it in items.OrderBy(i => i.AddedAtMs))          // oldest first → appended in pin order
         {
             if (PinSyncRules.TryPinId(it.Uri) is not { } id) continue;
-            server.Add(new SidebarPin(id, SidebarPinId.KindOf(id), SidebarPinId.UriOf(id), "", it.AddedAtMs));
+            var kind = SidebarPinId.KindOf(id);
+            // A route pin (e.g. Liked Songs, id "liked") has no library entity behind it, so nothing else ever fills
+            // in its display name — without this it renders with an empty Name, which SidebarPaneSlot.EntryRow then
+            // dims and disables (Task B). Every other kind keeps "" and waits for the projection's Touch to fill it.
+            string name = kind == SidebarEntryKind.AppRoute ? _routeTitle?.Invoke(id) ?? "" : "";
+            server.Add(new SidebarPin(id, kind, SidebarPinId.UriOf(id), name, it.AddedAtMs));
         }
         bool removeMissing = _converged() && _migrated;
         string user = _username();

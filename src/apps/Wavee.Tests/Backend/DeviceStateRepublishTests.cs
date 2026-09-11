@@ -27,7 +27,7 @@ public class DeviceStateRepublishTests
 
         public Harness()
         {
-            Publisher = new DeviceStatePublisher(Transport, "us", Proj, ConnId, () => "c1",
+            Publisher = new DeviceStatePublisher(Transport, "us", Proj, Proj.Ownership, ConnId, () => "c1",
                 (reason, snap, mid, active) =>
                 {
                     Reasons.Add(reason);
@@ -36,8 +36,11 @@ public class DeviceStateRepublishTests
                 onCluster: null, clock: () => 1000);
         }
 
+        // A real local play always claims ownership BEFORE the event reaches the publisher — is_active is derived from
+        // ConnectOwnership now (contract item 1), not from a bare CurrentTrack fact.
         public void Play(string uri)
         {
+            Proj.Ownership.Claim(ClaimCause.UserPlay);
             var e = new PlaybackEvent(EvKind.Started, T(uri), 0);
             Proj.OnEvent(e);
             Publisher.OnEvent(e);
@@ -62,12 +65,18 @@ public class DeviceStateRepublishTests
         Assert.Contains("|True|spotify:track:a|", Encoding.UTF8.GetString(h.Transport.LastPublishBody!));
     }
 
+    // Was PublishStateChanged_AfterOwnershipRetired_PublishesNothing, gated on the deleted `_ownershipRetired` flag
+    // (set by calling PublishInactive() directly). is_active is now derived from the ConnectOwnership AUTHORITY
+    // (contract item 1): PublishInactive() alone sends a bare PUT and no longer flips anything — only
+    // ConnectOwnership.Release actually gives up the slot, so that is what this now exercises. A duplicate scenario
+    // (via a foreign cluster takeover instead of an explicit release) lives in ConnectPublisherTests as
+    // BadgeRepublish_WhileNotUs_PublishesNothing.
     [Fact]
-    public async Task PublishStateChanged_AfterOwnershipRetired_PublishesNothing()
+    public async Task PublishStateChanged_WhileNotUs_PublishesNothing()
     {
         var h = new Harness();
         h.Play("spotify:track:a");
-        h.Publisher.PublishInactive();   // playback handed to another device — the event path is muted from here
+        h.Proj.Ownership.Release(ReleaseCause.TransferAway);   // playback handed to another device
         await SettleAsync();
         int before = h.Transport.PublishCount;
 
