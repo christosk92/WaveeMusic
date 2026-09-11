@@ -9,6 +9,7 @@ using FluentGpu.WindowsApi.Media.PlayReady;
 using Wavee.Backend;
 using Wavee.Backend.Audio;
 using Wavee.Core;
+using Wavee.Core.Diagnostics;
 
 // Both namespaces declare a SeekMode: the app's transport enum (Wavee.Core, framework-neutral, what the IMediaHost seam
 // speaks) and the engine's (FluentGpu.Media, what IMediaPlayer.SeekAsync takes). Aliased rather than fully qualified so
@@ -175,6 +176,21 @@ public sealed class FluentVideoMediaHost : IMediaHost
         _watchdog = new VideoStartWatchdog(startWatchdogMs);
         _ticker = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
         _pump = new VideoLoadPump<VideoLoadRequest>(TeardownAsync, ApplyAsync, log);
+        // The video pipeline is the largest thing `mem.sample` cannot see: one MediaPlayer keeps a MediaFoundation
+        // engine, a SECOND D3D11 device and MF's decode surfaces alive, none of which the GPU resource tracker can
+        // count (the engine only ever receives a swapchain HANDLE, never a resource with a size). So report the one
+        // fact that decides whether that cost is live — does a player exist, and for what — into the always-on census.
+        // `player=1 src=` long after a video ended is the leak, stated rather than inferred.
+        PerformanceDiagnostics.Owners.Register("video", () =>
+        {
+            MediaPlayer? live; string key; int pendingDispose;
+            lock (_gate) { live = _player; key = _sourceKey; }
+            pendingDispose = _toDispose.Count;
+            return "player=" + (live is null ? 0 : 1)
+                 + " src=" + (key.Length == 0 ? "-" : key)
+                 + " state=" + _lastState
+                 + " disposeQ=" + pendingDispose;
+        });
     }
 
     /// <summary>The live engine player for the current video source (null before the first <see cref="LoadVideo"/> / after a

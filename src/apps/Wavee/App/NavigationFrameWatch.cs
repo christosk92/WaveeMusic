@@ -255,9 +255,16 @@ public static class NavigationFrameWatch
         + " bindFires=" + s.BindingFires + " bindWrites=" + s.BindingWrites
         + " gc=" + s.Gc0Delta + "/" + s.Gc1Delta + "/" + s.Gc2Delta
         // Render-side causes: how much of the frame's recording was reused, how many blur groups the GPU paid for,
-        // and how much of the target was repainted (1 = full).
+        // and how much of the target was repainted (repaintPct=100.0 is full).
         + " spansReused=" + s.SpansReused + " spansReRecorded=" + s.SpansReRecorded + " blurGroups=" + s.BlurGroupCount
-        + " blurHeld=" + s.BlurSuppressedByScrollCount + " repaint=" + F(s.RepaintCoverage) + " gaps=" + s.PublicationGaps;
+        + " blurHeld=" + s.BlurSuppressedByScrollCount + " repaintPct=" + Pct(s.RepaintCoverage) + " gaps=" + s.PublicationGaps;
 
     static string F(double v) => double.IsNaN(v) ? "-" : v.ToString("0.0", CultureInfo.InvariantCulture);
+
+    /// <summary>Repaint coverage as a PERCENTAGE with two decimals, not the raw 0..1 fraction through <see cref="F"/>.
+    /// The whole point of damage-scoped repaint is coverage in the single-digit-percent range, and "0.0" — which is
+    /// what the one-decimal fraction printed for every successful partial frame — cannot tell a 3 % frame from a
+    /// 0.3 % one or from a frame that damaged nothing at all. Renamed to `repaintPct=` with the unit change so a log
+    /// from either side of this commit can never be misread as the other.</summary>
+    static string Pct(double v) => double.IsNaN(v) ? "-" : (v * 100.0).ToString("0.00", CultureInfo.InvariantCulture);
 }
